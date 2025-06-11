@@ -1,0 +1,38 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatResponse
+description: ChatResponse represents a response from the Ollama chat API
+type: object
+properties:
+  done:
+    type: boolean
+  message:
+    $ref: "#/definitions/ChatMessage"
+  createdAt:
+    type: string
+  model:
+    type: string
+  context:
+    type: array
+    items:
+      type: number
+  done_reason:
+    type: string
+  total_duration:
+    type: number
+  load_duration:
+    type: number
+  prompt_eval_count:
+    type: number
+  prompt_eval_duration:
+    type: number
+  eval_count:
+    type: number
+  eval_duration:
+    type: number
+required:
+  - done
+  - createdAt
+  - model
+definitions:
+  ChatMessage:
+    $ref: chat_message.yaml

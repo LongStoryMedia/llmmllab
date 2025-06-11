@@ -1,0 +1,49 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RedisConfig
+description: Redis configuration
+type: object
+properties:
+  host:
+    type: string
+    description: Redis host
+  port:
+    type: integer
+    description: Redis port
+  password:
+    type: string
+    description: Redis password
+  db:
+    type: integer
+    description: Redis database index
+  enabled:
+    type: boolean
+    description: Whether Redis is enabled
+  conversation_ttl:
+    type: string
+    description: Conversation TTL
+  message_ttl:
+    type: string
+    description: Message TTL
+  summary_ttl:
+    type: string
+    description: Summary TTL
+  pool_size:
+    type: integer
+    description: Connection pool size
+  min_idle_connections:
+    type: integer
+    description: Minimum idle connections
+  connect_timeout:
+    type: string
+    description: Connection timeout
+required:
+  - host
+  - port
+  - db
+  - enabled
+  - conversation_ttl
+  - message_ttl
+  - summary_ttl
+  - pool_size
+  - min_idle_connections
+  - connect_timeout

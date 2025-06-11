@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proxyllama
+  namespace: proxyllama
+  labels:
+    app: proxyllama
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: proxyllama
+  template:
+    metadata:
+      labels:
+        app: proxyllama
+        version: "2025.05.23"
+    spec:
+      containers:
+        - name: proxyllama
+          # Updated to use the private registry
+          image: 192.168.0.71:31500/proxyllama:latest
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "250m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          env:
+            - name: OLLAMA_API_BASE_URL
+              value: "http://ollama.ollama.svc.cluster.local:11434"
+            - name: DB_HOST
+              value: "postgres.psql.svc.cluster.local"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USER
+              value: lsm
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: psqlpw
+            - name: DB_NAME
+              value: "ollama"
+            - name: JWT_ISSUER
+              value: "https://auth.longstorymedia.com"
+            - name: JWT_AUDIENCE
+              value: "proxyllama"
+            - name: JWT_JWKS_URI
+              value: "https://auth.longstorymedia.com/keys"
+          ports:
+            - containerPort: 8080
+              name: http
+      # Add image pull secret for private registry
+      imagePullSecrets:
+        - name: registry-credentials

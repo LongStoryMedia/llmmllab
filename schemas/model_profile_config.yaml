@@ -1,0 +1,69 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ModelProfileConfig
+description: Model profile configuration
+type: object
+properties:
+  primary_profile_id:
+    type: string
+    format: uuid
+    description: Primary profile ID
+  summarization_profile_id:
+    type: string
+    format: uuid
+    description: Summarization profile ID
+  master_summary_profile_id:
+    type: string
+    format: uuid
+    description: Master summary profile ID
+  brief_summary_profile_id:
+    type: string
+    format: uuid
+    description: Brief summary profile ID
+  key_points_profile_id:
+    type: string
+    format: uuid
+    description: Key points profile ID
+  improvement_profile_id:
+    type: string
+    format: uuid
+    description: Improvement profile ID
+  analysis_profile_id:
+    type: string
+    format: uuid
+    description: Analysis profile ID
+  memory_retrieval_profile_id:
+    type: string
+    format: uuid
+    description: Memory retrieval profile ID
+  self_critique_profile_id:
+    type: string
+    format: uuid
+    description: Self-critique profile ID
+  research_task_profile_id:
+    type: string
+    format: uuid
+    description: Research task profile ID
+  research_plan_profile_id:
+    type: string
+    format: uuid
+    description: Research plan profile ID
+  research_consolidation_profile_id:
+    type: string
+    format: uuid
+    description: Research consolidation profile ID
+  research_analysis_profile_id:
+    type: string
+    format: uuid
+    description: Research analysis profile ID
+  embedding_profile_id:
+    type: string
+    format: uuid
+    description: Embedding profile ID
+  formatting_profile_id:
+    type: string
+    format: uuid
+    description: Formatting profile ID
+  image_generation_profile_id:
+    type: string
+    format: uuid
+    description: Image generation profile ID

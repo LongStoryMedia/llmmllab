@@ -1,0 +1,25 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: SearchResult
+description: Search result from a web query
+type: object
+properties:
+  is_from_url_in_user_query:
+    type: boolean
+    description: Indicates if this result is from a URL specified in the user query
+  query:
+    type: string
+    description: The search query that produced these results
+  contents:
+    type: array
+    items:
+      $ref: "#/definitions/SearchResultContent"
+    description: Content items found in the search
+  error:
+    type: string
+    description: Error message if the search failed
+required:
+  - is_from_url_in_user_query
+  - query
+definitions:
+  SearchResultContent:
+    $ref: search_result_content.yaml

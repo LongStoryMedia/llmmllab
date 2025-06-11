@@ -1,0 +1,23 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: User
+description: User represents a user of the system
+type: object
+properties:
+  id:
+    type: string
+    description: Unique identifier for the user
+  username:
+    type: string
+    description: Username of the user
+  uid:
+    type: string
+    description: User identification number
+  created_at:
+    type: string
+    format: date-time
+    description: Timestamp of when the user was created
+required:
+  - id
+  - username
+  - uid
+  - created_at

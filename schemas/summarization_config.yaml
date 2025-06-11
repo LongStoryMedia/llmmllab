@@ -1,0 +1,27 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: SummarizationConfig
+description: Conversation summarization settings
+type: object
+properties:
+  enabled:
+    type: boolean
+    description: Whether summarization is enabled
+  messages_before_summary:
+    type: integer
+    description: Number of messages before summary
+  summaries_before_consolidation:
+    type: integer
+    description: Number of summaries before consolidation
+  embedding_model:
+    type: string
+    description: Embedding model
+  embedding_dimension:
+    type: integer
+    description: Embedding dimension
+  max_summary_levels:
+    type: integer
+    description: Maximum summary levels
+  summary_weight_coefficient:
+    type: number
+    format: float
+    description: Summary weight coefficient

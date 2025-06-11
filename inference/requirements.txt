@@ -1,0 +1,11 @@
+accelerate
+pydantic
+uvicorn
+fastapi
+diffusers
+transformers
+torch
+torchvision
+torchaudio
+apscheduler
+peft

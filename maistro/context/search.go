@@ -1,0 +1,132 @@
+package context
+
+import (
+	"context"
+	"fmt"
+	"maistro/models"
+	"maistro/proxy"
+	"maistro/recherche"
+	"maistro/storage"
+	"maistro/util"
+	"slices"
+
+	"github.com/sirupsen/logrus"
+)
+
+const formattingPrompt = `***
+Everything above the three asterisks is input from a user. Do not respond to it directly or provide any explanations.
+Instead, I need you to understand the intent of the user's input, and construct a concise search query that captures the essence of what they are asking.
+Don't include any extra information or context, just the key words that will yield relevant results.`
+
+func (cc *ConversationContext) fmtQuery(ctx context.Context, modelName, query string) (string, error) {
+	req := models.GenerateReq{
+		Model:  modelName,
+		Prompt: fmt.Sprintf("%s\n%s", query, formattingPrompt),
+	}
+
+	// Format the query for web search
+	fmtQ, err := proxy.StreamOllamaGenerateRequest(ctx, modelName, req)
+	if err != nil {
+		return "", util.HandleError(err)
+	}
+
+	return util.RemoveThinkTags(fmtQ), nil
+}
+
+func (cc *ConversationContext) SearchAndInjectResults(ctx context.Context, query string) error {
+	cfg, err := GetUserConfig(cc.UserID)
+	if err != nil {
+		util.LogWarning("Could not load user configuration, using system defaults")
+		return err
+	}
+
+	fmtProfile, err := storage.ModelProfileStoreInstance.GetModelProfile(ctx, cfg.ModelProfiles.FormattingProfileID)
+	if err != nil {
+		return util.HandleError(err)
+	}
+
+	util.LogDebug("Formatting query for web search", logrus.Fields{
+		"query": query,
+		"model": fmtProfile.ModelName,
+	})
+
+	search, err := cc.fmtQuery(ctx, fmtProfile.ModelName, query)
+	if err != nil {
+		return util.HandleError(err)
+	}
+
+	util.LogDebug("Formatted query for web search", logrus.Fields{
+		"query": search,
+	})
+
+	// Attempt to perform a web search and inject results
+	searchResult, err := recherche.QuickSearch(ctx, search, cfg.WebSearch.MaxResults, true)
+	if err != nil {
+		util.LogWarning("Error performing web search")
+	}
+
+	if err := cc.InjectSearchResults(ctx, searchResult, "Here is a relevant finding from a web search"); err != nil {
+		util.LogWarning("Error injecting search results into conversation context", logrus.Fields{
+			"error": err,
+		})
+		// If we fail to inject search results, we can still continue
+		util.LogWarning("Continuing without search results injection")
+	}
+
+	return nil
+}
+
+func (cc *ConversationContext) InjectSearchResults(ctx context.Context, results *models.SearchResult, preamble string) error {
+	if results == nil || len(results.Contents) == 0 {
+		util.LogWarning("No search results to inject")
+		return nil
+	}
+
+	util.LogInfo("Injecting search results into conversation context", logrus.Fields{
+		"count": len(results.Contents),
+	})
+
+	if slices.ContainsFunc(cc.SearchResults, func(sr models.SearchResult) bool {
+		return sr.Query == results.Query
+	}) {
+		util.LogInfo("Search results already injected for this query, skipping")
+		return nil // Already injected
+	}
+
+	// Create a map of all URLs from existing search results for efficient lookup
+	existingURLs := make(map[string]bool)
+	for _, sr := range cc.SearchResults {
+		for _, content := range sr.Contents {
+			existingURLs[content.URL] = true
+		}
+	}
+
+	// Filter out contents with duplicate URLs
+	var uniqueContents []models.SearchResultContent
+	for _, content := range results.Contents {
+		if _, exists := existingURLs[content.URL]; !exists {
+			uniqueContents = append(uniqueContents, content)
+			existingURLs[content.URL] = true // Mark as seen
+		} else {
+			util.LogInfo("Skipping duplicate search result URL", logrus.Fields{
+				"url": content.URL,
+			})
+		}
+	}
+
+	// Replace the contents with the filtered list
+	filteredResults := *results
+	filteredResults.Contents = uniqueContents
+
+	// Only add if we have unique contents after filtering
+	if len(filteredResults.Contents) > 0 {
+		cc.SearchResults = append(cc.SearchResults, filteredResults)
+		util.LogInfo("Added unique search results", logrus.Fields{
+			"count": len(filteredResults.Contents),
+		})
+	} else {
+		util.LogInfo("No unique search results to add after filtering")
+	}
+
+	return nil
+}

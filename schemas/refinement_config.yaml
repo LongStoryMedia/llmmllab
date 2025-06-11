@@ -1,0 +1,11 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RefinementConfig
+description: Response refinement settings
+type: object
+properties:
+  enable_response_filtering:
+    type: boolean
+    description: Enable response filtering
+  enable_response_critique:
+    type: boolean
+    description: Enable response critique

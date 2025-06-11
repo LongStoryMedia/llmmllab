@@ -1,0 +1,12 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: InferenceServiceConfig
+description: Inference services configuration
+type: object
+properties:
+  ollama:
+    $ref: inference_service.yaml
+  stable_diffusion:
+    $ref: inference_service.yaml
+required:
+  - ollama
+  - stable_diffusion

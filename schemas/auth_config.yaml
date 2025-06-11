@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: AuthConfig
+description: Authentication configuration
+type: object
+properties:
+  jwks_uri:
+    type: string
+    description: JWKS URI
+  audience:
+    type: string
+    description: Audience
+  client_id:
+    type: string
+    description: Client ID
+  client_secret:
+    type: string
+    description: Client secret
+required:
+  - jwks_uri
+  - audience
+  - client_id
+  - client_secret

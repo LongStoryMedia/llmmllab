@@ -1,0 +1,14 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatRequest
+description: ChatRequest represents a request from the UI
+type: object
+properties:
+  content:
+    type: string
+    description: Message to send to the model, each message is a struct with role and content
+  conversation_id:
+    type: integer
+    description: reference to the conversation this message belongs to
+required:
+  - content
+  - conversation_id

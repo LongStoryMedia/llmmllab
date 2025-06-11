@@ -1,0 +1,28 @@
+--- 06.01.2025 ---
+How can I alter a table in postgres such that I create a new `serial` column and make it the primary key while also removing the existing primary key, which is a compound key made of 3 other existing columns.
+to explain better, I need this schema:
+```sql
+CREATE TABLE IF NOT EXISTS memories(
+  user_id text NOT NULL,
+  source_id integer NOT NULL,
+  source text NOT NULL,
+  embedding vector(768) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (source, source_id, created_at)
+);
+```
+updated to this:
+```sql
+CREATE TABLE IF NOT EXISTS memories(
+  id serial,
+  user_id text NOT NULL,
+  source_id integer NOT NULL,
+  source text NOT NULL,
+  embedding vector(768) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+);
+```
+and I want the id column to be added (and incremented) on all existing rows.
+---

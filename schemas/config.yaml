@@ -1,0 +1,48 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Config
+description: Application configuration
+type: object
+properties:
+  server:
+    $ref: server_config.yaml
+  database:
+    $ref: database_config.yaml
+  redis:
+    $ref: redis_config.yaml
+  auth:
+    $ref: auth_config.yaml
+  preference_map:
+    type: object
+    additionalProperties:
+      $ref: user_config.yaml
+    description: User-specific configuration map
+  inference_services:
+    $ref: inference_service_config.yaml
+  summarization:
+    $ref: summarization_config.yaml
+  memory:
+    $ref: memory_config.yaml
+  web_search:
+    $ref: web_search_config.yaml
+  preferences:
+    $ref: preferences_config.yaml
+  model_profiles:
+    $ref: model_profile_config.yaml
+  refinement:
+    $ref: refinement_config.yaml
+  log_level:
+    type: string
+    description: Log level
+required:
+  - server
+  - database
+  - redis
+  - auth
+  - inference_services
+  - summarization
+  - memory
+  - web_search
+  - preferences
+  - model_profiles
+  - refinement
+  - log_level

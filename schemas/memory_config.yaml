@@ -1,0 +1,34 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MemoryConfig
+description: Memory retrieval settings
+type: object
+properties:
+  enabled:
+    type: boolean
+    description: Whether memory retrieval is enabled
+  limit:
+    type: integer
+    description: Retrieval limit
+  profile_id:
+    type: string
+    description: Profile ID
+  enable_cross_user:
+    type: boolean
+    description: Enable cross-user retrieval
+  enable_cross_conversation:
+    type: boolean
+    description: Enable cross-conversation retrieval
+  similarity_threshold:
+    type: number
+    description: Similarity threshold
+  always_retrieve:
+    type: boolean
+    description: Always retrieve
+required:
+  - enabled
+  - limit
+  - profile_id
+  - enable_cross_user
+  - enable_cross_conversation
+  - similarity_threshold
+  - always_retrieve

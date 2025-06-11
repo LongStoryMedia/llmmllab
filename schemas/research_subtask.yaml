@@ -1,0 +1,63 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResearchSubtask
+description: Subtask within a research task
+type: object
+properties:
+  id:
+    type: integer
+    description: Unique identifier for the subtask
+  task_id:
+    type: integer
+    description: Id of the parent research task
+  question_id:
+    type: integer
+    description: Id of the research question this subtask addresses
+  status:
+    type: string
+    enum:
+      - PENDING
+      - PLANNING
+      - GATHERING
+      - PROCESSING
+      - SYNTHESIZING
+      - COMPLETED
+      - FAILED
+      - CANCELED
+    description: Current status of the subtask
+  gathered_info:
+    type: array
+    items:
+      type: string
+    description: Information gathered for this subtask
+  information_sources:
+    type: array
+    items:
+      type: string
+    description: Sources of the gathered information
+  synthesized_answer:
+    type:
+      - string
+      - "null"
+    description: Final synthesized answer for this subtask
+  error_message:
+    type:
+      - string
+      - "null"
+    description: Error message if subtask failed
+  created_at:
+    type: string
+    format: date-time
+    description: Timestamp of when the subtask was created
+  updated_at:
+    type: string
+    format: date-time
+    description: Timestamp of when the subtask was last updated
+required:
+  - id
+  - task_id
+  - question_id
+  - status
+  - gathered_info
+  - information_sources
+  - created_at
+  - updated_at

@@ -1,0 +1,18 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: SearchResultContent
+description: Content item from a web search result
+type: object
+properties:
+  url:
+    type: string
+    description: URL of the content
+  title:
+    type: string
+    description: Title of the content
+  content:
+    type: string
+    description: Snippet or summary of the content
+required:
+  - url
+  - title
+  - content
