@@ -1,0 +1,2 @@
+-- This file ensures the queries directory is included in the embed directive
+-- It's not used for any actual queries, just to maintain the directory structure

@@ -1,0 +1,45 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatReq
+description: ChatReq represents a request to the Ollama API
+type: object
+properties:
+  model:
+    type: string
+    description: Model name, used internally only to set the model name in the request to ollama based on the profile
+  messages:
+    type: array
+    items:
+      $ref: "#/definitions/ChatMessage"
+    description: Messages to send to the model, each message is a struct with role and content
+  stream:
+    type: boolean
+    description: If true, the response will be streamed back as a series of events
+  format:
+    type: object
+    additionalProperties: true
+    description: The format to return a response in. Format can be json or a JSON schema
+  conversationId:
+    type: integer
+    description: UI sends camelCase
+  keep_alive:
+    type: string
+    description: Controls how long the model will stay loaded into memory
+  options:
+    type: object
+    additionalProperties: true
+    description: Additional model parameters listed in the documentation for the Modelfile such as temperature
+  tools:
+    type: array
+    items:
+      type: object
+    description: Tools to use for the request, if any
+  think:
+    type: boolean
+    description: If true, the model will think before responding, useful for complex queries
+required:
+  - messages
+  - stream
+  - model
+definitions:
+  ChatMessage:
+    $ref: chat_message.yaml

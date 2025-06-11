@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: proxyllama
+  namespace: proxyllama
+  labels:
+    app: proxyllama
+spec:
+  selector:
+    app: proxyllama
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+      name: proxyllama

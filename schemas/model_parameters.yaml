@@ -1,0 +1,37 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ModelParameters
+description: Parameters for configuring a language model
+type: object
+properties:
+  num_ctx:
+    type: integer
+    description: Size of the context window
+  repeat_last_n:
+    type: integer
+    description: Number of tokens to consider for repetition penalties
+  repeat_penalty:
+    type: number
+    description: Penalty for repetitions
+  temperature:
+    type: number
+    description: Sampling temperature; higher values produce more creative outputs
+  seed:
+    type: integer
+    description: Random seed for reproducibility
+  stop:
+    type: array
+    items:
+      type: string
+    description: Sequences where the model should stop generating
+  num_predict:
+    type: integer
+    description: Maximum number of tokens to predict
+  top_k:
+    type: integer
+    description: Limits next token selection to top K options
+  top_p:
+    type: number
+    description: Limits next token selection to tokens comprising the top P probability mass (nucleus sampling)
+  min_p:
+    type: number
+    description: Minimum probability threshold for token selection

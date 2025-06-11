@@ -1,0 +1,50 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: GenerateReq
+description: GenerateReq represents a request to the Ollama embeddings API
+type: object
+properties:
+  model:
+    type: string
+    description: Model name
+  prompt:
+    type: string
+    description: Prompt to send to the model
+  suffix:
+    type: string
+    description: Suffix to append to the prompt
+  images:
+    type: array
+    items:
+      type: string
+    description: Images to include with the prompt
+  format:
+    type: object
+    description: The format to return a response in. Format can be json or a JSON schema
+  options:
+    type: object
+    additionalProperties: true
+    description: Additional model parameters listed in the documentation for the Modelfile such as temperature
+  system:
+    type: string
+    description: System message to (overrides what is defined in the Modelfile)
+  template:
+    type: string
+    description: The prompt template to use (overrides what is defined in the Modelfile)
+  stream:
+    type: boolean
+    description: If false the response will be returned as a single response object
+  raw:
+    type: boolean
+    description: If true no formatting will be applied to the prompt
+  keep_alive:
+    type: string
+    description: Controls how long the model will stay loaded into memory
+  context:
+    type: string
+    description: the context parameter returned from a previous request # deprecated
+  think:
+    type: boolean
+    description: If true, the model will think before responding, useful for complex queries
+required:
+  - model
+  - prompt

@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: WebSearchConfig
+description: Web search settings
+type: object
+properties:
+  enabled:
+    type: boolean
+    description: Whether web search is enabled
+  auto_detect:
+    type: boolean
+    description: Auto-detect web search
+  max_results:
+    type: integer
+    description: Maximum number of results
+  include_results:
+    type: boolean
+    description: Include results in response

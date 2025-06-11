@@ -1,0 +1,54 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ModelProfile
+description: ModelProfile represents a model profile used for generating responses
+type: object
+properties:
+  id:
+    type: string
+    format: uuid
+    description: Unique identifier for the profile
+  userId:
+    type: string
+    description: Id of the user who owns the profile
+  name:
+    type: string
+    description: Name of the profile
+  description:
+    type: string
+    description: Description of the profile
+  modelName:
+    type: string
+    description: Name of the model to use
+  parameters:
+    $ref: "#/definitions/ModelParameters"
+    description: Parameters for configuring the model
+  systemPrompt:
+    type: string
+    description: System prompt to send to the model
+  createdAt:
+    type: string
+    format: date-time
+    description: Timestamp of when the profile was created
+  updatedAt:
+    type: string
+    format: date-time
+    description: Timestamp of when the profile was last updated
+  modelVersion:
+    type: string
+    description: Version of the model
+  type:
+    type: integer
+    description: Type of the model profile
+required:
+  - id
+  - userId
+  - name
+  - modelName
+  - parameters
+  - systemPrompt
+  - createdAt
+  - updatedAt
+  - type
+definitions:
+  ModelParameters:
+    $ref: model_parameters.yaml

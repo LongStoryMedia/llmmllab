@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: UserConfig
+description: User-specific configuration
+type: object
+properties:
+  user_id:
+    type: string
+    description: User ID
+  summarization:
+    $ref: summarization_config.yaml
+  memory:
+    $ref: memory_config.yaml
+  web_search:
+    $ref: web_search_config.yaml
+  preferences:
+    $ref: preferences_config.yaml
+  model_profiles:
+    $ref: model_profile_config.yaml
+  refinement:
+    $ref: refinement_config.yaml
+required:
+  - user_id

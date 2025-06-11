@@ -1,0 +1,38 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ModelProfileType
+description: Type of model profile
+type: integer
+enum:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 115
+enumNames:
+  "0": ModelProfileTypePrimary
+  "1": ModelProfileTypePrimarySummary
+  "2": ModelProfileTypeMasterSummary
+  "3": ModelProfileTypeBriefSummary
+  "4": ModelProfileTypeKeyPoints
+  "5": ModelProfileTypeSelfCritique
+  "6": ModelProfileTypeImprovement
+  "7": ModelProfileTypeMemoryRetrieval
+  "8": ModelProfileTypeAnalysis
+  "9": ModelProfileTypeResearchTask
+  "10": ModelProfileTypeResearchPlan
+  "11": ModelProfileTypeResearchConsolidation
+  "12": ModelProfileTypeResearchAnalysis
+  "13": ModelProfileTypeEmbedding
+  "14": ModelProfileTypeFormatting
+  "115": ModelProfileTypeImageGeneration

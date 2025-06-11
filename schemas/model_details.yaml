@@ -1,0 +1,32 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ModelDetails
+description: ModelDetails contains additional information about a model
+type: object
+properties:
+  parent_model:
+    type: string
+    description: Identifier of the parent model if this is a derivative
+  format:
+    type: string
+    description: Format of the model file (e.g., gguf)
+  family:
+    type: string
+    description: Primary model family this belongs to (e.g., llama, phi3)
+  families:
+    type: array
+    items:
+      type: string
+    description: All model families this belongs to
+  parameter_size:
+    type: string
+    description: Size of model parameters (e.g., '7.2B')
+  quantization_level:
+    type: string
+    description: Level of quantization applied to the model (e.g., 'Q4_0')
+required:
+  - parent_model
+  - format
+  - family
+  - families
+  - parameter_size
+  - quantization_level

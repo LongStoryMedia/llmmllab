@@ -1,0 +1,33 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Model
+description: Model represents a machine learning model used for generating responses
+type: object
+properties:
+  name:
+    type: string
+    description: Display name of the model
+  model:
+    type: string
+    description: Identifier used to reference the model
+  modified_at:
+    type: string
+    description: Timestamp of when the model was last modified
+  size:
+    type: integer
+    description: Size of the model in bytes
+  digest:
+    type: string
+    description: Hash digest identifying the model version
+  details:
+    $ref: "#/definitions/ModelDetails"
+    description: Additional information about the model
+required:
+  - name
+  - model
+  - modified_at
+  - size
+  - digest
+  - details
+definitions:
+  ModelDetails:
+    $ref: model_details.yaml

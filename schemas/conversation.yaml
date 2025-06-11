@@ -1,0 +1,32 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Conversation
+description: Conversation represents a conversation between a user and the LLM
+type: object
+properties:
+  id:
+    type: integer
+    description: Unique identifier for the conversation
+  user_id:
+    type: string
+    description: Id of the user who owns the conversation
+  title:
+    type: string
+    description: Title of the conversation
+  model:
+    type: string
+    description: Model used for the conversation
+  created_at:
+    type: string
+    format: date-time
+    description: Timestamp of when the conversation was created
+  updated_at:
+    type: string
+    format: date-time
+    description: Timestamp of when the conversation was last updated
+required:
+  - id
+  - user_id
+  - title
+  - model
+  - created_at
+  - updated_at

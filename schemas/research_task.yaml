@@ -1,0 +1,91 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResearchTask
+description: ResearchTask represents a deep research task
+type: object
+properties:
+  id:
+    type: integer
+    description: Unique identifier for the research task
+  user_id:
+    type: string
+    description: Id of the user who owns the task
+  query:
+    type: string
+    description: Original research query
+  model:
+    type: string
+    description: Model used for the research
+  conversation_id:
+    type:
+      - integer
+      - "null"
+    description: Id of the conversation associated with this task if any
+  status:
+    type: string
+    enum:
+      - PENDING
+      - PLANNING
+      - GATHERING
+      - PROCESSING
+      - SYNTHESIZING
+      - COMPLETED
+      - FAILED
+      - CANCELED
+    description: Current status of the research task
+  error_message:
+    type:
+      - string
+      - "null"
+    description: Error message if task failed
+  plan:
+    oneOf:
+      - $ref: "#/definitions/ResearchPlan"
+      - type: "null"
+    description: Research plan with sub-questions
+  results:
+    type: array
+    items:
+      type: string
+    description: Collected results from the research
+  created_at:
+    type: string
+    format: date-time
+    description: Timestamp of when the task was created
+  updated_at:
+    type: string
+    format: date-time
+    description: Timestamp of when the task was last updated
+  completed_at:
+    type:
+      - string
+      - "null"
+    format: date-time
+    description: Timestamp of when the task was completed
+required:
+  - id
+  - user_id
+  - query
+  - model
+  - status
+  - created_at
+  - updated_at
+definitions:
+  ResearchPlan:
+    type: object
+    properties:
+      main_intent:
+        type: string
+        description: Main intent or goal of the research
+      sub_questions:
+        type: array
+        items:
+          $ref: "#/definitions/ResearchQuestion"
+        description: Sub-questions to investigate as part of the research
+      raw_plan:
+        type: string
+        description: Original plan text from LLM
+    required:
+      - main_intent
+      - sub_questions
+  ResearchQuestion:
+    $ref: research_question.yaml

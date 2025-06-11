@@ -1,0 +1,34 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: DatabaseConfig
+description: Database configuration
+type: object
+properties:
+  host:
+    type: string
+    description: Database host
+  port:
+    type: integer
+    description: Database port
+  user:
+    type: string
+    description: Database user
+  password:
+    type: string
+    description: Database password
+  dbname:
+    type: string
+    description: Database name
+  sslmode:
+    type: string
+    description: SSL mode
+  connection_string:
+    type: string
+    description: Connection string
+required:
+  - host
+  - port
+  - user
+  - password
+  - dbname
+  - sslmode
+  - connection_string

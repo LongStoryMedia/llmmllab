@@ -1,0 +1,39 @@
+server:
+  port: 8080
+  host: 0.0.0.0
+
+auth:
+  issuer: https://auth.longstorymedia.com
+  audience: myclient
+  jwks_uri: https://auth.longstorymedia.com/keys
+  jwks_endpoint: http://localhost:9091/dex/keys
+
+ollama:
+  base_url: http://localhost:11434
+
+database:
+  host: localhost
+  port: 5432
+  user: postgres
+  password: postgres
+  dbname: proxyllama
+  sslmode: disable
+
+redis:
+  enabled: true
+  host: localhost
+  port: 6379
+  password: ""
+  db: 0
+  default_ttl: 30m
+  pool_size: 10
+  min_idle_conns: 2
+
+summarization:
+  messages_before_summary: 10 # Number of messages before creating a summary
+  summaries_before_consolidation: 5 # Number of summaries before consolidation
+  summary_model: "fast3b:latest" # Model to use for summaries, leave empty to use same as conversation
+  system_prompt: "Summarize the conversation so far in a concise paragraph. Include key points and conclusions, but omit redundant details. The summary will be used as context for future interaction. It should be as small as possible and does not need to be human readable."
+  max_summary_levels: 3
+  summary_weight_coefficient: 0.7
+  master_summary_prompt: "Create a comprehensive summary of the conversation, giving most weight to the most recent points and gradually less weight to older information. This is a master summary that will be used for long-term context."

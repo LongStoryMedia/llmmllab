@@ -1,0 +1,35 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatMessage
+description: Message in a chat conversation
+type: object
+properties:
+  id:
+    type: integer
+    description: Unique identifier for the message
+  conversation_id:
+    type: integer
+    description: Identifier for the conversation this message belongs to
+  role:
+    type: string
+    description: Role of the message sender (e.g., user, assistant)
+  content:
+    type: string
+    description: Text content of the message
+  images:
+    type: array
+    items:
+      type: string
+    description: Optional images associated with the message
+  tool_calls:
+    type: array
+    items:
+      type: object
+      additionalProperties: true
+    description: Optional tool calls associated with the message
+  thinking:
+    type: string
+    description: Optional thinking process of the model, if applicable
+required:
+  - role
+  - content
+  - conversation_id
