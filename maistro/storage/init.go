@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maistro/config"
 	"maistro/util"
+	"strings"
 	"sync"
 	"time"
 
@@ -304,8 +305,34 @@ func InitializeTables(ctx context.Context) error {
 		util.LogWarning("Warning: Failed to add summaries retention policy", logrus.Fields{"error": err})
 	}
 
+	// Create images table
+	_, err = Pool.Exec(ctx, GetQuery("images.create_images_schema"))
+	if err != nil {
+		return fmt.Errorf("failed to create images table: %w", err)
+	}
+
+	// Add or update retention policy for images using configuration
+	conf := config.GetConfig(nil)
+	intervalStr := fmt.Sprintf("%d hours", conf.ImageGeneration.RetentionHours)
+	util.LogInfo(fmt.Sprintf("Setting image retention policy to %s", intervalStr), logrus.Fields{
+		"retentionHours": conf.ImageGeneration.RetentionHours,
+	})
+
+	// Remove any existing policy
+	_, err = Pool.Exec(ctx, GetQuery("images.drop_image_retention_policy"))
+	if err != nil {
+		util.LogWarning("Warning: Failed to drop existing images retention policy", logrus.Fields{"error": err})
+	}
+
+	// Then add the new policy with the configured retention period
+	// Use a parameterized query that works with DO blocks
+	_, err = Pool.Exec(ctx, strings.Replace(GetQuery("images.image_retention_policy"), "$1", fmt.Sprintf("'%s'", intervalStr), 1))
+	if err != nil {
+		util.LogWarning("Warning: Failed to add images retention policy", logrus.Fields{"error": err})
+	}
+
 	// Initialize memory schema
-	(&memoryStore{}).InitMemorySchema(ctx)
+	MemoryStoreInstance.InitMemorySchema(ctx)
 
 	return nil
 }

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Box, useTheme, Drawer, Backdrop } from '@mui/material';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
+import GalleryFAB from '../Shared/GalleryFAB';
 
 const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const theme = useTheme();
@@ -29,6 +30,9 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <Box p={theme.spacing(2)} overflow="auto" flexGrow={1}>
         {children}
       </Box>
+      
+      {/* Image Gallery Floating Action Button */}
+      <GalleryFAB />
     </Box>
   );
 };

@@ -23,8 +23,23 @@ properties:
   quantization_level:
     type: string
     description: Level of quantization applied to the model (e.g., 'Q4_0')
+  specialization:
+    type: string
+    enum:
+      - LoRA
+      - Embedding
+      - TextToImage
+      - Audio
+      - Vision
+    description: Specialization of the model (e.g., 'LoRA', 'Embedding',
+      'TextToImage', 'Audio', 'Vision')
+  description:
+    type: string
+    description: Description of the model
+  weight:
+    type: number
+    description: Weight of the model (applies to LoRA models)
 required:
-  - parent_model
   - format
   - family
   - families

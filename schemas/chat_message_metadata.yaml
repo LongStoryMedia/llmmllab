@@ -1,0 +1,30 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatMessageMetadata
+description: Additional metadata for the chat message
+type: object
+properties:
+  generate_image:
+    type: boolean
+    description: Whether the message includes generated images
+  is_continuation:
+    type: boolean
+    description: Whether this message is a continuation of a previous message
+  is_cancellation:
+    type: boolean
+    description: Whether this message is a cancellation of a previous message
+  is_pause:
+    type: boolean
+    description: Whether this message is a pause in the conversation
+  type:
+    type: string
+    description: Type of the message, e.g., 'pause', 'cancel', etc.
+    enum:
+      - pause
+      - cancel
+      - resume
+      - image
+      - chat
+required:
+  - generate_image
+  - is_continuation
+  - type

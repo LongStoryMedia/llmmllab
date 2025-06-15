@@ -2,7 +2,7 @@ import { ChatMessage } from "../types/ChatMessage";
 import { ChatRequest } from "../types/ChatRequest";
 import { gen, getHeaders, req } from "./base";
 
-export async function* chat(accessToken: string, message: ChatRequest) {
+export async function* chat(accessToken: string, message: ChatRequest, abortSignal?: AbortSignal): AsyncGenerator<string> {
   console.log('Sending message to chat API:', message);
 
   try {
@@ -10,11 +10,14 @@ export async function* chat(accessToken: string, message: ChatRequest) {
       body: JSON.stringify(message),
       method: 'POST',
       headers: getHeaders(accessToken),
-      path: 'api/chat'
+      path: 'api/chat',
+      signal: abortSignal
     });
 
     for await (const chunk of generator) {
-      yield chunk.message?.content;
+      if (chunk.message?.content) {
+        yield chunk.message.content;
+      }
 
       if (chunk.done) {
         break;

@@ -3,7 +3,6 @@ package context
 import (
 	"context"
 	"fmt"
-	"maistro/config"
 	"maistro/models"
 	"maistro/storage"
 
@@ -426,7 +425,7 @@ func (cc *ConversationContext) updateMasterSummary(ctx context.Context) error {
 }
 
 // prepareMasterSummaryMessages creates weighted messages for the master summary
-func (cc *ConversationContext) prepareMasterSummaryMessages(cfg *config.UserConfig, masterProfile models.ModelProfile) []models.Message {
+func (cc *ConversationContext) prepareMasterSummaryMessages(cfg *models.UserConfig, masterProfile models.ModelProfile) []models.Message {
 	var messagesToSummarize []models.Message
 
 	// Start with a system message describing the importance of weighting
@@ -447,7 +446,7 @@ func (cc *ConversationContext) prepareMasterSummaryMessages(cfg *config.UserConf
 			// Calculate weight for this level
 			weight := 1.0
 			for i := 1; i < level; i++ {
-				weight *= cfg.Summarization.SummaryWeightCoefficient
+				weight *= float64(cfg.Summarization.SummaryWeightCoefficient)
 			}
 
 			// Add summaries with level information and weight
@@ -510,7 +509,7 @@ func (cc *ConversationContext) getNewSummariesForMasterUpdate(ctx context.Contex
 			// Calculate weight for this level
 			weight := 1.0
 			for i := 1; i < level; i++ {
-				weight *= usrCfg.Summarization.SummaryWeightCoefficient
+				weight *= float64(usrCfg.Summarization.SummaryWeightCoefficient)
 			}
 
 			// Add summaries with level information and weight

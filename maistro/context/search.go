@@ -45,11 +45,6 @@ func (cc *ConversationContext) SearchAndInjectResults(ctx context.Context, query
 		return util.HandleError(err)
 	}
 
-	util.LogDebug("Formatting query for web search", logrus.Fields{
-		"query": query,
-		"model": fmtProfile.ModelName,
-	})
-
 	search, err := cc.fmtQuery(ctx, fmtProfile.ModelName, query)
 	if err != nil {
 		return util.HandleError(err)

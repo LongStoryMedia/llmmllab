@@ -1,18 +1,20 @@
 package config
 
 import (
+	"maistro/models"
+	"maistro/util"
 	"reflect"
 	"testing"
 )
 
 func TestMergeWithDefaultConfig_UserConfigPreferred(t *testing.T) {
 	base := GetConfig(nil)
-	user := UserConfig{
-		Summarization: &SummarizationConfig{Enabled: true},
-		Memory:        &MemoryConfig{Enabled: true},
-		WebSearch:     &WebSearchConfig{Enabled: false},
-		Preferences:   &PreferencesConfig{FontSize: 43},
-		ModelProfiles: &ModelProfileConfig{PrimaryProfileID: base.ModelProfiles.PrimaryProfileID},
+	user := models.UserConfig{
+		Summarization: &models.SummarizationConfig{Enabled: true},
+		Memory:        &models.MemoryConfig{Enabled: true},
+		WebSearch:     &models.WebSearchConfig{Enabled: false},
+		Preferences:   &models.PreferencesConfig{FontSize: util.IntPtr(43)},
+		ModelProfiles: &models.ModelProfileConfig{PrimaryProfileID: base.ModelProfiles.PrimaryProfileID},
 	}
 
 	MergeWithDefaultConfig(&user)
@@ -30,7 +32,7 @@ func TestMergeWithDefaultConfig_UserConfigPreferred(t *testing.T) {
 
 func TestMergeWithDefaultConfig_DefaultsUsedIfNil(t *testing.T) {
 	base := GetConfig(nil)
-	user := UserConfig{
+	user := models.UserConfig{
 		UserID:        "test_user",
 		Summarization: nil,
 		Memory:        nil,

@@ -5,9 +5,9 @@ import torch
 from typing import Dict, List, Optional
 from accelerate import Accelerator
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipeline
 
 from config import (
+    DEFAULT_LORA_WEIGHT,
     DEFAULT_MODEL_ID,
     DEFAULT_MODEL_SOURCE,
     MODELS_CONFIG_PATH,
@@ -15,9 +15,13 @@ from config import (
     ENABLE_VAE_SLICING,
     ENABLE_MODEL_CPU_OFFLOAD,
     ENABLE_SEQUENTIAL_CPU_OFFLOAD,
-    USE_FP16_PRECISION
+    USE_FP16_PRECISION,
+    FORCE_FP32_ON_CPU
 )
+from models.model_details import ModelDetails
+from models.model import Model
 from services.lora_service import lora_service
+from services.hardware_manager import hardware_manager
 
 
 class ModelService:
@@ -27,9 +31,25 @@ class ModelService:
         # Initialize accelerator
         self.accelerator = Accelerator()
         self.device = self.accelerator.device
+        self.default_model = Model(
+            name='Default Stable Diffusion',
+            model=DEFAULT_MODEL_SOURCE,  # Use the actual model source path instead of the ID
+            modified_at='',
+            size=0,
+            digest='',
+            details=ModelDetails(
+                parent_model='',
+                format='gguf',
+                family='llama',
+                families=[],
+                parameter_size='7.2B',
+                quantization_level='Q4_0',
+                specialization='TextToImage'
+            )  # You may want to provide a ModelDetails instance here
+        )
 
         # Dictionary to store loaded models
-        self.models: Dict[str, dict] = {}
+        self.models: Dict[str, Model] = {}
         self.active_model_id: str = DEFAULT_MODEL_ID
         self.active_pipeline: Optional[DiffusionPipeline] = None
 
@@ -42,39 +62,48 @@ class ModelService:
             if os.path.exists(MODELS_CONFIG_PATH):
                 with open(MODELS_CONFIG_PATH, 'r') as f:
                     config = json.load(f)
-                    self.models = config.get('models', {})
+                    models_dict = config.get('models', {})
+
+                    # Convert dictionary back to Model objects
+                    self.models = {}
+                    for model_id, model_data in models_dict.items():
+                        # Convert model_details dict to ModelDetails object first
+                        if 'details' in model_data and isinstance(model_data['details'], dict):
+                            model_data['details'] = ModelDetails(
+                                **model_data['details'])
+                        # Create Model object from dictionary
+                        self.models[model_id] = Model(**model_data)
+
                     self.active_model_id = config.get(
                         'active_model_id', DEFAULT_MODEL_ID)
             else:
                 # Create a default configuration
                 self.models = {
-                    DEFAULT_MODEL_ID: {
-                        'id': DEFAULT_MODEL_ID,
-                        'name': 'Default Stable Diffusion',
-                        'source': DEFAULT_MODEL_SOURCE,
-                        'description': 'Default Stable Diffusion model',
-                        'is_active': True
-                    }
+                    DEFAULT_MODEL_ID: self.default_model
                 }
                 self._save_models_config()
         except Exception as e:
             print(f"Error loading models config: {e}")
             # Create a default configuration
             self.models = {
-                DEFAULT_MODEL_ID: {
-                    'id': DEFAULT_MODEL_ID,
-                    'name': 'Default Stable Diffusion',
-                    'source': DEFAULT_MODEL_SOURCE,
-                    'description': 'Default Stable Diffusion model',
-                    'is_active': True
-                }
+                DEFAULT_MODEL_ID: self.default_model
             }
             self._save_models_config()
 
     def _save_models_config(self):
         """Save models configuration to file."""
+        # Convert Model objects to dictionaries for JSON serialization
+        serializable_models = {}
+        for model_id, model in self.models.items():
+            # Use model_dump() for newer Pydantic or dict() for older versions
+            try:
+                model_dict = model.model_dump()  # Pydantic v2
+            except AttributeError:
+                model_dict = model.dict()  # Pydantic v1
+            serializable_models[model_id] = model_dict
+
         config = {
-            'models': self.models,
+            'models': serializable_models,
             'active_model_id': self.active_model_id
         }
         os.makedirs(os.path.dirname(MODELS_CONFIG_PATH), exist_ok=True)
@@ -88,61 +117,86 @@ class ModelService:
             self.active_model_id = DEFAULT_MODEL_ID
             if DEFAULT_MODEL_ID not in self.models:
                 # Add default model if it doesn't exist
-                self.models[DEFAULT_MODEL_ID] = {
-                    'id': DEFAULT_MODEL_ID,
-                    'name': 'Default Stable Diffusion',
-                    'source': DEFAULT_MODEL_SOURCE,
-                    'description': 'Default Stable Diffusion model',
-                    'is_active': True
-                }
+                self.models[DEFAULT_MODEL_ID] = self.default_model
                 self._save_models_config()
 
         try:
-            model_source = self.models[self.active_model_id]['source']
+            active_model = self.models[self.active_model_id]
+            model_source = active_model.model
             print(f"Starting load of model from: {model_source}")
 
             # Set cache directory - first check environment variable, then use default
             cache_dir = os.environ.get("HF_HOME", "/root/.cache/huggingface")
 
+            # Check if we're running on CPU
+            is_cpu_device = self.device.type == 'cpu'
+            if is_cpu_device:
+                print("Running on CPU device - will use FP32 precision")
+
             # Configure download options with memory optimizations
             load_options = {
-                "torch_dtype": torch.float16,  # if USE_FP16_PRECISION else torch.float32,
+                # Only use float16 if we're on GPU and USE_FP16_PRECISION is True
+                "torch_dtype": torch.float32 if is_cpu_device or FORCE_FP32_ON_CPU else (torch.float16 if USE_FP16_PRECISION else torch.float32),
                 "use_safetensors": True,
-                "variant": "fp16",  # if USE_FP16_PRECISION else None,
+                "variant": "fp16" if USE_FP16_PRECISION and not is_cpu_device else None,
                 "cache_dir": cache_dir
             }
 
-            # Add memory optimization parameters
-            if ENABLE_MEMORY_EFFICIENT_ATTENTION:
-                print("Enabling memory efficient attention")
-                load_options["attention_mechanism"] = "xformers"
+            # Check if model is already cached - handle different possible formats for the cache path
+            # Split the model path by '/' to get repository owner and name
+            path_parts = model_source.split('/')
 
-            # Check if model is already cached
+            # Create different possible cache path formats and check them
+            possible_cache_paths = []
+
+            if len(path_parts) >= 2:
+                # Format: models--owner--name
+                owner = path_parts[0]
+                name = path_parts[1]
+                possible_cache_paths.append(f"models--{owner}--{name}")
+
+                # For paths with more components
+                if len(path_parts) > 2:
+                    # Try concatenating all parts with dashes
+                    all_parts = '--'.join(path_parts)
+                    possible_cache_paths.append(f"models--{all_parts}")
+
+            # Also try the original format
             model_id = model_source.replace("/", "--")
             if not model_id.startswith("models--"):
-                model_id = f"models--{model_id}"
+                possible_cache_paths.append(f"models--{model_id}")
 
-            # Improved cache detection - check for specific files and snapshots
-            cached_model_path = os.path.join(cache_dir, "hub", model_id)
-            snapshots_dir = os.path.join(cached_model_path, "snapshots")
-            refs_file = os.path.join(cached_model_path, "refs", "main")
+            # Check each possible path
+            model_exists = False
+            cached_model_path = None
 
-            # Only consider the model cached if both snapshots directory exists and refs file exists
-            model_exists = (os.path.exists(snapshots_dir) and
-                            os.path.exists(refs_file) and
-                            os.path.isdir(snapshots_dir) and
-                            len(os.listdir(snapshots_dir)) > 0)
+            for path in possible_cache_paths:
+                test_path = os.path.join(cache_dir, "hub", path)
+                snapshots_dir = os.path.join(test_path, "snapshots")
+                refs_file = os.path.join(test_path, "refs", "main")
 
-            print(f"Checking for cached model at: {cached_model_path}")
-            print(
-                f"Model {'exists' if model_exists else 'does not exist'} in cache")
-            print(f"Snapshots dir exists: {os.path.exists(snapshots_dir)}")
-            print(f"Refs file exists: {os.path.exists(refs_file)}")
+                if (os.path.exists(snapshots_dir) and
+                    os.path.exists(refs_file) and
+                    os.path.isdir(snapshots_dir) and
+                        len(os.listdir(snapshots_dir)) > 0):
+                    model_exists = True
+                    cached_model_path = test_path
+                    break
+
+            if cached_model_path:
+                print(f"Found cached model at: {cached_model_path}")
+                print(f"Model exists in cache")
+            else:
+                print(f"Model not found in any expected cache locations")
+                for path in possible_cache_paths:
+                    test_path = os.path.join(cache_dir, "hub", path)
+                    print(f"Checked path: {test_path} - Not found")
 
             # Always try without local_files_only first to ensure model loads
             try:
                 print("Attempting to load model...")
-                load_options["local_files_only"] = False
+                # Only use local files if we found it in cache
+                load_options["local_files_only"] = model_exists
 
                 # Let the library auto-detect the correct pipeline type
                 print("Loading with generic DiffusionPipeline")
@@ -193,27 +247,55 @@ class ModelService:
             if self.active_pipeline:
                 print(f"Moving model to device: {self.device}")
 
-                # Apply memory optimizations based on configuration
-                if ENABLE_SEQUENTIAL_CPU_OFFLOAD:
-                    print("Enabling sequential CPU offloading for low memory")
+                # Get hardware stats to make intelligent decisions
+                hardware_manager.update_all_memory_stats()
+                free_memory_gb = hardware_manager.memory_stats.get(
+                    hardware_manager.current_device_idx, {}).get('free_gb', 0)
+
+                print(
+                    f"Available GPU memory before model loading: {free_memory_gb:.2f} GB")
+
+                # Make memory handling decisions based on actual available memory
+                # Only offload if actually needed (less than 4GB available)
+                should_use_sequential_offload = is_cpu_device or (
+                    float(free_memory_gb) < 2.0 and ENABLE_SEQUENTIAL_CPU_OFFLOAD)
+                should_use_regular_offload = is_cpu_device or (
+                    float(free_memory_gb) < 4.0 and ENABLE_MODEL_CPU_OFFLOAD)
+
+                # Apply memory optimizations based on configuration and available memory
+                if should_use_sequential_offload:
+                    print(
+                        f"Enabling sequential CPU offloading due to low memory: {free_memory_gb:.2f}GB available")
                     from accelerate import cpu_offload
                     for component in [self.active_pipeline.unet, self.active_pipeline.vae, self.active_pipeline.text_encoder]:
                         if component is not None:
                             cpu_offload(component, self.device)
-                elif ENABLE_MODEL_CPU_OFFLOAD:
-                    print("Enabling model CPU offloading for low memory")
+                elif should_use_regular_offload:
+                    print(
+                        f"Enabling model CPU offloading due to lower memory: {free_memory_gb:.2f}GB available")
                     self.active_pipeline.enable_model_cpu_offload()
                 else:
-                    # Standard device placement
+                    # Standard device placement - enough memory for full GPU utilization
+                    print(
+                        f"Sufficient memory for full GPU model: {free_memory_gb:.2f}GB available")
                     self.active_pipeline = self.active_pipeline.to(self.device)
                     self.active_pipeline.enable_attention_slicing()
-                # self.active_pipeline.enable_sequential_cpu_offload()
-                # self.active_pipeline.enable_model_cpu_offload()
-                    # self.active_pipeline.enable_xformers_memory_efficient_attention()
-                # self.active_pipeline.set_progress_bar_config(disable=True)  # Disable progress bar
-                # self.active_pipeline.safety_checker = None  # Disable safety checker
-                # self.active_pipeline.feature_extractor = None  # Disable feature extractor
-                # self.active_pipeline.vae.enable_tiling = True  # Enable tiling for VAE
+                    print("Using full GPU with attention slicing for efficiency")
+
+                # Add memory optimization parameters
+                if ENABLE_MEMORY_EFFICIENT_ATTENTION and not is_cpu_device:
+                    print(
+                        "Attempting to enable memory efficient attention with xformers")
+                    try:
+                        self.active_pipeline.enable_xformers_memory_efficient_attention()
+                        print(
+                            "Successfully enabled xformers memory efficient attention")
+                    except (ImportError, ModuleNotFoundError):
+                        print(
+                            "Warning: xformers not available, falling back to default attention mechanism")
+                    except Exception as e:
+                        print(f"Warning: Failed to enable xformers: {e}")
+                        print("Falling back to default attention mechanism")
 
                 # Enable VAE slicing if configured (reduces memory during inference)
                 if ENABLE_VAE_SLICING and hasattr(self.active_pipeline, 'enable_vae_slicing'):
@@ -223,6 +305,15 @@ class ModelService:
                 # Empty cache to free up memory
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
+
+                # Check available memory after model loading
+                hardware_manager.update_all_memory_stats()
+                free_memory_after_gb = hardware_manager.memory_stats.get(
+                    hardware_manager.current_device_idx, {}).get('free_gb', 0)
+                print(
+                    f"Available GPU memory after model loading: {free_memory_after_gb:.2f} GB")
+                print(
+                    f"Memory used by model: {float(free_memory_gb) - float(free_memory_after_gb):.2f} GB")
 
                 # Apply active LoRA weights if any
                 self._apply_active_loras()
@@ -271,27 +362,38 @@ class ModelService:
 
         for lora in active_loras:
             try:
-                lora_source = lora['source']
+                # Get the correct source path for the LoRA
+                lora_source = lora.model  # Now correctly contains the repo path, not the UUID
+
                 # Default weight if not specified
-                lora_weight = lora.get('weight', 0.75)
+                lora_weight = lora.details.weight or DEFAULT_LORA_WEIGHT
 
                 print(
-                    f"Loading LoRA: {lora['name']} (weight: {lora_weight}) from {lora_source}")
+                    f"Loading LoRA: {lora.name} (weight: {lora_weight}) from {lora_source}")
 
                 # Apply the LoRA weights directly using the simplified pattern
                 try:
-                    self.active_pipeline.load_lora_weights(lora_source)
+                    # Verify we're using a valid repository path and not a UUID
+                    if lora_source and "/" in lora_source:
+                        self.active_pipeline.load_lora_weights(lora_source)
 
-                    # If the model supports adapter weights, set the weight
-                    if hasattr(self.active_pipeline, "fuse_lora"):
-                        # Some models use fuse_lora with a scale parameter
-                        print(f"Fusing LoRA with scale {lora_weight}")
-                        self.active_pipeline.fuse_lora(lora_weight)
-                    elif hasattr(self.active_pipeline, "set_adapter_strength"):
-                        print(f"Setting adapter strength to {lora_weight}")
-                        self.active_pipeline.set_adapter_strength(lora_weight)
+                        # If the model supports adapter weights, set the weight
+                        if hasattr(self.active_pipeline, "fuse_lora"):
+                            # Some models use fuse_lora with a scale parameter
+                            print(f"Fusing LoRA with scale {lora_weight}")
+                            self.active_pipeline.fuse_lora(lora_weight)
+                        elif hasattr(self.active_pipeline, "set_adapter_strength"):
+                            print(f"Setting adapter strength to {lora_weight}")
+                            self.active_pipeline.set_adapter_strength(
+                                lora_weight)
 
-                    print(f"Successfully applied LoRA: {lora['name']}")
+                        print(f"Successfully applied LoRA: {lora.name}")
+                    else:
+                        # This is a UUID or invalid path - log clearly what went wrong
+                        print(
+                            f"ERROR: Invalid LoRA path: '{lora_source}'. LoRA paths should be in the format 'owner/model-name'")
+                        print(
+                            f"Please update the LoRA configuration for '{lora.name}' to use a valid Hugging Face repository path")
                 except Exception as load_err:
                     if "PEFT backend is required for this method" in str(load_err):
                         print(
@@ -302,40 +404,46 @@ class ModelService:
                         raise
 
             except Exception as e:
-                print(f"Error applying LoRA {lora['name']}: {e}")
+                print(f"Error applying LoRA {lora.name}: {e}")
 
         # Clear CUDA cache after loading LoRAs
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    def get_models(self) -> List[dict]:
+    def get_models(self) -> List[Model]:
         """Get list of all available models."""
         return [model for model in self.models.values()]
 
-    def get_model(self, model_id: str) -> Optional[dict]:
+    def get_model(self, model_id: str) -> Optional[Model]:
         """Get details of a specific model."""
         return self.models.get(model_id)
 
-    def add_model(self, name: str, source: str, description: Optional[str] = None) -> dict:
+    def add_model(self, name: str, source: str, description: Optional[str] = None) -> Model:
         """Add a new model to the configuration."""
-        from uuid import uuid4
-
-        # Generate a unique Id for the model
-        model_id = str(uuid4())
 
         # Add the model to the configuration
-        self.models[model_id] = {
-            'id': model_id,
-            'name': name,
-            'source': source,
-            'description': description,
-            'is_active': False
-        }
+        self.models[source] = Model(
+            name=name,
+            model=source,
+            modified_at=time.strftime("%Y-%m-%d %H:%M:%S"),
+            size=0,  # Size can be updated later
+            digest='',  # Digest can be updated later
+            details=ModelDetails(
+                parent_model='',
+                format='gguf',  # Default format, can be updated later
+                family='llama',  # Default family, can be updated later
+                families=[],
+                parameter_size='7.2B',  # Default size, can be updated later
+                quantization_level='Q4_0',  # Default quantization level
+                specialization=None,  # Can be set later if needed
+                description=description or ''  # Optional description
+            )
+        )
 
         # Save the updated configuration
         self._save_models_config()
 
-        return self.models[model_id]
+        return self.models[source]
 
     def remove_model(self, model_id: str) -> bool:
         """Remove a model from the configuration."""
@@ -361,10 +469,6 @@ class ModelService:
             print(f"Attempting to activate model: {model_id}")
             self.active_model_id = model_id
 
-            # Update is_active flags
-            for mid in self.models:
-                self.models[mid]['is_active'] = (mid == model_id)
-
             # Load the model
             try:
                 self._save_models_config()
@@ -372,11 +476,8 @@ class ModelService:
             except Exception as e:
                 # If loading fails, revert to previous model
                 print(f"Failed to load model {model_id}: {str(e)}")
-                print("Reverting to previous model")
-                for mid in self.models:
-                    if mid != model_id and self.models[mid].get('is_active', False):
-                        self.active_model_id = mid
-                        break
+                print("Reverting to default model")
+                self.active_model_id = DEFAULT_MODEL_ID
                 return False
 
         return False

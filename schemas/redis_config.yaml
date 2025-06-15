@@ -19,13 +19,13 @@ properties:
     type: boolean
     description: Whether Redis is enabled
   conversation_ttl:
-    type: string
+    type: integer
     description: Conversation TTL
   message_ttl:
-    type: string
+    type: integer
     description: Message TTL
   summary_ttl:
-    type: string
+    type: integer
     description: Summary TTL
   pool_size:
     type: integer
@@ -34,7 +34,7 @@ properties:
     type: integer
     description: Minimum idle connections
   connect_timeout:
-    type: string
+    type: integer
     description: Connection timeout
 required:
   - host
@@ -47,3 +47,5 @@ required:
   - pool_size
   - min_idle_connections
   - connect_timeout
+  - password
+  - min_idle_connections

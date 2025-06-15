@@ -3,7 +3,6 @@ package storage
 
 import (
 	"context"
-	"maistro/config"
 	"maistro/models"
 	"time"
 
@@ -14,7 +13,7 @@ import (
 // MessageStore abstracts message-related operations
 // (Add more methods as needed)
 type MessageStore interface {
-	AddMessage(ctx context.Context, conversationID int, role, content string, usrCfg *config.UserConfig) (int, error)
+	AddMessage(ctx context.Context, conversationID int, role, content string, usrCfg *models.UserConfig) (int, error)
 	GetMessage(ctx context.Context, messageID int) (*models.Message, error)
 	GetConversationHistory(ctx context.Context, conversationID int) ([]models.Message, error)
 }
@@ -73,9 +72,16 @@ type MemoryStore interface {
 
 // UserConfigStore abstracts user config operations
 type UserConfigStore interface {
-	GetUserConfig(ctx context.Context, userID string) (*config.UserConfig, error)
-	UpdateUserConfig(ctx context.Context, userID string, cfg *config.UserConfig) error
+	GetUserConfig(ctx context.Context, userID string) (*models.UserConfig, error)
+	UpdateUserConfig(ctx context.Context, userID string, cfg *models.UserConfig) error
 	GetAllUsers(ctx context.Context) ([]models.User, error)
+}
+
+// ImageStore abstracts image-related operations
+type ImageStore interface {
+	StoreImage(ctx context.Context, userID string, image *models.ImageMetadata) (int, error)
+	ListImages(ctx context.Context, userID string, conversationID, limit, offset *int) ([]models.ImageMetadata, error)
+	DeleteImage(ctx context.Context, imageID int) error
 }
 
 var (
@@ -93,6 +99,8 @@ var (
 	MemoryStoreInstance MemoryStore
 	// UserConfigStoreInstance is the global instance of the user config store
 	UserConfigStoreInstance UserConfigStore
+	// ImageStoreInstance is the global instance of the image store
+	ImageStoreInstance ImageStore
 )
 
 // InitializeStorage initializes the global storage instances
@@ -117,6 +125,9 @@ func InitializeStorage() error {
 	}
 	if UserConfigStoreInstance == nil {
 		UserConfigStoreInstance = &userConfigStore{}
+	}
+	if ImageStoreInstance == nil {
+		ImageStoreInstance = &imageStore{}
 	}
 
 	return nil

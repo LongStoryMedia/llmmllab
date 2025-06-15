@@ -11,12 +11,14 @@ export interface ChatContextType {
   conversations: ReturnType<typeof useChatState>[0]['conversations'];
   currentConversation: ReturnType<typeof useChatState>[0]['currentConversation'];
   isLoading: boolean;
-  isSearching: boolean;
+  isWorkingInBackground: boolean;
   error: string | null;
   isTyping: boolean;
   response: string;
   selectedModel: string;
   models: Model[];
+  backgroundAction: string | null;
+  isPaused: boolean;
   
   // Actions
   sendMessage: ReturnType<typeof useChatOperations>['sendMessage'];
@@ -29,7 +31,11 @@ export interface ChatContextType {
   setSelectedModel: ReturnType<typeof useChatState>[1]['setSelectedModel'];
   fetchModels: ReturnType<typeof useChatOperations>['fetchModels'];
   setCurrentConversation: ReturnType<typeof useChatState>[1]['setCurrentConversation'];
-  setIsSearching: ReturnType<typeof useChatState>[1]['setIsSearching'];
+  setIsWorkingInBackground: ReturnType<typeof useChatState>[1]['setIsWorkingInBackground'];
+  setBackgroundAction: ReturnType<typeof useChatState>[1]['setBackgroundAction'];
+  setIsPaused: ReturnType<typeof useChatState>[1]['setIsPaused'];
+  abortGeneration: ReturnType<typeof useChatOperations>['abortGeneration'];
+  resumeWithCorrections: ReturnType<typeof useChatOperations>['resumeWithCorrections'];
 }
 
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(({ children }) => {
@@ -69,7 +75,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(
     response: state.response,
     selectedModel: state.selectedModel,
     models: state.models,
-    isSearching: state.isSearching,
+    isWorkingInBackground: state.isWorkingInBackground,
+    backgroundAction: state.backgroundAction,
+    isPaused: state.isPaused,
     
     // Actions
     sendMessage: operations.sendMessage,
@@ -82,7 +90,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(
     setSelectedModel: actions.setSelectedModel,
     setCurrentConversation: actions.setCurrentConversation,
     fetchModels: operations.fetchModels,
-    setIsSearching: actions.setIsSearching
+    setIsWorkingInBackground: actions.setIsWorkingInBackground,
+    setBackgroundAction: actions.setBackgroundAction,
+    setIsPaused: actions.setIsPaused,
+    abortGeneration: operations.abortGeneration,
+    resumeWithCorrections: operations.resumeWithCorrections
   };
 
   return <ChatContext.Provider value={contextValue}>{children}</ChatContext.Provider>;

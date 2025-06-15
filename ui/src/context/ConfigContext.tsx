@@ -1,14 +1,23 @@
 import React, { createContext, useContext } from 'react';
 import { useConfig } from '../hooks/useConfig';
 import { UserConfig } from '../types/UserConfig';
+import { SummarizationConfig } from '../types/SummarizationConfig';
+import { RefinementConfig } from '../types/RefinementConfig';
+import { WebSearchConfig } from '../types/WebSearchConfig';
+import { ImageGenerationConfig } from '../types/ImageGenerationConfig';
+import { ModelProfileConfig } from '../types/ModelProfileConfig';
+import { PreferencesConfig } from '../types/PreferencesConfig';
+import { MemoryConfig } from '../types/MemoryConfig';
 
+
+export type ConfigSection = SummarizationConfig | RefinementConfig | WebSearchConfig | ImageGenerationConfig | ModelProfileConfig | PreferencesConfig |MemoryConfig;
 interface ConfigContextType {
   config: UserConfig | null;
   isLoading: boolean;
   error: Error | null;
   fetchConfig: () => Promise<void>;
   updateConfig: (newConfig: UserConfig) => void;
-  updatePartialConfig: (section: keyof UserConfig, sectionConfig: unknown) => Promise<boolean>;
+  updatePartialConfig: (section: keyof UserConfig, sectionConfig: ConfigSection) => Promise<boolean>;
 }
 
 const ConfigContext = createContext<ConfigContextType | null>(null);

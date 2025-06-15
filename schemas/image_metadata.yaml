@@ -1,0 +1,43 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ImageMetadata
+description: Metadata for an image uploaded to the system.
+type: object
+properties:
+  id:
+    type: integer
+    description: Unique identifier for the image.
+  filename:
+    type: string
+    description: filename (including path) of the image.
+  thumbnail:
+    type: string
+    description: URL or path to the thumbnail version of the image.
+  width:
+    type: integer
+    description: Width of the image in pixels.
+  height:
+    type: integer
+    description: Height of the image in pixels.
+  format:
+    type: string
+    enum: [jpg, png, gif, bmp, webp, svg]
+    description: Format of the image file.
+  user_id:
+    type: string
+    description: Unique identifier for the user who uploaded the image.
+  conversation_id:
+    type: integer
+    description: Unique identifier for the conversation associated with the image.
+  created_at:
+    type: string
+    format: date-time
+    description: Timestamp when the image was created.
+required:
+  - filename
+  - thumbnail
+  - width
+  - height
+  - format
+  - user_id
+  - conversation_id
+  - created_at

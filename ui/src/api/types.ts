@@ -18,66 +18,6 @@ export type RequestOptions = {
   requestKey?: string;
   baseUrl?: string;
 };
-// export type MessageStatus = 'sending' | 'success' | 'error';
-
-// export interface ChatMessage {
-//   role: 'user' | 'assistant' | 'system';
-//   content: string;
-//   status?: MessageStatus;
-//   id?: number;
-//   createdAt?: Date;
-// }
-
-// export interface ChatUserMessage extends ChatMessage {
-//   role: 'user';
-//   conversationId?: number;
-// }
-
-// export interface ChatAgentMessage extends ChatMessage {
-//   role: 'assistant';
-// }
-
-// export type ChatRequest = {
-//   model: string;
-//   messages: ChatUserMessage[];
-//   tools?: Record<string, unknown>;
-//   format?: string;
-//   options?: string[];
-//   stream?: boolean;
-//   keep_alive?: string;
-// }
-
-// export type ChatResponse = {
-//   done: boolean;
-//   message?: ChatAgentMessage;
-//   createdAt: string;
-//   model: string;
-//   context?: number[];
-//   done_reason?: string;
-//   total_duration?: number;
-//   load_duration?: number;
-//   prompt_eval_count?: number;
-//   prompt_eval_duration?: number;
-//   eval_count?: number;
-//   eval_duration?: number;
-// };
-
-// export type ModelDetails = {
-//   parentModel: string;
-//   format: string;
-//   family: string;
-//   families: string[];
-//   parameterSize: number;
-//   quantizationLevel: string;
-// }
-
-// export type Model = {
-//   name: string;
-//   modifiedAt: Date;
-//   size: number;
-//   digest: string;
-//   details: ModelDetails;
-// }
 
 export type UserAttribute = {
   Name: "uid" | "sn" | "cn" | "mail" | "dn";

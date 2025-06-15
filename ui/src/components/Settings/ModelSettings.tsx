@@ -44,8 +44,6 @@ const ModelSettings = () => {
         return;
       }
 
-      console.log('Saving config:', config);
-
       const success = await updateConfig(getToken(auth.user), config)
       
       if (success) {

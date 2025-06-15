@@ -1,0 +1,17 @@
+type: object
+title: ImageGenerateResponse
+description: Response from generating an image
+properties:
+  image:
+    type: string
+    description: Base64-encoded image
+  downloadUrl:
+    type: string
+    description: URL to download the image
+  conversation_id:
+    type: integer
+    description: Identifier for the conversation this response belongs to
+required:
+  - image
+  - downloadUrl
+  - conversation_id

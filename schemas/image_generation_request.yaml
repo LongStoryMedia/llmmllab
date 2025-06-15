@@ -1,0 +1,47 @@
+type: object
+title: ImageGenerateRequest
+description: Request for generating an image
+properties:
+  prompt:
+    type: string
+    description: The prompt for image generation
+  width:
+    type: integer
+    description: Width of the generated image
+    nullable: true
+  height:
+    type: integer
+    description: Height of the generated image
+    nullable: true
+  inference_steps:
+    type: integer
+    description: Number of inference steps
+    nullable: true
+  guidance_scale:
+    type: number
+    format: float
+    description: Guidance scale for image generation
+    nullable: true
+  low_memory_mode:
+    type: boolean
+    description: Whether to use low memory mode
+    nullable: true
+  negative_prompt:
+    type: string
+    description: Negative prompt for image generation
+    nullable: true
+  conversation_id:
+    type: integer
+    description: Identifier for the conversation this request belongs to
+  model:
+    type: string
+    description: Model to use for image generation
+  loras:
+    type: array
+    items:
+      type: string
+    description: List of LoRA models to apply to the image generation
+required:
+  - prompt
+  - conversation_id
+  - model

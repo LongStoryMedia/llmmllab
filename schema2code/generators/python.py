@@ -88,7 +88,7 @@ class PythonGenerator:
             basename = os.path.splitext(os.path.basename(ref_path))[0]
 
             # Add import statement
-            imports.append(f"from {basename} import {type_name}")
+            imports.append(f"from .{basename} import {type_name}")
 
         return imports
 

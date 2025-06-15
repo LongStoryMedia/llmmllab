@@ -18,5 +18,7 @@ properties:
     $ref: model_profile_config.yaml
   refinement:
     $ref: refinement_config.yaml
+  image_generation:
+    $ref: image_generation_config.yaml
 required:
   - user_id

@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Box, TextField, Typography, Button, Switch, FormControlLabel, Slider, Alert } from '@mui/material';
 import { useConfigContext } from '../../context/ConfigContext';
+import { MemoryConfig } from '../../types/MemoryConfig';
 
 const RetrievalSettings = () => {
   const { config, updatePartialConfig, isLoading } = useConfigContext();
-  const [localConfig, setLocalConfig] = useState({
+  const [localConfig, setLocalConfig] = useState<MemoryConfig>({
     enabled: true,
     limit: 5,
-    enableCrossUser: false,
-    enableCrossConversation: false,
-    similarityThreshold: 0.7,
-    alwaysRetrieve: false
+    enable_cross_user: false,
+    enable_cross_conversation: false,
+    similarity_threshold: 0.7,
+    always_retrieve: false
   });
   const [saveStatus, setSaveStatus] = useState<{success?: boolean; message: string} | null>(null);
 
@@ -20,10 +21,10 @@ const RetrievalSettings = () => {
       setLocalConfig({
         enabled: config.memory.enabled ?? true,
         limit: config.memory.limit ?? 5,
-        enableCrossUser: config.memory.enable_cross_user ?? false,
-        enableCrossConversation: config.memory.enable_cross_conversation ?? false,
-        similarityThreshold: config.memory.similarity_threshold ?? 0.7,
-        alwaysRetrieve: config.memory.always_retrieve ?? false
+        enable_cross_user: config.memory.enable_cross_user ?? false,
+        enable_cross_conversation: config.memory.enable_cross_conversation ?? false,
+        similarity_threshold: config.memory.similarity_threshold ?? 0.7,
+        always_retrieve: config.memory.always_retrieve ?? false
       });
     }
   }, [config]);
@@ -38,34 +39,44 @@ const RetrievalSettings = () => {
   const handleToggleAlwaysRetrieve = () => {
     setLocalConfig({
       ...localConfig,
-      alwaysRetrieve: !localConfig.alwaysRetrieve
+      always_retrieve: !localConfig.always_retrieve
     });
   };
 
   const handleToggleCrossConversation = () => {
     setLocalConfig({
       ...localConfig,
-      enableCrossConversation: !localConfig.enableCrossConversation
+      enable_cross_conversation: !localConfig.enable_cross_conversation
     });
   };
   const handleToggleCrossUser = () => {
     setLocalConfig({
       ...localConfig,
-      enableCrossUser: !localConfig.enableCrossUser
+      enable_cross_user: !localConfig.enable_cross_user
     });
   };
 
   const handleThresholdChange = (_event: Event, newValue: number | number[]) => {
     setLocalConfig({
       ...localConfig,
-      similarityThreshold: newValue as number
+      similarity_threshold: newValue as number
     });
   };
 
   const handleSave = async () => {
     setSaveStatus(null);
     try {
-      const success = await updatePartialConfig('memory', localConfig);
+      // Convert camelCase to snake_case when passing to updatePartialConfig
+      const snakeCaseConfig = {
+        enabled: localConfig.enabled,
+        limit: localConfig.limit,
+        enable_cross_user: localConfig.enable_cross_user,
+        enable_cross_conversation: localConfig.enable_cross_conversation,
+        similarity_threshold: localConfig.similarity_threshold,
+        always_retrieve: localConfig.always_retrieve
+      };
+      
+      const success = await updatePartialConfig('memory', snakeCaseConfig);
       
       if (success) {
         setSaveStatus({
@@ -132,7 +143,7 @@ const RetrievalSettings = () => {
           <FormControlLabel
             control={
               <Switch 
-                checked={localConfig.alwaysRetrieve} 
+                checked={localConfig.always_retrieve} 
                 onChange={handleToggleAlwaysRetrieve} 
               />
             }
@@ -142,7 +153,7 @@ const RetrievalSettings = () => {
           <FormControlLabel
             control={
               <Switch 
-                checked={localConfig.enableCrossConversation} 
+                checked={localConfig.enable_cross_conversation} 
                 onChange={handleToggleCrossConversation} 
               />
             }
@@ -152,20 +163,20 @@ const RetrievalSettings = () => {
           <FormControlLabel
             control={
               <Switch 
-                checked={localConfig.enableCrossUser} 
+                checked={localConfig.enable_cross_user} 
                 onChange={handleToggleCrossUser} 
               />
             }
             label="Enable Cross-User Memory Retrieval"
             sx={{ mt: 2, display: 'block' }}
           />
-          {localConfig.enableCrossConversation && (
+          {localConfig.enable_cross_conversation && (
             <Box sx={{ mt: 3, mb: 2 }}>
               <Typography id="similarity-threshold-slider" gutterBottom>
-                Similarity Threshold: {localConfig.similarityThreshold.toFixed(2)}
+                Similarity Threshold: {localConfig.similarity_threshold.toFixed(2)}
               </Typography>
               <Slider
-                value={localConfig.similarityThreshold}
+                value={localConfig.similarity_threshold}
                 onChange={handleThresholdChange}
                 aria-labelledby="similarity-threshold-slider"
                 step={0.05}

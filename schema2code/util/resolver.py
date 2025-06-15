@@ -94,3 +94,24 @@ class SchemaRefResolver:
             return def_name
 
         return ""  # Default, should not happen
+
+    def add_external_ref(self, ref_path: str) -> None:
+        """
+        Add an external reference to the tracked external references
+        """
+        if not ref_path.startswith('#'):
+            schema_path = os.path.join(
+                os.path.dirname(self.base_path), ref_path)
+
+            # Add to external references
+            self.external_refs[ref_path] = schema_path
+
+            # Try to add to external ref types if not already there
+            if schema_path not in self.external_ref_types:
+                # Extract type name from filename
+                filename = os.path.basename(ref_path)
+                base_name = os.path.splitext(filename)[0]
+                type_name = "".join(x.capitalize()
+                                    for x in base_name.split('_'))
+
+                self.external_ref_types[schema_path] = type_name

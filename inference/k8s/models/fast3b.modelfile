@@ -1,0 +1,5 @@
+FROM llama3.2
+PARAMETER temperature 0.7
+PARAMETER num_ctx 2048
+PARAMETER mirostat_tau 3.5
+PARAMETER stop "<|im_end|>" "<|user|>"

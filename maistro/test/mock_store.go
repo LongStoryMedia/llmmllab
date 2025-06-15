@@ -17,7 +17,7 @@ type mockMessageStore struct {
 	real storage.MessageStore
 }
 
-func (ms *mockMessageStore) AddMessage(ctx context.Context, conversationID int, role, content string, usrCfg *config.UserConfig) (int, error) {
+func (ms *mockMessageStore) AddMessage(ctx context.Context, conversationID int, role, content string, usrCfg *models.UserConfig) (int, error) {
 	// Stubbed for testing
 	return 1, nil
 }
@@ -204,10 +204,10 @@ type mockUserConfigStore struct {
 	real storage.UserConfigStore
 }
 
-func (m *mockUserConfigStore) GetUserConfig(ctx context.Context, userID string) (*config.UserConfig, error) {
+func (m *mockUserConfigStore) GetUserConfig(ctx context.Context, userID string) (*models.UserConfig, error) {
 	return m.real.GetUserConfig(ctx, userID)
 }
-func (m *mockUserConfigStore) UpdateUserConfig(ctx context.Context, userID string, cfg *config.UserConfig) error {
+func (m *mockUserConfigStore) UpdateUserConfig(ctx context.Context, userID string, cfg *models.UserConfig) error {
 	return nil
 }
 func (m *mockUserConfigStore) GetAllUsers(ctx context.Context) ([]models.User, error) {

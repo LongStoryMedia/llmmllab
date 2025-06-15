@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"maistro/config"
 	"maistro/models"
 	"maistro/util"
 )
@@ -11,7 +10,7 @@ import (
 type messageStore struct{}
 
 // AddMessage adds a message to a conversation
-func (ms *messageStore) AddMessage(ctx context.Context, conversationID int, role, content string, usrCfg *config.UserConfig) (int, error) {
+func (ms *messageStore) AddMessage(ctx context.Context, conversationID int, role, content string, usrCfg *models.UserConfig) (int, error) {
 	// Check if Pool is initialized
 	if Pool == nil {
 		return 0, util.HandleError(fmt.Errorf("database connection pool is not initialized (Pool is nil)"))

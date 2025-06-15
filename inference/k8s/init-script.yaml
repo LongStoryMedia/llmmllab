@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ollama-init-script
+  namespace: ollama
+data:
+  init.sh: |
+    #!/bin/sh
+    set -e
+
+    # Start Ollama in the background
+    ollama serve &
+
+    # Give Ollama some time to start up
+    sleep 10
+
+    echo "Gettings models..."
+
+    ollama pull llama3.2
+    ollama pull mistral
+    ollama pull opencoder:latest
+    ollama pull granite-embedding
+    ollama pull qwen3:0.6b
+    ollama pull gemma3:12b
+    ollama pull phi4-reasoning:plus
+    ollama pull cogito:8b
+
+    # List available models
+    echo "Available models:"
+    ollama list
+
+    # Wait for the ollama process
+    wait

@@ -9,6 +9,8 @@ import (
 	"maistro/util"
 	"strings"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 const userConfigKeyPrefix = "proxyllama:userconfig:"
@@ -22,7 +24,7 @@ func getUserConfigCacheKey(userID string) string {
 type userConfigStore struct{}
 
 // getUserConfigFromCache tries to get user config from Redis
-func (ucs *userConfigStore) getUserConfigFromCache(ctx context.Context, userID string) (*config.UserConfig, bool) {
+func (ucs *userConfigStore) getUserConfigFromCache(ctx context.Context, userID string) (*models.UserConfig, bool) {
 	if !IsStorageCacheEnabled() {
 		return nil, false
 	}
@@ -31,7 +33,7 @@ func (ucs *userConfigStore) getUserConfigFromCache(ctx context.Context, userID s
 	if err != nil {
 		return nil, false
 	}
-	var userConfig config.UserConfig
+	var userConfig models.UserConfig
 	if err := json.Unmarshal(data, &userConfig); err != nil {
 		return nil, false
 	}
@@ -39,7 +41,7 @@ func (ucs *userConfigStore) getUserConfigFromCache(ctx context.Context, userID s
 }
 
 // cacheUserConfig stores user config in Redis
-func (ucs *userConfigStore) cacheUserConfig(ctx context.Context, userID string, cfg *config.UserConfig) {
+func (ucs *userConfigStore) cacheUserConfig(ctx context.Context, userID string, cfg *models.UserConfig) {
 	if !IsStorageCacheEnabled() || cfg == nil {
 		return
 	}
@@ -57,7 +59,7 @@ func (ucs *userConfigStore) cacheUserConfig(ctx context.Context, userID string, 
 }
 
 // GetUserConfig retrieves user configuration from database
-func (ucs *userConfigStore) GetUserConfig(ctx context.Context, userID string) (*config.UserConfig, error) {
+func (ucs *userConfigStore) GetUserConfig(ctx context.Context, userID string) (*models.UserConfig, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	// Ensure user exists
@@ -69,31 +71,31 @@ func (ucs *userConfigStore) GetUserConfig(ctx context.Context, userID string) (*
 	// Try to get from cache first
 	usrCfg, found := ucs.getUserConfigFromCache(ctx, userID)
 	if found {
+		util.LogDebug("User config found in cache", logrus.Fields{
+			"userID":  userID,
+			"config":  *usrCfg,
+			"summary": *(*usrCfg).Summarization,
+		})
 		return usrCfg, nil
 	}
 
 	// Parse JSON into config struct
-	var usrConfig config.UserConfig
+	var usrConfig models.UserConfig
 	err := Pool.QueryRow(ctx, GetQuery("user.get_config"), userID).Scan(&usrConfig)
 	if err != nil {
 		util.HandleError(err)
 
 		if err == sql.ErrNoRows || strings.Contains(err.Error(), "cannot scan NULL into *config.UserConfig") {
 			// No rows found, or empty config
-			util.LogWarning("No user config found, setting to default", map[string]interface{}{
-				"userID": userID,
-			})
-			usrConfig = config.UserConfig{UserID: userID}
+			util.LogWarning("No user config found, setting to default", logrus.Fields{"userID": userID})
+			usrConfig = models.UserConfig{UserID: userID}
 		} else {
 			util.HandleError(err)
 			return nil, err
 		}
 	} else {
 		// Successfully retrieved user config
-		util.LogInfo("User config retrieved from database", map[string]interface{}{
-			"userID": userID,
-			"config": usrConfig,
-		})
+		util.LogInfo("User config retrieved from database", logrus.Fields{"userID": userID})
 	}
 
 	// Ensure all required fields have values by merging with defaults
@@ -106,7 +108,7 @@ func (ucs *userConfigStore) GetUserConfig(ctx context.Context, userID string) (*
 }
 
 // UpdateUserConfig saves user configuration to database
-func (ucs *userConfigStore) UpdateUserConfig(ctx context.Context, userID string, cfg *config.UserConfig) error {
+func (ucs *userConfigStore) UpdateUserConfig(ctx context.Context, userID string, cfg *models.UserConfig) error {
 	// Convert config to JSON
 	configJson, err := json.Marshal(cfg)
 	if err != nil {

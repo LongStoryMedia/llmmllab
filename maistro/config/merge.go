@@ -1,11 +1,12 @@
 package config
 
 import (
+	"maistro/models"
 	"maistro/util"
 	"reflect"
 )
 
-func MergeWithDefaultConfig(userConfig *UserConfig) {
+func MergeWithDefaultConfig(userConfig *models.UserConfig) {
 	base := GetConfig(nil)
 
 	// Fill in nil fields in userConfig from base config
@@ -41,5 +42,11 @@ func MergeWithDefaultConfig(userConfig *UserConfig) {
 	}
 	if userConfig.Preferences == nil {
 		userConfig.Preferences = &base.Preferences
+	}
+	if userConfig.Refinement == nil {
+		userConfig.Refinement = &base.Refinement
+	}
+	if userConfig.ImageGeneration == nil {
+		userConfig.ImageGeneration = &base.ImageGeneration
 	}
 }

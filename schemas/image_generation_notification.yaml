@@ -1,0 +1,32 @@
+type: object
+title: ImageGenerationNotification
+description: Notification sent to clients when an image is generated.
+properties:
+  type:
+    type: string
+    enum: [image_generated, image_generation_failed]
+    description: Type of notification (e.g., "image_generated")
+  image_id:
+    type: string
+    description: ID of the generated image
+  download_url:
+    type: string
+    description: URL to download the image
+  thumbnail_url:
+    type: string
+    description: URL to view a thumbnail
+  original_prompt:
+    type: string
+    description: The prompt used to generate the image
+  error:
+    type: string
+    description: Error message if generation failed
+  b64_data:
+    type: string
+    description: Base64 encoded image data if applicable
+  conversation_id:
+    type: integer
+    description: Identifier for the conversation this notification belongs to
+required:
+  - type
+  - conversation_id

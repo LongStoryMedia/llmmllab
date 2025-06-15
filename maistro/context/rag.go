@@ -183,7 +183,7 @@ func (cc *ConversationContext) RetrieveAndInjectMemories(ctx context.Context, qu
 
 			// memory search
 			wg.Add(1)
-			go func(cid, limit int, embeddings [][]float32, threshold float64, userID *string, conversationID *int, startDate, endDate *time.Time) {
+			go func(cid, limit int, embeddings [][]float32, threshold float32, userID *string, conversationID *int, startDate, endDate *time.Time) {
 				defer wg.Done()
 				ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 				defer cancel()

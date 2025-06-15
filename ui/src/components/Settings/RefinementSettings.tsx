@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Box, Typography, Button, Switch, FormControlLabel, Alert } from '@mui/material';
 import { useConfigContext } from '../../context/ConfigContext';
+import { RefinementConfig } from '../../types/RefinementConfig';
 
 const RefinementSettings = () => {
   const { config, updatePartialConfig, isLoading } = useConfigContext();
-  const [localConfig, setLocalConfig] = useState({
-    enableResponseFiltering: false,
-    enableResponseCritique: false
+  const [localConfig, setLocalConfig] = useState<RefinementConfig>({
+    enable_response_filtering: false,
+    enable_response_critique: false
   });
   const [saveStatus, setSaveStatus] = useState<{ success?: boolean; message: string } | null>(null);
 
@@ -14,8 +15,8 @@ const RefinementSettings = () => {
     // When user config loads, update local state
     if (config?.refinement) {
       setLocalConfig({
-        enableResponseFiltering: config.refinement.enable_response_filtering ?? false,
-        enableResponseCritique: config.refinement.enable_response_critique ?? false
+        enable_response_filtering: config.refinement.enable_response_filtering ?? false,
+        enable_response_critique: config.refinement.enable_response_critique ?? false
       });
     }
   }, [config]);
@@ -23,21 +24,27 @@ const RefinementSettings = () => {
   const handleToggleFiltering = () => {
     setLocalConfig({
       ...localConfig,
-      enableResponseFiltering: !localConfig.enableResponseFiltering
+      enable_response_filtering: !localConfig.enable_response_filtering
     });
   };
 
   const handleToggleCritique = () => {
     setLocalConfig({
       ...localConfig,
-      enableResponseCritique: !localConfig.enableResponseCritique
+      enable_response_critique: !localConfig.enable_response_critique
     });
   };
 
   const handleSave = async () => {
     setSaveStatus(null);
     try {
-      const success = await updatePartialConfig('refinement', localConfig);
+      // Convert camelCase to snake_case when passing to updatePartialConfig
+      const snakeCaseConfig = {
+        enable_response_filtering: localConfig.enable_response_filtering,
+        enable_response_critique: localConfig.enable_response_critique
+      };
+
+      const success = await updatePartialConfig('refinement', snakeCaseConfig);
 
       if (success) {
         setSaveStatus({
@@ -82,7 +89,7 @@ const RefinementSettings = () => {
       <FormControlLabel
         control={
           <Switch
-            checked={localConfig.enableResponseFiltering}
+            checked={localConfig.enable_response_filtering}
             onChange={handleToggleFiltering}
           />
         }
@@ -93,7 +100,7 @@ const RefinementSettings = () => {
       <FormControlLabel
         control={
           <Switch
-            checked={localConfig.enableResponseCritique}
+            checked={localConfig.enable_response_critique}
             onChange={handleToggleCritique}
           />
         }

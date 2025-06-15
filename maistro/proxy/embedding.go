@@ -50,7 +50,7 @@ func GetOllamaEmbedding(ctx context.Context, textToEmbed string, modelName strin
 		return nil, util.HandleError(fmt.Errorf("failed to marshal embedding request: %w", err))
 	}
 
-	handler, _, err := GetProxyHandler[*models.OllamaEmbeddingResponse](ctx, payloadBytes, "/api/embed", http.MethodPost, false, time.Second*15)
+	handler, _, err := GetProxyHandler[*models.OllamaEmbeddingResponse](ctx, payloadBytes, "/api/embed", http.MethodPost, false, time.Second*15, nil)
 	if err != nil {
 		return nil, util.HandleError(fmt.Errorf("failed to get proxy handler for embedding request: %w", err))
 	}

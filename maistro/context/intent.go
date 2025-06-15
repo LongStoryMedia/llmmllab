@@ -8,9 +8,10 @@ import (
 )
 
 type Intent struct {
-	WebSearch    bool `json:"web_search"`
-	Memory       bool `json:"memory"`
-	DeepResearch bool `json:"deep_research"`
+	WebSearch       bool `json:"web_search"`
+	Memory          bool `json:"memory"`
+	DeepResearch    bool `json:"deep_research"`
+	ImageGeneration bool `json:"image_generation"`
 }
 
 func (cc *ConversationContext) DetectIntent(ctx context.Context, query string) (*Intent, error) {
@@ -26,9 +27,10 @@ func (cc *ConversationContext) DetectIntent(ctx context.Context, query string) (
 	}
 
 	intent := Intent{
-		WebSearch:    false,
-		Memory:       false,
-		DeepResearch: false,
+		WebSearch:       false,
+		Memory:          false,
+		DeepResearch:    false,
+		ImageGeneration: false,
 	}
 
 	if cfg.WebSearch.Enabled {
@@ -40,6 +42,10 @@ func (cc *ConversationContext) DetectIntent(ctx context.Context, query string) (
 		intent.Memory = true
 	} else if cfg.Memory.Enabled {
 		intent.Memory = shouldRetrieveMemories(query)
+	}
+
+	if cfg.ImageGeneration.Enabled {
+		intent.ImageGeneration = shouldGenerateImage(query)
 	}
 
 	return &intent, nil
@@ -131,6 +137,25 @@ func shouldRetrieveMemories(query string) bool {
 				util.LogInfo("Memory retrieval triggered by question pattern", map[string]any{"pattern": pattern})
 				return true
 			}
+		}
+	}
+
+	return false
+}
+
+// shouldGenerateImage determines if a query likely requires image generation
+func shouldGenerateImage(query string) bool {
+	// Check for explicit image generation indicators
+	lowerQuery := strings.ToLower(query)
+	imageIndicators := []string{
+		"generate image", "create image", "make image", "draw image",
+		"illustrate", "picture of", "photo of", "image of",
+		"visualize", "render", "design", "artwork",
+	}
+
+	for _, indicator := range imageIndicators {
+		if strings.Contains(lowerQuery, indicator) {
+			return true
 		}
 	}
 

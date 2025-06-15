@@ -67,15 +67,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     (async () => {
-      if (!await checkAuthState(await userManager.getUser())) {
+      if (!(await checkAuthState(await userManager.getUser()))) {
         if (location.pathname === '/callback') {
-          if (!await checkAuthState(await userManager.signinCallback() ?? null)) {
+          if (!(await checkAuthState((await userManager.signinCallback()) ?? null))) {
             console.error('User not found after signin callback');
           }
           redirect();
         } else {
           try {
-            if (!await checkAuthState(await userManager.signinSilent({silentRequestTimeoutInSeconds: 5}))) {
+            if (!(await checkAuthState(await userManager.signinSilent({silentRequestTimeoutInSeconds: 5})))) {
               sessionStorage.setItem('redirectPath', location.pathname);
               console.warn('Silent signin failed, redirecting to login');
               await userManager.signinRedirect(config.auth.oidc);

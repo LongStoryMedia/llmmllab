@@ -31,7 +31,7 @@ func RegisterConversationRoutes(app *fiber.App) {
 	app.Delete("/api/conversations/:id", DeleteConversation)
 	app.Put("/api/conversations/:id", UpdateConversation)
 	app.Post("/api/conversations", CreateConversation)
-	app.Get("/api/models", GetModels)
+	// app.Get("/api/models", GetModels)
 	app.Get("/api/conversations/:id/summarize", SummarizeMessages)
 	app.Get("/api/users", GetUsers) // Added for user-specific conversations
 }
