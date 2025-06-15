@@ -2,7 +2,7 @@
 set -e
 
 # Use registry.local instead of NODE_IP:PORT
-REGISTRY_HOME="$(dirname "$0")/../registry"
+REGISTRY_HOME="$(dirname "$0")/../../k3s-cluster/registry"
 REGISTRY_URL="192.168.0.71:31500"
 VERSION="${1:-$(date +%Y.%m.%d)}"
 
@@ -23,13 +23,13 @@ echo "Logging into private registry at ${REGISTRY_URL}..."
 echo "${REGISTRY_PW}" | docker login --username "${REGISTRY_USER}" --password-stdin "${REGISTRY_URL}"
 
 # Build the image
-echo "Building proxyllama image..."
-docker build -t "${REGISTRY_URL}/proxyllama:latest" $(dirname "$0")
-docker tag "${REGISTRY_URL}/proxyllama:latest" "${REGISTRY_URL}/proxyllama:${VERSION}"
+echo "Building maistro image..."
+docker build -t "${REGISTRY_URL}/maistro:latest" $(dirname "$0")
+docker tag "${REGISTRY_URL}/maistro:latest" "${REGISTRY_URL}/maistro:${VERSION}"
 
 # Push to registry
 echo "Pushing image to registry..."
-docker push "${REGISTRY_URL}/proxyllama:latest"
-docker push "${REGISTRY_URL}/proxyllama:${VERSION}"
+docker push "${REGISTRY_URL}/maistro:latest"
+docker push "${REGISTRY_URL}/maistro:${VERSION}"
 
-echo "✅ Image built and pushed to ${REGISTRY_URL}/proxyllama:latest"
+echo "✅ Image built and pushed to ${REGISTRY_URL}/maistro:latest"

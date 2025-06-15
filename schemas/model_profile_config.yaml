@@ -67,3 +67,20 @@ properties:
     type: string
     format: uuid
     description: Image generation profile ID
+required:
+  - primary_profile_id
+  - summarization_profile_id
+  - master_summary_profile_id
+  - brief_summary_profile_id
+  - key_points_profile_id
+  - improvement_profile_id
+  - analysis_profile_id
+  - memory_retrieval_profile_id
+  - self_critique_profile_id
+  - research_task_profile_id
+  - research_plan_profile_id
+  - research_consolidation_profile_id
+  - research_analysis_profile_id
+  - embedding_profile_id
+  - formatting_profile_id
+  - image_generation_profile_id

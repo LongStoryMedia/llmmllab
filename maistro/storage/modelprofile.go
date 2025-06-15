@@ -89,7 +89,7 @@ func (mps *modelProfileStore) CacheModelProfile(ctx context.Context, profile *mo
 		return err
 	}
 	key := getModelProfileCacheKey(profile.ID)
-	ttl := parseTTL(conf.Redis.MessageTTL, 24*time.Hour)
+	ttl := time.Duration(conf.Redis.MessageTtl) * time.Second
 	return redisClient.Set(ctx, key, data, ttl).Err()
 }
 
@@ -130,7 +130,7 @@ func (mps *modelProfileStore) CacheModelProfilesList(ctx context.Context, userID
 		return err
 	}
 	key := getModelProfilesListCacheKey(userID)
-	ttl := parseTTL(conf.Redis.MessageTTL, 24*time.Hour)
+	ttl := time.Duration(conf.Redis.MessageTtl) * time.Second
 	return redisClient.Set(ctx, key, data, ttl).Err()
 }
 

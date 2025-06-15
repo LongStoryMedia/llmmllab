@@ -1,9 +1,9 @@
-from typing import List, Optional
+from typing import List
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
 
-from models.loras import LoraAddRequest, LoraInfo, LoraListResponse, LoraWeightRequest
+from models.model import Model
+from models.requests import LoraWeightRequest, ModelRequest, LoraListResponse
 from services.lora_service import lora_service
 from services.model_service import model_service
 
@@ -17,13 +17,13 @@ router = APIRouter(
 async def list_loras():
     """List all available LoRAs."""
     loras = lora_service.get_loras()
-    return {
-        "loras": loras,
-        "active_loras": lora_service.active_loras
-    }
+    return LoraListResponse(
+        loras=loras,
+        active_loras=lora_service.active_loras
+    )
 
 
-@router.get("/{lora_id}", response_model=LoraInfo)
+@router.get("/{lora_id}", response_model=Model)
 async def get_lora(lora_id: str):
     """Get information about a specific LoRA."""
     lora = lora_service.get_lora(lora_id)
@@ -35,12 +35,12 @@ async def get_lora(lora_id: str):
     return lora
 
 
-@router.post("/", response_model=LoraInfo, status_code=status.HTTP_201_CREATED)
-async def add_lora(request: LoraAddRequest):
+@router.post("/", response_model=Model, status_code=status.HTTP_201_CREATED)
+async def add_lora(request: ModelRequest):
     """Add a new LoRA."""
     try:
         lora = lora_service.add_lora(
-            name=request.name,
+            name=request.name or request.source,
             source=request.source,
             description=request.description,
             weight=request.weight
@@ -63,7 +63,7 @@ async def remove_lora(lora_id: str):
         )
 
 
-@router.put("/{lora_id}/activate", response_model=LoraInfo)
+@router.put("/{lora_id}/activate", response_model=Model, status_code=status.HTTP_202_ACCEPTED)
 async def activate_lora(lora_id: str):
     """Activate a LoRA."""
     lora = lora_service.get_lora(lora_id)
@@ -115,7 +115,7 @@ async def deactivate_lora(lora_id: str):
     return {"success": True}
 
 
-@router.put("/{lora_id}/weight", response_model=LoraInfo)
+@router.put("/{lora_id}/weight", response_model=Model)
 async def set_lora_weight(lora_id: str, request: LoraWeightRequest):
     """Set the weight for a LoRA."""
     lora = lora_service.get_lora(lora_id)

@@ -46,6 +46,10 @@ export async function* gen(opts: RequestOptions): AsyncGenerator<ChatResponse> {
   let done = false;
 
   while (!done) {
+    if (opts.signal?.aborted) {
+      console.log('Request was cancelled');
+      break;
+    }
     const { done: doneReading, value } = await reader.read();
     done = doneReading;
 

@@ -2,7 +2,9 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"maistro/config"
+	"maistro/models"
 	"maistro/util"
 	"net/http"
 	"strings"
@@ -25,73 +27,108 @@ const IsAdminKey contextKey = "is_admin"
 func NewValidator(ctx context.Context, jwksUri string) keyfunc.Keyfunc {
 	k, err := keyfunc.NewDefaultCtx(ctx, []string{jwksUri}) // Context is used to end the refresh goroutine.
 	if err != nil {
-		// Log context, then fatal
-		util.LogInfo("Failed to create a keyfunc.Keyfunc from the server's URL.", logrus.Fields{"error": err})
-		logrus.Fatal("Failed to create a keyfunc.Keyfunc from the server's URL.")
+		util.HandleFatalError(err, logrus.Fields{"error": "Failed to create a keyfunc.Keyfunc from the server's URL."})
 	}
 	return k
 }
 
-func WithAuth(c *fiber.Ctx) error {
-	authHeader := c.Get("Authorization")
+// validateTokenInternal handles the common token validation logic
+// Returns user ID, claims, and error if validation fails
+func validateTokenInternal(tokenStr string, ctx context.Context) (*models.TokenValidationResult, error) {
 	conf := config.GetConfig(nil)
+	k := NewValidator(ctx, conf.Auth.JwksURI)
 
-	k := NewValidator(c.UserContext(), conf.Auth.JWKSUri)
-
-	if authHeader == "" {
-		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Unauthorized",
-		})
-	}
-	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 	token, err := jwt.Parse(tokenStr, k.Keyfunc)
 	if err != nil {
 		util.LogWarning("Failed to parse token", logrus.Fields{"error": err})
-		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Unauthorized",
-		})
-	}
-	if !token.Valid {
-		util.LogWarning("Invalid token")
-		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Unauthorized",
-		})
-	}
-	claims := token.Claims.(jwt.MapClaims)
-	userID, ok := claims["sub"].(string)
-	if !ok {
-		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Unauthorized",
-		})
+		return nil, errors.New("invalid token")
 	}
 
-	ctx := context.WithValue(c.Context(), UserIDKey, userID)
-	ctx = context.WithValue(ctx, TokenClaimsKey, claims)
+	if !token.Valid {
+		util.LogWarning("Invalid token", nil)
+		return nil, errors.New("invalid token")
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, errors.New("invalid token claims")
+	}
+
+	userID, ok := claims["sub"].(string)
+	if !ok {
+		return nil, errors.New("user ID not found in token")
+	}
+
+	// Check for admin status
+	isAdmin := false
 	groups, ok := claims["groups"]
 	if ok {
 		groupsInterface, ok := groups.([]any)
 		if ok {
 			for _, group := range groupsInterface {
 				if groupStr, ok := group.(string); ok && groupStr == "admins" {
-					ctx = context.WithValue(ctx, IsAdminKey, true)
+					isAdmin = true
 					break
 				}
 			}
 		}
 	}
 
+	return &models.TokenValidationResult{
+		UserID:  userID,
+		Claims:  claims,
+		IsAdmin: isAdmin,
+	}, nil
+}
+
+// ValidateToken validates a JWT token from a string and returns the user ID
+// This is used especially for WebSocket connections that pass token via query param
+func ValidateToken(tokenStr string) (string, error) {
+	result, err := validateTokenInternal(tokenStr, context.Background())
+	if err != nil {
+		return "", err
+	}
+	return result.UserID, nil
+}
+
+func WithAuth(c *fiber.Ctx) error {
+	authHeader := c.Get("Authorization")
+	if authHeader == "" {
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
+	}
+
+	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+	result, err := validateTokenInternal(tokenStr, c.UserContext())
+
+	if err != nil {
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
+	}
+
+	// Set up context with auth information
+	ctx := context.WithValue(c.Context(), UserIDKey, result.UserID)
+	ctx = context.WithValue(ctx, TokenClaimsKey, result.Claims)
+	if result.IsAdmin {
+		ctx = context.WithValue(ctx, IsAdminKey, true)
+	}
+
+	// Update context and local values
 	c.SetUserContext(ctx)
-	c.Locals(UserIDKey, userID)
-	c.Locals(TokenClaimsKey, claims)
-	c.Locals(IsAdminKey, ctx.Value(IsAdminKey) != nil)
-	c.Set("X-User-ID", userID)
+	c.Locals(UserIDKey, result.UserID)
+	c.Locals(TokenClaimsKey, result.Claims)
+	c.Locals(IsAdminKey, result.IsAdmin)
+	c.Set("X-User-ID", result.UserID)
 
 	// Generate and set request ID
 	rid := uuid.New().String()
 	c.Set("X-Request-ID", rid)
 	c.Locals("request_id", rid)
+
 	util.LogInfo("Request authorized", logrus.Fields{
-		string(UserIDKey): userID,
+		string(UserIDKey): result.UserID,
 	})
 	return c.Next()
 }

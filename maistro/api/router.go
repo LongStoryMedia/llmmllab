@@ -2,6 +2,7 @@ package api
 
 import (
 	"maistro/auth"
+	"maistro/socket"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -23,7 +24,14 @@ func RegisterAllRoutes(app *fiber.App) {
 		return c.Next()
 	}).Options("/*", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusNoContent)
-	}).Use(auth.WithAuth)
+	})
+
+	// Register WebSocket routes BEFORE the auth middleware
+	// This is crucial because WebSockets handle auth differently
+	RegisterWebSocketRoutes(app)
+
+	// Add auth middleware for all other routes
+	app.Use(auth.WithAuth)
 
 	RegisterConversationRoutes(app)
 	RegisterResearchRoutes(app)
@@ -31,7 +39,8 @@ func RegisterAllRoutes(app *fiber.App) {
 	RegisterConfigRoutes(app)
 	RegisterModelProfileRoutes(app)
 	RegisterStableDiffusionRoutes(app)
+	socket.SetupWebSocketRoutes(app)
 
 	// Setup reverse proxy handler with chunk processing
-	app.All("/*", OllamaHandler)
+	app.All("/*", ChatHandler)
 }

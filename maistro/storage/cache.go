@@ -30,25 +30,13 @@ func cacheKey(prefix string, id interface{}) string {
 	return fmt.Sprintf("%s%v", prefix, id)
 }
 
-// Helper to parse TTL from config
-func parseTTL(ttlStr string, fallback time.Duration) time.Duration {
-	ttl, err := time.ParseDuration(ttlStr)
-	if err != nil {
-		return fallback
-	}
-	return ttl
-}
-
 // InitStorageCache initializes the Redis client for storage caching
 func InitStorageCache() error {
 	conf := config.GetConfig(nil)
 
 	// Create Redis client
 	// Parse Redis timeout values from string to time.Duration
-	readTimeout, err := time.ParseDuration(conf.Redis.ConnectTimeout)
-	if err != nil {
-		return fmt.Errorf("invalid Redis ConnectTimeout: %w", err)
-	}
+	readTimeout := time.Duration(conf.Redis.ConnectTimeout) * time.Second
 	writeTimeout := readTimeout
 	dialTimeout := readTimeout
 
@@ -57,7 +45,7 @@ func InitStorageCache() error {
 		Password:     conf.Redis.Password,
 		DB:           conf.Redis.DB,
 		PoolSize:     conf.Redis.PoolSize,
-		MinIdleConns: conf.Redis.MinIdleConns,
+		MinIdleConns: conf.Redis.MinIdleConnections,
 		ReadTimeout:  readTimeout,
 		WriteTimeout: writeTimeout,
 		DialTimeout:  dialTimeout,
@@ -67,7 +55,7 @@ func InitStorageCache() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err = redisClient.Ping(ctx).Result()
+	_, err := redisClient.Ping(ctx).Result()
 	if err != nil {
 		logrus.Errorf("Failed to connect to Redis: %v", err)
 		redisClient = nil // Ensure client is nil if connection fails
@@ -156,10 +144,10 @@ func CacheMessage(ctx context.Context, message *models.Message) error {
 		return util.HandleError(fmt.Errorf("failed to marshal message: %w", err))
 	}
 
-	ttl := parseTTL(conf.Redis.MessageTTL, 0)
+	ttl := conf.Redis.MessageTtl
 
 	key := cacheKey(messageKeyPrefix, message.ID)
-	if err := redisClient.Set(ctx, key, data, ttl).Err(); err != nil {
+	if err := redisClient.Set(ctx, key, data, time.Duration(ttl)*time.Second).Err(); err != nil {
 		return util.HandleError(fmt.Errorf("failed to cache message: %w", err))
 	}
 
@@ -261,6 +249,7 @@ func CacheMessagesByConversationID(ctx context.Context, conversationID int, mess
 	}
 
 	conf := config.GetConfig(nil)
+	ttl := time.Duration(conf.Redis.MessageTtl) * time.Second
 
 	// Cache the full message list
 	messagesListKey := cacheKey(messagesListPrefix, conversationID)
@@ -269,7 +258,6 @@ func CacheMessagesByConversationID(ctx context.Context, conversationID int, mess
 		return fmt.Errorf("failed to marshal messages: %w", err)
 	}
 
-	ttl := parseTTL(conf.Redis.MessageTTL, 0)
 	if err := redisClient.Set(ctx, messagesListKey, messagesData, ttl).Err(); err != nil {
 		return err
 	}
@@ -335,7 +323,7 @@ func CacheSummary(ctx context.Context, summary *models.Summary) error {
 	}
 
 	key := cacheKey(summaryKeyPrefix, summary.ID)
-	ttl := parseTTL(conf.Redis.SummaryTTL, 0)
+	ttl := time.Duration(conf.Redis.SummaryTtl) * time.Second
 	return redisClient.Set(ctx, key, data, ttl).Err()
 }
 
@@ -408,7 +396,7 @@ func CacheSummariesByConversationID(ctx context.Context, conversationID int, sum
 		return fmt.Errorf("failed to marshal summaries: %w", err)
 	}
 
-	ttl := parseTTL(conf.Redis.SummaryTTL, 0)
+	ttl := time.Duration(conf.Redis.SummaryTtl) * time.Second
 	if err := redisClient.Set(ctx, summariesListKey, summariesData, ttl).Err(); err != nil {
 		return err
 	}
@@ -501,7 +489,7 @@ func CacheConversation(ctx context.Context, conversation *models.Conversation) e
 	}
 
 	key := cacheKey(conversationKeyPrefix, conversation.ID)
-	ttl := parseTTL(conf.Redis.ConversationTTL, 0)
+	ttl := time.Duration(conf.Redis.ConversationTtl) * time.Second
 	return redisClient.Set(ctx, key, data, ttl).Err()
 }
 
@@ -578,7 +566,7 @@ func CacheConversationsByUserID(ctx context.Context, userID string, conversation
 	}
 
 	userConversationsKey := cacheKey(conversationKeyPrefix, fmt.Sprintf("%s:conversations", userID))
-	ttl := parseTTL(conf.Redis.ConversationTTL, 0)
+	ttl := time.Duration(conf.Redis.ConversationTtl) * time.Second
 	return redisClient.Set(ctx, userConversationsKey, conversationIDsData, ttl).Err()
 }
 

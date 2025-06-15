@@ -29,7 +29,7 @@ func Test_ChatRequest(t *testing.T) {
 		t.Fatalf("Failed to marshal chat request: %v", err)
 	}
 
-	handler, status, err := GetProxyHandler[*models.OllamaChatResp](context.Background(), data, "/api/chat", "POST", true, time.Minute)
+	handler, status, err := GetProxyHandler[*models.OllamaChatResp](context.Background(), data, "/api/chat", "POST", true, time.Minute, nil)
 	if err != nil {
 		if IsIncompleteError(err) {
 			t.Fatalf("Chat request failed with incomplete error: %v", err)
@@ -71,7 +71,7 @@ func Test_EmbeddingRequest(t *testing.T) {
 		t.Fatalf("Failed to marshal embedding request: %v", err)
 	}
 
-	handler, status, err := GetProxyHandler[*models.OllamaEmbeddingResponse](context.Background(), data, "/api/embed", "POST", false, time.Second*15)
+	handler, status, err := GetProxyHandler[*models.OllamaEmbeddingResponse](context.Background(), data, "/api/embed", "POST", false, time.Second*15, nil)
 	if err != nil {
 		t.Fatalf("Failed to get proxy handler: %v", err)
 	}
@@ -117,7 +117,7 @@ func Test_GenerateRequest(t *testing.T) {
 		t.Fatalf("Failed to marshal generate request: %v", err)
 	}
 
-	handler, status, err := GetProxyHandler[*models.OllamaGenerateResponse](context.Background(), data, "/api/generate", "POST", true, time.Second*15)
+	handler, status, err := GetProxyHandler[*models.OllamaGenerateResponse](context.Background(), data, "/api/generate", "POST", true, time.Second*15, nil)
 	if err != nil {
 		t.Fatalf("Failed to get proxy handler: %v", err)
 	}
@@ -179,7 +179,7 @@ func Test_ChatRequestWithLongContext(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), TIMEOUT)
 	defer cancel()
-	handler, status, err := GetProxyHandler[*models.OllamaChatResp](ctx, data, "/api/chat", "POST", true, TIMEOUT)
+	handler, status, err := GetProxyHandler[*models.OllamaChatResp](ctx, data, "/api/chat", "POST", true, TIMEOUT, nil)
 	if err != nil {
 		t.Fatalf("Failed to get proxy handler: %v", err)
 	}

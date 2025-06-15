@@ -9,6 +9,8 @@ properties:
   conversation_id:
     type: integer
     description: reference to the conversation this message belongs to
+  metadata:
+    $ref: chat_message_metadata.yaml
 required:
   - content
   - conversation_id

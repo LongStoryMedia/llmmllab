@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ImageGenerationConfig
+description: Image generation configuration
+type: object
+properties:
+  enabled:
+    type: boolean
+    description: Whether image generation is enabled
+  storage_directory:
+    type: string
+    description: Directory for file storage
+  max_image_size:
+    type: integer
+    description: Maximum number of pixels in width or height (whichever is greater) for generated images
+    minimum: 128
+    maximum: 4096
+  retention_hours:
+    type: integer
+    description: Retention period for generated images in hours (e.g., 720 for 30 days)
+    minimum: 1
+    maximum: 720
+required:
+  - enabled
+  - storage_directory
+  - max_image_size
+  - retention_hours

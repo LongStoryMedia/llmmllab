@@ -26,6 +26,19 @@ class TypeScriptGenerator:
             used_external_refs = TypeScriptGenerator._find_used_external_refs(
                 schema, ref_resolver)
 
+            # Additional check: explicitly look for external $ref in properties
+            # This ensures we don't miss any references
+            for _, prop_schema in schema.get("properties", {}).items():
+                if '$ref' in prop_schema:
+                    ref_path = prop_schema['$ref']
+                    if not ref_path.startswith('#'):  # External reference
+                        used_external_refs.add(ref_path)
+                        # Force the reference to be loaded in the resolver
+                        try:
+                            ref_resolver.resolve_ref(ref_path)
+                        except Exception as e:
+                            pass
+
         # Track imports needed
         imports = []
 
@@ -157,6 +170,7 @@ class TypeScriptGenerator:
         current_type_name = "".join(x.capitalize()
                                     for x in current_basename.split('_'))
 
+        # Process explicitly referenced external files
         for ref_path, schema_path in ref_resolver.external_refs.items():
             # Skip if the reference isn't used in this schema
             if used_external_refs is not None and ref_path not in used_external_refs:
@@ -165,7 +179,12 @@ class TypeScriptGenerator:
             # Get the type name from the external schema
             type_name = ref_resolver.external_ref_types.get(schema_path, "")
             if not type_name:
-                continue
+                # Try to derive type name from the file path
+                ref_basename = os.path.splitext(os.path.basename(ref_path))[0]
+                type_name = "".join(x.capitalize()
+                                    for x in ref_basename.split('_'))
+                if not type_name:
+                    continue
 
             # Skip self-imports (importing from the current file)
             ref_basename = os.path.splitext(os.path.basename(ref_path))[0]
@@ -341,6 +360,12 @@ class TypeScriptGenerator:
         schema_format = prop_schema.get("format", "")
 
         if schema_type == "string":
+            # Handle string enum as a union type
+            if "enum" in prop_schema:
+                enum_values = prop_schema.get("enum", [])
+                if all(isinstance(val, str) for val in enum_values):
+                    return " | ".join([f"'{val}'" for val in enum_values])
+
             if schema_format == "date-time":
                 return "Date"
             elif schema_format == "date":

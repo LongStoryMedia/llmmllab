@@ -39,6 +39,9 @@ properties:
   type:
     type: integer
     description: Type of the model profile
+  image_settings:
+    $ref: model_profile_image_settings.yaml
+    description: Image settings for the model profile
 required:
   - id
   - userId

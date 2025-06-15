@@ -1,10 +1,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: proxyllama
-  namespace: proxyllama
+  name: maistro
+  namespace: maistro
   labels:
-    app: proxyllama
+    app: maistro
 spec:
   replicas: 1
   strategy:
@@ -13,17 +13,17 @@ spec:
       maxUnavailable: 1
   selector:
     matchLabels:
-      app: proxyllama
+      app: maistro
   template:
     metadata:
       labels:
-        app: proxyllama
+        app: maistro
         version: ${VERSION}
     spec:
       containers:
-        - name: proxyllama
+        - name: maistro
           # Updated to use the private registry
-          image: ${REGISTRY_URL}/proxyllama:latest
+          image: ${REGISTRY_URL}/maistro:latest
           imagePullPolicy: Always
           resources:
             requests:
@@ -51,12 +51,19 @@ spec:
             - name: JWT_ISSUER
               value: "https://auth.longstorymedia.com"
             - name: JWT_AUDIENCE
-              value: "proxyllama"
+              value: "maistro"
             - name: JWT_JWKS_URI
               value: "https://auth.longstorymedia.com/keys"
           ports:
             - containerPort: 8080
               name: http
+          volumeMounts:
+            - name: images-storage
+              mountPath: /app/images
       # Add image pull secret for private registry
       imagePullSecrets:
         - name: registry-credentials
+      volumes:
+        - name: images-storage
+          persistentVolumeClaim:
+            claimName: maistro-images-pvc

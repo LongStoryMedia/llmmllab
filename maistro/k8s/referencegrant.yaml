@@ -1,8 +1,8 @@
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: ReferenceGrant
 metadata:
-  name: allow-proxyllama-from-gateway
-  namespace: proxyllama
+  name: allow-maistro-from-gateway
+  namespace: maistro
 spec:
   from:
     - group: gateway.networking.k8s.io

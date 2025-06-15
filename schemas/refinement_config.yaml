@@ -9,3 +9,6 @@ properties:
   enable_response_critique:
     type: boolean
     description: Enable response critique
+required:
+  - enable_response_filtering
+  - enable_response_critique

@@ -15,8 +15,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// OllamaHandler forwards the request to Ollama and streams the response back to the client
-func OllamaHandler(c *fiber.Ctx) error {
+// ChatHandler forwards the request to Ollama and streams the response back to the client
+func ChatHandler(c *fiber.Ctx) error {
 	// Parse the incoming request
 	var chatReq models.ChatRequest
 	if err := c.BodyParser(&chatReq); err != nil {
@@ -30,12 +30,41 @@ func OllamaHandler(c *fiber.Ctx) error {
 		return handleError(err, fiber.StatusInternalServerError, "Failed to process conversation")
 	}
 
+	util.LogDebug("Chat Metadata", logrus.Fields{
+		"conversationId": cc.ConversationID,
+		"userId":         cc.UserID,
+		"metadata":       chatReq.Metadata,
+	})
+
+	if chatReq.Metadata != nil {
+		// Handle image generation
+		if chatReq.Metadata.GenerateImage {
+			if cc.Notes == nil {
+				cc.Notes = make([]string, 0)
+			}
+			cc.Notes = append(cc.Notes, "An image is being generated based on the request content using the selected Image Generation Model Profile.")
+		}
+
+		// Handle continuation request
+		if chatReq.Metadata.IsContinuation {
+			util.LogInfo("Handling continuation request with additional context", logrus.Fields{
+				"conversationId": cc.ConversationID,
+				"userId":         cc.UserID,
+			})
+			// Add a system note to indicate this is a continuation
+			if cc.Notes == nil {
+				cc.Notes = make([]string, 0)
+			}
+			cc.Notes = append(cc.Notes, "This is a continuation of a previous request with additional context.")
+		}
+	}
+
 	ollamaReqBody, err := cc.PrepareOllamaRequest(c.UserContext(), chatReq.Content)
 	if err != nil {
 		return handleError(err, fiber.StatusInternalServerError, "Failed to prepare Ollama request")
 	}
 
-	handler, statusCode, err := proxy.GetProxyHandler[*models.OllamaChatResp](c.UserContext(), ollamaReqBody, c.Path(), http.MethodPost, true, time.Minute*10)
+	handler, statusCode, err := proxy.GetProxyHandler[*models.OllamaChatResp](c.UserContext(), ollamaReqBody, c.Path(), http.MethodPost, true, time.Minute*10, nil)
 	if err != nil {
 		return handleError(err, fiber.StatusBadGateway, "Error during streaming")
 	}
@@ -74,6 +103,8 @@ func OllamaHandler(c *fiber.Ctx) error {
 		} else if res == "" {
 			util.LogWarning("Empty assistant response, not storing")
 		}
+
+		cc.Notes = make([]string, 0)
 
 		// Log the completion of the chat streaming
 		util.LogInfo("Chat streaming complete", logrus.Fields{

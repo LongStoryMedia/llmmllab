@@ -3,10 +3,11 @@ import { Box, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActi
 import { listModelProfiles, createModelProfile, updateModelProfile, deleteModelProfile } from '../api/model';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
-import { ModelProfile } from '../hooks/useConfig';
+import { ModelProfile } from '../types/ModelProfile';
 import { useAuth } from '../auth';
 import ModelSelector from '../components/ModelSelector/ModelSelector';
 import { getToken } from '../api';
+import { ModelProfileType } from '../types/ModelProfileType';
 
 const emptyProfile: ModelProfile = {
   id: '',
@@ -15,7 +16,10 @@ const emptyProfile: ModelProfile = {
   description: '',
   modelName: '',
   parameters: {},
-  systemPrompt: ''
+  systemPrompt: '',
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  type: ModelProfileType.Primary
 };
 
 const ModelProfilesPage = () => {
@@ -159,7 +163,7 @@ const ModelProfilesPage = () => {
           <TextField
             label="Stop"
             value={editingProfile?.parameters?.stop || ''}
-            onChange={e => setEditingProfile({ ...editingProfile, parameters: { ...editingProfile.parameters, stop: e.target.value } })}
+            onChange={e => setEditingProfile({ ...editingProfile, parameters: { ...editingProfile.parameters, stop: [e.target.value] } })}
             fullWidth margin="normal"
             multiline
             minRows={2}

@@ -56,7 +56,7 @@ func Test_OllamaHandler(t *testing.T) {
 		t.Fatalf("Failed to clear output file: %v", err)
 	}
 
-	app.Post("/api/chat", OllamaHandler)
+	app.Post("/api/chat", ChatHandler)
 
 	reqBody, err := json.Marshal(problemRequest)
 	if err != nil {

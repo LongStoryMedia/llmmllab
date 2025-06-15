@@ -1,6 +1,7 @@
 import os
 import torch
 import gc
+import logging
 from typing import Dict, List, Tuple, Optional, Any, Union
 
 
@@ -10,6 +11,12 @@ class HardwareManager:
     def __init__(self):
         """Initialize the hardware manager and discover available GPU resources."""
         self.has_gpu = torch.cuda.is_available()
+        self.logger = logging.getLogger("hardware_manager")
+
+        # Configure logging if not already configured
+        if not logging.getLogger().handlers:
+            logging.basicConfig(level=logging.INFO,
+                                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
         # Discover all available GPUs
         self.gpu_count = torch.cuda.device_count() if self.has_gpu else 0
@@ -17,17 +24,18 @@ class HardwareManager:
         self.current_device_idx = 0
 
         if self.has_gpu:
-            print(f"Detected {self.gpu_count} GPU(s)")
+            self.logger.info(f"Detected {self.gpu_count} GPU(s)")
             for i in range(self.gpu_count):
                 device = torch.device(f"cuda:{i}")
                 self.devices.append(device)
                 gpu_name = torch.cuda.get_device_name(i)
-                print(f"  GPU {i}: {gpu_name}")
+                self.logger.info(f"  GPU {i}: {gpu_name}")
 
             # Select first device as default
             self.device = self.devices[0]
         else:
             self.device = torch.device("cpu")
+            self.logger.warning("No GPU detected, running in CPU mode")
 
         # Initialize memory stats for each device
         self.memory_stats: Dict[int, Dict[str, Union[float, str]]] = {}
@@ -37,11 +45,12 @@ class HardwareManager:
             os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
             # Log initial state
             self.update_all_memory_stats()
-            print(
+            self.logger.info(
                 f"Initialized HardwareManager with primary device: {self.device}")
-            print(f"Initial memory status: {self.get_memory_status_str()}")
+            self.logger.info(
+                f"Initial memory status: {self.get_memory_status_str()}")
         else:
-            print("No GPU detected, running in CPU mode")
+            self.logger.info("No GPU detected, running in CPU mode")
 
     def update_all_memory_stats(self) -> Dict[int, Dict[str, Union[float, str]]]:
         """Update memory statistics for all devices."""
@@ -92,20 +101,6 @@ class HardwareManager:
             free_memory = total_memory - allocated_memory
             free_reserved = reserved_memory - allocated_memory
 
-            # class _CudaDeviceProperties:
-            # name: str
-            # major: _int
-            # minor: _int
-            # multi_processor_count: _int
-            # total_memory: _int
-            # is_integrated: _int
-            # is_multi_gpu_board: _int
-            # max_threads_per_multi_processor: _int
-            # gcnArchName: str
-            # warp_size: _int
-            # uuid: str
-            # L2_cache_size: _int
-
             # Store actual byte values for accurate calculations
             device_stats = {
                 "total": total_memory,
@@ -116,12 +111,19 @@ class HardwareManager:
                 "utilization_percent": round((allocated_memory / total_memory) * 100, 1)
             }
 
+            # Store calculated GB values for easier use elsewhere
+            device_stats["total_gb"] = total_memory / (1024**3)
+            device_stats["used_gb"] = allocated_memory / (1024**3)
+            device_stats["free_gb"] = free_memory / (1024**3)
+            device_stats["reserved_gb"] = reserved_memory / (1024**3)
+
             # Store in the memory_stats dict with device index as key
             self.memory_stats[device_idx] = device_stats
             return device_stats
 
         except Exception as e:
-            print(f"Error getting memory stats for device {device_idx}: {e}")
+            self.logger.error(
+                f"Error getting memory stats for device {device_idx}: {e}")
             error_stats: Dict[str, Union[float, str]] = {"error": str(e)}
             self.memory_stats[device_idx] = error_stats
             return error_stats
@@ -171,31 +173,35 @@ class HardwareManager:
         # Run garbage collection first (affects all devices)
         unreachable_devs = gc.collect()
         if unreachable_devs > 0:
-            print(
+            self.logger.warning(
                 f"Garbage could not collect {unreachable_devs} unreachable objects")
 
         for i, dev in gc.garbage:
-            print(f"Garbage {i}: {dev}")
+            self.logger.warning(f"Garbage {i}: {dev}")
 
         # Clear CUDA cache for specific device or all devices
         if device_idx is not None:
             with torch.cuda.device(device_idx):
                 torch.cuda.empty_cache()
             self.update_memory_stats(device_idx)
-            print(
+            self.logger.info(
                 f"Cleared GPU {device_idx} memory. {self._format_device_memory_str(device_idx)}")
         else:
             # Run garbage collection first (affects all devices)
             torch.cuda.empty_cache()  # Clears all devices
             self.update_all_memory_stats()
-            print(f"Cleared all GPU memory. {self.get_memory_status_str()}")
+            self.logger.info(
+                f"Cleared all GPU memory. {self.get_memory_status_str()}")
 
     def select_optimal_device(self) -> torch.device:
         """Select the GPU with the most available memory."""
         if not self.has_gpu:
+            self.logger.info("No GPU available, using CPU")
             return torch.device("cpu")
 
         if self.gpu_count == 1:
+            self.logger.info(
+                f"Only one GPU available, using device {self.devices[0]}")
             return self.devices[0]
 
         # Find device with most free memory
@@ -212,14 +218,14 @@ class HardwareManager:
 
         self.current_device_idx = optimal_device_idx
         self.device = self.devices[optimal_device_idx]
-        for i in range(self.gpu_count):
-            print(
-                f"Selected GPU {optimal_device_idx} as optimal device with {max_free:.2f} GB free memory")
+        self.logger.info(
+            f"Selected GPU {optimal_device_idx} as optimal device with {max_free:.2f} GB free memory")
         return self.device
 
     def is_low_memory(self, threshold_gb: float = 1.0, device_idx: Optional[int] = None) -> bool:
         """Check if available memory is below threshold."""
         if not self.has_gpu:
+            self.logger.info(f"Running in CPU mode, memory check skipped")
             return False
 
         # Convert threshold to bytes
@@ -233,76 +239,105 @@ class HardwareManager:
         stats = self.memory_stats.get(device_idx, {})
         free_bytes = stats.get('free', 0)
 
+        is_low = False
         if isinstance(free_bytes, int):
-            return free_bytes < threshold_bytes
-        return True  # Assume low memory if free_bytes is not available or not an int
+            is_low = free_bytes < threshold_bytes
+            if is_low:
+                self.logger.warning(f"Low memory detected! Only {self.format_bytes(free_bytes)} available, "
+                                    f"threshold is {self.format_bytes(threshold_bytes)}")
+        else:
+            self.logger.warning(
+                f"Could not determine free memory, assuming low memory condition")
+            is_low = True
+
+        return is_low
 
     def get_optimal_dimensions(self) -> Tuple[int, int]:
         """Get optimal dimensions for image generation based on available memory."""
         if not self.has_gpu:
+            self.logger.info(
+                "No GPU detected, using default dimensions for CPU (512x512)")
             return (512, 512)  # Default lower size for CPU
 
         # Update stats
         self.update_memory_stats()
         try:
-            free_bytes = self.memory_stats[self.current_device_idx]['free']
+            # Use the pre-calculated GB value
+            free_gb = self.memory_stats[self.current_device_idx].get(
+                'free_gb', 0)
 
-            # Convert to GB for human-readable thresholds
-            if isinstance(free_bytes, (int, float)):
-                free_gb = free_bytes / (1024**3)
-            else:
-                # Default to conservative value if free_bytes is not numeric
+            if not isinstance(free_gb, (int, float)):
+                self.logger.warning(
+                    f"Could not determine free memory amount, using conservative dimensions")
                 free_gb = 0
 
             # Scale dimensions based on available memory
+            dimensions = (512, 512)  # Default conservative dimensions
             if free_gb >= 8.0:
-                return (1024, 1024)  # High memory: full resolution
+                dimensions = (1024, 1024)  # High memory: full resolution
+                self.logger.info(
+                    f"High memory available ({free_gb:.2f}GB), using dimensions {dimensions}")
             elif free_gb >= 4.0:
-                return (768, 768)    # Medium memory
+                dimensions = (768, 768)    # Medium memory
+                self.logger.info(
+                    f"Medium memory available ({free_gb:.2f}GB), using dimensions {dimensions}")
             elif free_gb >= 2.0:
-                return (640, 640)    # Lower memory
+                dimensions = (640, 640)    # Lower memory
+                self.logger.info(
+                    f"Lower memory available ({free_gb:.2f}GB), using dimensions {dimensions}")
             else:
-                return (512, 512)    # Very low memory
-        except (KeyError, TypeError):
+                dimensions = (512, 512)    # Very low memory
+                self.logger.info(
+                    f"Low memory available ({free_gb:.2f}GB), using dimensions {dimensions}")
+
+            return dimensions
+
+        except (KeyError, TypeError) as e:
+            self.logger.error(f"Error determining optimal dimensions: {e}")
             # Default to conservative settings if we can't determine memory
             return (512, 512)
 
     def get_optimal_inference_steps(self) -> int:
         """Get optimal inference steps based on available memory."""
         if not self.has_gpu:
+            self.logger.info(
+                "No GPU detected, using default inference steps for CPU (20)")
             return 20  # Lower default for CPU
 
         # Update stats
         self.update_memory_stats()
-        free_bytes = self.memory_stats[self.current_device_idx]['free']
 
-        # Convert to GB
-        if isinstance(free_bytes, (int, float)):
-            free_gb = free_bytes / (1024**3)
-        else:
-            # Default to conservative value if free_bytes is not numeric
-            free_gb = 0
-        free_bytes = self.memory_stats[self.current_device_idx]['free']
+        # Use the pre-calculated GB value
+        free_gb = self.memory_stats[self.current_device_idx].get('free_gb', 0)
 
-        # Convert to GB for human-readable thresholds
-        if isinstance(free_bytes, (int, float)):
-            free_gb = free_bytes / (1024**3)
-        else:
-            # Default to conservative value if free_bytes is not numeric
+        if not isinstance(free_gb, (int, float)):
+            self.logger.warning(
+                f"Could not determine free memory amount, using conservative inference steps")
             free_gb = 0
 
         # Determine steps based on free memory
+        steps = 20  # Default conservative steps
         if free_gb >= 6.0:
-            return 30  # High quality
+            steps = 30  # High quality
+            self.logger.info(
+                f"High memory available ({free_gb:.2f}GB), using {steps} inference steps")
         elif free_gb >= 3.0:
-            return 25  # Medium quality
+            steps = 25  # Medium quality
+            self.logger.info(
+                f"Medium memory available ({free_gb:.2f}GB), using {steps} inference steps")
         else:
-            return 20  # Low quality/faster
+            steps = 20  # Low quality/faster
+            self.logger.info(
+                f"Low memory available ({free_gb:.2f}GB), using {steps} inference steps")
+
+        return steps
 
     def optimize_generation_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Optimize generation parameters based on available resources."""
         if not params:
             params = {}
+
+        original_params = params.copy()
 
         # Only override if not explicitly specified
         if 'width' not in params or 'height' not in params:
@@ -317,11 +352,36 @@ class HardwareManager:
 
         # If memory is very low, force optimizations
         if self.is_low_memory(0.5):  # Less than 500MB free
-            print("WARNING: Very low GPU memory, forcing optimized parameters")
-            params['width'] = min(params.get('width', 512), 512)
-            params['height'] = min(params.get('height', 512), 512)
-            params['num_inference_steps'] = min(
-                params.get('num_inference_steps', 20), 20)
+            self.logger.warning(
+                "WARNING: Very low GPU memory, forcing optimized parameters")
+            old_width = params.get('width', 512)
+            old_height = params.get('height', 512)
+            old_steps = params.get('num_inference_steps', 20)
+
+            params['width'] = min(old_width, 512)
+            params['height'] = min(old_height, 512)
+            params['num_inference_steps'] = min(old_steps, 20)
+
+            if old_width != params['width'] or old_height != params['height'] or old_steps != params['num_inference_steps']:
+                self.logger.warning(f"Parameters adjusted due to low memory: "
+                                    f"dimensions {old_width}x{old_height} -> {params['width']}x{params['height']}, "
+                                    f"steps {old_steps} -> {params['num_inference_steps']}")
+
+        # Log parameter changes
+        if params != original_params:
+            changes = []
+            for k, v in params.items():
+                if k not in original_params:
+                    changes.append(f"{k}: set to {v}")
+                elif original_params[k] != v:
+                    changes.append(f"{k}: {original_params[k]} -> {v}")
+
+            if changes:
+                self.logger.info(
+                    f"Optimized generation parameters: {', '.join(changes)}")
+        else:
+            self.logger.info(
+                f"Using original generation parameters (no optimization needed)")
 
         return params
 

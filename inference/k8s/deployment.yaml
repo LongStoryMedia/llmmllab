@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  namespace: ollama
+  labels:
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/instance: ollama
+    app.kubernetes.io/component: app
+spec:
+  selector:
+    matchLabels:
+      name: ollama
+  template:
+    metadata:
+      labels:
+        name: ollama
+        app.kubernetes.io/name: ollama
+        app.kubernetes.io/instance: ollama
+        app.kubernetes.io/component: app
+    spec:
+      runtimeClassName: nvidia
+      volumes:
+        - name: ollama-models-volume
+          persistentVolumeClaim:
+            claimName: ollama-models
+        - name: init-script
+          configMap:
+            name: ollama-init-script
+            defaultMode: 0755
+        - name: sd-models-volume
+          persistentVolumeClaim:
+            claimName: sd-models
+        - name: generated-images
+          persistentVolumeClaim:
+            claimName: generated-images
+      containers:
+        - name: ollama
+          image: 192.168.0.71:31500/inference:latest
+          imagePullPolicy: Always
+          # command: ["/bin/sh", "/scripts/init.sh"]
+          # lifecycle:
+          #   postStart:
+          #     exec:
+          #       command:
+          #         - "/bin/bash"
+          #         - "-c"
+          #         - |
+          #           # Start Ollama in the background
+          #           ollama serve &
+          #           # Give Ollama some time to start up
+          #           sleep 10
+          #           echo "Gettings models..."
+          #           ollama pull mistral
+          #           ollama pull opencoder:latest
+          #           ollama pull granite-embedding
+          #           ollama pull qwen3:0.6b
+          #           ollama pull gemma3:30b-a3b
+          #           ollama pull phi4-reasoning:plus
+          #           ollama pull cogito:8b
+          #           # List available models
+          #           echo "Available models:"
+          #           ollama list
+          #           # Wait for the ollama process
+          #           wait
+          #           cd /app && uvicorn app:app --host 0.0.0.0 --port 8000 &"
+          ports:
+            - name: ollama
+              containerPort: 11434
+              protocol: TCP
+            - name: sd
+              containerPort: 8000
+              protocol: TCP
+          resources:
+            requests:
+              memory: "24Gi"
+              cpu: "8"
+              nvidia.com/gpu: "2"
+            limits:
+              memory: "30Gi"
+              cpu: "10"
+              nvidia.com/gpu: "2"
+          volumeMounts:
+            - name: ollama-models-volume
+              mountPath: /root/.ollama
+            - name: sd-models-volume
+              mountPath: /root/.cache/huggingface/hub
+            - name: init-script
+              mountPath: /scripts
+            - name: generated-images
+              mountPath: /app/images
+          env:
+            - name: OLLAMA_HOST
+              value: "0.0.0.0"
+            - name: OLLAMA_DEBUG
+              value: "false"
+  strategy:
+    type: Recreate

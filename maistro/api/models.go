@@ -1,10 +1,17 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"maistro/auth"
 	"maistro/config"
 	"maistro/models"
+	"maistro/proxy"
 	"maistro/storage"
+	"net/http"
+	"sync"
 
 	"maistro/util"
 
@@ -19,6 +26,79 @@ func RegisterModelProfileRoutes(app *fiber.App) {
 	app.Post("/api/model-profiles", CreateModelProfile)
 	app.Put("/api/model-profiles/:id", UpdateModelProfile)
 	app.Delete("/api/model-profiles/:id", DeleteModelProfile)
+	app.Get("/api/models", ListModels)
+}
+
+func getInferenceModels(ctx context.Context, url string) ([]models.Model, error) {
+	// Get Models from ollama
+	res, err := proxy.ProxyRequest(ctx, http.MethodGet, url, false, nil)
+	if err != nil {
+		return nil, handleError(err, fiber.StatusInternalServerError, fmt.Sprintf("Failed to retrieve models from %v", url))
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return nil, fiber.NewError(fiber.StatusInternalServerError, fmt.Sprintf("Failed to retrieve models from %v: %v", url, res.StatusCode))
+	}
+
+	var modelsResponse []byte
+	if modelsResponse, err = io.ReadAll(res.Body); err != nil {
+		return nil, handleError(err, fiber.StatusInternalServerError, "Failed to read models response")
+	}
+
+	var modelsData struct {
+		Models []models.Model `json:"models"`
+	}
+	if err := json.Unmarshal(modelsResponse, &modelsData); err != nil {
+		return nil, handleError(err, fiber.StatusInternalServerError, "Failed to parse models response")
+	}
+
+	return modelsData.Models, nil
+}
+
+func ListModels(c *fiber.Ctx) error {
+	// Retrieve the user ID from the context
+	conf := config.GetConfig(nil)
+	var modelList []models.Model
+
+	errChan := make(chan error, 2)
+	wg := sync.WaitGroup{}
+
+	// Get models from Ollama and Stable Diffusion in parallel
+	wg.Add(1)
+	go func(ctx context.Context, mdls *[]models.Model) {
+		defer wg.Done()
+		// Get Models from Ollama
+		m, err := getInferenceModels(ctx, conf.InferenceServices.Ollama.BaseURL+"/api/tags")
+		if err != nil {
+			errChan <- err
+			return
+		}
+		util.LogInfo("Ollama models retrieved", logrus.Fields{"modelCount": len(m)})
+		*mdls = append(*mdls, m...)
+	}(c.UserContext(), &modelList)
+
+	wg.Add(1)
+	go func(ctx context.Context, mdls *[]models.Model) {
+		defer wg.Done()
+		// Get Models from Stable Diffusion
+		m, err := getInferenceModels(ctx, conf.InferenceServices.StableDiffusion.BaseURL+"/models")
+		if err != nil {
+			errChan <- err
+			return
+		}
+		util.LogInfo("Stable Diffusion models retrieved", logrus.Fields{"modelCount": len(m)})
+		*mdls = append(*mdls, m...)
+	}(c.UserContext(), &modelList)
+
+	wg.Wait()
+	select {
+	case err := <-errChan:
+		return handleError(err, fiber.StatusInternalServerError, "Failed to retrieve models")
+	default:
+	}
+
+	return c.JSON(modelList)
 }
 
 // ListModelProfiles returns all model profiles for the authenticated user
@@ -29,27 +109,8 @@ func ListModelProfiles(c *fiber.Ctx) error {
 	if err != nil {
 		return handleError(err, fiber.StatusInternalServerError, "Failed to retrieve model profiles")
 	}
-
-	// Append static default profiles (from context/models.go)
-	defaultProfiles := []models.ModelProfile{
-		config.DefaultSummarizationProfile,
-		config.DefaultMasterSummaryProfile,
-		config.DefaultBriefSummaryProfile,
-		config.DefaultKeyPointsProfile,
-		config.DefaultSelfCritiqueProfile,
-		config.DefaultPrimaryProfile,
-		config.DefaultMemoryRetrievalProfile,
-		config.DefaultImprovementProfile,
-		config.DefaultAnalysisProfile,
-		config.DefaultResearchTaskProfile,
-		config.DefaultResearchPlanProfile,
-		config.DefaultResearchConsolidationProfile,
-		config.DefaultResearchAnalysisProfile,
-		config.DefaultEmbeddingProfile,
-		config.DefaultFormattingProfile,
-	}
 	// Convert to pointer slice for consistency
-	for _, def := range defaultProfiles {
+	for _, def := range config.DefaultModelProfiles {
 		profiles = append(profiles, &def)
 	}
 

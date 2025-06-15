@@ -46,7 +46,7 @@ func (cc *ConversationContext) generateSummarization(messages []models.Message, 
 	longCtx, cancel := context.WithTimeout(context.Background(), 120*time.Minute)
 	defer cancel()
 
-	resp, err := proxy.StreamOllamaChatRequest(longCtx, summaryModel, ollamaMessages)
+	resp, err := proxy.StreamOllamaChatRequest(longCtx, summaryModel, ollamaMessages, &cc.UserID)
 	r := util.RemoveThinkTags(resp)
 	if err != nil {
 		return r, util.HandleError(err)
@@ -154,6 +154,15 @@ func (cc *ConversationContext) PrepareOllamaRequest(ctx context.Context, message
 		util.LogWarning("Empty embedding vector", logrus.Fields{"userMessage": message})
 		return []byte("{}"), nil
 	}
+
+	util.LogDebug("Conversation context prepared for Ollama request", logrus.Fields{
+		"conversationId": cc.ConversationID,
+		"userId":         cc.UserID,
+		"message_num":    len(cc.Messages),
+		"search_results": len(cc.SearchResults),
+		"memories":       len(cc.RetrievedMemories),
+		"summaries":      len(cc.Summaries),
+	})
 
 	// Convert conversation context to Ollama format (includes summaries, memories, and web search results)
 	return cc.ChainMessages(&ollamaReq)

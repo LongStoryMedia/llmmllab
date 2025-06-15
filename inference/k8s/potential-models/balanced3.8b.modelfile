@@ -1,0 +1,9 @@
+FROM phi3.5
+PARAMETER temperature 0.7
+PARAMETER num_ctx 4096
+PARAMETER stop "User:"
+PARAMETER stop "<|endoftext|>"
+PARAMETER seed 42
+PARAMETER num_gpu 1
+PARAMETER num_thread 4
+PARAMETER quantization q4_K_M

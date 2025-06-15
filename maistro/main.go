@@ -41,8 +41,8 @@ func main() {
 		conf.Database.Password,
 		conf.Database.Host,
 		conf.Database.Port,
-		conf.Database.DBName,
-		conf.Database.SSLMode,
+		conf.Database.Dbname,
+		conf.Database.Sslmode,
 	)
 
 	if err := storage.InitializeStorage(); err != nil {
@@ -64,7 +64,6 @@ func main() {
 		util.LogWarning("Failed to initialize Redis storage cache", logrus.Fields{
 			"error": err,
 		})
-		util.LogWarning("Storage will operate without Redis caching")
 	} else if conf.Redis.Enabled {
 		util.LogInfo("Redis storage cache initialized successfully")
 		// Clean up Redis connections when the application exits
@@ -76,19 +75,19 @@ func main() {
 		util.LogInfo("Initializing conversation cache with Redis", logrus.Fields{
 			"host": conf.Redis.Host,
 			"port": conf.Redis.Port,
-			"ttl":  conf.Redis.ConversationTTL,
+			"ttl":  conf.Redis.ConversationTtl,
 		})
 	} else {
 		util.LogInfo("Redis disabled, using in-memory cache", logrus.Fields{
-			"ttl": conf.Redis.ConversationTTL,
+			"ttl": conf.Redis.ConversationTtl,
 		})
 	}
-	duration, err := time.ParseDuration(conf.Redis.ConversationTTL)
-	if err != nil {
-		util.HandleError(err)
-	}
-	context.InitCache(duration)
+	duration := time.Duration(conf.Redis.ConversationTtl) * time.Second
 
+	context.InitCache(duration)
+	if conf.ImageGeneration.Enabled {
+		context.StartImageCleanupRoutine()
+	}
 	// Create a new Fiber app
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: false,
@@ -99,13 +98,10 @@ func main() {
 	// Router
 	api.RegisterAllRoutes(app)
 
-	// Use port from configuration instead of hardcoding it
-	serverAddress := fmt.Sprintf("%s:%d", conf.Server.Host, conf.Server.Port)
-	util.LogInfo("Server started", logrus.Fields{
-		"address": serverAddress,
-	})
-
-	if err := app.Listen(serverAddress); err != nil {
+	// Start the server
+	addr := fmt.Sprintf("%s:%d", conf.Server.Host, conf.Server.Port)
+	util.LogInfo(fmt.Sprintf("Starting server on %s", addr))
+	if err := app.Listen(addr); err != nil {
 		util.HandleFatalError(err)
 	}
 }

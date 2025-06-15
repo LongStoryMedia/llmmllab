@@ -2,8 +2,10 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException, status
 
-from models.models import ModelInfo, ModelAddRequest, ModelListResponse
+from models.model import Model
+from models.requests import ModelRequest, ModelsListResponse
 from services.model_service import model_service
+from services.lora_service import lora_service
 
 router = APIRouter(
     prefix="/models",
@@ -11,17 +13,19 @@ router = APIRouter(
 )
 
 
-@router.get("/", response_model=ModelListResponse)
+@router.get("/", response_model=ModelsListResponse)
 async def list_models():
     """List all available models."""
     models = model_service.get_models()
-    return {
-        "models": models,
-        "active_model": model_service.active_model_id
-    }
+    loras_list = lora_service.get_loras()
+    return ModelsListResponse(
+        models=[model for model in models if model.details.specialization !=
+                "LoRA"] + loras_list,
+        active_model=model_service.active_model_id
+    )
 
 
-@router.get("/{model_id}", response_model=ModelInfo)
+@router.get("/{model_id}", response_model=Model)
 async def get_model(model_id: str):
     """Get information about a specific model."""
     model = model_service.get_model(model_id)
@@ -33,12 +37,12 @@ async def get_model(model_id: str):
     return model
 
 
-@router.post("/", response_model=ModelInfo, status_code=status.HTTP_201_CREATED)
-async def add_model(model_request: ModelAddRequest):
+@router.post("/", response_model=Model, status_code=status.HTTP_201_CREATED)
+async def add_model(model_request: ModelRequest):
     """Add a new model."""
     try:
         model = model_service.add_model(
-            name=model_request.name,
+            name=model_request.name or model_request.source,
             source=model_request.source,
             description=model_request.description
         )
@@ -60,7 +64,7 @@ async def remove_model(model_id: str):
         )
 
 
-@router.put("/active/{model_id}", response_model=ModelInfo)
+@router.put("/active/{model_id}", response_model=Model)
 async def set_active_model(model_id: str):
     """Set a model as the active model."""
     if not model_service.set_active_model(model_id):

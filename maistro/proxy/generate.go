@@ -21,7 +21,7 @@ func StreamOllamaGenerateRequest(ctx context.Context, model string, requestBody 
 
 	util.LogInfo("Sending request to Ollama")
 
-	handler, _, err := GetProxyHandler[*models.OllamaGenerateResponse](ctx, reqBody, "/api/generate", http.MethodPost, true, time.Minute)
+	handler, _, err := GetProxyHandler[*models.OllamaGenerateResponse](ctx, reqBody, "/api/generate", http.MethodPost, true, time.Minute, nil)
 	if err != nil {
 		return "", fmt.Errorf("error streaming request: %w", err)
 	}

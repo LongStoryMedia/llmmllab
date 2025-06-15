@@ -2,7 +2,6 @@ package context
 
 import (
 	"context"
-	"maistro/config"
 	"maistro/models"
 	"maistro/storage"
 	"maistro/test"
@@ -13,14 +12,16 @@ import (
 
 func setup() error {
 	ctx := context.Background()
-	conf := config.GetConfig(nil)
-	usrCfg := conf.GetUserConfig(MockConversationContext.UserID)
-	_, err := storage.ConversationStoreInstance.CreateConversation(ctx, MockConversationContext.UserID, MockConversationContext.Title)
+	usrCfg, err := GetUserConfig(MockConversationContext.UserID)
+	if err != nil {
+		return util.HandleError(err)
+	}
+	_, err = storage.ConversationStoreInstance.CreateConversation(ctx, MockConversationContext.UserID, MockConversationContext.Title)
 	if err != nil {
 		return util.HandleError(err)
 	}
 	for _, msg := range MockConversationContext.Messages {
-		_, err := storage.MessageStoreInstance.AddMessage(ctx, MockConversationContext.ConversationID, msg.Role, msg.Content, &usrCfg)
+		_, err := storage.MessageStoreInstance.AddMessage(ctx, MockConversationContext.ConversationID, msg.Role, msg.Content, usrCfg)
 		if err != nil {
 			return util.HandleError(err)
 		}
@@ -34,7 +35,7 @@ func setup() error {
 
 	MockConversationContext.Messages = append(MockConversationContext.Messages, asstMsg)
 
-	_, err = storage.MessageStoreInstance.AddMessage(ctx, MockConversationContext.ConversationID, asstMsg.Role, asstMsg.Content, &usrCfg)
+	_, err = storage.MessageStoreInstance.AddMessage(ctx, MockConversationContext.ConversationID, asstMsg.Role, asstMsg.Content, usrCfg)
 	if err != nil {
 		return util.HandleError(err)
 	}

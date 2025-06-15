@@ -3,6 +3,7 @@ import { useAuth } from '../../auth';
 import { Conversation } from '../../types/Conversation';
 import { ChatMessage } from '../../types/ChatMessage';
 import { Model } from '../../types/Model';
+import { ChatRequest } from '../../types/ChatRequest';
 
 export interface ChatState {
   messages: ChatMessage[];
@@ -14,7 +15,11 @@ export interface ChatState {
   response: string;
   selectedModel: string;
   models: Model[];
-  isSearching: boolean; // Add isSearching property
+  isWorkingInBackground: boolean;
+  backgroundAction: string | null;
+  isPaused: boolean;
+  pausedRequest: ChatRequest | null;
+  correctionText: string;
 }
 
 export interface ChatActions {
@@ -31,7 +36,11 @@ export interface ChatActions {
   updateConversationInList: (id: number, updates: Partial<Conversation>) => void;
   removeConversationFromList: (id: number) => void;
   setModels: (models: Model[]) => void;
-  setIsSearching: (searching: boolean) => void; // Add setIsSearching action
+  setIsWorkingInBackground: (searching: boolean) => void;
+  setBackgroundAction: (action: string | null) => void;
+  setIsPaused: (paused: boolean) => void;
+  setPausedRequest: (request: ChatRequest | null) => void;
+  setCorrectionText: (text: string) => void;
 }
 
 export const useChatState = (): [ChatState, ChatActions] => {
@@ -46,9 +55,13 @@ export const useChatState = (): [ChatState, ChatActions] => {
     return localStorage.getItem('selectedModel') || '';
   });
   const [models, setModelsState] = useState<Model[]>([]);
-  const [isSearching, setIsSearching] = useState(false); // Initialize isSearching state
+  const [isWorkingInBackground, setIsWorkingInBackground] = useState(false); // Initialize isWorkingInBackground state
   const { user } = useAuth(); // Assuming useAuth is a custom hook to get user info
   const currentUserId = useMemo(() => user?.profile?.preferred_username ?? '', [user]);
+  const [backgroundAction, setBackgroundAction] = useState<string | null>(null);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [pausedRequest, setPausedRequest] = useState<ChatRequest | null>(null);
+  const [correctionText, setCorrectionText] = useState<string>('');
 
   const setModels = useCallback((models: Model[]) => {
     setModelsState(models);
@@ -113,7 +126,11 @@ export const useChatState = (): [ChatState, ChatActions] => {
     response,
     selectedModel,
     models,
-    isSearching // Include isSearching in the state
+    isWorkingInBackground,
+    backgroundAction,
+    isPaused,
+    pausedRequest,
+    correctionText
   };
 
   const actions: ChatActions = {
@@ -130,7 +147,11 @@ export const useChatState = (): [ChatState, ChatActions] => {
     updateConversationInList,
     removeConversationFromList,
     setModels,
-    setIsSearching // Include setIsSearching in the actions
+    setIsWorkingInBackground,
+    setBackgroundAction,
+    setIsPaused,
+    setPausedRequest,
+    setCorrectionText
   };
 
   return [state, actions];

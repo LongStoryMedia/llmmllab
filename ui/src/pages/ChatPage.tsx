@@ -4,7 +4,7 @@ import { useParams } from 'react-router-dom';
 import ChatContainer from '../components/Chat/ChatContainer';
 import ChatBubble from '../components/Chat/ChatBubble';
 import { useChat } from '../chat';
-import { ChatMessage } from '../api';
+import { ChatMessage } from '../types/ChatMessage';
 import ChatInput from '../components/Chat/ChatInput';
 
 const ChatPage = memo(() => {
@@ -16,7 +16,8 @@ const ChatPage = memo(() => {
   const [currentMessage, setCurrentMessage] = useState<ChatMessage>({
     role: 'assistant' as const,
     content: response,
-    id: (messages[messages.length - 1]?.id ?? 0) + 1
+    id: (messages[messages.length - 1]?.id ?? 0) + 1,
+    conversation_id: conversationId ? parseInt(conversationId, 10) : currentConversation?.id || 0
   });
 
 

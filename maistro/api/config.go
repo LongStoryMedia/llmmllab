@@ -2,8 +2,8 @@ package api
 
 import (
 	"maistro/auth"
-	"maistro/config"
 	"maistro/context"
+	"maistro/models"
 	"maistro/util"
 
 	"github.com/gofiber/fiber/v2"
@@ -32,9 +32,8 @@ func GetUserConfig(c *fiber.Ctx) error {
 // UpdateUserConfig updates a user's configuration settings
 func UpdateUserConfig(c *fiber.Ctx) error {
 	userID := c.UserContext().Value(auth.UserIDKey).(string)
-
 	// Parse the incoming user config
-	var newUserConfig config.UserConfig
+	var newUserConfig models.UserConfig
 	if err := c.BodyParser(&newUserConfig); err != nil {
 		return handleError(err, fiber.StatusBadRequest, "Invalid configuration format")
 	}
@@ -43,19 +42,57 @@ func UpdateUserConfig(c *fiber.Ctx) error {
 	currentConfig, err := context.GetUserConfig(userID)
 	if err != nil {
 		// If we can't get current config, we'll just use what was provided
-		currentConfig = &config.UserConfig{UserID: userID}
+		currentConfig = &models.UserConfig{UserID: userID}
 	}
 
-	// Preserve important fields
+	// Preserve important fields and merge configurations
 	newUserConfig.UserID = userID
+
+	// Merge in existing fields if they weren't included in the update
+	// Summarization config
+	if newUserConfig.Summarization == nil && currentConfig.Summarization != nil {
+		newUserConfig.Summarization = currentConfig.Summarization
+		util.LogDebug("Preserving existing summarization config", logrus.Fields{"userID": userID})
+	}
+
+	// Memory config
+	if newUserConfig.Memory == nil && currentConfig.Memory != nil {
+		newUserConfig.Memory = currentConfig.Memory
+		util.LogDebug("Preserving existing memory config", logrus.Fields{"userID": userID})
+	}
+
+	// Web search config
+	if newUserConfig.WebSearch == nil && currentConfig.WebSearch != nil {
+		newUserConfig.WebSearch = currentConfig.WebSearch
+		util.LogDebug("Preserving existing web search config", logrus.Fields{"userID": userID})
+	}
+
+	// Preferences config
+	if newUserConfig.Preferences == nil && currentConfig.Preferences != nil {
+		newUserConfig.Preferences = currentConfig.Preferences
+		util.LogDebug("Preserving existing preferences config", logrus.Fields{"userID": userID})
+	}
+
+	// Refinement config
+	if newUserConfig.Refinement == nil && currentConfig.Refinement != nil {
+		newUserConfig.Refinement = currentConfig.Refinement
+		util.LogDebug("Preserving existing refinement config", logrus.Fields{"userID": userID})
+	}
+
+	// ImageGeneration config
+	if newUserConfig.ImageGeneration == nil && currentConfig.ImageGeneration != nil {
+		newUserConfig.ImageGeneration = currentConfig.ImageGeneration
+		util.LogDebug("Preserving existing image generation config", logrus.Fields{"userID": userID})
+	}
 
 	// Special handling for ModelProfiles to ensure they aren't lost if partial update
 	if newUserConfig.ModelProfiles != nil {
 		// Updating model profiles for user
+		util.LogDebug("Updating model profiles for user", logrus.Fields{"userID": userID})
 	} else if currentConfig.ModelProfiles != nil {
 		// If the request doesn't include model profiles but we have existing ones, preserve them
 		newUserConfig.ModelProfiles = currentConfig.ModelProfiles
-		// Preserving existing model profiles for user
+		util.LogDebug("Preserving existing model profiles for user", logrus.Fields{"userID": userID})
 	}
 
 	// Use context package cache-aware function to update

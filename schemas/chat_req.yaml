@@ -18,7 +18,7 @@ properties:
     type: object
     additionalProperties: true
     description: The format to return a response in. Format can be json or a JSON schema
-  conversationId:
+  conversation_id:
     type: integer
     description: UI sends camelCase
   keep_alive:

@@ -2,14 +2,15 @@ import { useState, useEffect } from 'react';
 import { Box, TextField, Typography, Button, Alert, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import { useConfigContext } from '../../context/ConfigContext';
 import { useAuth } from '../../auth';
+import { PreferencesConfig } from '../../types/PreferencesConfig';
 
 const ProfileSettings = () => {
   const { user } = useAuth();
   const { config, updatePartialConfig, isLoading } = useConfigContext();
-  const [preferences, setPreferences] = useState({
-    fontSize: 14,
+  const [preferences, setPreferences] = useState<PreferencesConfig>({
+    font_size: 14,
     language: 'en',
-    notificationsOn: true
+    notifications_on: true
   });
   
   const [saveStatus, setSaveStatus] = useState<{success?: boolean; message: string} | null>(null);
@@ -18,9 +19,9 @@ const ProfileSettings = () => {
   useEffect(() => {
     if (config?.preferences) {
       setPreferences({
-        fontSize: config.preferences.font_size || 14,
+        font_size: config.preferences.font_size || 14,
         language: config.preferences.language || 'en',
-        notificationsOn: config.preferences.notifications_on !== false
+        notifications_on: config.preferences.notifications_on !== false
       });
     }
   }, [config]);
@@ -28,7 +29,14 @@ const ProfileSettings = () => {
   const handleSave = async () => {
     setSaveStatus(null);
     try {
-      const success = await updatePartialConfig('preferences', preferences);
+      // Convert camelCase to snake_case when passing to updatePartialConfig
+      const snakeCasePreferences = {
+        font_size: preferences.font_size,
+        language: preferences.language,
+        notifications_on: preferences.notifications_on
+      };
+      
+      const success = await updatePartialConfig('preferences', snakeCasePreferences);
       
       if (success) {
         setSaveStatus({
@@ -58,7 +66,6 @@ const ProfileSettings = () => {
       <Typography variant="h6" gutterBottom>
         Profile Settings
       </Typography>
-      
       {saveStatus && (
         <Alert 
           severity={saveStatus.success ? "success" : "error"} 
@@ -68,11 +75,9 @@ const ProfileSettings = () => {
           {saveStatus.message}
         </Alert>
       )}
-      
       <Typography variant="subtitle1" gutterBottom>
         Account Information
       </Typography>
-      
       <TextField
         label="Name"
         value={user?.profile.name || ''}
@@ -81,7 +86,6 @@ const ProfileSettings = () => {
         disabled
         helperText="Your account name (managed by authentication provider)"
       />
-      
       <TextField
         label="Email"
         value={user?.profile.email || ''}
@@ -90,22 +94,21 @@ const ProfileSettings = () => {
         disabled
         helperText="Your account email (managed by authentication provider)"
       />
-      
       <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>
         Display Preferences
       </Typography>
-      
       <TextField
         label="Font Size"
         type="number"
-        value={preferences.fontSize}
-        onChange={(e) => setPreferences({...preferences, fontSize: parseInt(e.target.value) || 14})}
+        value={preferences.font_size}
+        onChange={(e) => setPreferences({...preferences, font_size: parseInt(e.target.value) || 14})}
         fullWidth
         margin="normal"
-        InputProps={{ inputProps: { min: 10, max: 24 } }}
         helperText="Font size for chat messages (10-24px)"
+        slotProps={{
+          input: { inputProps: { min: 10, max: 24 } }
+        }}
       />
-      
       <FormControl fullWidth margin="normal">
         <InputLabel id="language-select-label">Language</InputLabel>
         <Select
@@ -123,7 +126,6 @@ const ProfileSettings = () => {
           <MenuItem value="ja">Japanese</MenuItem>
         </Select>
       </FormControl>
-      
       <Button 
         variant="contained" 
         color="primary" 

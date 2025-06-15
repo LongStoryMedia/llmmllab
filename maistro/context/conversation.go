@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maistro/config"
 	"maistro/models"
 	"maistro/proxy"
 	"maistro/storage"
@@ -25,6 +24,8 @@ type ConversationContext struct {
 	Messages          []models.Message
 	RetrievedMemories []models.Memory       // Memories retrieved using semantic or keyword search
 	SearchResults     []models.SearchResult // Search results from web search
+	Notes             []string
+	Images            []models.ImageMetadata // Images associated with the conversation
 }
 
 // GetOrCreateConversation retrieves or creates a conversation context
@@ -160,7 +161,7 @@ func loadConversationSummaries(ctx context.Context, cc *ConversationContext) err
 }
 
 // createMessageMemory creates a memory for a message and stores it in the database
-func (cc *ConversationContext) createMessageMemory(ctx context.Context, msg models.Message, usrCfg *config.UserConfig) ([][]float32, error) {
+func (cc *ConversationContext) createMessageMemory(ctx context.Context, msg models.Message, usrCfg *models.UserConfig) ([][]float32, error) {
 	profile, err := storage.ModelProfileStoreInstance.GetModelProfile(ctx, usrCfg.ModelProfiles.EmbeddingProfileID)
 	if err != nil {
 		return nil, util.HandleError(fmt.Errorf("failed to get model profile for embedding: %w", err))
@@ -180,7 +181,7 @@ func (cc *ConversationContext) createMessageMemory(ctx context.Context, msg mode
 }
 
 // createSummaryMemory creates a memory for a summary and stores it in the database
-func (cc *ConversationContext) createSummaryMemory(ctx context.Context, summary models.Summary, usrCfg *config.UserConfig) ([][]float32, error) {
+func (cc *ConversationContext) createSummaryMemory(ctx context.Context, summary models.Summary, usrCfg *models.UserConfig) ([][]float32, error) {
 	profile, err := storage.ModelProfileStoreInstance.GetModelProfile(ctx, usrCfg.ModelProfiles.EmbeddingProfileID)
 	if err != nil {
 		return nil, util.HandleError(fmt.Errorf("failed to get model profile for embedding: %w", err))
@@ -322,12 +323,29 @@ func (cc *ConversationContext) ChainMessages(req *models.ChatReq) ([]byte, error
 
 	// Add level summaries (one from each level)
 	if err := cc.addLevelSummariesToReq(req); err != nil {
-		return nil, err
+		return nil, util.HandleError(err)
 	}
 
 	// Add recent messages
 	if err := cc.addRecentMessagesToReq(req); err != nil {
-		return nil, err
+		return nil, util.HandleError(err)
+	}
+
+	// Add any notes to the request
+	if len(cc.Notes) > 0 {
+		for _, note := range cc.Notes {
+			req.Messages = append(req.Messages, models.ChatMessage{
+				Role:    "system",
+				Content: fmt.Sprintf("Note: %s", note),
+			})
+			util.LogDebug("Added note to request", logrus.Fields{
+				"note": note,
+			})
+		}
+		util.LogInfo("Added notes to request", logrus.Fields{
+			"count": len(cc.Notes),
+			"notes": cc.Notes,
+		})
 	}
 	msgsInOrder := make([]string, 0)
 
@@ -388,15 +406,11 @@ func (cc *ConversationContext) addRecentMessagesToReq(req *models.ChatReq) error
 		return err
 	}
 
-	// Include only N most recent messages (user or assistant)
-	messagesToInclude := min(len(cc.Messages), userConfig.Summarization.MessagesBeforeSummary)
-
 	// Calculate starting index for messages
-	startIndex := max(len(cc.Messages)-messagesToInclude, 0)
+	startIndex := max(len(cc.Messages)-userConfig.Summarization.MessagesBeforeSummary, 0)
 
 	util.LogInfo("Including most recent messages in request to Ollama", logrus.Fields{
-		"count": messagesToInclude,
-	})
+		"count": userConfig.Summarization.MessagesBeforeSummary})
 
 	// Add regular messages (most recent based on configuration)
 	// Ensure messages are in chronological order (oldest first, newest last)

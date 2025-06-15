@@ -100,24 +100,41 @@ def _generate_single_schema(schema_data: Dict, language: str, schema_file: str,
 
 
 def _preprocess_schema_references(ref_resolver: SchemaRefResolver, schema: Dict[str, Any]) -> None:
-    """Ensure all references are resolved before generation, including chained ones"""
-    # Process definitions first to discover reference chains
-    if 'definitions' in schema:
-        for def_name, def_schema in schema['definitions'].items():
-            if '$ref' in def_schema:
-                # Resolve reference to populate the resolver's mappings
-                try:
-                    ref_resolver.resolve_ref(def_schema['$ref'])
-                except Exception as e:
-                    print(f"Warning when preprocessing {def_name}: {e}")
+    """
+    Pre-process all references in the schema to resolve chained references and prepare external refs
+    """
+    # Process all property references
+    for prop_name, prop_schema in schema.get("properties", {}).items():
+        if "$ref" in prop_schema:
+            ref_path = prop_schema["$ref"]
 
-    # Process properties
-    for _, prop_schema in schema.get("properties", {}).items():
-        if '$ref' in prop_schema:
+            # For external references, add to the used_refs
+            if not ref_path.startswith("#"):
+                ref_resolver.add_external_ref(ref_path)
+
             try:
-                ref_resolver.resolve_ref(prop_schema['$ref'])
+                # Resolve the reference to populate resolver's cache
+                ref_resolver.resolve_ref(ref_path)
             except Exception as e:
-                print(f"Warning when preprocessing property: {e}")
+                print(
+                    f"Warning: Could not resolve reference {ref_path}: {e}", file=sys.stderr)
+
+    # Also process any definitions
+    if "definitions" in schema:
+        for def_name, def_schema in schema["definitions"].items():
+            if "$ref" in def_schema:
+                ref_path = def_schema["$ref"]
+
+                # For external references, add to the used_refs
+                if not ref_path.startswith("#"):
+                    ref_resolver.add_external_ref(ref_path)
+
+                try:
+                    # Resolve the reference
+                    ref_resolver.resolve_ref(ref_path)
+                except Exception as e:
+                    print(
+                        f"Warning: Could not resolve definition reference {ref_path}: {e}", file=sys.stderr)
 
 
 def main():

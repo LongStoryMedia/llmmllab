@@ -9,9 +9,6 @@ properties:
   limit:
     type: integer
     description: Retrieval limit
-  profile_id:
-    type: string
-    description: Profile ID
   enable_cross_user:
     type: boolean
     description: Enable cross-user retrieval

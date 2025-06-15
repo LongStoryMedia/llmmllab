@@ -12,9 +12,6 @@ properties:
   summaries_before_consolidation:
     type: integer
     description: Number of summaries before consolidation
-  embedding_model:
-    type: string
-    description: Embedding model
   embedding_dimension:
     type: integer
     description: Embedding dimension
@@ -25,3 +22,11 @@ properties:
     type: number
     format: float
     description: Summary weight coefficient
+required:
+  - enabled
+  - messages_before_summary
+  - summaries_before_consolidation
+  - embedding_model
+  - embedding_dimension
+  - max_summary_levels
+  - summary_weight_coefficient

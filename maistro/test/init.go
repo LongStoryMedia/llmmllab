@@ -75,8 +75,8 @@ func Init() {
 		conf.Database.Password,
 		conf.Database.Host,
 		conf.Database.Port,
-		conf.Database.DBName,
-		conf.Database.SSLMode,
+		conf.Database.Dbname,
+		conf.Database.Sslmode,
 	)
 
 	InitMockStore()

@@ -2,7 +2,7 @@ package context
 
 import (
 	"context"
-	"maistro/config"
+	"maistro/models"
 	"maistro/storage"
 	"sync"
 	"time"
@@ -12,7 +12,7 @@ import (
 
 // userConfigCacheEntry holds a user config and its expiry
 type userConfigCacheEntry struct {
-	config    *config.UserConfig
+	config    *models.UserConfig
 	expiresAt time.Time
 }
 
@@ -54,14 +54,8 @@ func userConfigJanitor() {
 	}
 }
 
-// UpdateUserConfig provides a wrapper around the config package's UpdateUserConfig
-func UpdateUserConfig(userConfig config.UserConfig) {
-	conf := config.GetConfig(nil)
-	conf.UpdateUserConfig(userConfig)
-}
-
 // GetUserConfig returns the user config from cache, falling back to storage
-func GetUserConfig(userID string) (*config.UserConfig, error) {
+func GetUserConfig(userID string) (*models.UserConfig, error) {
 	userConfigCacheMutex.RLock()
 	entry, ok := userConfigCache[userID]
 	userConfigCacheMutex.RUnlock()
@@ -83,7 +77,7 @@ func GetUserConfig(userID string) (*config.UserConfig, error) {
 }
 
 // SetUserConfig updates the cache and storage
-func SetUserConfig(userConfig *config.UserConfig) error {
+func SetUserConfig(userConfig *models.UserConfig) error {
 	if userConfig == nil {
 		util.LogWarning("SetUserConfig called with nil userConfig")
 		return nil

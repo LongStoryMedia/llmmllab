@@ -15,3 +15,8 @@ properties:
   include_results:
     type: boolean
     description: Include results in response
+required:
+  - enabled
+  - auto_detect
+  - max_results
+  - include_results

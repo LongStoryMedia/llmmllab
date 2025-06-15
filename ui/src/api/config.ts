@@ -39,7 +39,7 @@ export async function updateModelProfileAssignments(
   return updateConfig(token, {
     ...currentConfig,
     model_profiles: {
-      ...currentConfig.model_profiles,  // Preserve existing settings
+      ...currentConfig.model_profiles!,  // Preserve existing settings
       ...assignments  // Apply new assignments
     }
   });

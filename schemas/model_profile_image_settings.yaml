@@ -1,0 +1,36 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ModelProfileImageSettings
+description: ModelProfileImageSettings represents the image settings for a model profile
+type: object
+properties:
+  height:
+    type: integer
+    description: Height of the image in pixels
+  width:
+    type: integer
+    description: Width of the image in pixels
+  inference_steps:
+    type: integer
+    description: Number of inference steps
+    nullable: true
+  guidance_scale:
+    type: number
+    format: float
+    description: Guidance scale for image generation
+    nullable: true
+  low_memory_mode:
+    type: boolean
+    description: Whether to use low memory mode
+    nullable: true
+  negative_prompt:
+    type: string
+    description: Negative prompt for image generation
+    nullable: true
+  lora_model:
+    type: string
+    description: Name of the LoRA model to use for image generation
+    nullable: true
+required:
+  - role
+  - content
+  - conversation_id

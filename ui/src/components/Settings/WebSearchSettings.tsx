@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Box, Typography, FormControlLabel, Switch, Slider, Alert, Button } from '@mui/material';
 import { useConfigContext } from '../../context/ConfigContext';
+import { WebSearchConfig } from '../../types/WebSearchConfig';
 
 const WebSearchSettings = () => {
   const { config, updatePartialConfig, isLoading } = useConfigContext();
-  const [localConfig, setLocalConfig] = useState({
+  const [localConfig, setLocalConfig] = useState<WebSearchConfig>({
     enabled: false,
-    autoDetect: true,
-    maxResults: 3,
-    includeResults: true
+    auto_detect: true,
+    max_results: 3,
+    include_results: true
   });
   const [saveStatus, setSaveStatus] = useState<{success?: boolean; message: string} | null>(null);
 
@@ -17,9 +18,9 @@ const WebSearchSettings = () => {
     if (config?.web_search) {
       setLocalConfig({
         enabled: config.web_search.enabled ?? false,
-        autoDetect: config.web_search.auto_detect ?? true,
-        maxResults: config.web_search.max_results ?? 3,
-        includeResults: config.web_search.include_results ?? true
+        auto_detect: config.web_search.auto_detect ?? true,
+        max_results: config.web_search.max_results ?? 3,
+        include_results: config.web_search.include_results ?? true
       });
     }
   }, [config]);
@@ -34,21 +35,21 @@ const WebSearchSettings = () => {
   const handleToggleAutoDetect = () => {
     setLocalConfig({
       ...localConfig,
-      autoDetect: !localConfig.autoDetect
+      auto_detect: !localConfig.auto_detect
     });
   };
 
   const handleToggleIncludeResults = () => {
     setLocalConfig({
       ...localConfig,
-      includeResults: !localConfig.includeResults
+      include_results: !localConfig.include_results
     });
   };
 
   const handleMaxResultsChange = (_event: Event, newValue: number | number[]) => {
     setLocalConfig({
       ...localConfig,
-      maxResults: newValue as number
+      max_results: newValue as number
     });
   };
 
@@ -113,7 +114,7 @@ const WebSearchSettings = () => {
           <FormControlLabel
             control={
               <Switch 
-                checked={localConfig.autoDetect} 
+                checked={localConfig.auto_detect} 
                 onChange={handleToggleAutoDetect} 
               />
             }
@@ -124,7 +125,7 @@ const WebSearchSettings = () => {
           <FormControlLabel
             control={
               <Switch 
-                checked={localConfig.includeResults} 
+                checked={localConfig.include_results} 
                 onChange={handleToggleIncludeResults} 
               />
             }
@@ -133,11 +134,11 @@ const WebSearchSettings = () => {
           />
           
           <Typography id="max-results-slider" gutterBottom>
-            Maximum search results: {localConfig.maxResults}
+            Maximum search results: {localConfig.max_results}
           </Typography>
           <Slider
             aria-labelledby="max-results-slider"
-            value={localConfig.maxResults}
+            value={localConfig.max_results}
             onChange={handleMaxResultsChange}
             step={1}
             marks

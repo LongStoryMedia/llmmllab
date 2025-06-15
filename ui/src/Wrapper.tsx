@@ -10,6 +10,7 @@ import { ConfigProvider } from './context/ConfigContext'
 import MainLayout from './components/Layout/MainLayout'
 import ThemeToggle from './components/Shared/ThemeToggle'
 import LoadingAnimation from './components/Shared/LoadingAnimation'
+import { BackgroundProcessProvider } from './context/BackgroundProcessContext'
 
 
 const Wrapper:React.FC = () => {
@@ -35,11 +36,13 @@ const Wrapper:React.FC = () => {
             <LoadingAnimation size={1000} />
           </Box>
         ) : (
-          <ChatProvider>
-            <MainLayout>
-              <Router />
-            </MainLayout>
-          </ChatProvider>
+          <BackgroundProcessProvider>
+            <ChatProvider>
+              <MainLayout>
+                <Router />
+              </MainLayout>
+            </ChatProvider>
+          </BackgroundProcessProvider>
         )}
       </ConfigProvider>
       <ThemeToggle mode={mode} setMode={setMode} />

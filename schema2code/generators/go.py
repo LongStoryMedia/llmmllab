@@ -37,7 +37,8 @@ class GoGenerator:
                  schema_file: Optional[str] = None,
                  ref_resolver: Optional[SchemaRefResolver] = None,
                  is_main: bool = True,
-                 referenced_by: Optional[str] = None) -> str:
+                 referenced_by: Optional[str] = None,
+                 include_yaml_tags: bool = True) -> str:
         """Generate Go types from a JSON schema"""
         # Initialize ref resolver if needed
         if ref_resolver is None and schema_file is not None:
@@ -325,7 +326,8 @@ class GoGenerator:
     def _generate_struct_only(schema: Dict[str, Any], schema_file: Optional[str] = None,
                               ref_resolver: Optional[SchemaRefResolver] = None,
                               processed_types: Optional[set] = None,
-                              parent_title: Optional[str] = None) -> str:
+                              parent_title: Optional[str] = None,
+                              include_yaml_tags: bool = True) -> str:
         """Generate only the struct definition without package declaration"""
         if processed_types is None:
             processed_types = set()
@@ -340,6 +342,21 @@ class GoGenerator:
 
         # If this is a standalone file generation, don't skip external refs
         force_generation = ref_resolver is None
+
+        # Check if this type exists as an external reference that should be imported
+        if not force_generation and ref_resolver and schema_file and title:
+            # Check all external references to see if this type matches any of them
+            for ref_path, schema_path in ref_resolver.external_refs.items():
+                # Skip this file itself
+                if os.path.abspath(schema_path) == os.path.abspath(schema_file):
+                    continue
+
+                # Check if the title matches an externally referenced type name
+                ext_type_name = ref_resolver.external_ref_types.get(
+                    schema_path, "")
+                if ext_type_name == title:
+                    # Skip generation of this type since it's defined in a separate file
+                    return ""
 
         # Skip if this is a reference to an external schema and not forced
         if not force_generation and "$ref" in schema and ref_resolver:
@@ -451,14 +468,6 @@ class GoGenerator:
 
         max_type_len = max(type_lengths) if type_lengths else 0
 
-        # Third pass to determine maximum json tag length for alignment
-        tag_lengths = []
-        for prop_name, _ in schema.get("properties", {}).items():
-            json_tag = f'`json:"{prop_name}"`'
-            tag_lengths.append(len(json_tag))
-
-        max_tag_len = max(tag_lengths) if tag_lengths else 0
-
         # Now generate the fields with proper alignment
         required = schema.get("required", [])
         for prop_name, prop_schema in schema.get("properties", {}).items():
@@ -472,18 +481,26 @@ class GoGenerator:
             is_required = prop_name in required
             if not is_required and not go_type.startswith("[]") and not go_type.startswith("map[") and go_type != "interface{}":
                 go_type = f"*{go_type}"
-            json_tag = f'`json:"{prop_name}"`'
+
+            # Create the combined JSON and YAML tags
+            tag_parts = [f'json:"{prop_name}"']
+            if include_yaml_tags:
+                tag_parts.append(f'yaml:"{prop_name}"')
+
+            combined_tag = f'`{" ".join(tag_parts)}`'
+
             desc = prop_schema.get("description", "")
             field_padding = " " * (max_field_len - len(field_name))
             type_padding = " " * (max_type_len - len(go_type))
-            tag_padding = " " * (max_tag_len - len(json_tag))
+
             comment = f"// {desc}" if desc else ""
+
             if desc:
                 output.append(
-                    f"\t{field_name}{field_padding} {go_type}{type_padding} {json_tag}{tag_padding} {comment}")
+                    f"\t{field_name}{field_padding} {go_type}{type_padding} {combined_tag} {comment}")
             else:
                 output.append(
-                    f"\t{field_name}{field_padding} {go_type}{type_padding} {json_tag}")
+                    f"\t{field_name}{field_padding} {go_type}{type_padding} {combined_tag}")
         output.append("}\n")
 
         # Prepend any generated enum types/constants
@@ -513,6 +530,14 @@ class GoGenerator:
                         filename)[0]  # Remove extension
                     type_name = "".join(x.capitalize()
                                         for x in base_name.split('_'))
+
+                    # Check if this type is already defined in its own file and should be imported
+                    # This prevents duplicating types from external references
+                    schema_path = os.path.join(os.path.dirname(
+                        ref_resolver.base_path), ref_path)
+                    if schema_path in ref_resolver.external_ref_types:
+                        # Just return the type name without the schema to prevent inlining
+                        return type_name, {}
 
                 # If we successfully extracted a type name, use it
                 if type_name:

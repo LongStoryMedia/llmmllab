@@ -57,7 +57,7 @@ func GetHeadersFromContext(ctx context.Context) ContextHeaders {
 
 // GetProxyHandler handles streaming responses from Ollama and collects the full assistant response
 // It properly streams to the client while also returning the accumulated content
-func GetProxyHandler[T models.OllamaResponse](ctx context.Context, reqBody []byte, path, method string, stream bool, timeout time.Duration) (func(w *bufio.Writer) (string, error), int, error) {
+func GetProxyHandler[T models.OllamaResponse](ctx context.Context, reqBody []byte, path, method string, stream bool, timeout time.Duration, cb *func(chunk T)) (func(w *bufio.Writer) (string, error), int, error) {
 	util.LogInfo("Proxying request to Ollama", logrus.Fields{"url": path})
 	conf := config.GetConfig(nil)
 	url := conf.InferenceServices.Ollama.BaseURL + path
@@ -72,7 +72,7 @@ func GetProxyHandler[T models.OllamaResponse](ctx context.Context, reqBody []byt
 	}
 
 	// Create HTTP client
-	client := createHTTPClient()
+	client := GetProxyClient()
 
 	req.Header.Set("User-Agent", "maistro/1.0")
 	req.Header.Set("Content-Type", "application/json")
@@ -110,13 +110,13 @@ func GetProxyHandler[T models.OllamaResponse](ctx context.Context, reqBody []byt
 	// Use a buffered channel to wait for streaming to complete
 	return func(w *bufio.Writer) (string, error) {
 		if stream {
-			return streamHandler[T](w, resp, &responseContent, timeout)
+			return streamHandler[T](w, resp, &responseContent, timeout, cb)
 		}
 		return resHandler(w, resp)
 	}, resp.StatusCode, nil
 }
 
-func streamHandler[T models.OllamaResponse](w *bufio.Writer, resp *http.Response, responseContent *strings.Builder, timeout time.Duration) (string, error) {
+func streamHandler[T models.OllamaResponse](w *bufio.Writer, resp *http.Response, responseContent *strings.Builder, timeout time.Duration, cb *func(chunk T)) (string, error) {
 	defer resp.Body.Close() // Ensure connection is closed when done
 	proxyToClient := true
 	completed := false
@@ -158,6 +158,10 @@ loopScan:
 		// Extract content from the JSON chunk
 		respObj := models.NewResponse[T]()
 		respObj.UnmarshalJSON(line)
+		if cb != nil {
+			(*cb)(respObj)
+		}
+
 		content := respObj.GetChunkContent()
 		if content != "" {
 			responseContent.WriteString(content)
@@ -230,8 +234,8 @@ func resHandler(w *bufio.Writer, resp *http.Response) (string, error) {
 	return string(res), nil
 }
 
-// createHTTPClient returns a configured HTTP client optimized for streaming responses
-func createHTTPClient() *http.Client {
+// GetProxyClient returns a configured HTTP client optimized for streaming responses
+func GetProxyClient() *http.Client {
 	return &http.Client{
 		Timeout: StreamTimeout, // Long timeout for streaming requests
 		Transport: &http.Transport{
@@ -244,4 +248,55 @@ func createHTTPClient() *http.Client {
 			TLSHandshakeTimeout:   0,
 		},
 	}
+}
+
+func ProxyRequest(ctx context.Context, method, url string, stream bool, reqBody []byte) (*http.Response, error) {
+	// Create the request
+	var req *http.Request
+	var err error
+	if reqBody == nil {
+		req, err = http.NewRequestWithContext(ctx, method, url, nil)
+	} else {
+		req, err = http.NewRequestWithContext(ctx, method, url, bytes.NewReader(reqBody))
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	client := GetProxyClient()
+
+	req.Header.Set("User-Agent", "maistro/1.0")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	if stream {
+		req.Header.Set("Accept-Encoding", "identity") // Disable compression for streaming
+		req.Header.Set("X-Stream", "true")            // Custom header to indicate streaming
+	} else {
+		req.Header.Set("Accept-Encoding", "gzip, deflate") // Enable compression for non-streaming
+		req.Header.Set("X-Stream", "false")                // Custom header to indicate non-streaming
+	}
+
+	// Make the request to Ollama
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		errMsg := fmt.Errorf("proxy error response: Status Code: %d, Body: %s", resp.StatusCode, string(body))
+		util.HandleError(errMsg, logrus.Fields{"statusCode": resp.StatusCode, "body": string(body)})
+		resp.Body.Close() // Close the response body to avoid resource leaks
+		return nil, fiber.NewError(resp.StatusCode, string(body))
+	}
+
+	resp.Header.Set("Content-Type", "application/json")
+	resp.Header.Set("Cache-Control", "no-cache")
+	resp.Header.Set("Connection", "keep-alive")
+	if stream {
+		resp.Header.Set("Transfer-Encoding", "chunked")
+		resp.Header.Set("X-Accel-Buffering", "no")
+	}
+
+	return resp, nil
 }

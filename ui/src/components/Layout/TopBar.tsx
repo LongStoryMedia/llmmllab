@@ -1,6 +1,7 @@
 import { AppBar, Toolbar, Typography, Button, useTheme, IconButton, Box } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import { useAuth } from '../../auth';
+import BackgroundProcessNotifications from './BackgroundProcessNotifications';
 // import Icon from '../Shared/Icon';
 // import Title from '../Shared/Title';
 
@@ -48,6 +49,7 @@ const TopBar = ({ onMenuClick }: { onMenuClick?: () => void }) => {
             Welcome, {user.profile.name}
           </Typography>
         )}
+        <BackgroundProcessNotifications />
         <Button color="inherit" onClick={logout}>
           Logout
         </Button>

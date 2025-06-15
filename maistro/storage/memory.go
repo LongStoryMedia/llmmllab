@@ -188,7 +188,7 @@ func normalizeVector(vec []float32) []float32 {
 }
 
 // SearchSimilarity searches for semantically similar messages across all conversations
-func SearchSimilarity(ctx context.Context, embedding []float32, minSimilarity float64, limit int, userID *string, conversationID *int, startDate, endDate *time.Time) ([]models.Memory, error) {
+func SearchSimilarity(ctx context.Context, embedding []float32, minSimilarity float32, limit int, userID *string, conversationID *int, startDate, endDate *time.Time) ([]models.Memory, error) {
 	if len(embedding) == 0 {
 		return nil, fmt.Errorf("embedding vector is empty")
 	}

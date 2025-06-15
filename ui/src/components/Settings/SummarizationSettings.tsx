@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Box, TextField, Typography, Button, Switch, FormControlLabel, Alert, Slider } from '@mui/material';
 import { useConfigContext } from '../../context/ConfigContext';
+import { SummarizationConfig } from '../../types/SummarizationConfig';
 
 const SummarizationSettings = () => {
   const { config, updatePartialConfig, isLoading } = useConfigContext();
-  const [localConfig, setLocalConfig] = useState({
+  const [localConfig, setLocalConfig] = useState<SummarizationConfig>({
     enabled: true,
-    messagesBeforeSummary: 10,
-    summariesBeforeConsolidation: 5,
-    embeddingDimension: 768,
-    maxSummaryLevels: 3,
-    summaryWeightCoefficient: 0.7
+    messages_before_summary: 10,
+    summaries_before_consolidation: 5,
+    embedding_dimension: 768,
+    max_summary_levels: 3,
+    summary_weight_coefficient: 0.7
   });
   
   const [saveStatus, setSaveStatus] = useState<{success?: boolean; message: string} | null>(null);
@@ -20,11 +21,11 @@ const SummarizationSettings = () => {
     if (config?.summarization) {
       setLocalConfig({
         enabled: config.summarization.enabled !== false,
-        messagesBeforeSummary: config.summarization.messages_before_summary || 10,
-        summariesBeforeConsolidation: config.summarization.summaries_before_consolidation || 5,
-        embeddingDimension: config.summarization.embedding_dimension || 768,
-        maxSummaryLevels: config.summarization.max_summary_levels || 3,
-        summaryWeightCoefficient: config.summarization.summary_weight_coefficient || 0.7
+        messages_before_summary: config.summarization.messages_before_summary ?? 10,
+        summaries_before_consolidation: config.summarization.summaries_before_consolidation ?? 5,
+        embedding_dimension: config.summarization.embedding_dimension ?? 768,
+        max_summary_levels: config.summarization.max_summary_levels ?? 3,
+        summary_weight_coefficient: config.summarization.summary_weight_coefficient ?? 0.7
       });
     }
   }, [config]);
@@ -39,14 +40,24 @@ const SummarizationSettings = () => {
   const handleWeightChange = (_event: Event, newValue: number | number[]) => {
     setLocalConfig({
       ...localConfig,
-      summaryWeightCoefficient: newValue as number
+      summary_weight_coefficient: newValue as number
     });
   };
 
   const handleSave = async () => {
     setSaveStatus(null);
     try {
-      const success = await updatePartialConfig('summarization', localConfig);
+      // Convert camelCase to snake_case when passing to updatePartialConfig
+      const snakeCaseConfig = {
+        enabled: localConfig.enabled,
+        messages_before_summary: localConfig.messages_before_summary,
+        summaries_before_consolidation: localConfig.summaries_before_consolidation,
+        embedding_dimension: localConfig.embedding_dimension,
+        max_summary_levels: localConfig.max_summary_levels,
+        summary_weight_coefficient: localConfig.summary_weight_coefficient
+      };
+      
+      const success = await updatePartialConfig('summarization', snakeCaseConfig);
       
       if (success) {
         setSaveStatus({
@@ -103,8 +114,8 @@ const SummarizationSettings = () => {
           <TextField
             label="Messages Before Summary"
             type="number"
-            value={localConfig.messagesBeforeSummary}
-            onChange={(e) => setLocalConfig({...localConfig, messagesBeforeSummary: parseInt(e.target.value) || 10})}
+            value={localConfig.messages_before_summary}
+            onChange={(e) => setLocalConfig({...localConfig, messages_before_summary: parseInt(e.target.value) || 10})}
             fullWidth
             margin="normal"
             helperText="Number of messages before generating a summary"
@@ -113,8 +124,8 @@ const SummarizationSettings = () => {
           <TextField
             label="Summaries Before Consolidation"
             type="number"
-            value={localConfig.summariesBeforeConsolidation}
-            onChange={(e) => setLocalConfig({...localConfig, summariesBeforeConsolidation: parseInt(e.target.value) || 5})}
+            value={localConfig.summaries_before_consolidation}
+            onChange={(e) => setLocalConfig({...localConfig, summaries_before_consolidation: parseInt(e.target.value) || 5})}
             fullWidth
             margin="normal"
             helperText="Number of summaries before consolidating them"
@@ -123,8 +134,8 @@ const SummarizationSettings = () => {
           <TextField
             label="Embedding Dimension"
             type="number"
-            value={localConfig.embeddingDimension}
-            onChange={(e) => setLocalConfig({...localConfig, embeddingDimension: parseInt(e.target.value) || 768})}
+            value={localConfig.embedding_dimension}
+            onChange={(e) => setLocalConfig({...localConfig, embedding_dimension: parseInt(e.target.value) || 768})}
             fullWidth
             margin="normal"
             helperText="Dimension of the embedding vectors"
@@ -133,8 +144,8 @@ const SummarizationSettings = () => {
           <TextField
             label="Max Summary Levels"
             type="number"
-            value={localConfig.maxSummaryLevels}
-            onChange={(e) => setLocalConfig({...localConfig, maxSummaryLevels: parseInt(e.target.value) || 3})}
+            value={localConfig.max_summary_levels}
+            onChange={(e) => setLocalConfig({...localConfig, max_summary_levels: parseInt(e.target.value) || 3})}
             fullWidth
             margin="normal"
             helperText="Maximum depth of summary hierarchy"
@@ -142,10 +153,10 @@ const SummarizationSettings = () => {
           
           <Box sx={{ mt: 3, mb: 2 }}>
             <Typography id="weight-coefficient-slider" gutterBottom>
-              Summary Weight Coefficient: {localConfig.summaryWeightCoefficient.toFixed(2)}
+              Summary Weight Coefficient: {localConfig.summary_weight_coefficient.toFixed(2)}
             </Typography>
             <Slider
-              value={localConfig.summaryWeightCoefficient}
+              value={localConfig.summary_weight_coefficient}
               onChange={handleWeightChange}
               aria-labelledby="weight-coefficient-slider"
               step={0.05}
