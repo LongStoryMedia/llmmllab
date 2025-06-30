@@ -33,4 +33,4 @@ required:
   - role
   - content
   - id
-  - conversationId
+  - conversation_id

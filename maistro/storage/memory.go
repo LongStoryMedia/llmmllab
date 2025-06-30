@@ -117,6 +117,106 @@ func (md *memoryStore) DeleteAllUserMemories(ctx context.Context, userID string)
 	return nil
 }
 
+// SearchSimilarity searches for semantically similar messages across all conversations
+func (md *memoryStore) SearchSimilarity(ctx context.Context, embeddings [][]float32, minSimilarity float32, limit int, userID *string, conversationID *int, startDate, endDate *time.Time) ([]models.Memory, error) {
+	memories := make([]models.Memory, 0)
+	if len(embeddings) == 0 {
+		return memories, nil // No embeddings to search
+	}
+
+	for _, embedding := range embeddings {
+		if len(embedding) == 0 {
+			return nil, util.HandleError(fmt.Errorf("embedding vector is empty"))
+		}
+		rows, err := Pool.Query(ctx, GetQuery("memory.search"),
+			formatEmbeddingForPgVector(embedding),
+			minSimilarity,
+			limit,
+			userID,
+			conversationID,
+			startDate,
+			endDate)
+		if err != nil {
+			return nil, util.HandleError(err)
+		}
+		defer rows.Close()
+
+		var currentMem models.Memory
+		var lastPairKey string = "" // Empty string as sentinel value
+
+		for rows.Next() {
+			var frag models.MemoryFragment
+			var newMem models.Memory
+
+			if err := rows.Scan(&frag.Role, &newMem.SourceID, &frag.Content, &newMem.Source, &newMem.Similarity, &newMem.ConversationID, &newMem.CreatedAt); err != nil {
+				return nil, util.HandleError(err)
+			}
+			frag.ID = newMem.SourceID
+
+			// Generate a pair key for this row similar to the one in SQL
+			var pairKey string
+			if newMem.Source == "summary" {
+				pairKey = fmt.Sprintf("summary-%d", newMem.SourceID)
+			} else {
+				// For message pairs, the SQL query should have arranged them so user messages come first
+				// If this is the first message of a pair, we'll create a new Memory
+				// If it's the second message, we'll add to the current Memory
+				if frag.Role == "user" {
+					pairKey = fmt.Sprintf("pair-%d", newMem.SourceID)
+				} else {
+					// For assistant messages, use the same key as the preceding user message
+					pairKey = lastPairKey
+				}
+			}
+
+			// Start a new memory if this is a new pair or a summary
+			if pairKey != lastPairKey || newMem.Source == "summary" {
+				// Save the current memory if it exists
+				if len(currentMem.Fragments) > 0 {
+					memories = append(memories, currentMem)
+				}
+
+				// Create a new memory
+				currentMem = models.Memory{
+					SourceID:       newMem.SourceID,
+					Source:         newMem.Source,
+					Similarity:     newMem.Similarity,
+					ConversationID: newMem.ConversationID,
+					CreatedAt:      newMem.CreatedAt,
+					Fragments:      []models.MemoryFragment{},
+				}
+			}
+
+			// Add this fragment to the current memory
+			currentMem.Fragments = append(currentMem.Fragments, frag)
+
+			// For summaries, save immediately
+			if newMem.Source == "summary" {
+				memories = append(memories, currentMem)
+				currentMem = models.Memory{}
+				lastPairKey = ""
+			} else {
+				// Update the lastPairKey
+				lastPairKey = pairKey
+
+				// If we have a complete pair (2 fragments), save it
+				if len(currentMem.Fragments) == 2 {
+					memories = append(memories, currentMem)
+					currentMem = models.Memory{}
+					lastPairKey = ""
+				}
+			}
+		}
+
+		// Add any remaining memory (should only happen if query returns incomplete results)
+		if len(currentMem.Fragments) > 0 {
+			memories = append(memories, currentMem)
+		}
+	}
+
+	return memories, nil
+}
+
 // Vector processing utilities (migrated from embedding.go)
 // formatEmbeddingForPgVector converts a []float32 to pgvector's string format
 func formatEmbeddingForPgVector(embedding []float32) string {
@@ -185,82 +285,4 @@ func normalizeVector(vec []float32) []float32 {
 		result[i] = v / magnitude
 	}
 	return result
-}
-
-// SearchSimilarity searches for semantically similar messages across all conversations
-func SearchSimilarity(ctx context.Context, embedding []float32, minSimilarity float32, limit int, userID *string, conversationID *int, startDate, endDate *time.Time) ([]models.Memory, error) {
-	if len(embedding) == 0 {
-		return nil, fmt.Errorf("embedding vector is empty")
-	}
-	rows, err := Pool.Query(ctx, GetQuery("memory.search"),
-		formatEmbeddingForPgVector(embedding),
-		minSimilarity,
-		limit,
-		userID,
-		conversationID,
-		startDate,
-		endDate)
-	if err != nil {
-		return nil, fmt.Errorf("failed to search messages by similarity: %w", err)
-	}
-	defer rows.Close()
-
-	var results []models.Memory
-	var currentMem models.Memory
-	var lastMessageRole string
-	var messageCount int
-
-	for rows.Next() {
-		var frag models.MemoryFragment
-		if err := rows.Scan(&frag.Role, &currentMem.SourceID, &frag.Content, &currentMem.Source, &currentMem.Similarity, &currentMem.ConversationID, &currentMem.CreatedAt); err != nil {
-			return nil, fmt.Errorf("failed to scan message row: %w", err)
-		}
-		frag.ID = currentMem.SourceID
-
-		// Start a new memory if this is the first message or if we're starting a new set
-		if messageCount == 0 || (messageCount%2 == 0 && lastMessageRole != "") {
-			// Reset current memory for the first message
-			currentMem = models.Memory{
-				SourceID:       currentMem.SourceID,
-				Source:         currentMem.Source,
-				Similarity:     currentMem.Similarity,
-				ConversationID: currentMem.ConversationID,
-				CreatedAt:      currentMem.CreatedAt,
-				Fragments:      []models.MemoryFragment{},
-			}
-		} else if messageCount > 0 && len(currentMem.Fragments) >= 2 {
-			// If we already have 2 or more fragments, store the current memory and start a new one
-			results = append(results, currentMem)
-			currentMem = models.Memory{
-				SourceID:       currentMem.SourceID,
-				Source:         currentMem.Source,
-				Similarity:     currentMem.Similarity,
-				ConversationID: currentMem.ConversationID,
-				CreatedAt:      currentMem.CreatedAt,
-				Fragments:      []models.MemoryFragment{},
-			}
-			messageCount = 0
-		}
-
-		// Add fragment to current memory
-		currentMem.Fragments = append(currentMem.Fragments, frag)
-		lastMessageRole = frag.Role
-		messageCount++
-
-		// If we have a pair (user + assistant), add to results and reset
-		if len(currentMem.Fragments) == 2 &&
-			((currentMem.Fragments[0].Role == "user" && currentMem.Fragments[1].Role == "assistant") ||
-				(currentMem.Fragments[0].Role == "assistant" && currentMem.Fragments[1].Role == "user")) {
-			results = append(results, currentMem)
-			currentMem = models.Memory{}
-			messageCount = 0
-		}
-	}
-
-	// Add the last memory if it has at least one fragment (previously we were only adding if it had exactly 2)
-	if len(currentMem.Fragments) > 0 {
-		results = append(results, currentMem)
-	}
-
-	return results, nil
 }

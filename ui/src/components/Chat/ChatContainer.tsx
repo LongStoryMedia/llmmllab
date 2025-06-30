@@ -1,6 +1,5 @@
 import React, { useEffect, memo } from 'react';
 import { Box} from '@mui/material';
-import ChatHeader from './ChatHeader';
 import useScrollContainerRef from '../../hooks/useScrollContainerRef';
 import { useChat } from '../../chat';
 
@@ -9,13 +8,8 @@ interface ChatContainerProps {
 }
 
 const ChatContainer: React.FC<ChatContainerProps> = memo(({ children }) => {
-  const [drawerOpen, setDrawerOpen] = React.useState(false);
-  const { currentConversation, isTyping, isPaused, setIsPaused, abortGeneration, resumeWithCorrections } = useChat();
+  const { isTyping, cancelRequest: abortGeneration } = useChat();
   const scrollContainerRef = useScrollContainerRef();
-
-  const handleDrawerToggle = () => {
-    setDrawerOpen(!drawerOpen);
-  };
 
   useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
@@ -31,20 +25,6 @@ const ChatContainer: React.FC<ChatContainerProps> = memo(({ children }) => {
     };
   }, [isTyping, abortGeneration]);
 
-  // Handle pausing a request
-  const handlePauseClick = () => {
-    if (isTyping && !isPaused) {
-      setIsPaused(true);
-    }
-  };
-
-  // Handle resuming with corrections
-  const handleResumeClick = (corrections: string) => {
-    if (isPaused) {
-      resumeWithCorrections(corrections);
-    }
-  };
-
   return (
     <Box
       sx={{
@@ -54,15 +34,7 @@ const ChatContainer: React.FC<ChatContainerProps> = memo(({ children }) => {
         flexDirection: 'column',
         height: '100%'
       }} 
-    >       
-      <ChatHeader 
-        title={currentConversation?.title || 'New Conversation'} 
-        onMenuClick={handleDrawerToggle} 
-        isTyping={isTyping}
-        isPaused={isPaused}
-        onPauseClick={handlePauseClick}
-        onResumeClick={handleResumeClick}
-      />
+    >
       <Box 
         sx={{
           flex: 1, 

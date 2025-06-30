@@ -1,0 +1,51 @@
+FROM nvidia/cuda:12.8.1-base-ubuntu22.04
+
+# Install Python and other required packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    python3-distutils \
+    curl \
+    git && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy app code first (to use requirements.txt)
+COPY . .
+RUN curl -fsSL https://ollama.com/install.sh -o install.sh
+RUN chmod +x install.sh
+RUN sh install.sh
+# Create a virtual environment and install dependencies directly in the final stage
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH" \
+    VIRTUAL_ENV="/opt/venv" \
+    PYTHONUNBUFFERED=1 \
+    IMAGE_DIR="/root/images"
+
+# Install packages in the final stage
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r torch_requirements.txt
+RUN pip install -U "huggingface_hub[cli]"
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility,video \
+    HF_HOME=/root/.cache/huggingface \
+    PYTHONPATH="/app"
+
+RUN mkdir -p /root/images
+
+# Install uvicorn with extra dependencies for better reloading
+RUN python3 -m pip install "uvicorn[standard]" watchfiles websockets
+
+# Verify our Python environment works and has all required packages
+RUN python3 -m pip list | grep -e fastapi -e uvicorn
+
+# Expose ports
+EXPOSE 11434 8000
+
+# Default fallback command if not overridden by the deployment
+CMD ["sh", "-c", "ollama serve & echo 'Note: For live code editing, mount your code to /app' && if [ -f /app/app.py ]; then cd /app && uvicorn app:app --host 0.0.0.0 --port 8000 --reload; else echo 'WARNING: app.py not found in /app directory'; ls -la /app; exit 1; fi"]

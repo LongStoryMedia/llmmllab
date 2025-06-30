@@ -9,6 +9,8 @@ properties:
     $ref: database_config.yaml
   redis:
     $ref: redis_config.yaml
+  rabbitmq:
+    $ref: rabbitmq_config.yaml
   auth:
     $ref: auth_config.yaml
   inference_services:
@@ -44,3 +46,4 @@ required:
   - refinement
   - image_generation
   - log_level
+  - rabbitmq

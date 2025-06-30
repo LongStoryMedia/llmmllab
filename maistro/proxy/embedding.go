@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maistro/models"
+	"maistro/session"
 	"maistro/util"
 	"net/http"
 	"time"
@@ -29,7 +30,7 @@ func splitTextIntoChunks(text string, maxChunkSize int) []string {
 }
 
 // GetOllamaEmbedding retrieves a vector embedding for the provided text from Ollama
-func GetOllamaEmbedding(ctx context.Context, textToEmbed string, modelName string) ([][]float32, error) {
+func GetOllamaEmbedding(ctx context.Context, textToEmbed string, mp *models.ModelProfile) ([][]float32, error) {
 	// Sanitize the input text before embedding
 	cleanText := util.SanitizeText(textToEmbed)
 
@@ -41,16 +42,18 @@ func GetOllamaEmbedding(ctx context.Context, textToEmbed string, modelName strin
 	}
 
 	requestPayload := models.EmbeddingReq{
-		Model:    modelName,
+		Model:    mp.ModelName,
 		Input:    inputChunks,
 		Truncate: util.BoolPtr(true), // Truncate long inputs to fit model constraints
+		Options:  mp.Parameters.ToMap(),
 	}
 	payloadBytes, err := json.Marshal(requestPayload)
 	if err != nil {
 		return nil, util.HandleError(fmt.Errorf("failed to marshal embedding request: %w", err))
 	}
 
-	handler, _, err := GetProxyHandler[*models.OllamaEmbeddingResponse](ctx, payloadBytes, "/api/embed", http.MethodPost, false, time.Second*15, nil)
+	ss := session.GlobalStageManager.GetSessionState("test_user", 99)
+	handler, _, err := GetProxyHandler[*models.OllamaEmbeddingResponse](ctx, ss, payloadBytes, "/api/embed", http.MethodPost, false, time.Second*15, nil)
 	if err != nil {
 		return nil, util.HandleError(fmt.Errorf("failed to get proxy handler for embedding request: %w", err))
 	}

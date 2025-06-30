@@ -44,7 +44,7 @@ func ParseMessagesCSV(filePath string) ([]models.Message, error) {
 
 		message := models.Message{
 			ID:             id,
-			ConversationID: &conversationID,
+			ConversationID: conversationID,
 			Role:           record[2],
 			Content:        record[3],
 			CreatedAt:      &createdAt,

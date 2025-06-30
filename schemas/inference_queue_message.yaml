@@ -1,0 +1,37 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+title: InferenceQueueMessage
+description: Schema for an inference request in the LLM system
+type: object
+properties:
+  correlation_id:
+    type: string
+    description: Unique identifier for the request and response correlation
+  priority:
+    type: integer
+    description: Priority of the request
+  timestamp:
+    type: string
+    format: date-time
+    description: Timestamp of the request
+  payload:
+    type:
+      - object
+      - string
+      - null
+    description: Payload containing the inference request details
+    additionalProperties: true
+  type:
+    type: string
+    description: Type of the request, e.g., "chat", "image_generation", etc.
+    enum:
+      - image
+      - research
+  memory_required:
+    type: number
+    description: Required memory in bytes for processing the request
+required:
+  - correlation_id
+  - priority
+  - timestamp
+  - type
+  - memory_required

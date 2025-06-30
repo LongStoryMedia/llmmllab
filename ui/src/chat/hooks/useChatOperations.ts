@@ -1,79 +1,15 @@
-import { useCallback, useMemo, useRef, useEffect } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { ChatState, ChatActions } from './useChatState';
 import { useAuth } from '../../auth';
-import { chat, getManyConversations, getMessages, removeConversation, startConversation, updateConversationTitle, getModels, getToken, getUserConversations, getLllabUsers } from '../../api';
-import { generateImageWithUpdates } from '../../api/image';
-import { ChatWebSocketClient, ChatWebSocketHandlers } from '../../api/websocket';
+import { chat, getManyConversations, getMessages, removeConversation, startConversation, getModels, getToken, getUserConversations, getLllabUsers, pause, cancel, resume } from '../../api';
 import { ChatMessage } from '../../types/ChatMessage';
 import { Conversation } from '../../types/Conversation';
 import { ChatRequest } from '../../types/ChatRequest';
-import { ImageGenerationNotification } from '../../types/ImageGenerationNotification';
-import { ImageGenerateRequest } from '../../types/ImageGenerationRequest';
 
 export const useChatOperations = (state: ChatState, actions: ChatActions) => {
   const auth = useAuth();
-  const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const abortController = useRef<AbortController | null>(null);
   const currentUserId = useMemo(() => auth.user?.profile?.preferred_username ?? '', [auth.user]);
-  const imageGenSocketRef = useRef<() => void | null>(null);
-
-  // WebSocket reference
-  const chatWebSocketRef = useRef<ChatWebSocketClient | null>(null);
-
-  // Initialize WebSocket client
-  useEffect(() => {
-    if (auth.user) {
-      const handlers: ChatWebSocketHandlers = {
-        onChunk: (chunk) => {
-          actions.setResponse(prev => prev + chunk);
-        },
-        onError: (error) => {
-          actions.setError(error);
-          actions.setIsTyping(false);
-          actions.setIsPaused(false);
-        },
-        onPaused: () => {
-          actions.setIsTyping(false);
-          actions.setIsPaused(true);
-          console.log("Chat paused via WebSocket");
-        },
-        onResumed: () => {
-          actions.setIsTyping(true);
-          actions.setIsPaused(false);
-          console.log("Chat resumed via WebSocket");
-        },
-        onComplete: () => {
-          actions.setIsTyping(false);
-          actions.setIsLoading(false);
-          actions.setIsPaused(false);
-          actions.setPausedRequest(null);
-          console.log("Chat completed via WebSocket");
-        },
-        onConnected: (sessionId) => {
-          console.log("WebSocket connected with session ID:", sessionId);
-        }
-      };
-
-      const newWsClient = new ChatWebSocketClient(handlers);
-      newWsClient.connect(getToken(auth.user))
-        .then(() => {
-          console.log("WebSocket client connected successfully");
-        })
-        .catch(err => {
-          console.error("Failed to connect WebSocket client:", err);
-          // Fall back to HTTP API
-        });
-
-      chatWebSocketRef.current = newWsClient;
-
-      return () => {
-        if (chatWebSocketRef.current) {
-          chatWebSocketRef.current.disconnect();
-          chatWebSocketRef.current = null;
-        }
-      };
-    }
-  }, [auth.user, actions]);
 
   // Fetch models
   const fetchModels = useCallback(async () => {
@@ -81,7 +17,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     actions.setError(null);
     try {
       const modelsData = await getModels(getToken(auth.user));
-      actions.setModels(modelsData?.models);
+      actions.setModels(modelsData);
     } catch (err: unknown) {
       actions.setError((err as Error).message);
       console.error("Error fetching models:", err);
@@ -189,113 +125,54 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
   }, [actions]);
 
   // Pause the current chat request
-  const pauseRequest = useCallback(() => {
+  const pauseRequest = useCallback(async () => {
     if (!state.isTyping || state.isPaused) {
       return; // No active request to pause or already paused
     }
 
-    // Try to pause via WebSocket first
-    if (chatWebSocketRef.current && chatWebSocketRef.current.isConnected()) {
-      const success = chatWebSocketRef.current.pauseGeneration();
-      if (success) {
-        console.log("Pause request sent via WebSocket");
-        return; // Let the WebSocket handlers update the state
-      }
+    try {
+      await pause(getToken(auth.user), state.currentConversation?.id ?? -1);
+    } catch (error) {
+      actions.setError((error as Error).message);
+      console.error("Error pausing request:", error);
     }
 
-    // Fallback to abort controller method
+    // We keep the partial response in state.response
+  }, [actions, auth.user, state.isPaused, state.currentConversation?.id, state.isTyping]);
+
+  // Resume the paused chat request
+  const resumeRequest = useCallback(async () => {
+    if (!state.isPaused) {
+      return; // No paused request to resume
+    }
+
+    try {
+      await resume(getToken(auth.user), state.currentConversation?.id ?? -1);
+    } catch (error) {
+      actions.setError((error as Error).message);
+      console.error("Error pausing request:", error);
+    }
+
+    // We keep the partial response in state.response
+  }, [actions, auth.user, state.isPaused, state.currentConversation?.id]);
+
+  const cancelRequest = useCallback(async () => {
     if (abortController.current) {
       abortController.current.abort();
       abortController.current = null;
     }
 
-    actions.setIsPaused(true);
-    actions.setIsTyping(false);
-
-    console.log("Chat request paused, waiting for corrections");
-
-    // We keep the partial response in state.response
-  }, [state.isTyping, state.isPaused, actions]);
-
-  // Resume with corrections or additional context
-  const resumeWithCorrections = useCallback(async (corrections: string) => {
-    if (!state.isPaused || !state.pausedRequest) {
-      console.warn("No paused request to resume");
-      return;
-    }
-
-    actions.setIsLoading(true);
-    actions.setError(null);
-    actions.setIsTyping(true);
-
     try {
-      // Try to resume via WebSocket first
-      if (chatWebSocketRef.current && chatWebSocketRef.current.isConnected() &&
-        state.currentConversation && state.currentConversation.id) {
-        const success = chatWebSocketRef.current.resumeWithCorrections(
-          corrections,
-          state.currentConversation.id
-        );
-
-        if (success) {
-          console.log("Resume request sent via WebSocket");
-
-          // Reset the correction text
-          actions.setCorrectionText("");
-
-          // Let the WebSocket handlers handle the rest
-          return;
-        }
-      }
-
-      // Fallback to HTTP API if WebSocket method fails
-      console.log("Falling back to HTTP API for resume");
-
-      // Create a new request with the corrections added
-      const modifiedRequest: ChatRequest = {
-        ...state.pausedRequest,
-        content: `${state.pausedRequest.content}\n\nAdditional context/corrections: ${corrections}`,
-        metadata: {
-          ...state.pausedRequest.metadata,
-          is_continuation: true, // Add flag to indicate this is a continuation
-          generate_image: state.pausedRequest.metadata?.generate_image || false, // Preserve image generation flag if set
-          type: 'resume'
-        }
-      };
-
-      // Store the original response to append to it
-      const originalResponse = state.response;
-
-      // Reset for new response that will be appended
-      actions.setResponse(`${originalResponse}\n\n[Continued with additional context]\n\n`);
-
-      // Start the continuation request  
-      abortController.current = new AbortController();
-      for await (const chunk of chat(getToken(auth.user), modifiedRequest, abortController.current.signal)) {
-        actions.setResponse(r => r + chunk);
-      }
-    } catch (err: unknown) {
-      if ((err as Error).name !== 'AbortError') {
-        console.error("Error resuming with corrections:", err);
-        actions.setError((err as Error).message);
-      }
-    } finally {
-      if (!state.isPaused) { // Only clean up if not still paused (WebSocket might have set this)
-        actions.setIsLoading(false);
-        actions.setIsTyping(false);
-        actions.setIsPaused(false);
-        actions.setPausedRequest(null);
-        actions.setCorrectionText("");
-      }
+      await cancel(getToken(auth.user), state.currentConversation?.id ?? -1);
+    } catch (error) {
+      actions.setError((error as Error).message);
+      console.error("Error cancelling request:", error);
     }
-  }, [
-    state.isPaused,
-    state.pausedRequest,
-    state.response,
-    state.currentConversation,
-    actions,
-    auth.user
-  ]);
+
+    // Reset typing state
+    actions.setIsTyping(false);
+    actions.setResponse('');
+  }, [actions, auth.user, state.currentConversation?.id]);
 
   // Send a message in the current conversation
   const sendMessage = useCallback(async (message: ChatRequest) => {
@@ -307,9 +184,6 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     actions.setIsLoading(true);
     actions.setError(null);
     actions.setIsTyping(true);
-
-    // Store the request for potential pause/resume
-    actions.setPausedRequest(message);
 
     try {
       // Make sure we have a conversation
@@ -326,72 +200,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
         role: 'user'
       });
 
-      // Check if this is an image generation request
-      if (message.metadata?.generate_image) {
-        // Start the image generation request in parallel
-        actions.setIsWorkingInBackground(true);
-        actions.setBackgroundAction("Generating Image...")
-
-        // Prepare image generation request
-        const imageRequest: ImageGenerateRequest = {
-          prompt: message.content,
-          width: 512,
-          height: 512,
-          inference_steps: 50,
-          guidance_scale: 7.5,
-          conversation_id: conversationId,
-          model: 'UnfilteredAI/NSFW-gen-v2',
-          loras: ['black-forest-labs/FLUX.1-dev']
-        };
-
-        // Close any existing image socket connection
-        if (imageGenSocketRef.current) {
-          imageGenSocketRef.current();
-          imageGenSocketRef.current = null;
-        }
-
-        // Handle WebSocket updates during image generation
-        const handleImageUpdate = (notification: ImageGenerationNotification) => {
-          console.log('Image generation update:', notification);
-
-          if (notification.type === 'image_generation_failed') {
-            // Handle failure
-            actions.setError(notification.error || 'Image generation failed');
-          } else if (notification.type === 'image_generated') {
-            // Image generation was successful
-            console.log('Image generated successfully:', notification);
-          }
-        };
-
-        generateImageWithUpdates(
-          getToken(auth.user),
-          imageRequest,
-          handleImageUpdate,
-          (error: string) => {
-            console.error('Image generation WebSocket error:', error);
-            actions.setError(error);
-          }
-        ).then((soc) => {
-          imageGenSocketRef.current = soc.closeSocket;
-        }).catch((error: unknown) => {
-          actions.setError((error as Error).message);
-        }).finally(() => {
-          actions.setIsWorkingInBackground(false);
-        });
-      }
-
-      // Try to send message via WebSocket first
-      if (chatWebSocketRef.current && chatWebSocketRef.current.isConnected()) {
-        const success = chatWebSocketRef.current.sendMessage(message);
-        if (success) {
-          console.log("Message sent via WebSocket");
-          // WebSocket handlers will update the response state
-          return;
-        }
-      }
-
       // Fallback to HTTP API if WebSocket method fails
-      console.log("Falling back to HTTP API for sending message");
       abortController.current = new AbortController();
       for await (const chunk of chat(getToken(auth.user), message, abortController.current.signal)) {
         // Use functional update to ensure we're always working with the latest state
@@ -409,8 +218,6 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
       if (!state.isPaused) { // Only clean up if not paused
         actions.setIsLoading(false);
         actions.setIsTyping(false);
-        // Only clear the paused request if not paused
-        actions.setPausedRequest(null);
       }
     }
   }, [
@@ -422,21 +229,6 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     startNewConversation,
     actions
   ]);
-
-  // Clean up resources when component unmounts
-  useEffect(() => {
-    return () => {
-      if (imageGenSocketRef.current) {
-        imageGenSocketRef.current();
-        imageGenSocketRef.current = null;
-      }
-
-      if (chatWebSocketRef.current) {
-        chatWebSocketRef.current.disconnect();
-        chatWebSocketRef.current = null;
-      }
-    };
-  }, []);
 
   // Delete a conversation
   const deleteConversation = useCallback(async (id: number) => {
@@ -482,29 +274,6 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     }
   }, [actions, fetchMessages]);
 
-  // Debounced function to update conversation title
-  const debouncedUpdateTitle = useCallback((id: number, title: string) => {
-    if (debounceTimers.current['updateTitle']) {
-      clearTimeout(debounceTimers.current['updateTitle']);
-    }
-
-    debounceTimers.current['updateTitle'] = setTimeout(async () => {
-      try {
-        await updateConversationTitle(getToken(auth.user), id, title);
-      } catch (err: unknown) {
-        actions.setError((err as Error).message);
-        console.error("Error updating conversation title:", err);
-      }
-      delete debounceTimers.current['updateTitle'];
-    }, 500);
-  }, [auth.user, actions]);
-
-  // Update conversation title
-  const setConversationTitle = useCallback(async (id: number, title: string) => {
-    actions.updateConversationInList(id, { title });
-    debouncedUpdateTitle(id, title);
-  }, [actions, debouncedUpdateTitle]);
-
   return {
     fetchConversations,
     fetchMessages,
@@ -512,46 +281,13 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     sendMessage,
     deleteConversation,
     selectConversation,
-    setConversationTitle,
     fetchModels,
     response: state.response,
     isTyping: state.isTyping,
-    isSearching: state.isWorkingInBackground,
     resetResponse,
     pauseRequest,
-    resumeWithCorrections,
     isPaused: state.isPaused,
-    correctionText: state.correctionText,
-    setCorrectionText: actions.setCorrectionText,
-    abortGeneration: useCallback(() => {
-      // Try to cancel via WebSocket first
-      if (chatWebSocketRef.current && chatWebSocketRef.current.isConnected()) {
-        const success = chatWebSocketRef.current.cancelGeneration();
-        if (success) {
-          console.log("Cancel request sent via WebSocket");
-          return; // WebSocket handlers will update the state
-        }
-      }
-
-      // Fallback to abort controller
-      if (abortController.current) {
-        abortController.current.abort();
-        abortController.current = null;
-        actions.setIsTyping(false);
-      }
-
-      // Also close image generation socket if active
-      if (imageGenSocketRef.current) {
-        imageGenSocketRef.current();
-        imageGenSocketRef.current = null;
-      }
-
-      // Clear pause state if aborted
-      if (state.isPaused) {
-        actions.setIsPaused(false);
-        actions.setPausedRequest(null);
-        actions.setCorrectionText("");
-      }
-    }, [actions, state.isPaused])
+    cancelRequest,
+    resumeRequest
   };
 };

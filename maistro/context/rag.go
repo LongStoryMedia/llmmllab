@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"maistro/models"
+	"maistro/session"
 	"maistro/storage"
 	"maistro/util"
 	"slices"
-	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -144,6 +144,8 @@ func (cc *ConversationContext) EnhanceRequestWithRAG(ctx context.Context, req *m
 func (cc *ConversationContext) RetrieveAndInjectMemories(ctx context.Context, queryEmbeddings [][]float32, startDate, endDate *time.Time) error {
 	// Clear any previous memories
 	cc.RetrievedMemories = nil
+	state := session.GlobalStageManager.GetSessionState(cc.UserID, cc.ConversationID)
+	memState := state.GetStage(models.SocketStageTypeRetrievingMemories)
 
 	// Get user-specific configuration
 	userConfig, err := GetUserConfig(cc.UserID)
@@ -157,17 +159,14 @@ func (cc *ConversationContext) RetrieveAndInjectMemories(ctx context.Context, qu
 		limit = 5
 	}
 
+	var msgs []models.Memory
+
 	// First try vector similarity search if RAG is enabled
 	if userConfig.Memory.Enabled {
 		util.LogInfo("Performing semantic search for memories")
-		if len(queryEmbeddings) > 0 {
-			var wg sync.WaitGroup
+		memState.UpdateProgress(memState.Progress+15, "Retrieving relevant memories")
 
-			// Channel for current conversation results
-			results := make(chan []models.Memory, 1)
-			errs := make(chan error, 1)
-			defer close(results)
-			defer close(errs)
+		if len(queryEmbeddings) > 0 {
 			threshold := userConfig.Memory.SimilarityThreshold
 
 			var userID string
@@ -181,46 +180,41 @@ func (cc *ConversationContext) RetrieveAndInjectMemories(ctx context.Context, qu
 				userID = cc.UserID
 			}
 
-			// memory search
-			wg.Add(1)
-			go func(cid, limit int, embeddings [][]float32, threshold float32, userID *string, conversationID *int, startDate, endDate *time.Time) {
-				defer wg.Done()
-				ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
-				defer cancel()
-				ccr := []models.Memory{}
+			// Run memory search inline instead of in a goroutine
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+			defer cancel()
+			var ccr []models.Memory
 
-				var errorStr string
-				var memoryError error
-				for _, emb := range embeddings {
-					similarMessages, err := storage.SearchSimilarity(ctx, emb, threshold, limit, userID, conversationID, startDate, endDate)
-					if err != nil {
-						errorStr += err.Error() + " "
-					}
-					for _, msg := range similarMessages {
-						ccr = append(ccr, msg)
-						if len(ccr) >= limit {
-							break
-						}
-					}
-					if errorStr != "" {
-						memoryError = errors.New(errorStr)
-					}
-				}
-				results <- ccr
-				errs <- memoryError
-			}(cc.ConversationID, limit, queryEmbeddings, threshold, &userID, &conversationID, startDate, endDate)
+			tPercent := 100 - memState.Progress
+			iPercent := tPercent / len(queryEmbeddings)
 
-			// Wait for all started goroutines
-			wg.Wait()
-
-			// Collect results
-			msgs := <-results
-			err := <-errs
-
+			var errorStr string
+			similarMessages, err := storage.MemoryStoreInstance.SearchSimilarity(ctx, queryEmbeddings, threshold, limit, &userID, &conversationID, startDate, endDate)
 			if err != nil {
-				return util.HandleError(err)
+				errorStr += err.Error() + " "
 			}
 
+			div := len(similarMessages)
+			if div > limit {
+				similarMessages = similarMessages[:limit] // Limit the number of messages to the specified limit
+			}
+
+			percentStep := iPercent / div
+
+			for _, msg := range similarMessages {
+				ccr = append(ccr, msg)
+				memState.UpdateProgress(memState.Progress+percentStep, fmt.Sprintf("Retrieved %d/%d relevant memories", len(ccr), limit))
+
+				if len(ccr) >= limit {
+					break
+				}
+			}
+
+			if errorStr != "" {
+				return memState.Fail("Error retrieving memories", errors.New(errorStr))
+			}
+
+			msgs = ccr
 			util.LogInfo(fmt.Sprintf("Found %v semantically similar messages in current conversation", len(msgs)))
 			// 1. First add current conversation messages
 			if len(msgs) > 0 {
@@ -228,6 +222,7 @@ func (cc *ConversationContext) RetrieveAndInjectMemories(ctx context.Context, qu
 			}
 		}
 	}
+	memState.Complete("Retrieved relevant memories")
 
 	return nil
 }

@@ -42,11 +42,11 @@ func Test_GenerateImageFromPrompt(t *testing.T) {
 		t.Fatal("Empty image data received")
 	}
 
-	if response.DownloadURL == "" {
+	if response.Download == "" {
 		t.Fatal("No download URL received")
 	}
 
-	t.Logf("Successfully generated image with download URL: %s", response.DownloadURL)
+	t.Logf("Successfully generated image with download URL: %s", response.Download)
 }
 
 func Test_GetImageAsBase64(t *testing.T) {
@@ -70,7 +70,7 @@ func Test_GetImageAsBase64(t *testing.T) {
 
 	// Extract the filename from the download URL
 	// The path should be something like "/download/filename.png"
-	downloadURL := response.DownloadURL
+	downloadURL := response.Download
 	filename := ""
 	if len(downloadURL) > 10 {
 		filename = downloadURL[10:] // Skip "/download/"

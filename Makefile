@@ -7,6 +7,8 @@ inference:
 	@echo "Deploying inference service..."
 	rsync -avzru --delete --exclude="venv" ./inference/* lsm@lsnode-3:~/inference
 	ssh lsm@lsnode-3 "cd ~/inference && docker build -t 192.168.0.71:31500/inference:latest . --push"
+	chmod +x ./inference/k8s/apply.sh
+	./inference/k8s/apply.sh
 	kubectl rollout restart deployment ollama -n ollama
 
 maistro:
@@ -27,7 +29,7 @@ deploy: inference maistro ui
 
 start:
 	@echo "Starting all services..."
-	$(MAKE) -j2 start-maistro start-ui
+	$(MAKE) -j3 inference-dev start-ui start-maistro
 
 start-maistro:
 	@echo "Starting maistro..."
@@ -37,30 +39,20 @@ start-ui:
 	@echo "Starting UI..."
 	@export LOCAL=true && cd ui && npm run dev
 
+inference-dev:
+	@echo "Starting inference service in development mode..."
+	chmod +x ./inference/sync-code.sh
+	./inference/sync-code.sh -w & kubectl logs -f -n ollama deployment/ollama
+
 gen:
 	@echo "generating models..."
 	chmod +x ./regenerate_models.sh
 	./regenerate_models.sh
 
-gen-%:
-	@echo "generating models..."
-	chmod +x ./generate.sh
-	./generate.sh $*
-
-genlang-go-%:
-	@echo "generating go models..."
-	chmod +x ./generate.sh
-	./generate.sh $* go
-
-genlang-ts-%:
-	@echo "generating ts models..."
-	chmod +x ./generate.sh
-	./generate.sh $* ts
-
-genlang-py-%:
-	@echo "generating python models..."
-	chmod +x ./generate.sh
-	./generate.sh $* py
+sync-inference:
+	@echo "Syncing inference service..."
+	rsync -avzr --exclude="venv" root@lsnode-3:/data/code-base/config ./inference/s-config
+	rsync -avzru --delete --exclude="venv" ./inference/* root@lsnode-3:/data/code-base
 
 .PHONY: inference maistro ui
 

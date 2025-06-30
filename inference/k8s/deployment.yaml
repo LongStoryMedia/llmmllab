@@ -34,36 +34,30 @@ spec:
         - name: generated-images
           persistentVolumeClaim:
             claimName: generated-images
+        - name: code-base
+          persistentVolumeClaim:
+            claimName: code-base
       containers:
         - name: ollama
           image: 192.168.0.71:31500/inference:latest
           imagePullPolicy: Always
-          # command: ["/bin/sh", "/scripts/init.sh"]
-          # lifecycle:
-          #   postStart:
-          #     exec:
-          #       command:
-          #         - "/bin/bash"
-          #         - "-c"
-          #         - |
-          #           # Start Ollama in the background
-          #           ollama serve &
-          #           # Give Ollama some time to start up
-          #           sleep 10
-          #           echo "Gettings models..."
-          #           ollama pull mistral
-          #           ollama pull opencoder:latest
-          #           ollama pull granite-embedding
-          #           ollama pull qwen3:0.6b
-          #           ollama pull gemma3:30b-a3b
-          #           ollama pull phi4-reasoning:plus
-          #           ollama pull cogito:8b
-          #           # List available models
-          #           echo "Available models:"
-          #           ollama list
-          #           # Wait for the ollama process
-          #           wait
-          #           cd /app && uvicorn app:app --host 0.0.0.0 --port 8000 &"
+          command: ["/bin/sh"]
+          args:
+            - "-c"
+            - |
+              # Check if app.py exists in the mounted directory
+              if [ -f /app/app.py ]; then
+                echo "Found app.py in mounted volume, starting with live-reload"
+                # Start Ollama and then the API with reload for live updates
+                ollama serve &
+                cd /app && ls -la && uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+              else
+                echo "ERROR: app.py not found in mounted directory. Please ensure your code is correctly mounted."
+                ls -la /app
+                echo "Contents of parent directory:"
+                ls -la /
+                exit 1
+              fi
           ports:
             - name: ollama
               containerPort: 11434
@@ -74,11 +68,11 @@ spec:
           resources:
             requests:
               memory: "24Gi"
-              cpu: "8"
+              cpu: "16"
               nvidia.com/gpu: "2"
             limits:
               memory: "30Gi"
-              cpu: "10"
+              cpu: "20"
               nvidia.com/gpu: "2"
           volumeMounts:
             - name: ollama-models-volume
@@ -88,11 +82,45 @@ spec:
             - name: init-script
               mountPath: /scripts
             - name: generated-images
-              mountPath: /app/images
+              mountPath: /root/images
+            - name: code-base
+              mountPath: /app
           env:
             - name: OLLAMA_HOST
               value: "0.0.0.0"
             - name: OLLAMA_DEBUG
               value: "false"
+            - name: PYTHONPATH
+              value: "/app"
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token
+                  key: token
+            # Memory management settings for Stable Diffusion
+            - name: SD_MAX_WIDTH
+              value: "768"
+            - name: SD_MAX_HEIGHT
+              value: "768"
+            - name: SD_DEFAULT_STEPS
+              value: "30"
+            - name: USE_FP32_FOR_TEXT_ENCODERS
+              value: "true"
+            - name: BNB_CUDA_VERSION
+              value: "128"
+            # rabbitmq settings
+            - name: RABBITMQ_HOST
+              value: "rabbitmq-0.rabbitmq.rabbitmq.svc.cluster.local"
+            - name: RABBITMQ_PORT
+              value: "5672"
+            - name: RABBITMQ_USER
+              value: "lsm"
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq
+                  key: password
+            - name: RABBITMQ_VHOST
+              value: "/"
   strategy:
     type: Recreate

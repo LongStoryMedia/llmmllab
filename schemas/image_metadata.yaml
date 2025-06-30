@@ -1,6 +1,6 @@
 $schema: http://json-schema.org/draft-07/schema#
 title: ImageMetadata
-description: Metadata for an image uploaded to the system.
+description: Metadata for an image generated on the system.
 type: object
 properties:
   id:
@@ -24,7 +24,7 @@ properties:
     description: Format of the image file.
   user_id:
     type: string
-    description: Unique identifier for the user who uploaded the image.
+    description: Unique identifier for the user who the image was generated for.
   conversation_id:
     type: integer
     description: Unique identifier for the conversation associated with the image.
@@ -39,5 +39,4 @@ required:
   - height
   - format
   - user_id
-  - conversation_id
   - created_at

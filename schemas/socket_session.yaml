@@ -1,0 +1,32 @@
+$schema: http://json-schema.org/draft-07/schema#
+type: object
+title: SocketSession
+description: SocketSession represents the state of a chat session over WebSocket.
+properties:
+  state:
+    $ref: socket_stage_type.yaml
+    description: The current stage/state of the chat session (models.SocketStageType)
+  conversation_id:
+    type: integer
+    description: The ID of the conversation
+  user_id:
+    type: string
+    description: The user ID associated with the session
+  cancel_func:
+    type:
+      - object
+      - null
+    description: Reference to the context cancellation function (not serializable, for documentation only)
+  paused_content:
+    type: string
+    description: Content paused in the session
+  last_message:
+    type: string
+    description: The last message sent or received
+  response_buffer:
+    type: string
+    description: Buffer for the response content
+required:
+  - state
+  - conversation_id
+  - user_id

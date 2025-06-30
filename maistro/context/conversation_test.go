@@ -26,7 +26,7 @@ func Test_ToJSON(t *testing.T) {
 	}
 
 	// Convert to JSON
-	jsonData, err := MockConversationContext.ChainMessages(&req)
+	jsonData, _, err := MockConversationContext.ChainMessages(&req)
 	if err != nil {
 		t.Fatalf("Failed to convert to JSON: %v", err)
 	}

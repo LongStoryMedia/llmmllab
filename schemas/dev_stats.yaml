@@ -1,0 +1,59 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+title: DevStats
+description: Schema representing device memory statistics.
+type: object
+properties:
+  id:
+    type: string
+    description: Device identifier.
+  uuid:
+    type: string
+    description: Universally unique identifier for the device.
+  gpu_util:
+    type: number
+    description: GPU utilization percentage.
+  mem_util:
+    type: number
+    description: Memory utilization percentage.
+  mem_total:
+    type: number
+    description: Total memory in megabytes.
+  mem_used:
+    type: number
+    description: Used memory in megabytes.
+  mem_free:
+    type: number
+    description: Free memory in megabytes.
+  driver:
+    type: string
+    description: Driver version.
+  name:
+    type: string
+    description: Device name.
+  serial:
+    type: string
+    description: Device serial number.
+  display_mode:
+    type: string
+    description: Display mode status.
+  display_active:
+    type: string
+    description: Display active status.
+  temperature:
+    type: number
+    description: Device temperature in Celsius.
+required:
+  - id
+  - uuid
+  - gpu_util
+  - mem_util
+  - mem_total
+  - mem_used
+  - mem_free
+  - driver
+  - name
+  - serial
+  - display_mode
+  - display_active
+  - temperature
+additionalProperties: true

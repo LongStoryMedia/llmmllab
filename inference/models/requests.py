@@ -2,6 +2,7 @@ from typing import List, Optional
 from numpy import negative
 from pydantic import BaseModel
 
+from .dev_stats import DevStats
 from models.model import Model
 
 
@@ -14,6 +15,12 @@ class PromptRequest(BaseModel):
     guidance_scale: Optional[float] = 7.5  # Custom guidance scale
     negative_prompt: Optional[str] = None  # Optional negative prompt
     seed: Optional[int] = None  # Optional seed for reproducibility
+    max_sequence_length: Optional[int] = None  # Optional max sequence length
+    request_id: Optional[str] = None  # Unique request ID for tracking
+
+    def get(self, key: str, default=None):
+        """Get a parameter value, falling back to default if not set."""
+        return getattr(self, key, default)
 
 
 class ModelRequest(BaseModel):
@@ -38,3 +45,8 @@ class LoraListResponse(BaseModel):
 
 class LoraWeightRequest(BaseModel):
     weight: float
+
+
+class Malloc(BaseModel):
+    """Response model for RAM usage."""
+    devices: dict[str, DevStats]

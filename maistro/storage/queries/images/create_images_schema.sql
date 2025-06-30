@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS images(
     conversation_id integer NOT NULL,
     user_id text NOT NULL,
     created_at timestamptz NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    -- FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     PRIMARY KEY (id, created_at)
 );
 

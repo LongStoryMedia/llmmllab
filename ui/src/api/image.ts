@@ -1,8 +1,7 @@
-import { ImageGenerationNotification } from '../types/ImageGenerationNotification';
 import { ImageGenerateRequest } from '../types/ImageGenerationRequest';
 import { ImageGenerateResponse } from '../types/ImageGenerationResponse';
 import { getHeaders, req } from './base';
-import { createImageGenerationSocket, WebSocketConnection } from './websocket';
+import { ChatWebSocketClient } from './websocket';
 
 /**
  * Generate an image using the Stable Diffusion API
@@ -10,42 +9,43 @@ import { createImageGenerationSocket, WebSocketConnection } from './websocket';
  * @param request Image generation request parameters
  * @returns Promise that resolves with image data
  */
-export const generateImage = async (accessToken: string, request: ImageGenerateRequest) =>
+export const generateImage = async (accessToken: string, request: ImageGenerateRequest, socket?: ChatWebSocketClient) =>
   req<ImageGenerateResponse>({
     method: 'POST',
     headers: getHeaders(accessToken),
     path: 'api/images/generate',
-    body: JSON.stringify(request)
+    body: JSON.stringify(request),
+    socket: socket
   });
 
-/**
- * Generate an image and get real-time updates via WebSocket
- * @param accessToken Authentication token
- * @param request Image generation request parameters
- * @param onUpdate Callback for WebSocket updates during generation
- * @returns Promise that resolves with image data and a method to close the WebSocket
- */
-export const generateImageWithUpdates = async (
-  accessToken: string,
-  request: ImageGenerateRequest,
-  onUpdate: (notification: ImageGenerationNotification) => void,
-  onError: (error: string) => void
-): Promise<{ response: ImageGenerateResponse, closeSocket: () => void }> => {
-  // First establish the WebSocket connection to receive updates
-  const connection: WebSocketConnection = createImageGenerationSocket(
-    accessToken,
-    onUpdate,
-    onError
-  );
+// /**
+//  * Generate an image and get real-time updates via WebSocket
+//  * @param accessToken Authentication token
+//  * @param request Image generation request parameters
+//  * @param onUpdate Callback for WebSocket updates during generation
+//  * @returns Promise that resolves with image data and a method to close the WebSocket
+//  */
+// export const generateImageWithUpdates = async (
+//   accessToken: string,
+//   request: ImageGenerateRequest,
+//   onUpdate: (notification: ImageGenerationNotification) => void,
+//   onError: (error: string) => void
+// ): Promise<{ response: ImageGenerateResponse, closeSocket: () => void }> => {
+//   // First establish the WebSocket connection to receive updates
+//   const connection: WebSocketConnection = createImageGenerationSocket(
+//     accessToken,
+//     onUpdate,
+//     onError
+//   );
 
-  // Then trigger the image generation
-  const response = await generateImage(accessToken, request);
+//   // Then trigger the image generation
+//   const response = await generateImage(accessToken, request);
 
-  return {
-    response,
-    closeSocket: connection.close
-  };
-};
+//   return {
+//     response,
+//     closeSocket: connection.close
+//   };
+// };
 
 /**
  * Retrieve the URL for downloading a generated image

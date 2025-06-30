@@ -30,9 +30,6 @@ properties:
     type: string
     description: Negative prompt for image generation
     nullable: true
-  conversation_id:
-    type: integer
-    description: Identifier for the conversation this request belongs to
   model:
     type: string
     description: Model to use for image generation
@@ -43,5 +40,3 @@ properties:
     description: List of LoRA models to apply to the image generation
 required:
   - prompt
-  - conversation_id
-  - model

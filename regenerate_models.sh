@@ -37,7 +37,7 @@ regen_go() {
                 echo "Error regenerating $base_name.go" | tee -a "$LOG_FILE"
             fi
         else
-            echo "Skipping $base_name: No corresponding schema file found" | tee -a "$LOG_FILE"
+            echo "Skipping $base_name (go): No corresponding schema file found" | tee -a "$LOG_FILE"
         fi
     done
 }
@@ -66,7 +66,7 @@ regen_ts() {
                 echo "Error regenerating $base_name.ts" | tee -a "$LOG_FILE"
             fi
         else
-            echo "Skipping $base_name: No corresponding schema file found at $schema_file" | tee -a "$LOG_FILE"
+            echo "Skipping $base_name (ts): No corresponding schema file found at $schema_file" | tee -a "$LOG_FILE"
         fi
     done
 }
@@ -94,7 +94,7 @@ regen_py() {
                 echo "Error regenerating $base_name.py" | tee -a "$LOG_FILE"
             fi
         else
-            echo "Skipping $base_name: No corresponding schema file found" | tee -a "$LOG_FILE"
+            echo "Skipping $base_name (py): No corresponding schema file found" | tee -a "$LOG_FILE"
         fi
     done
 }

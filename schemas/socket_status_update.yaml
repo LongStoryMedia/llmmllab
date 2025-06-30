@@ -1,0 +1,35 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: SocketStatusUpdate
+description: SocketStatusUpdate represents a status update message sent via WebSocket
+type: object
+properties:
+  user_id:
+    type: string
+    description: The ID of the user associated with the status update.
+  type:
+    type: string
+    description: The type of status update (info, warning, error).
+    enum:
+      - info
+      - warning
+      - error
+  stage:
+    $ref: socket_stage_type.yaml
+    description: The current processing stage.
+  message:
+    type: string
+    description: Optional detailed message.
+  progress:
+    type: integer
+    description: 0-100 progress percentage.
+    minimum: 0
+    maximum: 100
+  done:
+    type: boolean
+    description: Whether processing is complete.
+required:
+  - user_id
+  - type
+  - stage
+  - progress
+  - done

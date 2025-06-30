@@ -7,13 +7,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"maistro/models"
+	"maistro/session"
 	"maistro/util"
 	"net/http"
 	"time"
 )
 
 // StreamOllamaRequest sends a request to the Ollama API and handles streaming the response
-func StreamOllamaGenerateRequest(ctx context.Context, model string, requestBody models.GenerateReq) (string, error) {
+func StreamOllamaGenerateRequest(ctx context.Context, requestBody models.GenerateReq) (string, error) {
 	reqBody, err := json.Marshal(requestBody)
 	if err != nil {
 		return "", fmt.Errorf("error marshaling request: %w", err)
@@ -21,7 +22,8 @@ func StreamOllamaGenerateRequest(ctx context.Context, model string, requestBody 
 
 	util.LogInfo("Sending request to Ollama")
 
-	handler, _, err := GetProxyHandler[*models.OllamaGenerateResponse](ctx, reqBody, "/api/generate", http.MethodPost, true, time.Minute, nil)
+	ss := session.GlobalStageManager.GetSessionState("test_user", 99)
+	handler, _, err := GetProxyHandler[*models.OllamaGenerateResponse](ctx, ss, reqBody, "/api/generate", http.MethodPost, true, time.Minute, nil)
 	if err != nil {
 		return "", fmt.Errorf("error streaming request: %w", err)
 	}

@@ -63,6 +63,10 @@ properties:
     type: string
     format: uuid
     description: Formatting profile ID
+  image_generation_prompt_profile_id:
+    type: string
+    format: uuid
+    description: Image generation prompt profile ID
   image_generation_profile_id:
     type: string
     format: uuid
@@ -84,3 +88,4 @@ required:
   - embedding_profile_id
   - formatting_profile_id
   - image_generation_profile_id
+  - image_generation_prompt_profile_id

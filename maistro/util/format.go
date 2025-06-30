@@ -1,8 +1,10 @@
 package util
 
 import (
+	"fmt"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -52,3 +54,34 @@ func StrPtr(s string) *string       { return &s }
 func IntPtr(i int) *int             { return &i }
 func Float32Ptr(f float32) *float32 { return &f }
 func BoolPtr(b bool) *bool          { return &b }
+
+func CorrelationID(conversationID int, userID string) string {
+	return fmt.Sprintf("%d-%s", conversationID, userID)
+}
+
+func FromCorrelationID(correlationID string) (int, string, error) {
+	parts := strings.SplitN(correlationID, "-", 2)
+	if len(parts) != 2 {
+		return 0, "", fmt.Errorf("invalid correlation ID format: %s", correlationID)
+	}
+
+	conversationID, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, "", fmt.Errorf("invalid conversation ID: %s", parts[0])
+	}
+
+	userID := parts[1]
+	return conversationID, userID, nil
+}
+
+func Kb2b(n float32) float32 {
+	return n * 1024
+}
+
+func Mb2b(n float32) float32 {
+	return Kb2b(n) * 1024
+}
+
+func Gb2b(n float32) float32 {
+	return Mb2b(n) * 1024
+}

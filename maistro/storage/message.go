@@ -48,7 +48,7 @@ func (ms *messageStore) AddMessage(ctx context.Context, conversationID int, role
 	// Create message object for caching
 	message := &models.Message{
 		ID:             messageID,
-		ConversationID: &conversationID,
+		ConversationID: conversationID,
 		Role:           role,
 		Content:        content,
 	}
@@ -126,4 +126,34 @@ func (ms *messageStore) GetConversationHistory(ctx context.Context, conversation
 	}
 
 	return messages, nil
+}
+
+// DeleteMessage deletes a message by ID
+func (ms *messageStore) DeleteMessage(ctx context.Context, messageID int) error {
+	// Start a transaction for atomicity
+	tx, err := Pool.Begin(ctx)
+	if err != nil {
+		return util.HandleError(err)
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback(ctx) // rollback on error
+		}
+	}()
+
+	// Delete the message using the query from our loader
+	_, err = tx.Exec(ctx, GetQuery("message.delete_message"), messageID)
+	if err != nil {
+		return util.HandleError(err)
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(ctx); err != nil {
+		return util.HandleError(err)
+	}
+
+	// Invalidate the cache
+	InvalidateMessageCache(ctx, messageID)
+
+	return nil
 }

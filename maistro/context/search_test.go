@@ -13,7 +13,7 @@ func Test_fmtQuery(t *testing.T) {
 	test.Init()
 	ctx := context.Background()
 
-	result, err := MockConversationContext.fmtQuery(ctx, config.DefaultFormattingProfile.ModelName, query)
+	result, err := FmtQuery(ctx, &config.DefaultFormattingProfile, query, SearchFmtPrompt)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}

@@ -15,7 +15,7 @@ func Test_StreamOllamaGenerateRequest(t *testing.T) {
 		Model:  config.DefaultPrimaryProfile.ModelName,
 		Prompt: "Tell me a joke about llamas.",
 	}
-	content, err := StreamOllamaGenerateRequest(context.Background(), config.DefaultFormattingProfile.ModelName, reqBody)
+	content, err := StreamOllamaGenerateRequest(context.Background(), reqBody)
 	if err != nil {
 		t.Fatalf("Failed to get generated response: %v", err)
 	}

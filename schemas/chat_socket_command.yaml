@@ -1,20 +1,20 @@
 $schema: http://json-schema.org/draft-07/schema#
-title: ChatResponse
+title: ChatSocketCommand
 type: object
 description: ChatSocketCommand represents a command sent over WebSocket
 properties:
-  Type:
+  type:
     type: string
-    description: Type of command
     enum:
       - send
       - pause
       - resume
       - cancel
-  Message:
+    description: Type of command
+  message:
     type: string
     description: Message content
-  ConversationID:
+  conversation_id:
     type: integer
     description: Conversation ID
   metadata:
@@ -22,6 +22,6 @@ properties:
     description: Additional metadata
     additionalProperties: true
 required:
-  - Type
-  - ConversationID
+  - type
+  - conversation_id
   - message

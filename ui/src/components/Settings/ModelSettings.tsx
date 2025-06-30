@@ -22,6 +22,7 @@ const TASKS: { key: keyof ModelProfileConfig; label: string; }[] = [
   { key: 'research_analysis_profile_id', label: 'Research Analysis' },
   { key: 'embedding_profile_id', label: 'Embeddings' },
   { key: 'formatting_profile_id', label: 'Formatting' },
+  { key: 'image_generation_prompt_profile_id', label: 'Image Generation Prompt' },
   { key: 'image_generation_profile_id', label: 'Image Generation' }
 ];
 

@@ -193,7 +193,7 @@ func InvalidateConversationMessagesCache(ctx context.Context, conversationID int
 			continue
 		}
 
-		if *msg.ConversationID == conversationID {
+		if msg.ConversationID == conversationID {
 			redisClient.Del(ctx, key)
 		}
 	}

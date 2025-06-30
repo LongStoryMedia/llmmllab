@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 
+	"maistro/models"
+	"maistro/session"
 	"maistro/util" // replace with your actual import path for util package
 )
 
@@ -14,41 +16,38 @@ type Intent struct {
 	ImageGeneration bool `json:"image_generation"`
 }
 
-func (cc *ConversationContext) DetectIntent(ctx context.Context, query string) (*Intent, error) {
+func (cc *ConversationContext) DetectIntent(ctx context.Context, req models.ChatRequest) error {
+	state := session.GlobalStageManager.GetSessionState(cc.UserID, cc.ConversationID)
+	intentState := state.GetStage(models.SocketStageTypeInterpreting)
 	// Check if the query is empty
-	if strings.TrimSpace(query) == "" {
+	if strings.TrimSpace(req.Content) == "" {
 		util.LogWarning("Empty query detected")
-		return nil, nil
+		return nil
 	}
 	cfg, err := GetUserConfig(cc.UserID)
 	if err != nil {
-		util.HandleError(err)
-		return nil, err
+		return intentState.Fail("Failed to get user configuration", err)
 	}
 
-	intent := Intent{
-		WebSearch:       false,
-		Memory:          false,
-		DeepResearch:    false,
-		ImageGeneration: false,
-	}
-
-	if cfg.WebSearch.Enabled {
+	if cfg.WebSearch.Enabled && !cc.Intent.WebSearch {
 		// Check if the query should trigger a web search only if web search is enabled
-		intent.WebSearch = shouldSearchWeb(query)
+		cc.Intent.WebSearch = shouldSearchWeb(req.Content)
 	}
+	intentState.UpdateProgress(intentState.Progress+33, "Determining if web search is needed")
 
 	if cfg.Memory.AlwaysRetrieve {
-		intent.Memory = true
-	} else if cfg.Memory.Enabled {
-		intent.Memory = shouldRetrieveMemories(query)
+		cc.Intent.Memory = true
+	} else if cfg.Memory.Enabled && !cc.Intent.Memory {
+		cc.Intent.Memory = shouldRetrieveMemories(req.Content)
 	}
+	intentState.UpdateProgress(intentState.Progress+33, "Determining if memory retrieval is needed")
 
-	if cfg.ImageGeneration.Enabled {
-		intent.ImageGeneration = shouldGenerateImage(query)
+	if cfg.ImageGeneration.Enabled && !cc.Intent.ImageGeneration {
+		cc.Intent.ImageGeneration = shouldGenerateImage(req.Content) || req.Metadata.GenerateImage || req.Metadata.Type == models.ChatMessageMetadataTypeImage
 	}
+	intentState.Complete("Determined if image generation is needed")
 
-	return &intent, nil
+	return nil
 }
 
 // shouldSearchWeb determines if a query likely requires web search

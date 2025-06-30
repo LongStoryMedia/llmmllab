@@ -1,4 +1,5 @@
 import { UserConfig } from "../types/UserConfig";
+import { ChatWebSocketClient } from "./websocket";
 
 export type BodyDeserialized = {
   model: string;
@@ -17,6 +18,7 @@ export type RequestOptions = {
   timeout?: number;
   requestKey?: string;
   baseUrl?: string;
+  socket?: ChatWebSocketClient;
 };
 
 export type UserAttribute = {

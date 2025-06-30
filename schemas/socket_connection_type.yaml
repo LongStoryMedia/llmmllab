@@ -1,0 +1,8 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: SocketConnectionType
+type: string
+description: SocketConnectionType represents the type of connection used in a WebSocket communication
+enum:
+  - image
+  - chat
+  - status

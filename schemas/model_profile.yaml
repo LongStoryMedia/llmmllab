@@ -7,7 +7,7 @@ properties:
     type: string
     format: uuid
     description: Unique identifier for the profile
-  userId:
+  user_id:
     type: string
     description: Id of the user who owns the profile
   name:
@@ -16,24 +16,24 @@ properties:
   description:
     type: string
     description: Description of the profile
-  modelName:
+  model_name:
     type: string
     description: Name of the model to use
   parameters:
     $ref: "#/definitions/ModelParameters"
     description: Parameters for configuring the model
-  systemPrompt:
+  system_prompt:
     type: string
     description: System prompt to send to the model
-  createdAt:
+  created_at:
     type: string
     format: date-time
     description: Timestamp of when the profile was created
-  updatedAt:
+  updated_at:
     type: string
     format: date-time
     description: Timestamp of when the profile was last updated
-  modelVersion:
+  model_version:
     type: string
     description: Version of the model
   type:
@@ -44,13 +44,13 @@ properties:
     description: Image settings for the model profile
 required:
   - id
-  - userId
+  - user_id
   - name
-  - modelName
+  - model_name
   - parameters
-  - systemPrompt
-  - createdAt
-  - updatedAt
+  - system_prompt
+  - created_at
+  - updated_at
   - type
 definitions:
   ModelParameters:

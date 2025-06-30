@@ -36,6 +36,12 @@ func (cc *ConversationContext) AddImage(ctx context.Context, imageMetadata *mode
 	if err := storage.EnsureUser(ctx, cc.UserID); err != nil {
 		return 0, util.HandleError(fmt.Errorf("failed to ensure user exists: %w", err))
 	}
+	util.LogDebug("Adding image to conversation context", logrus.Fields{
+		"userID":   cc.UserID,
+		"imageID":  imageMetadata.ID,
+		"filename": basename,
+		"thumb":    thumbName,
+	})
 
 	// download the image to the local storage
 	url := conf.InferenceServices.StableDiffusion.BaseURL + downloadPath
@@ -45,6 +51,11 @@ func (cc *ConversationContext) AddImage(ctx context.Context, imageMetadata *mode
 	if err != nil {
 		return 0, util.HandleError(fmt.Errorf("failed to create directory: %w", err))
 	}
+	util.LogDebug("Creating image file", logrus.Fields{
+		"storageDir": conf.ImageGeneration.StorageDirectory,
+		"userID":     cc.UserID,
+		"filename":   basename,
+	})
 
 	out, err := os.Create(fmt.Sprintf("%s/%s/%s", conf.ImageGeneration.StorageDirectory, cc.UserID, basename))
 	if err != nil {
@@ -58,6 +69,12 @@ func (cc *ConversationContext) AddImage(ctx context.Context, imageMetadata *mode
 	}
 	defer res.Body.Close()
 
+	util.LogDebug("Downloading image", logrus.Fields{
+		"url":      url,
+		"userID":   cc.UserID,
+		"filename": basename,
+	})
+
 	if res.StatusCode != http.StatusOK {
 		return 0, util.HandleError(fmt.Errorf("failed to download image: %s", res.Status))
 	}
@@ -66,6 +83,11 @@ func (cc *ConversationContext) AddImage(ctx context.Context, imageMetadata *mode
 	if err != nil {
 		return 0, util.HandleError(fmt.Errorf("failed to read response body: %w", err))
 	}
+	util.LogDebug("Image downloaded successfully", logrus.Fields{
+		"url":      url,
+		"userID":   cc.UserID,
+		"filename": basename,
+	})
 
 	// create the thumbnail
 	img, err := os.Open(fmt.Sprintf("%s/%s/%s", conf.ImageGeneration.StorageDirectory, cc.UserID, basename))
@@ -74,11 +96,25 @@ func (cc *ConversationContext) AddImage(ctx context.Context, imageMetadata *mode
 	}
 	defer img.Close()
 
+	util.LogDebug("Creating thumbnail for image", logrus.Fields{
+		"storageDir": conf.ImageGeneration.StorageDirectory,
+		"userID":     cc.UserID,
+		"filename":   basename,
+		"thumb":      thumbName,
+	})
+
 	t, err := os.Create(fmt.Sprintf("%s/%s/%s", conf.ImageGeneration.StorageDirectory, cc.UserID, thumbName))
 	if err != nil {
 		return 0, util.HandleError(fmt.Errorf("failed to create thumbnail file: %w", err))
 	}
 	defer t.Close()
+
+	util.LogDebug("Encoding thumbnail image", logrus.Fields{
+		"storageDir": conf.ImageGeneration.StorageDirectory,
+		"userID":     cc.UserID,
+		"filename":   basename,
+		"thumb":      thumbName,
+	})
 
 	err = png.Encode(t, image.NewRGBA(image.Rect(0, 0, 128, 128))) // Create a new image for the thumbnail
 	if err != nil {
@@ -94,6 +130,13 @@ func (cc *ConversationContext) AddImage(ctx context.Context, imageMetadata *mode
 	if err != nil {
 		return 0, util.HandleError(fmt.Errorf("failed to store image: %w", err))
 	}
+
+	util.LogDebug("Image stored successfully", logrus.Fields{
+		"userID":   cc.UserID,
+		"imageID":  id,
+		"filename": basename,
+		"thumb":    thumbName,
+	})
 
 	imageMetadata.ID = &id                        // Set the ID returned from the storage
 	cc.Images = append(cc.Images, *imageMetadata) // Update the conversation context with the new image

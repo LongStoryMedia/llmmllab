@@ -1,159 +1,65 @@
+import { userManager } from '../auth';
 import config from '../config';
-import { ImageGenerationNotification } from '../types/ImageGenerationNotification';
 import { ChatRequest } from "../types/ChatRequest";
+import { MessageTypeValues } from '../types/MessageType';
+import { SocketConnectionType, SocketConnectionTypeValues } from '../types/SocketConnectionType';
+import { SocketMessage } from '../types/SocketMessage';
+import { SocketStageTypeValues } from '../types/SocketStageType';
 
-interface WebSocketOptions {
-  path: string;
-  accessToken: string;
-  onOpen?: () => void;
-  onClose?: (event: CloseEvent) => void;
-  onError?: (event: Event) => void;
-}
-
-export interface WebSocketConnection {
-  socket: WebSocket;
-  close: () => void;
-}
-
-/**
- * Creates a WebSocket connection with standard configuration
- * @param options Configuration options for the WebSocket
- * @returns Object containing the WebSocket and methods to interact with it
- */
-export function createWebSocketConnection(options: WebSocketOptions): WebSocketConnection {
-  const url = `${config.server.baseUrl.replace(/^http/, 'ws')}/${options.path}?token=${options.accessToken}`;
-
-  const socket = new WebSocket(url);
-
-  socket.addEventListener('open', () => {
-    console.log(`WebSocket connection opened: ${options.path}`);
-    if (options.onOpen) {
-      options.onOpen();
-    }
-  });
-
-  socket.addEventListener('close', (event) => {
-    console.log(`WebSocket connection closed: ${options.path}`, event);
-    if (options.onClose) {
-      options.onClose(event);
-    }
-  });
-
-  socket.addEventListener('error', (error) => {
-    console.error(`WebSocket error: ${options.path}`, error);
-    if (options.onError) {
-      options.onError(error);
-    }
-  });
-
-  const close = () => {
-    if (socket.readyState === WebSocket.OPEN ||
-      socket.readyState === WebSocket.CONNECTING) {
-      socket.close();
-    }
-  };
-
-  return {
-    socket,
-    close
-  };
-}
-
-/**
- * Creates a WebSocket connection for image generation notifications
- * @param token The authentication token
- * @param onMessage Callback for message events
- * @param onError Callback for error events
- */
-export const createImageGenerationSocket = (
-  token: string,
-  onMessage: (notification: ImageGenerationNotification) => void,
-  onError: (error: string) => void
-): WebSocketConnection => {
-  // Use current protocol (http -> ws, https -> wss)
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = config.server.baseUrl.replace(/^https?:\/\//, '');
-
-  // Create WebSocket URL with auth token in query parameter
-  const ws = new WebSocket(`${protocol}//${host}/ws/images?token=${token}`);
-
-  ws.onopen = () => {
-    console.log('WebSocket connected for image generation notifications');
-  };
-
-  ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data) as ImageGenerationNotification;
-      onMessage(data);
-    } catch (error) {
-      console.error('Error parsing WebSocket message:', error);
-      onError('Failed to parse notification');
-    }
-  };
-
-  ws.onerror = (event) => {
-    console.error('WebSocket error:', event);
-    onError('Connection error');
-  };
-
-  ws.onclose = () => {
-    console.log('WebSocket connection closed');
-  };
-
-  return {
-    close: () => {
-      ws.close();
-    },
-    socket: ws
-  };
+type ConnectionRegistry = {
+  [K in SocketConnectionType]: ChatWebSocketClient | undefined;
 };
 
-export type ChatSocketCommand = {
-  type: 'send' | 'pause' | 'resume' | 'cancel';
-  message: string;
-  conversation_id: number;
-  metadata?: {
-    generate_image?: boolean;
-    is_continuation?: boolean;
-  };
+const connectionRegistry: ConnectionRegistry = {
+  [SocketConnectionTypeValues.CHAT]: undefined,
+  [SocketConnectionTypeValues.IMAGE]: undefined,
+  [SocketConnectionTypeValues.STATUS]: undefined  
 };
-
-export type ChatSocketResponse = {
-  type: string;
-  content?: string;
-  error?: string;
-  state: string;
-  session_id: string;
-  timestamp: number;
-};
-
-export interface ChatWebSocketHandlers {
-  onChunk: (chunk: string) => void;
-  onError: (error: string) => void;
-  onPaused: () => void;
-  onResumed: () => void;
-  onComplete: () => void;
-  onConnected: (sessionId: string) => void;
-}
 
 export class ChatWebSocketClient {
   private ws: WebSocket | null = null;
   private sessionId: string | null = null;
-  private handlers: ChatWebSocketHandlers;
+  private onRes: (response: SocketMessage) => void;
   private autoReconnect: boolean = true;
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 5;
   private reconnectTimeoutId: number | null = null;
+  private path: string = "";
+  private connectionType: SocketConnectionType;
 
-  constructor(handlers: ChatWebSocketHandlers) {
-    this.handlers = handlers;
+  constructor(connectionType: SocketConnectionType, handler: (response: SocketMessage) => void, path: string = "") {
+    this.onRes = handler;
+    this.path = path;
+    this.connectionType = connectionType;
   }
 
   public connect(authToken: string): Promise<void> {
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      console.warn('WebSocket is already connected or connecting');
+      return Promise.resolve();
+    }
+
+    const existingConnection = connectionRegistry[this.connectionType];
+
+    if (existingConnection) {  
+      console.warn(`WebSocket connection for type ${this.connectionType} already exists. Reusing existing connection.`);
+      this.ws = existingConnection.ws;
+      this.onRes = existingConnection.onRes;
+      this.sessionId = existingConnection.sessionId;
+      if (!this.isConnected()) {
+        console.warn(`Reusing existing connection, but it is not connected. Attempting to reconnect.`);
+        this.autoReconnect = true; // Ensure auto-reconnect is enabled
+        this.reconnectAttempts = 0; // Reset attempts
+        return this.connect(authToken);
+      }
+      return Promise.resolve();
+    }
+
     return new Promise((resolve, reject) => {
       try {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/chat?token=${authToken}`;
+        const host = config.server.baseUrl.replace(/^https?:\/\//, '');
+        const wsUrl = `${protocol}//${host}/ws/${this.connectionType}${this.path}?token=${authToken}`;
 
         this.ws = new WebSocket(wsUrl);
 
@@ -197,30 +103,33 @@ export class ChatWebSocketClient {
       return false;
     }
 
-    const command: ChatSocketCommand = {
-      type: 'send',
-      message: request.content,
+    const command: SocketMessage = {
+      id: uuidv4(),
+      type: MessageTypeValues.INFO,
+      content: request.content,
       conversation_id: request.conversation_id!,
-      metadata: {
-        generate_image: request.metadata?.generate_image,
-        is_continuation: request.metadata?.is_continuation
-      }
+      state: SocketStageTypeValues.INITIALIZING,
+      session_id: this.sessionId ?? '',
+      timestamp: new Date()
     };
 
     this.ws.send(JSON.stringify(command));
     return true;
   }
 
-  public pauseGeneration(): boolean {
+  public pauseGeneration(conversationId: number): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.sessionId) {
       console.error('WebSocket is not connected or no active session');
       return false;
     }
 
-    const command: ChatSocketCommand = {
-      type: 'pause',
-      message: '',
-      conversation_id: 0 // Not needed for pause
+    const command: SocketMessage = {
+      id: uuidv4(),
+      type: MessageTypeValues.PAUSE,
+      conversation_id: conversationId,
+      state: SocketStageTypeValues.PROCESSING,
+      session_id: this.sessionId,
+      timestamp: new Date()
     };
 
     this.ws.send(JSON.stringify(command));
@@ -233,29 +142,33 @@ export class ChatWebSocketClient {
       return false;
     }
 
-    const command: ChatSocketCommand = {
-      type: 'resume',
-      message: corrections,
+    const command: SocketMessage = {
+      id: uuidv4(),
+      type: MessageTypeValues.RESUME,
+      content: corrections,
       conversation_id: conversationId,
-      metadata: {
-        is_continuation: true
-      }
+      state: SocketStageTypeValues.PROCESSING,
+      session_id: this.sessionId,
+      timestamp: new Date()
     };
 
     this.ws.send(JSON.stringify(command));
     return true;
   }
 
-  public cancelGeneration(): boolean {
+  public cancelGeneration(conversationId: number): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.sessionId) {
       console.error('WebSocket is not connected or no active session');
       return false;
     }
 
-    const command: ChatSocketCommand = {
-      type: 'cancel',
-      message: '',
-      conversation_id: 0 // Not needed for cancel
+    const command: SocketMessage = {
+      id: uuidv4(),
+      type: MessageTypeValues.CANCEL,
+      conversation_id: conversationId,
+      state: SocketStageTypeValues.PROCESSING,
+      session_id: this.sessionId,
+      timestamp: new Date()
     };
 
     this.ws.send(JSON.stringify(command));
@@ -264,39 +177,8 @@ export class ChatWebSocketClient {
 
   private handleMessage(event: MessageEvent): void {
     try {
-      const response = JSON.parse(event.data) as ChatSocketResponse;
-
-      switch (response.type) {
-        case 'connected':
-          this.sessionId = response.session_id;
-          this.handlers.onConnected(response.session_id);
-          break;
-
-        case 'chunk':
-          if (response.content) {
-            this.handlers.onChunk(response.content);
-          }
-          break;
-
-        case 'error':
-          this.handlers.onError(response.error || 'Unknown error');
-          break;
-
-        case 'paused':
-          this.handlers.onPaused();
-          break;
-
-        case 'resuming':
-          this.handlers.onResumed();
-          break;
-
-        case 'complete':
-          this.handlers.onComplete();
-          break;
-
-        default:
-          console.log('Unhandled WebSocket response type:', response.type);
-      }
+      const response = JSON.parse(event.data) as SocketMessage;
+      this.onRes(response);
     } catch (error) {
       console.error('Error parsing WebSocket message:', error);
     }
@@ -314,7 +196,32 @@ export class ChatWebSocketClient {
         this.reconnectAttempts++;
         // We'll need to get a fresh token for reconnection
         // For now, we'll just notify that connection was lost
-        this.handlers.onError("WebSocket connection lost. Please refresh the page to reconnect.");
+        userManager.getUser().then(user => {
+          if (user) {
+            this.connect(user.access_token).then(() => {
+              console.log('Reconnected successfully');
+            }).catch(err => {
+              console.error('Reconnection failed:', err);
+              this.onRes({
+                id: uuidv4(),
+                type: MessageTypeValues.ERROR,
+                session_id: this.sessionId ?? '',
+                timestamp: new Date(),
+                state: SocketStageTypeValues.PROCESSING,
+                content: 'WebSocket connection lost. Please refresh the page to reconnect.'
+              });
+            });
+          } else {
+            this.onRes({
+              id: uuidv4(),
+              type: MessageTypeValues.ERROR,
+              session_id: this.sessionId ?? '',
+              timestamp: new Date(),
+              state: SocketStageTypeValues.PROCESSING,
+              content: 'WebSocket connection lost. Please refresh the page to reconnect.'
+            });
+          }
+        });
       }, delay);
     }
   }
@@ -326,4 +233,12 @@ export class ChatWebSocketClient {
   public getSessionId(): string | null {
     return this.sessionId;
   }
+}
+
+function uuidv4(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }

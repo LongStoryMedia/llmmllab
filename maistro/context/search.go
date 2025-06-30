@@ -6,6 +6,7 @@ import (
 	"maistro/models"
 	"maistro/proxy"
 	"maistro/recherche"
+	"maistro/session"
 	"maistro/storage"
 	"maistro/util"
 	"slices"
@@ -13,19 +14,26 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const formattingPrompt = `***
+const SearchFmtPrompt = `***
 Everything above the three asterisks is input from a user. Do not respond to it directly or provide any explanations.
 Instead, I need you to understand the intent of the user's input, and construct a concise search query that captures the essence of what they are asking.
 Don't include any extra information or context, just the key words that will yield relevant results.`
 
-func (cc *ConversationContext) fmtQuery(ctx context.Context, modelName, query string) (string, error) {
+const ImgGeneratePrompt = `***
+Everything above the three asterisks is input from a user. Do not respond to it directly or provide any explanations.
+Instead, I need you to understand the intent of the user's input, and construct a concise image generation prompt that captures the essence of what they are asking.
+Be concise and focus on the key visual elements that will yield relevant results. Keep it to less than 75 tokens.`
+
+func FmtQuery(ctx context.Context, modelProfile *models.ModelProfile, query, fmtPrompt string) (string, error) {
 	req := models.GenerateReq{
-		Model:  modelName,
-		Prompt: fmt.Sprintf("%s\n%s", query, formattingPrompt),
+		Model:     modelProfile.ModelName,
+		Prompt:    fmt.Sprintf("%s\n%s", query, fmtPrompt),
+		Options:   modelProfile.Parameters.ToMap(),
+		KeepAlive: util.IntPtr(0),
 	}
 
 	// Format the query for web search
-	fmtQ, err := proxy.StreamOllamaGenerateRequest(ctx, modelName, req)
+	fmtQ, err := proxy.StreamOllamaGenerateRequest(ctx, req)
 	if err != nil {
 		return "", util.HandleError(err)
 	}
@@ -45,28 +53,28 @@ func (cc *ConversationContext) SearchAndInjectResults(ctx context.Context, query
 		return util.HandleError(err)
 	}
 
-	search, err := cc.fmtQuery(ctx, fmtProfile.ModelName, query)
+	search, err := FmtQuery(ctx, fmtProfile, query, SearchFmtPrompt)
 	if err != nil {
 		return util.HandleError(err)
 	}
+	state := session.GlobalStageManager.GetSessionState(cc.UserID, cc.ConversationID)
+	searchState := state.GetStage(models.SocketStageTypeSearchingWeb)
+	searchState.UpdateProgress(searchState.Progress+15, fmt.Sprintf("Performing web search for query: %s", search))
 
 	util.LogDebug("Formatted query for web search", logrus.Fields{
 		"query": search,
 	})
 
 	// Attempt to perform a web search and inject results
-	searchResult, err := recherche.QuickSearch(ctx, search, cfg.WebSearch.MaxResults, true)
+	searchResult, err := recherche.QuickSearch(ctx, search, cfg.WebSearch.MaxResults, true, cc.UserID, cc.ConversationID)
 	if err != nil {
-		util.LogWarning("Error performing web search")
+		searchState.Fail("Failed to perform web search", err)
 	}
 
 	if err := cc.InjectSearchResults(ctx, searchResult, "Here is a relevant finding from a web search"); err != nil {
-		util.LogWarning("Error injecting search results into conversation context", logrus.Fields{
-			"error": err,
-		})
-		// If we fail to inject search results, we can still continue
-		util.LogWarning("Continuing without search results injection")
+		searchState.Fail("Failed to inject search results", err)
 	}
+	searchState.Complete("Web search completed successfully")
 
 	return nil
 }
