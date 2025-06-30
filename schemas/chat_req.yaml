@@ -22,7 +22,7 @@ properties:
     type: integer
     description: UI sends camelCase
   keep_alive:
-    type: string
+    type: integer
     description: Controls how long the model will stay loaded into memory
   options:
     type: object

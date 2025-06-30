@@ -1,0 +1,29 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+title: RabbitmqConfig
+type: object
+properties:
+  enabled:
+    type: boolean
+    description: Whether RabbitMQ is enabled
+  host:
+    type: string
+    description: RabbitMQ host
+  port:
+    type: integer
+    description: RabbitMQ port
+  user:
+    type: string
+    description: RabbitMQ user
+  password:
+    type: string
+    description: RabbitMQ password
+  vhost:
+    type: string
+    description: RabbitMQ virtual host
+required:
+  - enabled
+  - host
+  - port
+  - user
+  - password
+  - vhost

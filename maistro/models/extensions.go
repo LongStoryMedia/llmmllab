@@ -5,6 +5,11 @@ import (
 	"fmt"
 )
 
+func (cs *SocketSession) SessionID() string {
+	// Generate a unique session ID based on user ID and conversation ID
+	return fmt.Sprintf("%s-%d", cs.UserID, cs.ConversationID)
+}
+
 func (p *ModelParameters) ToMap() map[string]any {
 	return map[string]any{
 		"num_ctx":        p.NumCtx,

@@ -37,7 +37,7 @@ properties:
     type: boolean
     description: If true no formatting will be applied to the prompt
   keep_alive:
-    type: string
+    type: integer
     description: Controls how long the model will stay loaded into memory
   context:
     type: string

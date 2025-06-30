@@ -12,6 +12,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type ConfigKey string
+
+const (
+	CfgKey ConfigKey = "usr_cfg"
+)
+
 var (
 	config                    *models.Config
 	configOnce                sync.Once
@@ -31,6 +37,7 @@ var (
 		ResearchAnalysisProfileID:      DefaultResearchAnalysisProfile.ID,
 		EmbeddingProfileID:             DefaultEmbeddingProfile.ID,
 		FormattingProfileID:            DefaultFormattingProfile.ID,
+		ImageGenerationPromptProfileID: DefaultImageGenerationPromptProfile.ID,
 		ImageGenerationProfileID:       DefaultImageGenerationProfile.ID,
 	}
 )
@@ -51,7 +58,7 @@ func GetConfig(configFile *string) *models.Config {
 		// Read the config file into a byte slice
 		data, err := os.ReadFile(filePath)
 		if err != nil {
-			util.HandleFatalError(err, logrus.Fields{"error": "Failed to read configuration file"})
+			util.HandleFatalErrorAtCallLevel(err, 5, logrus.Fields{"error": "Failed to read configuration file"})
 		}
 
 		// Initialize config as a new struct before unmarshalling

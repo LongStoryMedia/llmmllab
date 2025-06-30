@@ -8,6 +8,7 @@ import (
 	"io"
 	"maistro/config"
 	"maistro/models"
+	"maistro/session"
 	"maistro/util"
 	"net/http"
 	"strings"
@@ -57,7 +58,7 @@ func GetHeadersFromContext(ctx context.Context) ContextHeaders {
 
 // GetProxyHandler handles streaming responses from Ollama and collects the full assistant response
 // It properly streams to the client while also returning the accumulated content
-func GetProxyHandler[T models.OllamaResponse](ctx context.Context, reqBody []byte, path, method string, stream bool, timeout time.Duration, cb *func(chunk T)) (func(w *bufio.Writer) (string, error), int, error) {
+func GetProxyHandler[T models.InferenceResponse](ctx context.Context, ss *session.SessionState, reqBody []byte, path, method string, stream bool, timeout time.Duration, cb *func(chunk T)) (func(w *bufio.Writer) (string, error), int, error) {
 	util.LogInfo("Proxying request to Ollama", logrus.Fields{"url": path})
 	conf := config.GetConfig(nil)
 	url := conf.InferenceServices.Ollama.BaseURL + path
@@ -110,13 +111,13 @@ func GetProxyHandler[T models.OllamaResponse](ctx context.Context, reqBody []byt
 	// Use a buffered channel to wait for streaming to complete
 	return func(w *bufio.Writer) (string, error) {
 		if stream {
-			return streamHandler[T](w, resp, &responseContent, timeout, cb)
+			return streamHandler(w, resp, &responseContent, ss, timeout, cb)
 		}
 		return resHandler(w, resp)
 	}, resp.StatusCode, nil
 }
 
-func streamHandler[T models.OllamaResponse](w *bufio.Writer, resp *http.Response, responseContent *strings.Builder, timeout time.Duration, cb *func(chunk T)) (string, error) {
+func streamHandler[T models.InferenceResponse](w *bufio.Writer, resp *http.Response, responseContent *strings.Builder, ss *session.SessionState, timeout time.Duration, cb *func(chunk T)) (string, error) {
 	defer resp.Body.Close() // Ensure connection is closed when done
 	proxyToClient := true
 	completed := false
@@ -203,7 +204,7 @@ loopScan:
 
 	if completed {
 		if !proxyToClient {
-			return responseContent.String(), util.HandleError(fmt.Errorf("connection closed by client"))
+			util.LogWarning("Streaming completed but not proxying to client, returning accumulated content")
 		}
 		return responseContent.String(), nil
 	} else {
@@ -250,7 +251,12 @@ func GetProxyClient() *http.Client {
 	}
 }
 
-func ProxyRequest(ctx context.Context, method, url string, stream bool, reqBody []byte) (*http.Response, error) {
+type ProxyHeader struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+func ProxyRequest(ctx context.Context, method, url string, stream bool, reqBody []byte, headers ...ProxyHeader) (*http.Response, error) {
 	// Create the request
 	var req *http.Request
 	var err error
@@ -276,7 +282,14 @@ func ProxyRequest(ctx context.Context, method, url string, stream bool, reqBody 
 		req.Header.Set("X-Stream", "false")                // Custom header to indicate non-streaming
 	}
 
-	// Make the request to Ollama
+	// Add custom headers if provided
+	for _, header := range headers {
+		if header.Key != "" && header.Value != "" {
+			req.Header.Set(header.Key, header.Value)
+		}
+	}
+
+	// Make the request downstream
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err

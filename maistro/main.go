@@ -7,9 +7,9 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sirupsen/logrus"
 
-	"maistro/api"
 	"maistro/config"
 	"maistro/context"
+	"maistro/routes"
 	"maistro/storage"
 	"maistro/util"
 )
@@ -96,7 +96,7 @@ func main() {
 	})
 
 	// Router
-	api.RegisterAllRoutes(app)
+	routes.RegisterRoutes(app)
 
 	// Start the server
 	addr := fmt.Sprintf("%s:%d", conf.Server.Host, conf.Server.Port)

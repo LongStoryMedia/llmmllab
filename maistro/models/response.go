@@ -1,7 +1,7 @@
 package models
 
 // NewResponse returns a pointer to an OllamaResponse based on the type argument
-func NewResponse[T OllamaResponse]() T {
+func NewResponse[T InferenceResponse]() T {
 	var response T
 	switch any(response).(type) {
 	case *OllamaChatResp:
@@ -15,7 +15,7 @@ func NewResponse[T OllamaResponse]() T {
 	}
 }
 
-type OllamaResponse interface {
+type InferenceResponse interface {
 	IsDone() bool
 	GetChunkContent() string
 	UnmarshalJSON(data []byte) error

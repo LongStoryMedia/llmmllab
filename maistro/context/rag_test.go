@@ -12,7 +12,7 @@ func Test_RetrieveAndInjectMemories(t *testing.T) {
 	test.Init()
 	// Initialize the context and user ID
 	ctx := context.Background()
-	embedding, err := proxy.GetOllamaEmbedding(ctx, "Can I get and example of splitting a model accross multiple gpus in code?", config.DefaultEmbeddingProfile.ModelName)
+	embedding, err := proxy.GetOllamaEmbedding(ctx, "Can I get and example of splitting a model accross multiple gpus in code?", &config.DefaultEmbeddingProfile)
 	if err != nil {
 		t.Fatalf("Failed to get embedding: %v", err)
 	}

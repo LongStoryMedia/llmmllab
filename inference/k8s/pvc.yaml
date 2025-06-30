@@ -87,3 +87,33 @@ spec:
   claimRef:
     namespace: ollama
     name: generated-images
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: code-base
+  namespace: ollama
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: code-base
+  namespace: ollama
+spec:
+  storageClassName: ""
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /data/code-base
+    type: DirectoryOrCreate
+  claimRef:
+    namespace: ollama
+    name: code-base

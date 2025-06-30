@@ -1,0 +1,14 @@
+$schema: http://json-schema.org/draft-07/schema#
+type: string
+title: SocketStageType
+description: The current processing stage.
+enum:
+  - initializing
+  - retrieving_memories
+  - searching_web
+  - summarizing
+  - generating_image
+  - processing
+  - rendering
+  - interpreting
+  - open

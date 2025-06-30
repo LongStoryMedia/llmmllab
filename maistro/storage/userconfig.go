@@ -83,9 +83,7 @@ func (ucs *userConfigStore) GetUserConfig(ctx context.Context, userID string) (*
 	var usrConfig models.UserConfig
 	err := Pool.QueryRow(ctx, GetQuery("user.get_config"), userID).Scan(&usrConfig)
 	if err != nil {
-		util.HandleError(err)
-
-		if err == sql.ErrNoRows || strings.Contains(err.Error(), "cannot scan NULL into *config.UserConfig") {
+		if err == sql.ErrNoRows || strings.Contains(err.Error(), "cannot scan NULL into *models.UserConfig") {
 			// No rows found, or empty config
 			util.LogWarning("No user config found, setting to default", logrus.Fields{"userID": userID})
 			usrConfig = models.UserConfig{UserID: userID}

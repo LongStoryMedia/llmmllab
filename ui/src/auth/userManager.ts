@@ -6,7 +6,7 @@ export const userManager = new UserManager(config.auth.oidc);
 export const logoutSession = async () => {
   try {
     await userManager.removeUser();
-    window.location.href = config.auth.oidc.post_logout_redirect_uri;
+    // window.location.href = config.auth.oidc.post_logout_redirect_uri;
   } catch (error) {
     console.error('Error during logout:', error);
   }

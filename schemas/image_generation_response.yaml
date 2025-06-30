@@ -5,13 +5,9 @@ properties:
   image:
     type: string
     description: Base64-encoded image
-  downloadUrl:
+  download:
     type: string
     description: URL to download the image
-  conversation_id:
-    type: integer
-    description: Identifier for the conversation this response belongs to
 required:
   - image
-  - downloadUrl
-  - conversation_id
+  - download

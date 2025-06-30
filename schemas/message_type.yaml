@@ -1,0 +1,18 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MessageType
+type: string
+enum:
+  - connect
+  - connected
+  - pause
+  - paused
+  - resume
+  - resumed
+  - cancel
+  - cancelled
+  - complete
+  - error
+  - warning
+  - info
+  - failed
+description: Type of message

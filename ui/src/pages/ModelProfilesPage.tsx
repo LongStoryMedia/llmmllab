@@ -11,14 +11,14 @@ import { ModelProfileType } from '../types/ModelProfileType';
 
 const emptyProfile: ModelProfile = {
   id: '',
-  userId: '',
+  user_id: '',
   name: '',
   description: '',
-  modelName: '',
+  model_name: '',
   parameters: {},
-  systemPrompt: '',
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  system_prompt: '',
+  created_at: new Date(),
+  updated_at: new Date(),
   type: ModelProfileType.Primary
 };
 
@@ -109,13 +109,13 @@ const ModelProfilesPage = () => {
             fullWidth margin="normal"
           />
           <ModelSelector 
-            onSelect={e => setEditingProfile({ ...editingProfile, modelName: e.target.value })}
-            name={editingProfile?.modelName || ''}
+            onSelect={e => setEditingProfile({ ...editingProfile, model_name: e.target.value })}
+            name={editingProfile?.model_name || ''}
           />
           <TextField
             label="System Prompt"
-            value={editingProfile?.systemPrompt || ''}
-            onChange={e => setEditingProfile({ ...editingProfile, systemPrompt: e.target.value })}
+            value={editingProfile?.system_prompt || ''}
+            onChange={e => setEditingProfile({ ...editingProfile, system_prompt: e.target.value })}
             fullWidth margin="normal"
             multiline
             minRows={2}

@@ -1,9 +1,10 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useAuth } from '../../auth';
 import { Conversation } from '../../types/Conversation';
 import { ChatMessage } from '../../types/ChatMessage';
 import { Model } from '../../types/Model';
-import { ChatRequest } from '../../types/ChatRequest';
+import { useBackgroundContext } from '../../context/BackgroundContext';
+// import { useBackgroundContext } from '../../context/BackgroundContext';
 
 export interface ChatState {
   messages: ChatMessage[];
@@ -15,11 +16,7 @@ export interface ChatState {
   response: string;
   selectedModel: string;
   models: Model[];
-  isWorkingInBackground: boolean;
-  backgroundAction: string | null;
   isPaused: boolean;
-  pausedRequest: ChatRequest | null;
-  correctionText: string;
 }
 
 export interface ChatActions {
@@ -36,11 +33,7 @@ export interface ChatActions {
   updateConversationInList: (id: number, updates: Partial<Conversation>) => void;
   removeConversationFromList: (id: number) => void;
   setModels: (models: Model[]) => void;
-  setIsWorkingInBackground: (searching: boolean) => void;
-  setBackgroundAction: (action: string | null) => void;
   setIsPaused: (paused: boolean) => void;
-  setPausedRequest: (request: ChatRequest | null) => void;
-  setCorrectionText: (text: string) => void;
 }
 
 export const useChatState = (): [ChatState, ChatActions] => {
@@ -55,13 +48,21 @@ export const useChatState = (): [ChatState, ChatActions] => {
     return localStorage.getItem('selectedModel') || '';
   });
   const [models, setModelsState] = useState<Model[]>([]);
-  const [isWorkingInBackground, setIsWorkingInBackground] = useState(false); // Initialize isWorkingInBackground state
   const { user } = useAuth(); // Assuming useAuth is a custom hook to get user info
   const currentUserId = useMemo(() => user?.profile?.preferred_username ?? '', [user]);
-  const [backgroundAction, setBackgroundAction] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [pausedRequest, setPausedRequest] = useState<ChatRequest | null>(null);
-  const [correctionText, setCorrectionText] = useState<string>('');
+  const {controlState} = useBackgroundContext();
+
+  useEffect(() => {
+    console.log("Control state changed:", controlState);
+    if (controlState === 'paused') {
+      setIsPaused(true);
+    } else if (controlState === 'running') {
+      setIsPaused(false);
+    } else if (controlState === 'cancelled') {
+      setIsPaused(false);
+    }
+  }, [controlState, currentUserId]);
 
   const setModels = useCallback((models: Model[]) => {
     setModelsState(models);
@@ -126,11 +127,7 @@ export const useChatState = (): [ChatState, ChatActions] => {
     response,
     selectedModel,
     models,
-    isWorkingInBackground,
-    backgroundAction,
-    isPaused,
-    pausedRequest,
-    correctionText
+    isPaused
   };
 
   const actions: ChatActions = {
@@ -147,11 +144,7 @@ export const useChatState = (): [ChatState, ChatActions] => {
     updateConversationInList,
     removeConversationFromList,
     setModels,
-    setIsWorkingInBackground,
-    setBackgroundAction,
-    setIsPaused,
-    setPausedRequest,
-    setCorrectionText
+    setIsPaused
   };
 
   return [state, actions];

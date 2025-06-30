@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { Fab, Badge, Tooltip } from '@mui/material';
 import ImageIcon from '@mui/icons-material/Image';
-import { useBackgroundProcess } from '../../context/BackgroundProcessContext';
 import ImageGalleryDrawer from './ImageGalleryDrawer';
+import { useBackgroundContext } from '../../context/BackgroundContext';
 
 const GalleryFAB: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const { generatedImages } = useBackgroundProcess();
+  const { images } = useBackgroundContext();
   
   const handleOpen = () => {
     setIsOpen(true);
@@ -31,7 +31,7 @@ const GalleryFAB: React.FC = () => {
           }}
         >
           <Badge 
-            badgeContent={generatedImages.length} 
+            badgeContent={images.length} 
             color="error" 
             overlap="circular"
             max={99}
@@ -45,7 +45,7 @@ const GalleryFAB: React.FC = () => {
       <ImageGalleryDrawer
         open={isOpen}
         onClose={handleClose}
-        images={generatedImages}
+        images={images}
       />
     </>
   );

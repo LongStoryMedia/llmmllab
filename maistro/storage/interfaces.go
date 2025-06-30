@@ -16,6 +16,7 @@ type MessageStore interface {
 	AddMessage(ctx context.Context, conversationID int, role, content string, usrCfg *models.UserConfig) (int, error)
 	GetMessage(ctx context.Context, messageID int) (*models.Message, error)
 	GetConversationHistory(ctx context.Context, conversationID int) ([]models.Message, error)
+	DeleteMessage(ctx context.Context, messageID int) error
 }
 
 // ConversationStore abstracts conversation-related operations
@@ -68,6 +69,7 @@ type MemoryStore interface {
 	StoreMemoryWithTx(ctx context.Context, userID, source, role string, sourceID int, embeddings [][]float32, tx pgx.Tx) error
 	DeleteMemory(ctx context.Context, id, userID string) error
 	DeleteAllUserMemories(ctx context.Context, userID string) error
+	SearchSimilarity(ctx context.Context, embeddings [][]float32, minSimilarity float32, limit int, userID *string, conversationID *int, startDate, endDate *time.Time) ([]models.Memory, error)
 }
 
 // UserConfigStore abstracts user config operations

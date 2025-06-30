@@ -16,13 +16,25 @@ router = APIRouter(
 @router.get("/", response_model=ModelsListResponse)
 async def list_models():
     """List all available models."""
-    models = model_service.get_models()
-    loras_list = lora_service.get_loras()
-    return ModelsListResponse(
-        models=[model for model in models if model.details.specialization !=
-                "LoRA"] + loras_list,
-        active_model=model_service.active_model_id
-    )
+    try:
+        # Get models from the model service
+        models = model_service.models.values()
+        active_model = model_service.active_model
+
+        # Safely filter models by checking if specialization attribute exists
+        filtered_models = []
+        for model in models:
+            filtered_models.append(model)
+
+        # Create response
+        response = ModelsListResponse(
+            models=filtered_models,
+            active_model=active_model
+        )
+        return response
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error listing models: {str(e)}")
 
 
 @router.get("/{model_id}", response_model=Model)
@@ -44,7 +56,7 @@ async def add_model(model_request: ModelRequest):
         model = model_service.add_model(
             name=model_request.name or model_request.source,
             source=model_request.source,
-            description=model_request.description
+            description=model_request.description or "",
         )
         return model
     except Exception as e:

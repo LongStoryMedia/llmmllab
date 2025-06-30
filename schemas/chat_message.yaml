@@ -29,8 +29,11 @@ properties:
   thinking:
     type: string
     description: Optional thinking process of the model, if applicable
-  metadata:
-    $ref: chat_message_metadata.yaml
+  # metadata:
+  #   $ref: chat_message_metadata.yaml
+  type:
+    $ref: message_type.yaml
+    description: Type of the message (e.g., text, image, pause, resume, cancel, etc.)
 required:
   - role
   - content

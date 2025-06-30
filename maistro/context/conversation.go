@@ -2,7 +2,6 @@ package context
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"maistro/models"
 	"maistro/proxy"
@@ -12,6 +11,12 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/sirupsen/logrus"
+)
+
+type CtxKey string
+
+const (
+	ConversationContextKey CtxKey = "conversation_id"
 )
 
 // ConversationContext manages context for a conversation
@@ -26,6 +31,8 @@ type ConversationContext struct {
 	SearchResults     []models.SearchResult // Search results from web search
 	Notes             []string
 	Images            []models.ImageMetadata // Images associated with the conversation
+	AfterThoughts     []models.Message
+	Intent            *Intent // Detected intent for the conversation
 }
 
 // GetOrCreateConversation retrieves or creates a conversation context
@@ -49,9 +56,8 @@ func GetOrCreateConversation(ctx context.Context, userID string, conversationID 
 		return nil, fmt.Errorf("failed to ensure user exists: %w", err)
 	}
 
-	var convContext ConversationContext
-	convContext.UserID = userID
-	// convContext.Model = model
+	var cc ConversationContext
+	cc.UserID = userID
 
 	// If conversationID is provided, load that conversation
 	if conversationID != nil {
@@ -72,24 +78,24 @@ func GetOrCreateConversation(ctx context.Context, userID string, conversationID 
 			return nil, fmt.Errorf("conversation does not belong to user")
 		}
 
-		convContext.ConversationID = conv.ID
-		convContext.Title = conv.Title
+		cc.ConversationID = conv.ID
+		cc.Title = conv.Title
 
 		// Load messages
-		if err := loadConversationMessages(ctx, &convContext); err != nil {
+		if err := loadConversationMessages(ctx, &cc); err != nil {
 			return nil, err
 		}
 
 		// Load summaries
-		if err := loadConversationSummaries(ctx, &convContext); err != nil {
+		if err := loadConversationSummaries(ctx, &cc); err != nil {
 			return nil, err
 		}
 
 		// Store in cache
 		if cache := GetCache(); cache != nil {
-			cache.Set(&convContext)
+			cache.Set(&cc)
 			util.LogInfo("Cached conversation", logrus.Fields{
-				"conversationId": convContext.ConversationID,
+				"conversationId": cc.ConversationID,
 				"userId":         userID,
 			})
 		}
@@ -99,15 +105,45 @@ func GetOrCreateConversation(ctx context.Context, userID string, conversationID 
 		if err != nil {
 			return nil, fmt.Errorf("failed to create conversation: %w", err)
 		}
-		convContext.ConversationID = id
+		cc.ConversationID = id
 
 		// Store new conversation in cache
 		if cache := GetCache(); cache != nil {
-			cache.Set(&convContext)
+			cache.Set(&cc)
 		}
 	}
 
-	return &convContext, nil
+	if cc.Messages == nil {
+		cc.Messages = make([]models.Message, 0)
+	}
+	if cc.Summaries == nil {
+		cc.Summaries = make([]models.Summary, 0)
+	}
+	if cc.RetrievedMemories == nil {
+		cc.RetrievedMemories = make([]models.Memory, 0)
+	}
+	if cc.SearchResults == nil {
+		cc.SearchResults = make([]models.SearchResult, 0)
+	}
+	if cc.Notes == nil {
+		cc.Notes = make([]string, 0)
+	}
+	if cc.Images == nil {
+		cc.Images = make([]models.ImageMetadata, 0)
+	}
+	if cc.AfterThoughts == nil {
+		cc.AfterThoughts = make([]models.Message, 0)
+	}
+	if cc.Intent == nil {
+		cc.Intent = &Intent{
+			ImageGeneration: false,
+			Memory:          false,
+			DeepResearch:    false,
+			WebSearch:       false,
+		}
+	}
+
+	return &cc, nil
 }
 
 // loadConversationMessages loads messages for a conversation
@@ -167,7 +203,7 @@ func (cc *ConversationContext) createMessageMemory(ctx context.Context, msg mode
 		return nil, util.HandleError(fmt.Errorf("failed to get model profile for embedding: %w", err))
 	}
 
-	embeddings, err := proxy.GetOllamaEmbedding(ctx, msg.Content, profile.ModelName)
+	embeddings, err := proxy.GetOllamaEmbedding(ctx, msg.Content, profile)
 	if err != nil {
 		return nil, util.HandleError(fmt.Errorf("failed to get Ollama embedding: %w", err))
 	}
@@ -187,7 +223,7 @@ func (cc *ConversationContext) createSummaryMemory(ctx context.Context, summary 
 		return nil, util.HandleError(fmt.Errorf("failed to get model profile for embedding: %w", err))
 	}
 
-	embeddings, err := proxy.GetOllamaEmbedding(ctx, summary.Content, profile.ModelName)
+	embeddings, err := proxy.GetOllamaEmbedding(ctx, summary.Content, profile)
 	if err != nil {
 		return nil, util.HandleError(fmt.Errorf("failed to get Ollama embedding: %w", err))
 	}
@@ -201,16 +237,16 @@ func (cc *ConversationContext) createSummaryMemory(ctx context.Context, summary 
 }
 
 // AddUserMessage adds a user message to the conversation
-func (cc *ConversationContext) AddUserMessage(ctx context.Context, content string) ([][]float32, error) {
+func (cc *ConversationContext) AddUserMessage(ctx context.Context, content string) ([][]float32, int, error) {
 	usrCfg, err := GetUserConfig(cc.UserID)
 	if err != nil {
-		return nil, util.HandleError(fmt.Errorf("failed to get user config: %w", err))
+		return nil, -1, util.HandleError(fmt.Errorf("failed to get user config: %w", err))
 	}
 
 	// Add to database
 	msgID, err := storage.MessageStoreInstance.AddMessage(ctx, cc.ConversationID, "user", content, usrCfg)
 	if err != nil {
-		return nil, util.HandleError(fmt.Errorf("failed to add user message: %w", err))
+		return nil, -1, util.HandleError(fmt.Errorf("failed to add user message: %w", err))
 	}
 
 	msg := models.Message{
@@ -225,7 +261,7 @@ func (cc *ConversationContext) AddUserMessage(ctx context.Context, content strin
 	// Create memory for the message
 	embeddings, err := cc.createMessageMemory(ctx, msg, usrCfg)
 	if err != nil {
-		return nil, util.HandleError(fmt.Errorf("failed to create message memory: %w", err))
+		return nil, msgID, util.HandleError(fmt.Errorf("failed to create message memory: %w", err))
 	}
 
 	// Update title if this is the first message
@@ -241,7 +277,7 @@ func (cc *ConversationContext) AddUserMessage(ctx context.Context, content strin
 		cache.Set(cc)
 	}
 
-	return embeddings, nil
+	return embeddings, msgID, nil
 }
 
 // AddAssistantMessage adds an assistant message to the conversation
@@ -294,141 +330,6 @@ func (cc *ConversationContext) AddAssistantMessage(ctx context.Context, content 
 	}(cc)
 
 	return embeddings, nil
-}
-
-// ChainMessages uses the conversation context to chain messages together
-// This prepares the request for Ollama by enhancing it with RAG, summaries, and recent messages
-// It returns the JSON-encoded request body for Ollama
-// and handles any errors that occur during the process.
-func (cc *ConversationContext) ChainMessages(req *models.ChatReq) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	req.Messages = make([]models.ChatMessage, 0)
-
-	if err := cc.EnhanceRequestWithRAG(ctx, req); err != nil {
-		return nil, util.HandleError(fmt.Errorf("failed to enhance request with RAG: %w", err))
-	}
-
-	// Add master summary if available
-	if cc.MasterSummary != nil {
-		// Add system message to introduce the conversation with master summary
-		req.Messages = append([]models.ChatMessage{CreateSystemMessage(
-			fmt.Sprintf("This is a continued conversation. Here is a comprehensive summary of the conversation history:\n%s", cc.MasterSummary.Content))}, req.Messages...)
-
-		util.LogInfo("Using master summary for conversation context", logrus.Fields{
-			"summaryId": cc.MasterSummary.ID,
-		})
-	}
-
-	// Add level summaries (one from each level)
-	if err := cc.addLevelSummariesToReq(req); err != nil {
-		return nil, util.HandleError(err)
-	}
-
-	// Add recent messages
-	if err := cc.addRecentMessagesToReq(req); err != nil {
-		return nil, util.HandleError(err)
-	}
-
-	// Add any notes to the request
-	if len(cc.Notes) > 0 {
-		for _, note := range cc.Notes {
-			req.Messages = append(req.Messages, models.ChatMessage{
-				Role:    "system",
-				Content: fmt.Sprintf("Note: %s", note),
-			})
-			util.LogDebug("Added note to request", logrus.Fields{
-				"note": note,
-			})
-		}
-		util.LogInfo("Added notes to request", logrus.Fields{
-			"count": len(cc.Notes),
-			"notes": cc.Notes,
-		})
-	}
-	msgsInOrder := make([]string, 0)
-
-	// debug log the content of each message in the request
-	for i, msg := range req.Messages {
-		util.LogDebug(truncateForLog(msg.Content), logrus.Fields{
-			"index": i,
-			"role":  msg.Role,
-		})
-
-		msgsInOrder = append(msgsInOrder, msg.Role)
-	}
-
-	util.LogDebug("Added messages to request", logrus.Fields{
-		"count":    len(req.Messages),
-		"messages": msgsInOrder,
-	})
-
-	return json.Marshal(req)
-}
-
-// addLevelSummariesToReq adds one summary from each level to the request
-func (cc *ConversationContext) addLevelSummariesToReq(req *models.ChatReq) error {
-	userConfig, err := GetUserConfig(cc.UserID)
-	if err != nil {
-		util.LogWarning("Could not load user configuration, using system defaults", logrus.Fields{"error": err})
-		return err
-	}
-
-	highestLevel := findMaxLevel(cc.Summaries)
-	summariesByLevel := groupSummariesByLevel(cc.Summaries)
-	summaryCount := 0
-	maxLevel := userConfig.Summarization.MaxSummaryLevels
-	for level := highestLevel; level >= 0 && level <= maxLevel; level-- {
-		levelSummaries := summariesByLevel[level]
-		if len(levelSummaries) == 0 {
-			util.LogDebug("No summaries found for level", logrus.Fields{"level": level})
-			continue
-		}
-		mostRecentSummary := levelSummaries[len(levelSummaries)-1]
-		req.Messages = append([]models.ChatMessage{CreateSystemMessage(fmt.Sprintf("Previous conversation summary (level %d): %s", level, mostRecentSummary.Content))}, req.Messages...)
-		summaryCount++
-	}
-	if summaryCount > 0 {
-		util.LogInfo("Using summaries (one per level) for conversation context", logrus.Fields{
-			"count": summaryCount,
-		})
-	}
-	return nil
-}
-
-// addRecentMessagesToReq adds the most recent messages to the request
-func (cc *ConversationContext) addRecentMessagesToReq(req *models.ChatReq) error {
-	// Get user-specific configuration
-	userConfig, err := GetUserConfig(cc.UserID)
-	if err != nil {
-		util.LogWarning("Could not load user configuration, using system defaults", logrus.Fields{"error": err})
-		return err
-	}
-
-	// Calculate starting index for messages
-	startIndex := max(len(cc.Messages)-userConfig.Summarization.MessagesBeforeSummary, 0)
-
-	util.LogInfo("Including most recent messages in request to Ollama", logrus.Fields{
-		"count": userConfig.Summarization.MessagesBeforeSummary})
-
-	// Add regular messages (most recent based on configuration)
-	// Ensure messages are in chronological order (oldest first, newest last)
-	for i := startIndex; i < len(cc.Messages); i++ {
-		if cc.Messages[i].ID <= 0 {
-			util.LogWarning("Message ID is not set", logrus.Fields{
-				"role":    cc.Messages[i].Role,
-				"content": cc.Messages[i].Content,
-			})
-			continue
-		}
-		req.Messages = append(req.Messages, models.ChatMessage{
-			Role:    cc.Messages[i].Role,
-			Content: cc.Messages[i].Content,
-		})
-	}
-
-	return nil
 }
 
 // CreateSystemMessage is a helper to create a system message

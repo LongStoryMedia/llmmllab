@@ -347,6 +347,29 @@ var DefaultFormattingProfile = models.ModelProfile{
 	SystemPrompt: "Format the provided text according to the specified style. Ensure that the formatting is consistent and adheres to the guidelines.",
 }
 
+var DefaultImageGenerationPromptProfile = models.ModelProfile{
+	ID:          uuid.MustParse("00000000-0000-0000-0000-000000000017"),
+	Name:        "Image Generation Prompt (Default)",
+	Type:        int(models.ModelProfileTypeImageGenerationPrompt),
+	Description: util.StrPtr("Profile for generating image prompts based on text."),
+	ModelName:   "brxce/stable-diffusion-prompt-generator:latest",
+	Parameters: models.ModelParameters{
+		NumCtx:        util.IntPtr(2048),
+		RepeatLastN:   util.IntPtr(64),
+		RepeatPenalty: util.Float32Ptr(1.1),
+		Temperature:   util.Float32Ptr(0.0),
+		Seed:          util.IntPtr(0),
+		Stop:          []string{},
+		NumPredict:    util.IntPtr(-1),
+		TopK:          util.IntPtr(40),
+		TopP:          util.Float32Ptr(0.9),
+		MinP:          util.Float32Ptr(0.0),
+	},
+	SystemPrompt: "Generate a detailed image prompt based on the provided text. The prompt should be descriptive and suitable for generating an image using a text-to-image model. " +
+		"Include specific details about the scene, objects, colors, and any other relevant attributes that would help in creating a high-quality image. Keep the prompt to less than 300 words. " +
+		"Ensure the prompt is clear and concise, focusing on visual elements that can be easily interpreted by an image generation model.",
+}
+
 var DefaultImageGenerationProfile = models.ModelProfile{
 	ID:          uuid.MustParse("00000000-0000-0000-0000-000000000016"),
 	Name:        "Image Generation (Default)",
@@ -384,5 +407,6 @@ var DefaultModelProfiles = []models.ModelProfile{
 	DefaultResearchAnalysisProfile,
 	DefaultEmbeddingProfile,
 	DefaultFormattingProfile,
+	DefaultImageGenerationPromptProfile,
 	DefaultImageGenerationProfile,
 }

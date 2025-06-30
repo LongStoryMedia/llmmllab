@@ -13,6 +13,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 
 	"maistro/models"
+	"maistro/session"
 	"maistro/util"
 
 	customsearch "google.golang.org/api/customsearch/v1"
@@ -129,7 +130,7 @@ func ExtractTextFromURL(ctx context.Context, urlString string) (string, error) {
 	return result, nil
 }
 
-func ExtractUrlContentFromQuery(ctx context.Context, query string) (*models.SearchResult, error) {
+func ExtractUrlContentFromQuery(ctx context.Context, query, userID string, conversationID int) (*models.SearchResult, error) {
 	// Check if the query contains a URL
 	if strings.Contains(query, "http://") || strings.Contains(query, "https://") {
 		// Extract URLs from the query
@@ -144,29 +145,38 @@ func ExtractUrlContentFromQuery(ctx context.Context, query string) (*models.Sear
 			}
 		}
 
+		state := session.GlobalStageManager.GetSessionState(userID, conversationID)
+		searchState := state.GetStage(models.SocketStageTypeSearchingWeb)
+
 		if len(urls) > 0 {
 			util.LogInfo(fmt.Sprintf("Extracted URLs from query: %v", urls))
 			// Remove duplicates
 			urls = slices.Compact(urls)
 			results := make([]models.SearchResultContent, 0)
 
+			totalUrls := len(urls)
+			percentStep := 25 / totalUrls
+
 			for _, u := range urls {
 				// Ensure each URL is valid
 				if _, err := url.ParseRequestURI(u); err != nil {
-					util.LogWarning(fmt.Sprintf("Invalid URL found in query: %s, error: %v", u, err))
+					totalUrls--
+					percentStep = 25 / totalUrls
 					continue
 				}
 				// Normalize the URL by removing trailing slashes
 				address := strings.TrimSuffix(u, "/")
 				content, err := ExtractTextFromURL(ctx, address)
 				if err != nil {
-					util.HandleError(fmt.Errorf("failed to extract content from URL: %w", err))
+					totalUrls--
+					percentStep = 25 / totalUrls
 					continue
 				}
 				results = append(results, models.SearchResultContent{
 					URL:     address,
 					Content: content,
 				})
+				searchState.UpdateProgress(searchState.GetProgress()+percentStep, fmt.Sprintf("Extracted content from URL: %s", address))
 			}
 
 			return &models.SearchResult{
@@ -181,7 +191,7 @@ func ExtractUrlContentFromQuery(ctx context.Context, query string) (*models.Sear
 }
 
 // QuickSearch performs a complete search operation: search, extract content, and format results
-func QuickSearch(ctx context.Context, query string, maxResults int, includeContents bool) (*models.SearchResult, error) {
+func QuickSearch(ctx context.Context, query string, maxResults int, includeContents bool, userID string, conversationID int) (*models.SearchResult, error) {
 	result := &models.SearchResult{
 		Query: query,
 	}
@@ -194,6 +204,13 @@ func QuickSearch(ctx context.Context, query string, maxResults int, includeConte
 	}
 	// Remove duplicates
 	urls = slices.Compact(urls)
+	state := session.GlobalStageManager.GetSessionState(userID, conversationID)
+	searchState := state.GetStage(models.SocketStageTypeSearchingWeb)
+	searchState.UpdateProgress(searchState.GetProgress()+10, fmt.Sprintf("Found %d URLs for query: %s", len(urls), query))
+
+	remainder := 100 - searchState.GetProgress()
+	totalUrls := len(urls)
+	percentStep := remainder / totalUrls
 
 	// Extract content if requested
 	if includeContents && len(urls) > 0 {
@@ -201,17 +218,19 @@ func QuickSearch(ctx context.Context, query string, maxResults int, includeConte
 		for _, u := range urls {
 			// Ensure each URL is valid
 			if _, err := url.ParseRequestURI(u); err != nil {
-				util.LogWarning(fmt.Sprintf("Invalid URL found in query: %s, error: %v", u, err))
+				totalUrls--
+				percentStep = remainder / totalUrls
 				continue
 			}
 			// Normalize the URL by removing trailing slashes
 			address := strings.TrimSuffix(u, "/")
 			content, err := ExtractTextFromURL(ctx, address)
 			if err != nil {
-				// Just log the error and continue
-				util.LogWarning(fmt.Sprintf("Error extracting text from URL %s: %v", address, err))
+				totalUrls--
+				percentStep = remainder / totalUrls
 				continue
 			}
+			searchState.UpdateProgress(searchState.GetProgress()+percentStep, fmt.Sprintf("Extracted content from URL: %s", address))
 			if content != "" {
 				result.Contents = append(result.Contents, models.SearchResultContent{
 					URL:     address,

@@ -11,13 +11,11 @@ export interface ChatContextType {
   conversations: ReturnType<typeof useChatState>[0]['conversations'];
   currentConversation: ReturnType<typeof useChatState>[0]['currentConversation'];
   isLoading: boolean;
-  isWorkingInBackground: boolean;
   error: string | null;
   isTyping: boolean;
   response: string;
   selectedModel: string;
   models: Model[];
-  backgroundAction: string | null;
   isPaused: boolean;
   
   // Actions
@@ -27,15 +25,12 @@ export interface ChatContextType {
   deleteConversation: ReturnType<typeof useChatOperations>['deleteConversation'];
   startNewConversation: ReturnType<typeof useChatOperations>['startNewConversation'];
   selectConversation: ReturnType<typeof useChatOperations>['selectConversation'];
-  setConversationTitle: ReturnType<typeof useChatOperations>['setConversationTitle'];
   setSelectedModel: ReturnType<typeof useChatState>[1]['setSelectedModel'];
   fetchModels: ReturnType<typeof useChatOperations>['fetchModels'];
   setCurrentConversation: ReturnType<typeof useChatState>[1]['setCurrentConversation'];
-  setIsWorkingInBackground: ReturnType<typeof useChatState>[1]['setIsWorkingInBackground'];
-  setBackgroundAction: ReturnType<typeof useChatState>[1]['setBackgroundAction'];
-  setIsPaused: ReturnType<typeof useChatState>[1]['setIsPaused'];
-  abortGeneration: ReturnType<typeof useChatOperations>['abortGeneration'];
-  resumeWithCorrections: ReturnType<typeof useChatOperations>['resumeWithCorrections'];
+  pauseRequest: ReturnType<typeof useChatOperations>['pauseRequest'];
+  cancelRequest: ReturnType<typeof useChatOperations>['cancelRequest'];
+  resumeRequest: ReturnType<typeof useChatOperations>['resumeRequest'];
 }
 
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(({ children }) => {
@@ -75,8 +70,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(
     response: state.response,
     selectedModel: state.selectedModel,
     models: state.models,
-    isWorkingInBackground: state.isWorkingInBackground,
-    backgroundAction: state.backgroundAction,
     isPaused: state.isPaused,
     
     // Actions
@@ -86,15 +79,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(
     deleteConversation: operations.deleteConversation,
     startNewConversation: operations.startNewConversation,
     selectConversation: operations.selectConversation,
-    setConversationTitle: operations.setConversationTitle,
     setSelectedModel: actions.setSelectedModel,
     setCurrentConversation: actions.setCurrentConversation,
     fetchModels: operations.fetchModels,
-    setIsWorkingInBackground: actions.setIsWorkingInBackground,
-    setBackgroundAction: actions.setBackgroundAction,
-    setIsPaused: actions.setIsPaused,
-    abortGeneration: operations.abortGeneration,
-    resumeWithCorrections: operations.resumeWithCorrections
+    pauseRequest: operations.pauseRequest,
+    cancelRequest: operations.cancelRequest,
+    resumeRequest: operations.resumeRequest
   };
 
   return <ChatContext.Provider value={contextValue}>{children}</ChatContext.Provider>;

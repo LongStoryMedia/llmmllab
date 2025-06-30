@@ -24,7 +24,7 @@ export const getUserConversations = async (accessToken: string, userId: string) 
   return await req<Conversation[]>({
     method: 'GET',
     headers: getHeaders(accessToken),
-    path: `api/conversations/user/${userId}`
+    path: `api/users/${userId}/conversations`
   });
 }
 
@@ -42,15 +42,6 @@ export const getOneConversation = async (accessToken: string, id: number) =>
     path: `api/conversations/${id}`
   });
 
-export const updateConversationTitle = async (accessToken: string, id: number, title: string) => {
-  await req({
-    method: 'PUT',
-    headers: getHeaders(accessToken),
-    body: JSON.stringify({ title }),
-    path: `api/conversations/${id}`
-  });
-}
-
 export const removeConversation = async (accessToken: string, id: number) => {
   await req({
     method: 'DELETE',
@@ -58,3 +49,21 @@ export const removeConversation = async (accessToken: string, id: number) => {
     path: `api/conversations/${id}`
   });
 }
+
+export const pause = async (accessToken: string, conversationId: number) => req({
+  method: 'POST',
+  path: `api/conversations/${conversationId}/pause`,
+  headers: getHeaders(accessToken)
+})
+
+export const resume = async (accessToken: string, conversationId: number) => req({
+  method: 'POST',
+  path: `api/conversations/${conversationId}/resume`,
+  headers: getHeaders(accessToken)
+})
+
+export const cancel = async (accessToken: string, conversationId: number) => req({
+  method: 'POST',
+  path: `api/conversations/${conversationId}/cancel`,
+  headers: getHeaders(accessToken)
+})

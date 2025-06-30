@@ -31,10 +31,14 @@ func GenerateImageFromPrompt(ctx context.Context, request models.ImageGenerateRe
 		return nil, util.HandleError(fmt.Errorf("failed to generate image: %w", err))
 	}
 
+	if sdResponse == nil {
+		return nil, util.HandleError(fmt.Errorf("received nil response from image generation"))
+	}
+
 	// Return the data in our response format
 	return &models.ImageGenerateResponse{
-		Image:       sdResponse.Image,
-		DownloadURL: sdResponse.Download,
+		Image:    sdResponse.Image,
+		Download: sdResponse.Download,
 	}, nil
 }
 

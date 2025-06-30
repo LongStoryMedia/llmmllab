@@ -3,30 +3,30 @@ title: WebSocketConnection
 type: object
 description: WebSocketConnection represents an active WebSocket connection
 properties:
-  ID:
+  id:
     type: string
     description: Unique identifier for the connection
-  UserID:
+  user_id:
     type: string
     description: Identifier of the user associated with the connection
-  Type:
+  type:
     type: string
     description: Type of WebSocket connection (e.g., chat, image, status)
     enum:
       - chat
       - image
       - status
-  Conn:
+  conn:
     type:
       - string
       - "null"
     description: The WebSocket connection object (represented as string)
-  CreatedAt:
+  created_at:
     type: string
     format: date-time
     description: Timestamp indicating when the connection was established
 required:
-  - ID
-  - UserID
-  - Type
-  - CreatedAt
+  - id
+  - user_id
+  - type
+  - created_at

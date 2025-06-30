@@ -1,11 +1,22 @@
 import os
+import logging
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("inference-service")
 
 # Image storage configuration
-IMAGE_DIR = "/app/images"
+IMAGE_DIR = "/root/images"
 
 # Model configuration
-DEFAULT_MODEL_ID = "default"
-DEFAULT_MODEL_SOURCE = "stable-diffusion-v1-5/stable-diffusion-v1-5"
+DEFAULT_MODEL_ID = "black-forest-labs-flux.1-dev"
+DEFAULT_MODEL_SOURCE = "stabilityai/stable-diffusion-3.5-large"
 MODEL_NAME = DEFAULT_MODEL_SOURCE  # For backwards compatibility
 
 # Default HuggingFace cache location
@@ -16,6 +27,7 @@ HF_HOME = os.environ.get("HF_HOME", DEFAULT_HF_CACHE)
 # Config storage
 CONFIG_DIR = "/app/config"
 MODELS_CONFIG_PATH = os.path.join(CONFIG_DIR, "models.json")
+LORAS_CONFIG_PATH = os.path.join(CONFIG_DIR, "loras.json")
 
 # Image retention period (in hours)
 IMAGE_RETENTION_HOURS = int(os.environ.get("IMAGE_RETENTION_HOURS", "1"))
@@ -67,3 +79,14 @@ MAX_WIDTH = int(os.environ.get("MAX_WIDTH", "1024"))
 LORAS_CONFIG_PATH = os.path.join(CONFIG_DIR, "loras.json")
 # Default weight for LoRA adaptation
 DEFAULT_LORA_WEIGHT = float(os.environ.get("DEFAULT_LORA_WEIGHT", "0.75"))
+# PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+os.environ.setdefault("PYTORCH_NO_CUDA_MEMORY_CACHING", "1")
+# os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF",
+#                       "expandable_segments:True")
+
+RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "rabbitmq-0.rabbitmq.rabbitmq.svc.cluster.local")
+RABBITMQ_PORT = os.environ.get("RABBITMQ_PORT", 5672)
+RABBITMQ_USER = os.environ.get("RABBITMQ_USER", "lsm")
+RABBITMQ_PASSWORD = os.environ.get("RABBITMQ_PASSWORD", "")
+RABBITMQ_VHOST = os.environ.get("RABBITMQ_VHOST", "/")

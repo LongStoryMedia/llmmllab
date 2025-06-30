@@ -3,10 +3,14 @@ import { Box, useTheme, Drawer, Backdrop } from '@mui/material';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import GalleryFAB from '../Shared/GalleryFAB';
+import StatusToast from '../Shared/StatusToast';
+import StageProgressBars from '../Shared/StageProgressBars';
+import { useBackgroundContext } from '../../context/BackgroundContext';
 
 const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const theme = useTheme();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const { activeStages } = useBackgroundContext();
 
   const handleDrawerOpen = () => setDrawerOpen(true);
   const handleDrawerClose = () => setDrawerOpen(false);
@@ -33,6 +37,12 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       
       {/* Image Gallery Floating Action Button */}
       <GalleryFAB />
+
+      {/* Status Notifications Toast */}
+      <StatusToast />
+
+      {/* Stage Progress Bars */}
+      <StageProgressBars activeStages={activeStages} />
     </Box>
   );
 };

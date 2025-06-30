@@ -16,7 +16,7 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import DownloadIcon from '@mui/icons-material/Download';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { GeneratedImage, useBackgroundProcess } from '../../context/BackgroundProcessContext';
+import { useBackgroundContext, GeneratedImage } from '../../context/BackgroundContext';
 
 interface ImageGalleryDrawerProps {
   open: boolean;
@@ -26,7 +26,7 @@ interface ImageGalleryDrawerProps {
 
 const ImageGalleryDrawer: React.FC<ImageGalleryDrawerProps> = ({ open, onClose, images }) => {
   const theme = useTheme();
-  const { removeGeneratedImage } = useBackgroundProcess();
+  const { deleteImage } = useBackgroundContext();
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   // Handler for image download
@@ -44,7 +44,7 @@ const ImageGalleryDrawer: React.FC<ImageGalleryDrawerProps> = ({ open, onClose, 
 
   // Handler for image deletion from the gallery
   const handleRemove = (id: string) => {
-    removeGeneratedImage(id);
+    deleteImage(id);
   };
   
   // Handler for selecting/deselecting an image for preview

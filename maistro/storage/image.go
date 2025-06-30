@@ -15,22 +15,10 @@ func (s *imageStore) StoreImage(ctx context.Context, userID string, image *model
 	if Pool == nil {
 		return 0, util.HandleError(fmt.Errorf("database connection pool is not initialized (Pool is nil)"))
 	}
-
-	// Start a transaction for atomicity
-	tx, err := Pool.Begin(ctx)
-	if err != nil {
-		return 0, util.HandleError(err)
-	}
-	// Use defer with a named error return to ensure we correctly handle transaction state
-	defer func() {
-		if err != nil {
-			tx.Rollback(ctx) // rollback on error
-		}
-	}()
 	// Use the SQL query from our loader to insert the image metadata
 	var imageID int
 	// filename, thumbnail, format, width, height, conversation_id, user_id
-	err = tx.QueryRow(ctx, GetQuery("images.add_image"), image.Filename, image.Thumbnail, image.Format, image.Width, image.Height, image.ConversationID, image.UserID).
+	err := Pool.QueryRow(ctx, GetQuery("images.add_image"), image.Filename, image.Thumbnail, image.Format, image.Width, image.Height, image.ConversationID, image.UserID).
 		Scan(&imageID)
 	if err != nil {
 		return 0, util.HandleError(err)
@@ -73,26 +61,10 @@ func (s *imageStore) DeleteImage(ctx context.Context, imageID int) error {
 		return util.HandleError(fmt.Errorf("database connection pool is not initialized (Pool is nil)"))
 	}
 
-	// Start a transaction for atomicity
-	tx, err := Pool.Begin(ctx)
-	if err != nil {
-		return util.HandleError(err)
-	}
-	// Use defer with a named error return to ensure we correctly handle transaction state
-	defer func() {
-		if err != nil {
-			tx.Rollback(ctx) // rollback on error
-		}
-	}()
 	// Use the SQL query from our loader to delete the image
-	_, err = tx.Exec(ctx, GetQuery("images.delete_image"), imageID)
+	_, err := Pool.Exec(ctx, GetQuery("images.delete_image"), imageID)
 	if err != nil {
 		return util.HandleError(err)
 	}
-	// Commit the transaction
-	if err = tx.Commit(ctx); err != nil {
-		return util.HandleError(err)
-	}
-
 	return nil // Return nil error for now
 }

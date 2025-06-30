@@ -187,9 +187,9 @@ export async function req<T>(opts: RequestOptions): Promise<T> {
       await logoutSession();
       throw new Error('Authentication failed');
     }
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    if (response.status >= 400) {
+      const errorText = await response.text();
+      throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
     }
 
     if (opts.requestKey) {
@@ -198,6 +198,10 @@ export async function req<T>(opts: RequestOptions): Promise<T> {
 
     if (opts.method === 'DELETE') {
       return await response.text() as unknown as T;
+    }
+
+    if (response.status === 204) {
+      return {} as T; // HEAD requests typically don't return a body
     }
 
     return await response.json();

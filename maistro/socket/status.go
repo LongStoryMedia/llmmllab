@@ -1,107 +1,244 @@
+// Deprecated: Use svc.SocketService package instead
 package socket
 
-import (
-	"fmt"
-	"maistro/models"
-	"maistro/util"
+// import (
+// 	"errors"
+// 	"fmt"
+// 	"maistro/models"
+// 	"maistro/util"
+// 	"time"
 
-	"github.com/gofiber/contrib/websocket"
-	"github.com/sirupsen/logrus"
-)
+// 	"github.com/gofiber/contrib/websocket"
+// 	"github.com/google/uuid"
+// 	"github.com/sirupsen/logrus"
+// )
 
-// StatusUpdate represents a status update message for WebSocket clients
-// type StatusUpdate struct {
-// 	Type      string `json:"type"`
-// 	Stage     string `json:"stage"`
-// 	Message   string `json:"message,omitempty"`
-// 	Progress  int    `json:"progress"`
-// 	Timestamp int64  `json:"timestamp"`
-// 	IsComplete bool  `json:"is_complete"`
+// // handleStatusWebSocket handles WebSocket connections for status updates
+// func handleStatusWebSocket(c *websocket.Conn) {
+// 	// Get user ID from context
+// 	userID := GetUserIDFromSocketConnection(c)
+// 	if userID == "" {
+// 		util.HandleError(fmt.Errorf("WebSocket connection rejected: missing user ID"))
+// 		c.Close()
+// 		return
+// 	}
+
+// 	// Register connection
+// 	connID := registerConnection(userID, models.WebSocketConnectionTypeStatus, c)
+// 	defer unregisterConnection(userID, connID)
+
+// 	util.LogInfo("Status WebSocket connection established", logrus.Fields{
+// 		"userID": userID,
+// 		"connID": connID,
+// 	})
+
+// 	// Set ping handler to keep connection alive
+// 	c.SetPingHandler(func(appData string) error {
+// 		return c.WriteMessage(websocket.PongMessage, []byte{})
+// 	})
+
+// 	// Keep the connection open until the client disconnects
+// 	for {
+// 		// Read message from client
+// 		_, _, err := c.ReadMessage()
+// 		if err != nil {
+// 			if websocket.IsUnexpectedCloseError(err) {
+// 				util.LogInfo("Status WebSocket connection closed", logrus.Fields{
+// 					"userID": userID,
+// 					"connID": connID,
+// 				})
+// 			} else {
+// 				util.HandleError(err)
+// 			}
+// 			break
+// 		}
+// 	}
 // }
 
-// handleStatusWebSocket handles WebSocket connections for status updates
-func handleStatusWebSocket(c *websocket.Conn) {
-	// Get user ID from context
-	userID := getUserIDFromContext(c)
-	if userID == "" {
-		util.HandleError(fmt.Errorf("WebSocket connection rejected: missing user ID"))
-		c.Close()
-		return
-	}
+// func sanitizePayload[T any](payload ...T) []interface{} {
+// 	pld := make([]models.ImageGenerationNotification, 0)
+// 	if len(payload) > 0 {
+// 		for _, p := range payload {
+// 			switch v := any(p).(type) {
+// 			case models.ImageGenerationNotification:
+// 				pld = append(pld, v)
+// 			default:
+// 				util.LogWarningAtCallLevel("Invalid payload type for image generation notification", 2, logrus.Fields{
+// 					"payloadType":  fmt.Sprintf("%T", p),
+// 					"expectedType": "models.ImageGenerationNotification",
+// 				})
+// 				continue
+// 			}
+// 		}
+// 	}
+// 	// Convert []T to []interface{}
+// 	data := make([]interface{}, len(pld))
+// 	for i, v := range pld {
+// 		data[i] = v
+// 	}
 
-	// Register connection
-	connID := registerConnection(userID, models.WebSocketConnectionTypeStatus, c)
-	defer unregisterConnection(userID, connID)
+// 	return data
+// }
 
-	util.LogInfo("Status WebSocket connection established", logrus.Fields{
-		"userID": userID,
-		"connID": connID,
-	})
+// // Deprecated: Use SocketService package instead
+// func SendInfo(stage models.SocketStageType, conversationID int, userID string, message string, progress int) {
+// 	util.LogInfoAtCallLevel(message, 2, logrus.Fields{
+// 		"stage":          stage,
+// 		"conversationID": conversationID,
+// 		"userID":         userID,
+// 		"progress":       progress,
+// 	})
+// 	csr := models.SocketMessage{
+// 		ID:        uuid.New().String(),
+// 		Type:      models.MessageTypeInfo,
+// 		Content:   &message,
+// 		State:     stage,
+// 		SessionID: GetChatSocketSessionID(userID, conversationID),
+// 		Timestamp: time.Now(),
+// 		Progress:  &progress,
+// 	}
 
-	// Set ping handler to keep connection alive
-	c.SetPingHandler(func(appData string) error {
-		return c.WriteMessage(websocket.PongMessage, []byte{})
-	})
+// 	// Broadcast to user
+// 	BroadcastToUser(userID, csr)
+// }
 
-	// Keep the connection open until the client disconnects
-	for {
-		// Read message from client
-		_, _, err := c.ReadMessage()
-		if err != nil {
-			if websocket.IsUnexpectedCloseError(err) {
-				util.LogInfo("Status WebSocket connection closed", logrus.Fields{
-					"userID": userID,
-					"connID": connID,
-				})
-			} else {
-				util.HandleError(err)
-			}
-			break
-		}
-	}
-}
+// // Deprecated: Use SocketService package instead
+// func SendWarning(stage models.SocketStageType, conversationID int, userID string, message string) {
+// 	util.LogWarningAtCallLevel(message, 2, logrus.Fields{
+// 		"stage":          stage,
+// 		"conversationID": conversationID,
+// 		"userID":         userID,
+// 	})
+// 	csr := models.SocketMessage{
+// 		ID:        uuid.New().String(),
+// 		Type:      models.MessageTypeWarning,
+// 		Content:   &message,
+// 		State:     stage,
+// 		SessionID: GetChatSocketSessionID(userID, conversationID),
+// 		Timestamp: time.Now(),
+// 	}
 
-// SendStatusUpdate sends a status update to a specific user
-func SendStatusUpdate(userID string, statusType models.StatusUpdateType, stage models.StatusUpdateStage, message string, progress int, isComplete bool) {
-	update := models.StatusUpdate{
-		Type:     statusType,
-		Stage:    stage,
-		Message:  &message,
-		Progress: progress,
-		Done:     isComplete,
-		UserID:   userID,
-	}
+// 	// Broadcast to user
+// 	BroadcastToUser(userID, csr)
+// }
 
-	// Broadcast to user
-	broadcastToUser(userID, update)
-}
+// // Deprecated: Use SocketService package instead
+// func SendError(stage models.SocketStageType, conversationID int, userID string, message string) {
+// 	util.HandleErrorAtCallLevel(errors.New(message), 2, logrus.Fields{
+// 		"stage":          stage,
+// 		"conversationID": conversationID,
+// 		"userID":         userID,
+// 	})
+// 	csr := models.SocketMessage{
+// 		ID:        uuid.New().String(),
+// 		Type:      models.MessageTypeError,
+// 		Content:   &message,
+// 		State:     stage,
+// 		SessionID: GetChatSocketSessionID(userID, conversationID),
+// 		Timestamp: time.Now(),
+// 	}
 
-// BroadcastProcessingStage sends a processing stage status update to a specific user
-func BroadcastProcessingStage(userID string, stage models.StatusUpdateStage, progress int) {
-	SendStatusUpdate(userID, models.StatusUpdateTypeInfo, stage, "", progress, false)
-}
+// 	// Broadcast to user
+// 	BroadcastToUser(userID, csr)
+// }
 
-// BroadcastError sends an error status update to a specific user
-func BroadcastError(userID string, message string) {
-	SendStatusUpdate(userID, models.StatusUpdateTypeError, models.StatusUpdateStageError, message, 0, false)
-}
+// // Deprecated: Use SocketService package instead
+// func SendCompletion[T any](stage models.SocketStageType, conversationID int, userID string, message string, payload ...T) {
+// 	util.LogInfoAtCallLevel(message, 2, logrus.Fields{
+// 		"stage":          stage,
+// 		"conversationID": conversationID,
+// 		"userID":         userID,
+// 	})
+// 	csr := models.SocketMessage{
+// 		ID:        uuid.New().String(),
+// 		Type:      models.MessageTypeComplete,
+// 		Content:   &message,
+// 		State:     stage,
+// 		SessionID: GetChatSocketSessionID(userID, conversationID),
+// 		Timestamp: time.Now(),
+// 		Data:      sanitizePayload(payload...),
+// 	}
 
-// BroadcastCompletion sends a completion status update to a specific user
-func BroadcastCompletion(userID string, message string) {
-	SendStatusUpdate(userID, models.StatusUpdateTypeInfo, models.StatusUpdateStageCompleted, message, 100, true)
-}
+// 	// Broadcast to user
+// 	BroadcastToUser(userID, csr)
+// }
 
-// BroadcastMemoryStage sends a memory retrieval status update
-func BroadcastMemoryStage(userID string, message string, progress int) {
-	SendStatusUpdate(userID, models.StatusUpdateTypeInfo, models.StatusUpdateStageRetrievingMemories, message, progress, false)
-}
+// // Deprecated: Use SocketService package instead
+// func SendCancelled(conversationID int, userID string) {
+// 	message := "Session cancelled"
+// 	util.LogWarningAtCallLevel(message, 2, logrus.Fields{
+// 		"conversationID": conversationID,
+// 		"userID":         userID,
+// 	})
+// 	csr := models.SocketMessage{
+// 		ID:        uuid.New().String(),
+// 		Type:      models.MessageTypeCancelled,
+// 		Content:   &message,
+// 		State:     models.SocketStageTypeProcessing,
+// 		SessionID: GetChatSocketSessionID(userID, conversationID),
+// 		Timestamp: time.Now(),
+// 	}
 
-// BroadcastSearchStage sends a web search status update
-func BroadcastSearchStage(userID string, message string, progress int) {
-	SendStatusUpdate(userID, models.StatusUpdateTypeInfo, models.StatusUpdateStageSearchingWeb, message, progress, false)
-}
+// 	// Broadcast to user
+// 	BroadcastToUser(userID, csr)
+// }
 
-// BroadcastSummarizingStage sends a summarization status update
-func BroadcastSummarizingStage(userID string, message string, progress int) {
-	SendStatusUpdate(userID, models.StatusUpdateTypeInfo, models.StatusUpdateStageSummarizing, message, progress, false)
-}
+// // Deprecated: Use SocketService package instead
+// func SendPaused(conversationID int, userID string) {
+// 	message := "Session paused"
+// 	util.LogInfoAtCallLevel(message, 2, logrus.Fields{
+// 		"conversationID": conversationID,
+// 		"userID":         userID,
+// 	})
+// 	csr := models.SocketMessage{
+// 		ID:        uuid.New().String(),
+// 		Type:      models.MessageTypePaused,
+// 		Content:   &message,
+// 		State:     models.SocketStageTypeProcessing,
+// 		SessionID: GetChatSocketSessionID(userID, conversationID),
+// 		Timestamp: time.Now(),
+// 	}
+
+// 	// Broadcast to user
+// 	BroadcastToUser(userID, csr)
+// }
+
+// // Deprecated: Use SocketService package instead
+// func SendResumed(conversationID int, userID string) {
+// 	message := "Session resumed"
+// 	util.LogInfoAtCallLevel(message, 2, logrus.Fields{
+// 		"conversationID": conversationID,
+// 		"userID":         userID,
+// 	})
+// 	csr := models.SocketMessage{
+// 		ID:        uuid.New().String(),
+// 		Type:      models.MessageTypeResumed,
+// 		Content:   &message,
+// 		State:     models.SocketStageTypeProcessing,
+// 		SessionID: GetChatSocketSessionID(userID, conversationID),
+// 		Timestamp: time.Now(),
+// 	}
+
+// 	// Broadcast to user
+// 	BroadcastToUser(userID, csr)
+// }
+
+// // Deprecated: Use SocketService package instead
+// func SendConnected(stage models.SocketStageType, conversationID int, userID string, message string) {
+// 	util.LogInfoAtCallLevel(message, 2, logrus.Fields{
+// 		"stage":          stage,
+// 		"conversationID": conversationID,
+// 		"userID":         userID,
+// 	})
+// 	csr := models.SocketMessage{
+// 		ID:        uuid.New().String(),
+// 		Type:      models.MessageTypeConnected,
+// 		Content:   &message,
+// 		State:     stage,
+// 		SessionID: GetChatSocketSessionID(userID, conversationID),
+// 		Timestamp: time.Now(),
+// 	}
+
+// 	// Broadcast to user
+// 	BroadcastToUser(userID, csr)
+// }

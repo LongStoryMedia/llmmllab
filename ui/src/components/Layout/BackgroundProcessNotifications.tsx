@@ -8,30 +8,44 @@ import {
   Box, 
   Divider,
   ListItemIcon,
-  ListItemText
+  ListItemText,
+  List,
+  ListItem,
+  LinearProgress,
+  Chip,
+  ListSubheader,
+  Grid,
+  Button
 } from '@mui/material';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import ImageIcon from '@mui/icons-material/Image';
+import ClearAllIcon from '@mui/icons-material/ClearAll';
+import WarningIcon from '@mui/icons-material/Warning';
 import ErrorIcon from '@mui/icons-material/Error';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import ClearAllIcon from '@mui/icons-material/ClearAll';
-import { useBackgroundProcess } from '../../context/BackgroundProcessContext';
+import CancelIcon from '@mui/icons-material/Cancel';
+import AutorenewIcon from '@mui/icons-material/Autorenew';
 import ImageGalleryDrawer from '../Shared/ImageGalleryDrawer';
+import { useBackgroundContext } from '../../context/BackgroundContext';
+import { getStageFriendlyName } from '../Shared/StageProgressBars';
+import { SocketStageType } from '../../types/SocketStageType';
 
 const BackgroundProcessNotifications: React.FC = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const { 
-    processes, 
-    generatedImages, 
-    unreadCount, 
-    markAllAsRead, 
-    removeAllProcesses 
-  } = useBackgroundProcess();
+    markAllAsRead,
+    images,
+    unreadNotificationCount,
+    longRunningStages,
+    errors,
+    warnings,
+    dismissError,
+    dismissWarning
+  } = useBackgroundContext();
   
   const handleClick = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
-    markAllAsRead();
   };
 
   const handleClose = () => {
@@ -39,7 +53,7 @@ const BackgroundProcessNotifications: React.FC = () => {
   };
 
   const handleClearAll = () => {
-    removeAllProcesses();
+    markAllAsRead();
     handleClose();
   };
 
@@ -65,16 +79,18 @@ const BackgroundProcessNotifications: React.FC = () => {
     }
   };
 
-  const hasImageGenerationResults = generatedImages.length > 0;
+  const hasImageGenerationResults = images.length > 0;
+  const hasLongRunningProcesses = longRunningStages.length > 0;
+  const hasErrors = errors.length > 0;
+  const hasWarnings = warnings.length > 0;
   
   return (
     <>
       <IconButton
         color="inherit"
         onClick={handleClick}
-        disabled={processes.length === 0}
       >
-        <Badge badgeContent={unreadCount} color="error">
+        <Badge badgeContent={unreadNotificationCount} color="error">
           <NotificationsIcon />
         </Badge>
       </IconButton>
@@ -94,7 +110,8 @@ const BackgroundProcessNotifications: React.FC = () => {
         PaperProps={{
           sx: {
             minWidth: 320,
-            maxHeight: '60vh'
+            maxHeight: '60vh',
+            maxWidth: 400
           }
         }}
       >
@@ -102,7 +119,7 @@ const BackgroundProcessNotifications: React.FC = () => {
           <Typography variant="subtitle1" fontWeight="bold">
             Background Processes
           </Typography>
-          {processes.length > 0 && (
+          {unreadNotificationCount > 0 && (
             <IconButton size="small" onClick={handleClearAll} title="Clear all notifications">
               <ClearAllIcon />
             </IconButton>
@@ -111,7 +128,7 @@ const BackgroundProcessNotifications: React.FC = () => {
         
         <Divider />
         
-        {processes.length === 0 ? (
+        {!hasImageGenerationResults && !hasLongRunningProcesses && !hasErrors && !hasWarnings ? (
           <MenuItem disabled>
             <Typography variant="body2" color="text.secondary">
               No active processes or notifications
@@ -119,6 +136,149 @@ const BackgroundProcessNotifications: React.FC = () => {
           </MenuItem>
         ) : (
           <>
+            {hasLongRunningProcesses && (
+              <>
+                <List
+                  subheader={
+                    <ListSubheader>
+                      Active Processes
+                    </ListSubheader>
+                  }
+                >
+                  {longRunningStages.map((stage) => (
+                    <ListItem key={stage.id || stage.stage} sx={{ display: 'block', py: 1 }}>
+                      <Grid container spacing={1} alignItems="center">
+                        <Grid>
+                          <AutorenewIcon color="primary" fontSize="small" />
+                        </Grid>
+                        <Grid>
+                          <Typography variant="body2">{getStageFriendlyName(stage.stage)}</Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <Box sx={{ width: '100%', mr: 1 }}>
+                              <LinearProgress 
+                                variant="determinate" 
+                                value={stage.progress} 
+                                sx={{ height: 4, borderRadius: 1 }}
+                              />
+                            </Box>
+                            <Typography variant="caption">
+                              {Math.round(stage.progress)}%
+                            </Typography>
+                          </Box>
+                          <Typography variant="caption" color="text.secondary">
+                            {getTimeDifference(stage.timestamp)}
+                          </Typography>
+                        </Grid>
+                      </Grid>
+                    </ListItem>
+                  ))}
+                </List>
+                <Divider />
+              </>
+            )}
+
+            {hasErrors && (
+              <>
+                <List
+                  subheader={
+                    <ListSubheader>
+                      Errors
+                    </ListSubheader>
+                  }
+                >
+                  {errors.map((error) => (
+                    <ListItem 
+                      key={error.id} 
+                      sx={{ display: 'block', py: 1 }}
+                      secondaryAction={
+                        <IconButton 
+                          edge="end" 
+                          aria-label="dismiss" 
+                          size="small"
+                          onClick={() => dismissError(error.id)}
+                        >
+                          <CancelIcon fontSize="small" />
+                        </IconButton>
+                      }
+                    >
+                      <Grid container spacing={1} alignItems="flex-start">
+                        <Grid>
+                          <ErrorIcon color="error" fontSize="small" />
+                        </Grid>
+                        <Grid>
+                          <Typography variant="body2">
+                            {error.message}
+                          </Typography>
+                          {error.stage && (
+                            <Chip 
+                              label={getStageFriendlyName(error.stage as SocketStageType)} 
+                              size="small" 
+                              sx={{ mt: 0.5 }}
+                            />
+                          )}
+                          <Typography variant="caption" display="block" color="text.secondary">
+                            {getTimeDifference(error.timestamp)}
+                          </Typography>
+                        </Grid>
+                      </Grid>
+                    </ListItem>
+                  ))}
+                </List>
+                <Divider />
+              </>
+            )}
+            
+            {hasWarnings && (
+              <>
+                <List
+                  subheader={
+                    <ListSubheader>
+                      Warnings
+                    </ListSubheader>
+                  }
+                >
+                  {warnings.map((warning) => (
+                    <ListItem 
+                      key={warning.id} 
+                      sx={{ display: 'block', py: 1 }}
+                      secondaryAction={
+                        <IconButton 
+                          edge="end" 
+                          aria-label="dismiss" 
+                          size="small"
+                          onClick={() => dismissWarning(warning.id)}
+                        >
+                          <CancelIcon fontSize="small" />
+                        </IconButton>
+                      }
+                    >
+                      <Grid container spacing={1} alignItems="flex-start">
+                        <Grid>
+                          <WarningIcon color="warning" fontSize="small" />
+                        </Grid>
+                        <Grid>
+                          <Typography variant="body2">
+                            {warning.message}
+                          </Typography>
+                          {warning.stage && (
+                            <Chip 
+                              label={getStageFriendlyName(warning.stage as SocketStageType)} 
+                              size="small" 
+                              sx={{ mt: 0.5 }}
+                            />
+                          )}
+                          <Typography variant="caption" display="block" color="text.secondary">
+                            {getTimeDifference(warning.timestamp)}
+                          </Typography>
+                        </Grid>
+                      </Grid>
+                    </ListItem>
+                  ))}
+                </List>
+                <Divider />
+              </>
+            )}
+            
             {hasImageGenerationResults && (
               <MenuItem onClick={handleOpenImageGallery}>
                 <ListItemIcon>
@@ -126,41 +286,22 @@ const BackgroundProcessNotifications: React.FC = () => {
                 </ListItemIcon>
                 <ListItemText 
                   primary="View Generated Images Gallery" 
-                  secondary={`${generatedImages.length} image${generatedImages.length !== 1 ? 's' : ''} available`}
+                  secondary={`${images.length} image${images.length !== 1 ? 's' : ''} available`}
                 />
               </MenuItem>
             )}
             
-            <Divider />
-            
-            {processes.map((process) => (
-              <MenuItem key={process.id} sx={{ display: 'block', py: 1 }}>
-                <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
-                  <ListItemIcon>
-                    {process.status === 'completed' ? (
-                      <CheckCircleIcon color="success" />
-                    ) : process.status === 'failed' ? (
-                      <ErrorIcon color="error" />
-                    ) : (
-                      <ImageIcon color="primary" />
-                    )}
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary={process.title}
-                    secondary={
-                      <>
-                        <Typography variant="body2" component="span" color="text.secondary">
-                          {process.details || process.error || ''}
-                        </Typography>
-                        <Typography variant="caption" component="p" color="text.secondary" sx={{ mt: 0.5 }}>
-                          {getTimeDifference(process.createdAt)}
-                        </Typography>
-                      </>
-                    }
-                  />
-                </Box>
-              </MenuItem>
-            ))}
+            {unreadNotificationCount > 0 && (
+              <Box sx={{ p: 1, display: 'flex', justifyContent: 'center' }}>
+                <Button
+                  size="small"
+                  startIcon={<CheckCircleIcon />}
+                  onClick={handleClearAll}
+                >
+                  Mark all as read
+                </Button>
+              </Box>
+            )}
           </>
         )}
       </Menu>
@@ -169,7 +310,7 @@ const BackgroundProcessNotifications: React.FC = () => {
       <ImageGalleryDrawer
         open={isGalleryOpen}
         onClose={() => setIsGalleryOpen(false)}
-        images={generatedImages}
+        images={images}
       />
     </>
   );

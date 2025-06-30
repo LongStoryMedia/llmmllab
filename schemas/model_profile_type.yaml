@@ -18,6 +18,7 @@ enum:
   - 12
   - 13
   - 14
+  - 15
   - 115
 enumNames:
   "0": ModelProfileTypePrimary
@@ -35,4 +36,5 @@ enumNames:
   "12": ModelProfileTypeResearchAnalysis
   "13": ModelProfileTypeEmbedding
   "14": ModelProfileTypeFormatting
+  "15": ModelProfileTypeImageGenerationPrompt
   "115": ModelProfileTypeImageGeneration

@@ -3,6 +3,9 @@ title: Model
 description: Model represents a machine learning model used for generating responses
 type: object
 properties:
+  id:
+    type: string
+    description: Unique identifier for the model
   name:
     type: string
     description: Display name of the model
@@ -21,6 +24,14 @@ properties:
   details:
     $ref: "#/definitions/ModelDetails"
     description: Additional information about the model
+  pipeline:
+    type: string
+    description: Pipeline type used for the model (e.g., "sd3", "sdxl")
+  lora_weight_ids:
+    type: array
+    items:
+      type: string
+    description: List of LoRA weights associated with the model
 required:
   - name
   - model

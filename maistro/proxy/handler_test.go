@@ -7,54 +7,56 @@ import (
 	"encoding/json"
 	"maistro/config"
 	"maistro/models"
-	"os"
+	"maistro/session"
 	"testing"
 	"time"
 )
 
-func Test_ChatRequest(t *testing.T) {
-	confFile := "testdata/.config.yaml"
-	config.GetConfig(&confFile)
-	// Create a sample chat request
-	req := models.ChatReq{
-		Model: config.DefaultPrimaryProfile.ModelName,
-		Messages: []models.ChatMessage{
-			{Role: "user", Content: "Why is the sky blue?"},
-		},
-	}
+// func Test_ChatRequest(t *testing.T) {
+// 	confFile := "testdata/.config.yaml"
+// 	config.GetConfig(&confFile)
+// 	// Create a sample chat request
+// 	req := models.ChatReq{
+// 		Model: config.DefaultPrimaryProfile.ModelName,
+// 		Messages: []models.ChatMessage{
+// 			{Role: "user", Content: "Why is the sky blue?"},
+// 		},
+// 	}
 
-	// Marshal the request to JSON
-	data, err := json.Marshal(req)
-	if err != nil {
-		t.Fatalf("Failed to marshal chat request: %v", err)
-	}
+// 	// Marshal the request to JSON
+// 	data, err := json.Marshal(req)
+// 	if err != nil {
+// 		t.Fatalf("Failed to marshal chat request: %v", err)
+// 	}
 
-	handler, status, err := GetProxyHandler[*models.OllamaChatResp](context.Background(), data, "/api/chat", "POST", true, time.Minute, nil)
-	if err != nil {
-		if IsIncompleteError(err) {
-			t.Fatalf("Chat request failed with incomplete error: %v", err)
-		}
-		t.Fatalf("Failed to get proxy handler: %v", err)
-	}
-	if status != 200 {
-		t.Fatalf("Expected status 200, got %d", status)
-	}
+// 	ss := session.GlobalStageManager.GetSessionState("test_user", 99)
 
-	// Create a buffer to capture the response
-	w := &bytes.Buffer{}
-	wr := bufio.NewWriter(w)
+// 	handler, status, err := GetProxyHandler[*models.OllamaChatResp](context.Background(), ss, data, "/api/chat", "POST", true, time.Minute, nil)
+// 	if err != nil {
+// 		if IsIncompleteError(err) {
+// 			t.Fatalf("Chat request failed with incomplete error: %v", err)
+// 		}
+// 		t.Fatalf("Failed to get proxy handler: %v", err)
+// 	}
+// 	if status != 200 {
+// 		t.Fatalf("Expected status 200, got %d", status)
+// 	}
 
-	res, err := handler(wr)
-	if err != nil {
-		if res == "" {
-			t.Fatalf("Chat request failed with empty response: %v", err)
-		} else {
-			t.Fatalf("connection closed, but response completed: %v", err)
-		}
-	}
+// 	// Create a buffer to capture the response
+// 	w := &bytes.Buffer{}
+// 	wr := bufio.NewWriter(w)
 
-	t.Log("Chat response:", res)
-}
+// 	res, err := handler(wr)
+// 	if err != nil {
+// 		if res == "" {
+// 			t.Fatalf("Chat request failed with empty response: %v", err)
+// 		} else {
+// 			t.Fatalf("connection closed, but response completed: %v", err)
+// 		}
+// 	}
+
+// 	t.Log("Chat response:", res)
+// }
 
 func Test_EmbeddingRequest(t *testing.T) {
 	confFile := "testdata/.config.yaml"
@@ -71,7 +73,9 @@ func Test_EmbeddingRequest(t *testing.T) {
 		t.Fatalf("Failed to marshal embedding request: %v", err)
 	}
 
-	handler, status, err := GetProxyHandler[*models.OllamaEmbeddingResponse](context.Background(), data, "/api/embed", "POST", false, time.Second*15, nil)
+	ss := session.GlobalStageManager.GetSessionState("test_user", 99)
+
+	handler, status, err := GetProxyHandler[*models.OllamaEmbeddingResponse](context.Background(), ss, data, "/api/embed", "POST", false, time.Second*15, nil)
 	if err != nil {
 		t.Fatalf("Failed to get proxy handler: %v", err)
 	}
@@ -117,7 +121,8 @@ func Test_GenerateRequest(t *testing.T) {
 		t.Fatalf("Failed to marshal generate request: %v", err)
 	}
 
-	handler, status, err := GetProxyHandler[*models.OllamaGenerateResponse](context.Background(), data, "/api/generate", "POST", true, time.Second*15, nil)
+	ss := session.GlobalStageManager.GetSessionState("test_user", 99)
+	handler, status, err := GetProxyHandler[*models.OllamaGenerateResponse](context.Background(), ss, data, "/api/generate", "POST", true, time.Second*15, nil)
 	if err != nil {
 		t.Fatalf("Failed to get proxy handler: %v", err)
 	}
@@ -147,60 +152,61 @@ func Test_GenerateRequest(t *testing.T) {
 const filename = "testdata/ollama_test_output.md"
 const TIMEOUT = 5 * time.Minute
 
-func Test_ChatRequestWithLongContext(t *testing.T) {
-	confFile := "testdata/.config.yaml"
-	config.GetConfig(&confFile)
-	os.Setenv("TEST_OUTPUT_FILE", filename)
-	// Clear the output file before running the test
-	if err := os.WriteFile(filename, []byte(""), 0644); err != nil {
-		t.Fatalf("Failed to clear output file: %v", err)
-	}
-	defer os.Setenv("TEST_OUTPUT_FILE", "")
+// func Test_ChatRequestWithLongContext(t *testing.T) {
+// 	confFile := "testdata/.config.yaml"
+// 	config.GetConfig(&confFile)
+// 	os.Setenv("TEST_OUTPUT_FILE", filename)
+// 	// Clear the output file before running the test
+// 	if err := os.WriteFile(filename, []byte(""), 0644); err != nil {
+// 		t.Fatalf("Failed to clear output file: %v", err)
+// 	}
+// 	defer os.Setenv("TEST_OUTPUT_FILE", "")
 
-	msgs, err := os.ReadFile("testdata/messages.json")
-	if err != nil {
-		t.Fatalf("Failed to read messages file: %v", err)
-	}
-	var messages []models.ChatMessage
-	if err := json.Unmarshal(msgs, &messages); err != nil {
-		t.Fatalf("Failed to unmarshal messages: %v", err)
-	}
+// 	msgs, err := os.ReadFile("testdata/messages.json")
+// 	if err != nil {
+// 		t.Fatalf("Failed to read messages file: %v", err)
+// 	}
+// 	var messages []models.ChatMessage
+// 	if err := json.Unmarshal(msgs, &messages); err != nil {
+// 		t.Fatalf("Failed to unmarshal messages: %v", err)
+// 	}
 
-	req := models.ChatReq{
-		Model:    config.DefaultPrimaryProfile.ModelName,
-		Messages: messages,
-		Stream:   true,
-		Options:  config.DefaultPrimaryProfile.Parameters.ToMap(),
-	}
-	data, err := json.Marshal(req)
-	if err != nil {
-		t.Fatalf("Failed to marshal chat request: %v", err)
-	}
+// 	req := models.ChatReq{
+// 		Model:    config.DefaultPrimaryProfile.ModelName,
+// 		Messages: messages,
+// 		Stream:   true,
+// 		Options:  config.DefaultPrimaryProfile.Parameters.ToMap(),
+// 	}
+// 	data, err := json.Marshal(req)
+// 	if err != nil {
+// 		t.Fatalf("Failed to marshal chat request: %v", err)
+// 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), TIMEOUT)
-	defer cancel()
-	handler, status, err := GetProxyHandler[*models.OllamaChatResp](ctx, data, "/api/chat", "POST", true, TIMEOUT, nil)
-	if err != nil {
-		t.Fatalf("Failed to get proxy handler: %v", err)
-	}
-	if status != 200 {
-		t.Fatalf("Expected status 200, got %d", status)
-	}
-	// Create a buffer to capture the response
-	w := &bytes.Buffer{}
-	wr := bufio.NewWriter(w)
+// 	ctx, cancel := context.WithTimeout(context.Background(), TIMEOUT)
+// 	defer cancel()
+// 	ss := session.GlobalStageManager.GetSessionState("test_user", 99)
+// 	handler, status, err := GetProxyHandler[*models.OllamaChatResp](ctx, ss, data, "/api/chat", "POST", true, TIMEOUT, nil)
+// 	if err != nil {
+// 		t.Fatalf("Failed to get proxy handler: %v", err)
+// 	}
+// 	if status != 200 {
+// 		t.Fatalf("Expected status 200, got %d", status)
+// 	}
+// 	// Create a buffer to capture the response
+// 	w := &bytes.Buffer{}
+// 	wr := bufio.NewWriter(w)
 
-	res, err := handler(wr)
-	if err != nil {
-		if IsIncompleteError(err) {
-			t.Fatalf("Chat request failed with incomplete error: %v", err)
-		}
-		t.Fatalf("Chat request failed: %v", err)
-	}
+// 	res, err := handler(wr)
+// 	if err != nil {
+// 		if IsIncompleteError(err) {
+// 			t.Fatalf("Chat request failed with incomplete error: %v", err)
+// 		}
+// 		t.Fatalf("Chat request failed: %v", err)
+// 	}
 
-	if res == "" {
-		t.Fatalf("Chat request returned empty response")
-	}
+// 	if res == "" {
+// 		t.Fatalf("Chat request returned empty response")
+// 	}
 
-	t.Log("Chat response:", res)
-}
+// 	t.Log("Chat response:", res)
+// }

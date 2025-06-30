@@ -260,7 +260,11 @@ class TypeScriptGenerator:
                     desc = enum_member_desc(enum_descriptions, value, i)
                     desc_str = f" // {desc}" if desc else ""
                     output.append(f"  /** {value}{desc_str} */")
-                    output.append(f"  {const_name}: '{value}',")
+                    # prevent trailing commas
+                    if i == len(enum_values) - 1:
+                        output.append(f"  {const_name}: '{value}'")
+                    else:
+                        output.append(f"  {const_name}: '{value}',")
 
                 output.append("} as const;")
             else:

@@ -2,17 +2,17 @@ title: TokenValidationResult
 type: object
 description: Holds the outcome of token validation
 properties:
-  UserID:
+  user_id:
     type: string
     description: The user ID extracted from the token
-  Claims:
+  claims:
     type: object
     description: JWT claims from the token
     additionalProperties: true
-  IsAdmin:
+  is_admin:
     type: boolean
     description: Whether the user has admin privileges
 required:
-  - UserID
-  - Claims
-  - IsAdmin
+  - user_id
+  - claims
+  - is_admin

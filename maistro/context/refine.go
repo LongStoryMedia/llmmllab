@@ -49,7 +49,7 @@ func (cc *ConversationContext) GetCritiqueForResponse(ctx context.Context, respo
 	defer cancel()
 
 	// Send the request to Ollama
-	resp, err := proxy.StreamOllamaChatRequest(timeoutCtx, critiqueProfile, msgs, &cc.UserID)
+	resp, err := proxy.StreamOllamaChatRequest(timeoutCtx, critiqueProfile, msgs, cc.UserID, cc.ConversationID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get critique: %w", err)
 	}
@@ -90,7 +90,7 @@ func (cc *ConversationContext) ImproveResponseWithCritique(ctx context.Context, 
 	defer cancel()
 
 	// Send the request to Ollama
-	resp, err := proxy.StreamOllamaChatRequest(timeoutCtx, improvementProfile, msgs, &cc.UserID)
+	resp, err := proxy.StreamOllamaChatRequest(timeoutCtx, improvementProfile, msgs, cc.UserID, cc.ConversationID)
 	if err != nil {
 		return "", fmt.Errorf("failed to improve response: %w", err)
 	}
