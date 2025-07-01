@@ -84,6 +84,8 @@ type ImageStore interface {
 	StoreImage(ctx context.Context, userID string, image *models.ImageMetadata) (int, error)
 	ListImages(ctx context.Context, userID string, conversationID, limit, offset *int) ([]models.ImageMetadata, error)
 	DeleteImage(ctx context.Context, imageID int) error
+	DeleteImagesOlderThan(ctx context.Context, dt time.Time) error
+	GetImageByID(ctx context.Context, userID string, imageID int) (*models.ImageMetadata, error)
 }
 
 var (

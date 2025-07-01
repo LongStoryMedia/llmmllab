@@ -122,5 +122,13 @@ spec:
                   key: password
             - name: RABBITMQ_VHOST
               value: "/"
+            # Internal service settings
+            - name: MAISTRO_INTERNAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: internal-api-key
+                  key: api_key
+            - name: MAISTRO_BASE_URL
+              value: "http://maistro.maistro.svc.cluster.local:8080"
   strategy:
     type: Recreate

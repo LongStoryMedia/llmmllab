@@ -1,3 +1,4 @@
+from ast import In
 import json
 import asyncio
 import uuid
@@ -8,7 +9,7 @@ import time
 import datetime
 from pika.channel import Channel
 from pika.spec import BasicProperties, Basic
-from typing import Any
+from typing import Any, Optional
 
 
 from models.inference_queue_message import InferenceQueueMessage
@@ -61,7 +62,7 @@ class RabbitMQConsumer:
         # Connection objects
         self.connection: AsyncioConnection
         self.channel: Channel
-        self.result_channel = None
+        self.result_channel: Optional[Channel] = None
 
         # Async event loop
         self.loop: asyncio.AbstractEventLoop
@@ -235,8 +236,11 @@ class RabbitMQConsumer:
             logger.info(f"Received request {correlation_id} from queue {method.routing_key}")
 
             # Check message type
-            if request.type == "image":
-                self.handle_image_request(channel, method, properties, request)
+            if request.task == "image_generation":
+                self.handle_image_request(channel, method, request)
+            elif request.task == "image_editing":
+                # Handle image editing requests
+                self.handle_image_editing_request(channel, method, request)
             else:
                 logger.warning(f"Unknown request type in message {correlation_id}: {request.type}")
                 channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
@@ -248,57 +252,28 @@ class RabbitMQConsumer:
             logger.error(f"Error processing request: {e}")
             channel.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
-    def handle_image_request(self, channel: Channel, method: Basic.Deliver, properties: BasicProperties, request: InferenceQueueMessage):
+    def handle_image_request(self, channel: Channel, method: Basic.Deliver, request: InferenceQueueMessage):
         """Handle an image generation request"""
         correlation_id = request.correlation_id
 
         try:
             # Initialize response data for async operation
-            response_data = {
-                "status": "processing",
-                "message": "Your image is being generated. Please check back with the provided correlation_id."
-            }
-
-            # Extract image request from payload
-            if isinstance(request.payload, dict):
-                image_request = request.payload
-            else:
-                # If payload isn't a dict (e.g., could be a string), treat it as an error
-                raise ValueError(f"Invalid payload format for image request: {type(request.payload)}")
-
-            # Extract prompt from the payload
-            prompt = image_request.get("prompt")
-            if not prompt:
-                raise ValueError("Image request must include a prompt")
-
-            # Use the correlation_id from the request
-            response_data["request_id"] = correlation_id
-
-            # Process parameters with proper typing
-            # Extract and convert parameters with default values if None
-            params = {
-                "width": int(image_request.get("width", 1024) or 1024),
-                "height": int(image_request.get("height", 1024) or 1024),
-                "num_inference_steps": int(image_request.get("inference_steps", 20) or 20),
-                "guidance_scale": float(image_request.get("guidance_scale", 7.0) or 7.0),
-            }
-
-            # Only add negative_prompt if it exists
-            if "negative_prompt" in image_request and image_request["negative_prompt"]:
-                params["negative_prompt"] = image_request["negative_prompt"]
-
-            # Log the parameters we're using
-            logger.info(f"Image generation parameters: prompt='{prompt}', width={params['width']}, height={params['height']}, steps={params['num_inference_steps']}, guidance={params['guidance_scale']}")
+            status_ack = InferenceQueueMessage(
+                correlation_id=correlation_id,
+                priority=request.priority,
+                type="status",
+                timestamp=datetime.datetime.now(datetime.timezone.utc),
+                memory_required=0,  # Memory will be calculated later
+                payload="Your image is being generated. Please check back with the provided correlation_id.",
+                task="image_generation"  # Set task type for compatibility
+            )
 
             # Schedule the image generation with properly processed parameters
-            img = image_generator.generate(
-                prompt,
-                **params
-            )
+            img = image_generator.generate(request)
 
             if img is None:
                 raise ValueError("Image generation failed - returned None")                # Process and save the generated image
-            res = image_generator.process_and_save_generated_image(img)
+            res = image_generator.process_and_save_image(img)
 
             # res is a dictionary, not an InferenceQueueMessage
             if isinstance(res, dict) and res.get("status") == "failed":
@@ -311,7 +286,7 @@ class RabbitMQConsumer:
             channel.basic_ack(delivery_tag=method.delivery_tag)
 
             # Return an immediate response
-            return response_data
+            return status_ack
 
         except Exception as e:
             import traceback
@@ -328,10 +303,80 @@ class RabbitMQConsumer:
             self.publish_result(correlation_id, error_result)
             channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
-    def publish_result(self, request_id: str, result: Any):
+    def handle_image_editing_request(self, channel: Channel, method: Basic.Deliver, request: InferenceQueueMessage):
+        """Handle an image editing request"""
+        correlation_id = request.correlation_id
+
+        try:
+            # Initialize response data for async operation
+            status_ack = InferenceQueueMessage(
+                correlation_id=correlation_id,
+                priority=request.priority,
+                type="status",
+                timestamp=datetime.datetime.now(datetime.timezone.utc),
+                memory_required=0,  # Memory will be calculated later
+                payload="Your image is being edited. Please check back with the provided correlation_id.",
+                task="image_editing"  # Set task type for compatibility
+            )
+
+            # Acknowledge the message early so it's not reprocessed if there's an error
+            # This is important especially for image editing which can take significant time
+            channel.basic_ack(delivery_tag=method.delivery_tag)
+
+            # Extract parameters from the request
+            kwargs, image_request = image_generator._get_kwargs_from_message(request)
+
+            # Log the image source URL
+            logger.info(f"Image editing request received with source image URL: {image_request.url}")
+
+            # Set up API key header for the internal API request using config
+            headers = {}
+            from config import MAISTRO_INTERNAL_API_KEY
+            if MAISTRO_INTERNAL_API_KEY:
+                headers["X-API-Key"] = MAISTRO_INTERNAL_API_KEY
+            else:
+                logger.warning("No internal API key configured for secure image fetch")
+
+            # Schedule the image editing
+            img = image_generator.edit(request)
+
+            if img is None:
+                raise ValueError("Image editing failed - returned None")
+
+            # Process and save the edited image
+            res = image_generator.process_and_save_image(img)
+
+            # Check for processing errors
+            if isinstance(res, dict) and res.get("status") == "failed":
+                raise ValueError(f"Image processing failed: {res.get('error', 'unknown error')}")
+
+            # Publish result
+            self.publish_result(correlation_id, res)
+
+            # Return an immediate response
+            return status_ack
+
+        except Exception as e:
+            import traceback
+            logger.error(f"Error processing image edit request {correlation_id}: {str(e)}")
+            logger.error(traceback.format_exc())
+
+            # Publish error result
+            error_result = {
+                "success": False,
+                "error": str(e),
+                "status": "failed",
+                "request_id": correlation_id
+            }
+            self.publish_result(correlation_id, error_result)
+
+            # Note: We already acknowledged the message earlier,
+            # so we don't call channel.basic_nack here
+
+    def publish_result(self, correlation_id: str, result: Any):
         """Publish a result to the results queue"""
         if not self.result_channel:
-            logger.error(f"Cannot publish result for {request_id}: Result channel not available")
+            logger.error(f"Cannot publish result for {correlation_id}: Result channel not available")
             return
 
         try:
@@ -352,12 +397,13 @@ class RabbitMQConsumer:
             # Create result message with RFC3339 timestamp for Go compatibility
             # Use both correlation_id (for Go struct compatibility) and requestId (for backwards compatibility)
             result_msg = InferenceQueueMessage(
-                correlation_id=request_id,
+                correlation_id=correlation_id,
                 priority=0,
-                type="image",
+                task="image",
                 timestamp=datetime.datetime.now(datetime.timezone.utc),
                 memory_required=0,
-                payload=result_dict
+                payload=result_dict,
+                type="result"  # Set type for compatibility
             )
 
             # {
@@ -373,7 +419,7 @@ class RabbitMQConsumer:
             # body = json.dumps(result_msg, cls=DateTimeEncoder)
 
             # Publish to exchange with routing key
-            routing_key = f"result.{request_id}"
+            routing_key = f"result.{correlation_id}"
             self.result_channel.basic_publish(
                 exchange=self.exchange_name,
                 routing_key=routing_key,
@@ -381,41 +427,14 @@ class RabbitMQConsumer:
                 properties=pika.BasicProperties(
                     delivery_mode=2,  # Make message persistent
                     content_type="application/json",
-                    correlation_id=request_id
+                    correlation_id=correlation_id
                 )
             )
 
-            logger.info(f"Published result for request {request_id}")
+            logger.info(f"Published result for request {correlation_id}")
 
         except Exception as e:
-            logger.error(f"Failed to publish result for {request_id}: {e}")
-
-    def publish_status(self, status: dict):
-        """Publish a status update"""
-        if not self.result_channel:
-            logger.error("Cannot publish status: Result channel not available")
-            return
-
-        try:
-            # Convert to JSON with datetime handling
-            body = json.dumps(status, cls=DateTimeEncoder)
-
-            # Publish to exchange with routing key
-            routing_key = "status.update"
-            self.result_channel.basic_publish(
-                exchange=self.exchange_name,
-                routing_key=routing_key,
-                body=body,
-                properties=pika.BasicProperties(
-                    delivery_mode=1,  # Non-persistent status updates
-                    content_type="application/json"
-                )
-            )
-
-            logger.debug(f"Published status update: {status.get('type', 'unknown')}")
-
-        except Exception as e:
-            logger.error(f"Failed to publish status: {e}")
+            logger.error(f"Failed to publish result for {correlation_id}: {e}")
 
     def start(self):
         """Start the RabbitMQ consumer in a separate thread"""

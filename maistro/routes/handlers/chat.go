@@ -90,6 +90,7 @@ func ChatHandler(c *fiber.Ctx) error {
 				imgReq := models.ImageGenerateRequest{
 					Prompt:         p,
 					NegativePrompt: util.StrPtr("anime, cartoon, sketch, drawing, lowres, bad anatomy, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username"),
+					Model:          "stabilityai-stable-diffusion-3.5-medium",
 				}
 
 				svc.GetInferenceService().GenerateImage(context.Background(), uid, cid, imgReq)

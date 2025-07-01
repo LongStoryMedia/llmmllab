@@ -38,5 +38,13 @@ properties:
     items:
       type: string
     description: List of LoRA models to apply to the image generation
+  image_id:
+    type: integer
+    description: ID of the image to use as a base for image generation (for img2img)
+  url:
+    type: string
+    description: URL of the image to use as a base for image generation (for img2img)
+    nullable: true
 required:
   - prompt
+  - model

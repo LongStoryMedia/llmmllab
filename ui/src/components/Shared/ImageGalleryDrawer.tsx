@@ -16,39 +16,36 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import DownloadIcon from '@mui/icons-material/Download';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { useBackgroundContext, GeneratedImage } from '../../context/BackgroundContext';
+import { useBackgroundContext } from '../../context/BackgroundContext';
+import { ImageMetadata } from '../../types/ImageMetadata';
 
 interface ImageGalleryDrawerProps {
   open: boolean;
   onClose: () => void;
-  images: GeneratedImage[];
+  images: ImageMetadata[];
 }
 
 const ImageGalleryDrawer: React.FC<ImageGalleryDrawerProps> = ({ open, onClose, images }) => {
   const theme = useTheme();
   const { deleteImage } = useBackgroundContext();
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<number | null>(null);
 
-  // Handler for image download
-  const handleDownload = (url: string, prompt: string) => {
-    const filename = `generated-image-${prompt.slice(0, 20).replace(/[^a-z0-9]/gi, '-')}.png`;
-    
-    // Create a link and click it
+  const handleDownload = (url: string, name?: string) => {
     const link = document.createElement('a');
     link.href = url;
-    link.download = filename;
+    link.download = name ? `${name.toLowerCase()}.png` : 'image.png';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   // Handler for image deletion from the gallery
-  const handleRemove = (id: string) => {
+  const handleRemove = (id: number) => {
     deleteImage(id);
   };
   
   // Handler for selecting/deselecting an image for preview
-  const toggleImageSelection = (id: string | null) => {
+  const toggleImageSelection = (id: number | null) => {
     setSelectedImage(currentId => currentId === id ? null : id);
   };
 
@@ -56,12 +53,6 @@ const ImageGalleryDrawer: React.FC<ImageGalleryDrawerProps> = ({ open, onClose, 
   const selectedImageData = selectedImage 
     ? images.find(img => img.id === selectedImage)
     : null;
-
-  // Function to get the display source for an image (base64 data or URL)
-  const getImageSource = (image: GeneratedImage): string => {
-    // Use base64 data if available, otherwise use the URL
-    return image.imageData ? `data:image/png;base64,${image.imageData}` : image.downloadUrl;
-  };
 
   return (
     <Drawer
@@ -103,13 +94,13 @@ const ImageGalleryDrawer: React.FC<ImageGalleryDrawerProps> = ({ open, onClose, 
                     objectFit: 'contain',
                     backgroundColor: 'black'
                   }}
-                  image={getImageSource(selectedImageData)}
+                  image={selectedImageData.view_url || selectedImageData.download_url}
                   alt="Selected image preview"
                 />
                 <CardActions>
                   <Button 
                     startIcon={<DownloadIcon />}
-                    onClick={() => handleDownload(selectedImageData.downloadUrl, selectedImageData.prompt)}
+                    onClick={() => handleDownload(selectedImageData.download_url || '', selectedImageData.created_at.toISOString())}
                   >
                     Download
                   </Button>
@@ -117,7 +108,7 @@ const ImageGalleryDrawer: React.FC<ImageGalleryDrawerProps> = ({ open, onClose, 
                     startIcon={<DeleteIcon />}
                     color="error"
                     onClick={() => {
-                      handleRemove(selectedImage ?? "");
+                      handleRemove(selectedImage ?? -1);
                       setSelectedImage(null);
                     }}
                   >
@@ -142,21 +133,21 @@ const ImageGalleryDrawer: React.FC<ImageGalleryDrawerProps> = ({ open, onClose, 
                       ? `2px solid ${theme.palette.primary.main}` 
                       : 'none'
                   }}
-                  onClick={() => toggleImageSelection(image.id)}
+                  onClick={() => toggleImageSelection(image.id ?? -1)}
                 >
                   <CardMedia
                     component="img"
                     height="140"
-                    image={getImageSource(image)}
-                    alt={`Generated image: ${image.prompt}`}
+                    image={image.view_url || image.download_url}
+                    alt={`Generated image: ${image.filename}`}
                     sx={{ objectFit: 'cover' }}
                   />
                   <CardContent sx={{ py: 1 }}>
-                    <Typography variant="body2" noWrap title={image.prompt}>
-                      {image.prompt}
+                    <Typography variant="body2" noWrap title={image.filename}>
+                      {image.filename}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {new Date(image.createdAt).toLocaleString()}
+                      {new Date(image.created_at).toLocaleString()}
                     </Typography>
                   </CardContent>
                   <CardActions>
@@ -165,7 +156,7 @@ const ImageGalleryDrawer: React.FC<ImageGalleryDrawerProps> = ({ open, onClose, 
                       startIcon={<DownloadIcon />}
                       onClick={(e) => {
                         e.stopPropagation(); // Prevent image selection
-                        handleDownload(image.downloadUrl, image.prompt);
+                        handleDownload(image.download_url ?? '', image.created_at.toISOString());
                       }}
                     >
                       Download
@@ -176,7 +167,7 @@ const ImageGalleryDrawer: React.FC<ImageGalleryDrawerProps> = ({ open, onClose, 
                       startIcon={<DeleteIcon />}
                       onClick={(e) => {
                         e.stopPropagation(); // Prevent image selection
-                        handleRemove(image.id);
+                        handleRemove(image.id ?? -1);
                         if (selectedImage === image.id) {
                           setSelectedImage(null);
                         }

@@ -27,10 +27,10 @@ properties:
   pipeline:
     type: string
     description: Pipeline type used for the model (e.g., "sd3", "sdxl")
-  lora_weight_ids:
+  lora_weights:
     type: array
     items:
-      type: string
+      $ref: "#/definitions/LoraWeight"
     description: List of LoRA weights associated with the model
 required:
   - name
@@ -42,3 +42,5 @@ required:
 definitions:
   ModelDetails:
     $ref: model_details.yaml
+  LoraWeight:
+    $ref: lora_weight.yaml

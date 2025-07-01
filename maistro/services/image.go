@@ -243,6 +243,8 @@ func (s *imageService) SaveImage(igr *models.ImageGenerateResponse, conversation
 		CreatedAt:      time.Now(),
 		ConversationID: &conversationID,
 		UserID:         userID,
+		ViewURL:        util.StrPtr(fmt.Sprintf("/static/images/view/%s", basename)),
+		DownloadURL:    util.StrPtr(fmt.Sprintf("/static/images/%s", basename)),
 	}
 
 	// Store the image in the storage
@@ -259,6 +261,12 @@ func (s *imageService) SaveImage(igr *models.ImageGenerateResponse, conversation
 	})
 
 	imageMetadata.ID = &id // Set the ID returned from the storage
+
+	// Log the image URLs for debugging
+	util.LogDebug("Image URLs generated", logrus.Fields{
+		"viewURL":     imageMetadata.ViewURL,
+		"downloadURL": imageMetadata.DownloadURL,
+	})
 
 	s.sendImageGenerationSuccessNotification(conversationID, userID, &imageMetadata)
 	return &imageMetadata, nil

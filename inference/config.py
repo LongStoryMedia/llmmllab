@@ -29,6 +29,11 @@ CONFIG_DIR = "/app/config"
 MODELS_CONFIG_PATH = os.path.join(CONFIG_DIR, "models.json")
 LORAS_CONFIG_PATH = os.path.join(CONFIG_DIR, "loras.json")
 
+# Internal API key for secure communication with maistro
+MAISTRO_INTERNAL_API_KEY = os.environ.get("MAISTRO_INTERNAL_API_KEY", "")
+# Base URL for internal maistro communication
+MAISTRO_BASE_URL = os.environ.get("MAISTRO_BASE_URL", "http://maistro.maistro.svc.cluster.local:8080")
+
 # Image retention period (in hours)
 IMAGE_RETENTION_HOURS = int(os.environ.get("IMAGE_RETENTION_HOURS", "1"))
 

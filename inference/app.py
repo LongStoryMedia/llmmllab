@@ -42,21 +42,6 @@ async def lifespan(app: FastAPI):
     hardware_manager.clear_memory()
     cleanup_service.start()
 
-    # Preload the model at startup
-    print("Preloading image generation model...")
-    try:
-        # This will load and cache the model
-        active_model = model_service.get_active_model()
-        if active_model:
-            print(f"Using model: {active_model.name}")
-            image_generator.load_model()
-            print("Model preloaded successfully!")
-        else:
-            print("No active model found. Model will be loaded on first request.")
-    except Exception as e:
-        print(f"Error preloading model: {e}")
-        print("Model will be loaded on first request.")
-
     # Initialize and start RabbitMQ consumer
     print("Starting RabbitMQ consumer...")
     try:

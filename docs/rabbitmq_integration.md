@@ -28,6 +28,14 @@ Implementing RabbitMQ with its Streams feature will provide:
 - **Exchanges**: Create topic exchanges for different message types:
   - `inference.request` - For new inference requests
   - `inference.result` - For completed inference results
+  - `inference.image.request` - For image generation and editing requests
+
+### Task Types
+
+- **Text Generation**: Standard text inference requests
+- **Image Generation**: Generate images from text prompts
+- **Image Editing**: Edit existing images based on text prompts and image source
+- **Embedding Generation**: Generate embeddings for text
   - `inference.status` - For status updates during processing
 
 ### 2. Queue Structure
@@ -41,6 +49,8 @@ Implementing RabbitMQ with its Streams feature will provide:
 ```
 
 ### 3. Message Structure
+
+#### Text Generation Request
 
 ```json
 {
@@ -58,6 +68,29 @@ Implementing RabbitMQ with its Streams feature will provide:
   "messages": [{"role": "user", "content": "..."}],
   "streamResponse": true,
   "timestamp": "2025-06-26T15:29:37.028Z"
+}
+```
+
+#### Image Editing Request
+
+```json
+{
+  "correlation_id": "uuid-123",
+  "priority": 10,
+  "type": "request",
+  "task": "image_editing",
+  "timestamp": "2025-06-26T15:29:37.028Z",
+  "payload": {
+    "prompt": "Make the sky blue",
+    "negative_prompt": "anime, cartoon, sketch, drawing",
+    "model": "stabilityai/stable-diffusion-3.5-large",
+    "width": 1024,
+    "height": 1024,
+    "inference_steps": 30,
+    "guidance_scale": 7.5,
+    "image": "http://maistro:8080/internal/images/user-456/image-789.png",
+    "conversation_id": 789
+  }
 }
 ```
 

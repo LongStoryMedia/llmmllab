@@ -56,6 +56,17 @@ func WithAuth(c *fiber.Ctx) error {
 		})
 	}
 
+	// result := &models.TokenValidationResult{
+	// 	UserID: "CgNsc20SBGxkYXA",
+	// 	Claims: map[string]interface{}{
+	// 		"iss":    "maistro",
+	// 		"sub":    "CgNsc20SBGxkYXA",
+	// 		"exp":    1735689600,                  // Example expiration time
+	// 		"groups": []string{"users", "admins"}, // Example groups
+	// 	},
+	// 	IsAdmin: true, // Example admin status
+	// }
+
 	// Set up context with auth information
 	ctx := context.WithValue(c.Context(), auth.UserIDKey, result.UserID)
 	ctx = context.WithValue(ctx, auth.TokenClaimsKey, result.Claims)

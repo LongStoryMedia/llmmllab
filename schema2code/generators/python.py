@@ -60,10 +60,22 @@ class PythonGenerator:
 
         output = header + ["\n".join(imports), ""]
 
-        def type_callback(sch, _):
+        # Process definitions but skip any that are imported from external references
+        def type_callback(sch, name):
+            # Skip processing if it's an external reference
+            if ref_resolver and name in schema.get("definitions", {}):
+                def_schema = schema["definitions"][name]
+                if "$ref" in def_schema and not def_schema["$ref"].startswith("#"):
+                    # This is an external reference, so we don't generate the class
+                    return None
             return PythonGenerator._generate_type(sch, use_pydantic, ref_resolver, processed_types)
-        output += process_definitions_and_nested_types(
+
+        definition_outputs = process_definitions_and_nested_types(
             schema, processed_types, ref_resolver, type_callback)
+
+        # Filter out None values (which are skipped external references)
+        definition_outputs = [out for out in definition_outputs if out is not None]
+        output += definition_outputs
 
         # Process root type
         root_type = PythonGenerator._generate_type(
@@ -280,8 +292,23 @@ class PythonGenerator:
             return "bool"
         elif schema_type == "array":
             items = prop_schema.get("items", {})
+
+            # Handle references in array items
+            if '$ref' in items and ref_resolver:
+                ref_path = items['$ref']
+                # If external reference, use the type from the import
+                if not ref_path.startswith('#'):
+                    schema_path = os.path.join(os.path.dirname(
+                        ref_resolver.base_path), ref_path)
+                    if schema_path in ref_resolver.external_ref_types:
+                        return f"List[{ref_resolver.external_ref_types[schema_path]}]"
+                elif ref_path.startswith('#/definitions/'):
+                    type_name = ref_path.split('/')[-1]
+                    return f"List[{type_name}]"
+
+            # If not a reference or couldn't resolve, use the default behavior
             item_type = PythonGenerator._get_python_type(
-                items, f"{name}Item", use_pydantic)
+                items, f"{name}Item", use_pydantic, ref_resolver)
             return f"List[{item_type}]"
         elif schema_type == "object":
             if "properties" in prop_schema:

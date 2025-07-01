@@ -22,7 +22,9 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH" \
     VIRTUAL_ENV="/opt/venv" \
     PYTHONUNBUFFERED=1 \
-    IMAGE_DIR="/root/images"
+    IMAGE_DIR="/root/images" \
+    MAISTRO_BASE_URL="http://maistro:8080"
+# MAISTRO_INTERNAL_API_KEY will be passed as an environment variable at runtime
 
 # Install packages in the final stage
 RUN pip install --no-cache-dir -r requirements.txt

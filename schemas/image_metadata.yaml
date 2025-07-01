@@ -32,6 +32,12 @@ properties:
     type: string
     format: date-time
     description: Timestamp when the image was created.
+  view_url:
+    type: string
+    description: URL for viewing the image.
+  download_url:
+    type: string
+    description: URL for downloading the image.
 required:
   - filename
   - thumbnail

@@ -95,7 +95,7 @@ func SubmitImageGenerationRequest(
 		CorrelationID:  string(requestID),
 		Payload:        &image,
 		Priority:       priority,
-		Type:           models.InferenceQueueMessageTypeImage,
+		Task:           models.InferenceQueueMessageTaskImageGeneration,
 		Timestamp:      time.Now(),
 		MemoryRequired: util.Gb2b(10), // Convert GB to bytes
 	}

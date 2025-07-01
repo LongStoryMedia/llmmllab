@@ -1,8 +1,15 @@
 from datetime import datetime, timezone
+from email.mime import image
+import json
 from math import pi
+import re
+
+from sympy import im
 import config
+from pipelines.factory import PipelineFactory
 from models.model import Model
 from models.inference_queue_message import InferenceQueueMessage
+from models.image_generation_request import ImageGenerateRequest
 from models.image_generation_response import ImageGenerateResponse
 import os
 import io
@@ -26,6 +33,7 @@ from diffusers.quantizers.quantization_config import BitsAndBytesConfig
 from diffusers.models.transformers.transformer_sd3 import SD3Transformer2DModel
 from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import StableDiffusionXLPipeline
 from diffusers.pipelines.flux.pipeline_flux import FluxPipeline
+from util.image_loader import load_image_with_headers
 
 
 def sd35_pipe(model_name: str):
@@ -149,126 +157,39 @@ class ImageGenerator:
         self.generation_queue = []
         self.callbacks = {}
 
-    def load_model(self):
+    @torch.inference_mode()
+    def generate(self, msg: InferenceQueueMessage) -> Image.Image:
         """
-        Load the diffusion model if not already loaded or if a different model is requested.
-
-        Args:
-            model_name: Name of the model to load. If None, uses active model.
-
-        Returns:
-            The loaded pipeline.
-        """
-        model_name = model_service.get_active_model().name
-
-        # # Return cached model if already loaded
-        # if self.pipeline is not None and self.current_model_name == model_name:
-        #     self.logger.info(f"Using cached model: {model_name}")
-        #     return self.pipeline
-
-        self.logger.info(f"Loading model: {model_name}")
-
-        # Clean up previous model if exists
-        if self.pipeline is not None:
-            del self.pipeline
-            torch.cuda.empty_cache()
-            gc.collect()
-
-        current_model = model_service.get_active_model()
-
-        if not current_model:
-            raise ValueError(f"Model '{model_name}' not found in model service.")
-
-        self.logger.info(f"Current model details: {current_model}")
-
-        # Check if the model is SD3 or SDXL
-        if current_model.pipeline == "StableDiffusion3Pipeline":
-            # Load SD3 pipeline
-            self.logger.info(f"Loading Stable Diffusion 3 model: {model_name}")
-            self.pipeline = sd35_pipe(model_name)
-        elif current_model.pipeline == "StableDiffusionXLPipeline":
-            # Load SDXL pipeline
-            self.logger.info(f"Loading Stable Diffusion XL model: {model_name}")
-            self.pipeline = sdxl_pipe(model_name)
-        elif current_model.pipeline == "FluxPipeline":
-            # Load Flux pipeline
-            self.logger.info(f"Loading Flux model: {model_name}")
-            self.pipeline = flux_pipe(current_model)
-        else:
-            raise ValueError(f"Unsupported pipeline type: {current_model.pipeline}")
-
-        # Remember which model we've loaded
-        self.current_model_name = model_name
-
-        return self.pipeline
-
-    async def generate_async(self, prompt: str, callback: Optional[Callable] = None, **kwargs) -> None:
-        """
-        Queue an image generation request to be processed asynchronously.
+        Generate an image based on the given prompt synchronously.
 
         Args:
             prompt: Text prompt describing the desired image.
-            callback: Optional callback function to call with the result.
             **kwargs: Additional parameters for the diffusion pipeline.
+
+        Returns:
+            The generated image.
         """
-        # Add to queue
-        request_id = kwargs.pop("request_id", str(uuid.uuid4()))
-        if callback:
-            self.callbacks[request_id] = callback
-
-        # Add task to our queue
-        task = {
-            "id": request_id,
-            "prompt": prompt,
-            "kwargs": kwargs
-        }
-        self.generation_queue.append(task)
-
-        # Process queue if not already processing
-        if not self.is_generating:
-            asyncio.create_task(self._process_queue())
-
-    async def _process_queue(self):
-        """Process queued image generation requests."""
-        if self.is_generating:
-            return
-
-        self.is_generating = True
-
-        try:
-            while self.generation_queue:
-                # Get the next task
-                task = self.generation_queue.pop(0)
-
-                # Acquire semaphore to limit concurrent generations
-                async with self.generation_semaphore:
-                    # Run the generation in a separate thread to not block the event loop
-                    result = await asyncio.to_thread(
-                        self._generate_image,
-                        task["prompt"],
-                        **task["kwargs"]
-                    )
-
-                    # Call the callback if one was provided
-                    if task["id"] in self.callbacks:
-                        callback = self.callbacks[task["id"]]
-                        del self.callbacks[task["id"]]
-                        callback(result)
-        finally:
-            self.is_generating = False
-
-    def _generate_image(self, prompt: str, **kwargs) -> Image.Image:
-        """Internal method to generate images synchronously."""
         start_time = time.time()
-        self.logger.info(f"Starting image generation for prompt: '{prompt}'")
+        kwargs, image_request = self._get_kwargs_from_message(msg)
 
-        # Ensure model is loaded
-        pipeline = self.load_model()
+        # Extract the prompt from the message
+        prompt = kwargs.pop('prompt', None) or image_request.prompt
+        if not prompt:
+            raise ValueError("Prompt is required for image generation")
+
+        model_id = kwargs.pop('model', None) or image_request.model
+        if not model_id:
+            self.logger.warning("No model specified, using default model")
+            model_id = config.DEFAULT_MODEL_ID
+
+        self.logger.info(f"Generating image with prompt: {prompt}")
+        pipeline = PipelineFactory.get_pipeline(model_id)
 
         # Set default parameters if not provided, ensuring they're never None
         width = int(kwargs.get('width', 1024) or 1024)  # Default to 1024 if None or 0
         height = int(kwargs.get('height', 1024) or 1024)  # Default to 1024 if None or 0
-        num_inference_steps = int(kwargs.get('num_inference_steps', 20) or 20)  # Default to 20 if None or 0
+        inference_steps = kwargs.get('inference_steps')
+        num_inference_steps = int(inference_steps or 20)  # Default to 20 if None or 0
         guidance_scale = float(kwargs.get('guidance_scale', 7.0) or 7.0)  # Default to 7.0 if None
         negative_prompt = kwargs.get('negative_prompt', "")
 
@@ -284,7 +205,7 @@ class ImageGenerator:
                 num_inference_steps=num_inference_steps,
                 guidance_scale=guidance_scale,
                 negative_prompt=negative_prompt,
-            )
+            )  # type: ignore
 
         end_time = time.time()
         generation_time = end_time - start_time
@@ -294,18 +215,90 @@ class ImageGenerator:
         return result.images[0]  # type: ignore
 
     @torch.inference_mode()
-    def generate(self, prompt: str, **kwargs) -> Image.Image:
+    def edit(self, msg: InferenceQueueMessage) -> Image.Image:
         """
-        Generate an image based on the given prompt synchronously.
+        Edit an image based on the given prompt and image.
 
         Args:
-            prompt: Text prompt describing the desired image.
-            **kwargs: Additional parameters for the diffusion pipeline.
+            request: Either an InferenceQueueMessage or an ImageGenerateRequest with image editing parameters
 
         Returns:
-            The generated image.
+            The edited image.
         """
-        return self._generate_image(prompt, **kwargs)
+        start_time = time.time()
+        kwargs, image_request = self._get_kwargs_from_message(msg)
+
+        # Extract the prompt from the message
+        prompt = kwargs.pop('prompt', None) or image_request.prompt
+        if not prompt:
+            raise ValueError("Prompt is required for image editing")
+
+        # Validate image URL/path is provided
+        image_source = image_request.url
+        if not image_source:
+            raise ValueError("Image URL or path is required for image editing")
+
+        if image_source.startswith('http'):
+            self.logger.info(f"Editing image from URL: {image_source}")
+        else:
+            image_source = config.MAISTRO_BASE_URL + image_source
+
+        # model_id = kwargs.pop('model', None) or image_request.model
+        # if not model_id:
+        #     self.logger.warning("No model specified, using default model")
+        #     model_id = config.DEFAULT_MODEL_ID
+        model_id = 'stabilityai-stable-diffusion-xl-refiner-1.0'
+
+        self.logger.info(f"Editing image with prompt: {prompt}")
+        pipeline = PipelineFactory.get_pipeline(model_id)
+
+        # Set default parameters if not provided, ensuring they're never None
+        width = int(kwargs.get('width', 1024) or 1024)  # Default to 1024 if None or 0
+        height = int(kwargs.get('height', 1024) or 1024)  # Default to 1024 if None or 0
+        inference_steps = kwargs.get('inference_steps')
+        num_inference_steps = int(inference_steps or 20)  # Default to 20 if None or 0
+        guidance_scale = float(kwargs.get('guidance_scale', 7.0) or 7.0)  # Default to 7.0 if None
+        negative_prompt = kwargs.get('negative_prompt', "")
+
+        # Log the final parameter values being used
+        self.logger.info(f"Final image editing parameters: prompt='{prompt}', width={width}, height={height}, steps={num_inference_steps}, guidance_scale={guidance_scale}, negative_prompt='{negative_prompt}'")
+
+        # Load the image from URL or path with appropriate headers if needed
+        try:
+            # Set up API key header for the internal API request using config
+            headers = {}
+            api_key = config.MAISTRO_INTERNAL_API_KEY
+            if api_key:
+                headers["X-API-Key"] = api_key.strip()
+                self.logger.debug("Using API key for internal image fetch")
+            else:
+                self.logger.warning("No internal API key configured for secure image fetch")
+
+            self.logger.info(f"Loading image from: {image_source}")
+            init_image = load_image_with_headers(image_source, headers=headers).convert("RGB")
+            self.logger.info("Image loaded successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to load image: {e}")
+            raise ValueError(f"Failed to load image from {image_source}: {e}")
+
+        # Generate the edited image
+        with torch.inference_mode():
+            result = pipeline(
+                prompt=prompt,
+                height=height,
+                width=width,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=guidance_scale,
+                negative_prompt=negative_prompt,
+                image=init_image,  # Use the loaded image for editing
+            )  # type: ignore
+
+        end_time = time.time()
+        generation_time = end_time - start_time
+        self.logger.info(f"Image editing completed in {generation_time:.2f}s")
+        self.last_generation_time = generation_time
+
+        return result.images[0]  # type: ignore
 
     def save_image(self, image: Image.Image, filename: Optional[str] = None) -> str:
         """
@@ -335,7 +328,7 @@ class ImageGenerator:
 
         return filepath
 
-    def process_and_save_generated_image(self, image: Union[Image.Image, np.ndarray, torch.Tensor]) -> ImageGenerateResponse:
+    def process_and_save_image(self, image: Union[Image.Image, np.ndarray, torch.Tensor]) -> ImageGenerateResponse:
         request_id = uuid.uuid4().hex
         try:
             if not image:
@@ -398,6 +391,71 @@ class ImageGenerator:
                 image="",
                 download=""
             )
+
+    def _get_kwargs_from_message(self, msg: InferenceQueueMessage) -> tuple[dict, ImageGenerateRequest]:
+        """
+        Extract keyword arguments from the InferenceQueueMessage payload.
+
+        Args:
+            msg: The InferenceQueueMessage containing the payload.
+
+        Returns:
+            A tuple containing a dictionary of keyword arguments and the ImageGenerateRequest.
+        """
+        kwargs = {}
+        image_request: Optional[ImageGenerateRequest] = None
+        # Parse parameters from the message payload
+        if isinstance(msg, InferenceQueueMessage) and msg.payload:
+            # Convert the payload to an ImageGenerateRequest if it's not already
+            if isinstance(msg.payload, ImageGenerateRequest):
+                # If payload is already an ImageGenerateRequest instance
+                image_request = msg.payload
+                kwargs = image_request.__dict__.copy()
+            elif hasattr(msg.payload, '__dict__'):
+                # If payload is an object with __dict__ attribute but not ImageGenerateRequest
+                kwargs = msg.payload.__dict__.copy()
+                # Create an ImageGenerateRequest instance from the dict
+                try:
+                    image_request = ImageGenerateRequest(**kwargs)
+                    kwargs = image_request.__dict__.copy()
+                except Exception as e:
+                    self.logger.error(f"Failed to convert payload to ImageGenerateRequest: {e}")
+            elif isinstance(msg.payload, dict):
+                # If payload is a dictionary
+                kwargs = msg.payload.copy()
+                # Create an ImageGenerateRequest instance from the dict
+                try:
+                    image_request = ImageGenerateRequest(**kwargs)
+                    kwargs = image_request.__dict__.copy()
+                except Exception as e:
+                    self.logger.error(f"Failed to convert dict payload to ImageGenerateRequest: {e}")
+            else:
+                # Try to parse as JSON if it's a string
+                try:
+                    if isinstance(msg.payload, str):
+                        payload_dict = json.loads(msg.payload)
+                        kwargs = payload_dict
+                        # Create an ImageGenerateRequest instance
+                        try:
+                            image_request = ImageGenerateRequest(**payload_dict)
+                            kwargs = image_request.__dict__.copy()
+                        except Exception as e:
+                            self.logger.error(f"Failed to convert JSON payload to ImageGenerateRequest: {e}")
+                    else:
+                        self.logger.error(f"Unexpected payload type: {type(msg.payload)}")
+                        kwargs = {}
+                except (json.JSONDecodeError, TypeError) as e:
+                    self.logger.error(f"Failed to parse payload: {e}")
+                    kwargs = {}
+        else:
+            kwargs = {}
+
+        if image_request is None:
+            # If no image request was found, log an error and raise an exception
+            self.logger.error("No valid image generation request found in the message payload")
+            raise ValueError("Invalid image generation request")
+
+        return kwargs, image_request
 
 
 # Create a singleton instance

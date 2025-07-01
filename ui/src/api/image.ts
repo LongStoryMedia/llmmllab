@@ -1,5 +1,6 @@
 import { ImageGenerateRequest } from '../types/ImageGenerationRequest';
 import { ImageGenerateResponse } from '../types/ImageGenerationResponse';
+import { ImageMetadata } from '../types/ImageMetadata';
 import { getHeaders, req } from './base';
 import { ChatWebSocketClient } from './websocket';
 
@@ -18,40 +19,69 @@ export const generateImage = async (accessToken: string, request: ImageGenerateR
     socket: socket
   });
 
-// /**
-//  * Generate an image and get real-time updates via WebSocket
-//  * @param accessToken Authentication token
-//  * @param request Image generation request parameters
-//  * @param onUpdate Callback for WebSocket updates during generation
-//  * @returns Promise that resolves with image data and a method to close the WebSocket
-//  */
-// export const generateImageWithUpdates = async (
-//   accessToken: string,
-//   request: ImageGenerateRequest,
-//   onUpdate: (notification: ImageGenerationNotification) => void,
-//   onError: (error: string) => void
-// ): Promise<{ response: ImageGenerateResponse, closeSocket: () => void }> => {
-//   // First establish the WebSocket connection to receive updates
-//   const connection: WebSocketConnection = createImageGenerationSocket(
-//     accessToken,
-//     onUpdate,
-//     onError
-//   );
-
-//   // Then trigger the image generation
-//   const response = await generateImage(accessToken, request);
-
-//   return {
-//     response,
-//     closeSocket: connection.close
-//   };
-// };
+/**
+ * Edit an existing image using the Stable Diffusion API
+ * @param accessToken Authentication token
+ * @param request Image edit request parameters
+ * @returns Promise that resolves with image data
+ */
+export const editImage = async (accessToken: string, request: ImageGenerateRequest, socket?: ChatWebSocketClient) =>
+  req<ImageGenerateResponse>({
+    method: 'POST',
+    headers: getHeaders(accessToken),
+    path: `api/images/edit`,
+    body: JSON.stringify(request),
+    socket: socket
+  });
 
 /**
- * Retrieve the URL for downloading a generated image
- * @param filename The filename of the generated image
- * @returns The URL for downloading the image
+ * Fetch all images for the current user
+ * @param accessToken Authentication token
+ * @param limit Optional limit for number of images to return
+ * @param offset Optional offset for pagination
+ * @param conversationId Optional conversation ID to filter by
+ * @returns Promise that resolves with an array of image metadata
  */
-export const getImageDownloadUrl = (filename: string): string => {
-  return `api/images/download/${filename}`;
+export const getUserImages = async (
+  accessToken: string,
+  limit?: number,
+  offset?: number,
+  conversationId?: number
+) => {
+  const queryParams = new URLSearchParams();
+  
+  if (limit) {
+    queryParams.append('limit', limit.toString());
+  }
+  
+  if (offset) {
+    queryParams.append('offset', offset.toString());
+  }
+  
+  if (conversationId) {
+    queryParams.append('conversation_id', conversationId.toString());
+  }
+  
+  const queryString = queryParams.toString();
+  const path = `api/images${queryString ? `?${queryString}` : ''}`;
+  
+  return req<ImageMetadata[]>({
+    method: 'GET',
+    headers: getHeaders(accessToken),
+    path
+  });
+};
+
+/**
+ * Delete an image by ID
+ * @param accessToken Authentication token
+ * @param imageId ID of the image to delete
+ * @returns Promise that resolves when the image is deleted
+ */
+export const deleteImage = async (accessToken: string, imageId: number) => {
+  return req<void>({
+    method: 'DELETE',
+    headers: getHeaders(accessToken),
+    path: `api/images/${imageId}`
+  });
 };
