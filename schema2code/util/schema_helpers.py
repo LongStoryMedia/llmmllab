@@ -53,7 +53,7 @@ def process_definitions_and_nested_types(schema, processed_types, ref_resolver, 
     - schema: the root schema dict
     - processed_types: set of already processed type names
     - ref_resolver: reference resolver (can be None)
-    - type_callback: function(schema_dict, type_name) -> str (returns generated type code)
+    - type_callback: function(schema_dict, type_name) -> str or None (returns generated type code or None to skip)
     Returns: list of generated type code strings
     """
     output = []
@@ -77,7 +77,9 @@ def process_definitions_and_nested_types(schema, processed_types, ref_resolver, 
                         pass
                 def_schema_copy = def_schema.copy()
                 def_schema_copy["title"] = def_name
-                output.append(type_callback(def_schema_copy, def_name))
+                type_code = type_callback(def_schema_copy, def_name)
+                if type_code is not None:  # Only add non-None returns
+                    output.append(type_code)
     # Process nested types in properties
     for prop_name, prop_schema in schema.get("properties", {}).items():
         resolved_schema = prop_schema
@@ -106,5 +108,7 @@ def process_definitions_and_nested_types(schema, processed_types, ref_resolver, 
             if "title" not in nested_schema:
                 nested_schema["title"] = type_name
             processed_types.add(type_name)
-            output.append(type_callback(nested_schema, type_name))
+            type_code = type_callback(nested_schema, type_name)
+            if type_code is not None:  # Only add non-None returns
+                output.append(type_code)
     return output

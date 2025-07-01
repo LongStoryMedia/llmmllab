@@ -19,9 +19,10 @@ import ControlLoader from '../Shared/ControlLoader';
 
 interface ImageModelSelectorProps {
   onModelChange?: (modelId: string) => void;
+  mode: 'TextToImage' | 'ImageToImage';
 }
 
-const ImageModelSelector: React.FC<ImageModelSelectorProps> = ({ onModelChange }) => {
+const ImageModelSelector: React.FC<ImageModelSelectorProps> = ({ onModelChange, mode }) => {
   const [models, setModels] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -42,7 +43,7 @@ const ImageModelSelector: React.FC<ImageModelSelectorProps> = ({ onModelChange }
         
         // Filter models to only include those with TextToImage specialization
         const imageModels = allModels.filter(model => 
-          model.details?.specialization === 'TextToImage'
+          model.details?.specialization === mode
         );
         
         setModels(imageModels);
@@ -62,7 +63,7 @@ const ImageModelSelector: React.FC<ImageModelSelectorProps> = ({ onModelChange }
     };
 
     fetchModels();
-  }, [auth.user]);
+  }, [auth.user, mode]);
 
   const handleModelChange = async (event: SelectChangeEvent) => {
     const modelId = event.target.value;

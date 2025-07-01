@@ -201,6 +201,8 @@ func CleanupOldImages() {
 		"cutoffTime":     cutoffTime.Format(time.RFC3339),
 	})
 
+	storage.ImageStoreInstance.DeleteImagesOlderThan(context.Background(), cutoffTime) // Delete from database
+
 	// Walk through the storage directory
 	err := filepath.Walk(conf.ImageGeneration.StorageDirectory, func(path string, info os.FileInfo, err error) error {
 		if err != nil {

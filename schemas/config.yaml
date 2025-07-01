@@ -32,6 +32,8 @@ properties:
   log_level:
     type: string
     description: Log level
+  internal:
+    $ref: internal_config.yaml
 required:
   - server
   - database
@@ -47,3 +49,4 @@ required:
   - image_generation
   - log_level
   - rabbitmq
+  - internal_config

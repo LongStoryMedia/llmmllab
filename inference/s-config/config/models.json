@@ -12,8 +12,9 @@
             "format": "",
             "family": "",
             "families": [],
-            "parameter_size": "3.5B",
-            "quantization_level": "BFP16",
+            "parameter_size": "8B",
+            "dtype": "BFP16",
+            "quantization_level": "nf4",
             "specialization": "TextToImage"
         }
     },
@@ -30,8 +31,9 @@
             "format": "",
             "family": "",
             "families": [],
-            "parameter_size": "3.5B",
-            "quantization_level": "BFP16",
+            "parameter_size": "8.1B",
+            "dtype": "BFP16",
+            "quantization_level": "nf4",
             "specialization": "TextToImage"
         }
     },
@@ -48,8 +50,8 @@
             "format": "",
             "family": "",
             "families": [],
-            "parameter_size": "5B",
-            "quantization_level": "FP16",
+            "parameter_size": "2.5B",
+            "dtype": "BFP16",
             "specialization": "TextToImage"
         }
     },
@@ -66,8 +68,8 @@
             "format": "",
             "family": "",
             "families": [],
-            "parameter_size": "5B",
-            "quantization_level": "FP16",
+            "parameter_size": "2.5B",
+            "dtype": "FP16",
             "specialization": "TextToImage"
         }
     },
@@ -79,14 +81,42 @@
         "modified_at": "",
         "size": 0,
         "digest": "",
+        "lora_weights": [
+            {
+                "id": "heartsync-flux-nsfw-uncensored",
+                "name": "Heartsync/Flux-NSFW-uncensored",
+                "weight_name": "lora.safetensors",
+                "adapter_name": "uncensored",
+                "parent_model": "black-forest-labs/FLUX.1-dev"
+            }
+        ],
         "details": {
             "parent_model": "",
             "format": "",
             "family": "",
             "families": [],
-            "parameter_size": "3.5B",
-            "quantization_level": "BFP16",
+            "parameter_size": "12B",
+            "dtype": "BFP16",
+            "quantization_level": "nf4",
             "specialization": "TextToImage"
+        }
+    },
+    {
+        "id": "stabilityai-stable-diffusion-xl-refiner-1.0",
+        "name": "stabilityai/stable-diffusion-xl-refiner-1.0",
+        "model": "stabilityai/stable-diffusion-xl-refiner-1.0",
+        "pipeline": "StableDiffusionXLImg2ImgPipeline",
+        "modified_at": "",
+        "size": 0,
+        "digest": "",
+        "details": {
+            "parent_model": "",
+            "format": "",
+            "family": "",
+            "families": [],
+            "parameter_size": "12B",
+            "dtype": "FP16",
+            "specialization": "ImageToImage"
         }
     }
 ]

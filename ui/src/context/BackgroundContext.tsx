@@ -4,12 +4,13 @@ import { useAuth } from '../auth';
 import { getToken } from '../api';
 import { SocketMessage } from '../types/SocketMessage';
 import { SocketStageTypeValues } from '../types/SocketStageType';
-import { ImageGenerationNotification } from '../types/ImageGenerationNotification';
 import { MessageTypeValues } from '../types/MessageType';
 import { StageProgress } from '../components/Shared/StageProgressBars';
 // import { useChat } from '../chat';
 import { SocketConnectionType } from '../types/SocketConnectionType';
 import { useParams } from 'react-router-dom';
+import { ImageMetadata } from '../types/ImageMetadata';
+import { deleteImage, getUserImages } from '../api/image';
 
 
 export interface WebSockets {
@@ -45,7 +46,7 @@ export type ControlState = 'paused' | 'running' | 'cancelled';
 
 interface SocketContextType {
   sockets: WebSockets;
-  images: GeneratedImage[];
+  images: ImageMetadata[];
   unreadNotificationCount: number;
   errors: SocketError[];
   warnings: SocketWarning[];
@@ -55,23 +56,13 @@ interface SocketContextType {
   controlState: ControlState;
   markAllAsRead: () => void;
   markAsRead: (id: string) => void;
-  deleteImage: (id: string) => void;
+  deleteImage: (id: number) => void;
   dismissStatusMessage: (id: string) => void;
   dismissAllStatusMessages: () => void;
   dismissError: (id: string) => void;
   dismissWarning: (id: string) => void;
 }
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
-
-export interface GeneratedImage {
-  id: string;
-  prompt: string;
-  downloadUrl: string;
-  thumbnailUrl?: string;
-  imageData?: string; // Add base64 image data
-  createdAt: Date;
-  conversationId?: number;
-}
 
 type SocketMessageIds = {
   image: string;
@@ -81,9 +72,8 @@ type SocketMessageIds = {
 
 export const BackgroundContextProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isAuthenticated } = useAuth(); 
-  // const {currentConversation} = useChat(); // Assuming currentConversation is available in auth context
   const params = useParams();
-  const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
+  const [ImageMetadatas, setImageMetadatas] = useState<ImageMetadata[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [errors, setErrors] = useState<SocketError[]>([]);
   const [warnings, setWarnings] = useState<SocketWarning[]>([]);
@@ -371,33 +361,25 @@ export const BackgroundContextProvider: React.FC<{ children: React.ReactNode }> 
     removeStage(msg);
 
     if (msg.state === SocketStageTypeValues.GENERATING_IMAGE) {
-      const data = msg.data as ImageGenerationNotification[];
+      const data = msg.data as ImageMetadata[];
+      console.log("Image generation notification received:", data);
     
       if (msg.type === MessageTypeValues.COMPLETE) {
-        // Add new generated image
-        const newImage: GeneratedImage = {
-          id: data[0].image_id || `img-${Date.now()}`,
-          prompt: 'Image generated',
-          downloadUrl: data[0].download_url || '',
-          thumbnailUrl: data[0].thumbnail_url,
-          imageData: data[0].b64_data, // Get base64 image data
-          createdAt: new Date(),
-          conversationId: msg.conversation_id
-        };
-            
-        setGeneratedImages(prev => [newImage, ...prev]);
-        setUnreadCount(count => count + 1);
+        for (const img of data) {
+          setImageMetadatas(prev => [img, ...(prev ?? [])]);
+          setUnreadCount(count => count + 1);
         
-        // Check if this message is associated with a progress bar
-        const skipToast = msg.id ? stageProgressMessageIds.current.has(msg.id) : false;
+          // Check if this message is associated with a progress bar
+          const skipToast = msg.id ? stageProgressMessageIds.current.has(msg.id) : false;
         
-        // Add success status message for image generation
-        addStatusMessage({
-          id: `status-${Date.now()}`,
-          message: `Image generated successfully`,
-          type: mapMessageToAlertType(msg),
-          timestamp: new Date()
-        }, skipToast);
+          // Add success status message for image generation
+          addStatusMessage({
+            id: `status-${Date.now()}`,
+            message: `Image generated successfully`,
+            type: mapMessageToAlertType(msg),
+            timestamp: new Date()
+          }, skipToast);
+        }
       } else if (msg.type === MessageTypeValues.ERROR) {
         setUnreadCount(count => count + 1);
         const errorMessage = 'Image generation failed';
@@ -409,7 +391,7 @@ export const BackgroundContextProvider: React.FC<{ children: React.ReactNode }> 
         setErrors(prev => [
           ...prev,
           {
-            id: data[0].image_id || `img-error-${Date.now()}`,
+            id: `img-error-${Date.now()}`,
             message: errorMessage,
             stage: SocketStageTypeValues.GENERATING_IMAGE,
             timestamp: now,
@@ -599,6 +581,25 @@ export const BackgroundContextProvider: React.FC<{ children: React.ReactNode }> 
       doConnect("status", new ChatWebSocketClient("status", statusSocketHandler));
       doConnect("image", new ChatWebSocketClient("image", imageSocketHandler));
 
+      // Fetch user images when initialized
+      const fetchUserImages = async () => {
+        try {
+          const token = getToken(user);
+          const images = await getUserImages(token);
+          setImageMetadatas(images);
+        } catch (error) {
+          console.error("Failed to fetch user images:", error);
+          addStatusMessage({
+            id: `status-${Date.now()}`,
+            message: `Failed to fetch images`,
+            type: 'error',
+            timestamp: new Date()
+          });
+        }
+      };
+      
+      fetchUserImages();
+
       return () => {
         removeChatSocket();
         removeImageSocket();
@@ -607,14 +608,14 @@ export const BackgroundContextProvider: React.FC<{ children: React.ReactNode }> 
     }
   }, [user, isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return (
+  return (isAuthenticated &&
     <SocketContext.Provider value={{
       sockets: {
         image: imageSocketRef.current,
         chat: chatSocketRef.current,
         status: statusSocketRef.current
       },
-      images: generatedImages,
+      images: ImageMetadatas ?? [],
       unreadNotificationCount: unreadCount,
       errors: errors,
       warnings: warnings,
@@ -628,9 +629,11 @@ export const BackgroundContextProvider: React.FC<{ children: React.ReactNode }> 
         setWarnings(prev => prev.filter(warning => warning.id !== id));
         setUnreadCount(prev => Math.max(0, prev - 1));
       },
-      deleteImage: (id: string) => {
-        setGeneratedImages(prev => prev.filter(img => img.id !== id));
+      deleteImage: (id: number) => {
+        setImageMetadatas(prev => prev.filter(img => img.id !== id));
         setUnreadCount(prev => Math.max(0, prev - 1));
+        console.log("Deleting image with ID:", id);
+        deleteImage(getToken(user), id);
       },
       dismissStatusMessage,
       dismissAllStatusMessages,

@@ -146,15 +146,7 @@ func WithAuth(c *fiber.Ctx) error {
 
 func CanAccess(c *fiber.Ctx, targetUserID string) bool {
 	userID := c.UserContext().Value(UserIDKey).(string)
-	util.LogInfo("Checking access", logrus.Fields{
-		"request_user_id": userID,
-		"target_user_id":  targetUserID,
-		"path":            c.Path(),
-		"claims":          c.UserContext().Value(TokenClaimsKey),
-		"is_admin":        c.UserContext().Value(IsAdminKey) != nil,
-	})
+	isAdmin := c.UserContext().Value(IsAdminKey) != nil || c.Locals(IsAdminKey) != nil
 
-	return true
-
-	// return userID == targetUserID || c.UserContext().Value(IsAdminKey) != nil
+	return isAdmin || userID == targetUserID
 }

@@ -23,6 +23,9 @@ properties:
   quantization_level:
     type: string
     description: Level of quantization applied to the model (e.g., 'Q4_0')
+  dtype:
+    type: string
+    description: Data type of the model (e.g., 'float16', 'bfloat16')
   specialization:
     type: string
     enum:
@@ -44,4 +47,3 @@ required:
   - family
   - families
   - parameter_size
-  - quantization_level

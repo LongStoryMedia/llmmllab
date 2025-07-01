@@ -20,18 +20,22 @@ properties:
       - null
     description: Payload containing the inference request details
     additionalProperties: true
-  type:
+  task:
     type: string
     description: Type of the request, e.g., "chat", "image_generation", etc.
     enum:
-      - image
+      - image_generation
+      - image_editing
       - research
   memory_required:
     type: number
     description: Required memory in bytes for processing the request
+  type:
+    type: string
+    description: type of message (e.g. "request", "status", "result")
 required:
   - correlation_id
   - priority
   - timestamp
-  - type
+  - task
   - memory_required

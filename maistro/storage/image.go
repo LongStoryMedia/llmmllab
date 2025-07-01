@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"maistro/models"
 	"maistro/util"
+	"time"
 )
 
-// ImageStore abstracts image-related operations
 type imageStore struct{}
 
 func (s *imageStore) StoreImage(ctx context.Context, userID string, image *models.ImageMetadata) (int, error) {
@@ -40,9 +40,10 @@ func (s *imageStore) ListImages(ctx context.Context, userID string, conversation
 	}
 	defer rows.Close()
 	var images []models.ImageMetadata
+	var count int
 	for rows.Next() {
 		var image models.ImageMetadata
-		err := rows.Scan(&image.ID, &image.Filename, &image.Thumbnail, &image.Format, &image.Width, &image.Height, &image.ConversationID, &image.UserID)
+		err := rows.Scan(&image.ID, &image.Filename, &image.Thumbnail, &image.Format, &image.Width, &image.Height, &image.ConversationID, &image.UserID, &image.CreatedAt, &count)
 		if err != nil {
 			return nil, util.HandleError(err)
 		}
@@ -67,4 +68,39 @@ func (s *imageStore) DeleteImage(ctx context.Context, imageID int) error {
 		return util.HandleError(err)
 	}
 	return nil // Return nil error for now
+}
+
+func (s *imageStore) DeleteImagesOlderThan(ctx context.Context, dt time.Time) error {
+	// Check if Pool is initialized
+	if Pool == nil {
+		return util.HandleError(fmt.Errorf("database connection pool is not initialized (Pool is nil)"))
+	}
+
+	// Use the SQL query from our loader to delete images older than the specified date
+	_, err := Pool.Exec(ctx, GetQuery("images.delete_images_older_than"), dt)
+	if err != nil {
+		return util.HandleError(err)
+	}
+	return nil // Return nil error for now
+}
+
+// GetImageByID retrieves a specific image by ID for a user
+func (s *imageStore) GetImageByID(ctx context.Context, userID string, imageID int) (*models.ImageMetadata, error) {
+	// Check if Pool is initialized
+	if Pool == nil {
+		return nil, util.HandleError(fmt.Errorf("database connection pool is not initialized (Pool is nil)"))
+	}
+
+	// Use a SQL query to get the image by ID
+	var image models.ImageMetadata
+	err := Pool.QueryRow(ctx, GetQuery("images.get_image_by_id"), imageID, userID).Scan(
+		&image.ID, &image.Filename, &image.Thumbnail, &image.Format,
+		&image.Width, &image.Height, &image.ConversationID, &image.UserID,
+		&image.CreatedAt,
+	)
+	if err != nil {
+		return nil, util.HandleError(err)
+	}
+
+	return &image, nil
 }

@@ -20,6 +20,20 @@ kubectl create secret generic hf-token \
     --from-file=token="$(dirname "$0")/.secrets/hf-token" \
     --dry-run=client -o yaml | kubectl apply -f - --wait=true
 
+if [ ! -d "$(dirname "$0")/.secrets" ]; then
+    mkdir -p "$(dirname "$0")/.secrets"
+fi
+
+if [ ! -f "$(dirname "$0")/.secrets/internal-api-key" ]; then
+    openssl rand -hex 16 >$(dirname "$0")/.secrets/internal-api-key
+fi
+
+# Create secrets for internal API access
+kubectl create secret generic internal-api-key \
+    -n ollama \
+    --from-file=api_key="$(dirname "$0")/.secrets/internal-api-key" \
+    --dry-run=client -o yaml | kubectl apply -f - --wait=true
+
 echo "Applying PVC..."
 kubectl apply -f "$(dirname "$0")/pvc.yaml" -n ollama --wait=true
 

@@ -8,6 +8,8 @@ interface TooltipToggleButtonProps {
   children: React.ReactNode;
   'aria-label': string;
   color?: 'primary' | 'secondary' | 'success' | 'error' | 'info' | 'warning' | 'standard';
+  selected?: boolean;
+  onSelect?: (event: React.MouseEvent<HTMLElement>, value: string) => void;
 }
 
 // Component for wrapping each toggle button with a tooltip
@@ -17,7 +19,9 @@ export const TooltipToggleButton: React.FC<TooltipToggleButtonProps> = ({
   disabled = false,
   color = "standard",
   children,
-  'aria-label': ariaLabel
+  'aria-label': ariaLabel,
+  selected,
+  onSelect
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -35,6 +39,8 @@ export const TooltipToggleButton: React.FC<TooltipToggleButtonProps> = ({
         aria-label={ariaLabel}
         disabled={disabled}
         color={color}
+        selected={selected}
+        onClick={onSelect}
         sx={{
           padding: isMobile ? '4px 6px' : '6px 10px',
           minWidth: isMobile ? 'auto' : '100px'

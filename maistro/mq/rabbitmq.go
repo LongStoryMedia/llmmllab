@@ -245,7 +245,8 @@ func (c *RabbitMQClient) PublishRequest(req models.InferenceQueueMessage) error 
 	}
 
 	// Handle image requests separately
-	if req.Type == models.InferenceQueueMessageTypeImage {
+	if req.Task == models.InferenceQueueMessageTaskImageGeneration ||
+		req.Task == models.InferenceQueueMessageTaskImageEditing {
 		routingKey = "request.image"
 	}
 

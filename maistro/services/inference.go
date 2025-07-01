@@ -31,17 +31,18 @@ const (
 type InferenceService interface {
 	RelayUserMessage(ctx context.Context, modelProfile *models.ModelProfile, messages []models.ChatMessage, userID string, conversationID int, writer *bufio.Writer) (string, error)
 	GenerateImage(ctx context.Context, userID string, conversationID int, originalRequest models.ImageGenerateRequest)
+	EditImage(ctx context.Context, userID string, conversationID int, originalRequest models.ImageGenerateRequest)
 	GetEmbedding(ctx context.Context, textToEmbed string, mp *models.ModelProfile, userID string, conversationID int) ([][]float32, error)
 }
 
-type inferenceSvc struct {
+type InferenceSvc struct {
 	client   *http.Client
 	s        *InferenceScheduler
 	mqClient *mq.RabbitMQClient // RabbitMQ client for async inference requests
 }
 
 var (
-	infSvc InferenceService = &inferenceSvc{
+	infSvc InferenceService = &InferenceSvc{
 		client: &http.Client{
 			Timeout: StreamTimeout, // Long timeout for streaming requests
 			Transport: &http.Transport{
@@ -89,7 +90,7 @@ var (
 // GetInferenceService creates/returns the InferenceService instance
 func GetInferenceService() InferenceService {
 	// Initialize the RabbitMQ client if it's not already initialized
-	svc := infSvc.(*inferenceSvc)
+	svc := infSvc.(*InferenceSvc)
 	if svc.mqClient == nil {
 		conf := config.GetConfig(nil)
 		if conf.Rabbitmq.Enabled {
@@ -107,7 +108,7 @@ func GetInferenceService() InferenceService {
 	return infSvc
 }
 
-func (s *inferenceSvc) setRequestHeaders(req *http.Request, headers ...ContextHeaders) {
+func (s *InferenceSvc) setRequestHeaders(req *http.Request, headers ...ContextHeaders) {
 	if headers == nil {
 		return
 	}
@@ -123,7 +124,7 @@ func (s *inferenceSvc) setRequestHeaders(req *http.Request, headers ...ContextHe
 	}
 }
 
-func (s *inferenceSvc) setResponseHeaders(resp *http.Response, headers ...ContextHeaders) {
+func (s *InferenceSvc) setResponseHeaders(resp *http.Response, headers ...ContextHeaders) {
 	if headers == nil {
 		return
 	}
@@ -139,7 +140,7 @@ func (s *inferenceSvc) setResponseHeaders(resp *http.Response, headers ...Contex
 	}
 }
 
-func (s *inferenceSvc) RelayUserMessage(ctx context.Context, modelProfile *models.ModelProfile, messages []models.ChatMessage, userID string, conversationID int, w *bufio.Writer) (string, error) {
+func (s *InferenceSvc) RelayUserMessage(ctx context.Context, modelProfile *models.ModelProfile, messages []models.ChatMessage, userID string, conversationID int, w *bufio.Writer) (string, error) {
 	rc := NewResponseChan()
 	ir := &InferenceRequest{
 		Priority:       1,
@@ -164,7 +165,7 @@ func (s *inferenceSvc) RelayUserMessage(ctx context.Context, modelProfile *model
 }
 
 // GetEmbedding retrieves a vector embedding for the provided text using the specified model profile
-func (s *inferenceSvc) GetEmbedding(ctx context.Context, textToEmbed string, mp *models.ModelProfile, userID string, conversationID int) ([][]float32, error) {
+func (s *InferenceSvc) GetEmbedding(ctx context.Context, textToEmbed string, mp *models.ModelProfile, userID string, conversationID int) ([][]float32, error) {
 	rc := NewResponseChan()
 	ir := &InferenceRequest{
 		Priority:       1,
@@ -188,12 +189,7 @@ func (s *inferenceSvc) GetEmbedding(ctx context.Context, textToEmbed string, mp 
 	return nil, util.HandleError(fmt.Errorf("unexpected result type: %T, expected [][]float32", res.Result))
 }
 
-func (s *inferenceSvc) GenerateImage(ctx context.Context, userID string, conversationID int, originalRequest models.ImageGenerateRequest) {
-	go s.GenerateImageAsync(ctx, userID, conversationID, originalRequest) // Fire-and-forget
-}
-
-// Fire-and-forget version of GenerateImage
-func (s *inferenceSvc) GenerateImageAsync(ctx context.Context, userID string, conversationID int, originalRequest models.ImageGenerateRequest) {
+func (s *InferenceSvc) GenerateImage(ctx context.Context, userID string, conversationID int, originalRequest models.ImageGenerateRequest) {
 	// Use RabbitMQ if available
 	if s.mqClient != nil && s.mqClient.Initialized() {
 		util.LogInfo("Using RabbitMQ for image generation request")
@@ -207,7 +203,7 @@ func (s *inferenceSvc) GenerateImageAsync(ctx context.Context, userID string, co
 
 			util.LogInfo("Received image generation result from RabbitMQ", logrus.Fields{
 				"requestId":  requestID,
-				"result":     result.Payload,
+				"resultTask": result.Task,
 				"resultType": result.Type,
 			})
 
@@ -258,34 +254,73 @@ func (s *inferenceSvc) GenerateImageAsync(ctx context.Context, userID string, co
 	}
 }
 
-// // Fall back to direct inference if RabbitMQ is not available or failed
-// img := GetImgSvc()
-// rc := NewResponseChan()
-// util.LogDebug("requesting image generation")
-// ir := &models.InferenceQueueMessage{
-// 	Priority:       100,
-// 	MemoryRequired: util.Gb2b(10), // Increased from 10GB to 24GB - SD 3.5 needs more VRAM
-// 	EnqueueTime:    time.Now(),
-// 	DispatchArgs:   []any{ctx, userID, originalRequest},
-// 	Dispatch:       s.packageForDispatch(img.GenerateImage),
-// 	ResponseChan:   rc, // Previously was nil which would cause panic
-// }
-// s.s.Enqueue(ir)
-// res := <-rc
-// if res.Err != nil {
-// 	GetSocketService().SendError(models.SocketStageTypeGeneratingImage, conversationID, userID, res.Err.Error())
-// 	return
-// }
+// EditImage processes an image editing request, either through RabbitMQ or directly
+func (s *InferenceSvc) EditImage(ctx context.Context, userID string, conversationID int, originalRequest models.ImageGenerateRequest) {
+	// Use RabbitMQ if available
+	if s.mqClient != nil && s.mqClient.Initialized() {
+		util.LogInfo("Using RabbitMQ for image editing request")
+		// Create a response handler that processes the image editing result
+		responseHandler := func(requestID mq.CorrelationID, result models.InferenceQueueMessage, err error) {
+			if err != nil {
+				util.HandleError(err)
+				return
+			}
 
-// if r, ok := res.Result.(models.ImageGenerateResponse); ok {
-// 	GetSocketService().SendCompletion(models.SocketStageTypeGeneratingImage, conversationID, userID, "Image generation completed", r)
-// 	return
-// }
+			util.LogInfo("Received image editing result from RabbitMQ", logrus.Fields{
+				"requestId":  requestID,
+				"resultTask": result.Task,
+				"resultType": result.Type,
+			})
 
-// GetSocketService().SendError(models.SocketStageTypeGeneratingImage, conversationID, userID, fmt.Sprintf("unexpected result type: %T, expected models.ImageGenerateResponse", res.Result))
+			pldAny := result.Payload
+			if pldAny == nil {
+				util.HandleError(fmt.Errorf("received nil payload for request ID %s", requestID))
+				return
+			}
+
+			pldByts, err := json.Marshal(pldAny)
+			if err != nil {
+				util.HandleError(fmt.Errorf("failed to marshal payload: %w", err))
+				return
+			}
+
+			pld := &models.ImageGenerateResponse{}
+			if err := json.Unmarshal(pldByts, pld); err != nil {
+				util.HandleError(fmt.Errorf("failed to unmarshal payload: %w", err))
+				return
+			}
+
+			// Send the image editing response back to the client
+			img, err := GetImgSvc().SaveImage(pld, conversationID, userID)
+			if err != nil {
+				util.HandleError(err)
+				return
+			}
+
+			// Send the image metadata back to the client
+			GetSocketService().SendCompletion(models.SocketStageTypeGeneratingImage, conversationID, userID, "Image editing completed", img)
+			util.LogInfo("Image editing completed successfully", logrus.Fields{
+				"conversationId": conversationID,
+				"userId":         userID,
+				"imageId":        img.ID,
+			})
+		}
+		// Submit the request through RabbitMQ
+		requestID, err := mq.SubmitImageEditRequest(s.mqClient, originalRequest, userID, conversationID, 10, responseHandler)
+		if err != nil {
+			util.HandleError(err)
+			// Fall back to direct dispatch
+		} else {
+			util.LogInfo("Image editing request submitted to RabbitMQ", logrus.Fields{
+				"requestId": requestID,
+			})
+			return // Successfully submitted to RabbitMQ, no need to continue
+		}
+	}
+}
 
 // packageForDispatch wraps any function as func(args ...any) (any, error)
-func (s *inferenceSvc) packageForDispatch(fn any) DispatchFunc {
+func (s *InferenceSvc) packageForDispatch(fn any) DispatchFunc {
 	return func(args ...any) InferenceResponse {
 		fnVal := reflect.ValueOf(fn)
 		if fnVal.Kind() != reflect.Func {
@@ -315,7 +350,7 @@ func (s *inferenceSvc) packageForDispatch(fn any) DispatchFunc {
 	}
 }
 
-func (s *inferenceSvc) relayForUser(ctx context.Context, modelProfile *models.ModelProfile, messages []models.ChatMessage, userID string, conversationID int, w *bufio.Writer) (string, error) {
+func (s *InferenceSvc) relayForUser(ctx context.Context, modelProfile *models.ModelProfile, messages []models.ChatMessage, userID string, conversationID int, w *bufio.Writer) (string, error) {
 	requestBody := models.ChatReq{
 		Model:    modelProfile.ModelName,
 		Messages: messages,
@@ -460,7 +495,7 @@ loopScan:
 }
 
 // getEmbedding retrieves a vector embedding for the provided text
-func (s *inferenceSvc) getEmbedding(ctx context.Context, textToEmbed string, mp *models.ModelProfile, userID string, conversationID int) ([][]float32, error) {
+func (s *InferenceSvc) getEmbedding(ctx context.Context, textToEmbed string, mp *models.ModelProfile, userID string, conversationID int) ([][]float32, error) {
 	// Sanitize the input text before embedding
 	cleanText := util.SanitizeText(textToEmbed)
 	const MAX_EMBEDDING_LENGTH = 2500 // Maximum length for text embeddings, adjust as needed
@@ -540,4 +575,9 @@ func splitTextIntoChunks(text string, maxChunkSize int) []string {
 		chunks = append(chunks, string(runes[i:end]))
 	}
 	return chunks
+}
+
+// GetMQClient returns the RabbitMQ client
+func (s *InferenceSvc) GetMQClient() *mq.RabbitMQClient {
+	return s.mqClient
 }
