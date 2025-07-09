@@ -13,3 +13,4 @@ spec:
       port: 80
       targetPort: 8080
       name: maistro
+      # appProtocol: kubernetes.io/ws

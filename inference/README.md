@@ -1,11 +1,18 @@
-# Stable Diffusion API
+# Inference Service
 
-A FastAPI-based service for generating images using Stable Diffusion models with advanced memory optimization and hardware management.
+A service for generating text, chat completions, embeddings, and images using large language models and Stable Diffusion with advanced memory optimization and hardware management.
+
+The service supports both FastAPI-based HTTP API and gRPC API for efficient communication with the maistro service.
 
 ## Features
 
 - **Image Generation**: Generate images from text prompts using Stable Diffusion models
-- **Multiple Model Support**: Add, remove, and switch between different Stable Diffusion models
+- **Text Generation**: Generate text completions with streaming support
+- **Chat Completions**: Generate conversational responses with streaming support
+- **Embeddings**: Generate vector embeddings for text
+- **gRPC API**: High-performance gRPC API for efficient inter-service communication
+- **HTTP API**: RESTful API endpoints for direct client access
+- **Multiple Model Support**: Add, remove, and switch between different models
 - **LoRA Adapter Support**: Manage and apply LoRA adapters to customize model outputs
 - **On-Demand Model Loading**: Models are loaded only when needed and unloaded after use to conserve memory
 - **Hardware Resource Management**: Automatic detection and optimization based on available GPU resources
@@ -36,6 +43,10 @@ inference/
 │   ├── lora_service.py     # LoRA management service
 │   ├── image_generator.py  # Image generation service
 │   └── hardware_manager.py # Hardware resource management
+├── grpc_server/            # gRPC server implementation
+│   ├── proto/              # Protocol buffers definitions
+│   ├── server.py           # gRPC server entry point
+│   └── README.md           # gRPC server documentation
 └── Dockerfile              # Docker configuration
 ```
 
@@ -98,6 +109,20 @@ Key Python packages required:
    ```bash
    docker run --gpus all -p 8000:8000 stable-diffusion-api
    ```
+
+### Running the gRPC Server
+
+```bash
+# Generate proto code
+cd grpc_server/proto
+python generate_proto.py
+
+# Run the server
+cd ../..
+python grpc_server/server.py
+```
+
+For more details, see [gRPC Server README](grpc_server/README.md) and [gRPC Architecture Documentation](../docs/grpc_architecture.md).
 
 ## API Reference
 

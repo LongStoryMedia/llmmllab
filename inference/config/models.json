@@ -118,5 +118,43 @@
             "dtype": "FP16",
             "specialization": "ImageToImage"
         }
+    },
+    {
+        "id": "timbrooks-instruct-pix2pix",
+        "name": "timbrooks/instruct-pix2pix",
+        "model": "timbrooks/instruct-pix2pix",
+        "pipeline": "StableDiffusionInstructPix2PixPipeline",
+        "modified_at": "",
+        "size": 0,
+        "digest": "",
+        "details": {
+            "parent_model": "",
+            "format": "",
+            "family": "",
+            "families": [],
+            "parameter_size": "12B",
+            "dtype": "FP16",
+            "specialization": "ImageToImage"
+        }
+    },
+    {
+        "id": "black-forest-labs-flux.1-kontext-dev",
+        "name": "black-forest-labs/FLUX.1-Kontext-dev",
+        "model": "black-forest-labs/FLUX.1-Kontext-dev",
+        "pipeline": "FluxKontextPipeline",
+        "modified_at": "",
+        "size": 0,
+        "digest": "",
+        "lora_weights": [],
+        "details": {
+            "parent_model": "",
+            "format": "",
+            "family": "",
+            "families": [],
+            "parameter_size": "12B",
+            "dtype": "BFP16",
+            "quantization_level": "nf4",
+            "specialization": "ImageToImage"
+        }
     }
 ]

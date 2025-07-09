@@ -1,0 +1,24 @@
+$schema: http://json-schema.org/draft-07/schema#
+type: object
+title: LoraWeight
+description: LoraWeight contains information about a LoRA weight file
+properties:
+  id:
+    type: string
+    description: Unique identifier for the LoRA weight
+  name:
+    type: string
+    description: Name of the LoRA weight
+  parent_model:
+    type: string
+    description: Identifier of the parent model this LoRA weight is associated with
+  weight_name:
+    type: string
+    description: Name of the weight file (e.g., 'lora.safetensors')
+  adapter_name:
+    type: string
+    description: Name of the adapter (e.g., 'uncensored')
+required:
+  - id
+  - name
+  - parent_model

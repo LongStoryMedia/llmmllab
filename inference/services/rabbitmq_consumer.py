@@ -182,7 +182,7 @@ class RabbitMQConsumer:
             self.queue_request_low: "request.low",
             self.queue_image_request: "request.image",
             self.queue_embedding_request: "request.embedding",
-            self.queue_results: "result.*",
+            self.queue_results: "result.#",  # Changed to # wildcard for multi-level routing key matching
             self.queue_status: "status.*"
         }
 
@@ -324,18 +324,23 @@ class RabbitMQConsumer:
             channel.basic_ack(delivery_tag=method.delivery_tag)
 
             # Extract parameters from the request
-            kwargs, image_request = image_generator._get_kwargs_from_message(request)
+            _, image_request = image_generator._get_kwargs_from_message(request)
 
             # Log the image source URL
             logger.info(f"Image editing request received with source image URL: {image_request.url}")
 
-            # Set up API key header for the internal API request using config
-            headers = {}
-            from config import MAISTRO_INTERNAL_API_KEY
-            if MAISTRO_INTERNAL_API_KEY:
-                headers["X-API-Key"] = MAISTRO_INTERNAL_API_KEY
-            else:
-                logger.warning("No internal API key configured for secure image fetch")
+            # Log the correlation ID formats for debugging
+            original_id = correlation_id
+            # Extract any UUIDs that might be present
+            uuid_parts = []
+            if "::" in correlation_id:
+                parts = correlation_id.split("::")
+                if len(parts) == 2:
+                    uuid_parts.append(parts[1])  # The part after ::
+
+            logger.info(f"Processing image edit request with correlation ID: {correlation_id}")
+            if uuid_parts:
+                logger.info(f"UUID parts found in correlation ID: {uuid_parts}")
 
             # Schedule the image editing
             img = image_generator.edit(request)
@@ -345,12 +350,16 @@ class RabbitMQConsumer:
 
             # Process and save the edited image
             res = image_generator.process_and_save_image(img)
+            # delete img  # Free memory if needed
 
-            # Check for processing errors
-            if isinstance(res, dict) and res.get("status") == "failed":
-                raise ValueError(f"Image processing failed: {res.get('error', 'unknown error')}")
+            # Ensure the result has the request_id field for compatibility with maistro
+            if isinstance(res, dict):
+                res["request_id"] = correlation_id
+                # If we extracted UUID parts, add those too for better chances of matching
+                for i, uuid_part in enumerate(uuid_parts):
+                    res[f"uuid_part_{i}"] = uuid_part
 
-            # Publish result
+            # Publish result with routing key including both a generic identifier and the correlation ID
             self.publish_result(correlation_id, res)
 
             # Return an immediate response
@@ -380,6 +389,9 @@ class RabbitMQConsumer:
             return
 
         try:
+            # First, log detailed diagnostic information
+            self.log_detailed_status()
+
             # Ensure result is a dict
             if not isinstance(result, dict):
                 # If result is an object with a model_dump method (Pydantic v2), use it
@@ -394,42 +406,78 @@ class RabbitMQConsumer:
             else:
                 result_dict = result
 
+            # IMPORTANT: Make sure request_id and requestId fields are set for compatibility with Go
+            if "request_id" not in result_dict:
+                result_dict["request_id"] = correlation_id
+            if "requestId" not in result_dict:
+                result_dict["requestId"] = correlation_id
+
             # Create result message with RFC3339 timestamp for Go compatibility
             # Use both correlation_id (for Go struct compatibility) and requestId (for backwards compatibility)
             result_msg = InferenceQueueMessage(
                 correlation_id=correlation_id,
                 priority=0,
-                task="image",
+                task="image",  # Make sure task matches what maistro expects
                 timestamp=datetime.datetime.now(datetime.timezone.utc),
                 memory_required=0,
                 payload=result_dict,
                 type="result"  # Set type for compatibility
             )
 
-            # {
-            #     "correlation_id": request_id,  # Match the Go struct field name
-            #     "requestId": request_id,       # Keep for backwards compatibility
-            #     "success": result_dict.get("success", True),
-            #     "result": result_dict,
-            #     "error": result_dict.get("error", ""),
-            #     "timestamp": datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
-            # }
+            # Try multiple routing key patterns to ensure message delivery
+            routing_keys = [
+                "result.inference",  # Our new standard pattern
+                f"result.{correlation_id}",  # The original pattern
+                "result",  # Direct to result pattern
+            ]
 
-            # Convert to JSON
-            # body = json.dumps(result_msg, cls=DateTimeEncoder)
+            logger.info(f"Publishing result for request {correlation_id}")
 
-            # Publish to exchange with routing key
-            routing_key = f"result.{correlation_id}"
-            self.result_channel.basic_publish(
-                exchange=self.exchange_name,
-                routing_key=routing_key,
-                body=result_msg.model_dump_json(),
-                properties=pika.BasicProperties(
-                    delivery_mode=2,  # Make message persistent
-                    content_type="application/json",
-                    correlation_id=correlation_id
+            # Try each routing key in turn
+            for routing_key in routing_keys:
+                try:
+                    logger.info(f"Attempting publish with routing key: {routing_key}")
+
+                    self.result_channel.basic_publish(
+                        exchange=self.exchange_name,
+                        routing_key=routing_key,
+                        body=result_msg.model_dump_json(),
+                        properties=pika.BasicProperties(
+                            delivery_mode=2,  # Make message persistent
+                            content_type="application/json",
+                            correlation_id=correlation_id
+                        )
+                    )
+
+                    logger.info(f"Successfully published with routing key: {routing_key}")
+                except Exception as e:
+                    logger.error(f"Failed to publish with routing key {routing_key}: {e}")
+
+            # Additionally, try direct publish to queue as a fallback
+            try:
+                logger.info("Attempting direct publish to results queue")
+
+                # Create a new temporary channel for direct queue publish if needed
+                if not self.result_channel or self.result_channel.is_closed:
+                    logger.warning("Result channel unavailable, creating temporary channel")
+                    temp_channel = self.connection.channel()
+                else:
+                    temp_channel = self.result_channel
+
+                temp_channel.basic_publish(
+                    exchange="",  # Use default exchange for direct queue access
+                    routing_key=self.queue_results,  # Queue name as routing key
+                    body=result_msg.model_dump_json(),
+                    properties=pika.BasicProperties(
+                        delivery_mode=2,  # Make message persistent
+                        content_type="application/json",
+                        correlation_id=correlation_id
+                    )
                 )
-            )
+
+                logger.info("Successfully published directly to results queue")
+            except Exception as e:
+                logger.error(f"Failed to publish directly to queue: {e}")
 
             logger.info(f"Published result for request {correlation_id}")
 
@@ -481,6 +529,76 @@ class RabbitMQConsumer:
             self._thread.join(timeout=5.0)
 
         logger.info("RabbitMQ consumer stopped")
+
+    # Add a method to log detailed connection information
+    def log_detailed_status(self):
+        """Log detailed status information about RabbitMQ connections and channels"""
+        try:
+            logger.info("RabbitMQ Diagnostic Information:")
+
+            # Connection status
+            connection_status = "OPEN" if self.connection and not self.connection.is_closed else "CLOSED"
+            logger.info(f"Connection status: {connection_status}")
+
+            # Channel status
+            main_channel_status = "OPEN" if self.channel and not self.channel.is_closed else "CLOSED"
+            logger.info(f"Main channel status: {main_channel_status}")
+
+            result_channel_status = "OPEN" if self.result_channel and not self.result_channel.is_closed else "CLOSED"
+            logger.info(f"Result channel status: {result_channel_status}")
+
+            # Queue information
+            logger.info(f"Exchange name: {self.exchange_name}")
+            logger.info(f"Results queue name: {self.queue_results}")
+
+            # Try to get queue information if channel is open
+            if self.result_channel and not self.result_channel.is_closed:
+                try:
+                    # Get queue information if possible
+                    try:
+                        # This will fail with a synchronous operation on asynchronous connection error
+                        # but we'll try it anyway for more complete diagnostics
+                        # Since we can't reliably get queue metrics in a way that passes linting,
+                        # we'll just log what we can about the connection and channel
+                        logger.info(f"Results channel is connected and ready for publishing")
+
+                        # Get the channel number if available
+                        channel_number = getattr(self.result_channel, 'channel_number', 'unknown')
+                        logger.info(f"Channel number: {channel_number}")
+
+                        # We can't safely access internal attributes, so we'll skip that
+                    except Exception as e:
+                        logger.warning(f"Could not get queue info: {e}")
+
+                    logger.info(f"Result binding pattern: result.#")
+                    logger.info(f"Current routing keys for results: result.inference, result.<correlation_id>, result")
+
+                    # Try to send a test message to see if publishing works
+                    try:
+                        test_msg = {
+                            "test": True,
+                            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+                        }
+                        self.result_channel.basic_publish(
+                            exchange=self.exchange_name,
+                            routing_key="result.test",
+                            body=json.dumps(test_msg),
+                            properties=pika.BasicProperties(
+                                delivery_mode=2,
+                                content_type="application/json",
+                                correlation_id="diagnostics-test"
+                            )
+                        )
+                        logger.info("Successfully published test message during diagnostics")
+                    except Exception as e:
+                        logger.error(f"Error publishing test message during diagnostics: {e}")
+
+                except Exception as e:
+                    logger.error(f"Error getting queue information: {e}")
+
+            logger.info("End of RabbitMQ Diagnostic Information")
+        except Exception as e:
+            logger.error(f"Error in log_detailed_status: {e}")
 
 
 # Singleton instance

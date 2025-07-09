@@ -22,7 +22,7 @@ properties:
   id:
     type: integer
     description: Unique identifier for the message
-  createdAt:
+  created_at:
     type: string
     format: date-time
     description: Timestamp of when the message was created

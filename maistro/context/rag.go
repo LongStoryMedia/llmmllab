@@ -21,12 +21,12 @@ type RetrievedMemory struct {
 }
 
 // EnhanceRequestWithRAG adds relevant memories to the request based on the latest user query
-func (cc *ConversationContext) EnhanceRequestWithRAG(ctx context.Context, req *models.ChatReq) error {
+func (cc *conversationContext) EnhanceRequestWithRAG(ctx context.Context, req *models.ChatReq) error {
 	// Find the latest user message to use as query
 	var latestUserMessage string
-	for i := len(cc.Messages) - 1; i >= 0; i-- {
-		if cc.Messages[i].Role == "user" {
-			latestUserMessage = cc.Messages[i].Content
+	for i := len(cc.messages) - 1; i >= 0; i-- {
+		if cc.messages[i].Role == "user" {
+			latestUserMessage = cc.messages[i].Content
 			break
 		}
 	}
@@ -35,7 +35,7 @@ func (cc *ConversationContext) EnhanceRequestWithRAG(ctx context.Context, req *m
 		return util.HandleError(fmt.Errorf("no user message found in request"))
 	}
 
-	if len(cc.RetrievedMemories) == 0 && len(cc.SearchResults) == 0 {
+	if len(cc.retrievedMemories) == 0 && len(cc.searchResults) == 0 {
 		util.LogInfo("No relevant memories or search results found, skipping RAG enhancement")
 		return nil // No relevant memories found, continue with original request
 	}
@@ -45,9 +45,9 @@ func (cc *ConversationContext) EnhanceRequestWithRAG(ctx context.Context, req *m
 	var relevantMemories []models.ChatMessage
 	var searchResults []models.ChatMessage
 	// If there are search results, format them as system messages
-	if len(cc.SearchResults) > 0 {
-		util.LogInfo("Adding search results to request", logrus.Fields{"count": len(cc.SearchResults)})
-		for _, result := range cc.SearchResults {
+	if len(cc.searchResults) > 0 {
+		util.LogInfo("Adding search results to request", logrus.Fields{"count": len(cc.searchResults)})
+		for _, result := range cc.searchResults {
 			msg := models.ChatMessage{Role: "system"}
 			for _, content := range result.Contents {
 				var preamble string
@@ -71,8 +71,8 @@ func (cc *ConversationContext) EnhanceRequestWithRAG(ctx context.Context, req *m
 		}
 	}
 	// Add a system message to explain the search results
-	if len(cc.RetrievedMemories) > 0 {
-		for _, mem := range cc.RetrievedMemories {
+	if len(cc.retrievedMemories) > 0 {
+		for _, mem := range cc.retrievedMemories {
 			msg := models.ChatMessage{Role: "system"}
 			if mem.Source == models.MemorySourceMessage {
 				if len(mem.Fragments) != 2 {
@@ -141,14 +141,14 @@ func (cc *ConversationContext) EnhanceRequestWithRAG(ctx context.Context, req *m
 }
 
 // RetrieveAndInjectMemories retrieves relevant memories based on the current user query
-func (cc *ConversationContext) RetrieveAndInjectMemories(ctx context.Context, queryEmbeddings [][]float32, startDate, endDate *time.Time) error {
+func (cc *conversationContext) RetrieveAndInjectMemories(ctx context.Context, queryEmbeddings [][]float32, startDate, endDate *time.Time) error {
 	// Clear any previous memories
-	cc.RetrievedMemories = nil
-	state := session.GlobalStageManager.GetSessionState(cc.UserID, cc.ConversationID)
+	cc.retrievedMemories = nil
+	state := session.GlobalStageManager.GetSessionState(cc.userID, cc.conversationID)
 	memState := state.GetStage(models.SocketStageTypeRetrievingMemories)
 
 	// Get user-specific configuration
-	userConfig, err := GetUserConfig(cc.UserID)
+	userConfig, err := GetUserConfig(cc.userID)
 	if err != nil {
 		return util.HandleError(err)
 	}
@@ -173,11 +173,11 @@ func (cc *ConversationContext) RetrieveAndInjectMemories(ctx context.Context, qu
 			var conversationID int
 
 			if !userConfig.Memory.EnableCrossConversation {
-				conversationID = cc.ConversationID
+				conversationID = cc.conversationID
 			}
 
 			if !userConfig.Memory.EnableCrossUser {
-				userID = cc.UserID
+				userID = cc.userID
 			}
 
 			// Run memory search inline instead of in a goroutine
@@ -194,7 +194,7 @@ func (cc *ConversationContext) RetrieveAndInjectMemories(ctx context.Context, qu
 				errorStr += err.Error() + " "
 			}
 
-			div := len(similarMessages)
+			div := len(similarMessages) + 1
 			if div > limit {
 				similarMessages = similarMessages[:limit] // Limit the number of messages to the specified limit
 			}
@@ -227,15 +227,15 @@ func (cc *ConversationContext) RetrieveAndInjectMemories(ctx context.Context, qu
 	return nil
 }
 
-func (cc *ConversationContext) appendMemoriesToContext(memories []models.Memory) {
+func (cc *conversationContext) appendMemoriesToContext(memories []models.Memory) {
 	// Add retrieved memories to the context
 	for _, mem := range memories {
-		if slices.ContainsFunc(cc.RetrievedMemories, func(m models.Memory) bool {
+		if slices.ContainsFunc(cc.retrievedMemories, func(m models.Memory) bool {
 			return m.Source == mem.Source && m.SourceID == mem.SourceID
 		}) {
 			util.LogInfo("Memory already exists in context, skipping", logrus.Fields{"source_id": mem.SourceID, "source": mem.Source})
 			continue // Skip if memory already exists
 		}
-		cc.RetrievedMemories = append(cc.RetrievedMemories, mem)
+		cc.retrievedMemories = append(cc.retrievedMemories, mem)
 	}
 }

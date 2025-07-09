@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"encoding/json"
 	"errors"
+	"maistro/config"
 	"maistro/models"
 	"maistro/util"
 	"net/http"
@@ -138,8 +139,10 @@ func (s *InferenceScheduler) run() {
 		}
 		s.lock.Unlock()
 
+		conf := config.GetConfig(nil)
+
 		// Fetch device memory stats
-		stats, err := fetchDeviceStats("http://192.168.0.71:8000/resources/malloc")
+		stats, err := fetchDeviceStats(conf.InferenceServices.StableDiffusion.BaseURL + "/resources/malloc")
 		if err != nil {
 			util.HandleError(err)
 			time.Sleep(500 * time.Millisecond)
@@ -182,41 +185,70 @@ func (s *InferenceScheduler) processQueueWithAvailableMemory(stats map[string]mo
 
 	// Track which requests to process
 	toDispatch := make([]*InferenceRequest, 0)
-	now := time.Now()
+	// now := time.Now()
 
 	// First pass: identify which requests can be satisfied with current memory
 	for i := 0; i < s.queue.Len(); i++ {
 		req := s.queue[i]
 
-		// Skip if request is not ready to process yet (delay based on priority)
-		if now.Before(req.ReadyTime) {
-			util.LogDebug("Request not ready yet", logrus.Fields{
-				"priority": req.Priority,
-				"readyIn":  req.ReadyTime.Sub(now).Seconds(),
-			})
-			continue
-		}
+		// Check if total available memory across all devices is sufficient
+		if totalAvailableMemory >= req.RequiredMemory {
+			// We have enough total memory, now check if we can allocate it across devices
+			remainingRequired := req.RequiredMemory
+			canFit := true
 
-		// Check if any single device has enough memory
-		canFit := false
-		for device, mem := range availableMemory {
-			util.LogDebug("Fetched device stats", logrus.Fields{
-				"mem":      mem,
-				"device":   device,
-				"required": req.RequiredMemory,
-			})
-			if mem >= req.RequiredMemory {
-				// This device has enough memory
-				canFit = true
-				// Reserve this memory
-				availableMemory[device] -= req.RequiredMemory
-				totalAvailableMemory -= req.RequiredMemory
-				break
+			// Temporary map to track memory allocations before committing them
+			tempAllocations := make(map[string]float32)
+
+			// Try to allocate memory across devices
+			for device, mem := range availableMemory {
+				if mem > 0 {
+					// Allocate as much as possible from this device
+					allocation := min(mem, remainingRequired)
+					tempAllocations[device] = allocation
+					remainingRequired -= allocation
+
+					util.LogDebug("Allocated memory on device", logrus.Fields{
+						"device":    device,
+						"allocated": allocation,
+						"remaining": remainingRequired,
+					})
+
+					// If we've allocated all needed memory, we can stop
+					if remainingRequired <= 0 {
+						break
+					}
+				}
 			}
-		}
 
-		if canFit {
-			toDispatch = append(toDispatch, req)
+			// If we couldn't allocate all required memory, mark as not fitting
+			if remainingRequired > 0 {
+				canFit = false
+				util.LogDebug("Not enough allocatable memory across devices", logrus.Fields{
+					"required":    req.RequiredMemory,
+					"unallocated": remainingRequired,
+				})
+			}
+
+			// If it can fit, commit the allocations
+			if canFit {
+				for device, allocation := range tempAllocations {
+					availableMemory[device] -= allocation
+				}
+				totalAvailableMemory -= req.RequiredMemory
+				toDispatch = append(toDispatch, req)
+
+				util.LogDebug("Request will be dispatched with memory from multiple devices", logrus.Fields{
+					"required":    req.RequiredMemory,
+					"allocations": tempAllocations,
+				})
+			}
+		} else {
+			// Not enough total memory across all devices
+			util.LogDebug("Not enough total memory for request", logrus.Fields{
+				"required":  req.RequiredMemory,
+				"available": totalAvailableMemory,
+			})
 		}
 	}
 

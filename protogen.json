@@ -1,0 +1,12 @@
+{
+    "proto_dir": "proto",
+    "languages": [
+        "python",
+        "go"
+    ],
+    "output": {
+        "python": "inference/proto",
+        "go": "maistro/proto"
+    },
+    "verbose": false
+}

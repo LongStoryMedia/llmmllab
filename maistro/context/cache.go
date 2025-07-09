@@ -10,7 +10,7 @@ import (
 )
 
 type cacheEntry struct {
-	context   *ConversationContext
+	context   ConversationContext
 	expiresAt time.Time
 }
 
@@ -20,8 +20,8 @@ type cacheKey struct {
 }
 
 type CacheProvider interface {
-	Get(userID string, conversationID int) (*ConversationContext, bool)
-	Set(convContext *ConversationContext)
+	Get(userID string, conversationID int) (ConversationContext, bool)
+	Set(convContext ConversationContext)
 	Remove(userID string, conversationID int)
 	Clear()
 	Size() int
@@ -93,7 +93,7 @@ func (c *InMemoryCache) cleanExpired() {
 	}
 }
 
-func (c *InMemoryCache) Get(userID string, conversationID int) (*ConversationContext, bool) {
+func (c *InMemoryCache) Get(userID string, conversationID int) (ConversationContext, bool) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
@@ -111,15 +111,15 @@ func (c *InMemoryCache) Get(userID string, conversationID int) (*ConversationCon
 	return entry.context, true
 }
 
-func (c *InMemoryCache) Set(convContext *ConversationContext) {
+func (c *InMemoryCache) Set(convContext ConversationContext) {
 	if convContext == nil {
 		return
 	}
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	key := cacheKey{
-		userID:         convContext.UserID,
-		conversationID: convContext.ConversationID,
+		userID:         convContext.GetUserID(),
+		conversationID: convContext.GetConversationID(),
 	}
 	c.entries[key] = cacheEntry{
 		context:   convContext,
@@ -156,7 +156,7 @@ func GetCache() CacheProvider {
 	return Cache
 }
 
-func GetCachedConversation(userID string, conversationID int) (*ConversationContext, error) {
+func GetCachedConversation(userID string, conversationID int) (ConversationContext, error) {
 	cache := GetCache()
 
 	if cachedContext, found := cache.Get(userID, conversationID); found {
@@ -165,8 +165,7 @@ func GetCachedConversation(userID string, conversationID int) (*ConversationCont
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	conversationIDPtr := &conversationID
-	convContext, err := GetOrCreateConversation(ctx, userID, conversationIDPtr)
+	convContext, err := GetOrCreateConversation(ctx, userID, &conversationID)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve conversation: %w", err)

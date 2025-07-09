@@ -61,9 +61,6 @@ func ChatHandler(c *fiber.Ctx) error {
 			imageGenStartTime := time.Now()
 			util.LogInfo("Starting image generation flow", nil)
 
-			if cc.Notes == nil {
-				cc.Notes = make([]string, 0)
-			}
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
 			go func(uid string, cid int, cfg *models.UserConfig) {
@@ -94,10 +91,10 @@ func ChatHandler(c *fiber.Ctx) error {
 				}
 
 				svc.GetInferenceService().GenerateImage(context.Background(), uid, cid, imgReq)
-			}(cfg.UserID, cc.ConversationID, cfg)
+			}(cfg.UserID, cc.GetConversationID(), cfg)
 			wg.Wait()
 			imageGenTotalTime := time.Since(imageGenStartTime)
-			svc.GetSocketService().SendCompletion(models.SocketStageTypeGeneratingImage, cc.ConversationID, cfg.UserID, "Image generation request sent", nil)
+			svc.GetSocketService().SendCompletion(models.SocketStageTypeGeneratingImage, cc.GetConversationID(), cfg.UserID, "Image generation request sent", nil)
 
 			// Log image generation timing
 			util.LogInfo("Image generation flow completed", logrus.Fields{
@@ -157,7 +154,7 @@ func ChatHandler(c *fiber.Ctx) error {
 	c.Response().SetBodyStreamWriter(func(w *bufio.Writer) {
 		// Start the processing stage
 		streamStartTime := time.Now()
-		if res, err = svc.GetInferenceService().RelayUserMessage(ctx, profile, req.Messages, cfg.UserID, cc.ConversationID, w); err != nil {
+		if res, err = svc.GetInferenceService().RelayUserMessage(ctx, profile, req.Messages, cfg.UserID, cc.GetConversationID(), w); err != nil {
 			if proxy.IsIncompleteError(err) {
 				ss.GetStage(models.SocketStageTypeProcessing).Fail("Incomplete response", err)
 			} else {
@@ -174,21 +171,21 @@ func ChatHandler(c *fiber.Ctx) error {
 			// 	pxcx.RefineResponse(response, userMessage, userID, convID)
 			// }(res, cc.UserID, cc.ConversationID)
 
-			go func(r string, cctx *pxcx.ConversationContext) {
+			go func(r string, cctx pxcx.ConversationContext) {
 				ctx, cancel := context.WithTimeout(context.Background(), time.Minute*60)
 				defer cancel()
 				_, err := cctx.AddAssistantMessage(ctx, res)
 				if err != nil {
 					util.HandleError(err)
 				} else {
-					util.LogInfo("Successfully stored assistant message in conversation", logrus.Fields{"conversationId": cctx.ConversationID})
+					util.LogInfo("Successfully stored assistant message in conversation", logrus.Fields{"conversationId": cctx.GetConversationID()})
 				}
 			}(res, cc)
 		} else if res == "" {
 			util.LogWarning("Empty assistant response, not storing")
 		}
 
-		cc.Notes = make([]string, 0)
+		cc.ClearNotes()
 
 		// Notify of completion
 		ss.GetStage(models.SocketStageTypeProcessing).Complete("Chat response generated successfully")
@@ -321,7 +318,7 @@ func CreateConversation(c *fiber.Ctx) error {
 		return handleApiError(err, fiber.StatusBadRequest, "Invalid request body")
 	}
 
-	return c.JSON(fiber.Map{string(pxcx.ConversationContextKey): cc.ConversationID})
+	return c.JSON(fiber.Map{string(pxcx.ConversationContextKey): cc.GetConversationID()})
 }
 
 func Pause(c *fiber.Ctx) error {

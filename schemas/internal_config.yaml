@@ -1,0 +1,14 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+title: InternalConfig
+description: Configuration for internal services, including API keys and allowed IPs.
+type: object
+properties:
+  APIKey:
+    type: string
+    description: API key for internal service auth
+  AllowedIPs:
+    type: string
+    description: Comma-separated list of allowed IPs
+required:
+  - APIKey
+  - AllowedIPs

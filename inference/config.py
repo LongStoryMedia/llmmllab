@@ -1,5 +1,6 @@
 import os
 import logging
+from typing import Any, Dict
 
 # Set up logging
 logging.basicConfig(
@@ -95,3 +96,36 @@ RABBITMQ_PORT = os.environ.get("RABBITMQ_PORT", 5672)
 RABBITMQ_USER = os.environ.get("RABBITMQ_USER", "lsm")
 RABBITMQ_PASSWORD = os.environ.get("RABBITMQ_PASSWORD", "")
 RABBITMQ_VHOST = os.environ.get("RABBITMQ_VHOST", "/")
+
+
+# gRPC server configuration
+GRPC_PORT = int(os.environ.get("GRPC_PORT", "50051"))
+GRPC_MAX_WORKERS = int(os.environ.get("GRPC_MAX_WORKERS", "10"))
+GRPC_MAX_MESSAGE_SIZE = int(os.environ.get("GRPC_MAX_MESSAGE_SIZE", "104857600"))  # 100MB
+GRPC_MAX_CONCURRENT_RPCS = int(os.environ.get("GRPC_MAX_CONCURRENT_RPCS", "100"))
+GRPC_ENABLE_REFLECTION = os.environ.get("GRPC_ENABLE_REFLECTION", "true").lower() == "true"
+
+# gRPC authentication
+GRPC_REQUIRE_API_KEY = os.environ.get("GRPC_REQUIRE_API_KEY", "false").lower() == "true"
+GRPC_API_KEY = os.environ.get("GRPC_API_KEY", "")  # API key for authentication
+
+# TLS/SSL configuration
+GRPC_USE_TLS = os.environ.get("GRPC_USE_TLS", "false").lower() == "true"
+GRPC_CERT_FILE = os.environ.get("GRPC_CERT_FILE", "/etc/inference/certs/server.crt")
+GRPC_KEY_FILE = os.environ.get("GRPC_KEY_FILE", "/etc/inference/certs/server.key")
+
+
+def get_grpc_config() -> Dict[str, Any]:
+    """Get the gRPC server configuration."""
+    return {
+        "port": GRPC_PORT,
+        "max_workers": GRPC_MAX_WORKERS,
+        "max_message_size": GRPC_MAX_MESSAGE_SIZE,
+        "max_concurrent_rpcs": GRPC_MAX_CONCURRENT_RPCS,
+        "enable_reflection": GRPC_ENABLE_REFLECTION,
+        "require_api_key": GRPC_REQUIRE_API_KEY,
+        "api_key": GRPC_API_KEY,
+        "use_tls": GRPC_USE_TLS,
+        "cert_file": GRPC_CERT_FILE,
+        "key_file": GRPC_KEY_FILE,
+    }
