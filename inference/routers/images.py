@@ -4,7 +4,7 @@ from pydoc import text
 import uuid
 from io import BytesIO
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile
 from fastapi.responses import FileResponse
 from PIL import Image
 
@@ -57,3 +57,18 @@ async def download_image(filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(file_path, media_type="image/png")
+
+
+@router.post("/store-image")
+async def store_image(image: UploadFile):
+    """Store a generated image."""
+    try:
+        # ensure the image directory exists
+        os.makedirs(os.path.join(IMAGE_DIR, "originals"), exist_ok=True)
+        # Save the uploaded image
+        file_path = os.path.join(IMAGE_DIR, "originals", image.filename if image.filename else f"{uuid.uuid4()}.png")
+        with open(file_path, "wb") as f:
+            f.write(await image.read())
+        return {"status": "success", "file_path": file_path}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

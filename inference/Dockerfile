@@ -72,6 +72,7 @@ RUN mkdir -p /root/images
 
 # Install uvicorn with extra dependencies
 RUN pip install "uvicorn[standard]" watchfiles websockets
+RUN pip install git+https://github.com/huggingface/diffusers.git
 
 # Expose ports
 EXPOSE 11434 8000

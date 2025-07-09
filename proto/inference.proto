@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "maistro/proto";
+
+// Import standard well-known types
+import "chat_req.proto";
+import "chat_response.proto"; 
+import "generate_req.proto"; 
+import "embedding_req.proto"; 
+import "image_generation_request.proto"; 
+import "image_generation_response.proto"; 
+import "generate_response.proto";
+import "embedding_response.proto";
+
+service InferenceService {
+  // Chat service with streaming response
+  rpc ChatStream(ChatReq) returns (stream ChatResponse);
+  
+  // Generate text (non-chat) with streaming response
+  rpc GenerateStream(GenerateReq) returns (stream GenerateResponse);
+  
+  // Get embeddings from text
+  rpc GetEmbedding(EmbeddingReq) returns (EmbeddingResponse);
+  
+  // Image generation with non-streaming response (returns image ID for status check)
+  rpc GenerateImage(ImageGenerateRequest) returns (ImageGenerateResponse);
+}

@@ -45,6 +45,9 @@ properties:
     type: string
     description: URL of the image to use as a base for image generation (for img2img)
     nullable: true
+  filename:
+    type: string
+    description: Name of the file to save the generated image as
 required:
   - prompt
   - model

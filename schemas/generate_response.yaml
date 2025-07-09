@@ -1,0 +1,36 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: GenerateResponse
+description: GenerateResponse represents a request to the Ollama embeddings API
+type: object
+properties:
+  model:
+    type: string
+  created_at:
+    type: string
+  response:
+    type: string
+  done:
+    type: boolean
+  done_reason:
+    type: string
+  context:
+    type: array
+    items:
+      type: integer
+    description: context IDs for the response
+  prompt_eval_count:
+    type: integer
+  prompt_eval_duration:
+    type: number
+  eval_count:
+    type: integer
+  eval_duration:
+    type: number
+  total_duration:
+    type: number
+  load_duration:
+    type: number
+required:
+  - model
+  - response
+  - done

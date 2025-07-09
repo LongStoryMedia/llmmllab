@@ -14,14 +14,14 @@ import (
 // TODO: Work in dynamic model profile functionality for summaries
 
 // SummarizeMessages creates a summary of the oldest messages
-func (cc *ConversationContext) SummarizeMessages(ctx context.Context) (models.Summary, error) {
-	usrCfg, err := GetUserConfig(cc.UserID)
+func (cc *conversationContext) SummarizeMessages(ctx context.Context) (*models.Summary, error) {
+	usrCfg, err := GetUserConfig(cc.userID)
 	if err != nil {
-		return models.Summary{}, util.HandleError(fmt.Errorf("failed to get user config: %w", err))
+		return &models.Summary{}, util.HandleError(fmt.Errorf("failed to get user config: %w", err))
 	}
 
 	if !usrCfg.Summarization.Enabled {
-		return models.Summary{}, nil // Summarization is disabled
+		return &models.Summary{}, nil // Summarization is disabled
 	}
 
 	// Find messages that haven't been summarized yet
@@ -29,7 +29,7 @@ func (cc *ConversationContext) SummarizeMessages(ctx context.Context) (models.Su
 
 	// Only summarize when we have enough unsummarized messages
 	if len(unsummarizedMessages) < usrCfg.Summarization.MessagesBeforeSummary {
-		return models.Summary{}, nil // Not enough unsummarized messages to summarize
+		return &models.Summary{}, nil // Not enough unsummarized messages to summarize
 	}
 
 	// Summarize the oldest N messages
@@ -46,19 +46,19 @@ func (cc *ConversationContext) SummarizeMessages(ctx context.Context) (models.Su
 
 	summaryProfile, err := storage.ModelProfileStoreInstance.GetModelProfile(ctx, usrCfg.ModelProfiles.SummarizationProfileID)
 	if err != nil {
-		return models.Summary{}, util.HandleError(fmt.Errorf("failed to get summarization profile: %w", err))
+		return &models.Summary{}, util.HandleError(fmt.Errorf("failed to get summarization profile: %w", err))
 	}
 
 	// Generate the summary using the selected prompt
 	summaryContent, err := cc.generateSummarization(messagesToSummarizeContent, summaryProfile)
 	if err != nil {
-		return models.Summary{}, util.HandleError(fmt.Errorf("failed to generate summary: %w", err))
+		return &models.Summary{}, util.HandleError(fmt.Errorf("failed to generate summary: %w", err))
 	}
 
 	// Create a new summary record in the database
-	summaryID, err := storage.SummaryStoreInstance.CreateSummary(ctx, cc.ConversationID, summaryContent, 1, messageIDsToSummarize)
+	summaryID, err := storage.SummaryStoreInstance.CreateSummary(ctx, cc.conversationID, summaryContent, 1, messageIDsToSummarize)
 	if err != nil {
-		return models.Summary{}, util.HandleError(fmt.Errorf("failed to store summary: %w", err))
+		return &models.Summary{}, util.HandleError(fmt.Errorf("failed to store summary: %w", err))
 	}
 
 	// Add the summary to our context
@@ -67,9 +67,9 @@ func (cc *ConversationContext) SummarizeMessages(ctx context.Context) (models.Su
 		Level:          1,
 		ID:             summaryID,
 		SourceIds:      messageIDsToSummarize,
-		ConversationID: cc.ConversationID,
+		ConversationID: cc.conversationID,
 	}
-	cc.Summaries = append(cc.Summaries, summary)
+	cc.summaries = append(cc.summaries, summary)
 
 	if _, err := cc.createSummaryMemory(ctx, summary, usrCfg); err != nil {
 		util.LogWarning("Failed to create summary memory", logrus.Fields{
@@ -89,16 +89,16 @@ func (cc *ConversationContext) SummarizeMessages(ctx context.Context) (models.Su
 		}
 	}
 
-	return summary, nil
+	return &summary, nil
 }
 
 // getUnsummarizedMessages returns messages that haven't been summarized yet
-func (cc *ConversationContext) getUnsummarizedMessages(ctx context.Context) ([]models.Message, []int) {
+func (cc *conversationContext) getUnsummarizedMessages(ctx context.Context) ([]models.Message, []int) {
 	// Create a set to track which message IDs have already been summarized
 	summarizedMessageIDs := make(map[int]bool)
 
 	// Get all summaries to determine which messages have already been summarized
-	summaries, err := storage.SummaryStoreInstance.GetSummariesForConversation(ctx, cc.ConversationID)
+	summaries, err := storage.SummaryStoreInstance.GetSummariesForConversation(ctx, cc.conversationID)
 	if err == nil {
 		// Collect all message IDs that have already been included in summaries
 		for _, summary := range summaries {
@@ -111,7 +111,7 @@ func (cc *ConversationContext) getUnsummarizedMessages(ctx context.Context) ([]m
 	// Filter messages that haven't been summarized yet
 	var unsummarizedMessages []models.Message
 	var unsummarizedIDs []int
-	for _, msg := range cc.Messages {
+	for _, msg := range cc.messages {
 		if !summarizedMessageIDs[msg.ID] && msg.ID > 0 {
 			// Only include messages that have a valid ID and haven't been summarized
 			unsummarizedMessages = append(unsummarizedMessages, msg)
@@ -123,9 +123,9 @@ func (cc *ConversationContext) getUnsummarizedMessages(ctx context.Context) ([]m
 }
 
 // removeMessagesById removes messages with specific IDs from the conversation
-func (cc *ConversationContext) removeMessagesById(ids []int) {
+func (cc *conversationContext) removeMessagesById(ids []int) {
 	var remainingMessages []models.Message
-	for _, msg := range cc.Messages {
+	for _, msg := range cc.messages {
 		shouldKeep := true
 		for _, id := range ids {
 			if msg.ID == id {
@@ -137,27 +137,27 @@ func (cc *ConversationContext) removeMessagesById(ids []int) {
 			remainingMessages = append(remainingMessages, msg)
 		}
 	}
-	cc.Messages = remainingMessages
+	cc.messages = remainingMessages
 }
 
 // shouldConsolidateLevel checks if we have exactly X summaries at a specific level
-func (cc *ConversationContext) shouldConsolidateLevel(level int) bool {
-	usrCfg, err := GetUserConfig(cc.UserID)
+func (cc *conversationContext) shouldConsolidateLevel(level int) bool {
+	usrCfg, err := GetUserConfig(cc.userID)
 	if err != nil {
 		util.LogWarning("Failed to get user config", logrus.Fields{
 			"error": err,
 		})
 		return false
 	}
-	levelCount := countSummariesAtLevel(cc.Summaries, level)
+	levelCount := countSummariesAtLevel(cc.summaries, level)
 
 	// We only consolidate when we have exactly X summaries at this level
 	return levelCount == usrCfg.Summarization.SummariesBeforeConsolidation
 }
 
 // consolidateLevel creates a summary of summaries at a specific level
-func (cc *ConversationContext) consolidateLevel(ctx context.Context, level int) error {
-	usrCfg, err := GetUserConfig(cc.UserID)
+func (cc *conversationContext) consolidateLevel(ctx context.Context, level int) error {
+	usrCfg, err := GetUserConfig(cc.userID)
 	if err != nil {
 		return fmt.Errorf("failed to get user config: %w", err)
 	}
@@ -167,7 +167,7 @@ func (cc *ConversationContext) consolidateLevel(ctx context.Context, level int) 
 	var summaryIDs []int
 
 	// Filter summaries by level
-	for _, summary := range cc.Summaries {
+	for _, summary := range cc.summaries {
 		if summary.Level == level {
 			summariesToConsolidate = append(summariesToConsolidate, summary)
 			summaryIDs = append(summaryIDs, summary.ID)
@@ -221,7 +221,7 @@ func (cc *ConversationContext) consolidateLevel(ctx context.Context, level int) 
 	}
 
 	// Store the new summary in the database
-	summaryID, err := storage.SummaryStoreInstance.CreateSummary(ctx, cc.ConversationID, summaryContent, nextLevel, summaryIDs)
+	summaryID, err := storage.SummaryStoreInstance.CreateSummary(ctx, cc.conversationID, summaryContent, nextLevel, summaryIDs)
 	if err != nil {
 		return fmt.Errorf("failed to store level %d summary: %w", nextLevel, err)
 	}
@@ -240,7 +240,7 @@ func (cc *ConversationContext) consolidateLevel(ctx context.Context, level int) 
 		Level:   nextLevel,
 		ID:      summaryID,
 	}
-	cc.Summaries = append(cc.Summaries, newSummary)
+	cc.summaries = append(cc.summaries, newSummary)
 
 	// Remove consolidated summaries from our in-memory context
 	cc.removeSummariesByIdAndLevel(summaryIDs, level)
@@ -248,7 +248,7 @@ func (cc *ConversationContext) consolidateLevel(ctx context.Context, level int) 
 	// Check if we need to create/update a master summary
 	maxSummaryLevel := usrCfg.Summarization.MaxSummaryLevels
 	if nextLevel == maxSummaryLevel {
-		levelMaxCount := countSummariesAtLevel(cc.Summaries, maxSummaryLevel)
+		levelMaxCount := countSummariesAtLevel(cc.summaries, maxSummaryLevel)
 
 		// If we have exactly X summaries at max level, create/update master summary
 		if levelMaxCount == usrCfg.Summarization.SummariesBeforeConsolidation {
@@ -257,7 +257,7 @@ func (cc *ConversationContext) consolidateLevel(ctx context.Context, level int) 
 				"level": maxSummaryLevel,
 			})
 
-			if cc.MasterSummary == nil {
+			if cc.masterSummary == nil {
 				if err := cc.createMasterSummary(ctx); err != nil {
 					util.LogWarning("Failed to create master summary", logrus.Fields{
 						"error": err,
@@ -284,9 +284,9 @@ func (cc *ConversationContext) consolidateLevel(ctx context.Context, level int) 
 }
 
 // removeSummariesByIdAndLevel removes summaries with specific IDs and level from the conversation
-func (cc *ConversationContext) removeSummariesByIdAndLevel(ids []int, level int) {
+func (cc *conversationContext) removeSummariesByIdAndLevel(ids []int, level int) {
 	var updatedSummaries []models.Summary
-	for _, s := range cc.Summaries {
+	for _, s := range cc.summaries {
 		shouldKeep := true
 		for _, id := range ids {
 			if s.ID == id && s.Level == level {
@@ -298,12 +298,12 @@ func (cc *ConversationContext) removeSummariesByIdAndLevel(ids []int, level int)
 			updatedSummaries = append(updatedSummaries, s)
 		}
 	}
-	cc.Summaries = updatedSummaries
+	cc.summaries = updatedSummaries
 }
 
 // createMasterSummary generates a weighted summary of all summaries
-func (cc *ConversationContext) createMasterSummary(ctx context.Context) error {
-	usrCfg, err := GetUserConfig(cc.UserID)
+func (cc *conversationContext) createMasterSummary(ctx context.Context) error {
+	usrCfg, err := GetUserConfig(cc.userID)
 	if err != nil {
 		return fmt.Errorf("failed to get user config: %w", err)
 	}
@@ -324,13 +324,13 @@ func (cc *ConversationContext) createMasterSummary(ctx context.Context) error {
 
 	// Get IDs of all summaries
 	var summaryIDs []int
-	for _, summary := range cc.Summaries {
+	for _, summary := range cc.summaries {
 		summaryIDs = append(summaryIDs, summary.ID)
 	}
 
 	// Store the master summary with a special level (0 for master)
 	masterLevel := 0 // Special level for master summary
-	masterSummaryID, err := storage.SummaryStoreInstance.CreateSummary(ctx, cc.ConversationID, masterSummaryContent, masterLevel, summaryIDs)
+	masterSummaryID, err := storage.SummaryStoreInstance.CreateSummary(ctx, cc.conversationID, masterSummaryContent, masterLevel, summaryIDs)
 	if err != nil {
 		return fmt.Errorf("failed to store master summary: %w", err)
 	}
@@ -341,7 +341,7 @@ func (cc *ConversationContext) createMasterSummary(ctx context.Context) error {
 	})
 
 	// Store the master summary in our context
-	cc.MasterSummary = &models.Summary{
+	cc.masterSummary = &models.Summary{
 		Content: masterSummaryContent,
 		Level:   masterLevel,
 		ID:      masterSummaryID,
@@ -351,8 +351,8 @@ func (cc *ConversationContext) createMasterSummary(ctx context.Context) error {
 }
 
 // updateMasterSummary updates the existing master summary with new information
-func (cc *ConversationContext) updateMasterSummary(ctx context.Context) error {
-	if cc.MasterSummary == nil {
+func (cc *conversationContext) updateMasterSummary(ctx context.Context) error {
+	if cc.masterSummary == nil {
 		return cc.createMasterSummary(ctx)
 	}
 
@@ -362,8 +362,8 @@ func (cc *ConversationContext) updateMasterSummary(ctx context.Context) error {
 	// Start with the existing master summary as context
 	messagesToSummarize = append(messagesToSummarize, models.Message{
 		Role:    "system",
-		Content: fmt.Sprintf("Current master summary: %s", cc.MasterSummary.Content),
-		ID:      cc.MasterSummary.ID,
+		Content: fmt.Sprintf("Current master summary: %s", cc.masterSummary.Content),
+		ID:      cc.masterSummary.ID,
 	})
 
 	// Find new summaries that weren't part of the original master summary
@@ -378,7 +378,7 @@ func (cc *ConversationContext) updateMasterSummary(ctx context.Context) error {
 	// Add new summaries to the messages list
 	messagesToSummarize = append(messagesToSummarize, newSummaryMessages...)
 
-	usrCfg, err := GetUserConfig(cc.UserID)
+	usrCfg, err := GetUserConfig(cc.userID)
 	if err != nil {
 		return fmt.Errorf("failed to get user config: %w", err)
 	}
@@ -395,16 +395,16 @@ func (cc *ConversationContext) updateMasterSummary(ctx context.Context) error {
 
 	// Get IDs of all summaries
 	var summaryIDs []int
-	for _, summary := range cc.Summaries {
+	for _, summary := range cc.summaries {
 		summaryIDs = append(summaryIDs, summary.ID)
 	}
 
 	// Add the old master summary ID
-	summaryIDs = append(summaryIDs, cc.MasterSummary.ID)
+	summaryIDs = append(summaryIDs, cc.masterSummary.ID)
 
 	// Store the updated master summary
 	masterLevel := 0 // Special level for master summary
-	masterSummaryID, err := storage.SummaryStoreInstance.CreateSummary(ctx, cc.ConversationID, masterSummaryContent, masterLevel, summaryIDs)
+	masterSummaryID, err := storage.SummaryStoreInstance.CreateSummary(ctx, cc.conversationID, masterSummaryContent, masterLevel, summaryIDs)
 	if err != nil {
 		return fmt.Errorf("failed to store updated master summary: %w", err)
 	}
@@ -415,7 +415,7 @@ func (cc *ConversationContext) updateMasterSummary(ctx context.Context) error {
 	})
 
 	// Update the master summary in our context
-	cc.MasterSummary = &models.Summary{
+	cc.masterSummary = &models.Summary{
 		Content: masterSummaryContent,
 		Level:   masterLevel,
 		ID:      masterSummaryID,
@@ -425,7 +425,7 @@ func (cc *ConversationContext) updateMasterSummary(ctx context.Context) error {
 }
 
 // prepareMasterSummaryMessages creates weighted messages for the master summary
-func (cc *ConversationContext) prepareMasterSummaryMessages(cfg *models.UserConfig, masterProfile models.ModelProfile) []models.Message {
+func (cc *conversationContext) prepareMasterSummaryMessages(cfg *models.UserConfig, masterProfile models.ModelProfile) []models.Message {
 	var messagesToSummarize []models.Message
 
 	// Start with a system message describing the importance of weighting
@@ -435,10 +435,10 @@ func (cc *ConversationContext) prepareMasterSummaryMessages(cfg *models.UserConf
 	})
 
 	// Group summaries by level
-	summariesByLevel := groupSummariesByLevel(cc.Summaries)
+	summariesByLevel := groupSummariesByLevel(cc.summaries)
 
 	// Find the max level
-	maxLevel := findMaxLevel(cc.Summaries)
+	maxLevel := findMaxLevel(cc.summaries)
 
 	// Add summaries from each level, with decreasing importance for higher levels
 	for level := 1; level <= maxLevel; level++ {
@@ -467,8 +467,8 @@ func (cc *ConversationContext) prepareMasterSummaryMessages(cfg *models.UserConf
 }
 
 // getNewSummariesForMasterUpdate returns messages for summaries that aren't in the master summary
-func (cc *ConversationContext) getNewSummariesForMasterUpdate(ctx context.Context) []models.Message {
-	usrCfg, err := GetUserConfig(cc.UserID)
+func (cc *conversationContext) getNewSummariesForMasterUpdate(ctx context.Context) []models.Message {
+	usrCfg, err := GetUserConfig(cc.userID)
 	if err != nil {
 		util.LogWarning("Failed to get user config", logrus.Fields{
 			"error": err,
@@ -478,7 +478,7 @@ func (cc *ConversationContext) getNewSummariesForMasterUpdate(ctx context.Contex
 
 	// Get summary IDs already included in the master summary
 	masterSummaryIDs := make(map[int]bool)
-	masterSummary, err := storage.SummaryStoreInstance.GetSummary(ctx, cc.MasterSummary.ID)
+	masterSummary, err := storage.SummaryStoreInstance.GetSummary(ctx, cc.masterSummary.ID)
 	if err == nil {
 		for _, id := range masterSummary.SourceIds {
 			masterSummaryIDs[id] = true
@@ -487,7 +487,7 @@ func (cc *ConversationContext) getNewSummariesForMasterUpdate(ctx context.Contex
 
 	// Group summaries by level that aren't already part of the master summary
 	summariesByLevel := make(map[int][]models.Summary)
-	for _, summary := range cc.Summaries {
+	for _, summary := range cc.summaries {
 		if !masterSummaryIDs[summary.ID] {
 			summariesByLevel[summary.Level] = append(summariesByLevel[summary.Level], summary)
 		}

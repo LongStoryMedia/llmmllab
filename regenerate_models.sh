@@ -5,6 +5,7 @@ SCHEMAS_DIR="./schemas"
 MAISTRO_MODELS_DIR="./maistro/models"
 UI_MODELS_DIR="./ui/src/types"
 INFERENCE_MODELS_DIR="./inference/models"
+PROTO_DIR="./proto"
 SCHEMA2CODE="./schema2code/schema2code.py"
 
 # Create a log file
@@ -99,11 +100,40 @@ regen_py() {
     done
 }
 
+regen_proto() {
+    for proto_file in ./proto/*.proto; do
+        # Extract the base name without extension
+        base_name=$(basename "$proto_file" .proto)
+
+        # Construct the path to the corresponding schema file
+        schema_file="$SCHEMAS_DIR/${base_name}.yaml"
+
+        # Check if schema file exists
+        if [ -f "$schema_file" ]; then
+            echo "Processing $base_name: Found schema file $schema_file" | tee -a "$LOG_FILE"
+
+            # Run schema2code to regenerate the Proto file
+            python "$SCHEMA2CODE" "$schema_file" -l proto -o "$PROTO_DIR/${base_name}.proto" --package proto --go-package maistro/proto
+
+            # Check if the command was successful
+            if [ $? -eq 0 ]; then
+                echo "Successfully regenerated $base_name.proto" | tee -a "$LOG_FILE"
+            else
+                echo "Error regenerating $base_name.proto" | tee -a "$LOG_FILE"
+            fi
+        else
+            echo "Skipping $base_name (proto): No corresponding schema file found" | tee -a "$LOG_FILE"
+        fi
+    done
+    python ./protogen.py --config ./protogen.json
+}
+
 # Main logic
 if [ -z "$LANG_ARG" ]; then
     regen_go
     regen_ts
     regen_py
+    regen_proto
 else
     case "$LANG_ARG" in
     go)
@@ -114,6 +144,9 @@ else
         ;;
     py | python)
         regen_py
+        ;;
+    proto)
+        regen_proto
         ;;
     *)
         echo "Unknown language/project: $LANG_ARG"

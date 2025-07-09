@@ -12,6 +12,7 @@ from generators.dotnet import CSharpGenerator
 from generators.go import GoGenerator
 from generators.python import PythonGenerator
 from generators.typescript import TypeScriptGenerator
+from generators.proto import ProtoGenerator
 from util.writer import Writer
 from util.loader import SchemaLoader
 from util.resolver import SchemaRefResolver
@@ -61,6 +62,8 @@ def generate_types(schema_data: Dict, language: str, schema_file: str, **kwargs)
             output_ext = ".go"
         elif language == "csharp" or language == "dotnet":
             output_ext = ".cs"
+        elif language == "proto" or language == "protobuf":
+            output_ext = ".proto"
         else:
             output_ext = ".txt"
 
@@ -95,6 +98,11 @@ def _generate_single_schema(schema_data: Dict, language: str, schema_file: str,
     elif language == "csharp" or language == "dotnet":
         namespace = kwargs.get("namespace", "SchemaTypes")
         return CSharpGenerator.generate(schema_data, namespace)
+    elif language == "proto" or language == "protobuf":
+        package_name = kwargs.get("package_name", "schema")
+        go_package = kwargs.get("go_package")
+        return ProtoGenerator.generate(schema_data, package_name, schema_file, ref_resolver,
+                                       is_main=is_main, referenced_by=referenced_by, go_package=go_package)
     else:
         raise ValueError(f"Unsupported language: {language}")
 
@@ -114,7 +122,11 @@ def _preprocess_schema_references(ref_resolver: SchemaRefResolver, schema: Dict[
 
             try:
                 # Resolve the reference to populate resolver's cache
-                ref_resolver.resolve_ref(ref_path)
+                resolved_schema = ref_resolver.resolve_ref(ref_path)
+
+                # Also process nested references in the resolved schema
+                if isinstance(resolved_schema, dict):
+                    _preprocess_schema_references(ref_resolver, resolved_schema)
             except Exception as e:
                 print(
                     f"Warning: Could not resolve reference {ref_path}: {e}", file=sys.stderr)
@@ -131,7 +143,11 @@ def _preprocess_schema_references(ref_resolver: SchemaRefResolver, schema: Dict[
 
                 try:
                     # Resolve the reference
-                    ref_resolver.resolve_ref(ref_path)
+                    resolved_schema = ref_resolver.resolve_ref(ref_path)
+
+                    # Also process nested references in the resolved schema
+                    if isinstance(resolved_schema, dict):
+                        _preprocess_schema_references(ref_resolver, resolved_schema)
                 except Exception as e:
                     print(
                         f"Warning: Could not resolve definition reference {ref_path}: {e}", file=sys.stderr)
@@ -144,7 +160,7 @@ def main():
         "schema_file", help="Path to the JSON or YAML schema file")
     parser.add_argument(
         "--language", "-l",
-        choices=["go", "python", "typescript", "csharp", "dotnet"],
+        choices=["go", "python", "typescript", "csharp", "dotnet", "proto", "protobuf"],
         required=True,
         help="Target language for code generation"
     )
@@ -169,11 +185,12 @@ def main():
     )
 
     # Language-specific options
-    parser.add_argument("--package", default="main", help="Go package name")
+    parser.add_argument("--package", default="main", help="Go package name or Protocol Buffer package name")
     parser.add_argument(
         "--namespace", default="SchemaTypes", help="C# namespace")
     parser.add_argument("--no-pydantic", action="store_true",
                         help="Use dataclasses instead of Pydantic for Python")
+    parser.add_argument("--go-package", help="Go package option for Protocol Buffer files")
 
     args = parser.parse_args()
 
@@ -188,6 +205,7 @@ def main():
             package_name=args.package,
             namespace=args.namespace,
             use_pydantic=not args.no_pydantic,
+            go_package=args.go_package,
             output=args.output
         )
 

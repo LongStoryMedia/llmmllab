@@ -14,8 +14,8 @@ import (
 )
 
 // getCritiqueForResponse sends a response to Ollama for critique
-func (cc *ConversationContext) GetCritiqueForResponse(ctx context.Context, responseToCritique string) (string, error) {
-	cfg, err := GetUserConfig(cc.UserID)
+func (cc *conversationContext) GetCritiqueForResponse(ctx context.Context, responseToCritique string) (string, error) {
+	cfg, err := GetUserConfig(cc.userID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get user config: %w", err)
 	}
@@ -49,7 +49,7 @@ func (cc *ConversationContext) GetCritiqueForResponse(ctx context.Context, respo
 	defer cancel()
 
 	// Send the request to Ollama
-	resp, err := proxy.StreamOllamaChatRequest(timeoutCtx, critiqueProfile, msgs, cc.UserID, cc.ConversationID)
+	resp, err := proxy.StreamOllamaChatRequest(timeoutCtx, critiqueProfile, msgs, cc.userID, cc.conversationID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get critique: %w", err)
 	}
@@ -62,8 +62,8 @@ func (cc *ConversationContext) GetCritiqueForResponse(ctx context.Context, respo
 }
 
 // ImproveResponseWithCritique improves a response based on the critique
-func (cc *ConversationContext) ImproveResponseWithCritique(ctx context.Context, originalQuery, originalResponse, critiqueText string) (string, error) {
-	cfg, err := GetUserConfig(cc.UserID)
+func (cc *conversationContext) ImproveResponseWithCritique(ctx context.Context, originalQuery, originalResponse, critiqueText string) (string, error) {
+	cfg, err := GetUserConfig(cc.userID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get user config: %w", err)
 	}
@@ -90,7 +90,7 @@ func (cc *ConversationContext) ImproveResponseWithCritique(ctx context.Context, 
 	defer cancel()
 
 	// Send the request to Ollama
-	resp, err := proxy.StreamOllamaChatRequest(timeoutCtx, improvementProfile, msgs, cc.UserID, cc.ConversationID)
+	resp, err := proxy.StreamOllamaChatRequest(timeoutCtx, improvementProfile, msgs, cc.userID, cc.conversationID)
 	if err != nil {
 		return "", fmt.Errorf("failed to improve response: %w", err)
 	}
@@ -123,7 +123,7 @@ func FilterResponseText(text string) string {
 	return result
 }
 
-func (cc *ConversationContext) RefineResponse(response, userMessage, userID string, conversationID int) string {
+func (cc *conversationContext) RefineResponse(response, userMessage, userID string, conversationID int) string {
 	cfg, err := GetUserConfig(userID)
 	if err != nil {
 		util.HandleError(err)

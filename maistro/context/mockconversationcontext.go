@@ -5,12 +5,12 @@ import (
 	"time"
 )
 
-var MockConversationContext = ConversationContext{
-	UserID:         "test_user",
-	ConversationID: 1,
-	Title:          "Test Conversation",
-	MasterSummary:  nil,
-	Summaries: []models.Summary{
+var MockConversationContext = conversationContext{
+	userID:         "test_user",
+	conversationID: 1,
+	title:          "Test Conversation",
+	masterSummary:  nil,
+	summaries: []models.Summary{
 		{
 			CreatedAt:      time.Date(2023, 10, 01, 12, 00, 00, 0, time.UTC),
 			ConversationID: 1,
@@ -18,8 +18,8 @@ var MockConversationContext = ConversationContext{
 			SourceIds:      []int{1, 2, 3},
 		},
 	},
-	RetrievedMemories: []models.Memory{},
-	Messages: []models.Message{
+	retrievedMemories: []models.Memory{},
+	messages: []models.Message{
 		{
 			ID:      1,
 			Role:    "user",
@@ -46,5 +46,5 @@ var MockConversationContext = ConversationContext{
 			Content: "How can I ensure that my LLM and image generation models can run in parallel on multiple GPUs?",
 		},
 	},
-	SearchResults: []models.SearchResult{},
+	searchResults: []models.SearchResult{},
 }

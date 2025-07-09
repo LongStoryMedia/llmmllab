@@ -16,12 +16,16 @@ function gen_typescript() {
     pascal_filename=$(echo "$2" | perl -pe 's/(^|_)([a-z])/uc($2)/ge')
     "$(dirname "$0")/schema2code/schema2code.py" "$1" -l typescript -o "$(dirname "$0")/ui/src/types/${pascal_filename}.ts"
 }
+function gen_proto() {
+    "$(dirname "$0")/schema2code/schema2code.py" "$1" -l proto -o "$(dirname "$0")/proto/${2}.proto" --package proto --go-package maistro/proto
+}
 
 function gen() {
     if [ -z "$LALA" ]; then
         gen_go "$1" "$(basename "$1" .yaml)"
         gen_python "$1" "$(basename "$1" .yaml)"
         gen_typescript "$1" "$(basename "$1" .yaml)"
+        gen_proto "$1" "$(basename "$1" .yaml)"
     else
         case "$LALA" in
         go)
@@ -32,6 +36,9 @@ function gen() {
             ;;
         ts)
             gen_typescript "$1" "$(basename "$1" .yaml)"
+            ;;
+        proto)
+            gen_proto "$1" "$(basename "$1" .yaml)"
             ;;
         *)
             echo "Unsupported language: $LALA"

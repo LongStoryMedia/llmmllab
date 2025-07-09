@@ -1,8 +1,5 @@
-from requests import get
-from .helpers import get_dtype, get_precision
+from ..helpers import get_dtype, get_precision
 from models.model import Model
-from typing import Optional
-import torch
 from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import StableDiffusionXLPipeline
 
 

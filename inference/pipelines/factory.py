@@ -70,6 +70,12 @@ class PipelineFactory:
         elif model.pipeline == "StableDiffusionXLImg2ImgPipeline":
             from pipelines.img2img.sdxl import SDXLRefinerPipe
             pipe = SDXLRefinerPipe.load(model)
+        elif model.pipeline == "FluxKontextPipeline":
+            from pipelines.img2img.instruct import FluxKontextPipe
+            pipe = FluxKontextPipe.load(model)
+        elif model.pipeline == "StableDiffusionInstructPix2PixPipeline":
+            from pipelines.img2img.p2p import SDXLRefinerPipe
+            pipe = SDXLRefinerPipe.load(model)
         else:
             logging.getLogger(__name__).error(f"Unsupported pipeline type '{model.pipeline}' for model {model.name}.")
             return None

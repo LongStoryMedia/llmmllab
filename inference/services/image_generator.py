@@ -23,7 +23,7 @@ from typing import Optional, Union, Callable
 import torch
 import numpy as np
 from PIL import Image
-
+from diffusers.utils.loading_utils import load_image
 # Import config to use configuration values
 import config
 from models.inference_queue_message import InferenceQueueMessage
@@ -33,7 +33,6 @@ from diffusers.quantizers.quantization_config import BitsAndBytesConfig
 from diffusers.models.transformers.transformer_sd3 import SD3Transformer2DModel
 from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import StableDiffusionXLPipeline
 from diffusers.pipelines.flux.pipeline_flux import FluxPipeline
-from util.image_loader import load_image_with_headers
 
 
 def sd35_pipe(model_name: str):
@@ -234,20 +233,11 @@ class ImageGenerator:
             raise ValueError("Prompt is required for image editing")
 
         # Validate image URL/path is provided
-        image_source = image_request.url
-        if not image_source:
-            raise ValueError("Image URL or path is required for image editing")
+        if image_request.filename is None:
+            raise ValueError("Filename is required for image editing")
+        image_source = os.path.join(config.IMAGE_DIR, "originals", image_request.filename)
 
-        if image_source.startswith('http'):
-            self.logger.info(f"Editing image from URL: {image_source}")
-        else:
-            image_source = config.MAISTRO_BASE_URL + image_source
-
-        # model_id = kwargs.pop('model', None) or image_request.model
-        # if not model_id:
-        #     self.logger.warning("No model specified, using default model")
-        #     model_id = config.DEFAULT_MODEL_ID
-        model_id = 'stabilityai-stable-diffusion-xl-refiner-1.0'
+        model_id = 'black-forest-labs-flux.1-kontext-dev'
 
         self.logger.info(f"Editing image with prompt: {prompt}")
         pipeline = PipelineFactory.get_pipeline(model_id)
@@ -265,17 +255,9 @@ class ImageGenerator:
 
         # Load the image from URL or path with appropriate headers if needed
         try:
-            # Set up API key header for the internal API request using config
-            headers = {}
-            api_key = config.MAISTRO_INTERNAL_API_KEY
-            if api_key:
-                headers["X-API-Key"] = api_key.strip()
-                self.logger.debug("Using API key for internal image fetch")
-            else:
-                self.logger.warning("No internal API key configured for secure image fetch")
-
             self.logger.info(f"Loading image from: {image_source}")
-            init_image = load_image_with_headers(image_source, headers=headers).convert("RGB")
+            init_image = load_image(image_source).convert("RGB")
+            # init_image = load_image_with_headers(image_source, headers=headers).convert("RGB")
             self.logger.info("Image loaded successfully")
         except Exception as e:
             self.logger.error(f"Failed to load image: {e}")
@@ -283,13 +265,15 @@ class ImageGenerator:
 
         # Generate the edited image
         with torch.inference_mode():
+            self.logger.info("Starting image editing...")
+            torch.cuda.synchronize()  # Ensure CUDA operations are synchronized
             result = pipeline(
                 prompt=prompt,
                 height=height,
                 width=width,
                 num_inference_steps=num_inference_steps,
                 guidance_scale=guidance_scale,
-                negative_prompt=negative_prompt,
+                # negative_prompt=negative_prompt,
                 image=init_image,  # Use the loaded image for editing
             )  # type: ignore
 
@@ -311,7 +295,7 @@ class ImageGenerator:
         Returns:
             The path to the saved image.
         """
-        if not filename:
+        if not filename or filename.strip() == "":
             filename = f"{uuid.uuid4().hex}.png"
 
         if not filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):

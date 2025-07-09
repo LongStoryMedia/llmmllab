@@ -144,7 +144,7 @@ func (s *InferenceSvc) RelayUserMessage(ctx context.Context, modelProfile *model
 	rc := NewResponseChan()
 	ir := &InferenceRequest{
 		Priority:       1,
-		RequiredMemory: util.Gb2b(8), // 100 MB, adjust as needed
+		RequiredMemory: util.Gb2b(6), // 100 MB, adjust as needed
 		EnqueueTime:    time.Now(),
 		DispatchArgs:   []any{ctx, modelProfile, messages, userID, conversationID, w},
 		Dispatch:       s.packageForDispatch(s.relayForUser),
@@ -188,6 +188,8 @@ func (s *InferenceSvc) GetEmbedding(ctx context.Context, textToEmbed string, mp 
 
 	return nil, util.HandleError(fmt.Errorf("unexpected result type: %T, expected [][]float32", res.Result))
 }
+
+//
 
 func (s *InferenceSvc) GenerateImage(ctx context.Context, userID string, conversationID int, originalRequest models.ImageGenerateRequest) {
 	// Use RabbitMQ if available

@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # Python gRPC Inference Server
+  inference-grpc:
+    build:
+      context: .
+      dockerfile: inference/Dockerfile.Inference.GRPC
+    ports:
+      - "50051:50051"
+    environment:
+      - GRPC_PORT=50051
+      - GRPC_MAX_WORKERS=10
+      - GRPC_MAX_MESSAGE_SIZE=104857600
+      - GRPC_MAX_CONCURRENT_RPCS=100
+      - GRPC_ENABLE_REFLECTION=true
+      - GRPC_REQUIRE_API_KEY=false
+      - HF_TOKEN=${HF_TOKEN:-""}
+    volumes:
+      - ./inference:/app
+      - ./proto:/app/proto
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.connect(('localhost', 50051))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Go gRPC Maistro Service
+  maistro:
+    build:
+      context: ./maistro
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - INFERENCE_USE_GRPC=true
+      - INFERENCE_GRPC_ADDRESS=inference-grpc:50051
+      - INFERENCE_USE_SECURE_CONNECTION=false
+    depends_on:
+      inference-grpc:
+        condition: service_healthy
+    volumes:
+      - ./maistro:/app

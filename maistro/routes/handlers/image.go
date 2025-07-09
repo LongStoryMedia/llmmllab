@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"maistro/auth"
 	"maistro/config"
 	pxcx "maistro/context"
@@ -13,7 +15,8 @@ import (
 	svc "maistro/services"
 	"maistro/storage"
 	"maistro/util"
-	"net/url"
+	"mime/multipart"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -289,19 +292,78 @@ func EditImage(c *fiber.Ctx) error {
 		return handleApiError(err, fiber.StatusNotFound, "Image not found")
 	}
 
-	// Generate the internal image URL for inference to use
-	conf := config.GetConfig(nil)
-	internalImageURL := fmt.Sprintf("%s/internal/images/%s/%s",
-		conf.Server.BaseURL,
-		userID,
-		imageMetadata.Filename)
-
-	// Add the internal image URL to the request
-	u, err := url.Parse(internalImageURL)
-	if err != nil {
-		return handleApiError(err, fiber.StatusInternalServerError, "Failed to parse internal image URL")
+	// Validate image metadata
+	if imageMetadata == nil {
+		return handleApiError(nil, fiber.StatusNotFound, "Image not found")
 	}
 
+	// Get the configuration
+	conf := config.GetConfig(nil)
+
+	// Path to the locally stored image
+	filePath := filepath.Join(conf.ImageGeneration.StorageDirectory, userID, imageMetadata.Filename)
+
+	// Check if file exists
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return handleApiError(err, fiber.StatusNotFound, "Image file not found on disk")
+	}
+
+	// Open the image file to be uploaded
+	file, err := os.Open(filePath)
+	if err != nil {
+		return handleApiError(err, fiber.StatusInternalServerError, "Failed to open image file")
+	}
+	defer file.Close()
+
+	url := fmt.Sprintf("%s/store-image", conf.InferenceServices.StableDiffusion.BaseURL)
+
+	// Create a buffer to store the form data
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+
+	// Create form file field
+	part, err := writer.CreateFormFile("image", imageMetadata.Filename)
+	if err != nil {
+		return handleApiError(err, fiber.StatusInternalServerError, "Failed to create form file")
+	}
+
+	// Copy the file content to the form field
+	if _, err = io.Copy(part, file); err != nil {
+		return handleApiError(err, fiber.StatusInternalServerError, "Failed to copy file content")
+	}
+
+	// Close the writer to finalize the form data
+	if err = writer.Close(); err != nil {
+		return handleApiError(err, fiber.StatusInternalServerError, "Failed to close multipart writer")
+	}
+
+	// Create the request to upload the image
+	httpReq, err := http.NewRequestWithContext(c.Context(), "POST", url, &body)
+	if err != nil {
+		return handleApiError(err, fiber.StatusInternalServerError, "Failed to create upload request")
+	}
+
+	httpReq.Header.Set("Content-Type", writer.FormDataContentType())
+
+	// Send the upload request
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return handleApiError(err, fiber.StatusInternalServerError, "Failed to upload image to inference service")
+	}
+	defer resp.Body.Close()
+
+	// Check the response status
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return handleApiError(fmt.Errorf("inference service returned status %d: %s", resp.StatusCode, string(respBody)),
+			fiber.StatusInternalServerError, "Failed to store image in inference service")
+	}
+
+	// Process prompt and negative prompt
 	p := req.Prompt
 	np := req.NegativePrompt
 	if np == nil {
@@ -332,14 +394,25 @@ func EditImage(c *fiber.Ctx) error {
 		GuidanceScale:  req.GuidanceScale,
 		LowMemoryMode:  req.LowMemoryMode,
 		ImageID:        imageMetadata.ID,
-		URL:            util.StrPtr(u.String()),
-		// Model:          req.Model,
+		Model:          req.Model,
+		Filename:       util.StrPtr(imageMetadata.Filename),
 	}
 
+	// Add the unique filename we used when uploading the image
+	// This replaces the URL parameter that was used before
+	util.LogInfo("Image uploaded to inference service", logrus.Fields{
+		"userId":  userID,
+		"imageId": imageID,
+	})
+
+	// Modify the imgReq to include the uploaded filename
+
+	// Send the edit request to the inference service
 	svc.GetInferenceService().EditImage(c.UserContext(), cfg.UserID, -99, imgReq)
+
 	return c.JSON(fiber.Map{
 		"status":  "success",
-		"message": "Image generation request submitted successfully",
+		"message": "Image uploaded and edit request submitted successfully",
 	})
 }
 
