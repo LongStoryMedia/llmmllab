@@ -47,3 +47,4 @@ openai>=1.10.0
 # diskcache
 starlette
 tzlocal
+nltk

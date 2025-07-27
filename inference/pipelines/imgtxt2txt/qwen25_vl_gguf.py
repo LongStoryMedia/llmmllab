@@ -63,13 +63,23 @@ class Qwen25VLGGUFPipe(BasePipeline):
             self.model = Llama(
                 model_path=gguf_path,
                 chat_handler=chat_handler,
-                n_ctx=4096,  # Increased context for vision
                 n_gpu_layers=-1,
                 n_threads=4,
                 seed=42,
                 verbose=True,
                 logits_all=False,
                 embedding=False,
+                n_ctx=96000,
+                type_k=1,  # f16 keys instead of f32
+                type_v=1,  # f16 values instead of f32
+                n_batch=256,
+                n_ubatch=128,
+                flash_attn=True,
+                tensor_split=[0.5, 0.25, 0.25],
+                f16_kv=True,
+                use_mlock=False,
+                use_mmap=True,
+                numa=True,
             )
             self.logger.info(
                 "Successfully loaded Qwen 2.5 VL model with chat handler")
