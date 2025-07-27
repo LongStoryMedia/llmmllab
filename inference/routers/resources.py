@@ -35,7 +35,7 @@ async def get_malloc():
 async def clear_memory():
     """Clear memory cache for all devices."""
     try:
-        hardware_manager.clear_memory()
+        hardware_manager.clear_memory(aggressive=True)
         return {"detail": "Memory cache cleared successfully"}
     except Exception as e:
         raise HTTPException(

@@ -70,12 +70,12 @@ func (c *mockCC) ClearNotes() {
 	c.realCC.ClearNotes()
 }
 
-func (c *mockCC) AddUserMessage(ctx context.Context, content string) ([][]float32, int, error) {
+func (c *mockCC) AddUserMessage(ctx context.Context, content []models.MessageContent) ([][]float32, int, error) {
 	c.calls = append(c.calls, "AddUserMessage")
 	return c.realCC.AddUserMessage(ctx, content)
 }
 
-func (c *mockCC) AddAssistantMessage(ctx context.Context, content string) ([][]float32, error) {
+func (c *mockCC) AddAssistantMessage(ctx context.Context, content []models.MessageContent) ([][]float32, error) {
 	c.calls = append(c.calls, "AddAssistantMessage")
 	return c.realCC.AddAssistantMessage(ctx, content)
 }

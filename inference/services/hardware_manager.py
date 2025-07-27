@@ -211,14 +211,17 @@ class HardwareManager:
 
             except RuntimeError as e:
                 if "CUDA driver library could not be found" in str(e) or "CUDA error" in str(e):
-                    self.logger.error(f"CUDA context error for device {gpu}: {e}")
+                    self.logger.error(
+                        f"CUDA context error for device {gpu}: {e}")
                     self._reset_cuda_context()
                     # Try one more time after reset
                     try:
                         return self.update_memory_stats(gpu)
                     except Exception as e2:
-                        self.logger.error(f"Still failed after context reset: {e2}")
-                self.logger.error(f"Error getting memory stats for device {gpu}: {e}")
+                        self.logger.error(
+                            f"Still failed after context reset: {e2}")
+                self.logger.error(
+                    f"Error getting memory stats for device {gpu}: {e}")
         return device_stats
 
     def estimate_largest_free_block(self, device_idx: int) -> int:
@@ -372,7 +375,8 @@ class HardwareManager:
                 # Apply a safety margin (80% of free memory)
                 available_mem = free_mem * 0.8
 
-                self.logger.debug(f"GPU {name}: Total: {total_mem/1e9:.2f}GB, Free: {free_mem/1e9:.2f}GB, Required: {required_bytes/1e9:.2f}GB")
+                self.logger.debug(
+                    f"GPU {name}: Total: {total_mem/1e9:.2f}GB, Free: {free_mem/1e9:.2f}GB, Required: {required_bytes/1e9:.2f}GB")
 
                 if available_mem >= required_bytes:
                     return True
@@ -380,7 +384,8 @@ class HardwareManager:
                 self.logger.error(f"Error checking memory on GPU {name}: {e}")
                 continue
 
-        self.logger.warning(f"Not enough memory available. Required: {required_bytes/1e9:.2f}GB")
+        self.logger.warning(
+            f"Not enough memory available. Required: {required_bytes/1e9:.2f}GB")
         return False
 
     def clear_memory(self, device_idx: Optional[int] = None, aggressive: bool = False) -> None:
@@ -395,13 +400,9 @@ class HardwareManager:
             return
 
         # Run garbage collection first (affects all devices)
-        unreachable_devs = gc.collect()
-        if unreachable_devs > 0:
-            self.logger.warning(
-                f"Garbage could not collect {unreachable_devs} unreachable objects")
-
-        for i, dev in enumerate(gc.garbage):
+        for i, dev in enumerate(list(gc.garbage)):
             self.logger.warning(f"Garbage {i}: {dev}")
+            del dev
 
         # Clear CUDA cache for specific device or all devices
         if device_idx is not None:

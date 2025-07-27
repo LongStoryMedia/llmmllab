@@ -7,6 +7,8 @@ package proto;
 
 option go_package = "maistro/proto";
 
+import "model_parameters.proto";
+
 // GenerateReq represents a request to the Ollama embeddings API
 message GenerateReq {
   // Model name
@@ -27,14 +29,7 @@ message GenerateReq {
   // The format to return a response in. Format can be json or a JSON schema
   Format format = 5;
   // Additional model parameters listed in the documentation for the Modelfile such as temperature
-  message Options {
-    // This message intentionally left empty or will be extended later
-    reserved 1;
-  }
-  
-
-  // Additional model parameters listed in the documentation for the Modelfile such as temperature
-  Options options = 6;
+  ModelParameters options = 6;
   // System message to (overrides what is defined in the Modelfile)
   string system = 7;
   // The prompt template to use (overrides what is defined in the Modelfile)

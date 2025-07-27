@@ -125,34 +125,28 @@ regen_proto() {
             echo "Skipping $base_name (proto): No corresponding schema file found" | tee -a "$LOG_FILE"
         fi
     done
+    echo "Generating protobuf code..." | tee -a "$LOG_FILE"
+    # python -m grpc_tools.protoc -I proto --python_out=./inference/proto "proto/${base_name}.proto"
     python ./protogen.py --config ./protogen.json
+
+    # echo "Fixing protobuf compatibility issues..." | tee -a "$LOG_FILE"
+    # python ./fix_proto_files.py
+
+    # # Verify that the protobuf files are usable
+    # echo "Verifying protobuf files..." | tee -a "$LOG_FILE"
+    # if python -c "from inference.proto import inference_pb2, inference_pb2_grpc; print('Protobuf imports successful')" 2>/dev/null; then
+    #     echo "Protobuf files successfully verified." | tee -a "$LOG_FILE"
+    # else
+    #     echo "Warning: Protobuf files may have issues. Please check them manually." | tee -a "$LOG_FILE"
+    # fi
 }
 
-# Main logic
-if [ -z "$LANG_ARG" ]; then
-    regen_go
-    regen_ts
-    regen_py
-    regen_proto
-else
-    case "$LANG_ARG" in
-    go)
-        regen_go
-        ;;
-    ts | typescript)
-        regen_ts
-        ;;
-    py | python)
-        regen_py
-        ;;
-    proto)
-        regen_proto
-        ;;
-    *)
-        echo "Unknown language/project: $LANG_ARG"
-        exit 1
-        ;;
-    esac
-fi
+# Always regenerate proto first to ensure all code is in sync
+regen_proto
+
+# Then regenerate models for each language
+regen_go
+regen_ts
+regen_py
 
 echo "Completed model regeneration at $(date)" | tee -a "$LOG_FILE"

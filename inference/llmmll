@@ -1,0 +1,340 @@
+#!/usr/bin/env python3
+"""
+llmmll - Command line interface for LLMML Lab model management utilities
+
+This CLI tool serves as a unified interface for downloading, quantizing, and sharing models,
+wrapping the functionality from the individual scripts in the scripts/ directory.
+"""
+import os
+import sys
+import argparse
+import logging
+import subprocess
+from pathlib import Path
+
+# Configure logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# Function to find the scripts directory
+def find_scripts_directory():
+    """
+    Find the scripts directory by checking multiple possible locations.
+    Returns the path to the scripts directory or None if not found.
+    """
+    # List of potential script directories in order of preference
+    possible_dirs = [
+        # Current directory relative to this script
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts"),
+        
+        # Docker container standard location
+        "/app/scripts",
+        
+        # The script directory itself might be in the PATH
+        "/app",
+        
+        # Common Linux pip install locations
+        "/usr/local/lib/python3.8/dist-packages/llmmll/scripts",
+        "/usr/local/lib/python3.9/site-packages/llmmll/scripts",
+        "/usr/local/lib/python3.10/site-packages/llmmll/scripts",
+        
+        # macOS pip install locations
+        "/usr/local/lib/python3.8/site-packages/llmmll/scripts",
+        "/usr/local/lib/python3.9/site-packages/llmmll/scripts",
+        "/usr/local/lib/python3.10/site-packages/llmmll/scripts",
+        
+        # User pip install locations
+        os.path.expanduser("~/.local/lib/python3.8/site-packages/llmmll/scripts"),
+        os.path.expanduser("~/.local/lib/python3.9/site-packages/llmmll/scripts"),
+        os.path.expanduser("~/.local/lib/python3.10/site-packages/llmmll/scripts"),
+    ]
+    
+    # Try to find the installed package directory if imported as a module
+    try:
+        import llmmll
+        package_dir = os.path.dirname(os.path.abspath(llmmll.__file__))
+        possible_dirs.insert(1, os.path.join(package_dir, "scripts"))
+    except ImportError:
+        pass
+    
+    # Check each directory
+    for directory in possible_dirs:
+        if os.path.exists(directory):
+            # Verify this is actually the scripts directory by checking if at least one script exists
+            for script_name in SCRIPT_MAPPING.values():
+                if os.path.exists(os.path.join(directory, script_name)):
+                    logger.debug(f"Found scripts directory: {directory}")
+                    return directory
+    
+    # If we reached here, no valid scripts directory was found
+    return None
+
+# Global variable for script mapping
+SCRIPT_MAPPING = {
+    'download': 'download.py',
+    'quantize': 'download_and_quantize.py',
+    'upload': 'upload_gguf.py',
+    'process-upload': 'process_and_upload_model.py',
+}
+
+# Find the scripts directory
+SCRIPTS_DIR = find_scripts_directory()
+logger.debug(f"Using scripts directory: {SCRIPTS_DIR if SCRIPTS_DIR else 'Not found'}")
+
+if not SCRIPTS_DIR:
+    logger.warning("Scripts directory not found. Commands may not work correctly.")
+
+# Map command names to script file names
+SCRIPT_MAPPING = {
+    'download': 'download.py',
+    'quantize': 'download_and_quantize.py',
+    'upload': 'upload_gguf.py',
+    'process-upload': 'process_and_upload_model.py',
+}
+
+
+def find_script(command_name):
+    """
+    Find the script file for a given command by checking multiple possible locations.
+    
+    Args:
+        command_name: Name of the command to find the script for
+        
+    Returns:
+        Path to the script file or None if not found
+    """
+    script_name = SCRIPT_MAPPING.get(command_name)
+    if not script_name:
+        logger.error(f"Unknown command: {command_name}")
+        return None
+    
+    # First check the global SCRIPTS_DIR if it was found
+    if SCRIPTS_DIR:
+        script_path = os.path.join(SCRIPTS_DIR, script_name)
+        if os.path.exists(script_path):
+            return script_path
+    
+    # If not found or SCRIPTS_DIR is None, search in all potential directories
+    # List of potential script directories in order of preference
+    possible_dirs = [
+        # Current directory relative to this script
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts"),
+        
+        # Docker container standard location
+        "/app/scripts",
+        
+        # The script directory itself might be in the PATH
+        "/app",
+        
+        # Common Linux pip install locations
+        "/usr/local/lib/python3.8/dist-packages/llmmll/scripts",
+        "/usr/local/lib/python3.9/site-packages/llmmll/scripts",
+        "/usr/local/lib/python3.10/site-packages/llmmll/scripts",
+        
+        # macOS pip install locations
+        "/usr/local/lib/python3.8/site-packages/llmmll/scripts",
+        "/usr/local/lib/python3.9/site-packages/llmmll/scripts",
+        "/usr/local/lib/python3.10/site-packages/llmmll/scripts",
+        
+        # User pip install locations
+        os.path.expanduser("~/.local/lib/python3.8/site-packages/llmmll/scripts"),
+        os.path.expanduser("~/.local/lib/python3.9/site-packages/llmmll/scripts"),
+        os.path.expanduser("~/.local/lib/python3.10/site-packages/llmmll/scripts"),
+    ]
+    
+    # Check each directory
+    for directory in possible_dirs:
+        script_path = os.path.join(directory, script_name)
+        if os.path.exists(script_path):
+            return script_path
+    
+    return None
+
+def run_script(command_name, args=None):
+    """
+    Run a script from the scripts directory with given arguments.
+    
+    Args:
+        command_name: Name of the command (mapped to script file)
+        args: List of arguments to pass to the script
+    
+    Returns:
+        The return code from the script
+    """
+    script_path = find_script(command_name)
+    
+    if not script_path:
+        logger.error(f"Script not found for command: {command_name}")
+        # Print more diagnostic information to help troubleshoot
+        logger.error("Attempted to find the script in multiple locations but failed.")
+        logger.error(f"Script name mapped to: {SCRIPT_MAPPING.get(command_name)}")
+        
+        # If we have a SCRIPTS_DIR, check what's in it
+        if SCRIPTS_DIR:
+            logger.error(f"Contents of scripts directory ({SCRIPTS_DIR}):")
+            try:
+                if os.path.exists(SCRIPTS_DIR):
+                    files = os.listdir(SCRIPTS_DIR)
+                    if files:
+                        for f in files:
+                            logger.error(f"  - {f}")
+                    else:
+                        logger.error("  Directory is empty")
+                else:
+                    logger.error("  Directory does not exist")
+            except Exception as e:
+                logger.error(f"  Error listing directory: {e}")
+        return 1
+    
+    cmd = [sys.executable, script_path]
+    if args:
+        # Handle special cases for arguments that might need processing
+        # Ensure we preserve quoted arguments properly
+        cmd.extend(args)
+    
+    # Print the command for debugging purposes
+    print(f"Executing: {' '.join(cmd)}")
+    
+    try:
+        return subprocess.run(cmd).returncode
+    except Exception as e:
+        logger.error(f"Error executing script: {e}")
+        return 1
+
+
+def command_download(args):
+    """Handle the 'download' command"""
+    # Forward all arguments after the 'download' command to download.py
+    return run_script("download", args.args)
+
+
+def command_quantize(args):
+    """Handle the 'quantize' command"""
+    # Forward all arguments after the 'quantize' command to download_and_quantize.py
+    return run_script("quantize", args.args)
+
+
+def command_upload(args):
+    """Handle the 'upload' command"""
+    # Forward all arguments after the 'upload' command to upload_gguf.py
+    return run_script("upload", args.args)
+
+
+def command_process_and_upload(args):
+    """Handle the 'process-upload' command"""
+    # Forward all arguments after the 'process-upload' command to process_and_upload_model.py
+    return run_script("process-upload", args.args)
+
+
+def main():
+    # Create the main parser
+    parser = argparse.ArgumentParser(
+        description='LLMML Lab model management utilities',
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    
+    # Create subparsers for each command
+    subparsers = parser.add_subparsers(
+        title='commands',
+        description='valid commands',
+        help='additional help',
+        dest='command'
+    )
+    
+    # Helper function to create subparsers with consistent arguments
+    def create_subparser(name, help_text, description, func):
+        subparser = subparsers.add_parser(
+            name,
+            help=help_text,
+            description=description
+        )
+        subparser.add_argument(
+            'args',
+            nargs=argparse.REMAINDER,
+            help='Arguments to pass to the script'
+        )
+        subparser.set_defaults(func=func)
+        return subparser
+    
+    # Download command
+    create_subparser(
+        'download',
+        'Download models from Hugging Face Hub',
+        'Download models from Hugging Face Hub. Run with --help for more options.',
+        command_download
+    )
+    
+    # Quantize command
+    create_subparser(
+        'quantize',
+        'Convert and quantize models to GGUF format',
+        'Download and convert models to GGUF format with optional quantization. Run with --help for more options.',
+        command_quantize
+    )
+    
+    # Upload command
+    create_subparser(
+        'upload',
+        'Upload GGUF models to Hugging Face Hub',
+        'Upload GGUF models to Hugging Face Hub. Run with --help for more options.',
+        command_upload
+    )
+    
+    # Process and upload command
+    create_subparser(
+        'process-upload',
+        'End-to-end workflow: download, quantize, and upload',
+        'Download, quantize, and upload a model in one step. Run with --help for more options.',
+        command_process_and_upload
+    )
+    
+    # Create a shortcut for the help command
+    help_parser = subparsers.add_parser(
+        'help',
+        help='Show help for a specific command',
+        description='Show help for a specific command'
+    )
+    help_parser.add_argument(
+        'help_command',
+        nargs='?',
+        choices=['download', 'quantize', 'upload', 'process-upload'],
+        help='The command to get help for'
+    )
+    
+    # Parse arguments
+    args = parser.parse_args()
+    
+    # Handle special help command
+    if args.command == 'help':
+        if args.help_command:
+            # Use the command name (mapped to script) instead of direct script name
+            logger.info(f"Showing help for command: {args.help_command}")
+            return run_script(args.help_command, ["--help"])
+        else:
+            parser.print_help()
+            return 0
+    
+    # If no command is provided, show help
+    if not args.command:
+        parser.print_help()
+        return 0
+    
+    # Special handling when --help is used with a command
+    if len(args.args) > 0 and (args.args[0] == '--help' or args.args[0] == '-h'):
+        logger.info(f"Showing help for command: {args.command}")
+        return run_script(args.command, ["--help"])
+        
+    # Execute the function for the selected command
+    try:
+        return args.func(args)
+    except Exception as e:
+        logger.error(f"Error executing command {args.command}: {e}")
+        logger.error("For help, run: llmmll help")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

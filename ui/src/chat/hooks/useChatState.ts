@@ -1,13 +1,13 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useAuth } from '../../auth';
 import { Conversation } from '../../types/Conversation';
-import { ChatMessage } from '../../types/ChatMessage';
+import { Message } from '../../types/Message';
 import { Model } from '../../types/Model';
 import { useBackgroundContext } from '../../context/BackgroundContext';
 // import { useBackgroundContext } from '../../context/BackgroundContext';
 
 export interface ChatState {
-  messages: ChatMessage[];
+  messages: Message[];
   conversations: { [key: string]: Conversation[] };
   currentConversation: Conversation | null;
   isLoading: boolean;
@@ -20,7 +20,7 @@ export interface ChatState {
 }
 
 export interface ChatActions {
-  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   setConversations: React.Dispatch<React.SetStateAction<{ [key: string]: Conversation[] }>>;
   setCurrentConversation: (conversation: Conversation | null) => void;
   setIsLoading: (loading: boolean) => void;
@@ -28,7 +28,7 @@ export interface ChatActions {
   setIsTyping: (typing: boolean) => void;
   setResponse: React.Dispatch<React.SetStateAction<string>>;
   setSelectedModel: (model: string) => void;
-  addMessage: (message: ChatMessage) => void;
+  addMessage: (message: Message) => void;
   addConversation: (conversation: Conversation) => void;
   updateConversationInList: (id: number, updates: Partial<Conversation>) => void;
   removeConversationFromList: (id: number) => void;
@@ -37,7 +37,7 @@ export interface ChatActions {
 }
 
 export const useChatState = (): [ChatState, ChatActions] => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [conversations, setConversations] = useState<{ [key: string]: Conversation[] }>({});
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -73,7 +73,7 @@ export const useChatState = (): [ChatState, ChatActions] => {
     localStorage.setItem('selectedModel', model);
   }, []);
 
-  const addMessage = useCallback((message: ChatMessage) => {
+  const addMessage = useCallback((message: Message) => {
     setMessages(prev => [...prev, message]);
   }, []);
 

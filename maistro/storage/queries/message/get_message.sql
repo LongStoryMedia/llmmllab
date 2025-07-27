@@ -3,7 +3,6 @@ SELECT
     id,
     conversation_id,
     ROLE,
-    content,
     created_at
 FROM
     messages

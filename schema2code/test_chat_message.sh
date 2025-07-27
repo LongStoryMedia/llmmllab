@@ -1,5 +1,5 @@
 #!/bin/bash
-# Test script for generating ChatMessage.proto with references to MessageType
+# Test script for generating Message.proto with references to MessageType
 
 # Define paths
 SCHEMA_PATH="../schemas/chat_message.yaml"

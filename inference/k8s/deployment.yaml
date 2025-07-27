@@ -4,20 +4,15 @@ metadata:
   name: ollama
   namespace: ollama
   labels:
-    app.kubernetes.io/name: ollama
-    app.kubernetes.io/instance: ollama
-    app.kubernetes.io/component: app
+    app: ollama
 spec:
   selector:
     matchLabels:
-      name: ollama
+      app: ollama
   template:
     metadata:
       labels:
-        name: ollama
-        app.kubernetes.io/name: ollama
-        app.kubernetes.io/instance: ollama
-        app.kubernetes.io/component: app
+        app: ollama
     spec:
       runtimeClassName: nvidia
       volumes:
@@ -37,6 +32,14 @@ spec:
         - name: code-base
           persistentVolumeClaim:
             claimName: code-base
+        - name: llama-cpp
+          hostPath:
+            path: /llama.cpp
+            type: DirectoryOrCreate
+        - name: models
+          hostPath:
+            path: /models
+            type: DirectoryOrCreate
       containers:
         - name: ollama
           image: 192.168.0.71:31500/inference:latest
@@ -69,11 +72,11 @@ spec:
             requests:
               memory: "24Gi"
               cpu: "16"
-              nvidia.com/gpu: "2"
+              nvidia.com/gpu: "3"
             limits:
               memory: "30Gi"
               cpu: "20"
-              nvidia.com/gpu: "2"
+              nvidia.com/gpu: "3"
           volumeMounts:
             - name: ollama-models-volume
               mountPath: /root/.ollama
@@ -85,6 +88,10 @@ spec:
               mountPath: /root/images
             - name: code-base
               mountPath: /app
+            - name: llama-cpp
+              mountPath: /llama.cpp
+            - name: models
+              mountPath: /models
           env:
             - name: OLLAMA_HOST
               value: "0.0.0.0"
@@ -98,16 +105,16 @@ spec:
                   name: hf-token
                   key: token
             # Memory management settings for Stable Diffusion
-            - name: SD_MAX_WIDTH
-              value: "768"
-            - name: SD_MAX_HEIGHT
-              value: "768"
-            - name: SD_DEFAULT_STEPS
-              value: "30"
-            - name: USE_FP32_FOR_TEXT_ENCODERS
-              value: "true"
-            - name: BNB_CUDA_VERSION
-              value: "128"
+            # - name: SD_MAX_WIDTH
+            #   value: "768"
+            # - name: SD_MAX_HEIGHT
+            #   value: "768"
+            # - name: SD_DEFAULT_STEPS
+            #   value: "30"
+            # - name: USE_FP32_FOR_TEXT_ENCODERS
+            #   value: "true"
+            # - name: BNB_CUDA_VERSION
+            #   value: "128"
             # rabbitmq settings
             - name: RABBITMQ_HOST
               value: "rabbitmq-0.rabbitmq.rabbitmq.svc.cluster.local"
@@ -130,5 +137,13 @@ spec:
                   key: api_key
             - name: MAISTRO_BASE_URL
               value: "http://maistro.maistro.svc.cluster.local:8080"
+            # - name: CUDA_HOME
+            #   value: "/usr/local/cuda"
+            # - name: LLAMA_CUBLAS
+            #   value: "1"
+            # - name: CMAKE_ARGS
+            #   value: "-DLLAMA_CUBLAS=on"
+            # - name: FORCE_CMAKE
+            #   value: "1"
   strategy:
     type: Recreate

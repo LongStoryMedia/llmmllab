@@ -9,7 +9,7 @@ message ChatReq {
   // Model name, used internally only to set the model name in the request to ollama based on the profile
   string model = 1;
   // Messages to send to the model, each message is a struct with role and content
-  repeated ChatMessage messages = 2;
+  repeated Message messages = 2;
   // If true, the response will be streamed back as a series of events
   bool stream = 3;
   // The format to return a response in. Format can be json or a JSON schema

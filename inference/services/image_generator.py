@@ -157,7 +157,7 @@ class ImageGenerator:
         self.callbacks = {}
 
     @torch.inference_mode()
-    def generate(self, msg: InferenceQueueMessage) -> Image.Image:
+    def generate(self, image_request: ImageGenerateRequest) -> Image.Image:
         """
         Generate an image based on the given prompt synchronously.
 
@@ -169,39 +169,34 @@ class ImageGenerator:
             The generated image.
         """
         start_time = time.time()
-        kwargs, image_request = self._get_kwargs_from_message(msg)
-
         # Extract the prompt from the message
-        prompt = kwargs.pop('prompt', None) or image_request.prompt
-        if not prompt:
+        if not image_request.prompt:
             raise ValueError("Prompt is required for image generation")
 
-        model_id = kwargs.pop('model', None) or image_request.model
-        if not model_id:
+        if not image_request.model:
             self.logger.warning("No model specified, using default model")
-            model_id = config.DEFAULT_MODEL_ID
+            image_request.model = config.DEFAULT_MODEL_ID
 
-        self.logger.info(f"Generating image with prompt: {prompt}")
-        pipeline = PipelineFactory.get_pipeline(model_id)
+        self.logger.info(f"Generating image with prompt: {image_request.prompt}")
+        pipeline = PipelineFactory.get_pipeline(image_request.model)
 
         # Set default parameters if not provided, ensuring they're never None
-        width = int(kwargs.get('width', 1024) or 1024)  # Default to 1024 if None or 0
-        height = int(kwargs.get('height', 1024) or 1024)  # Default to 1024 if None or 0
-        inference_steps = kwargs.get('inference_steps')
-        num_inference_steps = int(inference_steps or 20)  # Default to 20 if None or 0
-        guidance_scale = float(kwargs.get('guidance_scale', 7.0) or 7.0)  # Default to 7.0 if None
-        negative_prompt = kwargs.get('negative_prompt', "")
+        width = int(image_request.width or 1024)  # Default to 1024 if None or 0
+        height = int(image_request.height or 1024)  # Default to 1024 if None or 0
+        inference_steps = int(image_request.inference_steps or 20)
+        guidance_scale = float(image_request.guidance_scale or 7.0)  # Default to 7.0 if None
+        negative_prompt = image_request.negative_prompt
 
         # Log the final parameter values being used
-        self.logger.info(f"Final image generation parameters: prompt='{prompt}', width={width}, height={height}, steps={num_inference_steps}, guidance_scale={guidance_scale}, negative_prompt='{negative_prompt}'")
+        self.logger.info(f"Final image generation parameters: prompt='{image_request.prompt}', width={width}, height={height}, steps={inference_steps}, guidance_scale={guidance_scale}, negative_prompt='{negative_prompt}'")
 
         # Generate the image
         with torch.inference_mode():
             result = pipeline(
-                prompt=prompt,
+                prompt=image_request.prompt,
                 height=height,
                 width=width,
-                num_inference_steps=num_inference_steps,
+                num_inference_steps=inference_steps,
                 guidance_scale=guidance_scale,
                 negative_prompt=negative_prompt,
             )  # type: ignore
@@ -225,7 +220,7 @@ class ImageGenerator:
             The edited image.
         """
         start_time = time.time()
-        kwargs, image_request = self._get_kwargs_from_message(msg)
+        kwargs, image_request = self.get_kwargs_from_message(msg)
 
         # Extract the prompt from the message
         prompt = kwargs.pop('prompt', None) or image_request.prompt
@@ -376,7 +371,7 @@ class ImageGenerator:
                 download=""
             )
 
-    def _get_kwargs_from_message(self, msg: InferenceQueueMessage) -> tuple[dict, ImageGenerateRequest]:
+    def get_kwargs_from_message(self, msg: InferenceQueueMessage) -> tuple[dict, ImageGenerateRequest]:
         """
         Extract keyword arguments from the InferenceQueueMessage payload.
 

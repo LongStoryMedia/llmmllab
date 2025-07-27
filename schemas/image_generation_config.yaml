@@ -22,9 +22,33 @@ properties:
   auto_prompt_refinement:
     type: boolean
     description: Whether to enable automatic prompt refinement for image generation. This will take the given prompt and attempt to refine it to improve the quality of the generated image.
+  width:
+    type: integer
+    description: Width of the generated image
+  height:
+    type: integer
+    description: Height of the generated image
+  inference_steps:
+    type: integer
+    description: Number of inference steps
+  guidance_scale:
+    type: number
+    description: Guidance scale for image generation
+  low_memory_mode:
+    type: boolean
+    description: Whether to use low memory mode
+  negative_prompt:
+    type: string
+    description: Negative prompt for image generation
 required:
   - enabled
   - storage_directory
   - max_image_size
   - retention_hours
   - auto_prompt_refinement
+  - width
+  - height
+  - inference_steps
+  - guidance_scale
+  - low_memory_mode
+  - negative_prompt

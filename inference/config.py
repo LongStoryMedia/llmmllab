@@ -17,7 +17,7 @@ IMAGE_DIR = "/root/images"
 
 # Model configuration
 DEFAULT_MODEL_ID = "black-forest-labs-flux.1-dev"
-DEFAULT_MODEL_SOURCE = "stabilityai/stable-diffusion-3.5-large"
+DEFAULT_MODEL_SOURCE = "black-forest-labs-flux.1-dev"
 MODEL_NAME = DEFAULT_MODEL_SOURCE  # For backwards compatibility
 
 # Default HuggingFace cache location

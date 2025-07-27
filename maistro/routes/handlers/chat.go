@@ -7,6 +7,7 @@ import (
 	pxcx "maistro/context"
 	"maistro/middleware"
 	"maistro/models"
+	"maistro/proto"
 	"maistro/proxy"
 	svc "maistro/services"
 	"maistro/storage"
@@ -32,9 +33,9 @@ func ChatHandler(c *fiber.Ctx) error {
 	}()
 
 	// Parse the incoming request
-	var chatReq models.ChatRequest
+	var req models.ChatReq
 	parseStartTime := time.Now()
-	if err := c.BodyParser(&chatReq); err != nil {
+	if err := c.BodyParser(&req); err != nil {
 		parseTime := time.Since(parseStartTime)
 		util.LogWarning("Failed to parse request", logrus.Fields{
 			"error":        err,
@@ -49,71 +50,98 @@ func ChatHandler(c *fiber.Ctx) error {
 		"parseTime_ms": parseTime.Milliseconds(),
 	})
 
+	if req.Messages == nil || len(req.Messages) == 0 {
+		util.LogWarning("Empty messages in chat request", logrus.Fields{
+			"request": req,
+		})
+		return fiber.NewError(fiber.StatusBadRequest, "Messages cannot be empty")
+	}
+
 	ss := getSessionState(c)
 	cc := getConversationContext(c)
 	cfg := getUserConfig(c)
 
 	initState := ss.GetStage(models.SocketStageTypeInitializing)
 
-	if chatReq.Metadata != nil {
-		// Handle image generation
-		if chatReq.Metadata.GenerateImage {
-			imageGenStartTime := time.Now()
-			util.LogInfo("Starting image generation flow", nil)
-
-			wg := &sync.WaitGroup{}
-			wg.Add(1)
-			go func(uid string, cid int, cfg *models.UserConfig) {
-				defer wg.Done()
-				p := chatReq.Content
-
-				if cfg.ImageGeneration.AutoPromptRefinement {
-					fp, err := storage.ModelProfileStoreInstance.GetModelProfile(context.Background(), cfg.ModelProfiles.ImageGenerationPromptProfileID)
-					if err != nil {
-						util.HandleError(err)
-						return
-					}
-
-					ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-					defer cancel()
-					p, err = pxcx.FmtQuery(ctx, fp, chatReq.Content, pxcx.ImgGeneratePrompt)
-					if err != nil {
-						util.HandleError(err)
-						return
-					}
-				}
-
-				// Prepare the image generation request
-				imgReq := models.ImageGenerateRequest{
-					Prompt:         p,
-					NegativePrompt: util.StrPtr("anime, cartoon, sketch, drawing, lowres, bad anatomy, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username"),
-					Model:          "stabilityai-stable-diffusion-3.5-medium",
-				}
-
-				svc.GetInferenceService().GenerateImage(context.Background(), uid, cid, imgReq)
-			}(cfg.UserID, cc.GetConversationID(), cfg)
-			wg.Wait()
-			imageGenTotalTime := time.Since(imageGenStartTime)
-			svc.GetSocketService().SendCompletion(models.SocketStageTypeGeneratingImage, cc.GetConversationID(), cfg.UserID, "Image generation request sent", nil)
-
-			// Log image generation timing
-			util.LogInfo("Image generation flow completed", logrus.Fields{
-				"imageGenTime_ms": imageGenTotalTime.Milliseconds(),
+	for _, msg := range req.Messages {
+		if msg.Role == "" {
+			util.LogWarning("Message role is empty", logrus.Fields{
+				"message": msg,
 			})
-
-			return nil
+			return fiber.NewError(fiber.StatusBadRequest, "Message role cannot be empty")
 		}
+		if len(msg.Content) == 0 {
+			util.LogWarning("Message content is empty", logrus.Fields{
+				"message": msg,
+			})
+			return fiber.NewError(fiber.StatusBadRequest, "Message content cannot be empty")
+		}
+		for _, content := range msg.Content {
+			if content.Type == "" {
+				util.LogWarning("Message content type is empty", logrus.Fields{
+					"message": msg,
+				})
+				return fiber.NewError(fiber.StatusBadRequest, "Message content type cannot be empty")
+			}
 
-		// TODO: remove this after debugging
-		// svc.GetSocketService().PauseAndBroadcast(cc.ConversationID, cfg.UserID)
-		// svc.GetSocketService().CancelAndBroadcast(cc.ConversationID, cfg.UserID)
+			if content.Type == models.MessageContentTypeImageGeneration {
+				if content.Text == nil {
+					util.LogWarning("Image generation content text is empty", logrus.Fields{
+						"message": msg,
+					})
+					return fiber.NewError(fiber.StatusBadRequest, "Image generation content text cannot be empty")
+				}
+
+				imageGenStartTime := time.Now()
+				util.LogInfo("Starting image generation flow", nil)
+
+				wg := &sync.WaitGroup{}
+				wg.Add(1)
+				go func(prompt string, uid string, cid int, cfg *models.UserConfig) {
+					defer wg.Done()
+					var p string
+					if cfg.ImageGeneration.AutoPromptRefinement {
+						fp, err := storage.ModelProfileStoreInstance.GetModelProfile(context.Background(), cfg.ModelProfiles.ImageGenerationPromptProfileID)
+						if err != nil {
+							util.HandleError(err)
+							return
+						}
+
+						ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+						defer cancel()
+						p, err = pxcx.FmtQuery(ctx, fp, prompt, pxcx.ImgGeneratePrompt)
+						if err != nil {
+							util.HandleError(err)
+							return
+						}
+					}
+
+					// Prepare the image generation request
+					imgReq := models.ImageGenerateRequest{
+						Prompt:         p,
+						NegativePrompt: util.StrPtr("anime, cartoon, sketch, drawing, lowres, bad anatomy, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username"),
+						Model:          "stabilityai-stable-diffusion-3.5-medium",
+					}
+
+					svc.GetInferenceService().GenerateImage(context.Background(), uid, cid, imgReq)
+				}(*content.Text, cfg.UserID, cc.GetConversationID(), cfg)
+				wg.Wait()
+				imageGenTotalTime := time.Since(imageGenStartTime)
+				svc.GetSocketService().SendCompletion(models.SocketStageTypeGeneratingImage, cc.GetConversationID(), cfg.UserID, "Image generation request sent", nil)
+
+				// Log image generation timing
+				util.LogInfo("Image generation flow completed", logrus.Fields{
+					"imageGenTime_ms": imageGenTotalTime.Milliseconds(),
+				})
+			}
+		}
 	}
 
 	initState.Complete("Chat request initialized successfully")
 
 	// Time the request preparation
 	prepReqStartTime := time.Now()
-	_, req, err := cc.PrepareOllamaRequest(c.UserContext(), chatReq)
+	_, err := cc.PrepareOllamaRequest(c.UserContext(), &req)
 	prepReqTime := time.Since(prepReqStartTime)
 
 	if err != nil {
@@ -128,7 +156,6 @@ func ChatHandler(c *fiber.Ctx) error {
 		"prepReqTime_ms": prepReqTime.Milliseconds(),
 	})
 
-	var res string
 	ss.Checkpoint()
 
 	// Time model profile retrieval
@@ -151,10 +178,23 @@ func ChatHandler(c *fiber.Ctx) error {
 
 	ctx := c.UserContext()
 
+	gc, err := proto.GetGRPCClient()
+	if err != nil {
+		return handleApiError(err, fiber.StatusInternalServerError, "Failed to get gRPC client")
+	}
+
+	req.Options = &profile.Parameters
+	req.Think = profile.Think
+
 	c.Response().SetBodyStreamWriter(func(w *bufio.Writer) {
 		// Start the processing stage
 		streamStartTime := time.Now()
-		if res, err = svc.GetInferenceService().RelayUserMessage(ctx, profile, req.Messages, cfg.UserID, cc.GetConversationID(), w); err != nil {
+
+		sCtx, cancel := context.WithTimeout(ctx, time.Minute*60)
+		defer cancel()
+
+		res, err := gc.ChatStream(sCtx, &req, w)
+		if err != nil {
 			if proxy.IsIncompleteError(err) {
 				ss.GetStage(models.SocketStageTypeProcessing).Fail("Incomplete response", err)
 			} else {
@@ -163,36 +203,48 @@ func ChatHandler(c *fiber.Ctx) error {
 			}
 		}
 
+		util.LogInfo("Chat response streaming completed", logrus.Fields{
+			"response": res,
+		})
+
+		// if res, err = svc.GetInferenceService().RelayUserMessage(ctx, profile, req.Messages, cfg.UserID, cc.GetConversationID(), w); err != nil {
+		// 	if proxy.IsIncompleteError(err) {
+		// 		ss.GetStage(models.SocketStageTypeProcessing).Fail("Incomplete response", err)
+		// 	} else {
+		// 		handleApiError(err, fiber.StatusInternalServerError, "Error during handler execution")
+		// 		return
+		// 	}
+		// }
+
 		// Only store the assistant response if there was no context error
-		if res != "" {
+		if res != nil {
 			// Apply refinement steps to the response in a separate goroutine
 			// to avoid keeping the client connection open longer than necessary
 			// go func(response, userID string, convID int) {
 			// 	pxcx.RefineResponse(response, userMessage, userID, convID)
 			// }(res, cc.UserID, cc.ConversationID)
 
-			go func(r string, cctx pxcx.ConversationContext) {
+			go func(r *models.ChatResponse, cctx pxcx.ConversationContext) {
 				ctx, cancel := context.WithTimeout(context.Background(), time.Minute*60)
 				defer cancel()
-				_, err := cctx.AddAssistantMessage(ctx, res)
+				_, err := cctx.AddAssistantMessage(ctx, r.Message)
 				if err != nil {
 					util.HandleError(err)
 				} else {
 					util.LogInfo("Successfully stored assistant message in conversation", logrus.Fields{"conversationId": cctx.GetConversationID()})
 				}
 			}(res, cc)
-		} else if res == "" {
+		} else {
 			util.LogWarning("Empty assistant response, not storing")
 		}
 
 		cc.ClearNotes()
 
 		// Notify of completion
-		ss.GetStage(models.SocketStageTypeProcessing).Complete("Chat response generated successfully")
+		// ss.GetStage(models.SocketStageTypeProcessing).Complete("Chat response generated successfully")
 		streamDuration := time.Since(streamStartTime)
 		util.LogInfo("Chat response streaming completed", logrus.Fields{
 			"streamDuration_ms": streamDuration.Milliseconds(),
-			"responseLength":    len(res),
 		})
 	})
 
@@ -200,7 +252,6 @@ func ChatHandler(c *fiber.Ctx) error {
 	totalExecutionTime := time.Since(startTime)
 	util.LogInfo("ChatHandler execution completed", logrus.Fields{
 		"totalExecutionTime_ms": totalExecutionTime.Milliseconds(),
-		"responseLength":        len(res),
 	})
 
 	return nil
@@ -305,10 +356,6 @@ func DeleteConversation(c *fiber.Ctx) error {
 // CreateConversation creates a new conversation
 func CreateConversation(c *fiber.Ctx) error {
 	uid := c.UserContext().Value(auth.UserIDKey).(string)
-	cc, err := pxcx.GetOrCreateConversation(c.UserContext(), uid, nil)
-	if err != nil {
-		return handleApiError(err, fiber.StatusInternalServerError, "Failed to create conversation")
-	}
 
 	var req struct {
 		Model string `json:"model"`
@@ -318,7 +365,25 @@ func CreateConversation(c *fiber.Ctx) error {
 		return handleApiError(err, fiber.StatusBadRequest, "Invalid request body")
 	}
 
-	return c.JSON(fiber.Map{string(pxcx.ConversationContextKey): cc.GetConversationID()})
+	// Create the conversation in storage
+	title := req.Title
+	if title == "" {
+		title = "New Conversation"
+	}
+	conversationID, err := storage.ConversationStoreInstance.CreateConversation(c.UserContext(), uid, title)
+	if err != nil {
+		return handleApiError(err, fiber.StatusInternalServerError, "Failed to create conversation")
+	}
+
+	// Optionally, update the model if needed (not shown here)
+
+	// Fetch the full conversation object
+	conversation, err := storage.ConversationStoreInstance.GetConversation(c.UserContext(), conversationID)
+	if err != nil {
+		return handleApiError(err, fiber.StatusInternalServerError, "Failed to fetch conversation after creation")
+	}
+
+	return c.JSON(conversation)
 }
 
 func Pause(c *fiber.Ctx) error {

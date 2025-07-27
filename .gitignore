@@ -33,3 +33,20 @@ test-manifest.yaml
 *.ldif
 
 venv/
+
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.pkl
+*.egg
+*.egg-info
+*.whl
+.Python
+.mypy_cache
+.pytest_cache
+.coverage
+.coverage.*
+.tox
+.venv/

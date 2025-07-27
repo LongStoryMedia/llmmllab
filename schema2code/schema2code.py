@@ -217,6 +217,18 @@ def main():
             args.no_overwrite
         )
 
+        # If successful and language is Python, also generate __init__.py with exports
+        if success and args.language == "python":
+            # Get the output directory
+            output_dir = os.path.dirname(args.output)
+            if output_dir and os.path.exists(output_dir):
+                try:
+                    # Generate __init__.py with exports of all model classes
+                    from generators.python import PythonGenerator
+                    PythonGenerator.generate_model_init_exports(output_dir)
+                except Exception as e:
+                    print(f"Warning: Could not generate model exports: {e}", file=sys.stderr)
+
         if success:
             print(
                 f"Successfully generated {args.language} types in {len(output_files)} file(s)")

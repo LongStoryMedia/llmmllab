@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maistro/config"
 	"maistro/models"
 	"maistro/util"
 	"strings"
@@ -58,20 +59,33 @@ type GRPCClient struct {
 }
 
 // NewGRPCClient creates a new gRPC client for the inference service
-func NewGRPCClient(address string, secure bool, apiKey string) (*GRPCClient, error) {
-	c := &GRPCClient{
-		address: address,
-		secure:  secure,
-		apiKey:  apiKey,
+func GetGRPCClient() (*GRPCClient, error) {
+	if gRPCClient != nil {
+		// If the client already exists, return it
+		return gRPCClient, nil
+	}
+	conf := config.GetConfig(nil)
+	gRPCClient = &GRPCClient{
+		address: fmt.Sprintf("%s:%d", conf.InferenceServices.Host, conf.InferenceServices.Port),
+		secure:  false,
+		apiKey:  "",
 	}
 
 	// Initialize the connection
-	if err := c.initConnection(); err != nil {
+	if err := gRPCClient.initConnection(); err != nil {
 		return nil, err
 	}
 
-	return c, nil
+	util.LogInfo("gRPC client initialized", logrus.Fields{
+		"address": gRPCClient.address,
+		"secure":  gRPCClient.secure,
+	})
+
+	return gRPCClient, nil
 }
+
+// GRPCClient is the global singleton instance of the gRPC client
+var gRPCClient *GRPCClient
 
 // initConnection initializes the gRPC connection
 func (c *GRPCClient) initConnection() error {
@@ -93,6 +107,13 @@ func (c *GRPCClient) initConnection() error {
 		}),
 	}
 
+	// Add more detailed logging for connection attempts
+	util.LogInfo("Attempting to connect to inference service", logrus.Fields{
+		"address": c.address,
+		"secure":  c.secure,
+		"timeout": "30s",
+	})
+
 	// Set up transport credentials
 	if c.secure {
 		// Use TLS for secure connection
@@ -110,14 +131,18 @@ func (c *GRPCClient) initConnection() error {
 		opts = append(opts, grpc.WithPerRPCCredentials(newAPIKeyAuth(c.apiKey)))
 	}
 
-	// Set connection timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Set connection timeout (increase to 30 seconds for debugging)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	// Establish the connection
 	var err error
 	c.conn, err = grpc.DialContext(ctx, c.address, opts...)
 	if err != nil {
+		util.HandleError(err, logrus.Fields{
+			"address": c.address,
+			"secure":  c.secure,
+		})
 		return fmt.Errorf("failed to connect to inference service: %w", err)
 	}
 
@@ -168,8 +193,48 @@ func (c *GRPCClient) ensureConnection() error {
 	return nil
 }
 
+func convertParamsToGRPC(opts *models.ModelParameters) *ModelParameters {
+	mp := ModelParameters{}
+	if opts == nil {
+		return &mp // Return empty ModelParameters if opts is nil
+	}
+	if opts.NumCtx != nil {
+		mp.NumCtx = int32(*opts.NumCtx)
+	}
+	if opts.MinP != nil {
+		mp.MinP = float64(*opts.MinP)
+	}
+	if opts.NumPredict != nil {
+		mp.NumPredict = int32(*opts.NumPredict)
+	}
+	if opts.Temperature != nil {
+		mp.Temperature = float64(*opts.Temperature)
+	}
+	if opts.TopP != nil {
+		mp.TopP = float64(*opts.TopP)
+	}
+	if opts.TopK != nil {
+		mp.TopK = int32(*opts.TopK)
+	}
+	if opts.RepeatLastN != nil {
+		mp.RepeatLastN = int32(*opts.RepeatLastN)
+	}
+	if opts.RepeatPenalty != nil {
+		mp.RepeatPenalty = float64(*opts.RepeatPenalty)
+	}
+	if opts.Stop != nil {
+		mp.Stop = make([]string, len(opts.Stop))
+		copy(mp.Stop, opts.Stop)
+	}
+	return &mp
+}
+
+func messageRoleModelToProto(r models.MessageRole) MessageRole {
+	return MessageRole(MessageRole_value[strings.ToUpper(string(r))])
+}
+
 // ChatStream streams chat responses
-func (c *GRPCClient) ChatStream(ctx context.Context, req models.ChatReq, writer *bufio.Writer) (*models.ChatResponse, error) {
+func (c *GRPCClient) ChatStream(ctx context.Context, req *models.ChatReq, writer *bufio.Writer) (*models.ChatResponse, error) {
 	// Check connection and reconnect if needed
 	if err := c.ensureConnection(); err != nil {
 		return nil, err
@@ -181,19 +246,24 @@ func (c *GRPCClient) ChatStream(ctx context.Context, req models.ChatReq, writer 
 
 	cid := int32(*req.ConversationID)
 
-	msgs := make([]*ChatMessage, 0, len(req.Messages))
-	for _, msg := range req.Messages {
-		tc := make([]*ChatMessage_ToolCallsItem, 0, len(msg.ToolCalls))
-		for _, toolCall := range msg.ToolCalls {
-			// tc to bytes
-			uf, err := json.Marshal(toolCall)
-			if err != nil {
-				return nil, util.HandleError(err)
-			}
+	// Instead, properly construct the protobuf message:
+	var format *ChatReq_Format
+	if req.Format != nil {
+		format = &ChatReq_Format{}
+		// Only set specific fields you need from req.Format
+	} else {
+		format = nil // Use nil if no format is provided
+	}
 
-			tc = append(tc, &ChatMessage_ToolCallsItem{
-				unknownFields: uf,
-			})
+	// When converting messages, don't use JSON for embedded structs
+	msgs := make([]*Message, 0, len(req.Messages))
+	for _, msg := range req.Messages {
+		// For tool calls, use properly typed protobuf messages
+		tc := make([]*Message_ToolCallsItem, 0, len(msg.ToolCalls))
+		for range msg.ToolCalls {
+			// Create proper protobuf tool call objects:
+			pbToolCall := &Message_ToolCallsItem{}
+			tc = append(tc, pbToolCall)
 		}
 
 		msgId := -1
@@ -201,20 +271,40 @@ func (c *GRPCClient) ChatStream(ctx context.Context, req models.ChatReq, writer 
 			msgId = *msg.ID
 		}
 
-		msgs = append(msgs, &ChatMessage{
-			Role:           msg.Role,
-			Content:        msg.Content,
-			Images:         msg.Images,
-			ToolCalls:      tc,
+		// Convert models.MessageContent to []*MessageContent
+		content := make([]*MessageContent, len(msg.Content))
+		for i, c := range msg.Content {
+			contentType := MessageContentType_TEXT
+			switch c.Type {
+			case models.MessageContentTypeImage:
+				contentType = MessageContentType_IMAGE
+			case models.MessageContentTypeToolCall:
+				contentType = MessageContentType_TOOL_CALL
+			}
+			cont := MessageContent{
+				Type: contentType,
+			}
+			if c.Text != nil {
+				cont.Text = *c.Text
+			}
+			if c.URL != nil {
+				cont.Url = *c.URL
+			}
+			content[i] = &cont
+		}
+
+		msgs = append(msgs, &Message{
+			Role:           messageRoleModelToProto(msg.Role),
+			Content:        content,
+			ToolCalls:      tc, // Use properly typed tool calls
 			Id:             int32(msgId),
 			ConversationId: int32(cid),
 		})
 	}
 
-	fm, err := json.Marshal(req.Format)
-	if err != nil {
-		return nil, util.HandleError(err)
-	}
+	util.LogDebug("Preparing chat request", logrus.Fields{
+		"msgs": msgs,
+	})
 
 	ka := 0
 	if req.KeepAlive != nil {
@@ -234,26 +324,21 @@ func (c *GRPCClient) ChatStream(ctx context.Context, req models.ChatReq, writer 
 		})
 	}
 
-	opts, err := json.Marshal(req.Options)
-	if err != nil {
-		return nil, util.HandleError(err)
-	}
-
 	thk := true
 	if req.Think != nil {
 		thk = *req.Think
 	}
 
-	// Convert request to gRPC format
+	// Convert request to gRPC format - use properly typed fields
 	grpcReq := &ChatReq{
 		ConversationId: cid,
 		Model:          req.Model,
 		Messages:       msgs,
 		Stream:         req.Stream,
-		Format:         &ChatReq_Format{unknownFields: fm},
+		Format:         format, // Use properly typed format instead of unknownFields
 		KeepAlive:      int32(ka),
 		Tools:          t,
-		Options:        &ChatReq_Options{unknownFields: opts},
+		Options:        convertParamsToGRPC(req.Options),
 		Think:          thk,
 	}
 
@@ -266,17 +351,16 @@ func (c *GRPCClient) ChatStream(ctx context.Context, req models.ChatReq, writer 
 	// Stream the responses
 	res := models.ChatResponse{
 		Done: false,
-		Message: &models.ChatMessage{
+		Message: &models.Message{
 			Role:      "assistant",
-			Content:   "",
-			Images:    nil,
+			Content:   nil,
 			ToolCalls: nil,
 			Thinking:  nil,
 		},
-		CreatedAt:          time.Now().Format(time.RFC3339),
+		CreatedAt:          time.Now(),
 		Model:              req.Model,
 		Context:            nil,
-		DoneReason:         nil,
+		FinishReason:       nil,
 		TotalDuration:      nil,
 		LoadDuration:       nil,
 		PromptEvalCount:    nil,
@@ -294,12 +378,15 @@ func (c *GRPCClient) ChatStream(ctx context.Context, req models.ChatReq, writer 
 			break
 		}
 		if err != nil {
-			return &res, fmt.Errorf("error receiving from chat stream: %w", err)
+			return nil, fmt.Errorf("error receiving from chat stream: %w", err)
 		}
 
 		// Accumulate the full response
-		if resp.Message.Content != "" {
-			responseContent.WriteString(resp.Message.Content)
+		for _, content := range resp.Message.Content {
+			if content.Text != "" {
+				fmt.Print(content.Text)
+				responseContent.WriteString(content.Text)
+			}
 		}
 		// Check if this is done before attempting to write to the client
 		if resp.Done {
@@ -312,8 +399,13 @@ func (c *GRPCClient) ChatStream(ctx context.Context, req models.ChatReq, writer 
 		}
 
 		if proxyToClient {
+			r, err := json.Marshal(resp)
+			if err != nil {
+				util.HandleError(err)
+				proxyToClient = false
+			}
 			// Write the line to the client
-			if _, writeErr := writer.Write([]byte(resp.Message.Content)); writeErr != nil {
+			if _, writeErr := writer.Write(r); writeErr != nil {
 				util.HandleError(writeErr)
 				proxyToClient = false // Stop proxying on error
 			} else {
@@ -327,18 +419,6 @@ func (c *GRPCClient) ChatStream(ctx context.Context, req models.ChatReq, writer 
 			// Handle completion after successful write of final chunk
 			if resp.Done {
 				util.LogInfo("Streaming completed successfully")
-				completed = true
-				res.Message.Content = responseContent.String()
-				res.Done = true
-				res.CreatedAt = time.Now().Format(time.RFC3339)
-				res.Model = req.Model
-				res.DoneReason = util.StrPtr(resp.DoneReason)
-				res.TotalDuration = util.Float32Ptr(float32(resp.TotalDuration))
-				res.LoadDuration = util.Float32Ptr(float32(resp.LoadDuration))
-				res.PromptEvalCount = util.Float32Ptr(float32(resp.PromptEvalCount))
-				res.PromptEvalDuration = util.Float32Ptr(float32(resp.PromptEvalDuration))
-				res.EvalCount = util.Float32Ptr(float32(resp.EvalCount))
-				res.EvalDuration = util.Float32Ptr(float32(resp.EvalDuration))
 				break
 			}
 		}
@@ -366,10 +446,6 @@ func (c *GRPCClient) GenerateStream(ctx context.Context, req models.GenerateReq,
 		return nil, err
 	}
 
-	opts, err := json.Marshal(req.Options)
-	if err != nil {
-		return nil, util.HandleError(err)
-	}
 	fm, err := json.Marshal(req.Format)
 	if err != nil {
 		return nil, util.HandleError(err)
@@ -418,7 +494,7 @@ func (c *GRPCClient) GenerateStream(ctx context.Context, req models.GenerateReq,
 		Images:    req.Images,
 		KeepAlive: int32(ka),
 		Format:    &GenerateReq_Format{unknownFields: fm},
-		Options:   &GenerateReq_Options{unknownFields: opts},
+		Options:   convertParamsToGRPC(req.Options),
 		Stream:    str,
 		System:    sys,
 		Template:  tpl,

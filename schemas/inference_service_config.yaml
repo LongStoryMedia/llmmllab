@@ -7,6 +7,14 @@ properties:
     $ref: inference_service.yaml
   stable_diffusion:
     $ref: inference_service.yaml
+  host:
+    type: string
+    description: Host for the inference service
+  port:
+    type: integer
+    description: Port for the inference service
 required:
   - ollama
   - stable_diffusion
+  - host
+  - port

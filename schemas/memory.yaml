@@ -41,7 +41,7 @@ definitions:
         type: integer
         description: Unique identifier for the memory fragment
       role:
-        type: string
+        $ref: message_role.yaml
         description: Role of the message (e.g., 'user', 'assistant')
       content:
         type: string

@@ -79,20 +79,25 @@ class ModelService:
                     family=details_dict.get("family", ""),
                     families=details_dict.get("families", []),
                     parameter_size=details_dict.get("parameter_size", ""),
+                    dtype=details_dict.get("dtype"),
+                    precision=details_dict.get("precision"),
                     quantization_level=details_dict.get("quantization_level", ""),
-                    specialization=details_dict.get("specialization", "")
+                    specialization=details_dict.get("specialization", ""),
+                    description=details_dict.get("description"),
+                    weight=details_dict.get("weight")
                 )
 
                 model = Model(
                     id=model_data.get("id"),
                     name=model_data["name"],
                     model=model_data["model"],
+                    task=model_data["task"],
                     modified_at=model_data["modified_at"],
                     size=model_data["size"],
                     digest=model_data["digest"],
                     pipeline=model_data.get("pipeline"),
                     lora_weights=loras,
-                    details=details  # You may want to provide a ModelDetails instance here
+                    details=details
                 )
 
                 self.models[model_data["id"]] = model

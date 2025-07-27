@@ -30,7 +30,7 @@ type ChatReq struct {
 	// Model name, used internally only to set the model name in the request to ollama based on the profile
 	Model string `protobuf:"bytes,1,opt,name=model,proto3" json:"model,omitempty"`
 	// Messages to send to the model, each message is a struct with role and content
-	Messages []*ChatMessage `protobuf:"bytes,2,rep,name=messages,proto3" json:"messages,omitempty"`
+	Messages []*Message `protobuf:"bytes,2,rep,name=messages,proto3" json:"messages,omitempty"`
 	// If true, the response will be streamed back as a series of events
 	Stream bool `protobuf:"varint,3,opt,name=stream,proto3" json:"stream,omitempty"`
 	// The format to return a response in. Format can be json or a JSON schema
@@ -40,7 +40,7 @@ type ChatReq struct {
 	// Controls how long the model will stay loaded into memory
 	KeepAlive int32 `protobuf:"varint,6,opt,name=keep_alive,json=keepAlive,proto3" json:"keep_alive,omitempty"`
 	// Additional model parameters listed in the documentation for the Modelfile such as temperature
-	Options *ChatReq_Options `protobuf:"bytes,7,opt,name=options,proto3" json:"options,omitempty"`
+	Options *ModelParameters `protobuf:"bytes,7,opt,name=options,proto3" json:"options,omitempty"`
 	// Tools to use for the request, if any
 	Tools []*ChatReq_ToolsItem `protobuf:"bytes,8,rep,name=tools,proto3" json:"tools,omitempty"`
 	// If true, the model will think before responding, useful for complex queries
@@ -86,7 +86,7 @@ func (x *ChatReq) GetModel() string {
 	return ""
 }
 
-func (x *ChatReq) GetMessages() []*ChatMessage {
+func (x *ChatReq) GetMessages() []*Message {
 	if x != nil {
 		return x.Messages
 	}
@@ -121,7 +121,7 @@ func (x *ChatReq) GetKeepAlive() int32 {
 	return 0
 }
 
-func (x *ChatReq) GetOptions() *ChatReq_Options {
+func (x *ChatReq) GetOptions() *ModelParameters {
 	if x != nil {
 		return x.Options
 	}
@@ -179,43 +179,6 @@ func (*ChatReq_Format) Descriptor() ([]byte, []int) {
 	return file_chat_req_proto_rawDescGZIP(), []int{0, 0}
 }
 
-// Additional model parameters listed in the documentation for the Modelfile such as temperature
-type ChatReq_Options struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ChatReq_Options) Reset() {
-	*x = ChatReq_Options{}
-	mi := &file_chat_req_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ChatReq_Options) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ChatReq_Options) ProtoMessage() {}
-
-func (x *ChatReq_Options) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_req_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ChatReq_Options.ProtoReflect.Descriptor instead.
-func (*ChatReq_Options) Descriptor() ([]byte, []int) {
-	return file_chat_req_proto_rawDescGZIP(), []int{0, 1}
-}
-
 type ChatReq_ToolsItem struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -224,7 +187,7 @@ type ChatReq_ToolsItem struct {
 
 func (x *ChatReq_ToolsItem) Reset() {
 	*x = ChatReq_ToolsItem{}
-	mi := &file_chat_req_proto_msgTypes[3]
+	mi := &file_chat_req_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -236,7 +199,7 @@ func (x *ChatReq_ToolsItem) String() string {
 func (*ChatReq_ToolsItem) ProtoMessage() {}
 
 func (x *ChatReq_ToolsItem) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_req_proto_msgTypes[3]
+	mi := &file_chat_req_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -249,27 +212,26 @@ func (x *ChatReq_ToolsItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatReq_ToolsItem.ProtoReflect.Descriptor instead.
 func (*ChatReq_ToolsItem) Descriptor() ([]byte, []int) {
-	return file_chat_req_proto_rawDescGZIP(), []int{0, 2}
+	return file_chat_req_proto_rawDescGZIP(), []int{0, 1}
 }
 
 var File_chat_req_proto protoreflect.FileDescriptor
 
 const file_chat_req_proto_rawDesc = "" +
 	"\n" +
-	"\x0echat_req.proto\x12\x05proto\x1a\x12chat_message.proto\"\x8a\x03\n" +
+	"\x0echat_req.proto\x12\x05proto\x1a\rmessage.proto\x1a\x16model_parameters.proto\"\xf5\x02\n" +
 	"\aChatReq\x12\x14\n" +
-	"\x05model\x18\x01 \x01(\tR\x05model\x12.\n" +
-	"\bmessages\x18\x02 \x03(\v2\x12.proto.ChatMessageR\bmessages\x12\x16\n" +
+	"\x05model\x18\x01 \x01(\tR\x05model\x12*\n" +
+	"\bmessages\x18\x02 \x03(\v2\x0e.proto.MessageR\bmessages\x12\x16\n" +
 	"\x06stream\x18\x03 \x01(\bR\x06stream\x12-\n" +
 	"\x06format\x18\x04 \x01(\v2\x15.proto.ChatReq.FormatR\x06format\x12'\n" +
 	"\x0fconversation_id\x18\x05 \x01(\x05R\x0econversationId\x12\x1d\n" +
 	"\n" +
 	"keep_alive\x18\x06 \x01(\x05R\tkeepAlive\x120\n" +
-	"\aoptions\x18\a \x01(\v2\x16.proto.ChatReq.OptionsR\aoptions\x12.\n" +
+	"\aoptions\x18\a \x01(\v2\x16.proto.ModelParametersR\aoptions\x12.\n" +
 	"\x05tools\x18\b \x03(\v2\x18.proto.ChatReq.ToolsItemR\x05tools\x12\x14\n" +
 	"\x05think\x18\t \x01(\bR\x05think\x1a\x0e\n" +
-	"\x06FormatJ\x04\b\x01\x10\x02\x1a\x0f\n" +
-	"\aOptionsJ\x04\b\x01\x10\x02\x1a\x11\n" +
+	"\x06FormatJ\x04\b\x01\x10\x02\x1a\x11\n" +
 	"\tToolsItemJ\x04\b\x01\x10\x02B\x0fZ\rmaistro/protob\x06proto3"
 
 var (
@@ -284,19 +246,19 @@ func file_chat_req_proto_rawDescGZIP() []byte {
 	return file_chat_req_proto_rawDescData
 }
 
-var file_chat_req_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_chat_req_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_chat_req_proto_goTypes = []any{
 	(*ChatReq)(nil),           // 0: proto.ChatReq
 	(*ChatReq_Format)(nil),    // 1: proto.ChatReq.Format
-	(*ChatReq_Options)(nil),   // 2: proto.ChatReq.Options
-	(*ChatReq_ToolsItem)(nil), // 3: proto.ChatReq.ToolsItem
-	(*ChatMessage)(nil),       // 4: proto.ChatMessage
+	(*ChatReq_ToolsItem)(nil), // 2: proto.ChatReq.ToolsItem
+	(*Message)(nil),           // 3: proto.Message
+	(*ModelParameters)(nil),   // 4: proto.ModelParameters
 }
 var file_chat_req_proto_depIdxs = []int32{
-	4, // 0: proto.ChatReq.messages:type_name -> proto.ChatMessage
+	3, // 0: proto.ChatReq.messages:type_name -> proto.Message
 	1, // 1: proto.ChatReq.format:type_name -> proto.ChatReq.Format
-	2, // 2: proto.ChatReq.options:type_name -> proto.ChatReq.Options
-	3, // 3: proto.ChatReq.tools:type_name -> proto.ChatReq.ToolsItem
+	4, // 2: proto.ChatReq.options:type_name -> proto.ModelParameters
+	2, // 3: proto.ChatReq.tools:type_name -> proto.ChatReq.ToolsItem
 	4, // [4:4] is the sub-list for method output_type
 	4, // [4:4] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name
@@ -309,14 +271,15 @@ func file_chat_req_proto_init() {
 	if File_chat_req_proto != nil {
 		return
 	}
-	file_chat_message_proto_init()
+	file_message_proto_init()
+	file_model_parameters_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_chat_req_proto_rawDesc), len(file_chat_req_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

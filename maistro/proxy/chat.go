@@ -14,12 +14,12 @@ import (
 )
 
 // Deprecated: Use svc.InferenceService instead
-func StreamOllamaChatRequest(ctx context.Context, modelProfile *models.ModelProfile, messages []models.ChatMessage, userID string, conversationID int) (string, error) {
+func StreamOllamaChatRequest(ctx context.Context, modelProfile *models.ModelProfile, messages []models.Message, userID string, conversationID int) (string, error) {
 	requestBody := models.ChatReq{
 		Model:     modelProfile.ModelName,
 		Messages:  messages,
 		Stream:    true,
-		Options:   modelProfile.Parameters.ToMap(),
+		Options:   &modelProfile.Parameters,
 		KeepAlive: util.IntPtr(0),
 	}
 

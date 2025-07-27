@@ -38,7 +38,7 @@ type GenerateReq struct {
 	// The format to return a response in. Format can be json or a JSON schema
 	Format *GenerateReq_Format `protobuf:"bytes,5,opt,name=format,proto3" json:"format,omitempty"`
 	// Additional model parameters listed in the documentation for the Modelfile such as temperature
-	Options *GenerateReq_Options `protobuf:"bytes,6,opt,name=options,proto3" json:"options,omitempty"`
+	Options *ModelParameters `protobuf:"bytes,6,opt,name=options,proto3" json:"options,omitempty"`
 	// System message to (overrides what is defined in the Modelfile)
 	System string `protobuf:"bytes,7,opt,name=system,proto3" json:"system,omitempty"`
 	// The prompt template to use (overrides what is defined in the Modelfile)
@@ -122,7 +122,7 @@ func (x *GenerateReq) GetFormat() *GenerateReq_Format {
 	return nil
 }
 
-func (x *GenerateReq) GetOptions() *GenerateReq_Options {
+func (x *GenerateReq) GetOptions() *ModelParameters {
 	if x != nil {
 		return x.Options
 	}
@@ -215,55 +215,18 @@ func (*GenerateReq_Format) Descriptor() ([]byte, []int) {
 	return file_generate_req_proto_rawDescGZIP(), []int{0, 0}
 }
 
-// Additional model parameters listed in the documentation for the Modelfile such as temperature
-type GenerateReq_Options struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GenerateReq_Options) Reset() {
-	*x = GenerateReq_Options{}
-	mi := &file_generate_req_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GenerateReq_Options) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GenerateReq_Options) ProtoMessage() {}
-
-func (x *GenerateReq_Options) ProtoReflect() protoreflect.Message {
-	mi := &file_generate_req_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GenerateReq_Options.ProtoReflect.Descriptor instead.
-func (*GenerateReq_Options) Descriptor() ([]byte, []int) {
-	return file_generate_req_proto_rawDescGZIP(), []int{0, 1}
-}
-
 var File_generate_req_proto protoreflect.FileDescriptor
 
 const file_generate_req_proto_rawDesc = "" +
 	"\n" +
-	"\x12generate_req.proto\x12\x05proto\"\xa2\x03\n" +
+	"\x12generate_req.proto\x12\x05proto\x1a\x16model_parameters.proto\"\x8d\x03\n" +
 	"\vGenerateReq\x12\x14\n" +
 	"\x05model\x18\x01 \x01(\tR\x05model\x12\x16\n" +
 	"\x06prompt\x18\x02 \x01(\tR\x06prompt\x12\x16\n" +
 	"\x06suffix\x18\x03 \x01(\tR\x06suffix\x12\x16\n" +
 	"\x06images\x18\x04 \x03(\tR\x06images\x121\n" +
-	"\x06format\x18\x05 \x01(\v2\x19.proto.GenerateReq.FormatR\x06format\x124\n" +
-	"\aoptions\x18\x06 \x01(\v2\x1a.proto.GenerateReq.OptionsR\aoptions\x12\x16\n" +
+	"\x06format\x18\x05 \x01(\v2\x19.proto.GenerateReq.FormatR\x06format\x120\n" +
+	"\aoptions\x18\x06 \x01(\v2\x16.proto.ModelParametersR\aoptions\x12\x16\n" +
 	"\x06system\x18\a \x01(\tR\x06system\x12\x1a\n" +
 	"\btemplate\x18\b \x01(\tR\btemplate\x12\x16\n" +
 	"\x06stream\x18\t \x01(\bR\x06stream\x12\x10\n" +
@@ -273,8 +236,7 @@ const file_generate_req_proto_rawDesc = "" +
 	"keep_alive\x18\v \x01(\x05R\tkeepAlive\x12\x18\n" +
 	"\acontext\x18\f \x01(\tR\acontext\x12\x14\n" +
 	"\x05think\x18\r \x01(\bR\x05think\x1a\x0e\n" +
-	"\x06FormatJ\x04\b\x01\x10\x02\x1a\x0f\n" +
-	"\aOptionsJ\x04\b\x01\x10\x02B\x0fZ\rmaistro/protob\x06proto3"
+	"\x06FormatJ\x04\b\x01\x10\x02B\x0fZ\rmaistro/protob\x06proto3"
 
 var (
 	file_generate_req_proto_rawDescOnce sync.Once
@@ -288,15 +250,15 @@ func file_generate_req_proto_rawDescGZIP() []byte {
 	return file_generate_req_proto_rawDescData
 }
 
-var file_generate_req_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_generate_req_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_generate_req_proto_goTypes = []any{
-	(*GenerateReq)(nil),         // 0: proto.GenerateReq
-	(*GenerateReq_Format)(nil),  // 1: proto.GenerateReq.Format
-	(*GenerateReq_Options)(nil), // 2: proto.GenerateReq.Options
+	(*GenerateReq)(nil),        // 0: proto.GenerateReq
+	(*GenerateReq_Format)(nil), // 1: proto.GenerateReq.Format
+	(*ModelParameters)(nil),    // 2: proto.ModelParameters
 }
 var file_generate_req_proto_depIdxs = []int32{
 	1, // 0: proto.GenerateReq.format:type_name -> proto.GenerateReq.Format
-	2, // 1: proto.GenerateReq.options:type_name -> proto.GenerateReq.Options
+	2, // 1: proto.GenerateReq.options:type_name -> proto.ModelParameters
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
@@ -309,13 +271,14 @@ func file_generate_req_proto_init() {
 	if File_generate_req_proto != nil {
 		return
 	}
+	file_model_parameters_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_generate_req_proto_rawDesc), len(file_generate_req_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

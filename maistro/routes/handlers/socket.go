@@ -89,8 +89,8 @@ func HandleChatSocket(c *websocket.Conn) {
 		}
 
 		for _, data := range chatMessage.Data {
-			if chMsg, ok := data.(models.ChatMessage); !ok {
-				util.LogWarning("Chat message data is not of type ChatMessage", logrus.Fields{
+			if chMsg, ok := data.(models.Message); !ok {
+				util.LogWarning("Chat message data is not of type Message", logrus.Fields{
 					"userID": uid,
 					"data":   chatMessage.Data,
 				})

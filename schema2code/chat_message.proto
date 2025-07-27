@@ -7,7 +7,7 @@ option go_package = "proto";
 import "message_type.proto";
 
 // Message in a chat conversation
-message ChatMessage {
+message Message {
   // Unique identifier for the message
   int32 id = 1;
   // Identifier for the conversation this message belongs to

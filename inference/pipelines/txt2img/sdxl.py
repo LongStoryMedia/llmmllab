@@ -1,21 +1,23 @@
 from ..helpers import get_dtype, get_precision
 from models.model import Model
+from models import Message
+from typing import List, Any
 from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import StableDiffusionXLPipeline
+from ..base_pipeline import BasePipeline
 
 
-class SDXLPipe:
-    @staticmethod
-    def load(model: Model) -> StableDiffusionXLPipeline:
-        """        
-        Load the Stable Diffusion 3 pipeline with quantization and memory optimizations.
+class SDXLPipe(BasePipeline):
+    def __init__(self, model: Model):
+        """
+        Initialize a SDXLPipe instance and load the pipeline.
 
         Args:
             model (Model): The model configuration to load.
-        Returns:
-            StableDiffusion3Pipeline: The loaded pipeline with quantization and optimizations.
         """
+        self.model = model
+
         # Load the full pipeline
-        pipeline = StableDiffusionXLPipeline.from_pretrained(
+        self.pipeline = StableDiffusionXLPipeline.from_pretrained(
             model.model,
             device_map="balanced",
             torch_dtype=get_dtype(model),
@@ -23,6 +25,43 @@ class SDXLPipe:
             variant=get_precision(model),  # Use the precision from the model details
             safety_checker=None,  # Disable safety checker for now
         )
-        # pipeline.to(hardware_manager.device)
+        # self.pipeline.to(hardware_manager.device)
 
-        return pipeline
+    def run(self, messages: List[Message]) -> Any:
+        """
+        Process the input messages and generate an image using the SDXL pipeline.
+
+        Args:
+            messages (List[Message]): The list of messages to process.
+
+        Returns:
+            Any: The generated image.
+        """
+        if not self.pipeline:
+            raise RuntimeError("Pipeline not initialized. Call load() first.")
+
+        # Extract prompt from messages
+        prompt = ""
+        for message in messages:
+            if message.role == "user" and isinstance(message.content, str):
+                prompt = message.content
+                break
+
+        # Generate image with the pipeline
+        result = self.pipeline(prompt=prompt)
+        return result
+
+    def __del__(self) -> None:
+        """
+        Clean up resources used by the SDXLPipe.
+        This method releases GPU memory by moving models to CPU.
+        """
+        try:
+            if hasattr(self, 'pipeline') and self.pipeline is not None:
+                # Move the pipeline to CPU to free GPU memory
+                self.pipeline.to('cpu')
+                if hasattr(self, 'model') and hasattr(self.model, 'name'):
+                    print(f"SDXLPipe for {self.model.name}: Resources moved to CPU during cleanup")
+        except Exception as e:
+            # Use a direct print as logger might be gone during deletion
+            print(f"Error cleaning up SDXLPipe resources: {str(e)}")

@@ -32,6 +32,7 @@ rsync -avz --delete \
     --exclude='venv/' \
     --exclude='__pycache__/' \
     --exclude='*.pyc' \
+    --exclude='llama.cpp/' \
     "${SCRIPT_DIR}/" "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/"
 
 echo "✅ Code synced successfully"

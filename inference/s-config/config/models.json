@@ -1,5 +1,27 @@
 [
     {
+        "id": "thudm-glm-4.1v-9b-thinking",
+        "name": "THUDM/GLM-4.1V-9B-Thinking",
+        "model": "THUDM/GLM-4.1V-9B-Thinking",
+        "pipeline": "GLM4VPipeline",
+        "modified_at": "2025-07-11",
+        "size": 9000000000,
+        "digest": "glm4v-9b-20250711",
+        "details": {
+            "parent_model": "",
+            "format": "PyTorch",
+            "family": "GLM",
+            "families": [
+                "GLM"
+            ],
+            "parameter_size": "9B",
+            "dtype": "FP16",
+            "quantization_level": "q4",
+            "specialization": "ImageTextToText"
+        },
+        "task": "VisionTextToText"
+    },
+    {
         "id": "stabilityai-stable-diffusion-3.5-large-turbo",
         "name": "stabilityai/stable-diffusion-3.5-large-turbo",
         "model": "stabilityai/stable-diffusion-3.5-large-turbo",
@@ -16,7 +38,8 @@
             "dtype": "BFP16",
             "quantization_level": "nf4",
             "specialization": "TextToImage"
-        }
+        },
+        "task": "TextToImage"
     },
     {
         "id": "stabilityai-stable-diffusion-3.5-large",
@@ -35,7 +58,8 @@
             "dtype": "BFP16",
             "quantization_level": "nf4",
             "specialization": "TextToImage"
-        }
+        },
+        "task": "TextToImage"
     },
     {
         "id": "stabilityai-stable-diffusion-3.5-medium",
@@ -53,7 +77,8 @@
             "parameter_size": "2.5B",
             "dtype": "BFP16",
             "specialization": "TextToImage"
-        }
+        },
+        "task": "TextToImage"
     },
     {
         "id": "heartsync-nsfw-uncensored",
@@ -71,7 +96,8 @@
             "parameter_size": "2.5B",
             "dtype": "FP16",
             "specialization": "TextToImage"
-        }
+        },
+        "task": "TextToImage"
     },
     {
         "id": "black-forest-labs-flux.1-dev",
@@ -99,7 +125,8 @@
             "dtype": "BFP16",
             "quantization_level": "nf4",
             "specialization": "TextToImage"
-        }
+        },
+        "task": "TextToImage"
     },
     {
         "id": "stabilityai-stable-diffusion-xl-refiner-1.0",
@@ -117,25 +144,8 @@
             "parameter_size": "12B",
             "dtype": "FP16",
             "specialization": "ImageToImage"
-        }
-    },
-    {
-        "id": "timbrooks-instruct-pix2pix",
-        "name": "timbrooks/instruct-pix2pix",
-        "model": "timbrooks/instruct-pix2pix",
-        "pipeline": "StableDiffusionInstructPix2PixPipeline",
-        "modified_at": "",
-        "size": 0,
-        "digest": "",
-        "details": {
-            "parent_model": "",
-            "format": "",
-            "family": "",
-            "families": [],
-            "parameter_size": "12B",
-            "dtype": "FP16",
-            "specialization": "ImageToImage"
-        }
+        },
+        "task": "ImageToImage"
     },
     {
         "id": "black-forest-labs-flux.1-kontext-dev",
@@ -155,6 +165,101 @@
             "dtype": "BFP16",
             "quantization_level": "nf4",
             "specialization": "ImageToImage"
-        }
+        },
+        "task": "ImageToImage"
+    },
+    {
+        "id": "mistralai-mixtral-8x7b-instruct-v0.1",
+        "name": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+        "model": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+        "pipeline": "Mixtral8x7bInstructPipe",
+        "modified_at": "2025-07-17",
+        "size": 87000000000,
+        "digest": "mixtral-8x7b-instruct-v0.1-20250717",
+        "details": {
+            "parent_model": "mistralai/Mixtral-8x7B-v0.1",
+            "format": "PyTorch",
+            "family": "Mixtral",
+            "families": [
+                "Mixtral",
+                "MoE"
+            ],
+            "parameter_size": "46.7B",
+            "dtype": "BF16",
+            "quantization_level": "q4",
+            "specialization": "TextToText"
+        },
+        "task": "TextToText"
+    },
+    {
+        "id": "qwen-qwen3-30b-a3b",
+        "name": "Qwen/Qwen3-30B-A3B",
+        "model": "Qwen/Qwen3-30B-A3B",
+        "pipeline": "Qwen30A3BPipe",
+        "modified_at": "2025-07-20",
+        "size": 30500000000,
+        "digest": "qwen3-30b-a3b-20250720",
+        "details": {
+            "parent_model": "Qwen/Qwen3-30B",
+            "format": "PyTorch",
+            "family": "Qwen",
+            "families": [
+                "Qwen",
+                "MoE"
+            ],
+            "parameter_size": "30.5B",
+            "dtype": "BF16",
+            "quantization_level": "q4",
+            "specialization": "TextToText"
+        },
+        "task": "TextToText"
+    },
+    {
+        "id": "qwen3-30b-a3b-q4-k-m",
+        "name": "unsloth/Qwen3-30B-A3B-GGUF",
+        "model": "unsloth/Qwen3-30B-A3B-GGUF",
+        "pipeline": "Qwen30A3BQ4KMPipe",
+        "modified_at": "2025-07-20",
+        "size": 30500000000,
+        "digest": "qwen3-30b-a3b-20250720",
+        "details": {
+            "parent_model": "Qwen/Qwen3-30B-A3B",
+            "gguf_file": "/models/Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf",
+            "format": "gguf",
+            "family": "qwen",
+            "families": [
+                "Qwen",
+                "MoE"
+            ],
+            "parameter_size": "30.5B",
+            "quantization_level": "Q4_K_M",
+            "dtype": "BF16",
+            "specialization": "TextToText"
+        },
+        "task": "TextToText"
+    },
+    {
+        "id": "mixtral-8x7b-instruct-v0.1-q4-k-m",
+        "name": "mistralai/Mixtral-8x7B-Instruct-v0.1-GGUF",
+        "model": "mistralai/Mixtral-8x7B-Instruct-v0.1-GGUF",
+        "pipeline": "MixtralGGUFPipe",
+        "modified_at": "2025-07-22",
+        "size": 46700000000,
+        "digest": "mixtral-8x7b-instruct-v0.1-gguf-20250722",
+        "details": {
+            "parent_model": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+            "gguf_file": "/models/Mixtral-8x7B-Instruct-v0.1-GGUF/mixtral-8x7b-instruct-v0.1.Q4_K_M.gguf",
+            "format": "gguf",
+            "family": "Mixtral",
+            "families": [
+                "Mixtral",
+                "MoE"
+            ],
+            "parameter_size": "46.7B",
+            "quantization_level": "Q4_K_M",
+            "dtype": "BF16",
+            "specialization": "TextToText"
+        },
+        "task": "TextToText"
     }
 ]

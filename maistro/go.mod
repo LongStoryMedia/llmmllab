@@ -8,7 +8,6 @@ require (
 	github.com/MicahParks/keyfunc/v3 v3.3.11
 	github.com/gofiber/fiber/v2 v2.52.6
 	github.com/golang-jwt/jwt/v5 v5.2.2
-	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.2
 	github.com/testcontainers/testcontainers-go v0.37.0

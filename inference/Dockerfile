@@ -55,7 +55,15 @@ WORKDIR /app
 COPY . .
 
 # Install application dependencies
-RUN pip install -r requirements.txt 
+# Using --no-deps for torch-related packages to avoid conflicts with base image
+
+# Install llama-cpp-python with proper CUDA support for RTX 3060/3090 (compute capability 8.6)
+# RUN pip uninstall -y llama-cpp-python || true
+# ENV CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DLLAMA_CUBLAS=OFF -DCMAKE_PREFIX_PATH=/app/llama.cpp/build"
+# RUN pip install --no-cache-dir llama-cpp-python==0.2.38
+
+# Install other requirements
+RUN pip install --no-cache-dir -r requirements.txt --no-deps torch torchvision torchaudio
 
 # # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -66,16 +74,47 @@ ENV DEBIAN_FRONTEND=noninteractive \
   PYTHONUNBUFFERED=1 \
   # Force bitsandbytes to use CUDA 12.8 libraries instead of 12.9
   BNB_CUDA_VERSION=128
-
+ENV GRPC_PORT=50051
+ENV GRPC_MAX_WORKERS=10
+ENV GRPC_MAX_MESSAGE_SIZE=104857600
+ENV GRPC_MAX_CONCURRENT_RPCS=100
+ENV GRPC_ENABLE_REFLECTION=true
+ENV GRPC_REQUIRE_API_KEY=false
+ENV GRPC_USE_TLS=false
 # Directory for image storage
 RUN mkdir -p /root/images
 
 # Install uvicorn with extra dependencies
 RUN pip install "uvicorn[standard]" watchfiles websockets
 RUN pip install git+https://github.com/huggingface/diffusers.git
+RUN pip install git+https://github.com/huggingface/transformers.git
+# commit ab14019
+WORKDIR /
+RUN git clone https://github.com/ggerganov/llama.cpp.git
+WORKDIR /llama.cpp
+# use commit ab14019 - per https://github.com/ggml-org/llama.cpp/issues/14847
+RUN git checkout ab14019
+RUN git checkout -b llmmll
+# RUN cmake -B build \
+#   -DGGML_CUDA=ON \
+#   -DCMAKE_CUDA_ARCHITECTURES="75;86" \
+#   -DCMAKE_BUILD_TYPE=Release \
+#   -DGGML_CUDA_FORCE_DMMV=ON
+
+
+RUN cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;86"
+RUN cmake --build build --config Release -j$(nproc)
+
+ENV LLAMA_CPP_LIB_PATH=/llama.cpp/build/bin
+ENV FORCE_CMAKE=1
+ENV TOKENIZERS_PARALLELISM=true
+ENV CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_PATH=/llama.cpp/build/bin"
+RUN CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_PATH=/llama.cpp/build/bin" pip install llama-cpp-python --no-cache-dir --force-reinstall
+
+WORKDIR /app
 
 # Expose ports
-EXPOSE 11434 8000
+EXPOSE 11434 8000 50051
 
 # Default command
 CMD ["sh", "-c", "ollama serve & echo 'Note: For live code editing, mount your code to /app' && if [ -f /app/app.py ]; then cd /app && uvicorn app:app --host 0.0.0.0 --port 8000 --reload; else echo 'WARNING: app.py not found in /app directory'; ls -la /app; exit 1; fi"]

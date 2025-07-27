@@ -18,7 +18,7 @@ import (
 // 	// Create a sample chat request
 // 	req := models.ChatReq{
 // 		Model: config.DefaultPrimaryProfile.ModelName,
-// 		Messages: []models.ChatMessage{
+// 		Messages: []models.Message{
 // 			{Role: "user", Content: "Why is the sky blue?"},
 // 		},
 // 	}
@@ -166,7 +166,7 @@ const TIMEOUT = 5 * time.Minute
 // 	if err != nil {
 // 		t.Fatalf("Failed to read messages file: %v", err)
 // 	}
-// 	var messages []models.ChatMessage
+// 	var messages []models.Message
 // 	if err := json.Unmarshal(msgs, &messages); err != nil {
 // 		t.Fatalf("Failed to unmarshal messages: %v", err)
 // 	}

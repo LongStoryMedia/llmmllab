@@ -1,4 +1,4 @@
-import { ChatMessage } from "../types/ChatMessage";
+import { Message } from "../types/Message";
 import { ChatRequest } from "../types/ChatRequest";
 import { gen, getHeaders, req } from "./base";
 
@@ -16,7 +16,7 @@ export async function* chat(accessToken: string, message: ChatRequest, abortSign
 
     for await (const chunk of generator) {
       if (chunk.message?.content) {
-        yield chunk.message.content;
+        yield chunk.message.content[0].text ?? '';
       }
 
       if (chunk.done) {
@@ -30,7 +30,7 @@ export async function* chat(accessToken: string, message: ChatRequest, abortSign
 };
 
 export const getMessages = async (accessToken: string, conversationId: number) =>
-  req<ChatMessage[]>({
+  req<Message[]>({
     method: 'GET',
     headers: getHeaders(accessToken),
     path: `api/conversations/${conversationId}/messages`

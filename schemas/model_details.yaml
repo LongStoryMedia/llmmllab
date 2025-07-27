@@ -9,6 +9,9 @@ properties:
   format:
     type: string
     description: Format of the model file (e.g., gguf)
+  gguf_file:
+    type: string
+    description: Path to the GGUF file if applicable
   family:
     type: string
     description: Primary model family this belongs to (e.g., llama, phi3)

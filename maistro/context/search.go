@@ -28,7 +28,7 @@ func FmtQuery(ctx context.Context, modelProfile *models.ModelProfile, query, fmt
 	req := models.GenerateReq{
 		Model:     modelProfile.ModelName,
 		Prompt:    fmt.Sprintf("%s\n%s", query, fmtPrompt),
-		Options:   modelProfile.Parameters.ToMap(),
+		Options:   &modelProfile.Parameters,
 		KeepAlive: util.IntPtr(0),
 	}
 

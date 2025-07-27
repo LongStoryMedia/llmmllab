@@ -12,6 +12,7 @@ package proto
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -24,23 +25,100 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// ChatResponse represents a response from the Ollama chat API
+// Specific indicator of how or why the generation finished
+type ChatResponse_FinishReasonEnum int32
+
+const (
+	ChatResponse_FINISHREASONENUM_UNSPECIFIED ChatResponse_FinishReasonEnum = 0
+	ChatResponse_STOP                         ChatResponse_FinishReasonEnum = 1
+	ChatResponse_LENGTH                       ChatResponse_FinishReasonEnum = 2
+	ChatResponse_ERROR                        ChatResponse_FinishReasonEnum = 3
+	ChatResponse_LOAD                         ChatResponse_FinishReasonEnum = 4
+	ChatResponse_UNLOAD                       ChatResponse_FinishReasonEnum = 5
+	ChatResponse_TIMEOUT                      ChatResponse_FinishReasonEnum = 6
+	ChatResponse_CANCEL                       ChatResponse_FinishReasonEnum = 7
+)
+
+// Enum value maps for ChatResponse_FinishReasonEnum.
+var (
+	ChatResponse_FinishReasonEnum_name = map[int32]string{
+		0: "FINISHREASONENUM_UNSPECIFIED",
+		1: "STOP",
+		2: "LENGTH",
+		3: "ERROR",
+		4: "LOAD",
+		5: "UNLOAD",
+		6: "TIMEOUT",
+		7: "CANCEL",
+	}
+	ChatResponse_FinishReasonEnum_value = map[string]int32{
+		"FINISHREASONENUM_UNSPECIFIED": 0,
+		"STOP":                         1,
+		"LENGTH":                       2,
+		"ERROR":                        3,
+		"LOAD":                         4,
+		"UNLOAD":                       5,
+		"TIMEOUT":                      6,
+		"CANCEL":                       7,
+	}
+)
+
+func (x ChatResponse_FinishReasonEnum) Enum() *ChatResponse_FinishReasonEnum {
+	p := new(ChatResponse_FinishReasonEnum)
+	*p = x
+	return p
+}
+
+func (x ChatResponse_FinishReasonEnum) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ChatResponse_FinishReasonEnum) Descriptor() protoreflect.EnumDescriptor {
+	return file_chat_response_proto_enumTypes[0].Descriptor()
+}
+
+func (ChatResponse_FinishReasonEnum) Type() protoreflect.EnumType {
+	return &file_chat_response_proto_enumTypes[0]
+}
+
+func (x ChatResponse_FinishReasonEnum) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ChatResponse_FinishReasonEnum.Descriptor instead.
+func (ChatResponse_FinishReasonEnum) EnumDescriptor() ([]byte, []int) {
+	return file_chat_response_proto_rawDescGZIP(), []int{0, 0}
+}
+
+// ChatResponse represents a response from the chat API
 type ChatResponse struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	Done               bool                   `protobuf:"varint,1,opt,name=done,proto3" json:"done,omitempty"`
-	Message            *ChatMessage           `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
-	CreatedAt          string                 `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	Model              string                 `protobuf:"bytes,4,opt,name=model,proto3" json:"model,omitempty"`
-	Context            []float64              `protobuf:"fixed64,5,rep,packed,name=context,proto3" json:"context,omitempty"`
-	DoneReason         string                 `protobuf:"bytes,6,opt,name=done_reason,json=doneReason,proto3" json:"done_reason,omitempty"`
-	TotalDuration      float64                `protobuf:"fixed64,7,opt,name=total_duration,json=totalDuration,proto3" json:"total_duration,omitempty"`
-	LoadDuration       float64                `protobuf:"fixed64,8,opt,name=load_duration,json=loadDuration,proto3" json:"load_duration,omitempty"`
-	PromptEvalCount    float64                `protobuf:"fixed64,9,opt,name=prompt_eval_count,json=promptEvalCount,proto3" json:"prompt_eval_count,omitempty"`
-	PromptEvalDuration float64                `protobuf:"fixed64,10,opt,name=prompt_eval_duration,json=promptEvalDuration,proto3" json:"prompt_eval_duration,omitempty"`
-	EvalCount          float64                `protobuf:"fixed64,11,opt,name=eval_count,json=evalCount,proto3" json:"eval_count,omitempty"`
-	EvalDuration       float64                `protobuf:"fixed64,12,opt,name=eval_duration,json=evalDuration,proto3" json:"eval_duration,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Indicates whether the generation is complete
+	Done bool `protobuf:"varint,1,opt,name=done,proto3" json:"done,omitempty"`
+	// The message content and metadata returned by the model
+	Message *Message `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	// Timestamp when the response was created
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// The name or identifier of the model used for generation
+	Model string `protobuf:"bytes,4,opt,name=model,proto3" json:"model,omitempty"`
+	// Array of numbers representing the tokenized context
+	Context []float64 `protobuf:"fixed64,5,rep,packed,name=context,proto3" json:"context,omitempty"`
+	// Specific indicator of how or why the generation finished
+	FinishReason ChatResponse_FinishReasonEnum `protobuf:"varint,6,opt,name=finish_reason,json=finishReason,proto3,enum=proto.ChatResponse_FinishReasonEnum" json:"finish_reason,omitempty"`
+	// Total time taken for the entire generation process in milliseconds
+	TotalDuration float64 `protobuf:"fixed64,7,opt,name=total_duration,json=totalDuration,proto3" json:"total_duration,omitempty"`
+	// Time taken to load the model in milliseconds
+	LoadDuration float64 `protobuf:"fixed64,8,opt,name=load_duration,json=loadDuration,proto3" json:"load_duration,omitempty"`
+	// Number of tokens in the prompt that were evaluated
+	PromptEvalCount float64 `protobuf:"fixed64,9,opt,name=prompt_eval_count,json=promptEvalCount,proto3" json:"prompt_eval_count,omitempty"`
+	// Time taken to evaluate the prompt tokens in milliseconds
+	PromptEvalDuration float64 `protobuf:"fixed64,10,opt,name=prompt_eval_duration,json=promptEvalDuration,proto3" json:"prompt_eval_duration,omitempty"`
+	// Total number of tokens evaluated
+	EvalCount float64 `protobuf:"fixed64,11,opt,name=eval_count,json=evalCount,proto3" json:"eval_count,omitempty"`
+	// Time taken for token evaluation in milliseconds
+	EvalDuration  float64 `protobuf:"fixed64,12,opt,name=eval_duration,json=evalDuration,proto3" json:"eval_duration,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ChatResponse) Reset() {
@@ -80,18 +158,18 @@ func (x *ChatResponse) GetDone() bool {
 	return false
 }
 
-func (x *ChatResponse) GetMessage() *ChatMessage {
+func (x *ChatResponse) GetMessage() *Message {
 	if x != nil {
 		return x.Message
 	}
 	return nil
 }
 
-func (x *ChatResponse) GetCreatedAt() string {
+func (x *ChatResponse) GetCreatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
 	}
-	return ""
+	return nil
 }
 
 func (x *ChatResponse) GetModel() string {
@@ -108,11 +186,11 @@ func (x *ChatResponse) GetContext() []float64 {
 	return nil
 }
 
-func (x *ChatResponse) GetDoneReason() string {
+func (x *ChatResponse) GetFinishReason() ChatResponse_FinishReasonEnum {
 	if x != nil {
-		return x.DoneReason
+		return x.FinishReason
 	}
-	return ""
+	return ChatResponse_FINISHREASONENUM_UNSPECIFIED
 }
 
 func (x *ChatResponse) GetTotalDuration() float64 {
@@ -161,16 +239,15 @@ var File_chat_response_proto protoreflect.FileDescriptor
 
 const file_chat_response_proto_rawDesc = "" +
 	"\n" +
-	"\x13chat_response.proto\x12\x05proto\x1a\x12chat_message.proto\"\xae\x03\n" +
+	"\x13chat_response.proto\x12\x05proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\rmessage.proto\"\xf7\x04\n" +
 	"\fChatResponse\x12\x12\n" +
-	"\x04done\x18\x01 \x01(\bR\x04done\x12,\n" +
-	"\amessage\x18\x02 \x01(\v2\x12.proto.ChatMessageR\amessage\x12\x1d\n" +
+	"\x04done\x18\x01 \x01(\bR\x04done\x12(\n" +
+	"\amessage\x18\x02 \x01(\v2\x0e.proto.MessageR\amessage\x129\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\tR\tcreatedAt\x12\x14\n" +
+	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x14\n" +
 	"\x05model\x18\x04 \x01(\tR\x05model\x12\x18\n" +
-	"\acontext\x18\x05 \x03(\x01R\acontext\x12\x1f\n" +
-	"\vdone_reason\x18\x06 \x01(\tR\n" +
-	"doneReason\x12%\n" +
+	"\acontext\x18\x05 \x03(\x01R\acontext\x12I\n" +
+	"\rfinish_reason\x18\x06 \x01(\x0e2$.proto.ChatResponse.FinishReasonEnumR\ffinishReason\x12%\n" +
 	"\x0etotal_duration\x18\a \x01(\x01R\rtotalDuration\x12#\n" +
 	"\rload_duration\x18\b \x01(\x01R\floadDuration\x12*\n" +
 	"\x11prompt_eval_count\x18\t \x01(\x01R\x0fpromptEvalCount\x120\n" +
@@ -178,7 +255,19 @@ const file_chat_response_proto_rawDesc = "" +
 	" \x01(\x01R\x12promptEvalDuration\x12\x1d\n" +
 	"\n" +
 	"eval_count\x18\v \x01(\x01R\tevalCount\x12#\n" +
-	"\reval_duration\x18\f \x01(\x01R\fevalDurationB\x0fZ\rmaistro/protob\x06proto3"
+	"\reval_duration\x18\f \x01(\x01R\fevalDuration\"\x84\x01\n" +
+	"\x10FinishReasonEnum\x12 \n" +
+	"\x1cFINISHREASONENUM_UNSPECIFIED\x10\x00\x12\b\n" +
+	"\x04STOP\x10\x01\x12\n" +
+	"\n" +
+	"\x06LENGTH\x10\x02\x12\t\n" +
+	"\x05ERROR\x10\x03\x12\b\n" +
+	"\x04LOAD\x10\x04\x12\n" +
+	"\n" +
+	"\x06UNLOAD\x10\x05\x12\v\n" +
+	"\aTIMEOUT\x10\x06\x12\n" +
+	"\n" +
+	"\x06CANCEL\x10\aB\x0fZ\rmaistro/protob\x06proto3"
 
 var (
 	file_chat_response_proto_rawDescOnce sync.Once
@@ -192,18 +281,23 @@ func file_chat_response_proto_rawDescGZIP() []byte {
 	return file_chat_response_proto_rawDescData
 }
 
+var file_chat_response_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_chat_response_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_chat_response_proto_goTypes = []any{
-	(*ChatResponse)(nil), // 0: proto.ChatResponse
-	(*ChatMessage)(nil),  // 1: proto.ChatMessage
+	(ChatResponse_FinishReasonEnum)(0), // 0: proto.ChatResponse.FinishReasonEnum
+	(*ChatResponse)(nil),               // 1: proto.ChatResponse
+	(*Message)(nil),                    // 2: proto.Message
+	(*timestamppb.Timestamp)(nil),      // 3: google.protobuf.Timestamp
 }
 var file_chat_response_proto_depIdxs = []int32{
-	1, // 0: proto.ChatResponse.message:type_name -> proto.ChatMessage
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	2, // 0: proto.ChatResponse.message:type_name -> proto.Message
+	3, // 1: proto.ChatResponse.created_at:type_name -> google.protobuf.Timestamp
+	0, // 2: proto.ChatResponse.finish_reason:type_name -> proto.ChatResponse.FinishReasonEnum
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_chat_response_proto_init() }
@@ -211,19 +305,20 @@ func file_chat_response_proto_init() {
 	if File_chat_response_proto != nil {
 		return
 	}
-	file_chat_message_proto_init()
+	file_message_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_chat_response_proto_rawDesc), len(file_chat_response_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   1,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_chat_response_proto_goTypes,
 		DependencyIndexes: file_chat_response_proto_depIdxs,
+		EnumInfos:         file_chat_response_proto_enumTypes,
 		MessageInfos:      file_chat_response_proto_msgTypes,
 	}.Build()
 	File_chat_response_proto = out.File

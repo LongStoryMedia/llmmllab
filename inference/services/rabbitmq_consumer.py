@@ -16,7 +16,7 @@ from models.inference_queue_message import InferenceQueueMessage
 from models.configs import rabbitmq_config
 from models.rabbitmq_config import RabbitmqConfig
 from services.hardware_manager import hardware_manager
-from services.image_generator import image_generator
+from services.image_generator import ImageGenerator, image_generator
 from config import logger
 import os
 
@@ -267,9 +267,10 @@ class RabbitMQConsumer:
                 payload="Your image is being generated. Please check back with the provided correlation_id.",
                 task="image_generation"  # Set task type for compatibility
             )
+            _, image_request = image_generator.get_kwargs_from_message(request)
 
             # Schedule the image generation with properly processed parameters
-            img = image_generator.generate(request)
+            img = image_generator.generate(image_request)
 
             if img is None:
                 raise ValueError("Image generation failed - returned None")                # Process and save the generated image
@@ -324,7 +325,7 @@ class RabbitMQConsumer:
             channel.basic_ack(delivery_tag=method.delivery_tag)
 
             # Extract parameters from the request
-            _, image_request = image_generator._get_kwargs_from_message(request)
+            _, image_request = image_generator.get_kwargs_from_message(request)
 
             # Log the image source URL
             logger.info(f"Image editing request received with source image URL: {image_request.url}")

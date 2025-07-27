@@ -42,6 +42,9 @@ properties:
   image_settings:
     $ref: model_profile_image_settings.yaml
     description: Image settings for the model profile
+  think:
+    type: boolean
+    description: Whether to use think mode for the model profile
 required:
   - id
   - user_id

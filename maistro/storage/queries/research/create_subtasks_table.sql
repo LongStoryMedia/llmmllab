@@ -1,7 +1,7 @@
 -- Create the research subtasks table
 CREATE TABLE IF NOT EXISTS research_subtasks(
   id serial PRIMARY KEY,
-  task_id text NOT NULL REFERENCES research_tasks(id) ON DELETE CASCADE,
+  task_id integer NOT NULL REFERENCES research_tasks(id) ON DELETE CASCADE,
   question_id integer NOT NULL,
   status text NOT NULL,
   gathered_info jsonb,

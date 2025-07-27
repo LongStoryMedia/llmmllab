@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef } from 'react';
 import { ChatState, ChatActions } from './useChatState';
 import { useAuth } from '../../auth';
 import { chat, getManyConversations, getMessages, removeConversation, startConversation, getModels, getToken, getUserConversations, getLllabUsers, pause, cancel, resume } from '../../api';
-import { ChatMessage } from '../../types/ChatMessage';
+import { Message } from '../../types/Message';
 import { Conversation } from '../../types/Conversation';
 import { ChatRequest } from '../../types/ChatRequest';
 
@@ -65,7 +65,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     actions.setResponse('');
 
     try {
-      const fetchedMessages = await getMessages(getToken(auth.user), conversationId) as ChatMessage[];
+      const fetchedMessages = await getMessages(getToken(auth.user), conversationId) as Message[];
       actions.setMessages(msgs => [...(msgs ?? []), ...(fetchedMessages ?? []).filter(m => !msgs.find(msg => msg.id === m.id))]);
       // Find and set the current conversation
       const conversation = Object.values(state.conversations).flat().find(c => c.id === conversationId);
