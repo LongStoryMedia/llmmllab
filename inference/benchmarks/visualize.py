@@ -29,7 +29,7 @@ from matplotlib.figure import Figure
 class BenchmarkVisualizer:
     """Visualizes benchmark results from JSON files."""
 
-    def __init__(self, output_dir: str = "./charts"):
+    def __init__(self, output_dir: str = "./bencmark_data/charts"):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -730,8 +730,8 @@ def main():
 Examples:
   python visualize_results.py results.json
   python visualize_results.py results1.json results2.json results3.json
-  python visualize_results.py "*.json" --output ./charts/
-  python visualize_results.py "./benchmark_data/*/model_name/*.json" --output ./charts/
+  python visualize_results.py "*.json" --output ./bencmark_data/charts/
+  python visualize_results.py "./benchmark_data/*/model_name/*.json" --output ./bencmark_data/charts/
         """,
     )
 
@@ -745,8 +745,8 @@ Examples:
         "--output",
         "-o",
         type=str,
-        default="./charts",
-        help="Output directory for charts (default: ./charts)",
+        default="./bencmark_data/charts",
+        help="Output directory for charts (default: ./bencmark_data/charts)",
     )
 
     args = parser.parse_args()

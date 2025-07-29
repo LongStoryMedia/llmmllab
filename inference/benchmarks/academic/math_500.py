@@ -61,10 +61,11 @@ class Math500Benchmark(BenchmarkBase):
             print(f"MATH Problem {i+1}/{len(extended_problems)}")
 
             prompt = f"""Solve the following mathematical problem step by step. Provide your final answer clearly.
-
-Problem: {problem['problem']}
-
-Solution:"""
+            Do not include any additional explanations or comments. Only provide the final answer.
+            
+            Problem: {problem['problem']}
+            
+            Solution:"""
 
             try:
                 print(f"\n{'-'*80}")
