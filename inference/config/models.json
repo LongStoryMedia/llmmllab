@@ -240,14 +240,14 @@
     {
         "id": "qwen3-30b-a3b-q4-k-m",
         "name": "Qwen/Qwen3-30B-A3B-GGUF",
-        "model": "Qwen/Qwen3-30B-A3B-GGUF",
+        "model": "/models/qwen3-30b-a3b/qwen3-30b-a3b-iq4-xs-abliterated.gguf",
         "pipeline": "Qwen30A3BQ4KMPipe",
         "modified_at": "2025-07-20",
         "size": 30500000000,
         "digest": "qwen3-30b-a3b-20250720",
         "details": {
             "parent_model": "Qwen/Qwen3-30B-A3B",
-            "gguf_file": "/models/qwen3-30b-a3b/Qwen3-30B-A3B_q4_k_m.gguf",
+            "gguf_file": "/models/qwen3-30b-a3b/qwen3-30b-a3b-iq4-xs-abliterated.gguf",
             "format": "gguf",
             "family": "qwen",
             "families": [

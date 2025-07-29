@@ -1,0 +1,59 @@
+{
+  "qwen3-30b-a3b-q4-k-m": {
+    "model_id": "qwen3-30b-a3b-q4-k-m",
+    "timestamp": "2025-07-29T14:10:50.281667",
+    "benchmarks": {
+      "gpqa_diamond": {
+        "score": 1.0,
+        "total_questions": 4,
+        "correct_answers": 4,
+        "detailed_results": [
+          {
+            "question_id": 0,
+            "subject": "Chemistry",
+            "correct_answer": "B",
+            "model_answer": "B",
+            "extraction_confidence": 0.784,
+            "eval_confidence": 1.0,
+            "is_correct": true,
+            "response": "Let's analyze the question step by step.\n\n---\n\n### **Question:**\n\n> Consider a circular nanostructur..."
+          },
+          {
+            "question_id": 1,
+            "subject": "Biology",
+            "correct_answer": "C",
+            "model_answer": "C",
+            "extraction_confidence": 0.8340000000000001,
+            "eval_confidence": 1.0,
+            "is_correct": true,
+            "response": "Let's analyze the question and each of the answer choices **step by step** to determine which one mo..."
+          },
+          {
+            "question_id": 2,
+            "subject": "Physics",
+            "correct_answer": "C",
+            "model_answer": "C",
+            "extraction_confidence": 0.8340000000000001,
+            "eval_confidence": 1.0,
+            "is_correct": true,
+            "response": "Let's analyze the question step by step.\n\n---\n\n### **Question:**\n\nIn the WKB approximation for quant..."
+          },
+          {
+            "question_id": 3,
+            "subject": "Medicine",
+            "correct_answer": "B",
+            "model_answer": "B",
+            "extraction_confidence": 0.8340000000000001,
+            "eval_confidence": 1.0,
+            "is_correct": true,
+            "response": "Let's analyze this question step by step.\n\n### **Clinical Scenario:**\n- A 65-year-old male is on **l..."
+          }
+        ],
+        "metadata": {
+          "benchmark": "GPQA-Diamond",
+          "description": "Graduate-level science questions"
+        }
+      }
+    }
+  }
+}

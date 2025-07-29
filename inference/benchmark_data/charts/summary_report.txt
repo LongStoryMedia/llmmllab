@@ -1,0 +1,25 @@
+BENCHMARK RESULTS SUMMARY REPORT
+==================================================
+
+Report generated: 2025-07-29 14:27:22
+Total runs analyzed: 7
+Models evaluated: 1
+Date range: 2025-07-29 14:27:00 to 2025-07-29 14:27:00
+
+LATEST RESULTS BY MODEL:
+------------------------------
+
+Model: qwen3-30b-a3b-q4-k-m
+Date: 2025-07-29 14:27:00
+Average Score: 0.350
+Individual Benchmarks:
+  MMLU: 0.800
+  GPQA-Diamond: 0.750
+  MATH-500: 0.000
+  IFEval: 0.000
+  HumanEval: 0.000
+  LiveBench: 0.550
+
+TOP PERFORMING MODELS (by average score):
+----------------------------------------
+1. qwen3-30b-a3b-q4-k-m: 0.350

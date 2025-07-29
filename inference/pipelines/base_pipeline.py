@@ -61,15 +61,45 @@ class BasePipeline(ABC):
             options=ModelParameters(**kwargs) if kwargs else None
         )
 
-        # Call the run method and extract text from the response
+        # Call the run method and get response
         response = self.run(req, 0)
+
+        # Handle different response types
         if isinstance(response, str):
             return response
+
+        # Handle generator/streaming response
+        if hasattr(response, '__iter__') and hasattr(response, '__next__'):
+            # Consume generator and concatenate chunks
+            full_text = ""
+            try:
+                for chunk in response:
+                    # Handle ChatResponse objects from QwenGGUFPipe
+                    if hasattr(chunk, 'message') and not isinstance(chunk, str):
+                        message = getattr(chunk, 'message')
+                        if hasattr(message, 'content') and getattr(message, 'content'):
+                            content_list = getattr(message, 'content')
+                            for content_item in content_list:
+                                if hasattr(content_item, 'text') and getattr(content_item, 'text') is not None:
+                                    full_text += getattr(content_item, 'text')
+                    elif isinstance(chunk, str):
+                        full_text += chunk
+                return full_text
+            except Exception as e:
+                # Log the error but continue
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Error consuming generator: {e}")
+                return ""
 
         # If response is more complex, try to extract text content
         try:
             if hasattr(response, "text"):
                 return response.text
+            if hasattr(response, "message") and hasattr(response.message, "content"):
+                for content in response.message.content:
+                    if hasattr(content, "text") and content.text:
+                        return content.text
             if hasattr(response, "content") and isinstance(response.content, list):
                 for content in response.content:
                     if hasattr(content, "text") and content.text:
@@ -96,8 +126,35 @@ class BasePipeline(ABC):
         """
         responses = []
         for prompt in prompts:
+            # Call generate for each prompt
             response = self.generate(prompt, **kwargs)
-            responses.append(response)
+
+            # Handle case where response is a generator (streaming response)
+            if hasattr(response, '__iter__') and hasattr(response, '__next__'):
+                # Consume generator and concatenate chunks
+                full_text = ""
+                try:
+                    for chunk in response:
+                        # Handle ChatResponse objects from QwenGGUFPipe
+                        if hasattr(chunk, 'message') and not isinstance(chunk, str):
+                            message = getattr(chunk, 'message')
+                            if hasattr(message, 'content') and getattr(message, 'content'):
+                                content_list = getattr(message, 'content')
+                                for content_item in content_list:
+                                    if hasattr(content_item, 'text') and getattr(content_item, 'text') is not None:
+                                        full_text += getattr(content_item,
+                                                             'text')
+                        elif isinstance(chunk, str):
+                            full_text += chunk
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).error(
+                        f"Error consuming generator: {e}")
+                responses.append(full_text)
+            else:
+                # Response is already processed by generate()
+                responses.append(response)
+
         return responses
 
     @abstractmethod

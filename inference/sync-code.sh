@@ -22,17 +22,27 @@ fi
 
 echo "Syncing code to ${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}..."
 
-# Create the target directory if it doesn't exist
-ssh ${NODE_USER}@${NODE_HOST} "mkdir -p ${NODE_CODE_PATH}"
-
-# Use rsync to sync the local code to the remote node
-rsync -avz --delete \
+rsync -avzru \
     --exclude='.git/' \
     --exclude='.venv/' \
     --exclude='venv/' \
     --exclude='__pycache__/' \
     --exclude='*.pyc' \
     --exclude='llama.cpp/' \
+    "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/benchmark_data/" "${SCRIPT_DIR}/benchmark_data/"
+
+# Create the target directory if it doesn't exist
+ssh ${NODE_USER}@${NODE_HOST} "mkdir -p ${NODE_CODE_PATH}"
+
+# Use rsync to sync the local code to the remote node
+rsync -avzru --delete \
+    --exclude='.git/' \
+    --exclude='.venv/' \
+    --exclude='venv/' \
+    --exclude='__pycache__/' \
+    --exclude='*.pyc' \
+    --exclude='llama.cpp/' \
+    --exclude='benchmark_data/' \
     "${SCRIPT_DIR}/" "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/"
 
 echo "✅ Code synced successfully"
@@ -55,12 +65,14 @@ if [ "$1" = "--watch" ] || [ "$1" = "-w" ]; then
         echo "Change detected, syncing..."
         rsync -avzr "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/config" "${SCRIPT_DIR}/s-config"
 
-        rsync -avz --delete \
+        rsync -avruz --delete \
             --exclude='.git/' \
             --exclude='.venv/' \
             --exclude='venv/' \
             --exclude='__pycache__/' \
             --exclude='*.pyc' \
+            --exclude='llama.cpp/' \
+            --exclude='benchmark_data/' \
             "${SCRIPT_DIR}/" "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/"
         echo "✅ Code synced at $(date)"
     done

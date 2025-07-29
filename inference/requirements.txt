@@ -48,3 +48,10 @@ openai>=1.10.0
 starlette
 tzlocal
 nltk
+bert_score
+rouge
+psutil
+
+matplotlib
+pandas
+seaborn

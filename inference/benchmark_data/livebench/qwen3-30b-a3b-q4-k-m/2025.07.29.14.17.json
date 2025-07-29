@@ -1,0 +1,90 @@
+{
+  "qwen3-30b-a3b-q4-k-m": {
+    "model_id": "qwen3-30b-a3b-q4-k-m",
+    "timestamp": "2025-07-29T14:10:50.281667",
+    "benchmarks": {
+      "livebench": {
+        "score": 0.6,
+        "total_questions": 10,
+        "correct_answers": 6,
+        "detailed_results": [
+          {
+            "question_id": 0,
+            "category": "reasoning",
+            "type": "math_reasoning",
+            "score": 1.0,
+            "response": "We are told that a new social media platform:\n\n- Launched in **January 2024**\n- Gained **1 million users** in the first month (January)\n- **Doubled it..."
+          },
+          {
+            "question_id": 1,
+            "category": "knowledge",
+            "type": "current_events",
+            "score": 0.25,
+            "response": "As of now (April 2025), the **EU AI Act** has not been finalized. The European Union's Artificial Intelligence Act was under intense negotiation and d..."
+          },
+          {
+            "question_id": 2,
+            "category": "instruction_following",
+            "type": "creative_constraint",
+            "score": 0.0,
+            "response": "Bits twist in unseen code,  \nQuantum states dance, defying logic\u2014  \nTruth unfolds in shadows.Bits twist in unseen code,  \nQuantum states dance, defyin..."
+          },
+          {
+            "question_id": 3,
+            "category": "reasoning",
+            "type": "math_reasoning",
+            "score": 1.0,
+            "response": "We are told that a new social media platform:\n\n- Gained **1 million users in the first month (January 2024)**.\n- **Doubled its user base each subseque..."
+          },
+          {
+            "question_id": 4,
+            "category": "knowledge",
+            "type": "current_events",
+            "score": 0.75,
+            "response": "As of now (April 2025), the **EU AI Act** has not been finalized in its entirety. The European Union was working on finalizing the **Artificial Intell..."
+          },
+          {
+            "question_id": 5,
+            "category": "instruction_following",
+            "type": "creative_constraint",
+            "score": 0.0,
+            "response": "Qubits twist, spin, leap\u2014  \nQuantum paths unfold in code's dark maze,  \nTruth dances unseen.Qubits twist, spin, leap\u2014  \nQuantum paths unfold in code's..."
+          },
+          {
+            "question_id": 6,
+            "category": "reasoning",
+            "type": "math_reasoning",
+            "score": 1.0,
+            "response": "We are told that a new social media platform:\n\n- Gained **1 million users in the first month (January 2024)**.\n- **Doubled its user base each subseque..."
+          },
+          {
+            "question_id": 7,
+            "category": "knowledge",
+            "type": "current_events",
+            "score": 1.0,
+            "response": "As of my knowledge cutoff in July 2024, the **EU AI Act** (officially known as the *Act on Artificial Intelligence*) was finalized and adopted by the ..."
+          },
+          {
+            "question_id": 8,
+            "category": "instruction_following",
+            "type": "creative_constraint",
+            "score": 0.0,
+            "response": "Qubits twist, spin, leap\u2014  \nQuantum paths unfold in code's embrace,  \nMystery computes.Qubits twist, spin, leap\u2014  \nQuantum paths unfold in code's embr..."
+          },
+          {
+            "question_id": 9,
+            "category": "reasoning",
+            "type": "math_reasoning",
+            "score": 1.0,
+            "response": "We are told that a new social media platform:\n\n- Launched in **January 2024**  \n- Gained **1 million users** in the **first month (January)**  \n- **Do..."
+          }
+        ],
+        "metadata": {
+          "benchmark": "LiveBench",
+          "description": "Contamination-free evaluation with fresh questions",
+          "evaluation_date": "2025-07-29T14:17:00.315287"
+        }
+      }
+    }
+  }
+}
