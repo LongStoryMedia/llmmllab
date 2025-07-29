@@ -4,6 +4,7 @@ from ..base.result_types import BenchmarkResult
 from ..utils.inference import InferenceEngine
 from ..utils.deterministic_extractors import MultipleChoiceExtractor
 from ..utils.deterministic_evaluators import MultipleChoiceEvaluator
+from ..utils.prompt_templates import PromptTemplates
 
 
 class GPQADiamondBenchmark(BenchmarkBase):
@@ -83,19 +84,12 @@ class GPQADiamondBenchmark(BenchmarkBase):
         for i, question in enumerate(extended_questions):
             print(f"GPQA Question {i+1}/{len(extended_questions)}")
 
-            choices_text = "\n".join(
-                [
-                    f"{chr(65+j)}. {choice}"
-                    for j, choice in enumerate(question["choices"])
-                ]
+            # Use the multiple_choice_template from PromptTemplates
+            prompt = PromptTemplates.multiple_choice_template(
+                question=question["question"],
+                choices=question["choices"],
+                subject=question["subject"],
             )
-            prompt = f"""This is a graduate-level {question['subject']} question. Please think step by step and select the best answer.
-
-{question['question']}
-
-{choices_text}
-
-Answer: Let me think through this step by step."""
 
             try:
                 self._print_question_debug(question)

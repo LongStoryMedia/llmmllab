@@ -4,6 +4,7 @@ from ..base.benchmark_base import BenchmarkBase
 from ..base.result_types import BenchmarkResult
 from ..utils.inference import InferenceEngine
 from ..utils.deterministic_evaluators import MathEvaluator
+from ..utils.prompt_templates import PromptTemplates
 
 
 class Math500Benchmark(BenchmarkBase):
@@ -60,12 +61,8 @@ class Math500Benchmark(BenchmarkBase):
         for i, problem in enumerate(extended_problems):
             print(f"MATH Problem {i+1}/{len(extended_problems)}")
 
-            prompt = f"""Solve the following mathematical problem step by step. Provide your final answer clearly.
-            Do not include any additional explanations or comments. Only provide the final answer.
-            
-            Problem: {problem['problem']}
-            
-            Solution:"""
+            # Use the math_template from PromptTemplates
+            prompt = PromptTemplates.math_template(problem["problem"], show_work=True)
 
             try:
                 print(f"\n{'-'*80}")

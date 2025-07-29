@@ -4,6 +4,7 @@ from ..base.benchmark_base import BenchmarkBase
 from ..base.result_types import BenchmarkResult
 from ..utils.inference import InferenceEngine
 from ..utils.deterministic_evaluators import CodeEvaluator
+from ..utils.prompt_templates import PromptTemplates
 
 
 class HumanEvalBenchmark(BenchmarkBase):
@@ -91,10 +92,8 @@ class HumanEvalBenchmark(BenchmarkBase):
         for i, problem in enumerate(extended_problems):
             self.logger.info(f"HumanEval Problem {i+1}/{len(extended_problems)}")
 
-            prompt = f"""Complete the following Python function:
-
-{problem['prompt']}
-"""
+            # Use the code_template from PromptTemplates
+            prompt = PromptTemplates.code_template(problem["prompt"])
 
             try:
                 response = self.inference_engine.run_single_inference(

@@ -59,3 +59,18 @@ Instructions: Provide only the complete function implementation. Ensure your cod
 Instructions: Follow the given task exactly as specified. Pay attention to all requirements and constraints.
 
 Response:"""
+
+    @staticmethod
+    def livebench_template(question: str, category: str) -> str:
+        """Template for LiveBench questions of varying types."""
+        category_prompt = {
+            "reasoning": "Think through this step by step:",
+            "knowledge": "Provide an up-to-date, accurate response:",
+            "instruction_following": "Follow these instructions precisely:",
+        }.get(category, "Please answer the following question:")
+
+        return f"""{category_prompt}
+
+{question}
+
+Answer:"""

@@ -3,6 +3,7 @@ from typing import List, Dict, Any
 from ..base.benchmark_base import BenchmarkBase
 from ..base.result_types import BenchmarkResult
 from ..utils.inference import InferenceEngine
+from ..utils.prompt_templates import PromptTemplates
 
 
 class LiveBenchmark(BenchmarkBase):
@@ -73,8 +74,12 @@ class LiveBenchmark(BenchmarkBase):
             )
 
             try:
+                # Use livebench_template from PromptTemplates
+                prompt = PromptTemplates.livebench_template(
+                    question=question["question"], category=question["category"]
+                )
                 response = self.inference_engine.run_single_inference(
-                    model_id, question["question"], max_tokens=200, temperature=0.3
+                    model_id, prompt, max_tokens=200, temperature=0.3
                 )
                 model_response = response.get("response", "")
 

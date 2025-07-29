@@ -4,6 +4,7 @@ import re
 from ..base.benchmark_base import BenchmarkBase
 from ..base.result_types import BenchmarkResult
 from ..utils.inference import InferenceEngine
+from ..utils.prompt_templates import PromptTemplates
 
 
 class IFEvalBenchmark(BenchmarkBase):
@@ -59,8 +60,12 @@ class IFEvalBenchmark(BenchmarkBase):
             self.logger.info(f"IFEVAL Task {i+1}/{len(extended_tasks)}")
 
             try:
+                # Use instruction_following_template from PromptTemplates
+                prompt = PromptTemplates.instruction_following_template(
+                    task["instruction"]
+                )
                 response = self.inference_engine.run_single_inference(
-                    model_id, task["instruction"], max_tokens=200, temperature=0.3
+                    model_id, prompt, max_tokens=200, temperature=0.3
                 )
                 model_response = response.get("response", "")
 
