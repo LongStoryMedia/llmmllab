@@ -31,9 +31,6 @@ rsync -avzru \
     --exclude='llama.cpp/' \
     "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/benchmark_data/" "${SCRIPT_DIR}/benchmark_data/"
 
-# Create the target directory if it doesn't exist
-ssh ${NODE_USER}@${NODE_HOST} "mkdir -p ${NODE_CODE_PATH}"
-
 # Use rsync to sync the local code to the remote node
 rsync -avzru --delete \
     --exclude='.git/' \

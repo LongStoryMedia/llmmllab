@@ -22,6 +22,7 @@ from typing import Dict, List, Any, Optional
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import pandas as pd
+from regex import F
 import seaborn as sns
 from matplotlib.figure import Figure
 
@@ -249,7 +250,7 @@ class BenchmarkVisualizer:
 
         if len(latest_results) == 0:
             print("No data available for bar chart")
-            return None
+            return Figure()
 
         # Create subplots for individual benchmarks and average
         fig, axes = plt.subplots(2, 4, figsize=(20, 10))
