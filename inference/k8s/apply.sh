@@ -2,6 +2,10 @@
 
 set -e
 
+# Set default tag if not provided
+DOCKER_TAG=${DOCKER_TAG:-latest}
+echo "Deploying inference with tag: $DOCKER_TAG"
+
 # Create the namespace if it doesn't exist
 kubectl create namespace ollama || true
 
@@ -25,7 +29,7 @@ if [ ! -d "$(dirname "$0")/.secrets" ]; then
 fi
 
 if [ ! -f "$(dirname "$0")/.secrets/internal-api-key" ]; then
-    openssl rand -hex 16 >$(dirname "$0")/.secrets/internal-api-key
+    openssl rand -hex 16 > "$(dirname "$0")/.secrets/internal-api-key"
 fi
 
 # Create secrets for internal API access
@@ -39,6 +43,11 @@ kubectl apply -f "$(dirname "$0")/pvc.yaml" -n ollama --wait=true
 
 echo "Applying init script ConfigMap..."
 kubectl apply -f "$(dirname "$0")/init-script.yaml" -n ollama --wait=true
+
+echo "Updating deployment image to use tag: $DOCKER_TAG"
+# Create a temporary file with the updated image tag
+sed "s|image: 192.168.0.71:31500/inference:latest|image: 192.168.0.71:31500/inference:$DOCKER_TAG|g" "$(dirname "$0")/deployment.yaml" > "$(dirname "$0")/deployment.yaml.tmp"
+mv "$(dirname "$0")/deployment.yaml.tmp" "$(dirname "$0")/deployment.yaml"
 
 echo "Applying Ollama deployment..."
 kubectl apply -f "$(dirname "$0")/deployment.yaml" -n ollama --wait=true

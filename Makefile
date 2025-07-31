@@ -5,10 +5,12 @@ export HELM_KUBECONTEXT=lsnet
 
 inference:
 	@echo "Deploying inference service..."
+	$(eval BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD))
+	@echo "Using branch: $(BRANCH_NAME) for image tag"
 	rsync -avzru --delete --exclude="venv" ./inference/* lsm@lsnode-3:~/inference
-	ssh lsm@lsnode-3 "cd ~/inference && docker build -t 192.168.0.71:31500/inference:latest . --push"
+	ssh lsm@lsnode-3 "cd ~/inference && docker build -t 192.168.0.71:31500/inference:$(BRANCH_NAME) . --push"
 	chmod +x ./inference/k8s/apply.sh
-	./inference/k8s/apply.sh
+	DOCKER_TAG=$(BRANCH_NAME) ./inference/k8s/apply.sh
 	kubectl rollout restart deployment ollama -n ollama
 
 maistro:

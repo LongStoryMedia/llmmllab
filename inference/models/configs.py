@@ -1,7 +1,5 @@
-
-
 from sympy import true
-import config
+import inference.server.config as config
 from .rabbitmq_config import RabbitmqConfig
 
 
@@ -16,5 +14,5 @@ def rabbitmq_config() -> RabbitmqConfig:
         user=config.RABBITMQ_USER,
         password=config.RABBITMQ_PASSWORD,
         vhost=config.RABBITMQ_VHOST,
-        enabled=True
+        enabled=True,
     )

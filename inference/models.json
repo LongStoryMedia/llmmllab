@@ -1,0 +1,308 @@
+[
+    {
+        "id": "thudm-glm-4.1v-9b-thinking-bf16",
+        "name": "THUDM/GLM-4.1V-9B-Thinking-GGUF",
+        "model": "/models/glm-4.1v-9b-thinking/GLM-4.1V-9B-Thinking-BF16.gguf",
+        "pipeline": "GLM4VGGUFPipeline",
+        "modified_at": "2025-07-25",
+        "size": 9000000000,
+        "digest": "glm4v-9b-gguf-20250725",
+        "details": {
+            "parent_model": "THUDM/GLM-4.1V-9B-Thinking",
+            "format": "GGUF",
+            "family": "GLM",
+            "families": [
+                "GLM"
+            ],
+            "parameter_size": "9B",
+            "dtype": "BF16",
+            "quantization_level": "bf16",
+            "specialization": "ImageTextToText",
+            "gguf_file": "/models/glm-4.1v-9b-thinking/GLM-4.1V-9B-Thinking-BF16.gguf"
+        },
+        "task": "VisionTextToText"
+    },
+    {
+        "id": "thudm-glm-4.1v-9b-thinking",
+        "name": "THUDM/GLM-4.1V-9B-Thinking",
+        "model": "THUDM/GLM-4.1V-9B-Thinking",
+        "pipeline": "GLM4VPipeline",
+        "modified_at": "2025-07-11",
+        "size": 9000000000,
+        "digest": "glm4v-9b-20250711",
+        "details": {
+            "parent_model": "",
+            "format": "PyTorch",
+            "family": "GLM",
+            "families": [
+                "GLM"
+            ],
+            "parameter_size": "9B",
+            "dtype": "FP16",
+            "quantization_level": "q4",
+            "specialization": "ImageTextToText"
+        },
+        "task": "VisionTextToText"
+    },
+    {
+        "id": "stabilityai-stable-diffusion-3.5-large-turbo",
+        "name": "stabilityai/stable-diffusion-3.5-large-turbo",
+        "model": "stabilityai/stable-diffusion-3.5-large-turbo",
+        "pipeline": "StableDiffusion3Pipeline",
+        "modified_at": "",
+        "size": 0,
+        "digest": "",
+        "details": {
+            "parent_model": "",
+            "format": "",
+            "family": "",
+            "families": [],
+            "parameter_size": "8B",
+            "dtype": "BFP16",
+            "quantization_level": "nf4",
+            "specialization": "TextToImage"
+        },
+        "task": "TextToImage"
+    },
+    {
+        "id": "stabilityai-stable-diffusion-3.5-large",
+        "name": "stabilityai/stable-diffusion-3.5-large",
+        "model": "stabilityai/stable-diffusion-3.5-large",
+        "pipeline": "StableDiffusion3Pipeline",
+        "modified_at": "",
+        "size": 0,
+        "digest": "",
+        "details": {
+            "parent_model": "",
+            "format": "",
+            "family": "",
+            "families": [],
+            "parameter_size": "8.1B",
+            "dtype": "BFP16",
+            "quantization_level": "nf4",
+            "specialization": "TextToImage"
+        },
+        "task": "TextToImage"
+    },
+    {
+        "id": "stabilityai-stable-diffusion-3.5-medium",
+        "name": "stabilityai/stable-diffusion-3.5-medium",
+        "model": "stabilityai/stable-diffusion-3.5-medium",
+        "pipeline": "StableDiffusion3Pipeline",
+        "modified_at": "",
+        "size": 0,
+        "digest": "",
+        "details": {
+            "parent_model": "",
+            "format": "",
+            "family": "",
+            "families": [],
+            "parameter_size": "2.5B",
+            "dtype": "BFP16",
+            "specialization": "TextToImage"
+        },
+        "task": "TextToImage"
+    },
+    {
+        "id": "heartsync-nsfw-uncensored",
+        "name": "Heartsync/NSFW-Uncensored",
+        "model": "Heartsync/NSFW-Uncensored",
+        "pipeline": "StableDiffusionXLPipeline",
+        "modified_at": "",
+        "size": 0,
+        "digest": "",
+        "details": {
+            "parent_model": "",
+            "format": "",
+            "family": "",
+            "families": [],
+            "parameter_size": "2.5B",
+            "dtype": "FP16",
+            "specialization": "TextToImage"
+        },
+        "task": "TextToImage"
+    },
+    {
+        "id": "black-forest-labs-flux.1-dev",
+        "name": "black-forest-labs/FLUX.1-dev",
+        "model": "black-forest-labs/FLUX.1-dev",
+        "pipeline": "FluxPipeline",
+        "modified_at": "",
+        "size": 0,
+        "digest": "",
+        "lora_weights": [
+            {
+                "id": "heartsync-flux-nsfw-uncensored",
+                "name": "Heartsync/Flux-NSFW-uncensored",
+                "weight_name": "lora.safetensors",
+                "adapter_name": "uncensored",
+                "parent_model": "black-forest-labs/FLUX.1-dev"
+            }
+        ],
+        "details": {
+            "parent_model": "",
+            "format": "",
+            "family": "",
+            "families": [],
+            "parameter_size": "12B",
+            "dtype": "BFP16",
+            "quantization_level": "nf4",
+            "specialization": "TextToImage"
+        },
+        "task": "TextToImage"
+    },
+    {
+        "id": "stabilityai-stable-diffusion-xl-refiner-1.0",
+        "name": "stabilityai/stable-diffusion-xl-refiner-1.0",
+        "model": "stabilityai/stable-diffusion-xl-refiner-1.0",
+        "pipeline": "StableDiffusionXLImg2ImgPipeline",
+        "modified_at": "",
+        "size": 0,
+        "digest": "",
+        "details": {
+            "parent_model": "",
+            "format": "",
+            "family": "",
+            "families": [],
+            "parameter_size": "12B",
+            "dtype": "FP16",
+            "specialization": "ImageToImage"
+        },
+        "task": "ImageToImage"
+    },
+    {
+        "id": "black-forest-labs-flux.1-kontext-dev",
+        "name": "black-forest-labs/FLUX.1-Kontext-dev",
+        "model": "black-forest-labs/FLUX.1-Kontext-dev",
+        "pipeline": "FluxKontextPipeline",
+        "modified_at": "",
+        "size": 0,
+        "digest": "",
+        "lora_weights": [],
+        "details": {
+            "parent_model": "",
+            "format": "",
+            "family": "",
+            "families": [],
+            "parameter_size": "12B",
+            "dtype": "BFP16",
+            "quantization_level": "nf4",
+            "specialization": "ImageToImage"
+        },
+        "task": "ImageToImage"
+    },
+    {
+        "id": "mistralai-mixtral-8x7b-instruct-v0.1",
+        "name": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+        "model": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+        "pipeline": "Mixtral8x7bInstructPipe",
+        "modified_at": "2025-07-17",
+        "size": 87000000000,
+        "digest": "mixtral-8x7b-instruct-v0.1-20250717",
+        "details": {
+            "parent_model": "mistralai/Mixtral-8x7B-v0.1",
+            "format": "PyTorch",
+            "family": "Mixtral",
+            "families": [
+                "Mixtral",
+                "MoE"
+            ],
+            "parameter_size": "46.7B",
+            "dtype": "BF16",
+            "quantization_level": "q4",
+            "specialization": "TextToText"
+        },
+        "task": "TextToText"
+    },
+    {
+        "id": "qwen-qwen3-30b-a3b",
+        "name": "Qwen/Qwen3-30B-A3B",
+        "model": "Qwen/Qwen3-30B-A3B",
+        "pipeline": "Qwen30A3BPipe",
+        "modified_at": "2025-07-20",
+        "size": 30500000000,
+        "digest": "qwen3-30b-a3b-20250720",
+        "details": {
+            "parent_model": "Qwen/Qwen3-30B",
+            "format": "PyTorch",
+            "family": "Qwen",
+            "families": [
+                "Qwen",
+                "MoE"
+            ],
+            "parameter_size": "30.5B",
+            "dtype": "BF16",
+            "quantization_level": "q4",
+            "specialization": "TextToText"
+        },
+        "task": "TextToText"
+    },
+    {
+        "id": "qwen3-30b-a3b-q4-k-m",
+        "name": "Qwen/Qwen3-30B-A3B-GGUF",
+        "model": "/models/qwen3-30b-a3b/qwen3-30b-a3b-iq4-xs-abliterated.gguf",
+        "pipeline": "Qwen30A3BQ4KMPipe",
+        "modified_at": "2025-07-20",
+        "size": 30500000000,
+        "digest": "qwen3-30b-a3b-20250720",
+        "details": {
+            "parent_model": "Qwen/Qwen3-30B-A3B",
+            "gguf_file": "/models/qwen3-30b-a3b/qwen3-30b-a3b-iq4-xs-abliterated.gguf",
+            "format": "gguf",
+            "family": "qwen",
+            "families": [
+                "Qwen",
+                "MoE"
+            ],
+            "parameter_size": "30.5B",
+            "quantization_level": "Q4_K_M",
+            "dtype": "BF16",
+            "specialization": "TextToText"
+        },
+        "task": "TextToText"
+    },
+    {
+        "id": "qwen2.5-vl-32b-instruct-q4-k-m",
+        "name": "Qwen/Qwen2.5-VL-32B-Instruct-GGUF",
+        "model": "/models/qwen2.5-vl-32b-instruct/Qwen_Qwen2.5-VL-32B-Instruct-IQ4_XS.gguf",
+        "pipeline": "Qwen25VLGGUFPipeline",
+        "modified_at": "2025-07-23",
+        "size": 72000000000,
+        "digest": "qwen2.5-vl-72b-instruct-q3-k-xl-20250723",
+        "details": {
+            "specialization": "ImageTextToText",
+            "quantization_level": "q4_k_m",
+            "format": "gguf",
+            "family": "qwen",
+            "families": [
+                "Qwen"
+            ],
+            "parameter_size": "32B",
+            "gguf_file": "/models/qwen2.5-vl-32b-instruct/Qwen_Qwen2.5-VL-32B-Instruct-IQ4_XS.gguf",
+            "parent_model": "Qwen/Qwen2.5-VL-32B-Instruct"
+        },
+        "task": "VisionTextToText"
+    },
+    {
+        "id": "nomic-embed-text-v2",
+        "name": "nomic-ai/nomic-embed-text-v2-moe",
+        "model": "/models/nomic-embed-text-v2-moe/nomic-embed-text-v2-moe.gguf",
+        "pipeline": "NomicEmbedTextPipe",
+        "modified_at": "2025-07-23",
+        "size": 72000000000,
+        "digest": "nomic-embed-text-v2-moe-20250723",
+        "details": {
+            "specialization": "Embedding",
+            "quantization_level": "q4_k_m",
+            "format": "gguf",
+            "family": "qwen",
+            "families": [
+                "Qwen"
+            ],
+            "parameter_size": "475M",
+            "gguf_file": "/models/nomic-embed-text-v2-moe/nomic-embed-text-v2-moe.gguf",
+            "parent_model": "nomic-ai/nomic-embed-text-v2-moe"
+        },
+        "task": "Embedding"
+    }
+]

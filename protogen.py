@@ -63,11 +63,13 @@ class ProtobufGenerator:
             "proto_files": [],
             "languages": [],
             "output": {
-                "python": os.path.join(self.project_root, "inference", "protos"),
+                "python": os.path.join(
+                    self.project_root, "inference", "server", "protos"
+                ),
                 "go": os.path.join(self.project_root, "maistro", "proto"),
             },
             "generate_stubs": True,
-            "verbose": False
+            "verbose": False,
         }
 
         # Merge default config with provided config
@@ -93,7 +95,9 @@ class ProtobufGenerator:
 
         # Check protoc
         if not self._check_command("protoc"):
-            logger.error("protoc is not installed. Please install Protocol Buffers compiler.")
+            logger.error(
+                "protoc is not installed. Please install Protocol Buffers compiler."
+            )
             return False
 
         logger.info(f"✅ protoc found: {shutil.which('protoc')}")
@@ -104,11 +108,13 @@ class ProtobufGenerator:
                 subprocess.check_call(
                     [sys.executable, "-c", "import grpc_tools.protoc"],
                     stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
+                    stderr=subprocess.PIPE,
                 )
                 logger.info("✅ grpc_tools.protoc found")
             except (subprocess.CalledProcessError, ImportError):
-                logger.error("grpc_tools.protoc not found. Please install with: pip install grpcio-tools")
+                logger.error(
+                    "grpc_tools.protoc not found. Please install with: pip install grpcio-tools"
+                )
                 return False
 
         if "go" in self.config["languages"]:
@@ -141,7 +147,7 @@ class ProtobufGenerator:
 
         packages = [
             "google.golang.org/protobuf/cmd/protoc-gen-go@latest",
-            "google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest"
+            "google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest",
         ]
 
         for pkg in packages:
@@ -149,7 +155,7 @@ class ProtobufGenerator:
                 subprocess.check_call(
                     ["go", "install", pkg],
                     stdout=subprocess.PIPE if not self.config["verbose"] else None,
-                    stderr=subprocess.PIPE if not self.config["verbose"] else None
+                    stderr=subprocess.PIPE if not self.config["verbose"] else None,
                 )
                 logger.info(f"✅ Installed {pkg}")
             except subprocess.CalledProcessError as e:
@@ -215,7 +221,9 @@ class ProtobufGenerator:
         python_package = os.path.basename(output_dir)
 
         # Create a temporary .protofix file to instruct protoc to use correct Python imports
-        proto_fix_content = f"import_path={parent_dir}\npython_package={python_package}\n"
+        proto_fix_content = (
+            f"import_path={parent_dir}\npython_package={python_package}\n"
+        )
         proto_fix_file = os.path.join(self.project_root, ".protofix")
         with open(proto_fix_file, "w") as f:
             f.write(proto_fix_content)
@@ -223,7 +231,9 @@ class ProtobufGenerator:
         logger.debug(f"Created .protofix file with content: {proto_fix_content}")
 
         cmd = [
-            sys.executable, "-m", "grpc_tools.protoc",
+            sys.executable,
+            "-m",
+            "grpc_tools.protoc",
             f"--proto_path={self.config['proto_dir']}",
             f"--python_out={output_dir}",
             f"--grpc_python_out={output_dir}",
@@ -236,13 +246,13 @@ class ProtobufGenerator:
             subprocess.check_call(
                 cmd,
                 stdout=subprocess.PIPE if not self.config["verbose"] else None,
-                stderr=subprocess.PIPE if not self.config["verbose"] else None
+                stderr=subprocess.PIPE if not self.config["verbose"] else None,
             )
 
             # Create __init__.py in the output directory
             init_file = os.path.join(output_dir, "__init__.py")
             if not os.path.exists(init_file):
-                with open(init_file, 'w') as f:
+                with open(init_file, "w") as f:
                     f.write("# Auto-generated package marker\n")
 
             # Now we need to fix the imports in all generated grpc files
@@ -322,12 +332,13 @@ class ProtobufGenerator:
         # Get GOPATH
         try:
             go_path = subprocess.check_output(
-                ["go", "env", "GOPATH"],
-                universal_newlines=True
+                ["go", "env", "GOPATH"], universal_newlines=True
             ).strip()
 
             # Add GOPATH/bin to PATH
-            os.environ["PATH"] = os.path.join(go_path, "bin") + os.pathsep + os.environ["PATH"]
+            os.environ["PATH"] = (
+                os.path.join(go_path, "bin") + os.pathsep + os.environ["PATH"]
+            )
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to get GOPATH: {e}")
             return False
@@ -338,7 +349,7 @@ class ProtobufGenerator:
             f"--go_out={output_dir}",
             "--go_opt=paths=source_relative",
             f"--go-grpc_out={output_dir}",
-            "--go-grpc_opt=paths=source_relative"
+            "--go-grpc_opt=paths=source_relative",
         ] + proto_files
 
         logger.debug(f"Executing command: {' '.join(cmd)}")
@@ -347,7 +358,7 @@ class ProtobufGenerator:
             subprocess.check_call(
                 cmd,
                 stdout=subprocess.PIPE if not self.config["verbose"] else None,
-                stderr=subprocess.PIPE if not self.config["verbose"] else None
+                stderr=subprocess.PIPE if not self.config["verbose"] else None,
             )
 
             logger.info(f"Go code generation successful! Output: {output_dir}")
@@ -367,8 +378,8 @@ class ProtobufGenerator:
         # Find all *_pb2*.py files (both _pb2.py and _pb2_grpc.py)
         pb_files = []
         for file in os.listdir(proto_dir):
-            if ('_pb2' in file or '_grpc' in file) and file.endswith('.py'):
-                if not file.startswith('__'):  # Skip __init__.py
+            if ("_pb2" in file or "_grpc" in file) and file.endswith(".py"):
+                if not file.startswith("__"):  # Skip __init__.py
                     pb_files.append(os.path.splitext(file)[0])
 
         # Create stub files for each module
@@ -389,11 +400,15 @@ class ProtobufGenerator:
 
                 for name, obj in inspect.getmembers(module):
                     # Skip private attributes and imports
-                    if name.startswith('_') or name in ('sys', 'warnings', '_descriptor'):
+                    if name.startswith("_") or name in (
+                        "sys",
+                        "warnings",
+                        "_descriptor",
+                    ):
                         continue
 
                     # Look for message classes (they have a DESCRIPTOR attribute)
-                    if hasattr(obj, 'DESCRIPTOR'):
+                    if hasattr(obj, "DESCRIPTOR"):
                         message_classes.append(name)
 
                     # Look for enum values (they're integers with specific pattern)
@@ -408,7 +423,7 @@ class ProtobufGenerator:
                     "from google.protobuf import descriptor as _descriptor",
                     "from google.protobuf import message as _message",
                     "from typing import ClassVar, Iterable, Mapping, Optional, Text, Union, List, Dict, Any, Sequence",
-                    ""
+                    "",
                 ]
 
                 # Add enum values
@@ -421,28 +436,38 @@ class ProtobufGenerator:
                 # Add class stubs for each message type
                 for cls_name in message_classes:
                     stub_content.append(f"class {cls_name}(_message.Message):")
-                    stub_content.append(f"    DESCRIPTOR: ClassVar[_descriptor.Descriptor]")
-                    stub_content.append(f"    def __init__(self, **kwargs) -> None: ...")
-                    stub_content.append(f"    def HasField(self, field_name: str) -> bool: ...")
-                    stub_content.append(f"    def ClearField(self, field_name: str) -> None: ...")
+                    stub_content.append(
+                        f"    DESCRIPTOR: ClassVar[_descriptor.Descriptor]"
+                    )
+                    stub_content.append(
+                        f"    def __init__(self, **kwargs) -> None: ..."
+                    )
+                    stub_content.append(
+                        f"    def HasField(self, field_name: str) -> bool: ..."
+                    )
+                    stub_content.append(
+                        f"    def ClearField(self, field_name: str) -> None: ..."
+                    )
                     stub_content.append("")
 
                 # For _grpc.py files, add stubs for service classes
-                if '_grpc' in module_base_name:
+                if "_grpc" in module_base_name:
                     # Look for stub/servicer classes
                     for name, obj in inspect.getmembers(module):
-                        if name.endswith('Stub') and inspect.isclass(obj):
+                        if name.endswith("Stub") and inspect.isclass(obj):
                             stub_content.append(f"class {name}:")
-                            stub_content.append(f"    def __init__(self, channel: Any) -> None: ...")
+                            stub_content.append(
+                                f"    def __init__(self, channel: Any) -> None: ..."
+                            )
                             stub_content.append("")
-                        elif name.endswith('Servicer') and inspect.isclass(obj):
+                        elif name.endswith("Servicer") and inspect.isclass(obj):
                             stub_content.append(f"class {name}:")
                             stub_content.append(f"    def __init__(self) -> None: ...")
                             stub_content.append("")
 
                 # Write the stub file
-                with open(stub_file, 'w') as f:
-                    f.write('\n'.join(stub_content))
+                with open(stub_file, "w") as f:
+                    f.write("\n".join(stub_content))
 
                 logger.info(f"Created stub file: {stub_file}")
 
@@ -485,7 +510,7 @@ class ProtobufGenerator:
         return success
 
     @staticmethod
-    def from_arguments(args: argparse.Namespace) -> 'ProtobufGenerator':
+    def from_arguments(args: argparse.Namespace) -> "ProtobufGenerator":
         """Create a generator from command-line arguments.
 
         Args:
@@ -498,14 +523,14 @@ class ProtobufGenerator:
 
         # Load config from file if specified
         if args.config:
-            with open(args.config, 'r') as f:
+            with open(args.config, "r") as f:
                 config = json.load(f)
         else:
             # Build config from arguments
-            config["languages"] = args.languages.split(',') if args.languages else []
+            config["languages"] = args.languages.split(",") if args.languages else []
 
             if args.proto_files:
-                config["proto_files"] = args.proto_files.split(',')
+                config["proto_files"] = args.proto_files.split(",")
 
             if args.proto_dir:
                 config["proto_dir"] = args.proto_dir
@@ -536,44 +561,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--languages",
         type=str,
-        help="Comma-separated list of languages to generate (e.g., python,go)"
+        help="Comma-separated list of languages to generate (e.g., python,go)",
     )
 
     parser.add_argument(
-        "--proto_files",
-        type=str,
-        help="Comma-separated list of proto files to process"
+        "--proto_files", type=str, help="Comma-separated list of proto files to process"
     )
 
     parser.add_argument(
-        "--proto_dir",
-        type=str,
-        help="Directory containing proto files"
+        "--proto_dir", type=str, help="Directory containing proto files"
     )
 
     parser.add_argument(
-        "--python_out",
-        type=str,
-        help="Output directory for Python code"
+        "--python_out", type=str, help="Output directory for Python code"
     )
 
-    parser.add_argument(
-        "--go_out",
-        type=str,
-        help="Output directory for Go code"
-    )
+    parser.add_argument("--go_out", type=str, help="Output directory for Go code")
 
-    parser.add_argument(
-        "--config",
-        type=str,
-        help="Path to JSON config file"
-    )
+    parser.add_argument("--config", type=str, help="Path to JSON config file")
 
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Enable verbose output"
-    )
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
 
     return parser.parse_args()
 

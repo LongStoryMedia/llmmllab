@@ -1,0 +1,16 @@
+# Server requirements
+fastapi>=0.100.0
+uvicorn>=0.22.0
+grpcio>=1.56.0
+grpcio-tools>=1.56.0
+protobuf>=4.23.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+httpx>=0.24.0
+pika>=1.3.0  # For RabbitMQ integration
+redis>=4.5.0
+prometheus-client>=0.17.0  # For metrics
+tenacity>=8.2.0  # For retries
+structlog>=23.1.0  # For structured logging
+huggingface-hub>=0.16.0  # For model hub integration
+vllm>=0.10.0  # For serving large language models
