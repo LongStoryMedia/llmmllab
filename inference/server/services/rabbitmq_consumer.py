@@ -1,11 +1,8 @@
-from ast import In
 import json
 import asyncio
-import uuid
 import pika
 from pika.adapters.asyncio_connection import AsyncioConnection
 import threading
-import time
 import datetime
 from pika.channel import Channel
 from pika.spec import BasicProperties, Basic
@@ -15,9 +12,8 @@ from typing import Any, Optional
 from models.inference_queue_message import InferenceQueueMessage
 from models.configs import rabbitmq_config
 from models.rabbitmq_config import RabbitmqConfig
-from services.hardware_manager import hardware_manager
-from services.image_generator import ImageGenerator, image_generator
-from inference.server.config import logger
+from services.image_generator import image_generator
+from server.config import logger
 import os
 
 

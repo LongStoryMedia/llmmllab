@@ -48,16 +48,19 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from huggingface_hub import login
 
-from .config import CONFIG_DIR, IMAGE_DIR
-from .routers import chat, images, loras, models, resources
-from .routers.openai_compatible import cleanup_vllm_service, initialize_vllm_service
-from .routers.openai_compatible import router as openai_router
-from .services.cleanup_service import cleanup_service
-from .services.hardware_manager import hardware_manager  # Import hardware manager
-from .services.rabbitmq_consumer import rabbitmq_consumer  # Import RabbitMQ consumer
+from server.config import CONFIG_DIR, IMAGE_DIR
+from server.routers import chat, images, models, resources
 
-# Set PyTorch memory management environment variable to avoid fragmentation
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+# from server.routers.openai_compatible import (
+#     cleanup_vllm_service,
+#     initialize_vllm_service,
+# )
+# from server.routers.openai_compatible import router as openai_router
+from server.services.cleanup_service import cleanup_service
+from server.services.hardware_manager import hardware_manager  # Import hardware manager
+from server.services.rabbitmq_consumer import (
+    rabbitmq_consumer,
+)  # Import RabbitMQ consumer
 
 # Create required directories if they don't exist
 os.makedirs(IMAGE_DIR, exist_ok=True)
@@ -88,16 +91,16 @@ async def lifespan(app: FastAPI):
     cleanup_service.start()
     grpc_process = None
 
-    # Initialize vLLM service for OpenAI compatibility
-    print("Initializing vLLM service...")
-    try:
-        # Get model name from environment or use default
-        vllm_model = os.environ.get("VLLM_MODEL", "microsoft/DialoGPT-medium")
-        await initialize_vllm_service(vllm_model)
-        print(f"vLLM service initialized with model: {vllm_model}")
-    except Exception as e:
-        print(f"Warning: Failed to initialize vLLM service: {e}")
-        print("OpenAI-compatible endpoints may not be available")
+    # # Initialize vLLM service for OpenAI compatibility
+    # print("Initializing vLLM service...")
+    # try:
+    #     # Get model name from environment or use default
+    #     # vllm_model = os.environ.get("VLLM_MODEL", "microsoft/DialoGPT-medium")
+    #     # await initialize_vllm_service(vllm_model)
+    #     print(f"vLLM service initialized with model: {vllm_model}")
+    # except Exception as e:
+    #     print(f"Warning: Failed to initialize vLLM service: {e}")
+    #     print("OpenAI-compatible endpoints may not be available")
 
     # Initialize and start RabbitMQ consumer
     print("Starting RabbitMQ consumer...")
@@ -114,15 +117,15 @@ async def lifespan(app: FastAPI):
 
         # Start the gRPC server in a subprocess for live reload support
         print("Starting gRPC server subprocess...")
-        grpc_process = subprocess.Popen(
-            [
-                sys.executable,
-                os.path.join(os.path.dirname(__file__), "run_grpc_server.py"),
-                "--port",
-                "50051",
-            ]
-        )
-        print(f"gRPC server started with PID {grpc_process.pid}")
+        # grpc_process = subprocess.Popen(
+        #     [
+        #         sys.executable,
+        #         os.path.join(os.path.dirname(__file__), "run_grpc_server.py"),
+        #         "--port",
+        #         "50051",
+        #     ]
+        # )
+        # print(f"gRPC server started with PID {grpc_process.pid}")
     except Exception as e:
         print(f"Error starting RabbitMQ consumer: {e}")
         print("RabbitMQ integration will not be available")
@@ -146,7 +149,7 @@ async def lifespan(app: FastAPI):
 
         # Stop vLLM service
         try:
-            await cleanup_vllm_service()
+            # await cleanup_vllm_service()
             print("vLLM service shutdown completed")
         except Exception as e:
             print(f"Error stopping vLLM service: {e}")
@@ -183,12 +186,11 @@ app = FastAPI(
 # Include routers
 app.include_router(images.router)
 app.include_router(models.router)
-app.include_router(loras.router)  # Add the LoRA router
 app.include_router(resources.router)
 app.include_router(chat.router)
 
 # Include OpenAI-compatible router
-app.include_router(openai_router, tags=["openai-compatible"])
+# app.include_router(openai_router, tags=["openai-compatible"])
 
 # Add CORS middleware
 app.add_middleware(
@@ -225,16 +227,16 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Comprehensive health check endpoint."""
-    from .routers.openai_compatible import vllm_service
+    # from .routers.openai_compatible import vllm_service
 
     health_status = {
         "status": "healthy",
         "services": {
             "hardware_manager": "active",
-            "vllm_service": {
-                "status": "ready" if vllm_service.is_ready() else "not_ready",
-                "model": vllm_service.model_name or "not_loaded",
-            },
+            # "vllm_service": {
+            #     "status": "ready" if vllm_service.is_ready() else "not_ready",
+            #     "model": vllm_service.model_name or "not_loaded",
+            # },
         },
         "cuda_available": False,
         "cuda_devices": 0,

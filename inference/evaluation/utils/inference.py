@@ -28,7 +28,7 @@ try:
     ):
 
         # Try to import the modules
-        from pipelines.factory import pipeline_factory
+        from runner.pipelines.factory import pipeline_factory
         from models import MessageContent, Message, MessageRole, ChatReq
         from models import ModelParameters, MessageContentType
 
@@ -46,7 +46,7 @@ class InferenceEngine:
 
     def __init__(self):
         """Initialize the inference engine."""
-        self.logger = logging.getLogger("benchmark.inference")
+        self.logger = logging.getLogger("evaluation.utils.inference")
 
     def _mock_inference(self, prompt: str, max_tokens: int = 100) -> Dict[str, Any]:
         """
@@ -90,7 +90,7 @@ class InferenceEngine:
         self,
         model_id: str,
         prompt: str,
-        max_tokens: int = 100,
+        max_tokens: int = 10000,
         temperature: float = 0.7,
     ) -> Dict[str, Any]:
         """
@@ -171,18 +171,3 @@ class InferenceEngine:
         except Exception as e:
             self.logger.error(f"Error running inference: {str(e)}")
             return self._mock_inference(prompt, max_tokens)
-
-        for response in result_generator:
-            if response.message.content and len(response.message.content) > 0:
-                full_response += response.message.content[0].text or ""
-
-            if response.done:
-                final_metrics = {
-                    "total_duration": getattr(response, "total_duration", 0),
-                    "load_duration": getattr(response, "load_duration", 0),
-                    "eval_count": getattr(response, "eval_count", 0),
-                }
-                break
-
-        final_metrics["response"] = full_response
-        return final_metrics

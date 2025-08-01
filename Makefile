@@ -5,7 +5,7 @@ export HELM_KUBECONTEXT=lsnet
 
 inference:
 	@echo "Deploying inference service..."
-	$(eval BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD))
+	$(eval BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD | tr '/' '.'))
 	@echo "Using branch: $(BRANCH_NAME) for image tag"
 	rsync -avzru --delete --exclude="venv" ./inference/* lsm@lsnode-3:~/inference
 	ssh lsm@lsnode-3 "cd ~/inference && docker build -t 192.168.0.71:31500/inference:$(BRANCH_NAME) . --push"
@@ -44,7 +44,7 @@ start-ui:
 inference-dev:
 	@echo "Starting inference service in development mode..."
 	chmod +x ./inference/sync-code.sh
-	./inference/sync-code.sh -w & kubectl logs -f -n ollama deployment/ollama
+	kubectl logs -f -n ollama deployment/ollama & ./inference/sync-code.sh -w
 
 gen:
 	@echo "generating models..."

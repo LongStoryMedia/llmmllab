@@ -3,22 +3,26 @@ Main gRPC server implementation for the inference service.
 """
 
 from huggingface_hub import login
-from .protos.inference_pb2_grpc import InferenceServiceServicer
-from .protos import (
-    chat_req_pb2,
-    chat_response_pb2,
-    generate_req_pb2,
-    generate_response_pb2,
-    embedding_req_pb2,
-    embedding_response_pb2,
-    image_generation_request_pb2,
-    image_generation_response_pb2,
+from server.protos.inference_pb2_grpc import InferenceServiceServicer
+
+# Import specific classes instead of modules to make linter happy
+from server.protos.chat_req_pb2 import ChatReq
+from server.protos.chat_response_pb2 import ChatResponse
+from server.protos.generate_req_pb2 import GenerateReq
+from server.protos.generate_response_pb2 import GenerateResponse
+from server.protos.embedding_req_pb2 import EmbeddingReq
+from server.protos.embedding_response_pb2 import EmbeddingResponse
+from server.protos.image_generation_request_pb2 import ImageGenerateRequest
+from server.protos.image_generation_response_pb2 import ImageGenerateResponse
+
+# Keep module imports for other uses
+from server.protos import (
     inference_pb2,
     inference_pb2_grpc,
 )
 
 # We'll import service classes later to avoid circular imports
-from .config import (
+from server.config import (
     logger,
     get_grpc_config,
 )
@@ -52,9 +56,9 @@ class InferenceServicer(InferenceServiceServicer):
 
     def __init__(self):
         # Load service classes using our helper to avoid circular imports
-        from .grpc.chat_service import ChatService
-        from .grpc.image_service import ImageService
-        from .grpc.embedding_service import EmbeddingService
+        from .grpc_services.chat_service import ChatService
+        from .grpc_services.image_service import ImageService
+        from .grpc_services.embedding_service import EmbeddingService
 
         self.logger = logger
 
@@ -212,28 +216,28 @@ def serve(port=50051):
                 method_handlers = {
                     "ChatStream": grpc.stream_stream_rpc_method_handler(
                         servicer.ChatStream,
-                        request_deserializer=chat_req_pb2.ChatReq.FromString,
-                        response_serializer=chat_response_pb2.ChatResponse.SerializeToString,
+                        request_deserializer=ChatReq.FromString,
+                        response_serializer=ChatResponse.SerializeToString,
                     ),
                     "GenerateStream": grpc.stream_stream_rpc_method_handler(
                         servicer.GenerateStream,
-                        request_deserializer=generate_req_pb2.GenerateReq.FromString,
-                        response_serializer=generate_response_pb2.GenerateResponse.SerializeToString,
+                        request_deserializer=GenerateReq.FromString,
+                        response_serializer=GenerateResponse.SerializeToString,
                     ),
                     "GetEmbedding": grpc.unary_unary_rpc_method_handler(
                         servicer.GetEmbedding,
-                        request_deserializer=embedding_req_pb2.EmbeddingReq.FromString,
-                        response_serializer=embedding_response_pb2.EmbeddingResponse.SerializeToString,
+                        request_deserializer=EmbeddingReq.FromString,
+                        response_serializer=EmbeddingResponse.SerializeToString,
                     ),
                     "GenerateImage": grpc.unary_unary_rpc_method_handler(
                         servicer.GenerateImage,
-                        request_deserializer=image_generation_request_pb2.ImageGenerateRequest.FromString,
-                        response_serializer=image_generation_response_pb2.ImageGenerateResponse.SerializeToString,
+                        request_deserializer=ImageGenerateRequest.FromString,
+                        response_serializer=ImageGenerateResponse.SerializeToString,
                     ),
                     "EditImage": grpc.unary_unary_rpc_method_handler(
                         servicer.EditImage,
-                        request_deserializer=image_generation_request_pb2.ImageGenerateRequest.FromString,
-                        response_serializer=image_generation_response_pb2.ImageGenerateResponse.SerializeToString,
+                        request_deserializer=ImageGenerateRequest.FromString,
+                        response_serializer=ImageGenerateResponse.SerializeToString,
                     ),
                 }
 
@@ -319,7 +323,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Create required directories if they don't exist
-    from .config import IMAGE_DIR, CONFIG_DIR
+    from server.config import IMAGE_DIR, CONFIG_DIR
 
     os.makedirs(IMAGE_DIR, exist_ok=True)
     os.makedirs(CONFIG_DIR, exist_ok=True)

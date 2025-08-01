@@ -1,19 +1,15 @@
-import unittest
-import time
-from unittest import mock
 import pytest
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import patch, MagicMock
 
-from inference.test.conftest import mock_pipeline
-from pipelines.factory import PipelineCacheEntry
+from runner.pipelines.factory import PipelineCacheEntry
 from models.model import Model
-from pipelines.base_pipeline import BasePipeline
+from runner.pipelines.base_pipeline import BasePipeline
 
 
 class TestPipelineFactory:
     """Test cases for the PipelineFactory class."""
 
-    @patch('pipelines.factory.PipelineFactory.create_pipeline')
+    @patch("pipelines.factory.PipelineFactory.create_pipeline")
     def test_get_pipeline_caching(self, mock_create_pipeline):
         """Test that get_pipeline properly caches and returns pipelines."""
         # Arrange
@@ -51,7 +47,7 @@ class TestPipelineFactory:
         # create_pipeline should not be called again
         mock_create_pipeline.assert_not_called()
 
-    @patch('pipelines.factory.time')
+    @patch("pipelines.factory.time")
     def test_pipeline_cache_entry_timestamp(self, mock_time):
         """Test that PipelineCacheEntry correctly records and updates timestamps."""
         # Arrange
@@ -80,8 +76,8 @@ class TestPipelineFactory:
         # Assert
         assert explicit_entry.last_accessed == 1500.0
 
-    @patch('threading.Thread')
-    @patch('pipelines.factory.time')
+    @patch("threading.Thread")
+    @patch("pipelines.factory.time")
     def test_cleanup_expired_entries(self, mock_time, mock_thread):
         """Test that expired entries are correctly cleaned up."""
         # Arrange
@@ -99,7 +95,9 @@ class TestPipelineFactory:
         # Set up cache entries with different timestamps
         mock_pipeline._pipelines = {
             "model1": PipelineCacheEntry(mock_pipeline1, timestamp=800.0),  # expired
-            "model2": PipelineCacheEntry(mock_pipeline2, timestamp=950.0),  # not expired
+            "model2": PipelineCacheEntry(
+                mock_pipeline2, timestamp=950.0
+            ),  # not expired
             "model3": PipelineCacheEntry(mock_pipeline3, timestamp=600.0),  # expired
         }
 
@@ -170,8 +168,8 @@ class TestPipelineFactory:
         assert len(mock_pipeline._pipelines) == 0
         mock_pipeline2.model.to.assert_called_once_with("cpu")
 
-    @patch('importlib.import_module')
-    @patch('pipelines.factory.logging.getLogger')
+    @patch("importlib.import_module")
+    @patch("pipelines.factory.logging.getLogger")
     def test_pipeline_validation(self, mock_logger, mock_import_module):
         """Test that pipelines are validated as BasePipeline instances."""
         mock_pipeline = MagicMock(spec=BasePipeline)
@@ -200,7 +198,7 @@ class TestPipelineFactory:
         mock_pipeline._available_models = {model_id: mock_model}
 
         # Act & Assert - Test with non-BasePipeline instance
-        with patch('pipelines.factory.SD3Pipe', return_value=mock_non_base_pipeline):
+        with patch("pipelines.factory.SD3Pipe", return_value=mock_non_base_pipeline):
             with pytest.raises(TypeError) as excinfo:
                 mock_pipeline.create_pipeline(mock_model)
 

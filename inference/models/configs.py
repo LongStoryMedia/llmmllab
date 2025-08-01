@@ -1,5 +1,5 @@
 from sympy import true
-import inference.server.config as config
+import server.config as config
 from .rabbitmq_config import RabbitmqConfig
 
 

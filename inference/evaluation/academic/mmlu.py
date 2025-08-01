@@ -163,13 +163,13 @@ class MMLUBenchmark(BenchmarkBase):
                 if is_correct:
                     subject_scores[q["subject"]]["correct"] += 1
 
-        questions_processed = False
-
-        # Try to get questions from HuggingFace dataset first
+        # If dataset_path is provided, load from HuggingFace
         if dataset_path:
             try:
                 # Load dataset with proper error handling
-                dataset = self.load_dataset_from_huggingface(dataset_path)
+                dataset = self.load_dataset_from_huggingface(
+                    dataset_path, config_name="all", num_samples=num_samples
+                )
 
                 if dataset and hasattr(dataset, "__iter__"):
                     self.logger.info(f"Successfully loaded dataset: {dataset_path}")
@@ -191,19 +191,28 @@ class MMLUBenchmark(BenchmarkBase):
                         aq(q)
                         c += 1
 
-                    questions_processed = True
-
                 else:
-                    self.logger.warning(
-                        "Dataset is empty or invalid, falling back to sample questions"
+                    self.logger.error("Dataset is empty or invalid")
+                    return BenchmarkResult(
+                        score=0.0,
+                        total_questions=0,
+                        correct_answers=0,
+                        detailed_results=[],
+                        metadata={"error": "Dataset is empty or invalid"},
                     )
 
             except Exception as e:
                 self.logger.error(f"Error loading HuggingFace dataset: {str(e)}")
-                self.logger.info("Falling back to sample questions")
+                return BenchmarkResult(
+                    score=0.0,
+                    total_questions=0,
+                    correct_answers=0,
+                    detailed_results=[],
+                    metadata={"error": str(e)},
+                )
 
-        # Fall back to sample questions if dataset loading failed or no dataset specified
-        if not questions_processed:
+        # If no dataset_path is provided, use sample questions
+        else:
             questions = self.get_sample_questions()
 
             # Filter by subjects if specified
@@ -287,8 +296,22 @@ class MMLUBenchmark(BenchmarkBase):
         extracted_answer, confidence = self.extractor.extract(full_response, question)
         print("\nEXTRACTION:")
         print(f"Extracted answer: {extracted_answer} (confidence: {confidence:.2f})")
+
+        # Convert the answer to string if it's an integer
+        correct_answer = question["answer"]
+        if isinstance(correct_answer, int):
+            # Handle both 0-based indexing (from HuggingFace dataset) and 1-based indexing
+            if (
+                correct_answer >= 0 and correct_answer <= 3
+            ):  # 0-based indexing (0,1,2,3)
+                correct_answer = chr(65 + correct_answer)  # 0->A, 1->B, 2->C, 3->D
+            else:  # 1-based indexing (1,2,3,4)
+                correct_answer = chr(64 + correct_answer)  # 1->A, 2->B, 3->C, 4->D
+        elif not isinstance(correct_answer, str):
+            correct_answer = str(correct_answer)
+
         is_correct, eval_confidence, _ = self.evaluator.evaluate(
-            extracted_answer, question["answer"], question, confidence
+            extracted_answer, correct_answer, question, confidence
         )
         print(f"Correct? {'YES' if is_correct else 'NO'}")
         return is_correct, {
@@ -298,7 +321,7 @@ class MMLUBenchmark(BenchmarkBase):
                 if len(question["question"]) > 100
                 else question["question"]
             ),
-            "correct_answer": question["answer"],
+            "correct_answer": correct_answer,
             "model_answer": extracted_answer,
             "extraction_confidence": confidence,
             "eval_confidence": eval_confidence,
@@ -314,5 +337,17 @@ class MMLUBenchmark(BenchmarkBase):
         print("CHOICES:")
         for i, choice in enumerate(question["choices"]):
             print(f"{chr(65+i)}. {choice}")
-        print(f"CORRECT ANSWER: {question['answer']}")
+
+        # Convert the answer to letter format if it's an integer
+        answer_display = question["answer"]
+        if isinstance(answer_display, int):
+            # Handle both 0-based indexing (from HuggingFace dataset) and 1-based indexing
+            if (
+                answer_display >= 0 and answer_display <= 3
+            ):  # 0-based indexing (0,1,2,3)
+                answer_display = chr(65 + answer_display)  # 0->A, 1->B, 2->C, 3->D
+            else:  # 1-based indexing (1,2,3,4)
+                answer_display = chr(64 + answer_display)  # 1->A, 2->B, 3->C, 4->D
+
+        print(f"CORRECT ANSWER: {answer_display}")
         print("-" * 50 + "\n")

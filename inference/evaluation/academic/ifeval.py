@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Callable
+from typing import List, Dict, Any, Callable, Optional
 import logging
 import re
 from ..base.benchmark_base import BenchmarkBase
@@ -45,7 +45,9 @@ class IFEvalBenchmark(BenchmarkBase):
             },
         ]
 
-    def run(self, model_id: str, num_samples: int = 50) -> BenchmarkResult:
+    def run(
+        self, model_id: str, num_samples: int = 50, dataset_path: Optional[str] = None
+    ) -> BenchmarkResult:
         """Run IFEVAL benchmark."""
         self.logger.info(f"\n--- IFEVAL Benchmark ---")
 

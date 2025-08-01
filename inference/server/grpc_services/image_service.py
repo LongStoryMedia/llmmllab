@@ -2,17 +2,12 @@
 Image service implementation for the gRPC server.
 """
 
-try:
-    from inference.protos.image_generation_response_pb2 import ImageGenerateResponse
-    from inference.protos.image_generation_request_pb2 import ImageGenerateRequest
-except ImportError:
-    from protos.image_generation_response_pb2 import ImageGenerateResponse
-    from protos.image_generation_request_pb2 import ImageGenerateRequest
-
-from services.model_service import model_service
-from services.image_generator import image_generator
-from services.hardware_manager import hardware_manager
-from inference.server.config import logger, IMAGE_DIR
+from server.protos.image_generation_response_pb2 import ImageGenerateResponse
+from server.protos.image_generation_request_pb2 import ImageGenerateRequest
+from server.services.model_service import model_service
+from server.services.image_generator import image_generator
+from server.services.hardware_manager import hardware_manager
+from server.config import logger, IMAGE_DIR
 import models
 import torch
 import grpc

@@ -5,12 +5,8 @@ from fastapi import APIRouter, HTTPException, status
 from models.model import Model
 from models.requests import ModelRequest, ModelsListResponse
 from services.model_service import model_service
-from services.lora_service import lora_service
 
-router = APIRouter(
-    prefix="/models",
-    tags=["models"]
-)
+router = APIRouter(prefix="/models", tags=["models"])
 
 
 @router.get("/", response_model=ModelsListResponse)
@@ -26,11 +22,7 @@ async def list_models():
             filtered_models.append(model)
 
         # Create response
-        response = ModelsListResponse(
-            models=filtered_models,
-            active_model=""
-        )
+        response = ModelsListResponse(models=filtered_models, active_model="")
         return response
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Error listing models: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error listing models: {str(e)}")

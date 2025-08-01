@@ -2,23 +2,12 @@
 Embedding service implementation for the gRPC server.
 """
 
-from inference.server.config import logger
+from server.config import logger
 from transformers import AutoModel, AutoTokenizer
 import torch
-import os
-import sys
-import logging
 import numpy as np
-from typing import Dict, List
-
-# Fix imports using absolute paths
-try:
-    from inference.protos import embedding_req_pb2
-    from inference.protos import embedding_response_pb2
-except ImportError:
-    # Alternative import path
-    from protos import embedding_req_pb2
-    from protos import embedding_response_pb2
+from server.protos import embedding_req_pb2
+from server.protos import embedding_response_pb2
 
 
 class EmbeddingService:

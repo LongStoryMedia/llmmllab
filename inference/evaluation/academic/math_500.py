@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import logging
 from ..base.benchmark_base import BenchmarkBase
 from ..base.result_types import BenchmarkResult
@@ -45,7 +45,9 @@ class Math500Benchmark(BenchmarkBase):
             },
         ]
 
-    def run(self, model_id: str, num_samples: int = 50) -> BenchmarkResult:
+    def run(
+        self, model_id: str, num_samples: int = 50, dataset_path: Optional[str] = None
+    ) -> BenchmarkResult:
         """Run MATH-500 benchmark."""
         print(f"\n--- MATH-500 Benchmark ---")
 

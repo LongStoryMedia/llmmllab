@@ -25,22 +25,15 @@ run_with_env() {
     local venv_path=$2
     local dir_path=$3
     shift 3
-
     log "INFO" "Running in ${env_name} environment: $*" "${BLUE}"
-    
-    # Change to the directory
     cd "$dir_path" || { 
         log "ERROR" "Failed to change to $dir_path" "${RED}"
         return 1
     }
-    
-    # Activate the virtual environment
     source "$venv_path/bin/activate" || { 
         log "ERROR" "Failed to activate $venv_path" "${RED}"
         return 1
     }
-    
-    # Execute the command
     "$@" || {
         local exit_code=$?
         log "ERROR" "Command failed with exit code $exit_code: $*" "${RED}"
@@ -48,16 +41,11 @@ run_with_env() {
         cd /app
         return $exit_code
     }
-    
-    # Deactivate the virtual environment
     deactivate
-    
-    # Return to the app directory
     cd /app || { 
         log "ERROR" "Failed to return to /app" "${RED}"
         return 1
     }
-    
     return 0
 }
 
@@ -68,18 +56,16 @@ wait_for_service() {
     local port=$3
     local max_attempts=$4
     local wait_seconds=$5
-    
-    log "INFO" "Waiting for $service_name to become available at $host:$port..." "${BLUE}"
-    
+    log "INFO" "Waiting for $service_name to become available at http://$host:$port..." "${BLUE}"
     for (( i=1; i<=$max_attempts; i++ )); do
-        if nc -z $host $port &> /dev/null; then
+        # Use curl to check for a successful HTTP response.
+        if curl --fail --silent --show-error --output /dev/null "http://$host:$port"; then
             log "INFO" "$service_name is available at $host:$port" "${GREEN}"
             return 0
         fi
         log "INFO" "Attempt $i/$max_attempts: $service_name not available yet, waiting ${wait_seconds}s..." "${YELLOW}"
         sleep $wait_seconds
     done
-    
     log "ERROR" "Timed out waiting for $service_name to become available" "${RED}"
     return 1
 }
@@ -92,38 +78,41 @@ log "INFO" "-----------------------------------------------------------" "${GREE
 SERVICE_STATUS_FILE="/tmp/service_status"
 echo "# Service status file - $(date)" > $SERVICE_STATUS_FILE
 
-# Start Ollama in the background
-if command -v ollama &> /dev/null; then
-    log "INFO" "Starting Ollama service..." "${BLUE}"
-    ollama serve &> /var/log/ollama.log &
-    OLLAMA_PID=$!
-    
-    if [ $? -eq 0 ]; then
-        log "INFO" "Ollama started with PID $OLLAMA_PID" "${GREEN}"
-        echo "ollama:running:$OLLAMA_PID" >> $SERVICE_STATUS_FILE
-        
-        # Wait for Ollama to become available
-        wait_for_service "Ollama" "localhost" 11434 12 5
-    else
-        log "ERROR" "Failed to start Ollama service" "${RED}"
-        echo "ollama:failed:0" >> $SERVICE_STATUS_FILE
-    fi
+# Start Ollama if not already running
+if curl --silent --output /dev/null "http://localhost:11434"; then
+    log "INFO" "Ollama is already running and available. Skipping startup." "${GREEN}"
+    OLLAMA_PID=$(pgrep -o ollama || echo "0")
+    echo "ollama:running:${OLLAMA_PID}" >> $SERVICE_STATUS_FILE
 else
-    log "WARNING" "Ollama not installed, skipping Ollama service startup" "${YELLOW}"
-    echo "ollama:missing:0" >> $SERVICE_STATUS_FILE
+    if command -v ollama &> /dev/null; then
+        log "INFO" "Starting Ollama service..." "${BLUE}"
+        ollama serve &> /var/log/ollama.log &
+        OLLAMA_PID=$!
+        if [ $? -eq 0 ]; then
+            log "INFO" "Ollama started with PID $OLLAMA_PID" "${GREEN}"
+            echo "ollama:running:$OLLAMA_PID" >> $SERVICE_STATUS_FILE
+            # Wait for Ollama to become available
+            wait_for_service "Ollama" "localhost" 11434 12 5
+        else
+            log "ERROR" "Failed to start Ollama service" "${RED}"
+            echo "ollama:failed:0" >> $SERVICE_STATUS_FILE
+        fi
+    else
+        log "WARNING" "Ollama not installed, skipping Ollama service startup" "${YELLOW}"
+        echo "ollama:missing:0" >> $SERVICE_STATUS_FILE
+    fi
 fi
 
 # Start server if app.py exists
 if [ -f /app/server/app.py ]; then
     log "INFO" "Starting REST API server..." "${BLUE}"
-    run_with_env "server" "${SERVER_VENV}" "/app/server" \
-        python -m uvicorn app:app --host 0.0.0.0 --port "${PORT:-8000}" --reload &> /var/log/server_api.log &
+    # This check can be improved to see if the port is already in use
+    /app/run_with_env.sh "server" \
+        'python -m uvicorn app:app --host 0.0.0.0 --port '"${PORT:-8000}"' --reload' &> /var/log/server_api.log &
     SERVER_PID=$!
-    
     if [ $? -eq 0 ]; then
         log "INFO" "REST API server started on port ${PORT:-8000} with PID $SERVER_PID" "${GREEN}"
         echo "rest_api:running:$SERVER_PID" >> $SERVICE_STATUS_FILE
-        
         # Wait for the REST API server to become available
         wait_for_service "REST API" "localhost" "${PORT:-8000}" 12 5
     else
@@ -139,16 +128,17 @@ fi
 # Start gRPC server if grpc_server.py exists
 if [ -f /app/server/grpc_server.py ]; then
     log "INFO" "Starting gRPC server..." "${BLUE}"
+    # This check can be improved to see if the port is already in use
     run_with_env "server" "${SERVER_VENV}" "/app/server" \
         python grpc_server.py --port "${GRPC_PORT:-50051}" --max_workers "${GRPC_MAX_WORKERS:-10}" &> /var/log/grpc_server.log &
     GRPC_PID=$!
-    
     if [ $? -eq 0 ]; then
         log "INFO" "gRPC server started on port ${GRPC_PORT:-50051} with PID $GRPC_PID" "${GREEN}"
         echo "grpc_server:running:$GRPC_PID" >> $SERVICE_STATUS_FILE
-        
         # Wait for the gRPC server to become available
-        wait_for_service "gRPC server" "localhost" "${GRPC_PORT:-50051}" 12 5
+        # Note: This wait_for_service uses HTTP check, which will fail for a gRPC service.
+        # A proper gRPC health check would be needed for this.
+        log "INFO" "Skipping gRPC health check as it requires a gRPC-specific client." "${YELLOW}"
     else
         log "ERROR" "Failed to start gRPC server" "${RED}"
         echo "grpc_server:failed:0" >> $SERVICE_STATUS_FILE
@@ -169,19 +159,16 @@ log "INFO" "-----------------------------------------------------------" "${GREE
 monitor_services() {
     while true; do
         log "INFO" "Checking service status..." "${BLUE}"
-        
-        # Read service status file
         while IFS=: read -r service status pid; do
-            if [ "$status" = "running" ]; then
-                if ! ps -p $pid &> /dev/null; then
+            if [ "$status" = "running" ] && [ "$pid" -ne "0" ]; then
+                if ! ps -p "$pid" &> /dev/null; then
                     log "ERROR" "$service (PID $pid) has died" "${RED}"
                     # Here you could implement restart logic if needed
                 else
                     log "INFO" "$service (PID $pid) is running" "${GREEN}"
                 fi
             fi
-        done < $SERVICE_STATUS_FILE
-        
+        done < "$SERVICE_STATUS_FILE"
         sleep 60  # Check every minute
     done
 }
@@ -193,21 +180,21 @@ MONITOR_PID=$!
 # Handle signals gracefully
 cleanup() {
     log "INFO" "Shutting down services..." "${YELLOW}"
-    
     # Kill all processes started by this script
-    while IFS=: read -r service status pid; do
-        if [ "$status" = "running" ] && [ "$pid" -ne 0 ]; then
-            log "INFO" "Stopping $service (PID $pid)..." "${BLUE}"
-            kill -TERM $pid 2>/dev/null || kill -KILL $pid 2>/dev/null
-        fi
-    done < $SERVICE_STATUS_FILE
-    
+    if [ -f "$SERVICE_STATUS_FILE" ]; then
+        while IFS=: read -r service status pid; do
+            if [ "$status" = "running" ] && [ "$pid" -ne 0 ]; then
+                log "INFO" "Stopping $service (PID $pid)..." "${BLUE}"
+                kill -TERM "$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null
+            fi
+        done < "$SERVICE_STATUS_FILE"
+    fi
     # Kill the monitoring process
-    kill $MONITOR_PID 2>/dev/null
-    
-    # Kill any other processes that might be associated with this script
+    if [ -n "$MONITOR_PID" ]; then
+        kill "$MONITOR_PID" 2>/dev/null
+    fi
+    # Kill any other background jobs of this script
     jobs -p | xargs kill 2>/dev/null
-    
     log "INFO" "All services stopped" "${GREEN}"
     exit 0
 }

@@ -4,6 +4,8 @@ set -e
 
 # Set default tag if not provided
 DOCKER_TAG=${DOCKER_TAG:-latest}
+# Replace slashes with dots in the tag name for Docker compatibility
+DOCKER_TAG=$(echo "$DOCKER_TAG" | tr '/' '.')
 echo "Deploying inference with tag: $DOCKER_TAG"
 
 # Create the namespace if it doesn't exist

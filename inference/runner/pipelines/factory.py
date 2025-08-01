@@ -5,7 +5,7 @@ import os
 import time
 import threading
 from typing import Dict, List, Optional, Tuple
-import inference.server.config as config
+import server.config as config
 from models import Model, LoraWeight, ModelDetails
 from .base_pipeline import BasePipeline
 
@@ -272,7 +272,7 @@ class PipelineFactory:
                 self.logger.info(
                     f"Creating Nomic Embed Text pipeline for model {model.name}"
                 )
-                from .emb import NomicEmbedTextPipe
+                from .emb.nom2 import NomicEmbedTextPipe
 
                 pipe = NomicEmbedTextPipe(model)
 

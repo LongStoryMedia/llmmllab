@@ -22,14 +22,14 @@ fi
 
 echo "Syncing code to ${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}..."
 
-rsync -avzru \
-    --exclude='.git/' \
-    --exclude='.venv/' \
-    --exclude='venv/' \
-    --exclude='__pycache__/' \
-    --exclude='*.pyc' \
-    --exclude='llama.cpp/' \
-    "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/benchmark_data/" "${SCRIPT_DIR}/benchmark_data/"
+# rsync -avzru \
+    # --exclude='.git/' \
+    # --exclude='.venv/' \
+    # --exclude='venv/' \
+    # --exclude='__pycache__/' \
+    # --exclude='*.pyc' \
+    # --exclude='llama.cpp/' \
+    # "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/benchmark_data/" "${SCRIPT_DIR}/benchmark_data/"
 
 # Use rsync to sync the local code to the remote node
 rsync -avzru --delete \
@@ -40,13 +40,10 @@ rsync -avzru --delete \
     --exclude='*.pyc' \
     --exclude='llama.cpp/' \
     --exclude='benchmark_data/' \
+    --exclude='.pytest_cache/' \
     "${SCRIPT_DIR}/" "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/"
 
 echo "✅ Code synced successfully"
-
-# Now make sure the directory structure is correct - app.py needs to be directly in the mounted directory
-echo "Ensuring correct file structure on remote node..."
-ssh ${NODE_USER}@${NODE_HOST} "cd ${NODE_CODE_PATH} && ls -la && echo 'Verifying app.py exists:' && if [ -f app.py ]; then echo 'app.py found at root level'; else echo 'ERROR: app.py not found at root level'; fi"
 
 # Check if we should watch for changes and continuously sync
 if [ "$1" = "--watch" ] || [ "$1" = "-w" ]; then
@@ -60,8 +57,6 @@ if [ "$1" = "--watch" ] || [ "$1" = "-w" ]; then
 
     fswatch -o "${SCRIPT_DIR}" | while read f; do
         echo "Change detected, syncing..."
-        rsync -avzr "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/config" "${SCRIPT_DIR}/s-config"
-
         rsync -avruz --delete \
             --exclude='.git/' \
             --exclude='.venv/' \

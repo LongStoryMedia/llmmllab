@@ -5,10 +5,9 @@ import gc
 import os
 import contextlib
 import time
-from inference.server.config import logger  # Import logger from config
+from server.config import logger  # Import logger from config
 
 from fastapi import APIRouter, HTTPException
-from typing import Optional, List, Dict, Any
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 

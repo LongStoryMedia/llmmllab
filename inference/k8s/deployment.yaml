@@ -42,25 +42,25 @@ spec:
             type: DirectoryOrCreate
       containers:
         - name: ollama
-          image: 192.168.0.71:31500/inference:latest
+          image: 192.168.0.71:31500/inference:feature.grpc
           imagePullPolicy: Always
-          command: ["/bin/sh"]
-          args:
-            - "-c"
-            - |
-              # Check if app.py exists in the mounted directory
-              if [ -f /app/app.py ]; then
-                echo "Found app.py in mounted volume, starting with live-reload"
-                # Start Ollama and then the API with reload for live updates
-                ollama serve &
-                cd /app && ls -la && uvicorn app:app --host 0.0.0.0 --port 8000 --reload
-              else
-                echo "ERROR: app.py not found in mounted directory. Please ensure your code is correctly mounted."
-                ls -la /app
-                echo "Contents of parent directory:"
-                ls -la /
-                exit 1
-              fi
+          # command: ["/bin/sh"]
+          # args:
+          #   - "-c"
+          #   - |
+          #     # Check if app.py exists in the mounted directory
+          #     if [ -f /app/app.py ]; then
+          #       echo "Found app.py in mounted volume, starting with live-reload"
+          #       # Start Ollama and then the API with reload for live updates
+          #       ollama serve &
+          #       cd /app && ls -la && uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+          #     else
+          #       echo "ERROR: app.py not found in mounted directory. Please ensure your code is correctly mounted."
+          #       ls -la /app
+          #       echo "Contents of parent directory:"
+          #       ls -la /
+          #       exit 1
+          #     fi
           ports:
             - name: ollama
               containerPort: 11434
@@ -145,5 +145,17 @@ spec:
             #   value: "-DLLAMA_CUBLAS=on"
             # - name: FORCE_CMAKE
             #   value: "1"
+            - name: EVALUATION_VENV
+              value: "/opt/venv/evaluation"
+            - name: SERVER_VENV
+              value: "/opt/venv/server"
+            - name: RUNNER_VENV
+              value: "/opt/venv/runner"
+            - name: BASE_VENV
+              value: "/opt/venv/base"
+            - name: CMAKE_ARGS
+              value: "-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_PATH=/llama.cpp/build/bin"
+            - name: LLAMA_CPP_LIB_PATH
+              value: "/llama.cpp/build/bin"
   strategy:
     type: Recreate

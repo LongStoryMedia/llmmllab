@@ -9,7 +9,6 @@ import sys
 from typing import Optional, Dict, Any, Union
 
 from dotenv import load_dotenv
-from inference.models import conversation
 from models import ChatReq, Message, MessageContent, MessageContentType, MessageRole
 from .pipelines.factory import PipelineFactory
 

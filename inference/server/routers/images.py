@@ -8,9 +8,9 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile
 from fastapi.responses import FileResponse
 from PIL import Image
 
-from inference.server.config import IMAGE_DIR
+from server.config import IMAGE_DIR
 from models.requests import PromptRequest
-from services.image_generator import image_generator
+from server.services.image_generator import image_generator
 
 router = APIRouter()
 

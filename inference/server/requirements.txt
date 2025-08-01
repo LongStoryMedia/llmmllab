@@ -14,3 +14,7 @@ tenacity>=8.2.0  # For retries
 structlog>=23.1.0  # For structured logging
 huggingface-hub>=0.16.0  # For model hub integration
 vllm>=0.10.0  # For serving large language models
+diffusers>=0.34.0
+nvsmi>=0.4.2
+langchain>=0.3.7  # For LLM chains
+apscheduler>=3.11.0

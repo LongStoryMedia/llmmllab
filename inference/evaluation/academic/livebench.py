@@ -1,5 +1,5 @@
 import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from ..base.benchmark_base import BenchmarkBase
 from ..base.result_types import BenchmarkResult
 from ..utils.inference import InferenceEngine
@@ -54,7 +54,9 @@ class LiveBenchmark(BenchmarkBase):
             },
         ]
 
-    def run(self, model_id: str, num_samples: int = 10) -> BenchmarkResult:
+    def run(
+        self, model_id: str, num_samples: int = 50, dataset_path: Optional[str] = None
+    ) -> BenchmarkResult:
         """Run LiveBench evaluation."""
         print("\n--- LiveBench Evaluation ---")
 

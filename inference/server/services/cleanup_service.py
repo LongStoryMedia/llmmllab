@@ -2,7 +2,7 @@ import os
 import time
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from inference.server.config import IMAGE_DIR, IMAGE_RETENTION_HOURS
+from server.config import IMAGE_DIR, IMAGE_RETENTION_HOURS
 
 
 class CleanupService:

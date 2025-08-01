@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import logging
 from ..base.benchmark_base import BenchmarkBase
 from ..base.result_types import BenchmarkResult
@@ -76,7 +76,9 @@ class HumanEvalBenchmark(BenchmarkBase):
             },
         ]
 
-    def run(self, model_id: str, num_samples: int = 20) -> BenchmarkResult:
+    def run(
+        self, model_id: str, num_samples: int = 50, dataset_path: Optional[str] = None
+    ) -> BenchmarkResult:
         """Run HumanEval benchmark."""
         self.logger.info(f"\n--- HumanEval Benchmark ---")
 

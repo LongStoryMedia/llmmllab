@@ -54,123 +54,41 @@ class BenchmarkBase(ABC):
     def load_dataset_from_huggingface(
         self,
         dataset_path: str,
-        split: Union[NamedSplit, Split, str, List[str], list[Split]] = "test",
-        filters: Optional[Dict] = None,
-    ) -> Optional[Union[IterableDatasetDict, IterableDataset, DatasetDict, Dataset]]:
+        split: Union[str, NamedSplit] = "test",
+        config_name: Optional[str] = None,
+        num_samples: Optional[int] = None,
+    ) -> Dataset:
         """
-        Load a dataset from HuggingFace.
-
+        Loads a dataset from HuggingFace, handling splits and configs.
         Args:
-            dataset_path: Path to the dataset in format "space/dataset-name"
-            split: Dataset split to use (e.g., "dev", "test", "validation")
-            filters: Optional dict of filters to apply to the dataset
-
+            dataset_path: The name of the dataset (e.g., 'cais/mmlu').
+            split: The dataset split to load (e.g., 'test', 'validation').
+            config_name: The dataset configuration name (e.g., 'abstract_algebra').
+            num_samples: Optional number of samples to take from the dataset.
         Returns:
-            Dataset object or None if loading fails
+            The loaded HuggingFace Dataset object.
         """
-        if not dataset_path:
-            self.logger.warning("No dataset path provided")
-            return None
-
+        self.logger.info(
+            f"Loading dataset from HuggingFace: {dataset_path} with config: {config_name}"
+        )
         try:
-            # Load the specified dataset
-            self.logger.info(f"Loading dataset from HuggingFace: {dataset_path}")
+            dataset = load_dataset(dataset_path, config_name, split=split)  # type: ignore
 
-            # Special handling for known problematic datasets like cais/mmlu
-            if "mmlu" in dataset_path.lower():
-                # For MMLU datasets, try specific approaches
-                splits_to_try = ["test", "dev", "val", "validation"]
+            # If the dataset is a DatasetDict, we need to select the specific split
+            if isinstance(dataset, DatasetDict) and split in dataset:
+                dataset = dataset[split]
+            elif isinstance(dataset, DatasetDict):
+                # Fallback if the split is not a direct key
+                self.logger.error(
+                    f"Split '{split}' not found in dataset. Available splits: {list(dataset.keys())}"
+                )
+                raise ValueError(f"Split '{split}' not found in the dataset.")
 
-                for split_name in splits_to_try:
-                    try:
-                        self.logger.info(f"Trying MMLU split: {split_name}")
-                        # Try loading with streaming=False first for MMLU
-                        dataset = load_dataset(
-                            dataset_path, split=split_name, streaming=False
-                        )
-                        self.logger.info(
-                            f"Successfully loaded MMLU split: {split_name}"
-                        )
-                        return dataset
-                    except Exception as split_error:
-                        self.logger.debug(
-                            f"Failed to load MMLU split '{split_name}': {str(split_error)}"
-                        )
-                        continue
+            if num_samples is not None:
+                self.logger.info(f"Sampling {num_samples} examples from the dataset.")
+                dataset = dataset.select(range(min(num_samples, len(dataset))))  # type: ignore
 
-                # If individual splits fail, try loading the full dataset without streaming
-                try:
-                    self.logger.info("Trying to load full MMLU dataset without split")
-                    dataset = load_dataset(dataset_path, streaming=False)
-
-                    if isinstance(dataset, DatasetDict):
-                        available_splits = list(dataset.keys())
-                        self.logger.info(f"Available MMLU splits: {available_splits}")
-
-                        # Prefer test, then dev, then val
-                        for preferred_split in ["test", "dev", "val", "validation"]:
-                            if preferred_split in available_splits:
-                                self.logger.info(f"Using MMLU split: {preferred_split}")
-                                return dataset[preferred_split]
-
-                        # Use first available split
-                        first_split = available_splits[0]
-                        self.logger.info(
-                            f"Using first available MMLU split: {first_split}"
-                        )
-                        return dataset[first_split]
-
-                    return dataset
-
-                except Exception as e:
-                    self.logger.error(
-                        f"Failed to load MMLU dataset without streaming: {str(e)}"
-                    )
-
-            # General approach for other datasets
-            splits_to_try = [split, "test", "dev", "validation", "train"]
-
-            dataset = None
-            for split_name in splits_to_try:
-                try:
-                    self.logger.info(f"Trying split: {split_name}")
-                    dataset = load_dataset(
-                        dataset_path, split=split_name, streaming=True
-                    )
-                    self.logger.info(f"Successfully loaded split: {split_name}")
-                    break
-                except Exception as split_error:
-                    self.logger.debug(
-                        f"Failed to load split '{split_name}': {str(split_error)}"
-                    )
-                    continue
-
-            if dataset is None:
-                # Try loading without specifying a split
-                self.logger.info("Trying to load dataset without specifying split")
-                dataset = load_dataset(dataset_path, streaming=True)
-
-                # If it's a DatasetDict, try to get a reasonable split
-                if isinstance(dataset, (DatasetDict, IterableDatasetDict)):
-                    available_splits = list(dataset.keys())
-                    self.logger.info(f"Available splits: {available_splits}")
-
-                    # Prefer test, then dev, then validation, then train
-                    preferred_splits = ["test", "dev", "validation", "train"]
-                    for preferred_split in preferred_splits:
-                        if preferred_split in available_splits:
-                            dataset = dataset[preferred_split]
-                            self.logger.info(f"Using split: {preferred_split}")
-                            break
-                    else:
-                        # Use the first available split
-                        first_split = available_splits[0]
-                        dataset = dataset[first_split]
-                        self.logger.info(f"Using first available split: {first_split}")
-
-            return dataset
-
+            return dataset  # type: ignore
         except Exception as e:
-            self.logger.error(f"Failed to load dataset from HuggingFace: {str(e)}")
-            self.logger.debug(f"Dataset path: {dataset_path}, Split: {split}")
-            return None
+            self.logger.error(f"Error loading HuggingFace dataset: {e}")
+            raise RuntimeError(f"Failed to load dataset from HuggingFace: {e}")
