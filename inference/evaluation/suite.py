@@ -139,6 +139,13 @@ class AcademicBenchmarkSuite:
                             "detailed_results": result.detailed_results,
                             "metadata": result.metadata,
                         }
+                        if output_file:
+                            self.save_results(result, output_file)
+                        else:
+                            self.save_results(
+                                result,
+                                f"benchmark_data/{str(model_id)}/{benchmark_name}/{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                            )
 
                 # Calculate average score
                 scores = []
@@ -156,9 +163,6 @@ class AcademicBenchmarkSuite:
                 model_results["error"] = str(e)
                 all_results[model_id] = model_results
                 raise e
-
-        if output_file:
-            self.save_results(all_results, output_file)
 
         self.print_academic_summary(all_results)
         return all_results

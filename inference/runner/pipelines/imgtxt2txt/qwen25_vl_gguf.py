@@ -1,25 +1,20 @@
-import base64
-import datetime
-import logging
-import multiprocessing
 import os
-import requests
-from threading import Thread
-from typing import Any, Dict, Generator, List, Optional
-
+import logging
 import torch
-from llama_cpp import Llama
-from llama_cpp.llama_chat_format import Qwen25VLChatHandler
+import datetime
+from typing import Any, Generator
+from llama_cpp import Llama  # type: ignore # pylint: disable=E0401
+from llama_cpp.llama_chat_format import Qwen25VLChatHandler  # type: ignore # pylint: disable=E0401
+
 from models import (
-    ChatReq,
     ChatResponse,
     Message,
     MessageContent,
     MessageContentType,
     MessageRole,
     Model,
+    ChatReq,
 )
-
 from ..base_pipeline import BasePipeline
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
@@ -33,6 +28,7 @@ class Qwen25VLGGUFPipe(BasePipeline):
 
     def __init__(self, model_definition: Model):
         """Initialize a Qwen25VLGGUFPipe instance."""
+        super().__init__()
         self.model_def: Model = model_definition
         self.logger: logging.Logger = logging.getLogger(__name__)
         self.logger.info(
@@ -64,9 +60,11 @@ class Qwen25VLGGUFPipe(BasePipeline):
         try:
             chat_handler = Qwen25VLChatHandler(clip_model_path=mmproj_path)
             self.logger.info("Successfully created Qwen2.5-VL chat handler")
-        except Exception as e:
+        except (ImportError, ValueError, RuntimeError) as e:
             self.logger.error(f"Failed to create chat handler: {e}")
-            raise RuntimeError(f"Failed to initialize Qwen2.5-VL chat handler: {e}")
+            raise RuntimeError(
+                f"Failed to initialize Qwen2.5-VL chat handler: {e}"
+            ) from e
 
         # Load the model with the chat handler
         self.logger.info("Loading Llama model with Qwen2.5-VL chat handler...")
@@ -92,9 +90,9 @@ class Qwen25VLGGUFPipe(BasePipeline):
                 numa=True,
             )
             self.logger.info("Successfully loaded Qwen 2.5 VL model with chat handler")
-        except Exception as e:
+        except (ImportError, RuntimeError, ValueError, OSError) as e:
             self.logger.error(f"Failed to load model: {e}")
-            raise RuntimeError(f"Failed to load Qwen2.5-VL model: {e}")
+            raise RuntimeError(f"Failed to load Qwen2.5-VL model: {e}") from e
 
     def __del__(self) -> None:
         """Clean up resources used by the Qwen25VLGGUFPipe."""
@@ -115,22 +113,27 @@ class Qwen25VLGGUFPipe(BasePipeline):
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 torch.cuda.ipc_collect()
-        except Exception as e:
+        except (RuntimeError, AttributeError) as e:
             print(f"Error cleaning up Qwen25VLGGUFPipe resources: {str(e)}")
+        except (ValueError, TypeError, IOError) as e:
+            print(f"Unexpected error cleaning up Qwen25VLGGUFPipe resources: {str(e)}")
 
-    def run(self, req: ChatReq, load_time: float) -> Generator[ChatResponse, Any, None]:
+    def run(self, req: ChatReq) -> Generator[ChatResponse, Any, None]:
         """
-        Run the Qwen 2.5 VL GGUF model to process multimodal messages.
+        Process the input request and generate a response using the Qwen 2.5 VL GGUF model.
 
         Args:
-            req (ChatReq): The chat request containing messages.
-            load_time (float): The time taken to load the model.
+            req (ChatReq): The chat request containing messages, model parameters, and other settings.
 
         Yields:
-            ChatResponse: The streaming responses from the model.
+            ChatResponse: Streaming response chunks.
         """
-        messages = req.messages
+        load_time = 0.0  # For backward compatibility
         start_time = datetime.datetime.now(tz=datetime.timezone.utc)
+
+        # Extract messages and params from the request
+        messages = req.messages
+        params = req.options
 
         # Convert to OpenAI format messages
         formatted_messages = []
@@ -156,10 +159,14 @@ class Qwen25VLGGUFPipe(BasePipeline):
         self.logger.debug(f"Messages: {formatted_messages}")
 
         # Extract generation parameters
-        temperature = getattr(req.options, "temperature", 0.7) if req.options else 0.7
-        top_p = getattr(req.options, "top_p", 0.95) if req.options else 0.95
-        top_k = getattr(req.options, "top_k", 40) if req.options else 40
-        max_tokens = getattr(req.options, "num_predict", 1024) if req.options else 1024
+        temperature = (
+            params.temperature if params and params.temperature is not None else 0.7
+        )
+        top_p = params.top_p if params and params.top_p is not None else 0.95
+        top_k = params.top_k if params and params.top_k is not None else 40
+        max_tokens = (
+            params.num_predict if params and params.num_predict is not None else 1024
+        )
 
         self.logger.info(
             f"Generation parameters: temperature={temperature}, top_p={top_p}, top_k={top_k}, max_tokens={max_tokens}"
@@ -177,7 +184,7 @@ class Qwen25VLGGUFPipe(BasePipeline):
                 top_p=top_p,
                 top_k=top_k,
                 max_tokens=max_tokens,
-                stream=req.stream if req.stream is not None else True,
+                stream=True,  # Always use streaming in the new interface
             )
 
             prompt_eval_end = datetime.datetime.now(tz=datetime.timezone.utc)
@@ -204,7 +211,7 @@ class Qwen25VLGGUFPipe(BasePipeline):
                             role=MessageRole.ASSISTANT,
                             content=[
                                 MessageContent(
-                                    type=MessageContentType.TEXT, text=content
+                                    type=MessageContentType.TEXT, text=content, url=None
                                 )
                             ],
                             id=most_recent_message.id if most_recent_message else 999,
@@ -214,6 +221,8 @@ class Qwen25VLGGUFPipe(BasePipeline):
                                 else 999
                             ),
                             created_at=datetime.datetime.now(tz=datetime.timezone.utc),
+                            tool_calls=None,
+                            thinking=None,
                         )
 
                         finish_reason = chunk["choices"][0].get("finish_reason", None)
@@ -234,6 +243,7 @@ class Qwen25VLGGUFPipe(BasePipeline):
                             eval_duration=total_duration
                             - prompt_eval_duration
                             - load_time,
+                            context=None,
                             prompt_eval_count=getattr(self.model, "n_tokens", 0),
                             eval_count=generated_tokens,
                             model=self.model_def.model,
@@ -245,7 +255,7 @@ class Qwen25VLGGUFPipe(BasePipeline):
                         if is_done:
                             break
 
-        except Exception as e:
+        except (RuntimeError, ValueError, AttributeError, KeyError, OSError) as e:
             self.logger.error(
                 f"Error running Qwen 2.5 VL GGUF model: {str(e)}", exc_info=True
             )
@@ -257,11 +267,14 @@ class Qwen25VLGGUFPipe(BasePipeline):
                     MessageContent(
                         type=MessageContentType.TEXT,
                         text=f"Error processing multimodal request: {str(e)}",
+                        url=None,
                     )
                 ],
                 id=messages[-1].id if messages else 999,
                 conversation_id=messages[-1].conversation_id if messages else 999,
                 created_at=datetime.datetime.now(tz=datetime.timezone.utc),
+                tool_calls=None,
+                thinking=None,
             )
 
             end_time = datetime.datetime.now(tz=datetime.timezone.utc)
@@ -279,6 +292,7 @@ class Qwen25VLGGUFPipe(BasePipeline):
                 eval_count=0,
                 model=self.model_def.model,
                 created_at=datetime.datetime.now(tz=datetime.timezone.utc),
+                context=None,
             )
 
             yield error_response

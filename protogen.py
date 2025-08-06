@@ -230,6 +230,7 @@ class ProtobufGenerator:
 
         logger.debug(f"Created .protofix file with content: {proto_fix_content}")
 
+        # Base command
         cmd = [
             sys.executable,
             "-m",
@@ -237,8 +238,27 @@ class ProtobufGenerator:
             f"--proto_path={self.config['proto_dir']}",
             f"--python_out={output_dir}",
             f"--grpc_python_out={output_dir}",
-            f"--mypy_out={output_dir}",
-        ] + proto_files
+        ]
+
+        # Check if mypy_protobuf is installed before adding the flag
+        mypy_installed = False
+        try:
+            import mypy_protobuf
+
+            mypy_installed = True
+            # Add the path to the mypy plugin's directory to ensure protoc can find it
+            mypy_path = os.path.dirname(inspect.getfile(mypy_protobuf))
+            venv_bin_dir = os.path.dirname(sys.executable)
+            os.environ["PATH"] = f"{venv_bin_dir}:{mypy_path}:" + os.environ.get(
+                "PATH", ""
+            )
+            cmd.append(f"--mypy_out={output_dir}")
+            logger.info("Mypy plugin found, adding type stub generation.")
+        except ImportError:
+            logger.warning("mypy-protobuf not found. Skipping type stub generation.")
+
+        # Add proto files to the command
+        cmd.extend(proto_files)
 
         logger.debug(f"Executing command: {' '.join(cmd)}")
 

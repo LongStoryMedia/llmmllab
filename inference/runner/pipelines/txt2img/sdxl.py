@@ -1,8 +1,10 @@
 from ..helpers import get_dtype, get_precision
 from models.model import Model
-from models import Message
-from typing import List, Any
-from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import StableDiffusionXLPipeline
+from models import ChatReq
+from typing import Any
+from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import (
+    StableDiffusionXLPipeline,
+)
 from ..base_pipeline import BasePipeline
 
 
@@ -14,6 +16,7 @@ class SDXLPipe(BasePipeline):
         Args:
             model (Model): The model configuration to load.
         """
+        super().__init__()
         self.model = model
 
         # Load the full pipeline
@@ -27,16 +30,18 @@ class SDXLPipe(BasePipeline):
         )
         # self.pipeline.to(hardware_manager.device)
 
-    def run(self, messages: List[Message]) -> Any:
+    def run(self, req: ChatReq) -> Any:
         """
-        Process the input messages and generate an image using the SDXL pipeline.
+        Process the input request and generate an image using the SDXL pipeline.
 
         Args:
-            messages (List[Message]): The list of messages to process.
+            req (ChatReq): The chat request containing messages and options.
 
         Returns:
             Any: The generated image.
         """
+        messages = req.messages
+        # We can access options later if needed: options = req.options
         if not self.pipeline:
             raise RuntimeError("Pipeline not initialized. Call load() first.")
 
@@ -57,11 +62,13 @@ class SDXLPipe(BasePipeline):
         This method releases GPU memory by moving models to CPU.
         """
         try:
-            if hasattr(self, 'pipeline') and self.pipeline is not None:
+            if hasattr(self, "pipeline") and self.pipeline is not None:
                 # Move the pipeline to CPU to free GPU memory
-                self.pipeline.to('cpu')
-                if hasattr(self, 'model') and hasattr(self.model, 'name'):
-                    print(f"SDXLPipe for {self.model.name}: Resources moved to CPU during cleanup")
-        except Exception as e:
+                self.pipeline.to("cpu")
+                if hasattr(self, "model") and hasattr(self.model, "name"):
+                    print(
+                        f"SDXLPipe for {self.model.name}: Resources moved to CPU during cleanup"
+                    )
+        except (RuntimeError, AttributeError, ValueError, TypeError) as e:
             # Use a direct print as logger might be gone during deletion
             print(f"Error cleaning up SDXLPipe resources: {str(e)}")

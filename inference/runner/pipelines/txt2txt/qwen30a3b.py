@@ -5,8 +5,16 @@ import torch
 from transformers import AutoTokenizer, Qwen3MoeForCausalLM
 
 from ..helpers import get_content, get_dtype, get_role
-from models import ChatReq, MessageContent, MessageContentType, MessageRole, Model, Message, ChatResponse
-from typing import Any, Generator, List
+from models import (
+    MessageContent,
+    MessageContentType,
+    MessageRole,
+    Message,
+    ChatResponse,
+    Model,
+    ChatReq,
+)
+from typing import Any, Generator
 from transformers.generation.streamers import TextIteratorStreamer
 from ..base_pipeline import BasePipeline
 
@@ -17,10 +25,10 @@ class Qwen30A3BPipe(BasePipeline):
     """
 
     def __init__(self, model_definition: Model):
-        """Initialize a Qwen30A3BPipe instance."""
-        self.model_def: Model = model_definition
-        self.logger: logging.Logger = logging.getLogger(__name__)
-        self.logger.info(f"Loading Qwen3-30B-A3B model: {model_definition.name} (ID: {model_definition.id})")
+        """Initialize the pipeline for Qwen models."""
+        super().__init__()
+        self.logger = logging.getLogger(__name__)
+        self.model_def = model_definition
 
         # Setup quantization and model loading parameters
         quantization_config = self._setup_quantization_config()
@@ -34,9 +42,7 @@ class Qwen30A3BPipe(BasePipeline):
             device_map="auto",
             attn_implementation="flash_attention_2",
         )
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_definition.model
-        )
+        self.tokenizer = AutoTokenizer.from_pretrained(model_definition.model)
 
         self.model = torch.compile(self.model, mode="reduce-overhead", fullgraph=True)
 
@@ -46,36 +52,38 @@ class Qwen30A3BPipe(BasePipeline):
         This method releases GPU memory by freeing GPU cache.
         """
         try:
-            if hasattr(self, 'model_def') and hasattr(self.model_def, 'name'):
+            if hasattr(self, "model_def") and hasattr(self.model_def, "name"):
                 # Use print instead of logger which may be gone during deletion
                 print(f"Qwen30A3BPipe for {self.model_def.name}: Cleanup initiated")
 
             # Force garbage collection and clear CUDA cache
-            if hasattr(self, 'model') and self.model is not None:
+            if hasattr(self, "model") and self.model is not None:
                 del self.model
-            if hasattr(self, 'tokenizer') and self.tokenizer is not None:
+            if hasattr(self, "tokenizer") and self.tokenizer is not None:
                 del self.tokenizer
 
             # Clear CUDA cache if available
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-        except Exception as e:
+        except (RuntimeError, AttributeError, ValueError, TypeError) as e:
             # Use a direct print as logger might be gone during deletion
             print(f"Error cleaning up Qwen30A3BPipe resources: {str(e)}")
 
-    def run(self, req: ChatReq, load_time: float) -> Generator[ChatResponse, Any, None]:
+    def run(self, req: ChatReq) -> Generator[ChatResponse, Any, None]:
         """
-        Run the Qwen3-30B-A3B model to process text messages with thinking capabilities.
+        Process the chat request and generate a response using the Qwen3-30B-A3B model.
 
         Args:
-            req (ChatReq): The chat request containing messages to process.
-            load_time (float): The time taken to load the model.
+            req (ChatReq): The chat request containing messages, model parameters, and other settings.
+
         Yields:
-            ChatResponse: The response from the model.
+            ChatResponse: Streaming response chunks.
         """
-        messages = req.messages
+        load_time = 0.0  # For backward compatibility
         start_time = datetime.datetime.now(tz=datetime.timezone.utc)
+        messages = req.messages
+        params = req.options
 
         # Convert Message objects to format compatible with Qwen's chat template
         message_dicts = []
@@ -86,7 +94,9 @@ class Qwen30A3BPipe(BasePipeline):
                 # Only concatenate if it's a string (text content)
                 if content["text"] and isinstance(content["text"], str):
                     content_text += content["text"]
-            message_dicts.append({"role": get_role(message.role), "content": content_text})
+            message_dicts.append(
+                {"role": get_role(message.role), "content": content_text}
+            )
 
         self.logger.info(f"Running Qwen3-30B-A3B model with messages: {message_dicts}")
         most_recent_message = messages[-1] if messages else None
@@ -104,20 +114,32 @@ class Qwen30A3BPipe(BasePipeline):
                 message_dicts,
                 tokenize=False,
                 add_generation_prompt=True,
-                enable_thinking=True  # Enables thinking mode
+                enable_thinking=True,  # Enables thinking mode
             )
 
             # Tokenize the input
             model_inputs = self.tokenizer([text], return_tensors="pt").to(self.model.device)  # type: ignore
 
-            # Get generation parameters from request if provided
-            temperature = req.options.temperature if req.options and req.options.temperature else 0.6  # Recommended for thinking mode
-            top_p = req.options.top_p if req.options and req.options.top_p else 0.95  # Recommended for thinking mode
-            top_k = req.options.top_k if req.options and req.options.top_k else 20  # Recommended
-            max_tokens = req.options.num_predict if req.options and req.options.num_predict else 4096
+            # Get generation parameters from params if provided
+            temperature = (
+                params.temperature if params and params.temperature is not None else 0.6
+            )  # Recommended for thinking mode
+            top_p = (
+                params.top_p if params and params.top_p is not None else 0.95
+            )  # Recommended for thinking mode
+            top_k = (
+                params.top_k if params and params.top_k is not None else 20
+            )  # Recommended
+            max_tokens = (
+                params.num_predict
+                if params and params.num_predict is not None
+                else 4096
+            )
 
             # Create text streamer
-            streamer = TextIteratorStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True)
+            streamer = TextIteratorStreamer(
+                self.tokenizer, skip_prompt=True, skip_special_tokens=True
+            )
 
             # Generation parameters
             generation_kwargs = {
@@ -139,13 +161,16 @@ class Qwen30A3BPipe(BasePipeline):
 
                 # Generate the output
                 output = self.model.generate(  # type: ignore
-                    **model_inputs,
-                    **generation_kwargs
+                    **model_inputs, **generation_kwargs
                 )  # type: ignore
 
                 prompt_eval_end_time = datetime.datetime.now(tz=datetime.timezone.utc)
-                prompt_eval_time = (prompt_eval_end_time - prompt_eval_start_time).total_seconds()
-                prompt_eval_count = (prompt_eval_end_time - prompt_eval_start_time).total_seconds()
+                prompt_eval_time = (
+                    prompt_eval_end_time - prompt_eval_start_time
+                ).total_seconds()
+                prompt_eval_count = (
+                    prompt_eval_end_time - prompt_eval_start_time
+                ).total_seconds()
 
                 # Store output for later processing
                 generation_result.append(output)
@@ -163,16 +188,29 @@ class Qwen30A3BPipe(BasePipeline):
                         role=MessageRole.ASSISTANT,
                         content=[
                             MessageContent(
-                                type=MessageContentType.TEXT,
-                                text=new_text
+                                type=MessageContentType.TEXT, text=new_text, url=None
                             )
                         ],
+                        tool_calls=None,
+                        thinking=None,
                         id=most_recent_message.id if most_recent_message else -1,
-                        conversation_id=most_recent_message.conversation_id if most_recent_message else -1,
+                        conversation_id=(
+                            most_recent_message.conversation_id
+                            if most_recent_message
+                            else -1
+                        ),
                         created_at=datetime.datetime.now(tz=datetime.timezone.utc),
                     ),
                     model=self.model_def.model,
                     created_at=datetime.datetime.now(tz=datetime.timezone.utc),
+                    context=None,
+                    finish_reason=None,
+                    total_duration=None,
+                    load_duration=None,
+                    prompt_eval_count=None,
+                    prompt_eval_duration=None,
+                    eval_count=None,
+                    eval_duration=None,
                 )
                 strbuilder.append(new_text)
 
@@ -183,14 +221,20 @@ class Qwen30A3BPipe(BasePipeline):
             # Process the output to separate thinking and final content
             try:
                 # Get raw output tokens
-                output_ids = generation_result[0][0][len(model_inputs.input_ids[0]):].tolist()
+                output_ids = generation_result[0][0][
+                    len(model_inputs.input_ids[0]) :
+                ].tolist()
 
                 # Try to find the </think> token (token ID 151668)
                 try:
                     # Find the last occurrence of </think> token
                     index = len(output_ids) - output_ids[::-1].index(151668)
-                    thinking_content = self.tokenizer.decode(output_ids[:index], skip_special_tokens=True).strip("\n")
-                    final_content = self.tokenizer.decode(output_ids[index:], skip_special_tokens=True).strip("\n")
+                    thinking_content = self.tokenizer.decode(
+                        output_ids[:index], skip_special_tokens=True
+                    ).strip("\n")
+                    final_content = self.tokenizer.decode(
+                        output_ids[index:], skip_special_tokens=True
+                    ).strip("\n")
                 except ValueError:
                     # If </think> token is not found, assume everything is final content
                     index = 0
@@ -199,19 +243,23 @@ class Qwen30A3BPipe(BasePipeline):
 
                 # Update token count for metrics
                 eval_count = len(output_ids)
-            except Exception as e:
+            except (ValueError, IndexError, AttributeError) as e:
                 self.logger.warning(f"Error parsing thinking content: {str(e)}")
                 thinking_content = ""
                 final_content = full_text
 
-        except Exception as e:
+        except (RuntimeError, ValueError, AttributeError, IndexError) as e:
             self.logger.error(f"Error running Qwen3-30B-A3B model: {str(e)}")
             stop_reason = "error"
             raise
         finally:
             end_time = datetime.datetime.now(tz=datetime.timezone.utc)
-            total_duration = (end_time - start_time).total_seconds() * 1000  # Convert to milliseconds
-            self.logger.info(f"Qwen3-30B-A3B model run completed in {total_duration} ms")
+            total_duration = (
+                end_time - start_time
+            ).total_seconds() * 1000  # Convert to milliseconds
+            self.logger.info(
+                f"Qwen3-30B-A3B model run completed in {total_duration} ms"
+            )
 
             # Add thinking content as a metadata field if available
             metadata = {}
@@ -226,15 +274,27 @@ class Qwen30A3BPipe(BasePipeline):
                     content=[
                         MessageContent(
                             type=MessageContentType.TEXT,
-                            text=final_content if final_content else "Generation completed, but no message was generated."
+                            text=(
+                                final_content
+                                if final_content
+                                else "Generation completed, but no message was generated."
+                            ),
+                            url=None,
                         )
                     ],
+                    tool_calls=None,
+                    thinking=None,
                     id=most_recent_message.id if most_recent_message else -1,
-                    conversation_id=most_recent_message.conversation_id if most_recent_message else -1,
+                    conversation_id=(
+                        most_recent_message.conversation_id
+                        if most_recent_message
+                        else -1
+                    ),
                     created_at=datetime.datetime.now(tz=datetime.timezone.utc),
                 ),
                 model=self.model_def.model,
                 created_at=datetime.datetime.now(tz=datetime.timezone.utc),
+                context=None,
                 total_duration=total_duration,
                 load_duration=load_time,
                 prompt_eval_count=prompt_eval_count,

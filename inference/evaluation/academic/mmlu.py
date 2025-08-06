@@ -173,23 +173,48 @@ class MMLUBenchmark(BenchmarkBase):
 
                 if dataset and hasattr(dataset, "__iter__"):
                     self.logger.info(f"Successfully loaded dataset: {dataset_path}")
-                    c = 0
 
-                    for q in dataset:
-                        if c >= num_samples:
-                            break
+                    # Convert dataset to a list so we can select random samples
+                    dataset_list = list(dataset)
+                    total_questions = len(dataset_list)
+                    self.logger.info(f"Total questions available: {total_questions}")
 
-                        # Skip if subjects filter is specified and question doesn't match
-                        if (
-                            subjects
-                            and isinstance(q, Dict)
-                            and q.get("subject", "") not in subjects
-                        ):
-                            continue
+                    # Filter by subjects if specified
+                    if subjects:
+                        dataset_list = [
+                            q
+                            for q in dataset_list
+                            if isinstance(q, Dict) and q.get("subject", "") in subjects
+                        ]
+                        self.logger.info(
+                            f"Questions after subject filtering: {len(dataset_list)}"
+                        )
 
-                        print(f"MMLU Question {c+1}/{num_samples}")
+                    if not dataset_list:
+                        self.logger.error("No questions available after filtering")
+                        return BenchmarkResult(
+                            score=0.0,
+                            total_questions=0,
+                            correct_answers=0,
+                            detailed_results=[],
+                            metadata={
+                                "error": "No questions available after filtering"
+                            },
+                        )
+
+                    # Adjust num_samples if we don't have enough questions
+                    sample_size = min(num_samples, len(dataset_list))
+                    self.logger.info(
+                        f"Randomly selecting {sample_size} questions from {len(dataset_list)} available questions"
+                    )
+
+                    # Randomly select questions
+                    selected_questions = random.sample(dataset_list, sample_size)
+
+                    # Process the selected questions
+                    for i, q in enumerate(selected_questions):
+                        print(f"MMLU Question {i+1}/{sample_size}")
                         aq(q)
-                        c += 1
 
                 else:
                     self.logger.error("Dataset is empty or invalid")

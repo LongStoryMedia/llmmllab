@@ -56,7 +56,6 @@ FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH="/app" \
-    IMAGE_DIR="/root/images" \
     EVALUATION_VENV="/opt/venv/evaluation" \
     SERVER_VENV="/opt/venv/server" \
     RUNNER_VENV="/opt/venv/runner" \
@@ -64,18 +63,28 @@ ENV PYTHONUNBUFFERED=1 \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility,video \
     HF_HOME=/root/.cache/huggingface \
+    BNB_CUDA_VERSION=128 \
+    TOKENIZERS_PARALLELISM=true \
+    PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+    TORCH_CUDA_ARCH_LIST="7.5;8.6" \
+    # Default values for configurable environment variables
+    LOG_LEVEL="debug" \
+    # Server configuration
     PORT=8000 \
-    GRPC_PORT=50051 \
+    # Image generation configuration
+    IMAGE_DIR="/root/images" \
+    IMAGE_GENERATION_ENABLED="true" \
+    MAX_IMAGE_SIZE="2048" \
+    IMAGE_RETENTION_HOURS="24" \
+    # GRPC configuration
+    INFERENCE_SERVICES_HOST="0.0.0.0" \
+    INFERENCE_SERVICES_PORT="50051" \
     GRPC_MAX_WORKERS=10 \
     GRPC_MAX_MESSAGE_SIZE=104857600 \
     GRPC_MAX_CONCURRENT_RPCS=100 \
     GRPC_ENABLE_REFLECTION=true \
     GRPC_SECURITY_ENABLED=false \
-    GRPC_USE_TLS=false \
-    BNB_CUDA_VERSION=128 \
-    TOKENIZERS_PARALLELISM=true \
-    PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-    TORCH_CUDA_ARCH_LIST="7.5;8.6"
+    GRPC_USE_TLS=false
 
 # Install only runtime dependencies (no build tools!)
 RUN apt-get update && apt-get install -y --no-install-recommends \

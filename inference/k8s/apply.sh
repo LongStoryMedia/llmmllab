@@ -20,7 +20,19 @@ kubectl create secret generic rabbitmq \
     --from-literal=password="$RABBITMQ_PASSWORD" \
     --dry-run=client -o yaml | kubectl apply -f - --wait=true
 
+# Create secrets for auth client
+kubectl create secret generic auth-client \
+    -n ollama \
+    --from-file=client_secret="$(dirname "$0")/.secrets/auth_client_secret" \
+    --dry-run=client -o yaml | kubectl apply -f - --wait=true
+
 # Create secrets for DB access
+kubectl create secret generic db-credentials \
+    -n ollama \
+    --from-file=password="$(dirname "$0")/.secrets/db_password" \
+    --dry-run=client -o yaml | kubectl apply -f - --wait=true
+
+# Create secrets for HF token
 kubectl create secret generic hf-token \
     -n ollama \
     --from-file=token="$(dirname "$0")/.secrets/hf-token" \

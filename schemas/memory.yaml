@@ -35,18 +35,4 @@ required:
   - source_id
 definitions:
   MemoryFragment:
-    type: object
-    properties:
-      id:
-        type: integer
-        description: Unique identifier for the memory fragment
-      role:
-        $ref: message_role.yaml
-        description: Role of the message (e.g., 'user', 'assistant')
-      content:
-        type: string
-        description: Content of the message
-    required:
-      - id
-      - role
-      - content
+    $ref: memory_fragment.yaml

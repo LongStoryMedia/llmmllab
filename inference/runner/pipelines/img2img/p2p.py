@@ -1,11 +1,15 @@
-from diffusers.schedulers.scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
-from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_instruct_pix2pix import StableDiffusionInstructPix2PixPipeline
+from diffusers.schedulers.scheduling_euler_ancestral_discrete import (
+    EulerAncestralDiscreteScheduler,
+)
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_instruct_pix2pix import (
+    StableDiffusionInstructPix2PixPipeline,
+)
 from diffusers.utils.loading_utils import load_image
 import torch
-from ..helpers import get_dtype, get_precision
+from ..helpers import get_precision
 from models.model import Model
-from models import Message
-from typing import List, Any
+from models import ChatReq
+from typing import Any
 from ..base_pipeline import BasePipeline
 
 
@@ -17,7 +21,9 @@ class Pix2PixPipe(BasePipeline):
         Args:
             model (Model): The model configuration to load.
         """
+        super().__init__()
         self.model = model
+        self.model_def = model
 
         # Load the full pipeline
         self.pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
@@ -29,16 +35,18 @@ class Pix2PixPipe(BasePipeline):
             safety_checker=None,  # Disable safety checker for now
             attn_implementation="eager",
         )
-        self.pipeline.scheduler = EulerAncestralDiscreteScheduler.from_config(self.pipeline.scheduler.config)
+        self.pipeline.scheduler = EulerAncestralDiscreteScheduler.from_config(
+            self.pipeline.scheduler.config
+        )
 
         # self.pipeline.to(hardware_manager.device)
 
-    def run(self, messages: List[Message]) -> Any:
+    def run(self, req: ChatReq) -> Any:
         """
         Process the input messages and generate an image using the Instruct Pix2Pix pipeline.
 
         Args:
-            messages (List[Message]): The list of messages to process.
+            req (ChatReq): The chat request containing messages and parameters.
 
         Returns:
             Any: The generated image.
@@ -46,8 +54,9 @@ class Pix2PixPipe(BasePipeline):
         if not self.pipeline:
             raise RuntimeError("Pipeline not initialized. Call load() first.")
 
-        # Extract prompt, instruction and image from messages
-        prompt = ""
+        messages = req.messages
+
+        # Extract instruction and image from messages
         instruction = ""
         image = None
 
@@ -84,11 +93,13 @@ class Pix2PixPipe(BasePipeline):
         This method releases GPU memory by moving models to CPU.
         """
         try:
-            if hasattr(self, 'pipeline') and self.pipeline is not None:
+            if hasattr(self, "pipeline") and self.pipeline is not None:
                 # Move the pipeline to CPU to free GPU memory
-                self.pipeline.to('cpu')
-                if hasattr(self, 'model') and hasattr(self.model, 'name'):
-                    print(f"Pix2PixPipe for {self.model.name}: Resources moved to CPU during cleanup")
-        except Exception as e:
+                self.pipeline.to("cpu")
+                if hasattr(self, "model") and hasattr(self.model, "name"):
+                    print(
+                        f"Pix2PixPipe for {self.model.name}: Resources moved to CPU during cleanup"
+                    )
+        except (RuntimeError, AttributeError, ValueError, TypeError) as e:
             # Use a direct print as logger might be gone during deletion
             print(f"Error cleaning up Pix2PixPipe resources: {str(e)}")

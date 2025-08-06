@@ -1,9 +1,11 @@
 from ..helpers import get_dtype
 from models.model import Model
-from models import Message
-from typing import Optional, List, Any
+from models import ChatReq
+from typing import Optional, Any
 import torch
-from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import StableDiffusion3Pipeline
+from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import (
+    StableDiffusion3Pipeline,
+)
 from diffusers.quantizers.quantization_config import BitsAndBytesConfig
 from diffusers.models.transformers.transformer_sd3 import SD3Transformer2DModel
 from ..base_pipeline import BasePipeline
@@ -17,10 +19,12 @@ class SD3Pipe(BasePipeline):
         Args:
             model (Model): The model configuration to load.
         """
+        super().__init__()
         self.model = model
+        self.model_def = model
 
-        dtype = get_dtype(model)
-        quantization_config = self._setup_quantization_config(model)
+        # Use the get_dtype function directly in pipeline initialization instead of storing
+        quantization_config = self._setup_quantization_config()
         transformer_kwargs = {
             "torch_dtype": torch.bfloat16,
             "subfolder": "transformer",
@@ -39,47 +43,36 @@ class SD3Pipe(BasePipeline):
         self.pipeline = StableDiffusion3Pipeline.from_pretrained(
             model.model,
             transformer=transformer,
-            torch_dtype=torch.bfloat16,
+            torch_dtype=get_dtype(model),  # Use the dtype from the model details
         )
 
         # Apply memory optimization techniques
         self.pipeline.enable_model_cpu_offload()
         # self.pipeline.enable_attention_slicing()
 
-    def _setup_quantization_config(self, model: Model) -> Optional[BitsAndBytesConfig]:
+    def _setup_quantization_config(self) -> Optional[BitsAndBytesConfig]:
         """
         Set up the quantization configuration based on the model details.
-
-        Args:
-            model (Model): The model configuration.
 
         Returns:
             Optional[BitsAndBytesConfig]: The quantization configuration or None.
         """
-        if model.details is not None and model.details.quantization_level is not None:
-            if model.details.quantization_level.lower().startswith(("q4", "int4", "nf4")):
-                return BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_quant_type="nf4",
-                )
-            elif model.details.quantization_level.lower().startswith(("q8", "int8")):
-                return BitsAndBytesConfig(
-                    load_in_8bit=True,
-                )
-        return None
+        return super()._setup_quantization_config()
 
-    def run(self, messages: List[Message]) -> Any:
+    def run(self, req: ChatReq) -> Any:
         """
         Process the input messages and generate an image using the SD3 pipeline.
 
         Args:
-            messages (List[Message]): The list of messages to process.
+            req (ChatReq): The chat request containing messages and parameters.
 
         Returns:
             Any: The generated image.
         """
         if not self.pipeline:
             raise RuntimeError("Pipeline not initialized. Call load() first.")
+
+        messages = req.messages
 
         # Extract prompt from messages
         prompt = ""
@@ -98,11 +91,13 @@ class SD3Pipe(BasePipeline):
         This method releases GPU memory by moving models to CPU.
         """
         try:
-            if hasattr(self, 'pipeline') and self.pipeline is not None:
+            if hasattr(self, "pipeline") and self.pipeline is not None:
                 # Move the pipeline to CPU to free GPU memory
-                self.pipeline.to('cpu')
-                if hasattr(self, 'model') and hasattr(self.model, 'name'):
-                    print(f"SD3Pipe for {self.model.name}: Resources moved to CPU during cleanup")
-        except Exception as e:
+                self.pipeline.to("cpu")
+                if hasattr(self, "model") and hasattr(self.model, "name"):
+                    print(
+                        f"SD3Pipe for {self.model.name}: Resources moved to CPU during cleanup"
+                    )
+        except (RuntimeError, AttributeError, ValueError, TypeError) as e:
             # Use a direct print as logger might be gone during deletion
             print(f"Error cleaning up SD3Pipe resources: {str(e)}")
