@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inference-service
+  namespace: ollama
+  labels:
+    app: inference-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inference-service
+  template:
+    metadata:
+      labels:
+        app: inference-service
+    spec:
+      containers:
+      - name: inference-service
+        image: ghcr.io/longstorymedia/inference:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+        - containerPort: 50051
+          name: grpc
+        envFrom:
+        - configMapRef:
+            name: inference-config
+        - secretRef:
+            name: inference-secrets
+        resources:
+          limits:
+            memory: "6Gi"
+            cpu: "2"
+            nvidia.com/gpu: "1"
+          requests:
+            memory: "4Gi"
+            cpu: "1"
+            nvidia.com/gpu: "1"
+        volumeMounts:
+        - name: generated-images
+          mountPath: /root/images
+        - name: code-base
+          mountPath: /app
+      volumes:
+      - name: generated-images
+        persistentVolumeClaim:
+          claimName: generated-images
+      - name: code-base
+        persistentVolumeClaim:
+          claimName: code-base
+  strategy:
+    type: Recreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference-service
+  namespace: ollama
+  labels:
+    app: inference-service
+spec:
+  type: ClusterIP
+  selector:
+    app: inference-service
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: http
+  - port: 50051
+    targetPort: 50051
+    name: grpc
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: inference-service-ingress
+  namespace: ollama
+  annotations:
+    kubernetes.io/ingress.class: "traefik"
+    traefik.ingress.kubernetes.io/router.entrypoints: "websecure"
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  rules:
+  - host: inference.longstorymedia.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: inference-service
+            port:
+              number: 8000
