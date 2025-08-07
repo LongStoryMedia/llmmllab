@@ -21,8 +21,7 @@ properties:
     type: object
     description: The format to return a response in. Format can be json or a JSON schema
   options:
-    type: object
-    additionalProperties: true
+    $ref: model_parameters.yaml
     description: Additional model parameters listed in the documentation for the Modelfile such as temperature
   system:
     type: string

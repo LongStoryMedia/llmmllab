@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MessageContent
+description: Content of a message in a chat conversation
+type: object
+properties:
+  type:
+    $ref: message_content_type.yaml
+    description: Type of the message content (e.g., text, image, tool call)
+  text:
+    type: string
+    description: Text content of the message, if applicable
+  url:
+    type: string
+    description: URL of the image or resource, if applicable
+required:
+  - type

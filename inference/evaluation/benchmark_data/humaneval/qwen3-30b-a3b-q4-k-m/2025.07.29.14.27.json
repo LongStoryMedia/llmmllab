@@ -1,0 +1,147 @@
+{
+  "qwen3-30b-a3b-q4-k-m": {
+    "model_id": "qwen3-30b-a3b-q4-k-m",
+    "timestamp": "2025-07-29T14:17:49.884525",
+    "benchmarks": {
+      "humaneval": {
+        "score": 0.0,
+        "total_questions": 12,
+        "correct_answers": 0,
+        "detailed_results": [
+          {
+            "task_id": "HumanEval/0",
+            "is_correct": false,
+            "confidence": 0.9,
+            "generated_code": "To implement the `has_close_elements` function, we need to check whether **any two elements** in the list are closer to each other than the given `threshold`.\n\n### Approach:\n1. Sort the list of number...",
+            "evaluation_metadata": {
+              "extracted_code_length": 2680,
+              "extraction_confidence": 1.0,
+              "evaluation_methods": [],
+              "static_analysis": {
+                "has_function_def": true,
+                "has_return_statement": true,
+                "proper_indentation": true,
+                "no_syntax_errors": false,
+                "expected_function_name": "has_close_elements",
+                "syntax_error": "invalid syntax (<unknown>, line 1)"
+              },
+              "dynamic_evaluation": {
+                "tests_run": 0,
+                "tests_passed": 0,
+                "execution_error": "not readable",
+                "timeout": false
+              }
+            }
+          },
+          {
+            "task_id": "HumanEval/1",
+            "is_correct": false,
+            "confidence": 0.9,
+            "generated_code": "Here's the completed Python function that separates balanced and non-nested groups of parentheses from the input string:\n\n```python\nfrom typing import List\n\ndef separate_paren_groups(paren_string: str...",
+            "evaluation_metadata": {
+              "extracted_code_length": 3192,
+              "extraction_confidence": 1.0,
+              "evaluation_methods": [],
+              "static_analysis": {
+                "has_function_def": true,
+                "has_return_statement": true,
+                "proper_indentation": true,
+                "no_syntax_errors": false,
+                "expected_function_name": "separate_paren_groups",
+                "syntax_error": "unterminated string literal (detected at line 1) (<unknown>, line 1)"
+              },
+              "dynamic_evaluation": {
+                "tests_run": 0,
+                "tests_passed": 0,
+                "execution_error": "not readable",
+                "timeout": false
+              }
+            }
+          },
+          {
+            "task_id": "HumanEval/0",
+            "is_correct": false,
+            "confidence": 0.9,
+            "generated_code": "Here's the completed Python function that checks if any two numbers in a list are closer to each other than a given threshold:\n\n```python\nfrom typing import List\n\ndef has_close_elements(numbers: List[...",
+            "evaluation_metadata": {
+              "extracted_code_length": 2436,
+              "extraction_confidence": 1.0,
+              "evaluation_methods": [],
+              "static_analysis": {
+                "has_function_def": true,
+                "has_return_statement": true,
+                "proper_indentation": true,
+                "no_syntax_errors": false,
+                "expected_function_name": "has_close_elements",
+                "syntax_error": "unterminated string literal (detected at line 1) (<unknown>, line 1)"
+              },
+              "dynamic_evaluation": {
+                "tests_run": 0,
+                "tests_passed": 0,
+                "execution_error": "not readable",
+                "timeout": false
+              }
+            }
+          },
+          {
+            "task_id": "HumanEval/1",
+            "is_correct": false,
+            "confidence": 0.9,
+            "generated_code": "Here's the completed Python function that separates balanced and non-nested groups of parentheses from the input string:\n\n```python\nfrom typing import List\n\ndef separate_paren_groups(paren_string: str...",
+            "evaluation_metadata": {
+              "extracted_code_length": 6544,
+              "extraction_confidence": 1.0,
+              "evaluation_methods": [],
+              "static_analysis": {
+                "has_function_def": true,
+                "has_return_statement": true,
+                "proper_indentation": true,
+                "no_syntax_errors": false,
+                "expected_function_name": "separate_paren_groups",
+                "syntax_error": "unterminated string literal (detected at line 1) (<unknown>, line 1)"
+              },
+              "dynamic_evaluation": {
+                "tests_run": 0,
+                "tests_passed": 0,
+                "execution_error": "not readable",
+                "timeout": false
+              }
+            }
+          },
+          {
+            "task_id": "HumanEval/0",
+            "is_correct": false,
+            "confidence": 0.9,
+            "generated_code": "Here's the completed Python function that checks whether any two numbers in a list are closer to each other than a given threshold:\n\n```python\nfrom typing import List\n\ndef has_close_elements(numbers: ...",
+            "evaluation_metadata": {
+              "extracted_code_length": 3748,
+              "extraction_confidence": 1.0,
+              "evaluation_methods": [],
+              "static_analysis": {
+                "has_function_def": true,
+                "has_return_statement": true,
+                "proper_indentation": true,
+                "no_syntax_errors": false,
+                "expected_function_name": "has_close_elements",
+                "syntax_error": "unterminated string literal (detected at line 1) (<unknown>, line 1)"
+              },
+              "dynamic_evaluation": {
+                "tests_run": 0,
+                "tests_passed": 0,
+                "execution_error": "not readable",
+                "timeout": false
+              }
+            }
+          }
+        ],
+        "metadata": {
+          "benchmark": "HumanEval",
+          "description": "Code generation and functional correctness",
+          "model_id": "qwen3-30b-a3b-q4-k-m",
+          "temperature": 0.1,
+          "max_tokens": 400
+        }
+      }
+    }
+  }
+}

@@ -10,10 +10,22 @@ import (
 type messageStore struct{}
 
 // AddMessage adds a message to a conversation
-func (ms *messageStore) AddMessage(ctx context.Context, conversationID int, role, content string, usrCfg *models.UserConfig) (int, error) {
+func (ms *messageStore) AddMessage(ctx context.Context, message *models.Message, usrCfg *models.UserConfig) (int, error) {
 	// Check if Pool is initialized
 	if Pool == nil {
 		return 0, util.HandleError(fmt.Errorf("database connection pool is not initialized (Pool is nil)"))
+	}
+	if message == nil {
+		return 0, util.HandleError(fmt.Errorf("message cannot be nil"))
+	}
+	if message.ConversationID <= 0 {
+		return 0, util.HandleError(fmt.Errorf("conversation ID must be greater than 0"))
+	}
+	if message.Role == "" {
+		return 0, util.HandleError(fmt.Errorf("message role cannot be empty"))
+	}
+	if len(message.Content) == 0 {
+		return 0, util.HandleError(fmt.Errorf("message content cannot be empty"))
 	}
 
 	// Start a transaction for atomicity
@@ -30,13 +42,20 @@ func (ms *messageStore) AddMessage(ctx context.Context, conversationID int, role
 
 	var messageID int
 	// Use the SQL query from our loader
-	err = tx.QueryRow(ctx, GetQuery("message.add_message"), conversationID, role, content).Scan(&messageID)
+	err = tx.QueryRow(ctx, GetQuery("message.add_message"), message.ConversationID, message.Role, message.Content).Scan(&messageID)
 	if err != nil {
 		return 0, util.HandleError(err)
 	}
 
+	for _, c := range message.Content {
+		err = tx.QueryRow(ctx, GetQuery("message.add_content"), messageID, c.Type, c.Text, c.URL).Scan(&messageID)
+		if err != nil {
+			return 0, util.HandleError(err)
+		}
+	}
+
 	// Update the conversation's updated_at timestamp
-	_, err = tx.Exec(ctx, GetQuery("conversation.update_conversation"), conversationID)
+	_, err = tx.Exec(ctx, GetQuery("conversation.update_conversation"), message.ConversationID)
 	if err != nil {
 		return 0, util.HandleError(err)
 	}
@@ -45,16 +64,9 @@ func (ms *messageStore) AddMessage(ctx context.Context, conversationID int, role
 	if err = tx.Commit(ctx); err != nil {
 		return 0, util.HandleError(err)
 	}
-	// Create message object for caching
-	message := &models.Message{
-		ID:             messageID,
-		ConversationID: conversationID,
-		Role:           role,
-		Content:        content,
-	}
 
 	// Invalidate the conversation's message cache
-	InvalidateConversationMessagesCache(ctx, conversationID)
+	InvalidateConversationMessagesCache(ctx, message.ConversationID)
 
 	// Cache the new message
 	if err := CacheMessage(ctx, message); err != nil {

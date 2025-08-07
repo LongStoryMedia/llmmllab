@@ -1,0 +1,99 @@
+{
+  "qwen2.5-vl-32b-instruct-q4-k-m": {
+    "model_id": "qwen2.5-vl-32b-instruct-q4-k-m",
+    "timestamp": "2025-07-29T04:42:02.976589",
+    "benchmarks": {
+      "ifeval": {
+        "score": 0.65,
+        "total_questions": 20,
+        "correct_answers": 13,
+        "detailed_results": [
+          {
+            "task_id": 0,
+            "constraint": "exactly_4_lines",
+            "follows_instruction": true,
+            "confidence": 1.0,
+            "metadata": {
+              "expected_lines": 4,
+              "actual_lines": 4,
+              "lines": [
+                "The ocean whispers secrets deep,  ",
+                "A vast, eternal, endless sleep.  ",
+                "Its waves embrace the endless sky,  ",
+                "A heart that beats with mystery.  "
+              ]
+            },
+            "response": "\nThe ocean whispers secrets deep,  \nA vast, eternal, endless sleep.  \nIts waves embrace the endless sky,  \nA heart that beats with mystery.  "
+          },
+          {
+            "task_id": 1,
+            "constraint": "format_and_count",
+            "follows_instruction": true,
+            "confidence": 0.95,
+            "metadata": {
+              "expected_count": 5,
+              "actual_count": 5,
+              "items": [
+                "Germany",
+                "France",
+                "Italy",
+                "Spain",
+                "United"
+              ]
+            },
+            "response": "\nCertainly! Here are five countries in Europe:\n\n1. Country: Germany  \n2. Country: France  \n3. Country: Italy  \n4. Country: Spain  \n5. Country: United ..."
+          },
+          {
+            "task_id": 2,
+            "constraint": "exactly_2_sentences",
+            "follows_instruction": true,
+            "confidence": 0.9,
+            "metadata": {
+              "expected_sentences": 2,
+              "actual_sentences": 2,
+              "sentences": [
+                "Photosynthesis is the process by which plants, algae, and some bacteria convert light energy from the sun into chemical energy stored in glucose, using carbon dioxide and water as inputs",
+                "This process occurs primarily in the chloroplasts of plant cells and involves two main stages: the light-dependent reactions, which capture light energy, and the Calvin cycle, which uses that energy to produce glucose and oxygen as a byproduct"
+              ]
+            },
+            "response": "\nPhotosynthesis is the process by which plants, algae, and some bacteria convert light energy from the sun into chemical energy stored in glucose, usi..."
+          },
+          {
+            "task_id": 3,
+            "constraint": "word_frequency",
+            "follows_instruction": false,
+            "confidence": 1.0,
+            "metadata": {
+              "word": "fantastic",
+              "expected_count": 3,
+              "actual_count": 4
+            },
+            "response": "\nCertainly! Here's a response that includes the word \"fantastic\" exactly three times:\n\n---\n\nI'm thrilled to hear about your recent achievements\u2014they a..."
+          },
+          {
+            "task_id": 4,
+            "constraint": "numbered_list_6_items",
+            "follows_instruction": false,
+            "confidence": 0.9,
+            "metadata": {
+              "expected_items": 6,
+              "actual_items": 5,
+              "items": [
+                "\n1.",
+                "\n2.",
+                "\n3.",
+                "\n4.",
+                "\n5."
+              ]
+            },
+            "response": "\nHere is a numbered list of 6 healthy eating habits:\n\n1. **Eat a Balanced Diet**: Focus on consuming a variety of foods from all food groups, includin..."
+          }
+        ],
+        "metadata": {
+          "benchmark": "IFEVAL",
+          "description": "Instruction Following Evaluation"
+        }
+      }
+    }
+  }
+}

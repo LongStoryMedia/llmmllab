@@ -1,0 +1,21 @@
+# Model Runner requirements
+# NOTE: torch is installed separately in the Dockerfile from torch_requirements.txt
+# NOTE: flash-attn is installed separately in the Dockerfile with --no-build-isolation
+transformers # Specific version for stability
+huggingface-hub
+fsspec
+datasets
+gguf>=0.1.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+pillow>=9.5.0
+diffusers>=0.18.0
+safetensors>=0.3.0
+bitsandbytes>=0.40.0  # For quantization
+sentencepiece>=0.1.99  # For tokenization
+protobuf>=4.23.0  # For communication with gRPC server
+ninja>=1.11.1  # For building C++ extensions
+packaging
+# torch
+# torchvision
+# torchaudio

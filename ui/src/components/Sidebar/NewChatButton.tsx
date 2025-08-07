@@ -3,12 +3,20 @@ import { useChat } from '../../chat';
 import { useNavigate } from 'react-router-dom';
 
 const NewChatButton = () => {
-  const { startNewConversation, currentConversation } = useChat();
+  const { startNewConversation } = useChat();
   const navigate = useNavigate();
 
-  const handleNewChat = () => {
-    startNewConversation();
-    navigate(`/chat/${currentConversation?.id}`); // Navigate to root, ChatPage will update URL once conversation is created
+
+  const handleNewChat = async () => {
+    try {
+      const newConversationId = await startNewConversation();
+      if (newConversationId && newConversationId !== -1) {
+        navigate(`/chat/${newConversationId}`);
+      }
+    } catch (err) {
+      // Optionally handle error (e.g., show notification)
+      console.error('Failed to start new conversation', err);
+    }
   };
 
   return (

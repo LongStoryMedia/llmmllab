@@ -29,7 +29,7 @@ const (
 )
 
 type InferenceService interface {
-	RelayUserMessage(ctx context.Context, modelProfile *models.ModelProfile, messages []models.ChatMessage, userID string, conversationID int, writer *bufio.Writer) (string, error)
+	RelayUserMessage(ctx context.Context, modelProfile *models.ModelProfile, messages []models.Message, userID string, conversationID int, writer *bufio.Writer) (string, error)
 	GenerateImage(ctx context.Context, userID string, conversationID int, originalRequest models.ImageGenerateRequest)
 	EditImage(ctx context.Context, userID string, conversationID int, originalRequest models.ImageGenerateRequest)
 	GetEmbedding(ctx context.Context, textToEmbed string, mp *models.ModelProfile, userID string, conversationID int) ([][]float32, error)
@@ -140,11 +140,11 @@ func (s *InferenceSvc) setResponseHeaders(resp *http.Response, headers ...Contex
 	}
 }
 
-func (s *InferenceSvc) RelayUserMessage(ctx context.Context, modelProfile *models.ModelProfile, messages []models.ChatMessage, userID string, conversationID int, w *bufio.Writer) (string, error) {
+func (s *InferenceSvc) RelayUserMessage(ctx context.Context, modelProfile *models.ModelProfile, messages []models.Message, userID string, conversationID int, w *bufio.Writer) (string, error) {
 	rc := NewResponseChan()
 	ir := &InferenceRequest{
 		Priority:       1,
-		RequiredMemory: util.Gb2b(8), // 100 MB, adjust as needed
+		RequiredMemory: util.Gb2b(6), // 100 MB, adjust as needed
 		EnqueueTime:    time.Now(),
 		DispatchArgs:   []any{ctx, modelProfile, messages, userID, conversationID, w},
 		Dispatch:       s.packageForDispatch(s.relayForUser),
@@ -188,6 +188,8 @@ func (s *InferenceSvc) GetEmbedding(ctx context.Context, textToEmbed string, mp 
 
 	return nil, util.HandleError(fmt.Errorf("unexpected result type: %T, expected [][]float32", res.Result))
 }
+
+//
 
 func (s *InferenceSvc) GenerateImage(ctx context.Context, userID string, conversationID int, originalRequest models.ImageGenerateRequest) {
 	// Use RabbitMQ if available
@@ -350,12 +352,12 @@ func (s *InferenceSvc) packageForDispatch(fn any) DispatchFunc {
 	}
 }
 
-func (s *InferenceSvc) relayForUser(ctx context.Context, modelProfile *models.ModelProfile, messages []models.ChatMessage, userID string, conversationID int, w *bufio.Writer) (string, error) {
+func (s *InferenceSvc) relayForUser(ctx context.Context, modelProfile *models.ModelProfile, messages []models.Message, userID string, conversationID int, w *bufio.Writer) (string, error) {
 	requestBody := models.ChatReq{
 		Model:    modelProfile.ModelName,
 		Messages: messages,
 		Stream:   true,
-		Options:  modelProfile.Parameters.ToMap(),
+		Options:  &modelProfile.Parameters,
 	}
 
 	sock := GetSocketService()
@@ -434,14 +436,18 @@ loopScan:
 		}
 
 		// Extract content from the JSON chunk
-		respObj := &models.OllamaChatResp{}
+		respObj := &models.ChatResponse{}
 		if err := json.Unmarshal(line, respObj); err != nil {
 			util.HandleError(fmt.Errorf("error unmarshaling response: %w", err))
 			continue // Skip this line on error but continue processing
 		}
 
-		if respObj.Message.Content != "" {
-			responseContent.WriteString(respObj.Message.Content)
+		// Accumulate the full response
+		for _, content := range respObj.Message.Content {
+			if content.Text != nil {
+				fmt.Print(content.Text)
+				responseContent.WriteString(*content.Text)
+			}
 		}
 
 		// Check if this is done before attempting to write to the client

@@ -1,0 +1,19 @@
+{
+    "include": [
+        "inference",
+        "maistro",
+        "ui"
+    ],
+    "exclude": [
+        "**/node_modules",
+        "**/__pycache__"
+    ],
+    "typeCheckingMode": "basic",
+    "reportMissingImports": true,
+    "reportMissingTypeStubs": false,
+    "pythonVersion": "3.10",
+    "extraPaths": [
+        "inference/runner",
+        "inference/runner/typings"
+    ]
+}

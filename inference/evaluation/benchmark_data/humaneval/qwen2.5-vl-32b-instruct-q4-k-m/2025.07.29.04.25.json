@@ -1,0 +1,147 @@
+{
+  "qwen2.5-vl-32b-instruct-q4-k-m": {
+    "model_id": "qwen2.5-vl-32b-instruct-q4-k-m",
+    "timestamp": "2025-07-29T04:11:45.855803",
+    "benchmarks": {
+      "humaneval": {
+        "score": 0.0,
+        "total_questions": 10,
+        "correct_answers": 0,
+        "detailed_results": [
+          {
+            "task_id": "HumanEval/0",
+            "is_correct": false,
+            "confidence": 0.9,
+            "generated_code": "\nTo complete the function `has_close_elements`, we need to determine if there are any two numbers in the list `numbers` such that their absolute difference is less than the given `threshold`. Here's t...",
+            "evaluation_metadata": {
+              "extracted_code_length": 1852,
+              "extraction_confidence": 1.0,
+              "evaluation_methods": [],
+              "static_analysis": {
+                "has_function_def": true,
+                "has_return_statement": true,
+                "proper_indentation": true,
+                "no_syntax_errors": false,
+                "expected_function_name": "has_close_elements",
+                "syntax_error": "unterminated string literal (detected at line 2) (<unknown>, line 2)"
+              },
+              "dynamic_evaluation": {
+                "tests_run": 0,
+                "tests_passed": 0,
+                "execution_error": "not readable",
+                "timeout": false
+              }
+            }
+          },
+          {
+            "task_id": "HumanEval/1",
+            "is_correct": false,
+            "confidence": 0.9,
+            "generated_code": "\nTo solve the problem of separating groups of nested parentheses into individual balanced groups, we need to carefully parse the input string while keeping track of the nesting levels. Here's the step...",
+            "evaluation_metadata": {
+              "extracted_code_length": 1934,
+              "extraction_confidence": 1.0,
+              "evaluation_methods": [],
+              "static_analysis": {
+                "has_function_def": true,
+                "has_return_statement": false,
+                "proper_indentation": true,
+                "no_syntax_errors": false,
+                "expected_function_name": "separate_paren_groups",
+                "syntax_error": "unterminated string literal (detected at line 2) (<unknown>, line 2)"
+              },
+              "dynamic_evaluation": {
+                "tests_run": 0,
+                "tests_passed": 0,
+                "execution_error": "not readable",
+                "timeout": false
+              }
+            }
+          },
+          {
+            "task_id": "HumanEval/0",
+            "is_correct": false,
+            "confidence": 0.9,
+            "generated_code": "\nTo complete the function `has_close_elements`, we need to determine if there are any two numbers in the list `numbers` such that their absolute difference is less than the given `threshold`. Here's t...",
+            "evaluation_metadata": {
+              "extracted_code_length": 1853,
+              "extraction_confidence": 1.0,
+              "evaluation_methods": [],
+              "static_analysis": {
+                "has_function_def": true,
+                "has_return_statement": true,
+                "proper_indentation": true,
+                "no_syntax_errors": false,
+                "expected_function_name": "has_close_elements",
+                "syntax_error": "unterminated string literal (detected at line 2) (<unknown>, line 2)"
+              },
+              "dynamic_evaluation": {
+                "tests_run": 0,
+                "tests_passed": 0,
+                "execution_error": "not readable",
+                "timeout": false
+              }
+            }
+          },
+          {
+            "task_id": "HumanEval/1",
+            "is_correct": false,
+            "confidence": 0.9,
+            "generated_code": "\nTo solve the problem of separating groups of nested parentheses into individual balanced groups, we need to carefully parse the input string while keeping track of the nesting levels. Here's the step...",
+            "evaluation_metadata": {
+              "extracted_code_length": 1982,
+              "extraction_confidence": 1.0,
+              "evaluation_methods": [],
+              "static_analysis": {
+                "has_function_def": true,
+                "has_return_statement": false,
+                "proper_indentation": true,
+                "no_syntax_errors": false,
+                "expected_function_name": "separate_paren_groups",
+                "syntax_error": "unterminated string literal (detected at line 2) (<unknown>, line 2)"
+              },
+              "dynamic_evaluation": {
+                "tests_run": 0,
+                "tests_passed": 0,
+                "execution_error": "not readable",
+                "timeout": false
+              }
+            }
+          },
+          {
+            "task_id": "HumanEval/0",
+            "is_correct": false,
+            "confidence": 0.9,
+            "generated_code": "\nTo complete the function `has_close_elements`, we need to determine if there are any two numbers in the list `numbers` such that their absolute difference is less than the given `threshold`. Here's t...",
+            "evaluation_metadata": {
+              "extracted_code_length": 1829,
+              "extraction_confidence": 1.0,
+              "evaluation_methods": [],
+              "static_analysis": {
+                "has_function_def": true,
+                "has_return_statement": true,
+                "proper_indentation": true,
+                "no_syntax_errors": false,
+                "expected_function_name": "has_close_elements",
+                "syntax_error": "unterminated string literal (detected at line 2) (<unknown>, line 2)"
+              },
+              "dynamic_evaluation": {
+                "tests_run": 0,
+                "tests_passed": 0,
+                "execution_error": "not readable",
+                "timeout": false
+              }
+            }
+          }
+        ],
+        "metadata": {
+          "benchmark": "HumanEval",
+          "description": "Code generation and functional correctness",
+          "model_id": "qwen2.5-vl-32b-instruct-q4-k-m",
+          "temperature": 0.1,
+          "max_tokens": 400
+        }
+      }
+    }
+  }
+}

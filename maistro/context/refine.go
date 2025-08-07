@@ -14,8 +14,8 @@ import (
 )
 
 // getCritiqueForResponse sends a response to Ollama for critique
-func (cc *ConversationContext) GetCritiqueForResponse(ctx context.Context, responseToCritique string) (string, error) {
-	cfg, err := GetUserConfig(cc.UserID)
+func (cc *conversationContext) GetCritiqueForResponse(ctx context.Context, responseToCritique string) (string, error) {
+	cfg, err := GetUserConfig(cc.userID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get user config: %w", err)
 	}
@@ -25,22 +25,31 @@ func (cc *ConversationContext) GetCritiqueForResponse(ctx context.Context, respo
 		return "", fmt.Errorf("failed to get self-critique profile: %w", err)
 	}
 
-	msgs := []models.ChatMessage{
+	msgs := []models.Message{
 		{
-			Role:    "system",
-			Content: critiqueProfile.SystemPrompt,
+			Role: models.MessageRoleSystem,
+			Content: []models.MessageContent{{
+				Type: models.MessageContentTypeText,
+				Text: &critiqueProfile.SystemPrompt,
+			}},
 		},
 		{
-			Role:    "user",
-			Content: fmt.Sprintf("Please critique this AI response: \n\n%s", responseToCritique),
+			Role: models.MessageRoleUser,
+			Content: []models.MessageContent{{
+				Type: models.MessageContentTypeText,
+				Text: util.StrPtr(fmt.Sprintf("Please critique this AI response: \n\n%s", responseToCritique)),
+			}},
 		},
 	}
 
 	// Ensure the last message is a user message with the critique instruction
-	if len(msgs) == 0 || msgs[len(msgs)-1].Role != "user" {
-		msgs = append(msgs, models.ChatMessage{
-			Role:    "user",
-			Content: "Please critique the above AI response.",
+	if len(msgs) == 0 || msgs[len(msgs)-1].Role != models.MessageRoleUser {
+		msgs = append(msgs, models.Message{
+			Role: models.MessageRoleUser,
+			Content: []models.MessageContent{{
+				Type: models.MessageContentTypeText,
+				Text: util.StrPtr("Please critique the above AI response."),
+			}},
 		})
 	}
 
@@ -49,7 +58,7 @@ func (cc *ConversationContext) GetCritiqueForResponse(ctx context.Context, respo
 	defer cancel()
 
 	// Send the request to Ollama
-	resp, err := proxy.StreamOllamaChatRequest(timeoutCtx, critiqueProfile, msgs, cc.UserID, cc.ConversationID)
+	resp, err := proxy.StreamOllamaChatRequest(timeoutCtx, critiqueProfile, msgs, cc.userID, cc.conversationID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get critique: %w", err)
 	}
@@ -62,8 +71,8 @@ func (cc *ConversationContext) GetCritiqueForResponse(ctx context.Context, respo
 }
 
 // ImproveResponseWithCritique improves a response based on the critique
-func (cc *ConversationContext) ImproveResponseWithCritique(ctx context.Context, originalQuery, originalResponse, critiqueText string) (string, error) {
-	cfg, err := GetUserConfig(cc.UserID)
+func (cc *conversationContext) ImproveResponseWithCritique(ctx context.Context, originalQuery, originalResponse, critiqueText string) (string, error) {
+	cfg, err := GetUserConfig(cc.userID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get user config: %w", err)
 	}
@@ -73,15 +82,21 @@ func (cc *ConversationContext) ImproveResponseWithCritique(ctx context.Context, 
 	}
 
 	// Build the request
-	msgs := []models.ChatMessage{
+	msgs := []models.Message{
 		{
-			Role:    "system",
-			Content: improvementProfile.SystemPrompt,
+			Role: models.MessageRoleSystem,
+			Content: []models.MessageContent{{
+				Type: models.MessageContentTypeText,
+				Text: &improvementProfile.SystemPrompt,
+			}},
 		},
 		{
-			Role: "user",
-			Content: fmt.Sprintf("Original query: %s\n\nOriginal response: %s\n\nCritique: %s\n\nPlease provide an improved response addressing the critique:",
-				originalQuery, originalResponse, critiqueText),
+			Role: models.MessageRoleUser,
+			Content: []models.MessageContent{{
+				Type: models.MessageContentTypeText,
+				Text: util.StrPtr(fmt.Sprintf("Original query: %s\n\nOriginal response: %s\n\nCritique: %s\n\nPlease provide an improved response addressing the critique:",
+					originalQuery, originalResponse, critiqueText)),
+			}},
 		},
 	}
 
@@ -90,7 +105,7 @@ func (cc *ConversationContext) ImproveResponseWithCritique(ctx context.Context, 
 	defer cancel()
 
 	// Send the request to Ollama
-	resp, err := proxy.StreamOllamaChatRequest(timeoutCtx, improvementProfile, msgs, cc.UserID, cc.ConversationID)
+	resp, err := proxy.StreamOllamaChatRequest(timeoutCtx, improvementProfile, msgs, cc.userID, cc.conversationID)
 	if err != nil {
 		return "", fmt.Errorf("failed to improve response: %w", err)
 	}
@@ -123,7 +138,7 @@ func FilterResponseText(text string) string {
 	return result
 }
 
-func (cc *ConversationContext) RefineResponse(response, userMessage, userID string, conversationID int) string {
+func (cc *conversationContext) RefineResponse(response, userMessage, userID string, conversationID int) string {
 	cfg, err := GetUserConfig(userID)
 	if err != nil {
 		util.HandleError(err)

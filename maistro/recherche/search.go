@@ -20,7 +20,7 @@ import (
 	"google.golang.org/api/option"
 )
 
-var googleSeachApiKey string = "AIzaSyB5RNu4WR24OapJug9rbzAgsPru7gbvFTk"
+var googleSeachApiKey string = ""
 var cx string = "0445a4af16a624cfe"
 
 // PerformWebSearch performs a web search for the given query and returns URLs

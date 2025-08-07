@@ -49,7 +49,8 @@ def sd3_model(test_models) -> Model:
         digest="test_digest",
         pipeline="StableDiffusion3Pipeline",
         details=details,
-        lora_weights=[]
+        lora_weights=[],
+        task="TextToImage",
     )
 
 
@@ -81,7 +82,8 @@ def sdxl_model(test_models) -> Model:
         digest="test_digest",
         pipeline="StableDiffusionXLPipeline",
         details=details,
-        lora_weights=[]
+        lora_weights=[],
+        task="TextToImage",
     )
 
 
@@ -114,7 +116,8 @@ def flux_model(test_models) -> Model:
         digest="test_digest",
         pipeline="FluxPipeline",
         details=details,
-        lora_weights=[]
+        lora_weights=[],
+        task="TextToImage",
     )
 
 
@@ -155,7 +158,8 @@ def model_with_lora(test_models) -> Model:
         digest="test_digest",
         pipeline="StableDiffusion3Pipeline",
         details=details,
-        lora_weights=[lora_weight]
+        lora_weights=[lora_weight],
+        task="TextToImage",
     )
 
 

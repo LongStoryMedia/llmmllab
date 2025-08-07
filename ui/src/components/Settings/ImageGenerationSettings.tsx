@@ -190,7 +190,7 @@ const ImageGenerationSettings = () => {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Select which model to use for image generation. Only models with TextToImage specialization are shown.
           </Typography>
-          <ImageModelSelector />
+          <ImageModelSelector mode="TextToImage" />
         </>
       )}
     </Box>

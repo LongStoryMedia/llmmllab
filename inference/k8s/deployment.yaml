@@ -4,20 +4,15 @@ metadata:
   name: ollama
   namespace: ollama
   labels:
-    app.kubernetes.io/name: ollama
-    app.kubernetes.io/instance: ollama
-    app.kubernetes.io/component: app
+    app: ollama
 spec:
   selector:
     matchLabels:
-      name: ollama
+      app: ollama
   template:
     metadata:
       labels:
-        name: ollama
-        app.kubernetes.io/name: ollama
-        app.kubernetes.io/instance: ollama
-        app.kubernetes.io/component: app
+        app: ollama
     spec:
       runtimeClassName: nvidia
       volumes:
@@ -37,27 +32,18 @@ spec:
         - name: code-base
           persistentVolumeClaim:
             claimName: code-base
+        - name: llama-cpp
+          hostPath:
+            path: /llama.cpp
+            type: DirectoryOrCreate
+        - name: models
+          hostPath:
+            path: /models
+            type: DirectoryOrCreate
       containers:
         - name: ollama
-          image: 192.168.0.71:31500/inference:latest
-          imagePullPolicy: Always
-          command: ["/bin/sh"]
-          args:
-            - "-c"
-            - |
-              # Check if app.py exists in the mounted directory
-              if [ -f /app/app.py ]; then
-                echo "Found app.py in mounted volume, starting with live-reload"
-                # Start Ollama and then the API with reload for live updates
-                ollama serve &
-                cd /app && ls -la && uvicorn app:app --host 0.0.0.0 --port 8000 --reload
-              else
-                echo "ERROR: app.py not found in mounted directory. Please ensure your code is correctly mounted."
-                ls -la /app
-                echo "Contents of parent directory:"
-                ls -la /
-                exit 1
-              fi
+          image: 192.168.0.71:31500/inference:feature.grpc
+          imagePullPolicy: IfNotPresent
           ports:
             - name: ollama
               containerPort: 11434
@@ -69,11 +55,11 @@ spec:
             requests:
               memory: "24Gi"
               cpu: "16"
-              nvidia.com/gpu: "2"
+              nvidia.com/gpu: "3"
             limits:
               memory: "30Gi"
               cpu: "20"
-              nvidia.com/gpu: "2"
+              nvidia.com/gpu: "3"
           volumeMounts:
             - name: ollama-models-volume
               mountPath: /root/.ollama
@@ -85,6 +71,10 @@ spec:
               mountPath: /root/images
             - name: code-base
               mountPath: /app
+            - name: llama-cpp
+              mountPath: /llama.cpp
+            - name: models
+              mountPath: /models
           env:
             - name: OLLAMA_HOST
               value: "0.0.0.0"
@@ -97,18 +87,9 @@ spec:
                 secretKeyRef:
                   name: hf-token
                   key: token
-            # Memory management settings for Stable Diffusion
-            - name: SD_MAX_WIDTH
-              value: "768"
-            - name: SD_MAX_HEIGHT
-              value: "768"
-            - name: SD_DEFAULT_STEPS
-              value: "30"
-            - name: USE_FP32_FOR_TEXT_ENCODERS
+            # RabbitMQ configuration
+            - name: RABBITMQ_ENABLED
               value: "true"
-            - name: BNB_CUDA_VERSION
-              value: "128"
-            # rabbitmq settings
             - name: RABBITMQ_HOST
               value: "rabbitmq-0.rabbitmq.rabbitmq.svc.cluster.local"
             - name: RABBITMQ_PORT
@@ -130,5 +111,130 @@ spec:
                   key: api_key
             - name: MAISTRO_BASE_URL
               value: "http://maistro.maistro.svc.cluster.local:8080"
+              
+            # Authentication configuration
+            - name: AUTH_ISSUER
+              value: "https://auth.longstorymedia.com"
+            - name: AUTH_AUDIENCE
+              value: "lsm-client"
+            - name: AUTH_CLIENT_ID
+              value: "lsm-client"
+            - name: AUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: auth-client
+                  key: client_secret
+            - name: AUTH_JWKS_URI
+              value: "https://auth.longstorymedia.com/keys"
+              
+            # Database configuration
+            - name: DB_HOST
+              value: "192.168.0.71"
+            - name: DB_PORT
+              value: "32345"
+            - name: DB_USER
+              value: "lsm"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: password
+            - name: DB_NAME
+              value: "llmmll"
+            - name: DB_SSLMODE
+              value: "disable"
+              
+            # Redis configuration
+            - name: REDIS_ENABLED
+              value: "true"
+            - name: REDIS_HOST
+              value: "192.168.0.71"
+            - name: REDIS_PORT
+              value: "32346"
+            - name: REDIS_DB
+              value: "0"
+            - name: REDIS_CONVERSATION_TTL
+              value: "360"
+            - name: REDIS_MESSAGE_TTL
+              value: "180"
+            - name: REDIS_SUMMARY_TTL
+              value: "720"
+            - name: REDIS_POOL_SIZE
+              value: "10"
+            - name: REDIS_MIN_IDLE_CONNECTIONS
+              value: "2"
+            - name: REDIS_CONNECT_TIMEOUT
+              value: "5"
+              
+            # Summarization configuration
+            - name: MESSAGES_BEFORE_SUMMARY
+              value: "6"
+            - name: SUMMARIES_BEFORE_CONSOLIDATION
+              value: "3"
+            - name: SUMMARY_MODEL
+              value: "qwen3:0.6b"
+            - name: SUMMARY_SYSTEM_PROMPT
+              value: "compress the following conversation so far into a concise paragraph. Include key points and conclusions, but omit redundant details. The summary will be used as context for future interaction. It should be as small as possible and does not need to be human readable."
+            - name: MAX_SUMMARY_LEVELS
+              value: "3"
+            - name: SUMMARY_WEIGHT_COEFFICIENT
+              value: "0.7"
+            - name: MASTER_SUMMARY_PROMPT
+              value: "Create a comprehensive summary of the conversation, giving most weight to the most recent points and gradually less weight to older information. This is a master summary that will be used for long-term context."
+            
+            # Image generation configuration
+            - name: IMAGE_GENERATION_ENABLED
+              value: "true"
+            - name: IMAGE_DIR
+              value: "/root/images"
+            - name: MAX_IMAGE_SIZE
+              value: "2048"
+            - name: IMAGE_RETENTION_HOURS
+              value: "24"
+              
+            # Inference services configuration
+            - name: INFERENCE_SERVICES_OLLAMA_BASE_URL
+              value: "http://localhost:11434"
+            - name: INFERENCE_SERVICES_SD_BASE_URL
+              value: "http://localhost:8000"
+            - name: INFERENCE_SERVICES_HOST
+              value: "0.0.0.0" 
+            - name: INFERENCE_SERVICES_PORT
+              value: "50051"
+              
+            # Internal security configuration
+            - name: INTERNAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: internal-api-key
+                  key: api_key
+            - name: INTERNAL_ALLOWED_IPS
+              value: "192.168.0.0/24,10.43.0.0/16"
+              
+            # Log level
+            - name: LOG_LEVEL
+              value: "debug"
+            - name: EVALUATION_VENV
+              value: "/opt/venv/evaluation"
+            - name: SERVER_VENV
+              value: "/opt/venv/server"
+            - name: RUNNER_VENV
+              value: "/opt/venv/runner"
+            - name: BASE_VENV
+              value: "/opt/venv/base"
+            - name: CMAKE_ARGS
+              value: "-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_PATH=/llama.cpp/build/bin"
+            - name: LLAMA_CPP_LIB_PATH
+              value: "/llama.cpp/build/bin"
+            - name: GOOGLE_SEARCH_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: google-search-api-key
+                  key: google-search-api-key
+            - name: GOOGLE_SEARCH_CX
+              valueFrom:
+                secretKeyRef:
+                  name: google-search-cx
+                  key: google-search-cx
   strategy:
     type: Recreate

@@ -30,9 +30,9 @@ class TestSD3Pipe:
         # Mock the quantization config
         bnb_config = MagicMock(spec=BitsAndBytesConfig)
 
-        # Call the method under test with patch to avoid actual loading
+        # Call the constructor with patch to avoid actual loading
         with patch('pipelines.sd3.SD3Pipe._setup_quantization_config', return_value=bnb_config):
-            pipe = SD3Pipe.load(sd3_model)
+            pipe = SD3Pipe(sd3_model)
 
         # Assert transformer was loaded with the correct arguments
         mock_transformer.from_pretrained.assert_called()
@@ -76,7 +76,7 @@ class TestSD3Pipe:
         # Call the method under test with patch to avoid actual loading
         with patch('pipelines.sd3.SD3Pipe._setup_quantization_config', return_value=None):
             # Also patch get_dtype to ensure it returns what we expect
-            pipe = SD3Pipe.load(sd3_model_copy)
+            pipe = SD3Pipe(sd3_model_copy)
 
         # Assert transformer was loaded with the correct arguments
         mock_transformer.from_pretrained.assert_called()
@@ -107,7 +107,7 @@ class TestSDXLPipe:
         mock_sdxl_pipeline.from_pretrained.return_value = mock_pipeline_instance
 
         # Call the method under test
-        pipe = SDXLPipe.load(sdxl_model)
+        pipe = SDXLPipe(sdxl_model)
 
         # Assert pipeline was loaded with the correct arguments
         mock_sdxl_pipeline.from_pretrained.assert_called_with(
@@ -141,7 +141,7 @@ class TestFluxPipe:
 
         # Call the method under test with patch to avoid actual loading
         with patch('pipelines.flux.FluxPipe._setup_quantization_config', return_value=bnb_config):
-            pipe = FluxPipe.load(flux_model)
+            pipe = FluxPipe(flux_model)
 
         # Assert transformer was loaded with the correct arguments
         mock_transformer.from_pretrained.assert_called()
