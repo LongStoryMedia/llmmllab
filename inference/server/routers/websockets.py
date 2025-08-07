@@ -1,3 +1,11 @@
+"""
+WebSockets router for handling real-time communication.
+
+Note: This router is included in app.py with both non-versioned and versioned paths:
+- Non-versioned: /ws/...
+- Versioned: /v1/ws/...
+"""
+
 from fastapi import (
     APIRouter,
     WebSocket,

@@ -41,13 +41,13 @@ kubectl create secret generic hf-token \
 # Create secrets for Google search API key
 kubectl create secret generic google-search-api-key \
 -n ollama \
---from-file=key="$(dirname "$0")/.secrets/google-search-api-key" \
+--from-file=google-search-api-key="$(dirname "$0")/.secrets/google-search-api-key" \
 --dry-run=client -o yaml | kubectl apply -f - --wait=true
 
 # Create secrets for google search CX
 kubectl create secret generic google-search-cx \
 -n ollama \
---from-file=key="$(dirname "$0")/.secrets/google-search-cx" \
+--from-file=google-search-cx="$(dirname "$0")/.secrets/google-search-cx" \
 --dry-run=client -o yaml | kubectl apply -f - --wait=true
 
 if [ ! -d "$(dirname "$0")/.secrets" ]; then

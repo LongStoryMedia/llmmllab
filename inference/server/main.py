@@ -46,13 +46,6 @@ def check_requirements():
         print("Warning: PyTorch not available")
 
     try:
-        import vllm
-
-        print(f"vLLM version: {vllm.__version__}")
-    except ImportError:
-        print("Warning: vLLM not available - OpenAI endpoints will not work")
-
-    try:
         import diffusers
 
         print(f"Diffusers version: {diffusers.__version__}")

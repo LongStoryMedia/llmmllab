@@ -7,7 +7,7 @@ import { getHeaders, req } from './base';
 export async function getConfig(token: string): Promise<UserConfig> {
   return req<UserConfig>({
     method: 'GET',
-    path: 'api/config',
+    path: 'config',
     headers: getHeaders(token)
   });
 }
@@ -18,7 +18,7 @@ export async function getConfig(token: string): Promise<UserConfig> {
 export async function updateConfig(token: string, config: UserConfig): Promise<UserConfig> {
   return req<UserConfig>({
     method: 'PUT',
-    path: 'api/config',
+    path: 'config',
     headers: getHeaders(token),
     body: JSON.stringify(config)
   });

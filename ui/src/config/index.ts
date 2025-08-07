@@ -3,7 +3,8 @@ import { darkTheme, lightTheme } from "./theme";
 
 export default {
   server: {
-    baseUrl: import.meta.env.VITE_BASE_URL
+    baseUrl: import.meta.env.VITE_BASE_URL,
+    apiVersion: 'v1'
   },
   auth: {
     clientId: import.meta.env.VITE_CLIENT_ID,

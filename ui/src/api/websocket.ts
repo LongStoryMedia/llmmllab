@@ -26,11 +26,18 @@ export class ChatWebSocketClient {
   private reconnectTimeoutId: number | null = null;
   private path: string = "";
   private connectionType: SocketConnectionType;
+  private apiVersion: string;
 
-  constructor(connectionType: SocketConnectionType, handler: (response: SocketMessage) => void, path: string = "") {
+  constructor(
+    connectionType: SocketConnectionType, 
+    handler: (response: SocketMessage) => void, 
+    path: string = "",
+    apiVersion?: string
+  ) {
     this.onRes = handler;
     this.path = path;
     this.connectionType = connectionType;
+    this.apiVersion = apiVersion || config.server.apiVersion;
   }
 
   public connect(authToken: string): Promise<void> {
@@ -59,7 +66,7 @@ export class ChatWebSocketClient {
       try {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = config.server.baseUrl.replace(/^https?:\/\//, '');
-        const wsUrl = `${protocol}//${host}/ws/${this.connectionType}${this.path}?token=${authToken}`;
+        const wsUrl = `${protocol}//${host}/${this.apiVersion}/ws/${this.connectionType}${this.path}?token=${authToken}`;
 
         this.ws = new WebSocket(wsUrl);
 

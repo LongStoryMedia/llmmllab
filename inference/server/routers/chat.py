@@ -2,6 +2,10 @@
 Chat router for handling conversations and completions.
 This implementation uses LangChain for enhanced RAG capabilities.
 Updated to use pipeline factory and intent-based service instantiation.
+
+Note: This router is included in app.py with both non-versioned and versioned paths:
+- Non-versioned: /chat/...
+- Versioned: /v1/chat/...
 """
 
 import time

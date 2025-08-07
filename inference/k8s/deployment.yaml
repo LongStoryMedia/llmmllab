@@ -42,8 +42,8 @@ spec:
             type: DirectoryOrCreate
       containers:
         - name: ollama
-          image: 192.168.0.71:31500/inference:feature.grpc
-          imagePullPolicy: IfNotPresent
+          image: 192.168.0.71:31500/inference:main
+          imagePullPolicy: Always
           ports:
             - name: ollama
               containerPort: 11434
@@ -214,6 +214,9 @@ spec:
             # Log level
             - name: LOG_LEVEL
               value: "debug"
+            # API versioning configuration
+            - name: API_VERSION
+              value: "v1"
             - name: EVALUATION_VENV
               value: "/opt/venv/evaluation"
             - name: SERVER_VENV

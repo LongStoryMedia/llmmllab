@@ -9,14 +9,14 @@ export const startConversation = async (accessToken: string, model: string) => {
       model,
       title: ''
     }),
-    path: 'api/conversations'
+    path: 'chat/conversations'
   });
 
   // Fetch the new conversation details
   return await req<Conversation>({
     method: 'GET',
     headers: getHeaders(accessToken),
-    path: `api/conversations/${conversation_id}`
+    path: `chat/conversations/${conversation_id}`
   });
 }
 
@@ -24,7 +24,7 @@ export const getUserConversations = async (accessToken: string, userId: string) 
   return await req<Conversation[]>({
     method: 'GET',
     headers: getHeaders(accessToken),
-    path: `api/users/${userId}/conversations`
+    path: `users/${userId}/conversations`
   });
 }
 
@@ -32,38 +32,38 @@ export const getManyConversations = async (accessToken: string) =>
   req<Conversation[]>({
     method: 'GET',
     headers: getHeaders(accessToken),
-    path: 'api/conversations'
+    path: 'chat/conversations'
   });
 
 export const getOneConversation = async (accessToken: string, id: number) =>
   req<Conversation>({
     method: 'GET',
     headers: getHeaders(accessToken),
-    path: `api/conversations/${id}`
+    path: `chat/conversations/${id}`
   });
 
 export const removeConversation = async (accessToken: string, id: number) => {
   await req({
     method: 'DELETE',
     headers: getHeaders(accessToken),
-    path: `api/conversations/${id}`
+    path: `chat/conversations/${id}`
   });
 }
 
 export const pause = async (accessToken: string, conversationId: number) => req({
   method: 'POST',
-  path: `api/conversations/${conversationId}/pause`,
+  path: `chat/conversations/${conversationId}/pause`,
   headers: getHeaders(accessToken)
 })
 
 export const resume = async (accessToken: string, conversationId: number) => req({
   method: 'POST',
-  path: `api/conversations/${conversationId}/resume`,
+  path: `chat/conversations/${conversationId}/resume`,
   headers: getHeaders(accessToken)
 })
 
 export const cancel = async (accessToken: string, conversationId: number) => req({
   method: 'POST',
-  path: `api/conversations/${conversationId}/cancel`,
+  path: `chat/conversations/${conversationId}/cancel`,
   headers: getHeaders(accessToken)
 })

@@ -58,6 +58,7 @@ from server.routers import (
     users,
 )
 from server.auth import AuthMiddleware
+from server.config import API_VERSION
 
 # from server.routers.openai_compatible import (
 #     cleanup_vllm_service,
@@ -212,10 +213,11 @@ async def lifespan(_: FastAPI):
 
 # Initialize the FastAPI application with the lifespan context manager
 app = FastAPI(
-    title="Stable Diffusion API with OpenAI Compatibility",
-    description="API for generating images using Stable Diffusion and OpenAI-compatible text generation",
-    version="1.0.0",
-    lifespan=lifespan,
+    title="Inference API",
+    description="FastAPI server for inference with API versioning (current version: v1)",
+    version="0.1.0",
+    redoc_url="/redoc",
+    docs_url="/docs",
 )
 
 
@@ -273,7 +275,7 @@ async def auth_middleware_handler(request: Request, call_next):
         )
 
 
-# Include routers
+# Include non-versioned routers (for backward compatibility)
 app.include_router(images.router)
 app.include_router(models.router)
 app.include_router(resources.router)
@@ -287,6 +289,19 @@ app.include_router(users.router)
 from server.routers import internal
 
 app.include_router(internal.router)
+
+# Include versioned routers
+version = API_VERSION
+app.include_router(images.router, prefix=f"/{version}")
+app.include_router(models.router, prefix=f"/{version}")
+app.include_router(resources.router, prefix=f"/{version}")
+app.include_router(chat.router, prefix=f"/{version}")
+app.include_router(config.router, prefix=f"/{version}")
+app.include_router(static.router, prefix=f"/{version}")
+app.include_router(websockets.router, prefix=f"/{version}")
+app.include_router(users.router, prefix=f"/{version}")
+# Internal router is intentionally not versioned to maintain isolation
+# app.include_router(internal.router, prefix=f"/{version}")
 
 # Include OpenAI-compatible router
 # app.include_router(openai_router, tags=["openai-compatible"])
@@ -306,6 +321,7 @@ async def root():
     """Root endpoint with API information."""
     return {
         "message": "Stable Diffusion API with OpenAI Compatibility",
+        "api_version": API_VERSION,
         "endpoints": {
             "image_generation": "/docs#/images",
             "chat": "/docs#/chat",
@@ -313,6 +329,15 @@ async def root():
             "models": "/docs#/models",
             "loras": "/docs#/loras",
             "resources": "/docs#/resources",
+        },
+        "versioned_endpoints": {
+            "image_generation": f"/{API_VERSION}/images",
+            "chat": f"/{API_VERSION}/chat",
+            "models": f"/{API_VERSION}/models",
+            "config": f"/{API_VERSION}/config",
+            "resources": f"/{API_VERSION}/resources",
+            "websockets": f"/{API_VERSION}/ws",
+            "users": f"/{API_VERSION}/users",
         },
         "openai_endpoints": {
             "models": "/v1/models",

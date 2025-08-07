@@ -10,7 +10,7 @@ export async function* chat(accessToken: string, message: ChatRequest, abortSign
       body: JSON.stringify(message),
       method: 'POST',
       headers: getHeaders(accessToken),
-      path: `api/conversations/${message.conversation_id}/messages`,
+      path: `chat/conversations/${message.conversation_id}/messages`,
       signal: abortSignal
     });
 
@@ -33,6 +33,6 @@ export const getMessages = async (accessToken: string, conversationId: number) =
   req<Message[]>({
     method: 'GET',
     headers: getHeaders(accessToken),
-    path: `api/conversations/${conversationId}/messages`
+    path: `chat/conversations/${conversationId}/messages`
   });
 
