@@ -1,61 +1,151 @@
 #!/bin/bash
 
-# This script ensures both Go and Python services use identical proto definitions
-
-set -e
-
-# Define directories
+# Set the base directories
+SCHEMAS_DIR="./schemas"
+MAISTRO_MODELS_DIR="./maistro/models"
+UI_MODELS_DIR="./ui/src/types"
+INFERENCE_MODELS_DIR="./inference/models"
 PROTO_DIR="./proto"
-GO_OUT_DIR="./maistro/proto"
-PYTHON_OUT_DIR="./inference/protos"
 
-echo "Syncing proto files between Go and Python services"
+# Create a log file
+LOG_FILE="regenerate_models.log"
+echo "Starting model regeneration at $(date)" >"$LOG_FILE"
 
-# Step 1: Compile protos with the same version of protoc
-echo "Compiling proto files..."
-protoc \
-    --proto_path=${PROTO_DIR} \
-    --go_out=${GO_OUT_DIR} \
-    --go_opt=paths=source_relative \
-    --go-grpc_out=${GO_OUT_DIR} \
-    --go-grpc_opt=paths=source_relative \
-    --python_out=${PYTHON_OUT_DIR} \
-    --grpc_python_out=${PYTHON_OUT_DIR} \
-    ${PROTO_DIR}/*.proto
+# Accept an optional argument for language/project
+LANG_ARG=${1:-""}
 
-echo "✓ Proto files compiled for both Go and Python"
+# Helper function for Go
+regen_go() {
+    for go_file in "$MAISTRO_MODELS_DIR"/*.go; do
+        # Extract the base name without extension
+        base_name=$(basename "$go_file" .go)
+        
+        # Construct the path to the corresponding schema file
+        schema_file="$SCHEMAS_DIR/${base_name}.yaml"
+        
+        # Check if schema file exists
+        if [ -f "$schema_file" ]; then
+            echo "Processing $base_name: Found schema file $schema_file" | tee -a "$LOG_FILE"
+            
+            # Run schema2code to regenerate the Go file
+            schema2code "$schema_file" -l go -o "$MAISTRO_MODELS_DIR/${base_name}.go" --package models
+            
+            # Check if the command was successful
+            if [ $? -eq 0 ]; then
+                echo "Successfully regenerated $base_name.go" | tee -a "$LOG_FILE"
+            else
+                echo "Error regenerating $base_name.go" | tee -a "$LOG_FILE"
+            fi
+        else
+            echo "Skipping $base_name (go): No corresponding schema file found" | tee -a "$LOG_FILE"
+        fi
+    done
+}
 
-# Step 2: Create proper Python __init__.py for imports
-cat >${PYTHON_OUT_DIR}/__init__.py <<EOF
-"""
-Protocol buffer module initialization.
-"""
+# Helper function for TypeScript
+regen_ts() {
+    for ts_file in "$UI_MODELS_DIR"/*.ts; do
+        # Extract the base name without extension
+        base_name=$(basename "$ts_file" .ts)
+        snake_case_string=$(echo "$base_name" | sed -E 's/([A-Z])/_\1/g' | perl -pe 's/([A-Z])/lc($1)/ge' | sed -E 's/^_//')
+        
+        # Construct the path to the corresponding schema file
+        schema_file="$SCHEMAS_DIR/${snake_case_string}.yaml"
+        
+        # Check if schema file exists
+        if [ -f "$schema_file" ]; then
+            echo "Processing $base_name: Found schema file $schema_file" | tee -a "$LOG_FILE"
+            
+            # Run schema2code to regenerate the TypeScript file
+            schema2code "$schema_file" -l typescript -o "$UI_MODELS_DIR/${base_name}.ts" --package types
+            
+            # Check if the command was successful
+            if [ $? -eq 0 ]; then
+                echo "Successfully regenerated $base_name.ts" | tee -a "$LOG_FILE"
+            else
+                echo "Error regenerating $base_name.ts" | tee -a "$LOG_FILE"
+            fi
+        else
+            echo "Skipping $base_name (ts): No corresponding schema file found at $schema_file" | tee -a "$LOG_FILE"
+        fi
+    done
+}
 
-# Import all modules to make them available
-from os.path import dirname, basename, isfile, join
-import glob
+# Helper function for Python
+regen_py() {
+    for py_file in "$INFERENCE_MODELS_DIR"/*.py; do
+        # Extract the base name without extension
+        base_name=$(basename "$py_file" .py)
+        
+        # Construct the path to the corresponding schema file
+        schema_file="$SCHEMAS_DIR/${base_name}.yaml"
+        
+        # Check if schema file exists
+        if [ -f "$schema_file" ]; then
+            echo "Processing $base_name: Found schema file $schema_file" | tee -a "$LOG_FILE"
+            
+            # Run schema2code to regenerate the Python file
+            schema2code "$schema_file" -l python -o "$INFERENCE_MODELS_DIR/${base_name}.py"
+            
+            # Check if the command was successful
+            if [ $? -eq 0 ]; then
+                echo "Successfully regenerated $base_name.py" | tee -a "$LOG_FILE"
+            else
+                echo "Error regenerating $base_name.py" | tee -a "$LOG_FILE"
+            fi
+        else
+            echo "Skipping $base_name (py): No corresponding schema file found" | tee -a "$LOG_FILE"
+        fi
+    done
+}
 
-__all__ = []
+regen_proto() {
+    for proto_file in ./proto/*.proto; do
+        # Extract the base name without extension
+        base_name=$(basename "$proto_file" .proto)
+        
+        # Construct the path to the corresponding schema file
+        schema_file="$SCHEMAS_DIR/${base_name}.yaml"
+        
+        # Check if schema file exists
+        if [ -f "$schema_file" ]; then
+            echo "Processing $base_name: Found schema file $schema_file" | tee -a "$LOG_FILE"
+            
+            # Run schema2code to regenerate the Proto file
+            schema2code "$schema_file" -l proto -o "$PROTO_DIR/${base_name}.proto" --package proto --go-package maistro/proto
+            
+            # Check if the command was successful
+            if [ $? -eq 0 ]; then
+                echo "Successfully regenerated $base_name.proto" | tee -a "$LOG_FILE"
+            else
+                echo "Error regenerating $base_name.proto" | tee -a "$LOG_FILE"
+            fi
+        else
+            echo "Skipping $base_name (proto): No corresponding schema file found" | tee -a "$LOG_FILE"
+        fi
+    done
+    echo "Generating protobuf code..." | tee -a "$LOG_FILE"
+    # python -m grpc_tools.protoc -I proto --python_out=./inference/proto "proto/${base_name}.proto"
+    python ./protogen.py --config ./protogen.json
+    
+    # echo "Fixing protobuf compatibility issues..." | tee -a "$LOG_FILE"
+    # python ./fix_proto_files.py
+    
+    # # Verify that the protobuf files are usable
+    # echo "Verifying protobuf files..." | tee -a "$LOG_FILE"
+    # if python -c "from proto import inference_pb2, inference_pb2_grpc; print('Protobuf imports successful')" 2>/dev/null; then
+    #     echo "Protobuf files successfully verified." | tee -a "$LOG_FILE"
+    # else
+    #     echo "Warning: Protobuf files may have issues. Please check them manually." | tee -a "$LOG_FILE"
+    # fi
+}
 
-# Add all proto modules to __all__
-for f in glob.glob(join(dirname(__file__), "*_pb2*.py")):
-    if isfile(f) and not f.endswith('__init__.py'):
-        module = basename(f)[:-3]
-        __all__.append(module)
-        # Import the module to make it available
-        exec(f"from . import {module}")
-EOF
+# Always regenerate proto first to ensure all code is in sync
+regen_proto
 
-echo "✓ Created Python package __init__.py"
+# Then regenerate models for each language
+regen_go
+regen_ts
+regen_py
 
-# Step 3: Test importing the modules
-echo "Testing Python imports..."
-python -c "from inference.protos import inference_pb2, inference_pb2_grpc; print('Python imports successful')"
-if [ $? -eq 0 ]; then
-    echo "✓ Python proto imports verified"
-else
-    echo "✗ Python proto imports failed"
-    exit 1
-fi
-
-echo "Proto synchronization complete"
+echo "Completed model regeneration at $(date)" | tee -a "$LOG_FILE"

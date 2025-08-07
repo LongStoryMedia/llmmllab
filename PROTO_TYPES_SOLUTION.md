@@ -33,9 +33,9 @@ After generating protobuf code, you can import and use the types like this:
 
 ```python
 # Import the modules
-from inference.protos import chat_req_pb2
-from inference.protos import embedding_req_pb2
-from inference.protos import chat_message_pb2
+from protos import chat_req_pb2
+from protos import embedding_req_pb2
+from protos import chat_message_pb2
 
 # Create instances
 chat_message = chat_message_pb2.Message(

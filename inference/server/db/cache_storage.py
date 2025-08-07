@@ -3,7 +3,7 @@ cache_storage.py: Python port of maistro/storage/cache.go
 Implements Redis-based caching for messages, summaries, conversations, model profiles, and user configs.
 
 Class Usage:
-    1. Use the singleton instance: from inference.server.db.cache_storage import cache_storage
+    1. Use the singleton instance: from server.db.cache_storage import cache_storage
     2. Initialize Redis connection: cache_storage.init_storage_cache(redis_url)
     3. Use the methods to cache and retrieve objects
 

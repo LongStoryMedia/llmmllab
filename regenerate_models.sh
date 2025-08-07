@@ -133,7 +133,7 @@ regen_proto() {
     
     # # Verify that the protobuf files are usable
     # echo "Verifying protobuf files..." | tee -a "$LOG_FILE"
-    # if python -c "from inference.proto import inference_pb2, inference_pb2_grpc; print('Protobuf imports successful')" 2>/dev/null; then
+    # if python -c "from proto import inference_pb2, inference_pb2_grpc; print('Protobuf imports successful')" 2>/dev/null; then
     #     echo "Protobuf files successfully verified." | tee -a "$LOG_FILE"
     # else
     #     echo "Warning: Protobuf files may have issues. Please check them manually." | tee -a "$LOG_FILE"

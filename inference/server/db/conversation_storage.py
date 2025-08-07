@@ -5,11 +5,11 @@ Direct port of Maistro's conversation.go storage logic to Python with cache inte
 from typing import List, Optional
 from datetime import datetime
 import asyncpg
-from inference.server.db.db_utils import typed_pool
+from server.db.db_utils import typed_pool
 import logging
 from models.conversation import Conversation
-from inference.server.db.cache_storage import cache_storage
-from inference.server.db.db_utils import TypedPool, typed_pool
+from server.db.cache_storage import cache_storage
+from server.db.db_utils import TypedPool, typed_pool
 
 logger = logging.getLogger(__name__)
 

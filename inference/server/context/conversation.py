@@ -18,7 +18,7 @@ from models.chat_req import ChatReq
 from models.user_config import UserConfig
 
 # Import pipeline factory
-from inference.runner.pipelines.factory import pipeline_factory
+from runner.pipelines.factory import pipeline_factory
 
 # Add the parent directory to the path to resolve imports
 server_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -33,7 +33,7 @@ from ..db.message_storage import MessageStorage
 from ..db.summary_storage import SummaryStorage
 from ..db.memory_storage import MemoryStorage
 from ..db import storage  # Direct access to storage for default instances
-from ..config import logger
+import server.config.logger as logger
 
 
 class ConversationContext:

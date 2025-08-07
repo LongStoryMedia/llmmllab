@@ -25,12 +25,12 @@ from models.message_content import MessageContent
 from server.config import logger  # Import logger from config
 from server.auth import get_user_id, is_admin, get_request_id
 from server.db import storage  # Import database storage
-from inference.server.context.conversation import (
+from server.context.conversation import (
     ConversationContext,
 )  # Import updated ConversationContext
 
-from inference.runner.pipelines.factory import pipeline_factory
-from inference.server.tools import create_agentic_chat_completion
+from runner.pipelines.factory import pipeline_factory
+from server.tools import create_agentic_chat_completion
 
 from fastapi import (
     APIRouter,
