@@ -20,6 +20,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("inference-service")
 
+# API versioning configuration
+API_VERSION = os.environ.get("API_VERSION", "v1")
+logger.info(f"API version: {API_VERSION}")
+
 # Authentication configuration
 AUTH_ISSUER = os.environ.get("AUTH_ISSUER", "https://auth.longstorymedia.com")
 AUTH_AUDIENCE = os.environ.get("AUTH_AUDIENCE", "lsm-client")

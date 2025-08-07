@@ -1,3 +1,10 @@
+"""
+Internal router for internal API endpoints with restricted access.
+
+Note: This router is included in app.py with non-versioned path only.
+It is intentionally not versioned to maintain isolation of internal endpoints.
+"""
+
 import os
 import logging
 from fastapi import APIRouter, HTTPException, Request, Depends

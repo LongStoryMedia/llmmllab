@@ -1,3 +1,11 @@
+"""
+Resources router for handling hardware resources and allocation.
+
+Note: This router is included in app.py with both non-versioned and versioned paths:
+- Non-versioned: /resources/...
+- Versioned: /v1/resources/...
+"""
+
 from typing import List, Dict, Any, Optional
 
 from fastapi import APIRouter, HTTPException, status
@@ -5,14 +13,12 @@ from pydantic import BaseModel
 
 from models.model import Model
 from models.requests import Malloc, ModelRequest, ModelsListResponse
+
 # Make sure this imports the enhanced version
 from services.hardware_manager import hardware_manager
 import nvsmi
 
-router = APIRouter(
-    prefix="/resources",
-    tags=["resources"]
-)
+router = APIRouter(prefix="/resources", tags=["resources"])
 
 
 class ProcessInfo(BaseModel):
@@ -71,10 +77,10 @@ async def get_gpu_processes():
         for device_idx, processes in process_info.items():
             device_processes[device_idx] = [
                 ProcessInfo(
-                    pid=proc['pid'],
-                    name=proc['name'],
-                    memory_mb=proc['memory_mb'],
-                    device_idx=proc['device_idx']
+                    pid=proc["pid"],
+                    name=proc["name"],
+                    memory_mb=proc["memory_mb"],
+                    device_idx=proc["device_idx"],
                 )
                 for proc in processes
             ]
@@ -110,20 +116,22 @@ async def clear_memory(request: ClearMemoryRequest = ClearMemoryRequest()):
 
                 # Count processes per device
                 for device_idx, processes in process_info.items():
-                    processes_killed[device_idx] = len([
-                        p for p in processes if p['pid'] != hardware_manager.os.getpid()
-                    ])
+                    processes_killed[device_idx] = len(
+                        [
+                            p
+                            for p in processes
+                            if p["pid"] != hardware_manager.os.getpid()
+                        ]
+                    )
 
             hardware_manager.nuclear_clear_memory(
-                device_idx=request.device_idx,
-                kill_processes=request.kill_processes
+                device_idx=request.device_idx, kill_processes=request.kill_processes
             )
             detail = f"Nuclear memory clearing completed (kill_processes={request.kill_processes})"
         else:
             # Use standard clearing
             hardware_manager.clear_memory(
-                device_idx=request.device_idx,
-                aggressive=request.aggressive
+                device_idx=request.device_idx, aggressive=request.aggressive
             )
             detail = f"Memory cache cleared (aggressive={request.aggressive})"
 
@@ -132,17 +140,23 @@ async def clear_memory(request: ClearMemoryRequest = ClearMemoryRequest()):
 
         return ClearMemoryResponse(
             detail=detail,
-            memory_before={k: {
-                "mem_used": v.mem_used,
-                "mem_free": v.mem_free,
-                "mem_util": v.mem_util
-            } for k, v in memory_before.items()},
-            memory_after={k: {
-                "mem_used": v.mem_used,
-                "mem_free": v.mem_free,
-                "mem_util": v.mem_util
-            } for k, v in memory_after.items()},
-            processes_killed=processes_killed
+            memory_before={
+                k: {
+                    "mem_used": v.mem_used,
+                    "mem_free": v.mem_free,
+                    "mem_util": v.mem_util,
+                }
+                for k, v in memory_before.items()
+            },
+            memory_after={
+                k: {
+                    "mem_used": v.mem_used,
+                    "mem_free": v.mem_free,
+                    "mem_util": v.mem_util,
+                }
+                for k, v in memory_after.items()
+            },
+            processes_killed=processes_killed,
         )
 
     except Exception as e:
@@ -152,7 +166,9 @@ async def clear_memory(request: ClearMemoryRequest = ClearMemoryRequest()):
 
 
 @router.post("/clear/nuclear")
-async def nuclear_clear_memory(device_idx: Optional[int] = None, kill_processes: bool = True):
+async def nuclear_clear_memory(
+    device_idx: Optional[int] = None, kill_processes: bool = True
+):
     """
     Nuclear option: Clear ALL memory from GPU(s), including other processes.
 
@@ -165,8 +181,7 @@ async def nuclear_clear_memory(device_idx: Optional[int] = None, kill_processes:
 
         # Perform nuclear clearing
         hardware_manager.nuclear_clear_memory(
-            device_idx=device_idx,
-            kill_processes=kill_processes
+            device_idx=device_idx, kill_processes=kill_processes
         )
 
         # Get stats after clearing
@@ -184,13 +199,18 @@ async def nuclear_clear_memory(device_idx: Optional[int] = None, kill_processes:
             "detail": "Nuclear memory clearing completed",
             "device_idx": device_idx,
             "kill_processes": kill_processes,
-            "memory_before": {k: f"{v.mem_used}MB/{v.mem_total}MB" for k, v in memory_before.items()},
-            "memory_after": {k: f"{v.mem_used}MB/{v.mem_total}MB" for k, v in memory_after.items()},
+            "memory_before": {
+                k: f"{v.mem_used}MB/{v.mem_total}MB" for k, v in memory_before.items()
+            },
+            "memory_after": {
+                k: f"{v.mem_used}MB/{v.mem_total}MB" for k, v in memory_after.items()
+            },
             "processes_killed": processes_killed,
             "memory_freed_mb": {
                 k: memory_before[k].mem_used - memory_after[k].mem_used
-                for k in memory_before.keys() if k in memory_after
-            }
+                for k in memory_before.keys()
+                if k in memory_after
+            },
         }
 
     except Exception as e:
@@ -206,7 +226,7 @@ async def reset_device(device_idx: int):
         if device_idx < 0 or device_idx >= hardware_manager.gpu_count:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid device index. Available devices: 0-{hardware_manager.gpu_count-1}"
+                detail=f"Invalid device index. Available devices: 0-{hardware_manager.gpu_count-1}",
             )
 
         # Get memory before reset
@@ -221,7 +241,7 @@ async def reset_device(device_idx: int):
         return {
             "detail": f"Device {device_idx} reset completed",
             "memory_before": f"{memory_before[str(device_idx)].mem_used}MB/{memory_before[str(device_idx)].mem_total}MB",
-            "memory_after": f"{memory_after[str(device_idx)].mem_used}MB/{memory_after[str(device_idx)].mem_total}MB"
+            "memory_after": f"{memory_after[str(device_idx)].mem_used}MB/{memory_after[str(device_idx)].mem_total}MB",
         }
 
     except Exception as e:
@@ -236,8 +256,7 @@ async def monitor_gpu_usage(duration_seconds: int = 60):
     try:
         if duration_seconds > 300:  # Limit to 5 minutes
             raise HTTPException(
-                status_code=400,
-                detail="Duration cannot exceed 300 seconds"
+                status_code=400, detail="Duration cannot exceed 300 seconds"
             )
 
         # This would ideally be run in a background task
@@ -252,10 +271,10 @@ async def monitor_gpu_usage(duration_seconds: int = 60):
                     "gpu_util": v.gpu_util,
                     "temperature": v.temperature,
                     "mem_used": v.mem_used,
-                    "mem_free": v.mem_free
+                    "mem_free": v.mem_free,
                 }
                 for k, v in current_stats.items()
-            }
+            },
         }
 
     except Exception as e:
@@ -276,7 +295,7 @@ async def health_check():
             "has_gpu": hardware_manager.has_gpu,
             "current_device": str(hardware_manager.current_device_idx),
             "devices": {},
-            "total_processes": sum(len(procs) for procs in process_info.values())
+            "total_processes": sum(len(procs) for procs in process_info.values()),
         }
 
         for device_id, device_stats in stats.items():
@@ -286,7 +305,11 @@ async def health_check():
                 "memory_utilization": device_stats.mem_util,
                 "gpu_utilization": device_stats.gpu_util,
                 "processes": len(process_info.get(int(device_id), [])),
-                "status": "healthy" if device_stats.temperature < 80 and device_stats.mem_util < 95 else "warning"
+                "status": (
+                    "healthy"
+                    if device_stats.temperature < 80 and device_stats.mem_util < 95
+                    else "warning"
+                ),
             }
 
         return health_info

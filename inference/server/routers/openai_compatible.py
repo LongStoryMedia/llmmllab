@@ -1,9 +1,11 @@
-# #!/usr/bin/env python3
-# """
-# OpenAI Compatible Router for existing FastAPI application
-# Integrates vLLM and LangChain with existing chat infrastructure
-# Enhanced with additional endpoints and model management
-# """
+"""
+OpenAI Compatible Router for existing FastAPI application.
+Integrates vLLM and LangChain with existing chat infrastructure.
+Enhanced with additional endpoints and model management.
+
+Note: This router is already using a version prefix (/v1/) as per OpenAI's API standard.
+It is included in app.py with its own prefix.
+"""
 
 # import asyncio
 # import json

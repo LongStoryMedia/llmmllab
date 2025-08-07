@@ -1,3 +1,11 @@
+"""
+Config router for handling user and system configuration.
+
+Note: This router is included in app.py with both non-versioned and versioned paths:
+- Non-versioned: /config/...
+- Versioned: /v1/config/...
+"""
+
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel

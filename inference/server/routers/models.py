@@ -1,3 +1,11 @@
+"""
+Models router for handling model management and configuration.
+
+Note: This router is included in app.py with both non-versioned and versioned paths:
+- Non-versioned: /models/...
+- Versioned: /v1/models/...
+"""
+
 from typing import List, Optional, Any
 import uuid
 import time

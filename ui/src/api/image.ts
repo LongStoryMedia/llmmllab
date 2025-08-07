@@ -14,7 +14,7 @@ export const generateImage = async (accessToken: string, request: ImageGenerateR
   req<ImageGenerateResponse>({
     method: 'POST',
     headers: getHeaders(accessToken),
-    path: 'api/images/generate',
+    path: 'images/generate',
     body: JSON.stringify(request),
     socket: socket
   });
@@ -29,7 +29,7 @@ export const editImage = async (accessToken: string, request: ImageGenerateReque
   req<ImageGenerateResponse>({
     method: 'POST',
     headers: getHeaders(accessToken),
-    path: `api/images/edit`,
+    path: `images/edit`,
     body: JSON.stringify(request),
     socket: socket
   });
@@ -82,6 +82,6 @@ export const deleteImage = async (accessToken: string, imageId: number) => {
   return req<void>({
     method: 'DELETE',
     headers: getHeaders(accessToken),
-    path: `api/images/${imageId}`
+    path: `images/${imageId}`
   });
 };

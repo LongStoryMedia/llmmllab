@@ -23,7 +23,11 @@ export async function* gen(opts: RequestOptions): AsyncGenerator<ChatResponse> {
     'Content-Type': 'application/json'
   }
   opts.method = opts.method || 'GET';
-  const response = await fetch(`${config.server.baseUrl}/${opts.path}`, opts);
+  
+  // Incorporate API version in path unless it's an external API (has baseUrl specified)
+  const apiVersion = opts.apiVersion || config.server.apiVersion;
+  const apiPath = opts.baseUrl ? opts.path : `${apiVersion}/${opts.path}`;
+  const response = await fetch(`${opts.baseUrl || config.server.baseUrl}/${apiPath}`, opts);
 
   // Handle authentication errors
   if (response.status === 401 || response.status === 403) {
@@ -180,7 +184,11 @@ export async function req<T>(opts: RequestOptions): Promise<T> {
       }, opts.timeout);
     }
 
-    const response = await fetch(`${opts.baseUrl}/${opts.path}`, opts);
+    // Incorporate API version in path unless it's an external API (custom baseUrl specified)
+    const isExternalApi = opts.baseUrl !== config.server.baseUrl;
+    const apiVersion = opts.apiVersion || config.server.apiVersion;
+    const apiPath = isExternalApi ? opts.path : `${apiVersion}/${opts.path}`;
+    const response = await fetch(`${opts.baseUrl}/${apiPath}`, opts);
 
     // Handle authentication errors
     if (response.status === 401 || response.status === 403) {

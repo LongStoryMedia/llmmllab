@@ -1,2 +1,2 @@
 [MASTER]
-init-hook='import sys; sys.path.append("/Users/lons7862/workspace/llmmllab/inference")'
+init-hook='import sys; sys.path.append("/Users/lons7862/Library/CloudStorage/OneDrive-EnsembleHealthPartners/Documents/workspace/llmmllab/inference")'
