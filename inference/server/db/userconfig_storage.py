@@ -4,11 +4,11 @@ Direct port of Maistro's userconfig.go storage logic to Python with cache integr
 
 from typing import List, Optional, Dict, Any
 import asyncpg
-from inference.server.db.db_utils import typed_pool
+from server.db.db_utils import typed_pool
 import json
 import logging
 from models.user_config import UserConfig
-from inference.server.db.cache_storage import cache_storage
+from server.db.cache_storage import cache_storage
 
 logger = logging.getLogger(__name__)
 

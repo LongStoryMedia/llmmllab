@@ -11,7 +11,7 @@ from langchain_openai import OpenAI
 from langchain.prompts import PromptTemplate
 
 # Import models from the correct location
-from inference.models.search_result import SearchResult, SearchResultContent
+from models.search_result import SearchResult, SearchResultContent
 from ..config import logger
 
 

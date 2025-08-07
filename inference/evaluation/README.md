@@ -71,7 +71,7 @@ Tests a model's ability to generate functionally correct code based on docstring
 Example:
 
 ```python
-from inference.benchmarks.academic.humaneval import HumanEvalBenchmark
+from benchmarks.academic.humaneval import HumanEvalBenchmark
 
 benchmark = HumanEvalBenchmark()
 result = benchmark.run("model_id", num_samples=20)

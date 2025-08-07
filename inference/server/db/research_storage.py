@@ -4,11 +4,11 @@
 
 
 import asyncpg
-from inference.server.db.db_utils import typed_pool
+from server.db.db_utils import typed_pool
 from typing import List, Optional, Any, Tuple
 from datetime import datetime
 
-from inference.server.db.queries import get_query
+from server.db.queries import get_query
 
 
 class ResearchStorage:

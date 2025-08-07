@@ -31,7 +31,7 @@ deploy: inference maistro ui
 
 start:
 	@echo "Starting all services..."
-	$(MAKE) -j3 inference-dev start-ui start-maistro
+	$(MAKE) -j2 inference-dev start-ui
 
 start-maistro:
 	@echo "Starting maistro..."

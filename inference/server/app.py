@@ -46,7 +46,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from huggingface_hub import login
 
-from inference.server.routers import chat as chat
+from server.routers import chat as chat
 from server.config import CONFIG_DIR, IMAGE_DIR
 from server.routers import (
     images,

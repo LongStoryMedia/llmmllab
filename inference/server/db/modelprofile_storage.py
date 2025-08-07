@@ -5,14 +5,14 @@ Direct port of Maistro's modelprofile.go storage logic to Python with cache inte
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 import asyncpg
-from inference.models.model import Model
-from inference.models.model_parameters import ModelParameters
-from inference.server.db.db_utils import typed_pool
+from models.model import Model
+from models.model_parameters import ModelParameters
+from server.db.db_utils import typed_pool
 import json
 import logging
 from datetime import datetime
 from models.model_profile import ModelProfile
-from inference.server.db.cache_storage import cache_storage
+from server.db.cache_storage import cache_storage
 
 logger = logging.getLogger(__name__)
 

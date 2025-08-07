@@ -4,7 +4,7 @@ from typing import Optional
 import logging
 
 # Import SQLLoader directly to avoid circular imports
-from inference.server.db.utils.sql_loader import SQLLoader
+from server.db.utils.sql_loader import SQLLoader
 
 # Configure logger
 logger = logging.getLogger(__name__)uery access module similar to Maistro's GetQuery function.

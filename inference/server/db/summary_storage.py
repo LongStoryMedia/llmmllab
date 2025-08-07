@@ -4,12 +4,12 @@ Direct port of Maistro's summary.go storage logic to Python with cache integrati
 
 from typing import List, Optional
 import asyncpg
-from inference.server.db.db_utils import typed_pool
+from server.db.db_utils import typed_pool
 import json
 import logging
 from datetime import datetime
 from models.summary import Summary
-from inference.server.db.cache_storage import cache_storage
+from server.db.cache_storage import cache_storage
 
 logger = logging.getLogger(__name__)
 
