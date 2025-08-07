@@ -1,0 +1,25 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: EmbeddingResponse
+description: Represents the response for an embedding request
+type: object
+properties:
+  model:
+    type: string
+  embeddings:
+    type: array
+    items:
+      type: array
+      items:
+        type: number
+  total_duration:
+    type: integer
+  load_duration:
+    type: integer
+  prompt_eval_count:
+    type: integer
+required:
+  - model
+  - embeddings
+  - total_duration
+  - load_duration
+  - prompt_eval_count

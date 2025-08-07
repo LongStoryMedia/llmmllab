@@ -32,10 +32,15 @@ func (r *OllamaChatResp) UnmarshalJSON(data []byte) error {
 }
 
 func (r *OllamaChatResp) GetChunkContent() string {
-	if r.Message.Content != "" {
-		return r.Message.Content
+	res := ""
+	if len(r.Message.Content) > 0 {
+		for _, content := range r.Message.Content {
+			if content.Text != nil {
+				res += *content.Text
+			}
+		}
 	}
-	return ""
+	return res
 }
 
 func (r *OllamaChatResp) IsDone() bool {

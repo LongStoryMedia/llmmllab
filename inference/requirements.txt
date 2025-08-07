@@ -6,17 +6,55 @@ diffusers
 transformers
 apscheduler
 sentencepiece
-bitsandbytes>=0.43.0
+bitsandbytes
 optimum
 safetensors
-triton
+--find-links https://download.pytorch.org/whl/torch_stable.html
+torch==2.7.0a0+79aa17489c.nv25.4 ; platform_system != "Darwin"
+# triton
 nvsmi
 pika>=1.3.2
 peft
+# Skip torch packages as they're provided by the base image
 # torch
 # torchvision
 # torchaudio
+huggingface_hub
 
 # Testing dependencies
 pytest>=7.0.0
 pytest-mock>=3.10.0
+python-multipart
+
+grpcio
+grpcio-tools
+protobuf
+transformers
+pillow
+numpy
+grpcio-reflection
+# Use CUDA-enabled llama-cpp-python
+# Install with: CMAKE_ARGS="-DLLAMA_CUBLAS=on" pip install --no-cache-dir llama-cpp-python
+# llama-cpp-python>=0.2.55
+langchain>=0.0.335
+langchain-core>=0.1.17
+langchain-community>=0.0.16
+langchain-openai>=0.0.5
+openai>=1.10.0
+# vllm
+# requests>=2.31.0
+# python-dotenv>=1.0.0
+# diskcache
+starlette
+tzlocal
+nltk
+bert_score
+rouge
+psutil
+
+matplotlib
+pandas
+seaborn
+
+
+datasets

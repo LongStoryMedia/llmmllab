@@ -110,20 +110,20 @@ func (s *imageService) GenerateImage(ctx context.Context, userID string, convers
 				"error":  err.Error(),
 			})
 
-			return nil, s.sendImageGenerationFailureNotification(cc.ConversationID, userID, "Failed to retrieve conversation context")
+			return nil, s.sendImageGenerationFailureNotification(cc.GetConversationID(), userID, "Failed to retrieve conversation context")
 		}
 
-		imgMetadata, err := s.SaveImage(&sdResponse, cc.ConversationID, userID)
+		imgMetadata, err := s.SaveImage(&sdResponse, cc.GetConversationID(), userID)
 		if err != nil {
 			util.LogWarning("Failed to add image to conversation context", logrus.Fields{
 				"userId": userID,
 				"error":  err.Error(),
 			})
 
-			return nil, s.sendImageGenerationFailureNotification(cc.ConversationID, userID, "Failed to add image to conversation context")
+			return nil, s.sendImageGenerationFailureNotification(cc.GetConversationID(), userID, "Failed to add image to conversation context")
 		}
 		// Send success notification via WebSocket
-		s.sendImageGenerationSuccessNotification(cc.ConversationID, userID, imgMetadata)
+		s.sendImageGenerationSuccessNotification(cc.GetConversationID(), userID, imgMetadata)
 	}
 
 	// Return the response to the client

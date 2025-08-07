@@ -1,0 +1,1 @@
+postgres:x:1001:1001:PostgreSQL:/home/postgres/pgdata/data:/bin/false

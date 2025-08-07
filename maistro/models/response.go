@@ -23,17 +23,17 @@ type InferenceResponse interface {
 
 // OllamaChatResp represents a response from the Ollama API
 type OllamaChatResp struct {
-	Model              string      `json:"model"`
-	CreatedAt          string      `json:"created_at"`
-	Message            ChatMessage `json:"message"`
-	Done               bool        `json:"done"`
-	DoneReason         string      `json:"done_reason"`
-	TotalDuration      float64     `json:"total_duration"`
-	LoadDuration       float64     `json:"load_duration"`
-	PromptEvalCount    int         `json:"prompt_eval_count"`
-	PromptEvalDuration float64     `json:"prompt_eval_duration"`
-	EvalCount          int         `json:"eval_count"`
-	EvalDuration       float64     `json:"eval_duration"`
+	Model              string  `json:"model"`
+	CreatedAt          string  `json:"created_at"`
+	Message            Message `json:"message"`
+	Done               bool    `json:"done"`
+	DoneReason         string  `json:"done_reason"`
+	TotalDuration      float64 `json:"total_duration"`
+	LoadDuration       float64 `json:"load_duration"`
+	PromptEvalCount    int     `json:"prompt_eval_count"`
+	PromptEvalDuration float64 `json:"prompt_eval_duration"`
+	EvalCount          int     `json:"eval_count"`
+	EvalDuration       float64 `json:"eval_duration"`
 }
 
 // OllamaGenerateResponse represents the response from Ollama's generate API

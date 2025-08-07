@@ -32,14 +32,14 @@ func InitDB(connStr string) error {
 
 		config, err = pgxpool.ParseConfig(connStr)
 		if err != nil {
-			err = fmt.Errorf("unable to parse postgres connection string: %w", err)
+			err = util.HandleError(fmt.Errorf("unable to parse postgres connection string: %w", err))
 			return
 		}
 
 		// Build the connection pool
 		Pool, err = pgxpool.NewWithConfig(context.Background(), config)
 		if err != nil {
-			err = fmt.Errorf("failed to create connection pool: %w", err)
+			err = util.HandleError(fmt.Errorf("failed to create connection pool: %w", err))
 			return
 		}
 
@@ -48,7 +48,7 @@ func InitDB(connStr string) error {
 		defer cancel()
 
 		if err = Pool.Ping(ctx); err != nil {
-			err = fmt.Errorf("failed to ping database: %w", err)
+			err = util.HandleError(fmt.Errorf("failed to ping database: %w", err))
 			return
 		}
 
@@ -58,7 +58,7 @@ func InitDB(connStr string) error {
 
 		err = InitializeTables(ctx)
 		if err != nil {
-			err = fmt.Errorf("failed to initialize tables: %w", err)
+			err = util.HandleError(fmt.Errorf("failed to initialize tables: %w", err))
 			return
 		}
 		util.LogInfo("Successfully initialized tables")
@@ -66,7 +66,7 @@ func InitDB(connStr string) error {
 		// Ensure research tables are created
 		err = EnsureResearchTables(ctx)
 		if err != nil {
-			err = fmt.Errorf("failed to ensure research tables: %w", err)
+			err = util.HandleError(fmt.Errorf("failed to ensure research tables: %w", err))
 			return
 		}
 		util.LogInfo("Successfully ensured research tables")
@@ -74,7 +74,7 @@ func InitDB(connStr string) error {
 		// Create default model profiles
 		err = CreateDefaultProfiles(ctx)
 		if err != nil {
-			err = fmt.Errorf("failed to create default model profiles: %w", err)
+			err = util.HandleError(fmt.Errorf("failed to create default model profiles: %w", err))
 			return
 		}
 
@@ -89,7 +89,7 @@ func EnsureDBConnection(ctx context.Context) error {
 		util.LogInfo("Connection pool is nil, initializing database")
 
 		if connString == "" {
-			return errors.New("connection string is empty, cannot reconnect")
+			return util.HandleError(errors.New("connection string is empty, cannot reconnect"))
 		}
 		return InitDB(connString)
 	}
@@ -103,7 +103,7 @@ func EnsureDBConnection(ctx context.Context) error {
 
 		// Reinitialize
 		if connString == "" {
-			return errors.New("connection string is empty, cannot reconnect")
+			return util.HandleError(errors.New("connection string is empty, cannot reconnect"))
 		}
 		return InitDB(connString)
 	}
@@ -116,164 +116,119 @@ func InitializeTables(ctx context.Context) error {
 	// Create extensions
 	_, err := Pool.Exec(ctx, GetQuery("init.create_extensions"))
 	if err != nil {
-		return fmt.Errorf("failed to create extensions: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create extensions: %w", err))
 	}
 
 	// Create users table
 	_, err = Pool.Exec(ctx, GetQuery("user.create_users_table"))
 	if err != nil {
-		return fmt.Errorf("failed to create users table: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create users table: %w", err))
 	}
 
 	// Create conversations table
 	_, err = Pool.Exec(ctx, GetQuery("conversation.create_conversations_table"))
 	if err != nil {
-		return fmt.Errorf("failed to create conversations table: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create conversations table: %w", err))
 	}
 
 	// Create messages table
+	_, err = Pool.Exec(ctx, GetQuery("message.create_message_content_table"))
+	if err != nil {
+		return util.HandleError(fmt.Errorf("failed to create messages table: %w", err))
+	}
+
 	_, err = Pool.Exec(ctx, GetQuery("message.create_messages_table"))
 	if err != nil {
-		return fmt.Errorf("failed to create messages table: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create messages table: %w", err))
 	}
 
-	// Create messages indexes
-	_, err = Pool.Exec(ctx, GetQuery("message.create_messages_indexes"))
-	if err != nil {
-		return fmt.Errorf("failed to create message indexes: %w", err)
-	}
-
-	// Create message embeddings table
-	_, err = Pool.Exec(ctx, GetQuery("message.create_message_embeddings_table"))
-	if err != nil {
-		return fmt.Errorf("failed to create message embeddings table: %w", err)
-	}
-
-	// Create hypertable for message_embeddings
-	_, err = Pool.Exec(ctx, GetQuery("message.create_message_embeddings_hypertable"))
-	if err != nil {
-		return fmt.Errorf("failed to create message embeddings hypertable: %w", err)
-	}
-
-	// Enable compression for message_embeddings
-	_, err = Pool.Exec(ctx, GetQuery("message.enable_message_embeddings_compression"))
-	if err != nil {
-		return fmt.Errorf("failed to enable message embeddings compression: %w", err)
-	}
-
-	// Add compression policy for message_embeddings
-	_, err = Pool.Exec(ctx, GetQuery("message.message_embeddings_compression_policy"))
-	if err != nil {
-		util.LogWarning("Warning: Failed to add message embeddings compression policy", logrus.Fields{"error": err})
-	}
-
-	// Add retention policy for message_embeddings
-	_, err = Pool.Exec(ctx, GetQuery("message.message_embeddings_retention_policy"))
-	if err != nil {
-		util.LogWarning("Warning: Failed to add message embeddings retention policy", logrus.Fields{"error": err})
-	}
+	// Messages indexes are now created directly in the create_messages_table.sql file
 
 	// Create summaries table
 	_, err = Pool.Exec(ctx, GetQuery("summary.create_summaries_table"))
 	if err != nil {
-		return fmt.Errorf("failed to create summaries table: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create summaries table: %w", err))
 	}
 
 	// Create model profiles table
 	_, err = Pool.Exec(ctx, GetQuery("modelprofile.create_model_profiles_table"))
 	if err != nil {
-		return fmt.Errorf("failed to create model profiles table: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create model profiles table: %w", err))
 	}
 
 	// Create model profiles index
 	_, err = Pool.Exec(ctx, GetQuery("modelprofile.create_model_profiles_index"))
 	if err != nil {
-		return fmt.Errorf("failed to create model profiles index: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create model profiles index: %w", err))
 	}
 
 	// Create hypertable for conversations
 	_, err = Pool.Exec(ctx, GetQuery("conversation.create_conversations_hypertable"))
 	if err != nil {
-		return fmt.Errorf("failed to create conversations hypertable: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create conversations hypertable: %w", err))
 	}
 
 	// Create conversations indexes
 	_, err = Pool.Exec(ctx, GetQuery("conversation.create_conversations_indexes"))
 	if err != nil {
-		return fmt.Errorf("failed to create conversations indexes: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create conversations indexes: %w", err))
 	}
 
-	// Create hypertable for messages
-	_, err = Pool.Exec(ctx, GetQuery("message.create_messages_hypertable"))
-	if err != nil {
-		return fmt.Errorf("failed to create messages hypertable: %w", err)
-	}
+	// Messages hypertable is now created directly in the create_messages_table.sql file
 
-	// Create additional message indexes
-	_, err = Pool.Exec(ctx, GetQuery("message.create_additional_messages_indexes"))
-	if err != nil {
-		return fmt.Errorf("failed to create additional message indexes: %w", err)
-	}
+	// Additional message indexes are now created directly in the create_messages_table.sql and create_message_content_table.sql files
 
 	// Create hypertable for summaries
 	_, err = Pool.Exec(ctx, GetQuery("summary.create_summaries_hypertable"))
 	if err != nil {
-		return fmt.Errorf("failed to create summaries hypertable: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create summaries hypertable: %w", err))
 	}
 
 	// Create summaries indexes
 	_, err = Pool.Exec(ctx, GetQuery("summary.create_summaries_indexes"))
 	if err != nil {
-		return fmt.Errorf("failed to create summaries indexes: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create summaries indexes: %w", err))
 	}
 
 	// Create user check trigger
 	_, err = Pool.Exec(ctx, GetQuery("user.create_user_check_trigger"))
 	if err != nil {
-		return fmt.Errorf("failed to create user check trigger: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create user check trigger: %w", err))
 	}
 
 	// Create conversation update trigger
 	_, err = Pool.Exec(ctx, GetQuery("conversation.create_conversation_update_trigger"))
 	if err != nil {
-		return fmt.Errorf("failed to create conversation update trigger: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create conversation update trigger: %w", err))
 	}
 
 	// Create conversation check triggers
 	_, err = Pool.Exec(ctx, GetQuery("conversation.create_conversation_check_triggers"))
 	if err != nil {
-		return fmt.Errorf("failed to create conversation check triggers: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create conversation check triggers: %w", err))
 	}
 
 	// Create cascade delete trigger
 	_, err = Pool.Exec(ctx, GetQuery("conversation.create_cascade_delete_trigger"))
 	if err != nil {
-		return fmt.Errorf("failed to create cascade delete trigger: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create cascade delete trigger: %w", err))
 	}
 
-	// Enable compression on messages
-	_, err = Pool.Exec(ctx, GetQuery("message.enable_messages_compression"))
-	if err != nil {
-		return fmt.Errorf("failed to enable messages compression: %w", err)
-	}
+	// Messages compression is now enabled directly in the create_messages_table.sql file
 
 	// Enable compression on conversations
 	_, err = Pool.Exec(ctx, GetQuery("conversation.enable_conversations_compression"))
 	if err != nil {
-		return fmt.Errorf("failed to enable conversations compression: %w", err)
+		return util.HandleError(fmt.Errorf("failed to enable conversations compression: %w", err))
 	}
 
 	// Enable compression on summaries
 	_, err = Pool.Exec(ctx, GetQuery("summary.enable_summaries_compression"))
 	if err != nil {
-		return fmt.Errorf("failed to enable summaries compression: %w", err)
+		return util.HandleError(fmt.Errorf("failed to enable summaries compression: %w", err))
 	}
 
-	// Add compression policy for messages
-	_, err = Pool.Exec(ctx, GetQuery("message.messages_compression_policy"))
-	if err != nil {
-		util.LogWarning("Warning: Failed to add messages compression policy", logrus.Fields{"error": err})
-	}
+	// Messages compression policy is now added directly in the create_messages_table.sql file
 
 	// Add compression policy for conversations
 	_, err = Pool.Exec(ctx, GetQuery("conversation.conversations_compression_policy"))
@@ -293,11 +248,7 @@ func InitializeTables(ctx context.Context) error {
 		util.LogWarning("Warning: Failed to add conversations retention policy", logrus.Fields{"error": err})
 	}
 
-	// Add retention policy for messages
-	_, err = Pool.Exec(ctx, GetQuery("message.messages_retention_policy"))
-	if err != nil {
-		util.LogWarning("Warning: Failed to add messages retention policy", logrus.Fields{"error": err})
-	}
+	// Messages retention policy is now added directly in the create_messages_table.sql file
 
 	// Add retention policy for summaries
 	_, err = Pool.Exec(ctx, GetQuery("summary.summaries_retention_policy"))
@@ -308,7 +259,7 @@ func InitializeTables(ctx context.Context) error {
 	// Create images table
 	_, err = Pool.Exec(ctx, GetQuery("images.create_images_schema"))
 	if err != nil {
-		return fmt.Errorf("failed to create images table: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create images table: %w", err))
 	}
 
 	// Add or update retention policy for images using configuration
@@ -342,13 +293,13 @@ func EnsureResearchTables(ctx context.Context) error {
 	// Create research_tasks table
 	_, err := Pool.Exec(ctx, GetQuery("research.create_research_tasks_table"))
 	if err != nil {
-		return fmt.Errorf("failed to create research_tasks table: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create research_tasks table: %w", err))
 	}
 
 	// Create research_subtasks table
-	_, err = Pool.Exec(ctx, GetQuery("research.create_research_subtasks_table"))
+	_, err = Pool.Exec(ctx, GetQuery("research.create_subtasks_table"))
 	if err != nil {
-		return fmt.Errorf("failed to create research_subtasks table: %w", err)
+		return util.HandleError(fmt.Errorf("failed to create research_subtasks table: %w", err))
 	}
 
 	return nil
@@ -356,10 +307,9 @@ func EnsureResearchTables(ctx context.Context) error {
 
 // CreateDefaultProfiles creates the default model profiles in the database
 func CreateDefaultProfiles(ctx context.Context) error {
-
 	tx, err := Pool.Begin(ctx)
 	if err != nil {
-		return err
+		return util.HandleError(err)
 	}
 	defer tx.Rollback(ctx)
 
@@ -385,11 +335,15 @@ func CreateDefaultProfiles(ctx context.Context) error {
 			profile.Type,
 		)
 		if err != nil {
-			return err
+			return util.HandleError(err)
 		}
 	}
 
-	return tx.Commit(ctx)
+	err = tx.Commit(ctx)
+	if err != nil {
+		return util.HandleError(err)
+	}
+	return nil
 }
 
 // PerformDatabaseMaintenance runs optimization and maintenance tasks for the database
@@ -399,14 +353,14 @@ func PerformDatabaseMaintenance(ctx context.Context) error {
 	// Vacuum analyze for better query planning
 	_, err := Pool.Exec(ctx, `VACUUM ANALYZE`)
 	if err != nil {
-		return fmt.Errorf("failed to vacuum analyze: %w", err)
+		return util.HandleError(fmt.Errorf("failed to vacuum analyze: %w", err))
 	}
 	util.LogInfo("VACUUM ANALYZE completed")
 
 	// Reindex tables to optimize indexes
 	_, err = Pool.Exec(ctx, "REINDEX (VERBOSE, CONCURRENTLY) DATABASE ollama")
 	if err != nil {
-		return fmt.Errorf("failed to reindex DB: %w", err)
+		return util.HandleError(fmt.Errorf("failed to reindex DB: %w", err))
 	}
 	util.LogInfo("REINDEX completed")
 
@@ -425,5 +379,8 @@ func PerformDatabaseMaintenance(ctx context.Context) error {
 // EnsureUser creates a user if they don't exist
 func EnsureUser(ctx context.Context, userID string) error {
 	_, err := Pool.Exec(ctx, GetQuery("user.ensure_user"), userID)
-	return err
+	if err != nil {
+		return util.HandleError(err)
+	}
+	return nil
 }

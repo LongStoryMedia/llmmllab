@@ -2,7 +2,6 @@ package test
 
 import (
 	"context"
-	"maistro/config"
 	"maistro/models"
 	"maistro/storage"
 	"time"
@@ -17,9 +16,8 @@ type mockMessageStore struct {
 	real storage.MessageStore
 }
 
-func (ms *mockMessageStore) AddMessage(ctx context.Context, conversationID int, role, content string, usrCfg *models.UserConfig) (int, error) {
-	// Stubbed for testing
-	return 1, nil
+func (ms *mockMessageStore) AddMessage(ctx context.Context, conversationID int, role models.MessageRole, content []models.MessageContent, usrCfg *models.UserConfig) (int, error) {
+	return ms.real.AddMessage(ctx, conversationID, role, content, usrCfg)
 }
 func (ms *mockMessageStore) GetMessage(ctx context.Context, messageID int) (*models.Message, error) {
 	return ms.real.GetMessage(ctx, messageID)
@@ -28,8 +26,7 @@ func (ms *mockMessageStore) GetConversationHistory(ctx context.Context, conversa
 	return ms.real.GetConversationHistory(ctx, conversationID)
 }
 func (ms *mockMessageStore) DeleteMessage(ctx context.Context, messageID int) error {
-	// Stubbed for testing
-	return nil
+	return ms.real.DeleteMessage(ctx, messageID)
 }
 
 // mockConversationStore delegates read-only methods to the real ConversationStore
@@ -39,25 +36,19 @@ type mockConversationStore struct {
 }
 
 func (m *mockConversationStore) CreateConversation(ctx context.Context, userID string, title string) (int, error) {
-	return 1, nil
+	return m.real.CreateConversation(ctx, userID, title)
 }
 func (m *mockConversationStore) GetUserConversations(ctx context.Context, userID string) ([]models.Conversation, error) {
 	return m.real.GetUserConversations(ctx, userID)
 }
 func (m *mockConversationStore) GetConversation(ctx context.Context, conversationID int) (*models.Conversation, error) {
-	return &models.Conversation{
-		ID:        conversationID,
-		UserID:    "CgNsc20SBGxkYXA", // lsm
-		Title:     "Test Conversation",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}, nil
+	return m.real.GetConversation(ctx, conversationID)
 }
 func (m *mockConversationStore) UpdateConversationTitle(ctx context.Context, conversationID int, title string) error {
-	return nil
+	return m.real.UpdateConversationTitle(ctx, conversationID, title)
 }
 func (m *mockConversationStore) DeleteConversation(ctx context.Context, conversationID int) error {
-	return nil
+	return m.real.DeleteConversation(ctx, conversationID)
 }
 
 // mockSummaryStore delegates read-only methods to the real SummaryStore
@@ -67,7 +58,7 @@ type mockSummaryStore struct {
 }
 
 func (m *mockSummaryStore) CreateSummary(ctx context.Context, conversationID int, content string, level int, sourceIDs []int) (int, error) {
-	return 1, nil
+	return m.real.CreateSummary(ctx, conversationID, content, level, sourceIDs)
 }
 func (m *mockSummaryStore) GetSummariesForConversation(ctx context.Context, conversationID int) ([]models.Summary, error) {
 	return m.real.GetSummariesForConversation(ctx, conversationID)
@@ -76,7 +67,7 @@ func (m *mockSummaryStore) GetRecentSummaries(ctx context.Context, conversationI
 	return m.real.GetRecentSummaries(ctx, conversationID, level, limit)
 }
 func (m *mockSummaryStore) DeleteSummariesForConversation(ctx context.Context, conversationID int) error {
-	return nil
+	return m.real.DeleteSummariesForConversation(ctx, conversationID)
 }
 func (m *mockSummaryStore) GetSummary(ctx context.Context, summaryID int) (*models.Summary, error) {
 	return m.real.GetSummary(ctx, summaryID)
@@ -89,49 +80,49 @@ type mockModelProfileStore struct {
 }
 
 func (m *mockModelProfileStore) CreateModelProfile(ctx context.Context, profile *models.ModelProfile) (uuid.UUID, error) {
-	return uuid.Nil, nil
+	return m.real.CreateModelProfile(ctx, profile)
 }
 func (m *mockModelProfileStore) GetModelProfile(ctx context.Context, profileID uuid.UUID) (*models.ModelProfile, error) {
 	switch profileID.String() {
 	case "00000000-0000-0000-0000-000000000001":
-		return &config.DefaultPrimaryProfile, nil
+		return &testDefaultPrimaryProfile, nil
 	case "00000000-0000-0000-0000-000000000002":
-		return &config.DefaultSummarizationProfile, nil
+		return &testDefaultSummarizationProfile, nil
 	case "00000000-0000-0000-0000-000000000003":
-		return &config.DefaultMasterSummaryProfile, nil
+		return &testDefaultMasterSummaryProfile, nil
 	case "00000000-0000-0000-0000-000000000004":
-		return &config.DefaultBriefSummaryProfile, nil
+		return &testDefaultBriefSummaryProfile, nil
 	case "00000000-0000-0000-0000-000000000005":
-		return &config.DefaultKeyPointsProfile, nil
+		return &testDefaultKeyPointsProfile, nil
 	case "00000000-0000-0000-0000-000000000006":
-		return &config.DefaultSelfCritiqueProfile, nil
+		return &testDefaultSelfCritiqueProfile, nil
 	case "00000000-0000-0000-0000-000000000007":
-		return &config.DefaultImprovementProfile, nil
+		return &testDefaultImprovementProfile, nil
 	case "00000000-0000-0000-0000-000000000008":
-		return &config.DefaultMemoryRetrievalProfile, nil
+		return &testDefaultMemoryRetrievalProfile, nil
 	case "00000000-0000-0000-0000-000000000009":
-		return &config.DefaultAnalysisProfile, nil
+		return &testDefaultAnalysisProfile, nil
 	case "00000000-0000-0000-0000-000000000010":
-		return &config.DefaultResearchTaskProfile, nil
+		return &testDefaultResearchTaskProfile, nil
 	case "00000000-0000-0000-0000-000000000011":
-		return &config.DefaultResearchPlanProfile, nil
+		return &testDefaultResearchPlanProfile, nil
 	case "00000000-0000-0000-0000-000000000012":
-		return &config.DefaultResearchConsolidationProfile, nil
+		return &testDefaultResearchConsolidationProfile, nil
 	case "00000000-0000-0000-0000-000000000013":
-		return &config.DefaultResearchAnalysisProfile, nil
+		return &testDefaultResearchAnalysisProfile, nil
 	case "00000000-0000-0000-0000-000000000014":
-		return &config.DefaultEmbeddingProfile, nil
+		return &testDefaultEmbeddingProfile, nil
 	case "00000000-0000-0000-0000-000000000015":
-		return &config.DefaultFormattingProfile, nil
+		return &testDefaultFormattingProfile, nil
 	default:
 		return m.real.GetModelProfile(ctx, profileID)
 	}
 }
 func (m *mockModelProfileStore) UpdateModelProfile(ctx context.Context, profile *models.ModelProfile) error {
-	return nil
+	return m.real.UpdateModelProfile(ctx, profile)
 }
 func (m *mockModelProfileStore) DeleteModelProfile(ctx context.Context, profileID uuid.UUID) error {
-	return nil
+	return m.real.DeleteModelProfile(ctx, profileID)
 }
 func (m *mockModelProfileStore) ListModelProfilesByUser(ctx context.Context, userID string) ([]*models.ModelProfile, error) {
 	return m.real.ListModelProfilesByUser(ctx, userID)
@@ -144,31 +135,31 @@ type mockResearchTaskStore struct {
 }
 
 func (m *mockResearchTaskStore) SaveResearchTask(ctx context.Context, userID, query string, conversationID *int) (int, error) {
-	return 1, nil
+	return m.real.SaveResearchTask(ctx, userID, query, conversationID)
 }
 func (m *mockResearchTaskStore) UpdateTaskStatus(ctx context.Context, taskID int, status string, errorMsg *string) (time.Time, error) {
-	return time.Now(), nil
+	return m.real.UpdateTaskStatus(ctx, taskID, status, errorMsg)
 }
 func (m *mockResearchTaskStore) UpdateTask(ctx context.Context, taskID int, status string, errorMsg *string) (time.Time, error) {
-	return time.Now(), nil
+	return m.real.UpdateTask(ctx, taskID, status, errorMsg)
 }
 func (m *mockResearchTaskStore) StoreResearchPlan(ctx context.Context, taskID int, plan *models.ResearchPlan) (time.Time, error) {
-	return time.Now(), nil
+	return m.real.StoreResearchPlan(ctx, taskID, plan)
 }
 func (m *mockResearchTaskStore) StoreFinalResult(ctx context.Context, taskID int, result *models.ResearchQuestionResult) (time.Time, error) {
-	return time.Now(), nil
+	return m.real.StoreFinalResult(ctx, taskID, result)
 }
 func (m *mockResearchTaskStore) SaveSubtask(ctx context.Context, subtask *models.ResearchSubtask) (int, error) {
-	return 1, nil
+	return m.real.SaveSubtask(ctx, subtask)
 }
 func (m *mockResearchTaskStore) UpdateSubtaskStatus(ctx context.Context, taskID, questionID int, status string, errorMsg *string) (int, time.Time, error) {
-	return 1, time.Now(), nil
+	return m.real.UpdateSubtaskStatus(ctx, taskID, questionID, status, errorMsg)
 }
 func (m *mockResearchTaskStore) StoreGatheredInfo(ctx context.Context, taskID, questionID int, gatheredInfo []string, sources []string) (time.Time, error) {
-	return time.Now(), nil
+	return m.real.StoreGatheredInfo(ctx, taskID, questionID, gatheredInfo, sources)
 }
 func (m *mockResearchTaskStore) StoreSynthesizedAnswer(ctx context.Context, taskID, questionID int, answer string) (time.Time, error) {
-	return time.Now(), nil
+	return m.real.StoreSynthesizedAnswer(ctx, taskID, questionID, answer)
 }
 func (m *mockResearchTaskStore) GetTaskByID(ctx context.Context, taskID int) (*models.ResearchTask, error) {
 	return m.real.GetTaskByID(ctx, taskID)
@@ -187,31 +178,22 @@ type mockMemoryStore struct {
 }
 
 func (m *mockMemoryStore) InitMemorySchema(ctx context.Context) error {
-	return nil
+	return m.real.InitMemorySchema(ctx)
 }
-func (m *mockMemoryStore) StoreMemory(ctx context.Context, userID, source, role string, sourceID int, embeddings [][]float32) error {
-	return nil
+func (m *mockMemoryStore) StoreMemory(ctx context.Context, userID, source string, role models.MessageRole, sourceID int, embeddings [][]float32) error {
+	return m.real.StoreMemory(ctx, userID, source, role, sourceID, embeddings)
 }
-func (m *mockMemoryStore) StoreMemoryWithTx(ctx context.Context, userID, source, role string, sourceID int, embeddings [][]float32, tx pgx.Tx) error {
-	return nil
+func (m *mockMemoryStore) StoreMemoryWithTx(ctx context.Context, userID, source string, role models.MessageRole, sourceID int, embeddings [][]float32, tx pgx.Tx) error {
+	return m.real.StoreMemoryWithTx(ctx, userID, source, role, sourceID, embeddings, tx)
 }
 func (m *mockMemoryStore) DeleteMemory(ctx context.Context, id, userID string) error {
-	return nil
+	return m.real.DeleteMemory(ctx, id, userID)
 }
 func (m *mockMemoryStore) DeleteAllUserMemories(ctx context.Context, userID string) error {
-	return nil
+	return m.real.DeleteAllUserMemories(ctx, userID)
 }
 func (m *mockMemoryStore) SearchSimilarity(ctx context.Context, embeddings [][]float32, minSimilarity float32, limit int, userID *string, conversationID *int, startDate, endDate *time.Time) ([]models.Memory, error) {
-	// Stubbed for testing
-	return []models.Memory{
-		{
-			SourceID:       1,
-			Source:         "test_source",
-			Similarity:     0.8,
-			ConversationID: conversationID,
-			CreatedAt:      time.Now(),
-		},
-	}, nil
+	return m.real.SearchSimilarity(ctx, embeddings, minSimilarity, limit, userID, conversationID, startDate, endDate)
 }
 
 // mockUserConfigStore delegates read-only methods to the real UserConfigStore
@@ -221,64 +203,10 @@ type mockUserConfigStore struct {
 }
 
 func (m *mockUserConfigStore) GetUserConfig(ctx context.Context, userID string) (*models.UserConfig, error) {
-	return &models.UserConfig{
-		Memory: &models.MemoryConfig{
-			Limit:                   3,
-			Enabled:                 true,
-			AlwaysRetrieve:          true,
-			EnableCrossUser:         false,
-			SimilarityThreshold:     0.6,
-			EnableCrossConversation: true,
-		},
-		UserID: "CgNsc20SBGxkYXA",
-		Refinement: &models.RefinementConfig{
-			EnableResponseCritique:  false,
-			EnableResponseFiltering: false,
-		},
-		WebSearch: &models.WebSearchConfig{
-			Enabled:        true,
-			AutoDetect:     true,
-			MaxResults:     3,
-			IncludeResults: true,
-		},
-		Summarization: &models.SummarizationConfig{
-			Enabled:                      true,
-			MaxSummaryLevels:             3,
-			EmbeddingDimension:           786,
-			MessagesBeforeSummary:        4,
-			SummaryWeightCoefficient:     0.5,
-			SummariesBeforeConsolidation: 3,
-		},
-		ModelProfiles: &models.ModelProfileConfig{
-			PrimaryProfileID:               uuid.MustParse("00000000-0000-0000-0000-000000000001"),
-			AnalysisProfileID:              uuid.MustParse("00000000-0000-0000-0000-000000000009"),
-			EmbeddingProfileID:             uuid.MustParse("00000000-0000-0000-0000-000000000014"),
-			FormattingProfileID:            uuid.MustParse("00000000-0000-0000-0000-000000000015"),
-			KeyPointsProfileID:             uuid.MustParse("00000000-0000-0000-0000-000000000005"),
-			ImprovementProfileID:           uuid.MustParse("00000000-0000-0000-0000-000000000007"),
-			BriefSummaryProfileID:          uuid.MustParse("00000000-0000-0000-0000-000000000004"),
-			ResearchPlanProfileID:          uuid.MustParse("00000000-0000-0000-0000-000000000011"),
-			ResearchTaskProfileID:          uuid.MustParse("00000000-0000-0000-0000-000000000010"),
-			SelfCritiqueProfileID:          uuid.MustParse("00000000-0000-0000-0000-000000000006"),
-			SummarizationProfileID:         uuid.MustParse("00000000-0000-0000-0000-000000000002"),
-			MasterSummaryProfileID:         uuid.MustParse("00000000-0000-0000-0000-000000000003"),
-			ImageGenerationProfileID:       uuid.MustParse("00000000-0000-0000-0000-000000000016"),
-			MemoryRetrievalProfileID:       uuid.MustParse("00000000-0000-0000-0000-000000000008"),
-			ResearchAnalysisProfileID:      uuid.MustParse("00000000-0000-0000-0000-000000000013"),
-			ResearchConsolidationProfileID: uuid.MustParse("00000000-0000-0000-0000-000000000012"),
-			ImageGenerationPromptProfileID: uuid.MustParse("00000000-0000-0000-0000-000000000017"),
-		},
-		ImageGeneration: &models.ImageGenerationConfig{
-			Enabled:              true,
-			MaxImageSize:         1280,
-			RetentionHours:       1,
-			StorageDirectory:     "/root/images",
-			AutoPromptRefinement: false,
-		},
-	}, nil
+	return m.real.GetUserConfig(ctx, userID)
 }
 func (m *mockUserConfigStore) UpdateUserConfig(ctx context.Context, userID string, cfg *models.UserConfig) error {
-	return nil
+	return m.real.UpdateUserConfig(ctx, userID, cfg)
 }
 func (m *mockUserConfigStore) GetAllUsers(ctx context.Context) ([]models.User, error) {
 	return m.real.GetAllUsers(ctx)

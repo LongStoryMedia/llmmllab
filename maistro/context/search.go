@@ -28,7 +28,7 @@ func FmtQuery(ctx context.Context, modelProfile *models.ModelProfile, query, fmt
 	req := models.GenerateReq{
 		Model:     modelProfile.ModelName,
 		Prompt:    fmt.Sprintf("%s\n%s", query, fmtPrompt),
-		Options:   modelProfile.Parameters.ToMap(),
+		Options:   &modelProfile.Parameters,
 		KeepAlive: util.IntPtr(0),
 	}
 
@@ -41,8 +41,8 @@ func FmtQuery(ctx context.Context, modelProfile *models.ModelProfile, query, fmt
 	return util.RemoveThinkTags(fmtQ), nil
 }
 
-func (cc *ConversationContext) SearchAndInjectResults(ctx context.Context, query string) error {
-	cfg, err := GetUserConfig(cc.UserID)
+func (cc *conversationContext) SearchAndInjectResults(ctx context.Context, query string) error {
+	cfg, err := GetUserConfig(cc.userID)
 	if err != nil {
 		util.LogWarning("Could not load user configuration, using system defaults")
 		return err
@@ -57,7 +57,7 @@ func (cc *ConversationContext) SearchAndInjectResults(ctx context.Context, query
 	if err != nil {
 		return util.HandleError(err)
 	}
-	state := session.GlobalStageManager.GetSessionState(cc.UserID, cc.ConversationID)
+	state := session.GlobalStageManager.GetSessionState(cc.userID, cc.conversationID)
 	searchState := state.GetStage(models.SocketStageTypeSearchingWeb)
 	searchState.UpdateProgress(searchState.Progress+15, fmt.Sprintf("Performing web search for query: %s", search))
 
@@ -66,7 +66,7 @@ func (cc *ConversationContext) SearchAndInjectResults(ctx context.Context, query
 	})
 
 	// Attempt to perform a web search and inject results
-	searchResult, err := recherche.QuickSearch(ctx, search, cfg.WebSearch.MaxResults, true, cc.UserID, cc.ConversationID)
+	searchResult, err := recherche.QuickSearch(ctx, search, cfg.WebSearch.MaxResults, true, cc.userID, cc.conversationID)
 	if err != nil {
 		searchState.Fail("Failed to perform web search", err)
 	}
@@ -79,7 +79,7 @@ func (cc *ConversationContext) SearchAndInjectResults(ctx context.Context, query
 	return nil
 }
 
-func (cc *ConversationContext) InjectSearchResults(ctx context.Context, results *models.SearchResult, preamble string) error {
+func (cc *conversationContext) InjectSearchResults(ctx context.Context, results *models.SearchResult, preamble string) error {
 	if results == nil || len(results.Contents) == 0 {
 		util.LogWarning("No search results to inject")
 		return nil
@@ -89,7 +89,7 @@ func (cc *ConversationContext) InjectSearchResults(ctx context.Context, results 
 		"count": len(results.Contents),
 	})
 
-	if slices.ContainsFunc(cc.SearchResults, func(sr models.SearchResult) bool {
+	if slices.ContainsFunc(cc.searchResults, func(sr models.SearchResult) bool {
 		return sr.Query == results.Query
 	}) {
 		util.LogInfo("Search results already injected for this query, skipping")
@@ -98,7 +98,7 @@ func (cc *ConversationContext) InjectSearchResults(ctx context.Context, results 
 
 	// Create a map of all URLs from existing search results for efficient lookup
 	existingURLs := make(map[string]bool)
-	for _, sr := range cc.SearchResults {
+	for _, sr := range cc.searchResults {
 		for _, content := range sr.Contents {
 			existingURLs[content.URL] = true
 		}
@@ -123,7 +123,7 @@ func (cc *ConversationContext) InjectSearchResults(ctx context.Context, results 
 
 	// Only add if we have unique contents after filtering
 	if len(filteredResults.Contents) > 0 {
-		cc.SearchResults = append(cc.SearchResults, filteredResults)
+		cc.searchResults = append(cc.searchResults, filteredResults)
 		util.LogInfo("Added unique search results", logrus.Fields{
 			"count": len(filteredResults.Contents),
 		})

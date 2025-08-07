@@ -19,7 +19,7 @@ properties:
     additionalProperties: true
     description: Additional model parameters listed in the documentation for the Modelfile such as temperature
   keep_alive:
-    type: string
+    type: integer
     description: Controls how long the model will stay loaded into memory
 required:
   - model

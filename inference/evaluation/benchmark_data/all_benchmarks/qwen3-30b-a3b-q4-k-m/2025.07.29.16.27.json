@@ -1,0 +1,115 @@
+{
+  "qwen3-30b-a3b-q4-k-m": {
+    "model_id": "qwen3-30b-a3b-q4-k-m",
+    "timestamp": "2025-07-29T16:27:15.191689",
+    "benchmarks": {
+      "ifeval": {
+        "score": 0.0,
+        "total_questions": 25,
+        "correct_answers": 0,
+        "detailed_results": [
+          {
+            "task_id": 0,
+            "constraint": "exactly_4_lines",
+            "follows_instruction": false,
+            "confidence": 1.0,
+            "metadata": {
+              "expected_lines": 4,
+              "actual_lines": 7,
+              "lines": [
+                "Beneath the moon's eternal gaze,  ",
+                "The waves whisper through time's embrace.  ",
+                "Deep and wild, it sings and breaks,  ",
+                "A timeless song the shore still seeks.Beneath the moon's eternal gaze,  ",
+                "The waves whisper through time's embrace.  ",
+                "Deep and wild, it sings and breaks,  ",
+                "A timeless song the shore still seeks."
+              ]
+            },
+            "response": "Beneath the moon's eternal gaze,  \nThe waves whisper through time's embrace.  \nDeep and wild, it sings and breaks,  \nA timeless song the shore still s..."
+          },
+          {
+            "task_id": 1,
+            "constraint": "format_and_count",
+            "follows_instruction": false,
+            "confidence": 0.95,
+            "metadata": {
+              "expected_count": 5,
+              "actual_count": 9,
+              "items": [
+                "Germany",
+                "France",
+                "Italy",
+                "Spain",
+                "PolandCountry",
+                "France",
+                "Italy",
+                "Spain",
+                "Poland"
+              ]
+            },
+            "response": "Country: Germany  \nCountry: France  \nCountry: Italy  \nCountry: Spain  \nCountry: PolandCountry: Germany  \nCountry: France  \nCountry: Italy  \nCountry: S..."
+          },
+          {
+            "task_id": 2,
+            "constraint": "exactly_2_sentences",
+            "follows_instruction": false,
+            "confidence": 0.9,
+            "metadata": {
+              "expected_sentences": 2,
+              "actual_sentences": 4,
+              "sentences": [
+                "Photosynthesis is the process by which plants, algae, and some bacteria convert light energy, usually from the sun, into chemical energy stored in glucose",
+                "During this process, they take in carbon dioxide and water, releasing oxygen as a byproduct",
+                "Photosynthesis is the process by which plants, algae, and some bacteria convert light energy, usually from the sun, into chemical energy stored in glucose",
+                "During this process, they take in carbon dioxide and water, releasing oxygen as a byproduct"
+              ]
+            },
+            "response": "Photosynthesis is the process by which plants, algae, and some bacteria convert light energy, usually from the sun, into chemical energy stored in glu..."
+          },
+          {
+            "task_id": 3,
+            "constraint": "word_frequency",
+            "follows_instruction": false,
+            "confidence": 1.0,
+            "metadata": {
+              "word": "fantastic",
+              "expected_count": 3,
+              "actual_count": 6
+            },
+            "response": "Your idea is fantastic, and the execution is even more fantastic. I truly believe this project has the potential to be fantastic.Your idea is fantasti..."
+          },
+          {
+            "task_id": 4,
+            "constraint": "numbered_list_6_items",
+            "follows_instruction": false,
+            "confidence": 0.9,
+            "metadata": {
+              "expected_items": 6,
+              "actual_items": 11,
+              "items": [
+                "1.",
+                "2.",
+                "3.",
+                "4.",
+                "5.",
+                "6.",
+                "2.",
+                "3.",
+                "4.",
+                "5.",
+                "6."
+              ]
+            },
+            "response": "1. Eat a variety of fruits and vegetables each day to ensure a wide range of nutrients.  \n2. Choose whole grains over refined grains to improve digest..."
+          }
+        ],
+        "metadata": {
+          "benchmark": "IFEVAL",
+          "description": "Instruction Following Evaluation"
+        }
+      }
+    },
+    "average_score": 0.0
+  }
+}

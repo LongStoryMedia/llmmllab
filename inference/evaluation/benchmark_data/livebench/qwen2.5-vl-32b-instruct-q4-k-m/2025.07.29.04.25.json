@@ -1,0 +1,90 @@
+{
+  "qwen2.5-vl-32b-instruct-q4-k-m": {
+    "model_id": "qwen2.5-vl-32b-instruct-q4-k-m",
+    "timestamp": "2025-07-29T04:11:45.855803",
+    "benchmarks": {
+      "livebench": {
+        "score": 0.505,
+        "total_questions": 10,
+        "correct_answers": 5,
+        "detailed_results": [
+          {
+            "question_id": 0,
+            "category": "reasoning",
+            "type": "math_reasoning",
+            "score": 0.6,
+            "response": "\nTo determine the number of users the social media platform would have by June 2024, we need to calculate the growth of the user base month by month, ..."
+          },
+          {
+            "question_id": 1,
+            "category": "knowledge",
+            "type": "current_events",
+            "score": 0.5,
+            "response": "\nThe EU AI Act, finalized in 2024, is a comprehensive regulatory framework aimed at governing the development, deployment, and use of artificial intel..."
+          },
+          {
+            "question_id": 2,
+            "category": "instruction_following",
+            "type": "creative_constraint",
+            "score": 0.3,
+            "response": "\nQuantum bits dance in light,  \nEntangled threads weave unseen fate,  \nFuture in flux blooms.  "
+          },
+          {
+            "question_id": 3,
+            "category": "reasoning",
+            "type": "math_reasoning",
+            "score": 0.6,
+            "response": "\nTo determine the number of users the social media platform would have by June 2024, we need to calculate the user base month by month, starting from ..."
+          },
+          {
+            "question_id": 4,
+            "category": "knowledge",
+            "type": "current_events",
+            "score": 0.75,
+            "response": "\nThe EU AI Act, officially known as the Artificial Intelligence Act, is a landmark regulation aimed at governing the development, deployment, and use ..."
+          },
+          {
+            "question_id": 5,
+            "category": "instruction_following",
+            "type": "creative_constraint",
+            "score": 0.3,
+            "response": "\nQuantum bits dance in time,  \nEntangled threads weave the unknown,  \nFuture whispers arrive."
+          },
+          {
+            "question_id": 6,
+            "category": "reasoning",
+            "type": "math_reasoning",
+            "score": 0.6,
+            "response": "\nTo determine the number of users the social media platform would have by June 2024, we need to calculate the user base month by month, starting from ..."
+          },
+          {
+            "question_id": 7,
+            "category": "knowledge",
+            "type": "current_events",
+            "score": 0.5,
+            "response": "\nThe EU AI Act, finalized in 2024, is a comprehensive regulatory framework aimed at governing the development, deployment, and use of artificial intel..."
+          },
+          {
+            "question_id": 8,
+            "category": "instruction_following",
+            "type": "creative_constraint",
+            "score": 0.3,
+            "response": "\nQuantum bits dance in time,  \nEntangled threads weave the unknown,  \nFuture whispers arrive.  "
+          },
+          {
+            "question_id": 9,
+            "category": "reasoning",
+            "type": "math_reasoning",
+            "score": 0.6,
+            "response": "\nTo determine the number of users the social media platform would have by June 2024, we need to calculate the growth of its user base month by month, ..."
+          }
+        ],
+        "metadata": {
+          "benchmark": "LiveBench",
+          "description": "Contamination-free evaluation with fresh questions",
+          "evaluation_date": "2025-07-29T04:25:37.076512"
+        }
+      }
+    }
+  }
+}

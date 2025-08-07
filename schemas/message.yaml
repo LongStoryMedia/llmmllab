@@ -4,25 +4,25 @@ description: Message represents a single exchange in the conversation
 type: object
 properties:
   role:
-    type: string
+    $ref: message_role.yaml
     description: Role of the message sender (e.g., user, assistant)
   content:
-    type: string
-    description: Text content of the message
-  images:
     type: array
     items:
-      type: string
-    description: Optional images associated with the message
+      $ref: message_content.yaml
+    description: Content of the message
   tool_calls:
     type: array
     items:
       type: object
     description: Optional tool calls associated with the message
+  thinking:
+    type: string
+    description: Optional thinking process of the model, if applicable
   id:
     type: integer
     description: Unique identifier for the message
-  createdAt:
+  created_at:
     type: string
     format: date-time
     description: Timestamp of when the message was created
@@ -32,5 +32,7 @@ properties:
 required:
   - role
   - content
-  - id
   - conversation_id
+definitions:
+  Content:
+    $ref: message_content.yaml

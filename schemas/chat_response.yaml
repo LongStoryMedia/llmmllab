@@ -1,38 +1,59 @@
 $schema: http://json-schema.org/draft-07/schema#
 title: ChatResponse
-description: ChatResponse represents a response from the Ollama chat API
+description: ChatResponse represents a response from the chat API
 type: object
 properties:
   done:
     type: boolean
+    description: Indicates whether the generation is complete
   message:
-    $ref: "#/definitions/ChatMessage"
-  createdAt:
+    $ref: "#/definitions/Message"
+    description: The message content and metadata returned by the model
+  created_at:
     type: string
+    format: date-time
+    description: Timestamp when the response was created
   model:
     type: string
+    description: The name or identifier of the model used for generation
   context:
     type: array
     items:
       type: number
-  done_reason:
+    description: Array of numbers representing the tokenized context
+  finish_reason:
     type: string
+    description: Specific indicator of how or why the generation finished
+    enum:
+      - "stop"
+      - "length"
+      - "error"
+      - "load"
+      - "unload"
+      - "timeout"
+      - "cancel"
   total_duration:
     type: number
+    description: Total time taken for the entire generation process in milliseconds
   load_duration:
     type: number
+    description: Time taken to load the model in milliseconds
   prompt_eval_count:
     type: number
+    description: Number of tokens in the prompt that were evaluated
   prompt_eval_duration:
     type: number
+    description: Time taken to evaluate the prompt tokens in milliseconds
   eval_count:
     type: number
+    description: Total number of tokens evaluated
   eval_duration:
     type: number
+    description: Time taken for token evaluation in milliseconds
 required:
   - done
-  - createdAt
+  - created_at
   - model
 definitions:
-  ChatMessage:
-    $ref: chat_message.yaml
+  Message:
+    $ref: message.yaml

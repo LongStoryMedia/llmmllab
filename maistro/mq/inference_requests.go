@@ -16,34 +16,6 @@ type CorrelationID string
 // ResultHandler is a function that processes a result from RabbitMQ
 type ResultHandler func(correlationID CorrelationID, result models.InferenceQueueMessage, err error)
 
-// InferenceResultHandlers maps request IDs to their handlers
-var InferenceResultHandlers = make(map[CorrelationID]ResultHandler)
-
-// RegisterResultHandler registers a handler for a specific request ID
-func RegisterResultHandler(correlationID CorrelationID, handler ResultHandler) {
-	util.LogDebug("Registering result handler for request ID", logrus.Fields{
-		"requestId": correlationID,
-	})
-	InferenceResultHandlers[correlationID] = handler
-}
-
-// HandleResult processes a result for a specific request ID
-func HandleResult(correlationID CorrelationID, result models.InferenceQueueMessage, err error) {
-	handler, ok := InferenceResultHandlers[correlationID]
-	if !ok {
-		util.LogWarning("No handler registered for request ID", logrus.Fields{
-			"requestId": correlationID,
-		})
-		return
-	}
-
-	// Call the handler
-	handler(correlationID, result, err)
-
-	// Remove the handler once it's been called
-	delete(InferenceResultHandlers, correlationID)
-}
-
 // ToRequestID generates a unique request ID based on conversation ID and user ID
 // If guid is provided, it uses that; otherwise, it generates a new UUID
 // The request ID format is "UUID::conversationID-userID"
@@ -60,12 +32,31 @@ func ToRequestID(conversationID int, userID string, guid *string) CorrelationID 
 
 // FromRequestID extracts the user defined or generated uuid, user ID and conversation ID from a request ID
 // Returns the user defined or generated uuid, user ID, conversation ID, and an error if the format is invalid
-// The request ID format is "UUID::conversationID-userID"
+// Supports multiple formats:
+// - "UUID::conversationID-userID" (standard format)
+// - "-99-CgNsc20SBGxkYXA::UUID" (alternate format from external systems)
+// - Any other format will attempt to extract just a UUID if possible
 func FromRequestID(requestID string) (string, int, string, error) {
-	// Split the request ID into conversation ID and user ID
+	// Handle the inference service format which might look like -99-CgNsc20SBGxkYXA::4369feb9-a493-403f-a4d6-4f007c3bb574
+	if strings.HasPrefix(requestID, "-") && strings.Contains(requestID, "::") {
+		util.LogInfo("Found alternate format request ID", logrus.Fields{
+			"requestId": requestID,
+		})
+
+		// Split on :: and use the UUID part
+		parts := strings.Split(requestID, "::")
+		if len(parts) == 2 {
+			uuid := parts[1]
+			// Return default values for conversation ID and user ID
+			return uuid, -99, "system", nil
+		}
+	}
+
+	// Try standard format
 	parts := strings.Split(requestID, "::")
 	if len(parts) != 2 {
-		return "", -1, "", fmt.Errorf("invalid request ID format")
+		// If we can't parse the ID format, just return the whole thing as a UUID
+		return requestID, -1, "", fmt.Errorf("invalid request ID format: %s", requestID)
 	}
 
 	cid, uid, err := util.FromCorrelationID(parts[0])
@@ -87,9 +78,7 @@ func SubmitImageGenerationRequest(
 ) (CorrelationID, error) {
 	// Generate a unique request ID
 	requestID := ToRequestID(conversationID, userID, nil)
-
-	// Register the handler for this request
-	RegisterResultHandler(requestID, handler)
+	handlerReg.register(requestID, handler, HandlerTimeoutDuration)
 
 	req := models.InferenceQueueMessage{
 		CorrelationID:  string(requestID),
@@ -102,7 +91,7 @@ func SubmitImageGenerationRequest(
 
 	// Publish the request to RabbitMQ
 	if err := client.PublishRequest(req); err != nil {
-		delete(InferenceResultHandlers, requestID)
+		handlerReg.deregister(requestID)
 		return "", err
 	}
 

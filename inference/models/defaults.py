@@ -23,7 +23,7 @@ def new_dev_stats() -> DevStats:
         serial="",
         display_mode="",
         display_active="",
-        temperature=0.0
+        temperature=0.0,
     )
 
 
@@ -51,12 +51,13 @@ def new_model() -> Model:
     Returns:
         Model: A new instance of Model with default values.
     """
-    from inference.models.model_details import ModelDetails
+    from models.model_details import ModelDetails
+
     return Model(
         name="",
         model="",
         modified_at="1970-01-01T00:00:00Z",
         size=0,
         digest="",
-        details=new_model_details()
+        details=new_model_details(),
     )

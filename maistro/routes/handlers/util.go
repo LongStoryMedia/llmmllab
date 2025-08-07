@@ -47,7 +47,7 @@ func getUserConfig(c *fiber.Ctx) *models.UserConfig {
 }
 
 // getConversationContext retrieves the conversation context from the user context
-func getConversationContext(c *fiber.Ctx) *pxcx.ConversationContext {
+func getConversationContext(c *fiber.Ctx) pxcx.ConversationContext {
 	userCtx := c.UserContext()
 	if userCtx == nil {
 		util.LogWarning("User context is nil. Cannot retrieve conversation context.", logrus.Fields{"path": c.Path()})
@@ -62,12 +62,7 @@ func getConversationContext(c *fiber.Ctx) *pxcx.ConversationContext {
 		ccCtx = userCtx.Value(pxcx.ConversationContextKey)
 	}
 
-	if cc, ok := ccCtx.(*pxcx.ConversationContext); ok {
-		return cc
-	}
-
-	util.LogWarning("Conversation context is not of type *pxcx.ConversationContext. Returning nil.", logrus.Fields{"path": c.Path()})
-	return nil
+	return pxcx.AsCC(ccCtx)
 }
 
 // getSessionState retrieves the session state from the user context, creating it if necessary
