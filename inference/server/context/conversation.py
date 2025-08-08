@@ -33,7 +33,9 @@ from ..db.message_storage import MessageStorage
 from ..db.summary_storage import SummaryStorage
 from ..db.memory_storage import MemoryStorage
 from ..db import storage  # Direct access to storage for default instances
-import server.config.logger as logger
+import server.config
+
+logger = server.config.logger  # Use the logger from config
 
 
 class ConversationContext:

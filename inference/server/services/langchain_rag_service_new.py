@@ -27,7 +27,9 @@ from models import (
 # Import local pipeline factory
 from runner.pipelines.factory import PipelineFactory
 
-from ..config import logger
+import server.config
+
+logger = server.config.logger  # Use the logger from config
 
 
 class LangChainRAGService:

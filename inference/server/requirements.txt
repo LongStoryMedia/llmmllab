@@ -31,3 +31,5 @@ numpy>=1.24.0
 sentence-transformers>=2.2.2
 cohere>=4.37
 transformers>=4.37.0
+python-multipart>=0.0.6
+psutil>=7.0.0

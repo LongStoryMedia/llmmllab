@@ -12,7 +12,10 @@ from langchain.prompts import PromptTemplate
 
 # Import models from the correct location
 from models.search_result import SearchResult, SearchResultContent
-from ..config import logger
+
+import server.config
+
+logger = server.config.logger  # Use the logger from config
 
 
 class SearchService:

@@ -12,7 +12,10 @@ from langchain.chains.summarize import load_summarize_chain
 from langchain.prompts import PromptTemplate
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-from ..config import logger
+
+import server.config
+
+logger = server.config.logger  # Use the logger from config
 
 
 class SummarizationService:
