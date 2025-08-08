@@ -6,7 +6,9 @@ import asyncio
 from typing import Any
 
 from .queries import get_query
-from ..config import logger
+import server.config
+
+logger = server.config.logger  # Use the logger from config
 
 
 async def initialize_database(connection_pool: Any) -> bool:

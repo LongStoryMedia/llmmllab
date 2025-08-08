@@ -12,8 +12,10 @@ from models import (
     ModelParameters,
 )
 from ..services.hardware_manager import hardware_manager
-from ..config import logger
 
+import server.config
+
+logger = server.config.logger  # Use the logger from config
 from ..protos import (
     inference_pb2_grpc,
     chat_req_pb2,

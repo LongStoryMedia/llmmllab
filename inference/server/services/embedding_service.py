@@ -11,7 +11,9 @@ from pydantic import SecretStr
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
-from ..config import logger
+import server.config
+
+logger = server.config.logger  # Use the logger from config
 
 
 class EmbeddingService:

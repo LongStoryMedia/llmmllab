@@ -93,8 +93,7 @@ MASTER_SUMMARY_PROMPT = os.environ.get(
 
 # Config storage
 CONFIG_DIR = os.environ.get("CONFIG_DIR", "/app/config")
-MODELS_CONFIG_PATH = os.path.join(CONFIG_DIR, "models.json")
-LORAS_CONFIG_PATH = os.path.join(CONFIG_DIR, "loras.json")
+MODELS_CONFIG_PATH = os.path.join("app", "models.json")
 
 # Inference services configuration
 INFERENCE_SERVICES_OLLAMA_BASE_URL = os.environ.get(
@@ -163,8 +162,6 @@ DEFAULT_WIDTH = int(os.environ.get("DEFAULT_WIDTH", "768"))
 MAX_HEIGHT = int(os.environ.get("MAX_HEIGHT", "1024"))
 MAX_WIDTH = int(os.environ.get("MAX_WIDTH", "1024"))
 
-# LoRA configuration
-LORAS_CONFIG_PATH = os.path.join(CONFIG_DIR, "loras.json")
 # Default weight for LoRA adaptation
 DEFAULT_LORA_WEIGHT = float(os.environ.get("DEFAULT_LORA_WEIGHT", "0.75"))
 # PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True

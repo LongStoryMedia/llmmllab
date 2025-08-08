@@ -139,17 +139,6 @@ class JWTValidator:
             return TokenValidationResult(
                 user_id=user_id, claims=payload, is_admin=is_admin
             )
-
-        except jwt.ExpiredSignatureError:
-            self.logger.warning("Token has expired")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired"
-            )
-        except jwt.InvalidTokenError as e:
-            self.logger.warning(f"Invalid token: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
-            )
         except Exception as e:
             self.logger.error(f"Token validation failed: {e}")
             raise HTTPException(
@@ -286,6 +275,41 @@ def get_request_id(request: Request) -> Optional[str]:
     if hasattr(request.state, "auth"):
         return request.state.auth.get(ContextKey.REQUEST_ID)
     return None
+
+
+# Create a global JWT validator for WebSocket authentication
+_auth_middleware = None
+
+
+def get_auth_middleware() -> AuthMiddleware:
+    """Get or initialize the global auth middleware instance"""
+    global _auth_middleware
+    if _auth_middleware is None:
+        # This should be replaced with your actual config mechanism
+        # For example: jwks_uri = config.get_config().auth.jwks_uri
+        jwks_uri = "https://your-auth-provider.com/.well-known/jwks.json"
+        _auth_middleware = AuthMiddleware(jwks_uri)
+    return _auth_middleware
+
+
+async def verify_token(token: str) -> Dict[str, Any]:
+    """
+    Verify and decode a JWT token.
+    This is a standalone function primarily for WebSocket authentication,
+    which returns the decoded token payload.
+    """
+    try:
+        auth_middleware = get_auth_middleware()
+        # Use the existing validate_token method from AuthMiddleware's validator
+        result = await auth_middleware.validator.validate_token(token)
+        return result.claims
+    except Exception as e:
+        # Convert any errors to HTTPException for consistent error handling
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {str(e)}"
+        )
 
 
 # Example usage with FastAPI
