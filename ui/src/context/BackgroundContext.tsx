@@ -534,7 +534,7 @@ export const BackgroundContextProvider: React.FC<{ children: React.ReactNode }> 
       }
     };
     const doConnect = (type: SocketConnectionType, sock: ChatWebSocketClient) => {
-      let ref: React.Ref<ChatWebSocketClient | undefined>;
+      let ref: React.MutableRefObject<ChatWebSocketClient | undefined>;
       if (type === "chat") {
         ref = chatSocketRef;
       } else if (type === "image") {
@@ -545,14 +545,22 @@ export const BackgroundContextProvider: React.FC<{ children: React.ReactNode }> 
         console.error("Unknown socket type:", type);
         return;
       }
-
+      
+      // Disconnect existing socket if any
+      if (ref.current) {
+        console.log(`Disconnecting existing ${type} socket before creating a new one`);
+        ref.current.disconnect();
+        ref.current = undefined;
+      }
+      
+      // Store the new socket in the ref first, then connect
+      ref.current = sock;
+      
       sock.connect(getToken(user))
         .then(() => {
           console.log("WebSocket client connected to", type, "successfully");
-          removeChatSocket();
-          ref.current = sock;
-        
-          // Add a status message when the chat WebSocket connects
+          
+          // Add a status message when the WebSocket connects
           addStatusMessage({
             id: `status-${Date.now()}`,
             message: `Connected to ${type} socket`,
@@ -564,13 +572,18 @@ export const BackgroundContextProvider: React.FC<{ children: React.ReactNode }> 
           console.error("Failed to connect WebSocket client for", type, ":", err);
           // Fall back to HTTP API
         
-          // Add an error status message when the chat WebSocket fails to connect
+          // Add an error status message when the WebSocket fails to connect
           addStatusMessage({
             id: `status-${Date.now()}`,
             message: `Failed to connect to ${type} service`,
             type: 'error',
             timestamp: new Date()
           });
+          
+          // Clear the ref if connection failed
+          if (ref.current === sock) {
+            ref.current = undefined;
+          }
         });
     }
 

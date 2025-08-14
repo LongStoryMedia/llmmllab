@@ -2,6 +2,7 @@ package context
 
 import (
 	"maistro/models"
+	"maistro/util"
 	"time"
 )
 
@@ -21,29 +22,44 @@ var MockConversationContext = conversationContext{
 	retrievedMemories: []models.Memory{},
 	messages: []models.Message{
 		{
-			ID:      1,
-			Role:    "user",
-			Content: "What are some strategies for using multiple GPUs?",
+			ID:   util.IntPtr(1),
+			Role: "user",
+			Content: []models.MessageContent{{
+				Type: models.MessageContentTypeText,
+				Text: util.StrPtr("What are some strategies for using multiple GPUs?"),
+			}},
 		},
 		{
-			ID:      2,
-			Role:    "assistant",
-			Content: "You can split the model across GPUs or use a sidecar container to handle inference.",
+			ID:   util.IntPtr(2),
+			Role: "assistant",
+			Content: []models.MessageContent{{
+				Type: models.MessageContentTypeText,
+				Text: util.StrPtr("You can split the model across GPUs or use a sidecar container to handle inference."),
+			}},
 		},
 		{
-			ID:      3,
-			Role:    "user",
-			Content: "Can a single model leverage VRAM across multiple GPUs?",
+			ID:   util.IntPtr(3),
+			Role: "user",
+			Content: []models.MessageContent{{
+				Type: models.MessageContentTypeText,
+				Text: util.StrPtr("Can a single model leverage VRAM across multiple GPUs?"),
+			}},
 		},
 		{
-			ID:      4,
-			Role:    "assistant",
-			Content: "Yes, by bundling inference into one container that requests two GPUs, you can utilize VRAM across both devices.",
+			ID:   util.IntPtr(4),
+			Role: "assistant",
+			Content: []models.MessageContent{{
+				Type: models.MessageContentTypeText,
+				Text: util.StrPtr("Yes, by bundling inference into one container that requests two GPUs, you can utilize VRAM across both devices."),
+			}},
 		},
 		{
-			ID:      5,
-			Role:    "user",
-			Content: "How can I ensure that my LLM and image generation models can run in parallel on multiple GPUs?",
+			ID:   util.IntPtr(5),
+			Role: "user",
+			Content: []models.MessageContent{{
+				Type: models.MessageContentTypeText,
+				Text: util.StrPtr("How can I ensure that my LLM and image generation models can run in parallel on multiple GPUs?"),
+			}},
 		},
 	},
 	searchResults: []models.SearchResult{},

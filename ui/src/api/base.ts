@@ -23,7 +23,11 @@ export async function* gen(opts: RequestOptions): AsyncGenerator<ChatResponse> {
     'Content-Type': 'application/json'
   }
   opts.method = opts.method || 'GET';
-  const response = await fetch(`${config.server.baseUrl}/${opts.path}`, opts);
+  
+  // Incorporate API version in path unless it's an external API (has baseUrl specified)
+  const apiVersion = opts.apiVersion || config.server.apiVersion;
+  const apiPath = opts.baseUrl ? opts.path : `${apiVersion}/${opts.path}`;
+  const response = await fetch(`${opts.baseUrl || config.server.baseUrl}/${apiPath}`, opts);
 
   // Handle authentication errors
   if (response.status === 401 || response.status === 403) {
@@ -70,6 +74,35 @@ export async function* gen(opts: RequestOptions): AsyncGenerator<ChatResponse> {
 
           const jsonStr = buffer.substring(startIdx, parseIndex + 1);
           const res = JSON.parse(jsonStr) as ChatResponse;
+          
+          // Ensure message has a valid content array structure if it exists
+          if (res.message) {
+            // Fix the content field if it exists but isn't an array
+            if (res.message.content && !Array.isArray(res.message.content)) {
+              console.warn('Response has message with non-array content:', res.message.content);
+              res.message.content = [{
+                type: "text",
+                text: String(res.message.content)
+              }];
+            }
+            
+            // Ensure content array exists
+            if (!res.message.content) {
+              res.message.content = [{
+                type: "text", 
+                text: ""
+              }];
+            }
+            
+            // Ensure conversation_id exists on the message
+            if (!res.message.conversation_id) {
+              // Try to extract conversation_id from the URL path
+              const pathMatch = window.location.pathname.match(/\/conversations\/(\d+)/);
+              const conversationId = pathMatch ? parseInt(pathMatch[1], 10) : -1;
+              res.message.conversation_id = conversationId;
+            }
+          }
+          
           yield res;
 
           // Move start index past this JSON object
@@ -90,6 +123,35 @@ export async function* gen(opts: RequestOptions): AsyncGenerator<ChatResponse> {
       // Try to parse any remaining data in the buffer
       try {
         const res = JSON.parse(buffer) as ChatResponse;
+        
+        // Apply the same validations to the final chunk
+        if (res.message) {
+          // Fix the content field if it exists but isn't an array
+          if (res.message.content && !Array.isArray(res.message.content)) {
+            console.warn('Final response has message with non-array content:', res.message.content);
+            res.message.content = [{
+              type: "text",
+              text: String(res.message.content)
+            }];
+          }
+          
+          // Ensure content array exists
+          if (!res.message.content) {
+            res.message.content = [{
+              type: "text", 
+              text: ""
+            }];
+          }
+          
+          // Ensure conversation_id exists on the message
+          if (!res.message.conversation_id) {
+            // Try to extract conversation_id from the URL path
+            const pathMatch = window.location.pathname.match(/\/conversations\/(\d+)/);
+            const conversationId = pathMatch ? parseInt(pathMatch[1], 10) : -1;
+            res.message.conversation_id = conversationId;
+          }
+        }
+        
         yield res;
       } catch (e: unknown) {
         if (e instanceof Error) {
@@ -180,7 +242,11 @@ export async function req<T>(opts: RequestOptions): Promise<T> {
       }, opts.timeout);
     }
 
-    const response = await fetch(`${opts.baseUrl}/${opts.path}`, opts);
+    // Incorporate API version in path unless it's an external API (custom baseUrl specified)
+    const isExternalApi = opts.baseUrl !== config.server.baseUrl;
+    const apiVersion = opts.apiVersion || config.server.apiVersion;
+    const apiPath = isExternalApi ? opts.path : `${apiVersion}/${opts.path}`;
+    const response = await fetch(`${opts.baseUrl}/${apiPath}`, opts);
 
     // Handle authentication errors
     if (response.status === 401 || response.status === 403) {

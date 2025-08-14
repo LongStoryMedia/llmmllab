@@ -39,7 +39,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <GalleryFAB />
 
       {/* Status Notifications Toast */}
-      <StatusToast />
+      {/* <StatusToast /> */}
 
       {/* Stage Progress Bars */}
       <StageProgressBars activeStages={activeStages} />

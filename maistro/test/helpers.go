@@ -43,10 +43,10 @@ func ParseMessagesCSV(filePath string) ([]models.Message, error) {
 		}
 
 		message := models.Message{
-			ID:             id,
+			ID:             &id,
 			ConversationID: conversationID,
-			Role:           record[2],
-			Content:        record[3],
+			Role:           models.MessageRole(record[2]),
+			Content:        []models.MessageContent{{Type: models.MessageContentTypeText, Text: &record[3]}},
 			CreatedAt:      &createdAt,
 		}
 		messages = append(messages, message)

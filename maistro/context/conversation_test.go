@@ -11,9 +11,9 @@ package context
 
 // func Test_ToJSON(t *testing.T) {
 // 	test.Init()
-// 	msgs := []models.ChatMessage{}
+// 	msgs := []models.Message{}
 // 	for _, m := range MockConversationContext.messages {
-// 		msgs = append(msgs, models.ChatMessage{
+// 		msgs = append(msgs, models.Message{
 // 			Role:    m.Role,
 // 			Content: m.Content,
 // 		})

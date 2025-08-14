@@ -16,11 +16,22 @@ type Intent struct {
 	ImageGeneration bool `json:"image_generation"`
 }
 
-func (cc *conversationContext) DetectIntent(ctx context.Context, req models.ChatRequest) error {
+func (cc *conversationContext) DetectIntent(ctx context.Context, req *models.ChatReq) error {
+	if req == nil {
+		util.LogWarning("Empty request content detected")
+		return nil
+	}
+
+	usrMsg, err := cc.GetCurrentUserMessage(req)
+	if err != nil {
+		util.HandleError(err)
+		return err
+	}
+
 	state := session.GlobalStageManager.GetSessionState(cc.userID, cc.conversationID)
 	intentState := state.GetStage(models.SocketStageTypeInterpreting)
 	// Check if the query is empty
-	if strings.TrimSpace(req.Content) == "" {
+	if usrMsg == nil {
 		util.LogWarning("Empty query detected")
 		return nil
 	}
@@ -31,19 +42,19 @@ func (cc *conversationContext) DetectIntent(ctx context.Context, req models.Chat
 
 	if cfg.WebSearch.Enabled && !cc.intent.WebSearch {
 		// Check if the query should trigger a web search only if web search is enabled
-		cc.intent.WebSearch = shouldSearchWeb(req.Content)
+		cc.intent.WebSearch = shouldSearchWeb(usrMsg.Content)
 	}
 	intentState.UpdateProgress(intentState.Progress+33, "Determining if web search is needed")
 
 	if cfg.Memory.AlwaysRetrieve {
 		cc.intent.Memory = true
 	} else if cfg.Memory.Enabled && !cc.intent.Memory {
-		cc.intent.Memory = shouldRetrieveMemories(req.Content)
+		cc.intent.Memory = shouldRetrieveMemories(usrMsg.Content)
 	}
 	intentState.UpdateProgress(intentState.Progress+33, "Determining if memory retrieval is needed")
 
 	if cfg.ImageGeneration.Enabled && !cc.intent.ImageGeneration {
-		cc.intent.ImageGeneration = shouldGenerateImage(req.Content) || (req.Metadata != nil && (req.Metadata.GenerateImage || req.Metadata.Type == models.ChatMessageMetadataTypeImage))
+		cc.intent.ImageGeneration = shouldGenerateImage(usrMsg.Content)
 	}
 	intentState.Complete("Determined if image generation is needed")
 
@@ -51,7 +62,8 @@ func (cc *conversationContext) DetectIntent(ctx context.Context, req models.Chat
 }
 
 // shouldSearchWeb determines if a query likely requires web search
-func shouldSearchWeb(query string) bool {
+func shouldSearchWeb(content []models.MessageContent) bool {
+	query := AggregateTextContent(content)
 	// Check for explicit web search indicators
 	lowerQuery := strings.ToLower(query)
 	explicitIndicators := []string{
@@ -101,7 +113,8 @@ func shouldSearchWeb(query string) bool {
 }
 
 // shouldRetrieveMemories determines if a query likely needs memory retrieval
-func shouldRetrieveMemories(query string) bool {
+func shouldRetrieveMemories(content []models.MessageContent) bool {
+	query := AggregateTextContent(content)
 	// Convert query to lowercase for case-insensitive matching
 	lowercaseQuery := strings.ToLower(query)
 
@@ -143,7 +156,8 @@ func shouldRetrieveMemories(query string) bool {
 }
 
 // shouldGenerateImage determines if a query likely requires image generation
-func shouldGenerateImage(query string) bool {
+func shouldGenerateImage(content []models.MessageContent) bool {
+	query := AggregateTextContent(content)
 	// Check for explicit image generation indicators
 	lowerQuery := strings.ToLower(query)
 	imageIndicators := []string{

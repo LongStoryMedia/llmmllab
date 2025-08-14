@@ -1,0 +1,31 @@
+# Evaluation project requirements
+
+# Core dependencies with specific versions to avoid dataset download issues
+fsspec
+huggingface_hub>=0.21.2
+datasets
+
+# Other necessary dependencies
+numpy>=1.24.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+scikit-learn>=1.2.0
+transformers>=4.30.0
+tqdm>=4.65.0
+pytest>=7.4.0
+tenacity>=8.2.3
+
+# For visualization and reporting
+seaborn>=0.13.0
+plotly>=5.18.0
+
+# For data processing
+nltk>=3.8.1
+spacy
+accelerate
+peft
+evaluate
+
+# For storing and managing results
+jsonlines>=4.0.0
+sqlitedict>=2.1.0

@@ -11,6 +11,7 @@ import (
 	"maistro/session"
 	"maistro/storage"
 	"maistro/util"
+	"slices"
 	"sync"
 	"time"
 
@@ -20,26 +21,26 @@ import (
 // generateSummarization creates a summary using Ollama
 func (cc *conversationContext) generateSummarization(messages []models.Message, summaryModel *models.ModelProfile) (string, error) {
 	// Build Ollama messages
-	ollamaMessages := []models.ChatMessage{
+	ollamaMessages := []models.Message{
 		{
 			Role:    "system",
-			Content: summaryModel.SystemPrompt,
+			Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: &summaryModel.SystemPrompt}},
 		},
 	}
 
 	// Add user messages
 	for _, message := range messages {
-		ollamaMessages = append(ollamaMessages, models.ChatMessage{
-			Role:    message.Role,
+		ollamaMessages = append(ollamaMessages, models.Message{
+			Role:    models.MessageRole(message.Role),
 			Content: message.Content,
 		})
 	}
 
 	// Ensure the last message is a user message with the summarization instruction
 	if len(ollamaMessages) == 0 || ollamaMessages[len(ollamaMessages)-1].Role != "user" {
-		ollamaMessages = append(ollamaMessages, models.ChatMessage{
+		ollamaMessages = append(ollamaMessages, models.Message{
 			Role:    "user",
-			Content: summaryModel.SystemPrompt, // Use the system prompt as the summarization instruction
+			Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: util.StrPtr(summaryModel.SystemPrompt)}}, // Use the system prompt as the summarization instruction
 		})
 	}
 
@@ -59,35 +60,35 @@ func (cc *conversationContext) generateSummarization(messages []models.Message, 
 }
 
 // PrepareOllamaRequest prepares the request for Ollama
-func (cc *conversationContext) PrepareOllamaRequest(ctx context.Context, request models.ChatRequest) ([]byte, *models.ChatReq, error) {
-	if request.Content == "" {
-		return nil, nil, util.HandleError(errors.New("message cannot be empty"))
-	}
-
+func (cc *conversationContext) PrepareOllamaRequest(ctx context.Context, request *models.ChatReq) ([]byte, error) {
 	usrCfg, err := GetUserConfig(cc.userID)
 	if err != nil {
-		return nil, nil, util.HandleError(err)
+		return nil, util.HandleError(err)
 	}
 
 	pp, err := storage.ModelProfileStoreInstance.GetModelProfile(ctx, usrCfg.ModelProfiles.PrimaryProfileID)
 	if err != nil {
-		return nil, nil, util.HandleError(err)
+		return nil, util.HandleError(err)
 	}
 	if pp == nil {
-		return nil, nil, util.HandleError(errors.New("model profile not found"))
+		return nil, util.HandleError(errors.New("model profile not found"))
 	}
 
 	ep, err := storage.ModelProfileStoreInstance.GetModelProfile(ctx, usrCfg.ModelProfiles.EmbeddingProfileID)
 	if err != nil {
-		return nil, nil, util.HandleError(err)
+		return nil, util.HandleError(err)
 	}
 	if ep == nil {
-		return nil, nil, util.HandleError(errors.New("embedding profile not found"))
+		return nil, util.HandleError(errors.New("embedding profile not found"))
+	}
+	usrMsg, err := cc.GetCurrentUserMessage(request)
+	if err != nil {
+		return nil, util.HandleError(err)
 	}
 
-	embeddings, mid, err := cc.AddUserMessage(ctx, request.Content)
+	embeddings, mid, err := cc.AddUserMessage(ctx, usrMsg)
 	if err != nil {
-		return nil, nil, util.HandleError(err)
+		return nil, util.HandleError(err)
 	}
 
 	ss := session.GlobalStageManager.GetSessionState(cc.userID, cc.conversationID)
@@ -95,34 +96,33 @@ func (cc *conversationContext) PrepareOllamaRequest(ctx context.Context, request
 		return storage.MessageStoreInstance.DeleteMessage(ctx, mid)
 	})
 	if ss.IsPaused() {
-		cc.afterThoughts = append(cc.afterThoughts, models.Message{
-			Role:    "user",
-			Content: request.Content,
-			ID:      request.ConversationID,
-		})
+		cc.afterThoughts = append(cc.afterThoughts, *usrMsg)
 		if err := ss.Resume(); err != nil {
-			return nil, nil, util.HandleError(err)
+			return nil, util.HandleError(err)
 		}
-		return nil, nil, nil // Will pick up at Checkpoint
+		return nil, nil
 	}
 
-	ollamaReq := models.ChatReq{
-		Messages:       []models.ChatMessage{}, // Will be populated later
+	req := models.ChatReq{
+		Messages:       []models.Message{}, // Will be populated later
 		ConversationID: &cc.conversationID,
 	}
-	ss.CurrentRequest = &ollamaReq
+	ss.CurrentRequest = &req
 
 	// Always set streaming to true to prevent timeouts
-	ollamaReq.Stream = true
-	ollamaReq.Options = pp.Parameters.ToMap()
-	ollamaReq.Model = pp.ModelName
+	req.Stream = true
+	req.Options = &pp.Parameters
+	req.Model = pp.ModelName
+	req.Think = pp.Think
 
 	var wg sync.WaitGroup
 
 	cc.intent = &Intent{}
 
 	ss.GetStage(models.SocketStageTypeInterpreting).UpdateProgress(0, "Detecting intent and extracting content")
-	if request.Metadata != nil && request.Metadata.Type == models.ChatMessageMetadataTypeImage {
+	if slices.ContainsFunc(usrMsg.Content, func(c models.MessageContent) bool {
+		return c.Type == models.MessageContentTypeImageGeneration
+	}) {
 		// If the request is an image generation request, update intent to image generation
 		cc.intent.ImageGeneration = true
 	}
@@ -189,7 +189,7 @@ func (cc *conversationContext) PrepareOllamaRequest(ctx context.Context, request
 	// If embeddings are empty, log a warning and return an empty JSON object
 	if len(embeddings) == 0 {
 		util.LogWarning("Empty embedding vector", logrus.Fields{"userMessage": request})
-		return []byte("{}"), nil, nil
+		return nil, nil
 	}
 
 	util.LogDebug("Conversation context prepared for Ollama request", logrus.Fields{
@@ -204,32 +204,32 @@ func (cc *conversationContext) PrepareOllamaRequest(ctx context.Context, request
 	ss.Checkpoint()
 
 	// Convert conversation context to Ollama format (includes summaries, memories, and web search results)
-	return cc.ChainMessages(&ollamaReq)
+	return cc.ChainMessages(&req)
 }
 
 // ChainMessages uses the conversation context to chain messages together
 // This prepares the request for Ollama by enhancing it with RAG, summaries, and recent messages
 // It returns the JSON-encoded request body for Ollama
 // and handles any errors that occur during the process.
-func (cc *conversationContext) ChainMessages(req *models.ChatReq) ([]byte, *models.ChatReq, error) {
+func (cc *conversationContext) ChainMessages(req *models.ChatReq) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	ss := session.GlobalStageManager.GetSessionState(cc.userID, cc.conversationID)
 
-	req.Messages = make([]models.ChatMessage, 0)
+	req.Messages = make([]models.Message, 0)
 
 	ss.Checkpoint()
 	if err := cc.EnhanceRequestWithRAG(ctx, req); err != nil {
-		return nil, req, ss.GetStage(models.SocketStageTypeProcessing).Fail("Error enhancing request with RAG", err)
+		return nil, ss.GetStage(models.SocketStageTypeProcessing).Fail("Error enhancing request with RAG", err)
 	}
 
 	// Add master summary if available
 	if cc.masterSummary != nil {
 		// Add system message to introduce the conversation with master summary
-		req.Messages = append([]models.ChatMessage{
+		req.Messages = append([]models.Message{
 			{
-				Content: fmt.Sprintf("This is a continued conversation. Here is a comprehensive summary of the conversation history:\n%s", cc.masterSummary.Content),
+				Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: util.StrPtr(fmt.Sprintf("This is a continued conversation. Here is a comprehensive summary of the conversation history:\n%s", cc.masterSummary.Content))}},
 				Role:    "system",
 			},
 		}, req.Messages...)
@@ -242,21 +242,21 @@ func (cc *conversationContext) ChainMessages(req *models.ChatReq) ([]byte, *mode
 	ss.Checkpoint()
 	// Add level summaries (one from each level)
 	if err := cc.addLevelSummariesToReq(req); err != nil {
-		return nil, req, ss.GetStage(models.SocketStageTypeProcessing).Fail("Error adding level summaries to request", err)
+		return nil, ss.GetStage(models.SocketStageTypeProcessing).Fail("Error adding level summaries to request", err)
 	}
 
 	ss.Checkpoint()
 	// Add recent messages
 	if err := cc.addRecentMessagesToReq(req); err != nil {
-		return nil, req, ss.GetStage(models.SocketStageTypeProcessing).Fail("Error adding recent messages to request", err)
+		return nil, ss.GetStage(models.SocketStageTypeProcessing).Fail("Error adding recent messages to request", err)
 	}
 
 	// Add any notes to the request
 	if len(cc.notes) > 0 {
 		for _, note := range cc.notes {
-			req.Messages = append(req.Messages, models.ChatMessage{
+			req.Messages = append(req.Messages, models.Message{
 				Role:    "system",
-				Content: fmt.Sprintf("Note: %s", note),
+				Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: util.StrPtr(fmt.Sprintf("Note: %s", note))}},
 			})
 			util.LogDebug("Added note to request", logrus.Fields{
 				"note": note,
@@ -271,12 +271,16 @@ func (cc *conversationContext) ChainMessages(req *models.ChatReq) ([]byte, *mode
 
 	// debug log the content of each message in the request
 	for i, msg := range req.Messages {
-		util.LogDebug(truncateForLog(msg.Content), logrus.Fields{
+		textContent := ""
+		if len(msg.Content) > 0 {
+			textContent = *msg.Content[0].Text
+		}
+		util.LogDebug(truncateForLog(textContent), logrus.Fields{
 			"index": i,
 			"role":  msg.Role,
 		})
 
-		msgsInOrder = append(msgsInOrder, msg.Role)
+		msgsInOrder = append(msgsInOrder, string(msg.Role))
 	}
 
 	util.LogDebug("Added messages to request", logrus.Fields{
@@ -286,10 +290,10 @@ func (cc *conversationContext) ChainMessages(req *models.ChatReq) ([]byte, *mode
 
 	bytes, err := json.Marshal(req)
 	if err != nil {
-		return nil, req, ss.GetStage(models.SocketStageTypeProcessing).Fail("Error preparing request for Ollama", err)
+		return nil, ss.GetStage(models.SocketStageTypeProcessing).Fail("Error preparing request for Ollama", err)
 	}
 	ss.GetStage(models.SocketStageTypeProcessing).Complete("Request prepared for Ollama", nil)
-	return bytes, req, nil
+	return bytes, nil
 }
 
 // addLevelSummariesToReq adds one summary from each level to the request
@@ -311,9 +315,9 @@ func (cc *conversationContext) addLevelSummariesToReq(req *models.ChatReq) error
 			continue
 		}
 		mostRecentSummary := levelSummaries[len(levelSummaries)-1]
-		req.Messages = append([]models.ChatMessage{
+		req.Messages = append([]models.Message{
 			{
-				Content: fmt.Sprintf("Previous conversation summary (level %d): %s", level, mostRecentSummary.Content),
+				Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: util.StrPtr(fmt.Sprintf("Previous conversation summary (level %d): %s", level, mostRecentSummary.Content))}},
 				Role:    "system",
 			},
 		}, req.Messages...)
@@ -347,15 +351,18 @@ func (cc *conversationContext) addRecentMessagesToReq(req *models.ChatReq) error
 	// Add regular messages (most recent based on configuration)
 	// Ensure messages are in chronological order (oldest first, newest last)
 	for i := startIndex; i < len(msgs); i++ {
-		if msgs[i].ID < 0 {
+		if msgs[i].ID == nil {
+			msgs[i].ID = util.IntPtr(-1) // Set a default ID if not set
+		}
+		if *msgs[i].ID < 0 {
 			util.LogWarning("Message ID is not set", logrus.Fields{
 				"role":    cc.messages[i].Role,
 				"content": cc.messages[i].Content,
 			})
 			continue
 		}
-		req.Messages = append(req.Messages, models.ChatMessage{
-			Role:    msgs[i].Role,
+		req.Messages = append(req.Messages, models.Message{
+			Role:    models.MessageRole(msgs[i].Role),
 			Content: msgs[i].Content,
 		})
 	}

@@ -34,8 +34,8 @@ var responseQualifierJsonSchema map[string]any = map[string]any{
 
 type testSetup struct {
 	uid               string
-	messages          []models.ChatMessage
-	newMessage        models.ChatMessage
+	messages          []models.Message
+	newMessage        models.Message
 	ctx               context.Context
 	userConfig        models.UserConfig
 	expectedQualifier string
@@ -44,16 +44,16 @@ type testSetup struct {
 var testSetups []testSetup = []testSetup{
 	{
 		uid: "test_user",
-		messages: []models.ChatMessage{
-			{Role: "user", Content: "What are some strategies for using multiple GPUs?"},
-			{Role: "assistant", Content: "You can split the model across GPUs or use a sidecar container to handle inference."},
-			{Role: "user", Content: "Can a single model leverage VRAM across multiple GPUs?"},
-			{Role: "assistant", Content: "Yes, by bundling inference into one container that requests two GPUs, you can utilize VRAM across both devices."},
-			{Role: "user", Content: "How can I ensure that my LLM and image generation models can run in parallel on multiple GPUs?"},
+		messages: []models.Message{
+			{Role: "user", Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: stringPtr("What are some strategies for using multiple GPUs?")}}},
+			{Role: "assistant", Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: stringPtr("You can split the model across GPUs or use a sidecar container to handle inference.")}}},
+			{Role: "user", Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: stringPtr("Can a single model leverage VRAM across multiple GPUs?")}}},
+			{Role: "assistant", Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: stringPtr("Yes, by bundling inference into one container that requests two GPUs, you can utilize VRAM across both devices.")}}},
+			{Role: "user", Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: stringPtr("How can I ensure that my LLM and image generation models can run in parallel on multiple GPUs?")}}},
 		},
-		newMessage: models.ChatMessage{
+		newMessage: models.Message{
 			Role:    "user",
-			Content: "can a single model leverage VRAM across multiple GPUs?",
+			Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: stringPtr("can a single model leverage VRAM across multiple GPUs?")}},
 		},
 		ctx:               context.Background(),
 		userConfig:        MockUserConfig,
@@ -61,20 +61,24 @@ var testSetups []testSetup = []testSetup{
 	},
 	{
 		uid: "test_user",
-		messages: []models.ChatMessage{
-			{Role: "user", Content: "Help me remember some things"},
-			{Role: "assistant", Content: "Okay, what would you like to remember?"},
-			{Role: "user", Content: "I paid the kids their allowance for June."},
-			{Role: "assistant", Content: "Got it, I will remember that you paid the kids their allowance for June."},
+		messages: []models.Message{
+			{Role: "user", Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: stringPtr("Help me remember some things")}}},
+			{Role: "assistant", Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: stringPtr("Okay, what would you like to remember?")}}},
+			{Role: "user", Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: stringPtr("I paid the kids their allowance for June.")}}},
+			{Role: "assistant", Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: stringPtr("Got it, I will remember that you paid the kids their allowance for June.")}}},
 		},
-		newMessage: models.ChatMessage{
+		newMessage: models.Message{
 			Role:    "user",
-			Content: "did I pay the kids their allowance for June?",
+			Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: stringPtr("did I pay the kids their allowance for June?")}},
 		},
 		ctx:               context.Background(),
 		userConfig:        MockUserConfig,
 		expectedQualifier: "affirmative",
 	},
+}
+
+func stringPtr(s string) *string {
+	return &s
 }
 
 func Test_Integration(t *testing.T) {
@@ -176,7 +180,7 @@ func Test_Integration(t *testing.T) {
 				cfg.Memory.Enabled, cfg.Memory.Limit)
 
 			_, req, err := cc.PrepareOllamaRequest(s.ctx, models.ChatRequest{
-				Content:        s.newMessage.Content,
+				Content:        *s.newMessage.Content[0].Text,
 				ConversationID: cc.GetConversationID(),
 			})
 			if err != nil {
@@ -201,7 +205,7 @@ func Test_Integration(t *testing.T) {
 				tt.Fatalf("Expected no error, got %v", err)
 			}
 
-			if _, err := cc.AddAssistantMessage(s.ctx, res); err != nil {
+			if _, err := cc.AddAssistantMessage(s.ctx, []models.MessageContent{{Type: models.MessageContentTypeText, Text: stringPtr(res)}}); err != nil {
 				tt.Fatalf("Error adding assistant message: %v", err)
 			}
 
@@ -214,7 +218,7 @@ func Test_Integration(t *testing.T) {
 				Model:   fmtp.ModelName,
 				Prompt:  "Qualify the following assistant response:\n" + res + "\nIf the response was essentially a 'yes', it was 'affirmative', if 'no' it was 'negative'. Otherwise, it was 'neutral'.",
 				Format:  responseQualifierJsonSchema,
-				Options: fmtp.Parameters.ToMap(),
+				Options: &fmtp.Parameters,
 				Think:   util.BoolPtr(false),
 			})
 			if err != nil {
@@ -232,7 +236,7 @@ func Test_Integration(t *testing.T) {
 				tt.Errorf("Expected qualifier '%s', got '%s'", s.expectedQualifier, qrRes.Kind)
 			}
 
-			embeddings, err := svc.GetInferenceService().GetEmbedding(s.ctx, s.newMessage.Content, &config.DefaultEmbeddingProfile, s.uid, cc.GetConversationID())
+			embeddings, err := svc.GetInferenceService().GetEmbedding(s.ctx, *s.newMessage.Content[0].Text, &config.DefaultEmbeddingProfile, s.uid, cc.GetConversationID())
 			if err != nil {
 				tt.Fatalf("Expected no error, got %v", err)
 			}

@@ -11,8 +11,8 @@ package socket
 // 	"github.com/sirupsen/logrus"
 // )
 
-// // // ChatMessage represents a message received from a WebSocket client
-// // type ChatMessage struct {
+// // // Message represents a message received from a WebSocket client
+// // type Message struct {
 // // 	Type           string          `json:"type"`
 // // 	ConversationID string          `json:"conversation_id,omitempty"`
 // // 	Content        json.RawMessage `json:"content"`
@@ -85,8 +85,8 @@ package socket
 // 		}
 
 // 		for _, data := range chatMessage.Data {
-// 			if chMsg, ok := data.(models.ChatMessage); !ok {
-// 				util.LogWarning("Chat message data is not of type ChatMessage", logrus.Fields{
+// 			if chMsg, ok := data.(models.Message); !ok {
+// 				util.LogWarning("Chat message data is not of type Message", logrus.Fields{
 // 					"userID": userID,
 // 					"data":   chatMessage.Data,
 // 				})

@@ -12,6 +12,9 @@ properties:
   model:
     type: string
     description: Identifier used to reference the model
+  task:
+    $ref: "#/definitions/ModelTask"
+    description: Type of task the model is designed for (e.g., "TextToText", "TextToImage")
   modified_at:
     type: string
     description: Timestamp of when the model was last modified
@@ -39,8 +42,11 @@ required:
   - size
   - digest
   - details
+  - task
 definitions:
   ModelDetails:
     $ref: model_details.yaml
   LoraWeight:
     $ref: lora_weight.yaml
+  ModelTask:
+    $ref: model_task.yaml

@@ -9,11 +9,8 @@ properties:
       $ref: "#/definitions/MemoryFragment"
     description: Fragments of memory content
   source:
-    type: string
-    enum:
-      - summary
-      - message
-    description: Source type of the memory
+    $ref: memory_source.yaml
+    description: Source of the memory
   created_at:
     type: string
     format: date-time
@@ -35,18 +32,4 @@ required:
   - source_id
 definitions:
   MemoryFragment:
-    type: object
-    properties:
-      id:
-        type: integer
-        description: Unique identifier for the memory fragment
-      role:
-        type: string
-        description: Role of the message (e.g., 'user', 'assistant')
-      content:
-        type: string
-        description: Content of the message
-    required:
-      - id
-      - role
-      - content
+    $ref: memory_fragment.yaml
