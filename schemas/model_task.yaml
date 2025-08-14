@@ -1,0 +1,18 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ModelTask
+description: ModelTask represents the task associated with a machine learning model
+type: string
+enum:
+  - TextToText
+  - TextToImage
+  - ImageToText
+  - ImageToImage
+  - TextToAudio
+  - AudioToText
+  - TextToVideo
+  - VideoToText
+  - TextToSpeech
+  - SpeechToText
+  - TextToEmbeddings
+  - VisionTextToText
+  - ImageTextToImage

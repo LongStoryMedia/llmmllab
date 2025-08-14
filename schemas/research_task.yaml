@@ -71,21 +71,6 @@ required:
   - updated_at
 definitions:
   ResearchPlan:
-    type: object
-    properties:
-      main_intent:
-        type: string
-        description: Main intent or goal of the research
-      sub_questions:
-        type: array
-        items:
-          $ref: "#/definitions/ResearchQuestion"
-        description: Sub-questions to investigate as part of the research
-      raw_plan:
-        type: string
-        description: Original plan text from LLM
-    required:
-      - main_intent
-      - sub_questions
+    $ref: research_plan.yaml
   ResearchQuestion:
     $ref: research_question.yaml

@@ -4,7 +4,7 @@ import { useParams } from 'react-router-dom';
 import ChatContainer from '../components/Chat/ChatContainer';
 import ChatBubble from '../components/Chat/ChatBubble';
 import { useChat } from '../chat';
-import { ChatMessage } from '../types/ChatMessage';
+import { Message } from '../types/Message';
 import ChatInput from '../components/Chat/ChatInput';
 
 const ChatPage = memo(() => {
@@ -13,7 +13,7 @@ const ChatPage = memo(() => {
   const containerRef = useRef<HTMLBodyElement>(document.body as HTMLBodyElement);
   const shouldScrollToBottom = useRef<boolean>(true);
   const lastScrollTime = useRef<number>(0);
-  const [currentMessage, setCurrentMessage] = useState<ChatMessage>({
+  const [currentMessage, setCurrentMessage] = useState<Message>({
     role: 'assistant' as const,
     content: response,
     id: (messages[messages.length - 1]?.id ?? 0) + 1,

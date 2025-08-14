@@ -26,11 +26,18 @@ export class ChatWebSocketClient {
   private reconnectTimeoutId: number | null = null;
   private path: string = "";
   private connectionType: SocketConnectionType;
+  private apiVersion: string;
 
-  constructor(connectionType: SocketConnectionType, handler: (response: SocketMessage) => void, path: string = "") {
+  constructor(
+    connectionType: SocketConnectionType, 
+    handler: (response: SocketMessage) => void, 
+    path: string = "",
+    apiVersion?: string
+  ) {
     this.onRes = handler;
     this.path = path;
     this.connectionType = connectionType;
+    this.apiVersion = apiVersion || config.server.apiVersion;
   }
 
   public connect(authToken: string): Promise<void> {
@@ -41,7 +48,7 @@ export class ChatWebSocketClient {
 
     const existingConnection = connectionRegistry[this.connectionType];
 
-    if (existingConnection) {  
+    if (existingConnection && existingConnection !== this) {  
       console.warn(`WebSocket connection for type ${this.connectionType} already exists. Reusing existing connection.`);
       this.ws = existingConnection.ws;
       this.onRes = existingConnection.onRes;
@@ -55,17 +62,24 @@ export class ChatWebSocketClient {
       return Promise.resolve();
     }
 
+    // Register this client instance in the registry
+    connectionRegistry[this.connectionType] = this;
+
     return new Promise((resolve, reject) => {
       try {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = config.server.baseUrl.replace(/^https?:\/\//, '');
-        const wsUrl = `${protocol}//${host}/ws/${this.connectionType}${this.path}?token=${authToken}`;
+        const wsUrl = `${protocol}//${host}/${this.apiVersion}/ws/${this.connectionType}${this.path}?token=${authToken}`;
 
         this.ws = new WebSocket(wsUrl);
 
         this.ws.onopen = () => {
           console.log('WebSocket connection established');
           this.reconnectAttempts = 0;
+          
+          // Start heartbeat after successful connection
+          this.startHeartbeat();
+          
           resolve();
         };
 
@@ -89,6 +103,17 @@ export class ChatWebSocketClient {
     if (this.reconnectTimeoutId !== null) {
       window.clearTimeout(this.reconnectTimeoutId);
       this.reconnectTimeoutId = null;
+    }
+
+    // Clear heartbeat interval
+    if (this.heartbeatInterval !== null) {
+      window.clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+
+    // Only remove from registry if this instance is the registered one
+    if (connectionRegistry[this.connectionType] === this) {
+      connectionRegistry[this.connectionType] = undefined;
     }
 
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
@@ -175,18 +200,73 @@ export class ChatWebSocketClient {
     return true;
   }
 
+  private lastPongTime: number = Date.now();
+  private heartbeatInterval: number | null = null;
+  
   private handleMessage(event: MessageEvent): void {
     try {
       const response = JSON.parse(event.data) as SocketMessage;
+      
+      // Handle heartbeats separately
+      if (response.type === 'heartbeat' || response.type === 'pong') {
+        console.log(`Received ${response.type} from server`);
+        this.lastPongTime = Date.now();
+        return;
+      }
+      
       this.onRes(response);
     } catch (error) {
       console.error('Error parsing WebSocket message:', error);
     }
   }
 
+  private startHeartbeat(): void {
+    if (this.heartbeatInterval !== null) {
+      window.clearInterval(this.heartbeatInterval);
+    }
+    
+    // Send ping every 25 seconds (server expects heartbeat every 30)
+    this.heartbeatInterval = window.setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        const pingMessage = {
+          id: uuidv4(),
+          type: 'ping',
+          timestamp: new Date()
+        };
+        this.ws.send(JSON.stringify(pingMessage));
+        
+        // Check if we haven't received a pong in too long (45 seconds)
+        const now = Date.now();
+        if (now - this.lastPongTime > 45000) {
+          console.warn('No heartbeat response from server for 45 seconds, reconnecting...');
+          this.ws.close();
+        }
+      }
+    }, 25000);
+  }
+
   private handleClose(event: CloseEvent): void {
     console.log('WebSocket connection closed', event);
     this.ws = null;
+    
+    // Clear heartbeat interval
+    if (this.heartbeatInterval !== null) {
+      window.clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+
+    // Don't reconnect if this was a normal closure or a duplicate connection
+    if (event.code === 1000 && event.reason === 'Duplicate connection') {
+      console.log('Server rejected connection as duplicate, not reconnecting');
+      connectionRegistry[this.connectionType] = undefined;
+      return;
+    }
+    
+    // Check if this client is still the registered one for this connection type
+    if (connectionRegistry[this.connectionType] !== this) {
+      console.log('This client is no longer the registered client. Skipping reconnect.');
+      return;
+    }
 
     if (this.autoReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
       const delay = Math.pow(2, this.reconnectAttempts) * 1000;
@@ -197,9 +277,17 @@ export class ChatWebSocketClient {
         // We'll need to get a fresh token for reconnection
         // For now, we'll just notify that connection was lost
         userManager.getUser().then(user => {
+          // Check again if this client is still the registered one
+          if (connectionRegistry[this.connectionType] !== this) {
+            console.log('This client is no longer the registered client. Skipping reconnect.');
+            return;
+          }
+
           if (user) {
             this.connect(user.access_token).then(() => {
               console.log('Reconnected successfully');
+              // Start heartbeat after successful reconnection
+              this.startHeartbeat();
             }).catch(err => {
               console.error('Reconnection failed:', err);
               this.onRes({

@@ -35,3 +35,6 @@ properties:
   min_p:
     type: number
     description: Minimum probability threshold for token selection
+  think:
+    type: boolean
+    description: Whether to enable "thinking" mode for the model

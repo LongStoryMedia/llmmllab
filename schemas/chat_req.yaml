@@ -9,7 +9,7 @@ properties:
   messages:
     type: array
     items:
-      $ref: "#/definitions/ChatMessage"
+      $ref: "#/definitions/Message"
     description: Messages to send to the model, each message is a struct with role and content
   stream:
     type: boolean
@@ -25,8 +25,7 @@ properties:
     type: integer
     description: Controls how long the model will stay loaded into memory
   options:
-    type: object
-    additionalProperties: true
+    $ref: "#/definitions/ModelParameters"
     description: Additional model parameters listed in the documentation for the Modelfile such as temperature
   tools:
     type: array
@@ -41,5 +40,7 @@ required:
   - stream
   - model
 definitions:
-  ChatMessage:
-    $ref: chat_message.yaml
+  Message:
+    $ref: message.yaml
+  ModelParameters:
+    $ref: model_parameters.yaml

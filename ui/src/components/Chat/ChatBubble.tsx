@@ -4,10 +4,10 @@ import { useChat } from '../../chat';
 import MarkdownRenderer from '../Shared/MarkdownRenderer';
 import ThinkSection from './ThinkSection';
 import { sanitizeForLaTeX, parseResponse } from './utils';
-import { ChatMessage } from '../../types/ChatMessage';
+import { Message } from '../../types/Message';
 
 interface ChatBubbleProps {
-  message: ChatMessage;
+  message: Message;
 }
 
 const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {

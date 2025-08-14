@@ -2,6 +2,7 @@ package context
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maistro/models"
 	"maistro/proxy"
@@ -31,11 +32,12 @@ type ConversationContext interface {
 	GetSearchResults() []models.SearchResult
 	GetImages() []models.ImageMetadata
 	GetIntent() *Intent
-	AddUserMessage(ctx context.Context, content string) ([][]float32, int, error)
-	AddAssistantMessage(ctx context.Context, content string) ([][]float32, error)
+	AddUserMessage(ctx context.Context, message *models.Message) ([][]float32, int, error)
+	AddAssistantMessage(ctx context.Context, message *models.Message) ([][]float32, error)
 	SummarizeMessages(ctx context.Context) (*models.Summary, error)
-	PrepareOllamaRequest(ctx context.Context, request models.ChatRequest) ([]byte, *models.ChatReq, error)
+	PrepareOllamaRequest(ctx context.Context, request *models.ChatReq) ([]byte, error)
 	ClearNotes()
+	GetCurrentUserMessage(request *models.ChatReq) (*models.Message, error)
 }
 
 // conversationContext manages context for a conversation
@@ -99,6 +101,28 @@ func (cc *conversationContext) ClearNotes() {
 	cc.notes = make([]string, 0)
 }
 
+func (cc *conversationContext) GetCurrentUserMessage(request *models.ChatReq) (*models.Message, error) {
+
+	// get the most recent message
+	if len(request.Messages) == 0 {
+		return nil, util.HandleError(errors.New("no messages in request"))
+	}
+	if request.Messages[0].Role != "user" {
+		return nil, util.HandleError(errors.New("first message must be from user"))
+	}
+	return &request.Messages[0], nil
+}
+
+func AggregateTextContent(content []models.MessageContent) string {
+	var con string
+	for _, c := range content {
+		if c.Type == models.MessageContentTypeText && c.Text != nil {
+			con += *c.Text + "\n\n"
+		}
+	}
+	return con
+}
+
 var cc *conversationContext
 
 // GetOrCreateConversation retrieves or creates a conversation context
@@ -145,11 +169,7 @@ func GetOrCreateConversation(ctx context.Context, userID string, conversationID 
 			return nil, fmt.Errorf("failed to get conversation: %w", err)
 		}
 
-		if conv.UserID != userID {
-			return nil, fmt.Errorf("conversation does not belong to user")
-		}
-
-		cc.userID = userID
+		cc.userID = conv.UserID
 		cc.conversationID = conv.ID
 		cc.title = conv.Title
 
@@ -269,19 +289,32 @@ func loadConversationSummaries(ctx context.Context, cc *conversationContext) err
 }
 
 // createMessageMemory creates a memory for a message and stores it in the database
-func (cc *conversationContext) createMessageMemory(ctx context.Context, msg models.Message, usrCfg *models.UserConfig) ([][]float32, error) {
+func (cc *conversationContext) createMessageMemory(ctx context.Context, msg *models.Message, usrCfg *models.UserConfig) ([][]float32, error) {
 	profile, err := storage.ModelProfileStoreInstance.GetModelProfile(ctx, usrCfg.ModelProfiles.EmbeddingProfileID)
 	if err != nil {
 		return nil, util.HandleError(fmt.Errorf("failed to get model profile for embedding: %w", err))
 	}
 
-	embeddings, err := proxy.GetOllamaEmbedding(ctx, msg.Content, profile)
+	var textContent string
+	for _, content := range msg.Content {
+		if content.Type == models.MessageContentTypeText {
+			if content.Text != nil {
+				textContent += *content.Text
+			}
+		}
+	}
+
+	embeddings, err := proxy.GetOllamaEmbedding(ctx, textContent, profile)
 	if err != nil {
 		return nil, util.HandleError(fmt.Errorf("failed to get Ollama embedding: %w", err))
 	}
 
+	if msg.ID == nil {
+		msg.ID = util.IntPtr(-1) // Set a default ID if not set
+	}
+
 	// Add to database
-	if err := storage.MemoryStoreInstance.StoreMemory(ctx, cc.userID, "message", msg.Role, msg.ID, embeddings); err != nil {
+	if err := storage.MemoryStoreInstance.StoreMemory(ctx, cc.userID, "message", msg.Role, *msg.ID, embeddings); err != nil {
 		return nil, util.HandleError(fmt.Errorf("failed to add memory: %w", err))
 	}
 
@@ -309,36 +342,43 @@ func (cc *conversationContext) createSummaryMemory(ctx context.Context, summary 
 }
 
 // AddUserMessage adds a user message to the conversation
-func (cc *conversationContext) AddUserMessage(ctx context.Context, content string) ([][]float32, int, error) {
+func (cc *conversationContext) AddUserMessage(ctx context.Context, message *models.Message) ([][]float32, int, error) {
+	if message == nil {
+		return nil, -1, util.HandleError(fmt.Errorf("user message cannot be nil"))
+	}
+
+	util.LogInfo("Storing user message")
+
 	usrCfg, err := GetUserConfig(cc.userID)
 	if err != nil {
 		return nil, -1, util.HandleError(fmt.Errorf("failed to get user config: %w", err))
 	}
 
 	// Add to database
-	msgID, err := storage.MessageStoreInstance.AddMessage(ctx, cc.conversationID, "user", content, usrCfg)
+	msgID, err := storage.MessageStoreInstance.AddMessage(ctx, message, usrCfg)
 	if err != nil {
 		return nil, -1, util.HandleError(fmt.Errorf("failed to add user message: %w", err))
 	}
 
-	msg := models.Message{
-		Role:    "user",
-		Content: content,
-		ID:      msgID,
-	}
-
 	// Add to context
-	cc.messages = append(cc.messages, msg)
+	cc.messages = append(cc.messages, *message)
 
 	// Create memory for the message
-	embeddings, err := cc.createMessageMemory(ctx, msg, usrCfg)
+	embeddings, err := cc.createMessageMemory(ctx, message, usrCfg)
 	if err != nil {
 		return nil, msgID, util.HandleError(fmt.Errorf("failed to create message memory: %w", err))
 	}
 
+	titleText := ""
+	for _, c := range message.Content {
+		if c.Type == models.MessageContentTypeText && c.Text != nil {
+			titleText += *c.Text
+		}
+	}
+
 	// Update title if this is the first message
 	if len(cc.messages) == 1 {
-		title := generateTitle(content)
+		title := generateTitle(titleText)
 		if err := storage.ConversationStoreInstance.UpdateConversationTitle(ctx, cc.conversationID, title); err != nil {
 			util.HandleError(fmt.Errorf("failed to update conversation title: %v", err))
 		}
@@ -353,30 +393,28 @@ func (cc *conversationContext) AddUserMessage(ctx context.Context, content strin
 }
 
 // AddAssistantMessage adds an assistant message to the conversation
-func (cc *conversationContext) AddAssistantMessage(ctx context.Context, content string) ([][]float32, error) {
-	util.LogInfo("Storing assistant response", logrus.Fields{"length": len(content)})
+func (cc *conversationContext) AddAssistantMessage(ctx context.Context, message *models.Message) ([][]float32, error) {
+	if message == nil {
+		return nil, util.HandleError(fmt.Errorf("assistant message cannot be nil"))
+	}
+
+	util.LogInfo("Storing assistant response")
 
 	usrCfg, err := GetUserConfig(cc.userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user config: %w", err)
 	}
 	// Add to database
-	msgID, err := storage.MessageStoreInstance.AddMessage(ctx, cc.conversationID, "assistant", content, usrCfg)
+	_, err = storage.MessageStoreInstance.AddMessage(ctx, message, usrCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to add assistant message: %w", err)
 	}
 
-	msg := models.Message{
-		Role:    "assistant",
-		Content: content,
-		ID:      msgID,
-	}
-
 	// Add to context
-	cc.messages = append(cc.messages, msg)
+	cc.messages = append(cc.messages, *message)
 
 	// Create memory for the message
-	embeddings, err := cc.createMessageMemory(ctx, msg, usrCfg)
+	embeddings, err := cc.createMessageMemory(ctx, message, usrCfg)
 	if err != nil {
 		return nil, util.HandleError(fmt.Errorf("failed to create message memory: %w", err))
 	}
@@ -456,7 +494,7 @@ func (cc *conversationContext) shouldSummarize() bool {
 		// Count only messages that came after the most recent summary
 		messagesSinceLastSummary = 0
 		for _, msg := range cc.messages {
-			if msg.ID > maxSummaryID {
+			if msg.ID != nil && *msg.ID > maxSummaryID {
 				messagesSinceLastSummary++
 			}
 		}

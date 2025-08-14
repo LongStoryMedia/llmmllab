@@ -1,8 +1,49 @@
-# Inference Service
+# LLM ML Lab
 
-A service for generating text, chat completions, embeddings, and images using large language models and Stable Diffusion with advanced memory optimization and hardware management.
+This directory contains three separate but interconnected projects for language model infrastructure:
 
-The service supports both FastAPI-based HTTP API and gRPC API for efficient communication with the maistro service.
+1. [evaluation](#evaluation) - For benchmarking, training, and fine-tuning
+2. [server](#server) - For API services (REST and gRPC)
+3. [runner](#runner) - For model execution and management
+
+Each project has its own isolated virtual environment to avoid dependency conflicts.
+
+## Directory Structure
+
+```
+/inference
+├── evaluation/            # Benchmarks, training, and fine-tuning code
+├── server/                # REST API and gRPC server code
+├── runner/                # Model runner and pipelines
+├── Dockerfile             # Container definition with isolated environments
+├── startup.sh             # Container startup script for service orchestration
+├── run_with_env.sh        # Helper script to run commands in specific environments
+└── setup_environments.sh  # Script to set up local development environments
+```
+
+## Overview
+
+### evaluation
+
+The evaluation project contains tools for:
+- Evaluating model performance on academic and practical benchmarks
+- Fine-tuning models for specific tasks
+- Visualizing and analyzing model performance
+
+### server
+
+The server project provides:
+- OpenAI-compatible REST API endpoints
+- Efficient gRPC services
+- Business logic and service layer
+- Model definition and type safety
+
+### runner
+
+The model runner project provides:
+- Pipeline implementations for text and image generation
+- Model downloading, processing, and quantization utilities
+- Configuration management
 
 ## Features
 
@@ -54,21 +95,60 @@ inference/
 
 ### Prerequisites
 
-- Python 3.9+
+- Python 3.12+
 - CUDA-compatible GPU (recommended for performance)
-
-### Dependencies
-
-Key Python packages required:
-- FastAPI
-- diffusers
-- torch
-- accelerate
-- transformers
-- peft (for LoRA support)
-- xformers (optional, for memory-efficient attention)
+- Docker (optional, for containerized deployment)
 
 ### Local Development
+
+For local development, use the `setup_environments.sh` script to create virtual environments:
+
+```bash
+./setup_environments.sh
+```
+
+To run commands in a specific environment, use the `run_with_env.sh` script:
+
+```bash
+# Examples
+./run_with_env.sh server python -m uvicorn app:app --port 8000
+./run_with_env.sh evaluation python -m run_eval_direct
+./run_with_env.sh runner python -c "import torch; print(torch.cuda.is_available())"
+```
+
+### Docker
+
+#### Building the Docker Image
+
+```bash
+docker build -t llmmllab:latest -f inference/Dockerfile .
+```
+
+#### Running the Docker Container
+
+```bash
+docker run --gpus all -p 8000:8000 -p 50051:50051 -p 11434:11434 llmmllab:latest
+```
+
+This will start:
+1. Ollama service
+2. REST API server (if available)
+3. gRPC server (if available)
+
+#### Running Commands in Docker
+
+To run commands in a specific environment in the Docker container:
+
+```bash
+docker exec -it <container_id> /app/run_with_env.sh server python -m your_command
+```
+
+### Logs
+
+In Docker, service logs are available in:
+- `/var/log/ollama.log` - Ollama service logs
+- `/var/log/server_api.log` - REST API server logs
+- `/var/log/grpc_server.log` - gRPC server logs
 
 1. Clone the repository:
    ```bash

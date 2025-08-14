@@ -4,22 +4,26 @@ metadata:
   name: ollama
   namespace: ollama
   labels:
-    app.kubernetes.io/name: ollama
-    app.kubernetes.io/instance: ollama
-    app.kubernetes.io/component: app
+    app: ollama
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   selector:
-    name: ollama
-    app.kubernetes.io/name: ollama
-    app.kubernetes.io/instance: ollama
-    app.kubernetes.io/component: app
+    app: ollama
   ports:
     - name: ollama
       port: 11434
       targetPort: 11434
       protocol: TCP
+      # nodePort: 30134
     - name: sd
       port: 8000
       targetPort: 8000
       protocol: TCP
+      # nodePort: 30080
+    - name: grpc
+      port: 50051
+      targetPort: 50051
+      protocol: TCP
+      # nodePort: 30051
+  # clusterIP: 10.43.5.10
+  publishNotReadyAddresses: true

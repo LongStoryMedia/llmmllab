@@ -13,7 +13,7 @@ import (
 // MessageStore abstracts message-related operations
 // (Add more methods as needed)
 type MessageStore interface {
-	AddMessage(ctx context.Context, conversationID int, role, content string, usrCfg *models.UserConfig) (int, error)
+	AddMessage(ctx context.Context, message *models.Message, usrCfg *models.UserConfig) (int, error)
 	GetMessage(ctx context.Context, messageID int) (*models.Message, error)
 	GetConversationHistory(ctx context.Context, conversationID int) ([]models.Message, error)
 	DeleteMessage(ctx context.Context, messageID int) error
@@ -65,8 +65,8 @@ type ResearchTaskStore interface {
 // MemoryStore abstracts memory-related operations
 type MemoryStore interface {
 	InitMemorySchema(ctx context.Context) error
-	StoreMemory(ctx context.Context, userID, source, role string, sourceID int, embeddings [][]float32) error
-	StoreMemoryWithTx(ctx context.Context, userID, source, role string, sourceID int, embeddings [][]float32, tx pgx.Tx) error
+	StoreMemory(ctx context.Context, userID, source string, role models.MessageRole, sourceID int, embeddings [][]float32) error
+	StoreMemoryWithTx(ctx context.Context, userID, source string, role models.MessageRole, sourceID int, embeddings [][]float32, tx pgx.Tx) error
 	DeleteMemory(ctx context.Context, id, userID string) error
 	DeleteAllUserMemories(ctx context.Context, userID string) error
 	SearchSimilarity(ctx context.Context, embeddings [][]float32, minSimilarity float32, limit int, userID *string, conversationID *int, startDate, endDate *time.Time) ([]models.Memory, error)

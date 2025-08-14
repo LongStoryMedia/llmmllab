@@ -302,8 +302,8 @@ func consolidateResearchResults(ctx context.Context, userID string, taskID int, 
 }
 
 // CallLLMForResult calls the LLM with the given prompt for research steps
-func CallLLMForResult(ctx context.Context, userID, consolidatedInput string, userMessages []models.ChatMessage) (*models.ResearchQuestionResult, error) {
-	var ollamaMessages []models.ChatMessage
+func CallLLMForResult(ctx context.Context, userID, consolidatedInput string, userMessages []models.Message) (*models.ResearchQuestionResult, error) {
+	var ollamaMessages []models.Message
 
 	cfg, err := pxcx.GetUserConfig(userID)
 	if err != nil {
@@ -314,9 +314,10 @@ func CallLLMForResult(ctx context.Context, userID, consolidatedInput string, use
 	if err != nil {
 		return nil, fmt.Errorf("failed to get model profile: %w", err)
 	}
-	ollamaMessages = append(ollamaMessages, models.ChatMessage{
+	formattedText := fmt.Sprintf("%s \n\n%s", profile.SystemPrompt, consolidatedInput)
+	ollamaMessages = append(ollamaMessages, models.Message{
 		Role:    "system",
-		Content: fmt.Sprintf("%s \n\n%s", profile.SystemPrompt, consolidatedInput),
+		Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: util.StrPtr(formattedText)}},
 	})
 
 	// Add any additional user messages
@@ -327,8 +328,8 @@ func CallLLMForResult(ctx context.Context, userID, consolidatedInput string, use
 }
 
 // CallLLMForResult calls the LLM with the given prompt for research steps
-func CallLLMForSubResult(ctx context.Context, userID, consolidatedInput string, userMessages []models.ChatMessage) (*models.ResearchQuestionResult, error) {
-	var ollamaMessages []models.ChatMessage
+func CallLLMForSubResult(ctx context.Context, userID, consolidatedInput string, userMessages []models.Message) (*models.ResearchQuestionResult, error) {
+	var ollamaMessages []models.Message
 
 	cfg, err := pxcx.GetUserConfig(userID)
 	if err != nil {
@@ -339,9 +340,10 @@ func CallLLMForSubResult(ctx context.Context, userID, consolidatedInput string, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get model profile: %w", err)
 	}
-	ollamaMessages = append(ollamaMessages, models.ChatMessage{
+	formattedText := fmt.Sprintf("%s \n\n%s", profile.SystemPrompt, consolidatedInput)
+	ollamaMessages = append(ollamaMessages, models.Message{
 		Role:    "system",
-		Content: fmt.Sprintf("%s \n\n%s", profile.SystemPrompt, consolidatedInput),
+		Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: util.StrPtr(formattedText)}},
 	})
 
 	// Add any additional user messages
@@ -353,7 +355,7 @@ func CallLLMForSubResult(ctx context.Context, userID, consolidatedInput string, 
 
 // CallLLMForResearchPlan calls the LLM with the given prompt for research steps
 func CallLLMForResearchPlan(ctx context.Context, userID, query string) (*models.ResearchPlan, error) {
-	var ollamaMessages []models.ChatMessage
+	var ollamaMessages []models.Message
 
 	cfg, err := pxcx.GetUserConfig(userID)
 	if err != nil {
@@ -361,9 +363,9 @@ func CallLLMForResearchPlan(ctx context.Context, userID, query string) (*models.
 	}
 
 	systemPrompt := fmt.Sprintf("%s User Query: %s", cfg.ModelProfiles.ResearchPlanProfileID, query)
-	ollamaMessages = append(ollamaMessages, models.ChatMessage{
+	ollamaMessages = append(ollamaMessages, models.Message{
 		Role:    "system",
-		Content: systemPrompt,
+		Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: util.StrPtr(systemPrompt)}},
 	})
 
 	profile, err := storage.ModelProfileStoreInstance.GetModelProfile(ctx, cfg.ModelProfiles.ResearchPlanProfileID)
@@ -374,7 +376,7 @@ func CallLLMForResearchPlan(ctx context.Context, userID, query string) (*models.
 	return doResearch[models.ResearchPlan](ctx, profile, ollamaMessages)
 }
 
-func doResearch[T any](ctx context.Context, profile *models.ModelProfile, ollamaMessages []models.ChatMessage) (*T, error) {
+func doResearch[T any](ctx context.Context, profile *models.ModelProfile, ollamaMessages []models.Message) (*T, error) {
 	// Create a non-streaming request to get the full response at once
 	ollamaReq := models.ChatReq{
 		Model:    profile.ModelName,
@@ -407,18 +409,12 @@ func doResearch[T any](ctx context.Context, profile *models.ModelProfile, ollama
 	}
 
 	// Parse response
-	var ollamaResp models.OllamaChatResp
+	var ollamaResp T
 	if err := json.Unmarshal(respBody, &ollamaResp); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
-
-	var result T
-	if err := json.Unmarshal([]byte(ollamaResp.Message.Content), &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal research format: %w", err)
-	}
-
 	// Return the assistant's message content
-	return &result, nil
+	return &ollamaResp, nil
 }
 
 // Helper functions
@@ -466,7 +462,13 @@ func addResearchResultToConversation(ctx context.Context, userID string, finalRe
 
 	// Add the research result as an assistant message
 	message := "Research Results:\n\n" + *finalResult.SynthesizedAnswer
-	if _, err := convCtx.AddAssistantMessage(ctx, message); err != nil {
+
+	asstMsg := models.Message{
+		Role:    models.MessageRoleAssistant,
+		Content: []models.MessageContent{{Type: models.MessageContentTypeText, Text: util.StrPtr(message)}},
+	}
+
+	if _, err := convCtx.AddAssistantMessage(ctx, &asstMsg); err != nil {
 		return fmt.Errorf("failed to add assistant message: %w", err)
 	}
 

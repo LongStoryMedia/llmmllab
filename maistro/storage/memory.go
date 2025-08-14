@@ -66,7 +66,7 @@ func (md *memoryStore) InitMemorySchema(ctx context.Context) error {
 }
 
 // StoreMemory stores a memory with embedding for a user
-func (md *memoryStore) StoreMemory(ctx context.Context, userID, source, role string, sourceID int, embeddings [][]float32) error {
+func (md *memoryStore) StoreMemory(ctx context.Context, userID, source string, role models.MessageRole, sourceID int, embeddings [][]float32) error {
 	tx, err := Pool.Begin(ctx)
 	if err != nil {
 		return util.HandleError(fmt.Errorf("failed to begin transaction: %w", err))
@@ -82,7 +82,7 @@ func (md *memoryStore) StoreMemory(ctx context.Context, userID, source, role str
 }
 
 // StoreMemoryWithTx stores a memory with embedding for a user within a transaction
-func (md *memoryStore) StoreMemoryWithTx(ctx context.Context, userID, source, role string, sourceID int, embeddings [][]float32, tx pgx.Tx) error {
+func (md *memoryStore) StoreMemoryWithTx(ctx context.Context, userID, source string, role models.MessageRole, sourceID int, embeddings [][]float32, tx pgx.Tx) error {
 	for _, embedding := range embeddings {
 		pe, _ := processEmbedding(embedding)
 		embeddingStr := formatEmbeddingForPgVector(pe)

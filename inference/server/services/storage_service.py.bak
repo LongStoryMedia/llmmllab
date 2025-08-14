@@ -1,0 +1,499 @@
+"""
+Re-export the StorageService from the new db.storage package.
+This file is for backward compatibility with code that imports
+StorageService from the services package.
+"""
+
+from ..db.storage import StorageService
+
+# For backward compatibility, re-export these classes
+from ..db.storage.models import Message, Summary, Memory, MemoryFragment, Conversation
+
+# Define mock model classes first
+@dataclass
+class Message:
+    id: int = 0
+    role: str = ""
+    content: List[Dict[str, Any]] = field(default_factory=list)
+    thinking: str = ""
+    conversation_id: int = 0
+    created_at: Optional[datetime] = None
+
+@dataclass
+class MemoryFragment:
+    id: int = 0
+    role: str = ""
+    content: str = ""
+
+@dataclass
+class Memory:
+    fragments: List[MemoryFragment] = field(default_factory=list)
+    source: str = ""
+    source_id: int = 0
+    conversation_id: int = 0
+    created_at: Optional[datetime] = None
+    similarity: float = 0.0
+
+@dataclass
+class Summary:
+    id: int = 0
+    content: str = ""
+    level: int = 0
+    conversation_id: int = 0
+    source_ids: List[int] = field(default_factory=list)
+    created_at: Optional[datetime] = None
+
+# Define mock asyncpg classes
+class MockConnection:
+    """Mock connection for asyncpg."""
+    
+    async def fetch(self, *_args, **_kwargs):
+        """Mock fetch method."""
+        return []
+    
+    async def fetchrow(self, *_args, **_kwargs):
+        """Mock fetchrow method."""
+        return {}
+    
+    async def execute(self, *_args, **_kwargs):
+        """Mock execute method."""
+        return "OK"
+    
+    async def fetchval(self, *_args, **_kwargs):
+        """Mock fetchval method."""
+        return 0
+
+class MockPool:
+    """Mock connection pool for asyncpg."""
+    
+    async def acquire(self):
+        """Mock acquire method."""
+        return MockConnection()
+    
+    async def release(self, _conn):
+        """Mock release method."""
+        return None
+    
+    async def close(self):
+        """Mock close method."""
+        return None
+
+# Define a mock asyncpg module as a class
+class MockAsyncpg:
+    """Mock asyncpg module."""
+    
+    PostgresError = PostgresError
+    
+    @staticmethod
+    async def create_pool(*_args, **_kwargs):
+        """Mock create_pool method."""
+        return MockPool()
+
+# Try to import real asyncpg, fall back to mock if not available
+try:
+    import asyncpg
+    # We're using our own PostgresError class for type consistency
+    logger.info("Using real asyncpg package")
+except ImportError:
+    # Replace with mock
+    asyncpg = MockAsyncpg()
+    logger.warning("asyncpg is not installed. Using mock database functionality.")
+
+# Try to import real model classes if available
+try:
+    # Add the inference directory to sys.path if it's not already there
+    inference_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    if inference_path not in sys.path:
+        sys.path.insert(0, inference_path)
+    
+    # We'll stick with our mock model classes for now
+    # This ensures lint/type checking works even with external model imports
+    logger.info("Using local model class definitions")
+except (ImportError, ModuleNotFoundError) as e:
+    logger.warning(f"Error setting up path: {str(e)}. Using mock implementations.")
+
+class StorageService:
+    """
+    Service for managing persistent storage of conversation data.
+    """
+    
+    def __init__(self, connection_string: Optional[str] = None):
+        """
+        Initialize the storage service.
+        
+        Args:
+            connection_string: PostgreSQL connection string.
+        """
+        self.connection_string = connection_string or os.environ.get(
+            "DATABASE_URL",
+            "postgresql://postgres:postgres@localhost:5432/maistro"
+        )
+        # Initialize with a mock pool to satisfy static type checking
+        self.pool = MockPool()
+        self._init_task = asyncio.create_task(self._initialize_pool())
+        
+        # Initialize SQL query builder
+        self.query_builder = SQLQueryBuilder()
+    
+    async def _initialize_pool(self) -> None:
+        """Initialize the database connection pool."""
+        try:
+            # Import here to avoid circular imports
+            from ..db.init_db import initialize_database
+            
+            self.pool = await asyncpg.create_pool(
+                self.connection_string,
+                min_size=5,
+                max_size=20
+            )
+            logger.info("Database connection pool initialized")
+            
+            # Initialize the database schema
+            success = await initialize_database(self.pool)
+            if success:
+                logger.info("Database schema initialized successfully")
+            else:
+                logger.warning("Database schema initialization failed, some features may not work")
+                
+        except (ConnectionError, asyncio.TimeoutError) as e:
+            logger.error(f"Failed to initialize database pool: {str(e)}")
+            # Ensure we always have at least a mock pool
+            if not isinstance(self.pool, MockPool):
+                self.pool = MockPool()
+    
+    async def ensure_pool(self) -> None:
+        """Ensure the connection pool is initialized."""
+        if not self.pool:
+            await self._init_task
+            if not self.pool:
+                self.pool = MockPool()
+                logger.warning("Using mock database pool as fallback")
+    
+    async def get_conversation_messages(self, conversation_id: int) -> List[Message]:
+        """
+        Get all messages for a conversation.
+        
+        Args:
+            conversation_id: The ID of the conversation.
+            
+        Returns:
+            A list of messages.
+        """
+        await self.ensure_pool()
+        
+        try:
+            connection = await self.pool.acquire()
+            try:
+                # Use the SQL loader to get the query from the external file
+                query = get_query('message.get_conversation_history')
+                rows = await connection.fetch(query, conversation_id)
+                
+                messages = []
+                for row in rows:
+                    # Parse the content (stored as JSON)
+                    content_json = row.get('content', [])
+                    
+                    message = Message(
+                        id=row.get('id', 0),
+                        role=row.get('role', ''),
+                        content=content_json,  # This would be parsed from JSON
+                        thinking=row.get('thinking', ''),
+                        conversation_id=row.get('conversation_id', 0),
+                        created_at=row.get('created_at')
+                    )
+                    messages.append(message)
+                
+                return messages
+            finally:
+                await self.pool.release(connection)
+        except (asyncio.TimeoutError, KeyError, ValueError) as e:
+            logger.error(f"Error getting conversation messages: {str(e)}")
+            return []
+    
+    async def get_conversation_summaries(self, conversation_id: int) -> List[Summary]:
+        """
+        Get all summaries for a conversation.
+        
+        Args:
+            conversation_id: The ID of the conversation.
+            
+        Returns:
+            A list of summaries.
+        """
+        await self.ensure_pool()
+        
+        try:
+            connection = await self.pool.acquire()
+            try:
+                # Use the SQL loader to get the query from the external file
+                query = get_query('summary.get_summaries_for_conversation')
+                rows = await connection.fetch(query, conversation_id)
+                
+                summaries = []
+                for row in rows:
+                    summary = Summary(
+                        id=row.get('id', 0),
+                        content=row.get('content', ''),
+                        level=row.get('level', 0),
+                        conversation_id=row.get('conversation_id', 0),
+                        source_ids=row.get('source_ids', []),
+                        created_at=row.get('created_at')
+                    )
+                    summaries.append(summary)
+                
+                return summaries
+            finally:
+                await self.pool.release(connection)
+        except (asyncio.TimeoutError, KeyError, ValueError) as e:
+            logger.error(f"Error getting conversation summaries: {str(e)}")
+            return []
+    
+    async def save_message(self, message: Message) -> int:
+        """
+        Save a message to storage.
+        
+        Args:
+            message: The message to save.
+            
+        Returns:
+            The ID of the saved message.
+        """
+        await self.ensure_pool()
+        
+        try:
+            connection = await self.pool.acquire()
+            try:
+                query = get_query('message.add_message')
+                message_id = await connection.fetchval(
+                    query,
+                    message.role,
+                    message.content,  # This would be serialized to JSON
+                    message.thinking,
+                    message.conversation_id,
+                    message.created_at or datetime.now()
+                )
+                
+                return message_id if message_id is not None else -1
+            finally:
+                await self.pool.release(connection)
+        except (asyncio.TimeoutError, KeyError, ValueError, PostgresError) as e:
+            logger.error(f"Error saving message: {str(e)}")
+            return -1
+    
+    async def save_summary(self, summary: Summary) -> int:
+        """
+        Save a summary to storage.
+        
+        Args:
+            summary: The summary to save.
+            
+        Returns:
+            The ID of the saved summary.
+        """
+        await self.ensure_pool()
+        
+        try:
+            connection = await self.pool.acquire()
+            try:
+                query = get_query('summary.create_summary')
+                summary_id = await connection.fetchval(
+                    query,
+                    summary.content,
+                    summary.level,
+                    summary.conversation_id,
+                    summary.source_ids,
+                    summary.created_at or datetime.now()
+                )
+                
+                return summary_id if summary_id is not None else -1
+            finally:
+                await self.pool.release(connection)
+        except (asyncio.TimeoutError, KeyError, ValueError, PostgresError) as e:
+            logger.error(f"Error saving summary: {str(e)}")
+            return -1
+    
+    async def update_summary(self, summary: Summary) -> bool:
+        """
+        Update a summary in the database.
+        
+        Args:
+            summary: The summary to update.
+            
+        Returns:
+            True if successful, False otherwise.
+        """
+        await self.ensure_pool()
+        
+        try:
+            connection = await self.pool.acquire()
+            try:
+                query = get_query('summary.update_summary')
+                result = await connection.execute(
+                    query,
+                    summary.content,
+                    summary.source_ids,
+                    summary.created_at or datetime.now(),
+                    summary.id
+                )
+                
+                return result == "UPDATE 1"
+            finally:
+                await self.pool.release(connection)
+        except (asyncio.TimeoutError, KeyError, ValueError, PostgresError) as e:
+            logger.error(f"Error updating summary: {str(e)}")
+            return False
+    
+    async def update_conversation_title(self, conversation_id: int, title: str) -> bool:
+        """
+        Update the title of a conversation.
+        
+        Args:
+            conversation_id: The ID of the conversation.
+            title: The new title.
+            
+        Returns:
+            True if successful, False otherwise.
+        """
+        await self.ensure_pool()
+        
+        try:
+            connection = await self.pool.acquire()
+            try:
+                query = get_query('conversation.update_title')
+                result = await connection.execute(
+                    query,
+                    title,
+                    conversation_id
+                )
+                
+                return result == "UPDATE 1"
+            finally:
+                await self.pool.release(connection)
+        except (asyncio.TimeoutError, KeyError, ValueError, PostgresError) as e:
+            logger.error(f"Error updating conversation title: {str(e)}")
+            return False
+    
+    async def save_memory_embedding(
+        self,
+        user_id: str,
+        conversation_id: int,
+        source_id: int,
+        source_type: str,
+        embedding: List[float]
+    ) -> int:
+        """
+        Save a memory embedding to storage.
+        
+        Args:
+            user_id: The ID of the user.
+            conversation_id: The ID of the conversation.
+            source_id: The ID of the source object (message or summary).
+            source_type: The type of source ("message" or "summary").
+            embedding: The embedding vector.
+            
+        Returns:
+            The ID of the saved embedding.
+        """
+        await self.ensure_pool()
+        
+        try:
+            connection = await self.pool.acquire()
+            try:
+                # Use the SQL loader to get the query from the external file
+                query = get_query('memory.save_memory_embedding')
+                embedding_id = await connection.fetchval(
+                    query,
+                    user_id,
+                    conversation_id,
+                    source_id,
+                    source_type,
+                    embedding  # This would be stored using a vector type
+                )
+                
+                return embedding_id if embedding_id is not None else -1
+            finally:
+                await self.pool.release(connection)
+        except (asyncio.TimeoutError, KeyError, ValueError, PostgresError) as e:
+            logger.error(f"Error saving memory embedding: {str(e)}")
+            return -1
+    
+    async def search_similar_memories(
+        self,
+        user_id: str,
+        query_embedding: List[float],
+        similarity_threshold: float = 0.7,
+        limit: int = 5,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> List[Memory]:
+        """
+        Search for memories similar to the query embedding.
+        
+        Args:
+            user_id: The ID of the user.
+            query_embedding: The query embedding vector.
+            similarity_threshold: Minimum similarity threshold (0-1).
+            limit: Maximum number of results to return.
+            start_date: Optional start date for filtering results.
+            end_date: Optional end date for filtering results.
+            
+        Returns:
+            A list of memories with similarity scores.
+        """
+        await self.ensure_pool()
+        
+        try:
+            connection = await self.pool.acquire()
+            try:
+                # Use the SQL builder to construct a dynamic query with filters
+                params = [query_embedding, user_id, similarity_threshold, limit]
+                
+                # Build filter conditions for the date range if provided
+                date_filters = {}
+                if start_date:
+                    date_filters["start_date"] = start_date
+                if end_date:
+                    date_filters["end_date"] = end_date
+                
+                # Get the base query from the SQL file
+                base_query = get_query('memory.search_similar_memories')
+                
+                # Use the SQL builder to add date filters
+                query, updated_params = self.query_builder.build_query(
+                    base_query, 
+                    params=params,
+                    date_filters=date_filters
+                )
+                
+                rows = await connection.fetch(query, *updated_params)
+                
+                memories = []
+                for row in rows:
+                    # Parse the fragments from JSON
+                    fragments_data = row.get('fragments', [])
+                    fragments = []
+                    
+                    for frag_data in fragments_data:
+                        fragment = MemoryFragment(
+                            id=frag_data.get('id', 0),
+                            role=frag_data.get('role', ''),
+                            content=frag_data.get('content', '')
+                        )
+                        fragments.append(fragment)
+                    
+                    memory = Memory(
+                        fragments=fragments,
+                        source=row.get('source_type', ''),
+                        source_id=row.get('source_id', 0),
+                        conversation_id=row.get('conversation_id', 0),
+                        similarity=row.get('similarity', 0.0),
+                        created_at=row.get('created_at')
+                    )
+                    memories.append(memory)
+                
+                return memories
+            finally:
+                await self.pool.release(connection)
+        except (asyncio.TimeoutError, KeyError, ValueError, PostgresError) as e:
+            logger.error(f"Error searching similar memories: {str(e)}")
+            return []

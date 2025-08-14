@@ -38,7 +38,7 @@ export const getLllabUsers = async () => {
   return req<LllabUser[]>({
     method: 'GET',
     baseUrl: config.server.baseUrl,
-    path: `api/users`,
+    path: `users`,
     headers: getHeaders(getToken(user))
   });
 }

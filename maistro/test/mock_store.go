@@ -16,7 +16,7 @@ type mockMessageStore struct {
 	real storage.MessageStore
 }
 
-func (ms *mockMessageStore) AddMessage(ctx context.Context, conversationID int, role, content string, usrCfg *models.UserConfig) (int, error) {
+func (ms *mockMessageStore) AddMessage(ctx context.Context, conversationID int, role models.MessageRole, content []models.MessageContent, usrCfg *models.UserConfig) (int, error) {
 	return ms.real.AddMessage(ctx, conversationID, role, content, usrCfg)
 }
 func (ms *mockMessageStore) GetMessage(ctx context.Context, messageID int) (*models.Message, error) {
@@ -180,10 +180,10 @@ type mockMemoryStore struct {
 func (m *mockMemoryStore) InitMemorySchema(ctx context.Context) error {
 	return m.real.InitMemorySchema(ctx)
 }
-func (m *mockMemoryStore) StoreMemory(ctx context.Context, userID, source, role string, sourceID int, embeddings [][]float32) error {
+func (m *mockMemoryStore) StoreMemory(ctx context.Context, userID, source string, role models.MessageRole, sourceID int, embeddings [][]float32) error {
 	return m.real.StoreMemory(ctx, userID, source, role, sourceID, embeddings)
 }
-func (m *mockMemoryStore) StoreMemoryWithTx(ctx context.Context, userID, source, role string, sourceID int, embeddings [][]float32, tx pgx.Tx) error {
+func (m *mockMemoryStore) StoreMemoryWithTx(ctx context.Context, userID, source string, role models.MessageRole, sourceID int, embeddings [][]float32, tx pgx.Tx) error {
 	return m.real.StoreMemoryWithTx(ctx, userID, source, role, sourceID, embeddings, tx)
 }
 func (m *mockMemoryStore) DeleteMemory(ctx context.Context, id, userID string) error {

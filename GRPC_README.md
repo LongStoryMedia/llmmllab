@@ -103,7 +103,7 @@ inference:
 
 ## API Documentation
 
-The gRPC API is defined in `proto/inference.proto`. It provides the following services:
+The gRPC API is defined in `proto/inference.protos`. It provides the following services:
 
 - `ChatStream`: Streaming chat responses
 - `GenerateStream`: Streaming text generation

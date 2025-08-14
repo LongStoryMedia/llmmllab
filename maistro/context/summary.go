@@ -112,10 +112,10 @@ func (cc *conversationContext) getUnsummarizedMessages(ctx context.Context) ([]m
 	var unsummarizedMessages []models.Message
 	var unsummarizedIDs []int
 	for _, msg := range cc.messages {
-		if !summarizedMessageIDs[msg.ID] && msg.ID > 0 {
+		if !summarizedMessageIDs[*msg.ID] && *msg.ID > 0 {
 			// Only include messages that have a valid ID and haven't been summarized
 			unsummarizedMessages = append(unsummarizedMessages, msg)
-			unsummarizedIDs = append(unsummarizedIDs, msg.ID)
+			unsummarizedIDs = append(unsummarizedIDs, *msg.ID)
 		}
 	}
 
@@ -128,7 +128,7 @@ func (cc *conversationContext) removeMessagesById(ids []int) {
 	for _, msg := range cc.messages {
 		shouldKeep := true
 		for _, id := range ids {
-			if msg.ID == id {
+			if *msg.ID == id {
 				shouldKeep = false
 				break
 			}
@@ -188,9 +188,12 @@ func (cc *conversationContext) consolidateLevel(ctx context.Context, level int) 
 	var messagesToSummarize []models.Message
 	for _, summary := range summariesToConsolidate {
 		messagesToSummarize = append(messagesToSummarize, models.Message{
-			Role:    "system",
-			Content: summary.Content,
-			ID:      summary.ID,
+			Role: "system",
+			Content: []models.MessageContent{{
+				Type: "text",
+				Text: &summary.Content,
+			}},
+			ID: &summary.ID,
 		})
 	}
 
@@ -361,9 +364,12 @@ func (cc *conversationContext) updateMasterSummary(ctx context.Context) error {
 
 	// Start with the existing master summary as context
 	messagesToSummarize = append(messagesToSummarize, models.Message{
-		Role:    "system",
-		Content: fmt.Sprintf("Current master summary: %s", cc.masterSummary.Content),
-		ID:      cc.masterSummary.ID,
+		Role: "system",
+		Content: []models.MessageContent{{
+			Type: "text",
+			Text: &cc.masterSummary.Content,
+		}},
+		ID: &cc.masterSummary.ID,
 	})
 
 	// Find new summaries that weren't part of the original master summary
@@ -430,8 +436,11 @@ func (cc *conversationContext) prepareMasterSummaryMessages(cfg *models.UserConf
 
 	// Start with a system message describing the importance of weighting
 	messagesToSummarize = append(messagesToSummarize, models.Message{
-		Role:    "system",
-		Content: masterProfile.SystemPrompt,
+		Role: "system",
+		Content: []models.MessageContent{{
+			Type: "text",
+			Text: &masterProfile.SystemPrompt,
+		}},
 	})
 
 	// Group summaries by level
@@ -455,9 +464,12 @@ func (cc *conversationContext) prepareMasterSummaryMessages(cfg *models.UserConf
 					level, weight, summary.Content)
 
 				messagesToSummarize = append(messagesToSummarize, models.Message{
-					Role:    "system",
-					Content: weightedPrompt,
-					ID:      summary.ID,
+					Role: "system",
+					Content: []models.MessageContent{{
+						Type: "text",
+						Text: &weightedPrompt,
+					}},
+					ID: &summary.ID,
 				})
 			}
 		}
@@ -518,9 +530,12 @@ func (cc *conversationContext) getNewSummariesForMasterUpdate(ctx context.Contex
 					level, weight, summary.Content)
 
 				newSummaryMessages = append(newSummaryMessages, models.Message{
-					Role:    "system",
-					Content: weightedPrompt,
-					ID:      summary.ID,
+					Role: "system",
+					Content: []models.MessageContent{{
+						Type: "text",
+						Text: &weightedPrompt,
+					}},
+					ID: &summary.ID,
 				})
 			}
 		}

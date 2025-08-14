@@ -5,8 +5,10 @@
         "go"
     ],
     "output": {
-        "python": "inference/proto",
+        "python": "inference/protos",
         "go": "maistro/proto"
     },
-    "verbose": false
+    "generate_init": true,
+    "fix_imports": false,
+    "verbose": true
 }

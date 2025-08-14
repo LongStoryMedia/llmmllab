@@ -45,9 +45,9 @@ function a11yProps(index: number) {
 
 const tabRoutes = ["profile", "models", "summarization", "retrieval", "websearch", "security", "refinement", "image-generation"];
 
-const SettingsTabs = ({onTabChange}: {onTabChange: (tab: string) => void}) => {
+const SettingsTabs = ({onTabChange, currentTab}: {onTabChange: (tab: string) => void, currentTab: string}) => {
   const theme = useTheme();
-  const [tabValue, setTabValue] = useState(tabRoutes.indexOf("profile"));
+  const [tabValue, setTabValue] = useState(tabRoutes.indexOf(currentTab));
   const { isLoading, error, fetchConfig } = useConfig();
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
