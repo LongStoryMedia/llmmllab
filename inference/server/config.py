@@ -105,7 +105,7 @@ MASTER_SUMMARY_PROMPT = os.environ.get(
 
 # Config storage
 CONFIG_DIR = os.environ.get("CONFIG_DIR", "/app/config")
-MODELS_CONFIG_PATH = os.path.join("/app", "models.json")
+MODELS_CONFIG_PATH = os.path.join("/app", ".models.json")
 
 # Inference services configuration
 INFERENCE_SERVICES_OLLAMA_BASE_URL = os.environ.get(

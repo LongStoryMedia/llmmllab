@@ -54,3 +54,6 @@ __pycache__
 
 dl/
 .dl/
+
+.models.json
+.maistro/

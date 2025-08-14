@@ -17,7 +17,7 @@ def load_test_models() -> Dict[str, Model]:
     """
     # Get the absolute path to the project root
     project_root = os.path.dirname(os.path.dirname(__file__))
-    models_file = os.path.join(project_root, 'config', 'models.json')
+    models_file = os.path.join(project_root, ".models.json")
     models = {}
 
     try:
@@ -25,7 +25,7 @@ def load_test_models() -> Dict[str, Model]:
             logging.error(f"Models config file not found: {models_file}")
             return {}
 
-        with open(models_file, 'r') as f:
+        with open(models_file, "r") as f:
             models_data: List[dict] = json.load(f)
 
         for model_data in models_data:
@@ -54,7 +54,7 @@ def load_test_models() -> Dict[str, Model]:
                 parameter_size=details_dict.get("parameter_size", ""),
                 dtype=details_dict.get("dtype", "float32"),
                 quantization_level=details_dict.get("quantization_level", ""),
-                specialization=details_dict.get("specialization", "")
+                specialization=details_dict.get("specialization", ""),
             )
 
             model = Model(
@@ -66,7 +66,7 @@ def load_test_models() -> Dict[str, Model]:
                 digest=model_data.get("digest", ""),
                 pipeline=model_data.get("pipeline"),
                 lora_weights=loras,
-                details=details
+                details=details,
             )
 
             models[model_data["id"]] = model

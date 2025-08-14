@@ -65,7 +65,7 @@ class PipelineFactory:
         Load all models from the model service into the available_models dictionary.
         """
         try:
-            models_file = "/app/models.json"
+            models_file = "/app/.models.json"
             if not os.path.exists(models_file):
                 self.logger.error(f"Models config file not found: {models_file}")
                 return
