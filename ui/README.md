@@ -1,54 +1,74 @@
-# React + TypeScript + Vite
+# LLM ML Lab - UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern React-based user interface for interacting with the LLM ML Lab inference API services.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Modern React implementation using TypeScript and Vite
+- Material UI Joy interface components
+- Real-time streaming responses for chat and completions
+- Document upload and processing
+- Multi-modal capabilities (text and image generation)
+- Responsive design for desktop and mobile
 
-## Expanding the ESLint configuration
+## Tech Stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- React with TypeScript
+- Vite build system
+- Material UI Joy
+- ESLint with TypeScript configuration
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+ 
+- npm or yarn
+
+### Installation
+
+```bash
+# Install dependencies
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Development
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+```bash
+# Run development server
+npm run dev
+```
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
+### Building for Production
+
+```bash
+# Build for production
+npm run build
+```
+
+### Deployment
+
+The UI can be deployed using the included deployment script:
+
+```bash
+./deploy.sh
+```
+
+This will build the project and deploy it according to your environment configuration.
+
+## Environment Configuration
+
+The project includes multiple environment configuration files:
+
+- `.env.dev` - Development environment settings
+- `.env.prod` - Production environment settings
+- `.env.local` - Local overrides (not committed to version control)
+
+## Integration with Backend Services
+
+This UI connects to the LLM ML Lab inference services, with API endpoints configured in the environment files. See the [inference README](../inference/README.md) for backend service details.
+
+## License
+
+[MIT License](../LICENSE)
 ```

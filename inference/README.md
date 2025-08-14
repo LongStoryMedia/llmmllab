@@ -1,4 +1,4 @@
-# LLM ML Lab
+# LLM ML Lab - Inference
 
 This directory contains three separate but interconnected projects for language model infrastructure:
 
@@ -60,36 +60,6 @@ The model runner project provides:
 - **Adaptive Performance**: Automatically adjusts parameters based on available memory
 - **Memory Optimization**: Multiple strategies to reduce VRAM usage
 - **Multi-GPU Support**: Can utilize multiple GPUs if available
-- **RESTful API**: Clean API endpoints for all functionality
-
-## Project Structure
-
-```
-inference/
-├── app.py                  # Main application entry point
-├── config.py               # Application configuration
-├── models/                 # Pydantic models for request/response
-│   ├── __init__.py
-│   ├── models.py           # Model management data models
-│   └── requests.py         # Request data models
-├── routers/                # API routes
-│   ├── __init__.py
-│   ├── images.py           # Image generation routes
-│   ├── models.py           # Model management routes
-│   └── loras.py            # LoRA management routes
-├── services/               # Business logic
-│   ├── __init__.py
-│   ├── cleanup_service.py  # Automatic cleanup service
-│   ├── model_service.py    # Model management service
-│   ├── lora_service.py     # LoRA management service
-│   ├── image_generator.py  # Image generation service
-│   └── hardware_manager.py # Hardware resource management
-├── grpc_server/            # gRPC server implementation
-│   ├── proto/              # Protocol buffers definitions
-│   ├── server.py           # gRPC server entry point
-│   └── README.md           # gRPC server documentation
-└── Dockerfile              # Docker configuration
-```
 
 ## Setup and Installation
 
@@ -97,7 +67,6 @@ inference/
 
 - Python 3.12+
 - CUDA-compatible GPU (recommended for performance)
-- Docker (optional, for containerized deployment)
 
 ### Local Development
 
@@ -127,13 +96,12 @@ docker build -t llmmllab:latest -f inference/Dockerfile .
 #### Running the Docker Container
 
 ```bash
-docker run --gpus all -p 8000:8000 -p 50051:50051 -p 11434:11434 llmmllab:latest
+docker run --gpus all -p 8000:8000 -p 50051:50051 llmmllab:latest
 ```
 
 This will start:
-1. Ollama service
-2. REST API server (if available)
-3. gRPC server (if available)
+1. REST API server 
+2. gRPC server (if available)
 
 #### Running Commands in Docker
 
@@ -146,124 +114,119 @@ docker exec -it <container_id> /app/run_with_env.sh server python -m your_comman
 ### Logs
 
 In Docker, service logs are available in:
-- `/var/log/ollama.log` - Ollama service logs
+
 - `/var/log/server_api.log` - REST API server logs
 - `/var/log/grpc_server.log` - gRPC server logs
-
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd inference
-   ```
-
-2. Create a virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   
-   # Make sure PEFT is installed for LoRA support
-   pip install -U peft
-   
-   # Optional: Install xformers for memory optimization (CUDA only)
-   pip install -U xformers
-   ```
-
-4. Run the application:
-   ```bash
-   uvicorn app:app --reload --host 0.0.0.0 --port 8000
-   ```
-
-### Running with Docker
-
-1. Build the Docker image:
-   ```bash
-   docker build -t stable-diffusion-api .
-   ```
-
-2. Run the container with GPU support:
-   ```bash
-   docker run --gpus all -p 8000:8000 stable-diffusion-api
-   ```
 
 ### Running the gRPC Server
 
 ```bash
 # Generate proto code
-cd grpc_server/proto
-python generate_proto.py
+cd server/protos
+python ../proto_wrapper.py
 
 # Run the server
-cd ../..
-python grpc_server/server.py
+cd ..
+python grpc_server.py
 ```
+
+For more details, see the [GRPC README](../GRPC_README.md) and [gRPC Architecture Documentation](../docs/grpc_architecture.md).
+
+## License
+
+[MIT License](../LICENSE)
 
 For more details, see [gRPC Server README](grpc_server/README.md) and [gRPC Architecture Documentation](../docs/grpc_architecture.md).
 
 ## API Reference
 
-### Image Generation
+The Inference service provides multiple API endpoints organized by resource type. Each endpoint is available in both non-versioned (`/resource`) and versioned (`/v1/resource`) paths.
 
-#### Generate an image from a prompt
+### Chat API (`/chat`)
 
-```
-POST /generate-image
-```
+Handles conversation and chat completions with support for streaming responses.
 
-Request body:
-```json
-{
-  "prompt": "a photo of an astronaut riding a horse on mars",
-  "width": 768,
-  "height": 768,
-  "inference_steps": 30,
-  "guidance_scale": 7.5,
-  "low_memory_mode": false
-}
-```
+- `POST /chat/completions` - Generate chat completions
+  - Request: Messages, model parameters, streaming flag
+  - Response: Chat completion or streaming response
+  
+- `GET /chat/admin` - Admin-only endpoint for chat management
 
-Response:
-```json
-{
-  "image": "base64-encoded-image-data",
-  "download": "/download/unique-identifier.png"
-}
-```
+### Config API (`/config`)
 
-#### Download a generated image
+Manages user and system configurations.
 
-```
-GET /download/{filename}
-```
+- `GET /config/` - Get the current user's configuration
+- `PUT /config/` - Update the user's configuration
 
-Returns the image file.
+### Images API (`/images`)
 
-### Model Management
+Handles image generation, editing, and retrieval.
 
-#### List all models
+- `POST /images/generate` - Generate images from text prompts
+- `POST /images/edit` - Edit existing images with text prompts
+- `GET /images/user/{user_id}` - Get images for a specific user
+- `GET /images/download/{filename}` - Download a generated image
+- `GET /images/check-image-status/{request_id}` - Check generation status
+- `DELETE /images/{image_id}` - Delete a generated image
+- `POST /images/store-image` - Upload and store an image
 
-```
-GET /models/
-```
+### Internal API (`/internal`)
 
-Response:
-```json
-{
-  "models": [
-    {
-      "id": "default",
-      "name": "Default Stable Diffusion",
-      "source": "runwayml/stable-diffusion-v1-5",
-      "description": "Default Stable Diffusion model",
-      "is_active": true
-    }
-  ],
-  "active_model": "default"
-}
+Restricted access endpoints for internal services.
+
+- `GET /internal/image/{user_id}/{filename}` - Get a user's image for internal services
+
+### Models API (`/models`)
+
+Manages model configurations and profiles.
+
+- `GET /models/` - List all available models
+- `GET /models/profiles` - Get model profiles for the current user
+- `GET /models/profiles/{profile_id}` - Get a specific model profile
+- `POST /models/profiles` - Create a new model profile
+- `PUT /models/profiles/{profile_id}` - Update a model profile
+- `DELETE /models/profiles/{profile_id}` - Delete a model profile
+
+### OpenAI Compatible API (`/v1`)
+
+OpenAI-compatible endpoints for drop-in compatibility.
+
+- `POST /v1/chat/completions` - OpenAI-compatible chat completions
+- `POST /v1/completions` - OpenAI-compatible text completions
+- `POST /v1/embeddings` - OpenAI-compatible text embeddings
+- `GET /v1/models` - List available models in OpenAI format
+
+### Resources API (`/resources`)
+
+Manages hardware resources and GPU allocation.
+
+- `GET /resources/malloc` - Get memory usage statistics
+- `GET /resources/processes` - Get information about GPU processes
+- `POST /resources/clear` - Clear memory cache for devices
+- `GET /resources/health` - Check the health of GPU devices
+
+### Static API (`/static`)
+
+Serves static files like images.
+
+- `GET /static/images/view/{filename}` - Serve an image for viewing
+- `GET /static/images/download/{filename}` - Download an image
+
+### Users API (`/users`)
+
+Manages user information and conversations.
+
+- `GET /users/` - Get all users (admin only)
+- `GET /users/{user_id}/conversations` - Get conversations for a user
+
+### WebSockets API (`/ws`)
+
+Handles real-time WebSocket connections.
+
+- `WebSocket /ws/chat/{conversation_id}` - Real-time chat communication
+- `WebSocket /ws/image` - Real-time image generation status updates
+- `WebSocket /ws/status` - Real-time system status updates
 ```
 
 #### Add a new model
