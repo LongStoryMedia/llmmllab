@@ -1,12 +1,10 @@
 {
     "proto_dir": "proto",
     "languages": [
-        "python",
-        "go"
+        "python"
     ],
     "output": {
-        "python": "inference/protos",
-        "go": "maistro/proto"
+        "python": "inference/protos"
     },
     "generate_init": true,
     "fix_imports": false,

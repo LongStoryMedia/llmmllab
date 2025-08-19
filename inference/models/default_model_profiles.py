@@ -2,6 +2,7 @@
 Default model profiles for the inference system.
 """
 
+from unittest.mock import DEFAULT
 import uuid
 from datetime import datetime
 from typing import Dict, Optional, List
@@ -29,6 +30,7 @@ MODEL_PROFILE_TYPE_EMBEDDING = 14
 MODEL_PROFILE_TYPE_FORMATTING = 15
 MODEL_PROFILE_TYPE_IMAGE_GENERATION_PROMPT = 16
 MODEL_PROFILE_TYPE_IMAGE_GENERATION = 17
+MODEL_PROFILE_TYPE_ENGINEERING = 18
 
 # Create default UUIDs (similar to the Go implementation)
 DEFAULT_PRIMARY_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
@@ -52,6 +54,7 @@ DEFAULT_IMAGE_GENERATION_PROMPT_PROFILE_ID = uuid.UUID(
     "00000000-0000-0000-0000-000000000016"
 )
 DEFAULT_IMAGE_GENERATION_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000017")
+DEFAULT_ENGINEERING_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000018")
 
 # Default model IDs from models.json
 DEFAULT_TEXT_TO_TEXT_MODEL = "qwen-qwen3-30b-a3b"
@@ -462,6 +465,30 @@ DEFAULT_IMAGE_GENERATION_PROFILE = ModelProfile(
     updated_at=datetime.now(),
 )
 
+DEFAULT_ENGINEERING_PROFILE = ModelProfile(
+    id=DEFAULT_ENGINEERING_PROFILE_ID,
+    user_id="system",
+    name="Engineering (Default)",
+    type=MODEL_PROFILE_TYPE_ENGINEERING,
+    description="Profile for engineering tasks.",
+    model_name="qwen3-coder-30b-a3b",
+    parameters=ModelParameters(
+        num_ctx=1000000,
+        repeat_last_n=64,
+        repeat_penalty=1.1,
+        temperature=0.2,
+        seed=0,
+        stop=[],
+        num_predict=-1,
+        top_k=40,
+        top_p=0.9,
+        min_p=0.0,
+    ),
+    system_prompt="Assist with engineering tasks, providing detailed explanations and solutions.",
+    created_at=datetime.now(),
+    updated_at=datetime.now(),
+)
+
 # Create the default model profile config
 DEFAULT_MODEL_PROFILE_CONFIG = ModelProfileConfig(
     primary_profile_id=DEFAULT_PRIMARY_PROFILE_ID,
@@ -481,6 +508,7 @@ DEFAULT_MODEL_PROFILE_CONFIG = ModelProfileConfig(
     formatting_profile_id=DEFAULT_FORMATTING_PROFILE_ID,
     image_generation_prompt_profile_id=DEFAULT_IMAGE_GENERATION_PROMPT_PROFILE_ID,
     image_generation_profile_id=DEFAULT_IMAGE_GENERATION_PROFILE_ID,
+    engineering_profile_id=DEFAULT_ENGINEERING_PROFILE_ID,
 )
 
 
@@ -538,4 +566,5 @@ DEFAULT_PROFILES = {
     "formatting": DEFAULT_FORMATTING_PROFILE,
     "image_generation_prompt": DEFAULT_IMAGE_GENERATION_PROMPT_PROFILE,
     "image_generation": DEFAULT_IMAGE_GENERATION_PROFILE,
+    "engineering": DEFAULT_ENGINEERING_PROFILE,
 }

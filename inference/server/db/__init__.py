@@ -5,6 +5,7 @@ Database module that initializes all storage components and provides access to t
 import asyncpg
 import logging
 
+from asyncpg import Pool
 
 from .cache_storage import cache_storage
 from .userconfig_storage import UserConfigStorage
@@ -15,9 +16,20 @@ from .model_profile_storage import ModelProfileStorage
 from .model_storage import ModelStorage
 from .summary_storage import SummaryStorage
 from .memory_storage import MemoryStorage
+from .search_storage import SearchStorage
 from .queries import get_query
+from typing import Optional, Protocol, Any, Callable, cast
 
 logger = logging.getLogger(__name__)
+
+
+class StorageInterface(Protocol):
+    """Protocol defining the interface for storage classes"""
+
+    pool: Pool
+    get_query: Callable[[str], str]
+
+    def __init__(self, pool: Pool, get_query: Callable[[str], str]) -> None: ...
 
 
 class Storage:
@@ -31,6 +43,7 @@ class Storage:
         self.model = None
         self.summary = None
         self.memory = None
+        self.search = None
         self.get_query = get_query
         self.initialized = False
 
@@ -52,6 +65,7 @@ class Storage:
             self.model = ModelStorage(self.pool, get_query)
             self.summary = SummaryStorage(self.pool, get_query)
             self.memory = MemoryStorage(self.pool, get_query)
+            self.search = SearchStorage(self.pool, get_query)
 
             self.initialized = True
             logger.info("Storage components initialized successfully")
@@ -66,6 +80,7 @@ class Storage:
             self.model = None
             self.summary = None
             self.memory = None
+            self.search = None
             self.initialized = False
 
             logger.error(f"Failed to initialize database: {e}")
@@ -77,6 +92,16 @@ class Storage:
             await self.pool.close()
             self.initialized = False
             logger.info("Database connection pool closed")
+
+    def get_service[T](self, service: Optional[T]) -> T:
+        """Get a storage service by name"""
+        if not self.initialized:
+            raise ValueError("Storage not initialized")
+
+        if not service:
+            raise ValueError(f"Unknown storage service: {service}")
+
+        return cast(T, service)
 
 
 # Create a singleton instance

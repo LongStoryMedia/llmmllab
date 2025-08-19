@@ -126,7 +126,7 @@ WebSocket schemas are defined in `schemas/web_socket_connection.yaml` and relate
 
 ### Context Extension System
 
-The platform includes a sophisticated Context Extension System (documented in [context_extension.md](context_extension.md)) that:
+The platform includes a sophisticated Context Extension System (documented in [context_extension.md](docs/context_extension.md)) that:
 
 - **Extends LLM Context Windows**: Overcomes token limitations of models
 - **Semantic Memory**: Retrieves relevant conversation history

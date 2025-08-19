@@ -38,3 +38,23 @@ CREATE TRIGGER cascade_delete_memories_on_summary
   FOR EACH ROW
   EXECUTE FUNCTION delete_memories_on_summary_delete();
 
+-- Trigger function to delete memories when a search_topic_synthesis is deleted
+CREATE OR REPLACE FUNCTION delete_memories_on_search_topic_synthesis_delete()
+  RETURNS TRIGGER
+  AS $$
+BEGIN
+  DELETE FROM memories
+  WHERE source = 'search'
+    AND source_id = OLD.id;
+  RETURN OLD;
+END;
+$$
+LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS cascade_delete_memories_on_search_topic_synthesis ON search_topic_synthesis;
+
+CREATE TRIGGER cascade_delete_memories_on_search_topic_synthesis
+  BEFORE DELETE ON search_topic_synthesis
+  FOR EACH ROW
+  EXECUTE FUNCTION delete_memories_on_search_topic_synthesis_delete();
+

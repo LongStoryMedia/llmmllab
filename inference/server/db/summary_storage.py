@@ -20,34 +20,26 @@ class SummaryStorage:
         self.typed_pool = typed_pool(pool)
         self.get_query = get_query
 
-    async def create_summary(
-        self, conversation_id: int, content: str, level: int, source_ids: List[int]
-    ) -> Optional[int]:
-        source_ids_json = json.dumps(source_ids)
+    async def create_summary(self, summary: Summary) -> Optional[int]:
+        source_ids_json = json.dumps(summary.source_ids)
         async with self.typed_pool.acquire() as conn:
             row = await conn.fetchrow(
                 self.get_query("summary.create_summary"),
-                conversation_id,
-                content,
-                level,
+                summary.conversation_id,
+                summary.content,
+                summary.level,
                 source_ids_json,
             )
             summary_id = row["id"] if row and "id" in row else None
 
             # Cache the new summary if successful
             if summary_id:
-                summary = Summary(
-                    id=summary_id,
-                    conversation_id=conversation_id,
-                    content=content,
-                    level=level,
-                    source_ids=source_ids,
-                    created_at=datetime.now(),
-                )
                 cache_storage.cache_summary(summary)
 
                 # Invalidate conversation summaries list cache
-                cache_storage.invalidate_conversation_summaries_cache(conversation_id)
+                cache_storage.invalidate_conversation_summaries_cache(
+                    summary.conversation_id
+                )
 
             return summary_id
 

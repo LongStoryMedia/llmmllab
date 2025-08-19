@@ -5,6 +5,7 @@ import MarkdownRenderer from '../Shared/MarkdownRenderer';
 import ThinkSection from './ThinkSection';
 import { sanitizeForLaTeX, parseResponse } from './utils';
 import { Message } from '../../types/Message';
+import { MessageContentTypeValues } from '../../types/MessageContentType';
 
 interface ChatBubbleProps {
   message: Message;
@@ -13,7 +14,24 @@ interface ChatBubbleProps {
 const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
   const { isLoading, isTyping } = useChat();
   const inProgress = isLoading || isTyping;
-  const { think, rest } = parseResponse(message.content, isTyping);
+  console.log(message)
+  const content = typeof message.content === 'string' ? message.content : message?.content?.map(c => {
+    if (c.type === MessageContentTypeValues.TEXT) {
+      return c.text;
+    }
+    if (c.type === MessageContentTypeValues.IMAGE) {
+      return `![Image](${c.url})`;
+    }
+    if (c.type === MessageContentTypeValues.FILE) {
+      return `![File](${c.url})`;
+    }
+    if (c.type === MessageContentTypeValues.VIDEO) {
+      return `![Video](${c.url})`;
+    }
+  }).join('\n\n') ?? '';
+
+
+  const { think, rest } = parseResponse(content, isTyping);
   const isUser = message.role === 'user';
 
   return (

@@ -1,0 +1,139 @@
+{
+  "qwen2.5-vl-32b-instruct-q4-k-m": {
+    "model_id": "qwen2.5-vl-32b-instruct-q4-k-m",
+    "timestamp": "2025-07-29T04:11:45.855803",
+    "benchmarks": {
+      "mmlu": {
+        "score": 0.7,
+        "total_questions": 10,
+        "correct_answers": 7,
+        "detailed_results": [
+          {
+            "question_id": 0,
+            "subject": "abstract_algebra",
+            "question": "Find the degree for the given field extension Q(sqrt(2), sqrt(3), sqrt(18)) over Q.",
+            "correct_answer": "B",
+            "model_answer": "UNKNOWN",
+            "extraction_confidence": 0.0,
+            "eval_confidence": 0.0,
+            "is_correct": false,
+            "response": "\nTo determine the degree of the field extension $"
+          },
+          {
+            "question_id": 1,
+            "subject": "anatomy",
+            "question": "A patient suffers a broken nose, you would record this injury as involving which bone?",
+            "correct_answer": "B",
+            "model_answer": "B",
+            "extraction_confidence": 0.5,
+            "eval_confidence": 1.0,
+            "is_correct": true,
+            "response": "\nThe correct answer is:\n\n**B. Nas"
+          },
+          {
+            "question_id": 2,
+            "subject": "astronomy",
+            "question": "Where do most short-period comets come from and how do we know?",
+            "correct_answer": "A",
+            "model_answer": "A",
+            "extraction_confidence": 0.5,
+            "eval_confidence": 1.0,
+            "is_correct": true,
+            "response": "\nThe correct answer is:\n\n**A. The"
+          },
+          {
+            "question_id": 3,
+            "subject": "business_ethics",
+            "question": "What is the judge's standard of review in business judgment rule?",
+            "correct_answer": "C",
+            "model_answer": "C",
+            "extraction_confidence": 0.5,
+            "eval_confidence": 1.0,
+            "is_correct": true,
+            "response": "\nThe correct answer is:\n\n**C. Rational"
+          },
+          {
+            "question_id": 4,
+            "subject": "clinical_knowledge",
+            "question": "A 65-year-old male smoker presents with a 3-month history of weight loss and right upper quadrant pa...",
+            "correct_answer": "B",
+            "model_answer": "A",
+            "extraction_confidence": 0.3,
+            "eval_confidence": 1.0,
+            "is_correct": false,
+            "response": "\nThe most appropriate first-line investigation for"
+          },
+          {
+            "question_id": 5,
+            "subject": "college_biology",
+            "question": "Which of the following is not a way to form recombinant DNA?",
+            "correct_answer": "A",
+            "model_answer": "A",
+            "extraction_confidence": 0.5,
+            "eval_confidence": 1.0,
+            "is_correct": true,
+            "response": "\nThe correct answer is:\n\n**A. Translation"
+          },
+          {
+            "question_id": 6,
+            "subject": "college_chemistry",
+            "question": "3 Cl\u2212(aq) + 4 CrO_4^2\u2212(aq) + 23 H+(aq) \u2192 3 HClO2(aq) + 4 Cr^3+(aq) + 10 H2O(l). In the reaction show...",
+            "correct_answer": "D",
+            "model_answer": "UNKNOWN",
+            "extraction_confidence": 0.0,
+            "eval_confidence": 0.0,
+            "is_correct": false,
+            "response": "\nTo determine the role of Cl\\(^-\\"
+          },
+          {
+            "question_id": 7,
+            "subject": "computer_security",
+            "question": "SHA-1 has a message digest of",
+            "correct_answer": "A",
+            "model_answer": "A",
+            "extraction_confidence": 0.5,
+            "eval_confidence": 1.0,
+            "is_correct": true,
+            "response": "\nThe correct answer is:\n\n**A. "
+          },
+          {
+            "question_id": 8,
+            "subject": "conceptual_physics",
+            "question": "Colors in a soap bubble result from light",
+            "correct_answer": "C",
+            "model_answer": "C",
+            "extraction_confidence": 0.5,
+            "eval_confidence": 1.0,
+            "is_correct": true,
+            "response": "\nThe correct answer is:\n\n**C. interference"
+          },
+          {
+            "question_id": 9,
+            "subject": "econometrics",
+            "question": "For a stationary AR(1) process, shocks will",
+            "correct_answer": "A",
+            "model_answer": "A",
+            "extraction_confidence": 0.5,
+            "eval_confidence": 1.0,
+            "is_correct": true,
+            "response": "\nThe correct answer is:\n\n**A. Eventually"
+          }
+        ],
+        "metadata": {
+          "subject_accuracy": {
+            "abstract_algebra": 0.0,
+            "anatomy": 1.0,
+            "astronomy": 1.0,
+            "business_ethics": 1.0,
+            "clinical_knowledge": 0.0,
+            "college_biology": 1.0,
+            "college_chemistry": 0.0,
+            "computer_security": 1.0,
+            "conceptual_physics": 1.0,
+            "econometrics": 1.0
+          }
+        }
+      }
+    }
+  }
+}

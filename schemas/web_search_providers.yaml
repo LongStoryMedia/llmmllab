@@ -1,0 +1,10 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: WebSearchProviders
+description: List of web search providers
+type: string
+enum:
+  - google
+  - brave
+  - ddg
+  - searx
+  - serper

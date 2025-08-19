@@ -143,6 +143,17 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("research.create_research_subtasks_table", []),
                     ],
                 ),
+                # Step 9: Create search tables
+                (
+                    "Creating search tables",
+                    [
+                        ("search.create_search_topic_synthesis_table", []),
+                        (
+                            "search.create_search_topic_synthesis_hypertable",
+                            ["timescaledb"],
+                        ),
+                    ],
+                ),
             ]
 
             # Execute all initialization steps

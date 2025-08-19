@@ -28,6 +28,7 @@ try:
     from . import message
     from . import message_content
     from . import message_content_type
+    from . import message_patch
     from . import message_role
     from . import model
     from . import model_details
@@ -43,12 +44,14 @@ try:
     from . import requests
     from . import search_result
     from . import search_result_content
+    from . import search_topic_synthesis
     from . import server_config
     from . import summarization_config
     from . import summary
     from . import user
     from . import user_config
     from . import web_search_config
+    from . import web_search_providers
 except ImportError as e:
     import sys
     print(f"Warning: Some model modules could not be imported: {e}", file=sys.stderr)
@@ -80,6 +83,7 @@ __all__ = [
     'message',
     'message_content',
     'message_content_type',
+    'message_patch',
     'message_role',
     'model',
     'model_details',
@@ -95,12 +99,14 @@ __all__ = [
     'requests',
     'search_result',
     'search_result_content',
+    'search_topic_synthesis',
     'server_config',
     'summarization_config',
     'summary',
     'user',
     'user_config',
     'web_search_config',
+    'web_search_providers',
     'AuthConfig',
     'ChatReq',
     'ChatResponse',
@@ -144,12 +150,14 @@ __all__ = [
     'PromptRequest',
     'SearchResult',
     'SearchResultContent',
+    'SearchTopicSynthesis',
     'ServerConfig',
     'SummarizationConfig',
     'Summary',
     'User',
     'UserConfig',
     'WebSearchConfig',
+    'WebSearchProviders',
 ]
 
 # Re-export all model classes for easy importing and IDE autocompletion
@@ -272,6 +280,9 @@ from .search_result import (
 from .search_result_content import (
     SearchResultContent,
 )
+from .search_topic_synthesis import (
+    SearchTopicSynthesis,
+)
 from .server_config import (
     ServerConfig,
 )
@@ -289,4 +300,7 @@ from .user_config import (
 )
 from .web_search_config import (
     WebSearchConfig,
+)
+from .web_search_providers import (
+    WebSearchProviders,
 )

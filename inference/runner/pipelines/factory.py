@@ -70,66 +70,65 @@ class PipelineFactory:
                 self.logger.error(f"Models config file not found: {models_file}")
                 return
 
-            with open(models_file, "r") as f:
-                models_data: List[dict] = json.load(f)
+            with open(models_file, "r", encoding="utf-8") as f:
+                models_data = json.load(f)
 
-            for model_data in models_data:
-                # Create Model instance
-                lora_weights: List[dict] = model_data.get("lora_weights", [])
-                loras: List[LoraWeight] = []
-                if len(lora_weights) > 0:
-                    for lora in lora_weights:
-                        # Load LoRA weights if available
-                        if lora is not None:
-                            lora_weight_instance = LoraWeight(
-                                id=lora.get("id", ""),
-                                name=lora.get("name", ""),
-                                weight_name=lora.get("weight_name", ""),
-                                adapter_name=lora.get("adapter_name", ""),
-                                parent_model=lora.get("parent_model", ""),
-                            )
-                            loras.append(lora_weight_instance)
-
-                details_dict: dict = model_data.get("details", {})
-                details = ModelDetails(
-                    parent_model=details_dict.get("parent_model", ""),
-                    format=details_dict.get("format", ""),
-                    family=details_dict.get("family", ""),
-                    families=details_dict.get("families", []),
-                    parameter_size=details_dict.get("parameter_size", ""),
-                    quantization_level=details_dict.get("quantization_level", ""),
-                    specialization=details_dict.get("specialization", ""),
-                    dtype=details_dict.get("dtype", "bf16"),
-                    precision=details_dict.get("precision", "fp16"),
-                    weight=details_dict.get("weight", 1.0),
-                    gguf_file=details_dict.get("gguf_file", None),
-                    description=details_dict.get("description", None),
-                )
-
+            for data in models_data:
                 try:
+                    # Create lora weights and model details more concisely
+                    loras = [
+                        LoraWeight(
+                            id=lw.get("id", ""),
+                            name=lw.get("name", ""),
+                            weight_name=lw.get("weight_name", ""),
+                            adapter_name=lw.get("adapter_name", ""),
+                            parent_model=lw.get("parent_model", ""),
+                        )
+                        for lw in data.get("lora_weights", [])
+                        if lw
+                    ]
+
+                    details = ModelDetails(
+                        **{
+                            k: data.get("details", {}).get(k, v)
+                            for k, v in {
+                                "parent_model": "",
+                                "format": "",
+                                "family": "",
+                                "families": [],
+                                "parameter_size": "",
+                                "quantization_level": "",
+                                "specialization": "",
+                                "dtype": "bf16",
+                                "precision": "fp16",
+                                "weight": 1.0,
+                                "gguf_file": None,
+                                "description": None,
+                            }.items()
+                        }
+                    )
+
+                    # Create model and add to available models if valid
                     model = Model(
-                        id=model_data.get("id"),
-                        name=model_data["name"],
-                        model=model_data["model"],
-                        modified_at=model_data["modified_at"],
-                        size=model_data["size"],
-                        digest=model_data["digest"],
-                        pipeline=model_data.get("pipeline"),
+                        id=data.get("id"),
+                        name=data["name"],
+                        model=data["model"],
+                        modified_at=data["modified_at"],
+                        size=data["size"],
+                        digest=data["digest"],
+                        pipeline=data.get("pipeline"),
                         lora_weights=loras,
                         details=details,
-                        task=model_data.get("task", "TextToText"),
+                        task=data.get("task", "TextToText"),
                     )
-                    # Validate required fields are present
-                    assert model.details is not None, "details not initialized"
-                    assert model.model is not None, "model path not initialized"
-                    self.logger.debug(f"Created model instance: {model.json()}")
+                    assert (
+                        model.details and model.model
+                    ), "Missing required model fields"
+                    self._available_models[data["id"]] = model
                 except Exception as e:
                     self.logger.error(
-                        f"Error creating Model instance from data {model_data}: {e}"
+                        f"Error creating model from {data.get('id', 'unknown')}: {e}"
                     )
-                    continue
-
-                self._available_models[model_data["id"]] = model
 
             self.logger.info(f"Loaded {len(self._available_models)} models from config")
         except Exception as e:
@@ -410,9 +409,9 @@ class PipelineFactory:
                 self.logger.debug(
                     f"Calling __del__ method on {type(pipeline).__name__}"
                 )
-                pipeline.__del__()
-        except Exception as e:
-            self.logger.warning(f"Unexpected error during pipeline cleanup: {str(e)}")
+                del pipeline
+        except Exception:
+            self.logger.warning(f"Unexpected error during pipeline cleanup")
 
     def clear_cache(self, model_id: Optional[str] = None) -> None:
         """

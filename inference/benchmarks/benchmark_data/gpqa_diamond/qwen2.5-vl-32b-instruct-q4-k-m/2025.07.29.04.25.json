@@ -1,0 +1,59 @@
+{
+  "qwen2.5-vl-32b-instruct-q4-k-m": {
+    "model_id": "qwen2.5-vl-32b-instruct-q4-k-m",
+    "timestamp": "2025-07-29T04:11:45.855803",
+    "benchmarks": {
+      "gpqa_diamond": {
+        "score": 0.5,
+        "total_questions": 4,
+        "correct_answers": 2,
+        "detailed_results": [
+          {
+            "question_id": 0,
+            "subject": "Chemistry",
+            "correct_answer": "B",
+            "model_answer": "B",
+            "extraction_confidence": 0.5,
+            "eval_confidence": 1.0,
+            "is_correct": true,
+            "response": "\nTo answer this question, let's break it down step by step and analyze each option in the context of..."
+          },
+          {
+            "question_id": 1,
+            "subject": "Biology",
+            "correct_answer": "C",
+            "model_answer": "A",
+            "extraction_confidence": 0.8,
+            "eval_confidence": 1.0,
+            "is_correct": false,
+            "response": "\nTo determine the correct answer, let's analyze each option step by step and evaluate the function o..."
+          },
+          {
+            "question_id": 2,
+            "subject": "Physics",
+            "correct_answer": "C",
+            "model_answer": "C",
+            "extraction_confidence": 0.55,
+            "eval_confidence": 1.0,
+            "is_correct": true,
+            "response": "\nTo determine the correct answer, let's carefully analyze the WKB approximation for quantum tunnelin..."
+          },
+          {
+            "question_id": 3,
+            "subject": "Medicine",
+            "correct_answer": "B",
+            "model_answer": "A",
+            "extraction_confidence": 0.3,
+            "eval_confidence": 1.0,
+            "is_correct": false,
+            "response": "\nTo determine the mediator most directly involved in the pathophysiology of angioedema in a patient ..."
+          }
+        ],
+        "metadata": {
+          "benchmark": "GPQA-Diamond",
+          "description": "Graduate-level science questions"
+        }
+      }
+    }
+  }
+}

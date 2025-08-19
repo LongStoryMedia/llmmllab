@@ -15,8 +15,18 @@ properties:
   include_results:
     type: boolean
     description: Include results in response
+  search_providers:
+    type: array
+    description: List of search providers to use
+    items:
+      $ref: web_search_providers.yaml
+  max_urls_deep:
+    type: integer
+    description: Maximum number of URLs to deep crawl
 required:
   - enabled
   - auto_detect
   - max_results
   - include_results
+  - search_providers
+  - max_urls_deep

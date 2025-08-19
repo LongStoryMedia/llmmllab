@@ -194,11 +194,6 @@ class Qwen30A3BPipe(BasePipeline):
                         tool_calls=None,
                         thinking=None,
                         id=most_recent_message.id if most_recent_message else -1,
-                        conversation_id=(
-                            most_recent_message.conversation_id
-                            if most_recent_message
-                            else -1
-                        ),
                         created_at=datetime.datetime.now(tz=datetime.timezone.utc),
                     ),
                     model=self.model_def.model,
@@ -285,11 +280,6 @@ class Qwen30A3BPipe(BasePipeline):
                     tool_calls=None,
                     thinking=None,
                     id=most_recent_message.id if most_recent_message else -1,
-                    conversation_id=(
-                        most_recent_message.conversation_id
-                        if most_recent_message
-                        else -1
-                    ),
                     created_at=datetime.datetime.now(tz=datetime.timezone.utc),
                 ),
                 model=self.model_def.model,

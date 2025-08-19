@@ -90,7 +90,7 @@ class InferenceEngine:
         self,
         model_id: str,
         prompt: str,
-        max_tokens: int = 10000,
+        max_tokens: int = 100,
         temperature: float = 0.7,
     ) -> Dict[str, Any]:
         """
@@ -140,6 +140,7 @@ class InferenceEngine:
                     temperature=temperature,
                     top_p=0.95,
                     top_k=40,
+                    num_predict=max_tokens,
                 ),
             )
 
@@ -153,7 +154,6 @@ class InferenceEngine:
 
             for response in result_generator:
                 if response.message.content and len(response.message.content) > 0:
-                    print(response.message.content[0].text or "", end="", flush=True)
                     full_response += response.message.content[0].text or ""
 
                 if response.done:

@@ -12,6 +12,9 @@ properties:
   content:
     type: string
     description: Snippet or summary of the content
+  relevance:
+    type: number
+    description: Relevance score of the content
 required:
   - url
   - title

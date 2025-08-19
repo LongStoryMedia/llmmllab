@@ -229,6 +229,8 @@ spec:
               value: "-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_PATH=/llama.cpp/build/bin"
             - name: LLAMA_CPP_LIB_PATH
               value: "/llama.cpp/build/bin"
+              
+            # Search API keys configuration
             - name: GOOGLE_SEARCH_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -239,5 +241,21 @@ spec:
                 secretKeyRef:
                   name: google-search-cx
                   key: google-search-cx
+            - name: BRAVE_SEARCH_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: brave-api-key
+                  key: brave-api-key
+            - name: SERPER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: serper-api-key
+                  key: serper-api-key
+            - name: SEARX_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: searx-host
+                  key: searx-host
+                  
   strategy:
     type: Recreate

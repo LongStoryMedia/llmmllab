@@ -13,7 +13,7 @@ from models.refinement_config import RefinementConfig
 from models.web_search_config import WebSearchConfig
 from models.image_generation_config import ImageGenerationConfig
 from models.model_profile_config import ModelProfileConfig
-from models.user_config import UserConfig
+from models.user_config import UserConfig, WebSearchProviders
 
 from models.default_model_profiles import DEFAULT_MODEL_PROFILE_CONFIG
 
@@ -50,7 +50,18 @@ DEFAULT_REFINEMENT_CONFIG = RefinementConfig(
 
 # Default web search configuration
 DEFAULT_WEB_SEARCH_CONFIG = WebSearchConfig(
-    enabled=True, auto_detect=True, max_results=5, include_results=True
+    enabled=True,
+    auto_detect=True,
+    max_results=5,
+    include_results=True,
+    search_providers=[
+        WebSearchProviders.GOOGLE,
+        WebSearchProviders.BRAVE,
+        WebSearchProviders.SERPER,
+        # WebSearchProviders.SEARX,
+        WebSearchProviders.DDG,
+    ],
+    max_urls_deep=3,
 )
 
 # Default image generation configuration
