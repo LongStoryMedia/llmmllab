@@ -127,7 +127,11 @@ def prepare_enhanced_messages(
     enhanced_messages = []
 
     # If we have a model profile with system prompt, use it
-    if model_profile and model_profile.system_prompt:
+    if (
+        model_profile
+        and hasattr(model_profile, "system_prompt")
+        and model_profile.system_prompt
+    ):
         enhanced_messages.append(
             Message(
                 role=MessageRole.SYSTEM,
@@ -146,42 +150,37 @@ def prepare_enhanced_messages(
 
     # Add conversation summaries if available
     if conversation_ctx.summaries:
-        rag_contexts.append(
-            "### Conversation Summaries\n"
-            + "\n\n".join(
-                f"Level {summary.level}: {summary.content}"
-                for summary in sorted(
-                    conversation_ctx.summaries, key=lambda s: s.level, reverse=True
-                )
+        summary_texts = [summary.content for summary in conversation_ctx.summaries]
+        if summary_texts:
+            rag_contexts.append(
+                "# Previous Conversation Summaries\n" + "\n\n".join(summary_texts)
             )
-        )
+
     # Also add master summary if available and not already included
     if conversation_ctx.master_summary:
         rag_contexts.append(
-            f"### Conversation Summary\n{conversation_ctx.master_summary.content}"
+            "# Conversation Overview\n" + conversation_ctx.master_summary.content
         )
 
     # Add memories if available
-    if conversation_ctx.retrieved_memories and (
-        memory_texts := [
+    if conversation_ctx.retrieved_memories:
+        memory_texts = [
             fragment.content
             for memory in conversation_ctx.retrieved_memories
             for fragment in memory.fragments
+            if hasattr(fragment, "content")
         ]
-    ):
-        rag_contexts.append("### Related Memories\n" + "\n".join(memory_texts))
+        if memory_texts:
+            rag_contexts.append("# Relevant Memories\n" + "\n\n".join(memory_texts))
 
     # Add web search results if available
     if conversation_ctx.search_results:
-        rag_contexts.append(
-            "### Web Search Results\n"
-            + "\n\n".join(
-                [
-                    f"### Web Search Result\n{sr.synthesis}"
-                    for sr in conversation_ctx.search_results
-                ]
-            )
-        )
+        search_texts = []
+        for result in conversation_ctx.search_results:
+            if hasattr(result, "topic") and hasattr(result, "synthesis"):
+                search_texts.append(f"## {result.topic}\n{result.synthesis}")
+        if search_texts:
+            rag_contexts.append("# Web Search Results\n" + "\n\n".join(search_texts))
 
     # If we have any RAG contexts, add them as a system message
     if rag_contexts:
