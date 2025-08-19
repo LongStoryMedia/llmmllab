@@ -22,3 +22,10 @@ properties:
     $ref: image_generation_config.yaml
 required:
   - user_id
+  - summarization
+  - memory
+  - web_search
+  - preferences
+  - model_profiles
+  - refinement
+  - image_generation

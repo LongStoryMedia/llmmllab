@@ -15,8 +15,8 @@ export const sanitizeForLaTeX = (text: string): string => {
   };
   return Object.entries(replacements).reduce(
     (result, [unicodeChar, replacement]) =>
-      result.replace(new RegExp(unicodeChar, 'g'), replacement),
-    text
+      result && typeof result === 'string' ? result.replace(new RegExp(unicodeChar, 'g'), replacement) : '',
+    text || ''
   );
 };
 

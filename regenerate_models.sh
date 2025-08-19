@@ -144,7 +144,6 @@ regen_proto() {
 regen_proto
 
 # Then regenerate models for each language
-regen_go
 regen_ts
 regen_py
 

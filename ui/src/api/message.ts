@@ -10,7 +10,7 @@ export async function* chat(accessToken: string, message: ChatRequest, abortSign
       body: JSON.stringify(message),
       method: 'POST',
       headers: getHeaders(accessToken),
-      path: `chat/conversations/${message.conversation_id}/messages`,
+      path: `chat/completions`,
       signal: abortSignal
     });
 

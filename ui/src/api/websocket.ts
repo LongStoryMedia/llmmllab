@@ -41,6 +41,7 @@ export class ChatWebSocketClient {
   }
 
   public connect(authToken: string): Promise<void> {
+    return Promise.resolve();
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       console.warn('WebSocket is already connected or connecting');
       return Promise.resolve();
@@ -54,10 +55,11 @@ export class ChatWebSocketClient {
       this.onRes = existingConnection.onRes;
       this.sessionId = existingConnection.sessionId;
       if (!this.isConnected()) {
-        console.warn(`Reusing existing connection, but it is not connected. Attempting to reconnect.`);
-        this.autoReconnect = true; // Ensure auto-reconnect is enabled
-        this.reconnectAttempts = 0; // Reset attempts
-        return this.connect(authToken);
+        // console.warn(`Reusing existing connection, but it is not connected. Attempting to reconnect.`);
+        // this.autoReconnect = true; // Ensure auto-reconnect is enabled
+        // // this.reconnectAttempts = 0; // Reset attempts
+        // return this.connect(authToken);
+        return Promise.reject(new Error(`WebSocket connection for type ${this.connectionType} is not connected`));
       }
       return Promise.resolve();
     }

@@ -33,3 +33,7 @@ cohere>=4.37
 transformers>=4.37.0
 python-multipart>=0.0.6
 psutil>=7.0.0
+lxml>=6.0.0
+scrapy>=2.13.3
+beautifulsoup4>=4.13.4
+twisted==22.10.0

@@ -4,7 +4,7 @@ Agentic workflow implementation with dynamic tool generation
 
 import logging
 import asyncio
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 from langchain_core.tools import BaseTool
 from langchain_core.callbacks.manager import CallbackManagerForToolRun
@@ -12,13 +12,14 @@ from langchain.agents import AgentExecutor, create_structured_chat_agent
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_community.tools import DuckDuckGoSearchRun
 
+from models.memory import Memory
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
 from models.message_role import MessageRole
 from models.message import Message
 from server.context.conversation import ConversationContext
 from runner.pipelines.base_pipeline import BasePipeline
-from runner.pipelines.factory import PipelineFactory
+from runner.pipelines.factory import pipeline_factory
 
 from .generator import DynamicToolGenerator
 from .dynamic_tool import DynamicTool
@@ -30,13 +31,10 @@ logger = logging.getLogger(__name__)
 class AgenticWorkflow:
     """Main agentic workflow with dynamic tool generation"""
 
-    def __init__(
-        self, pipeline_factory: PipelineFactory, conversation_ctx: ConversationContext
-    ):
-        self.pipeline_factory: PipelineFactory = pipeline_factory
+    def __init__(self, conversation_ctx: ConversationContext):
         self.conversation_ctx: ConversationContext = conversation_ctx
         self.tool_generator: DynamicToolGenerator
-        self.primary_pipeline: BasePipeline
+        # self.primary_pipeline: BasePipeline
         self.static_tools = []
         self.dynamic_tools: Dict[str, DynamicTool] = {}
 
@@ -47,8 +45,9 @@ class AgenticWorkflow:
         Args:
             model_id: ID of the model to use
         """
+
         # Get the primary pipeline
-        self.primary_pipeline, _ = self.pipeline_factory.get_pipeline(model_id)
+        self.primary_pipeline, _ = pipeline_factory.get_pipeline(model_id)
 
         # Initialize tool generator
         self.tool_generator = DynamicToolGenerator(self.primary_pipeline)
@@ -76,6 +75,10 @@ class AgenticWorkflow:
         conversation_ctx = self.conversation_ctx
 
         class MemoryTool(BaseTool):
+            """
+            Tool for retrieving memories from the conversation history
+            """
+
             name = "retrieve_memories"
             description = "Retrieve relevant memories from the conversation history"
 
@@ -84,24 +87,12 @@ class AgenticWorkflow:
 
             def _run(
                 self,
-                query: str,
+                embeddings: List[List[float]],
                 run_manager: Optional[CallbackManagerForToolRun] = None,
                 **kwargs,
-            ) -> str:
+            ) -> List[Memory]:
                 # Use the conversation context to retrieve memories
-                memories = asyncio.run(conversation_ctx.retrieve_memories(query))
-
-                if not memories:
-                    return "No relevant memories found"
-
-                memory_texts = []
-                for memory in memories:
-                    if hasattr(memory, "page_content"):
-                        memory_texts.append(memory.page_content)
-                    elif hasattr(memory, "text"):
-                        memory_texts.append(memory.text)
-
-                return "\n\n".join(memory_texts[:5])  # Limit to top 5
+                return asyncio.run(conversation_ctx.retrieve_memories(embeddings))
 
         return MemoryTool()
 
@@ -228,7 +219,6 @@ Respond with only "YES" if a custom tool would be helpful, "NO" if existing tool
                                 url=None,
                             )
                         ],
-                        conversation_id=user_message.conversation_id,
                     )
                 ],
             )

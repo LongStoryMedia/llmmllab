@@ -3,9 +3,6 @@ title: ChatReq
 description: ChatReq represents a request to the Ollama API
 type: object
 properties:
-  model:
-    type: string
-    description: Model name, used internally only to set the model name in the request to ollama based on the profile
   messages:
     type: array
     items:
@@ -20,7 +17,7 @@ properties:
     description: The format to return a response in. Format can be json or a JSON schema
   conversation_id:
     type: integer
-    description: UI sends camelCase
+    description: The ID of the conversation this message belongs to
   keep_alive:
     type: integer
     description: Controls how long the model will stay loaded into memory
@@ -38,7 +35,7 @@ properties:
 required:
   - messages
   - stream
-  - model
+  - conversation_id
 definitions:
   Message:
     $ref: message.yaml

@@ -2,7 +2,29 @@
 
 set -e
 
-# Set default tag if not provided
+# Set default tag if not # Create secrets for Google search CX
+kubectl create secret generic google-search-cx \
+-n ollama \
+--from-file=google-search-cx="$(dirname "$0")/.secrets/google-search-cx" \
+--dry-run=client -o yaml | kubectl apply -f - --wait=true
+
+# Create secrets for Brave search API key
+kubectl create secret generic brave-api-key \
+-n ollama \
+--from-file=brave-api-key="$(dirname "$0")/.secrets/brave-api-key" \
+--dry-run=client -o yaml | kubectl apply -f - --wait=true
+
+# Create secrets for Serper API key
+kubectl create secret generic serper-api-key \
+-n ollama \
+--from-file=serper-api-key="$(dirname "$0")/.secrets/serper-api-key" \
+--dry-run=client -o yaml | kubectl apply -f - --wait=true
+
+# Create secrets for Searx host
+kubectl create secret generic searx-host \
+-n ollama \
+--from-file=searx-host="$(dirname "$0")/.secrets/searx-host" \
+--dry-run=client -o yaml | kubectl apply -f - --wait=trueded
 DOCKER_TAG=${DOCKER_TAG:-latest}
 # Replace slashes with dots in the tag name for Docker compatibility
 DOCKER_TAG=$(echo "$DOCKER_TAG" | tr '/' '.')

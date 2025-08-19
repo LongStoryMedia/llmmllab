@@ -1,0 +1,194 @@
+{
+  "qwen3-30b-a3b-q4-k-m": {
+    "model_id": "qwen3-30b-a3b-q4-k-m",
+    "timestamp": "2025-07-29T16:06:39.946440",
+    "benchmarks": {
+      "math_500": {
+        "score": 1.0,
+        "total_questions": 25,
+        "correct_answers": 25,
+        "detailed_results": [
+          {
+            "problem_id": 0,
+            "type": "Algebra",
+            "level": "Level 2",
+            "expected_answer": "x = -1 or x = -5",
+            "is_correct": true,
+            "confidence": 0.95,
+            "evaluation_metadata": {
+              "extracted": "x = -1, -5x = -1, -5",
+              "expected": "x = -1 or x = -5",
+              "extraction_confidence": 1.0,
+              "evaluation_methods_tried": [
+                {
+                  "method": "_exact_string_match",
+                  "result": false,
+                  "confidence": 0.0,
+                  "info": {
+                    "extracted_normalized": "x=-1,-5x=-1,-5",
+                    "expected_normalized": "x=-1orx=-5"
+                  }
+                },
+                {
+                  "method": "_numerical_equivalence",
+                  "result": true,
+                  "confidence": 0.95,
+                  "info": {
+                    "extracted_value": -1.0,
+                    "expected_value": -1.0,
+                    "tolerance": 1e-06
+                  }
+                }
+              ]
+            },
+            "response": "x = -1, -5x = -1, -5"
+          },
+          {
+            "problem_id": 1,
+            "type": "Geometry",
+            "level": "Level 1",
+            "expected_answer": "7.5",
+            "is_correct": true,
+            "confidence": 0.95,
+            "evaluation_metadata": {
+              "extracted": "The area of the triangle is 7.5.The area of the triangle is 7.5.",
+              "expected": "7.5",
+              "extraction_confidence": 1.0,
+              "evaluation_methods_tried": [
+                {
+                  "method": "_exact_string_match",
+                  "result": false,
+                  "confidence": 0.0,
+                  "info": {
+                    "extracted_normalized": "theareaofthetriangleis7.5.theareaofthetriangleis7.5",
+                    "expected_normalized": "7.5"
+                  }
+                },
+                {
+                  "method": "_numerical_equivalence",
+                  "result": true,
+                  "confidence": 0.95,
+                  "info": {
+                    "extracted_value": 7.5,
+                    "expected_value": 7.5,
+                    "tolerance": 7.499999999999999e-06
+                  }
+                }
+              ]
+            },
+            "response": "The area of the triangle is 7.5.The area of the triangle is 7.5."
+          },
+          {
+            "problem_id": 2,
+            "type": "Calculus",
+            "level": "Level 2",
+            "expected_answer": "12x^3 - 4x + 7",
+            "is_correct": true,
+            "confidence": 0.95,
+            "evaluation_metadata": {
+              "extracted": "12x^3 - 4x + 712x^3 - 4x + 7",
+              "expected": "12x^3 - 4x + 7",
+              "extraction_confidence": 1.0,
+              "evaluation_methods_tried": [
+                {
+                  "method": "_exact_string_match",
+                  "result": false,
+                  "confidence": 0.0,
+                  "info": {
+                    "extracted_normalized": "12x^3-4x+712x^3-4x+7",
+                    "expected_normalized": "12x^3-4x+7"
+                  }
+                },
+                {
+                  "method": "_numerical_equivalence",
+                  "result": true,
+                  "confidence": 0.95,
+                  "info": {
+                    "extracted_value": 12.0,
+                    "expected_value": 12.0,
+                    "tolerance": 1.2e-05
+                  }
+                }
+              ]
+            },
+            "response": "12x^3 - 4x + 712x^3 - 4x + 7"
+          },
+          {
+            "problem_id": 3,
+            "type": "Algebra",
+            "level": "Level 2",
+            "expected_answer": "x = -1 or x = -5",
+            "is_correct": true,
+            "confidence": 0.95,
+            "evaluation_metadata": {
+              "extracted": "x = -1, -5x = -1, -5",
+              "expected": "x = -1 or x = -5",
+              "extraction_confidence": 1.0,
+              "evaluation_methods_tried": [
+                {
+                  "method": "_exact_string_match",
+                  "result": false,
+                  "confidence": 0.0,
+                  "info": {
+                    "extracted_normalized": "x=-1,-5x=-1,-5",
+                    "expected_normalized": "x=-1orx=-5"
+                  }
+                },
+                {
+                  "method": "_numerical_equivalence",
+                  "result": true,
+                  "confidence": 0.95,
+                  "info": {
+                    "extracted_value": -1.0,
+                    "expected_value": -1.0,
+                    "tolerance": 1e-06
+                  }
+                }
+              ]
+            },
+            "response": "x = -1, -5x = -1, -5"
+          },
+          {
+            "problem_id": 4,
+            "type": "Geometry",
+            "level": "Level 1",
+            "expected_answer": "7.5",
+            "is_correct": true,
+            "confidence": 0.95,
+            "evaluation_metadata": {
+              "extracted": "The area of the triangle is 7.5.The area of the triangle is 7.5.",
+              "expected": "7.5",
+              "extraction_confidence": 1.0,
+              "evaluation_methods_tried": [
+                {
+                  "method": "_exact_string_match",
+                  "result": false,
+                  "confidence": 0.0,
+                  "info": {
+                    "extracted_normalized": "theareaofthetriangleis7.5.theareaofthetriangleis7.5",
+                    "expected_normalized": "7.5"
+                  }
+                },
+                {
+                  "method": "_numerical_equivalence",
+                  "result": true,
+                  "confidence": 0.95,
+                  "info": {
+                    "extracted_value": 7.5,
+                    "expected_value": 7.5,
+                    "tolerance": 7.499999999999999e-06
+                  }
+                }
+              ]
+            },
+            "response": "The area of the triangle is 7.5.The area of the triangle is 7.5."
+          }
+        ],
+        "metadata": {
+          "benchmark": "MATH-500",
+          "description": "Mathematical problem solving across multiple domains"
+        }
+      }
+    }
+  }
+}

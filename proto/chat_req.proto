@@ -12,12 +12,10 @@ import "model_parameters.proto";
 
 // ChatReq represents a request to the Ollama API
 message ChatReq {
-  // Model name, used internally only to set the model name in the request to ollama based on the profile
-  string model = 1;
   // Messages to send to the model, each message is a struct with role and content
-  repeated Message messages = 2;
+  repeated Message messages = 1;
   // If true, the response will be streamed back as a series of events
-  bool stream = 3;
+  bool stream = 2;
   // The format to return a response in. Format can be json or a JSON schema
   message Format {
     // This message intentionally left empty or will be extended later
@@ -26,13 +24,13 @@ message ChatReq {
   
 
   // The format to return a response in. Format can be json or a JSON schema
-  Format format = 4;
-  // UI sends camelCase
-  int32 conversation_id = 5;
+  Format format = 3;
+  // The ID of the conversation this message belongs to
+  int32 conversation_id = 4;
   // Controls how long the model will stay loaded into memory
-  int32 keep_alive = 6;
+  int32 keep_alive = 5;
   // Additional model parameters listed in the documentation for the Modelfile such as temperature
-  ModelParameters options = 7;
+  ModelParameters options = 6;
   message ToolsItem {
     // This message intentionally left empty or will be extended later
     reserved 1;
@@ -40,7 +38,7 @@ message ChatReq {
   
 
   // Tools to use for the request, if any
-  repeated ToolsItem tools = 8;
+  repeated ToolsItem tools = 7;
   // If true, the model will think before responding, useful for complex queries
-  bool think = 9;
+  bool think = 8;
 }

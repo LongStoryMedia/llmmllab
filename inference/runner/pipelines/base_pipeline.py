@@ -12,7 +12,7 @@ from typing import (
 )
 import logging
 import asyncio
-from datetime import datetime
+from datetime import datetime, UTC
 
 import torch
 from .helpers import get_dtype
@@ -54,17 +54,6 @@ class BasePipeline(LLM, ABC):
 
     def __init__(self, model_definition: Model):
         """Initialize the pipeline with default attributes."""
-        if not isinstance(model_definition, Model):
-            raise TypeError(
-                f"model_definition must be a Model instance, got {type(model_definition)}"
-            )
-
-        # Validate model has required fields
-        if not model_definition.model:
-            raise ValueError("model_definition.model path is required")
-        if not model_definition.details:
-            raise ValueError("model_definition.details are required")
-
         # Initialize LLM
         super().__init__()
 
@@ -103,23 +92,20 @@ class BasePipeline(LLM, ABC):
         """
         # Create a ChatReq object from the messages and params
         req = ChatReq(
-            model="",  # This will be set by the pipeline
             messages=messages,
             stream=False,
             options=params,
+            conversation_id=0,
         )
 
-        response_generator = self.run(req)
-        full_text = ""
-
         # Process each chunk from the generator
-        for chunk in response_generator:
-            if chunk.message and chunk.message.content:
-                for content_item in chunk.message.content:
-                    if content_item.text:
-                        full_text += content_item.text
-
-        return full_text
+        return "".join(
+            content_item.text
+            for chunk in self.run(req)
+            if chunk.message and chunk.message.content
+            for content_item in chunk.message.content
+            if content_item.text
+        )
 
     @property
     def _llm_type(self) -> str:
@@ -151,7 +137,6 @@ class BasePipeline(LLM, ABC):
             content=[
                 MessageContent(type=MessageContentType.TEXT, text=prompt, url=None)
             ],
-            conversation_id=0,
             tool_calls=None,
             thinking=None,
             id=None,
@@ -221,7 +206,6 @@ class BasePipeline(LLM, ABC):
                 content=[
                     MessageContent(type=MessageContentType.TEXT, text=prompt, url=None)
                 ],
-                conversation_id=0,
                 tool_calls=None,
                 thinking=None,
                 id=None,
@@ -230,7 +214,7 @@ class BasePipeline(LLM, ABC):
             try:
                 # Create a ChatReq object and call run
                 req = ChatReq(
-                    model="",  # This will be set by the pipeline
+                    conversation_id=0,
                     messages=[message],
                     stream=False,
                     options=params,
@@ -282,7 +266,6 @@ class BasePipeline(LLM, ABC):
                             type=MessageContentType.TEXT, text=prompt, url=None
                         )
                     ],
-                    conversation_id=0,
                     tool_calls=None,
                     thinking=None,
                     id=None,
@@ -294,7 +277,7 @@ class BasePipeline(LLM, ABC):
 
         # Create a ChatReq object and call run
         req = ChatReq(
-            model="",  # This will be set by the pipeline
+            conversation_id=0,
             messages=messages,
             stream=True,
             options=params,
@@ -309,15 +292,25 @@ class BasePipeline(LLM, ABC):
                     if content_item.text:
                         yield content_item.text
 
-    @abstractmethod
-    def __del__(self) -> None:
+    async def emb(
+        self,
+        texts: Union[str, List[str]],
+        is_query: Optional[bool] = None,
+        matryoshka_dim: Optional[int] = None,
+    ) -> List[List[float]]:
         """
-        Clean up resources used by the pipeline.
+        Generate embeddings for one or more texts using the runner.
 
-        This method should release GPU memory by moving models to CPU.
-        It will be called automatically when the pipeline is about to be destroyed.
+        Args:
+            texts: The text or list of texts to embed
+            model_path: Path or ID of the embedding model
+            is_query: Whether the text is a query (True), document (False), or auto-detect (None)
+            matryoshka_dim: Optional dimension for Matryoshka embedding truncation (256, 512, or 768)
+
+        Returns:
+            A list of embeddings for each input text
         """
-        pass
+        return []
 
     def _setup_quantization_config(self) -> Any:
         """
@@ -442,3 +435,20 @@ class BasePipeline(LLM, ABC):
         except (StopIteration, RuntimeError, ValueError) as e:
             logger.warning(f"Error consuming generator: {e}")
             return full_text  # Return whatever we've collected so far
+
+    def _extract_embedding_from_response(self, responses):
+        """
+        Extract embedding from model responses.
+
+        Args:
+            responses: List of responses from the model
+
+        Returns:
+            Embedding vector as list of floats or None if not found
+        """
+        # Extract embedding from the context field of ChatResponse
+        for response in responses:
+            if hasattr(response, "context") and isinstance(response.context, list):
+                return response.context
+
+        return None

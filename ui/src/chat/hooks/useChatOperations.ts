@@ -66,7 +66,6 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
 
     try {
       const fetchedMessages = await getMessages(getToken(auth.user), conversationId);
-      console.log(fetchedMessages)
       actions.setMessages(msgs => [...(msgs ?? []), ...(fetchedMessages ?? []).filter(m => !msgs.find(msg => msg.id === m.id))]);
       // Find and set the current conversation
       const conversation = Object.values(state.conversations).flat().find(c => c.id === conversationId);

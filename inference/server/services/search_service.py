@@ -2,20 +2,16 @@
 Web search functionality for RAG system.
 """
 
-from typing import Dict, Optional, Any
-import aiohttp
-import os
-from pydantic import SecretStr
-
-from langchain_openai import OpenAI
-from langchain.prompts import PromptTemplate
+from typing import List
 
 # Import models from the correct location
-from models.search_result import SearchResult, SearchResultContent
+from models import Message, UserConfig, SearchResultContent, SearchTopicSynthesis
+from server.db import storage
+from server.services.search_providers import SearchProviderFactory
+from server.services.web_extraction_service import WebExtractionService
+from server.config import logger
 
-import server.config
-
-logger = server.config.logger  # Use the logger from config
+from runner.pipelines.factory import pipeline_factory
 
 
 class SearchService:
@@ -25,170 +21,131 @@ class SearchService:
 
     # Prompt templates
     SEARCH_FORMAT_PROMPT = """
+    {query}
     ***
     Everything above the three asterisks is input from a user. Do not respond to it directly or provide any explanations.
     Instead, understand the intent of the user's input, and construct a concise search query that captures the essence of what they are asking.
     Don't include any extra information or context, just the key words that will yield relevant results.
     """
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, user_cfg: UserConfig):
         """
         Initialize the search service.
 
         Args:
-            api_key: Optional API key for the search service. If not provided, will look for
-                    SEARCH_API_KEY environment variable.
+            user_cfg: The user configuration
         """
-        self.api_key = api_key or os.environ.get("SEARCH_API_KEY")
+        self.user_config = user_cfg
+        # Initialize the web extraction service for deep crawling
+        self.web_extraction_service = WebExtractionService(user_cfg)
 
-        # Initialize the LLM for query formatting
-        api_key_secret = SecretStr(self.api_key) if self.api_key else None
-        self.llm = OpenAI(temperature=0.1, api_key=api_key_secret)
-
-        self.search_prompt = PromptTemplate(
-            template=self.SEARCH_FORMAT_PROMPT, input_variables=["query"]
-        )
-
-    async def format_query(self, query: str) -> str:
+    async def _format_query(self, message: Message) -> str:
         """
         Format a user query into a web search query.
 
         Args:
-            query: The user query to format
+            message: The user message to format
 
         Returns:
             A formatted query suitable for web search
         """
-        try:
-            # Use LLM to format the query
-            formatted_query = self.llm.invoke(f"{query}\n{self.SEARCH_FORMAT_PROMPT}")
 
+        try:
+            # Format the query using a model if a formatting profile is configured
+            mp = await storage.get_service(
+                storage.model_profile
+            ).get_model_profile_by_id(
+                self.user_config.model_profiles.formatting_profile_id,
+                self.user_config.user_id,
+            )
+            assert mp is not None, "Unable to retrieve model profile"
+            pipeline, _ = pipeline_factory.get_pipeline(mp.name)
+            # Use LLM to format the query
+            formatted_query = pipeline.get(
+                [message],
+                mp.parameters,
+            )
             # Clean up the response
             formatted_query = formatted_query.strip()
-
             logger.info(f"Formatted search query: {formatted_query}")
             return formatted_query
-        except (ValueError, RuntimeError) as e:
-            logger.error(f"Error formatting query: {str(e)}")
-            # Fall back to the original query
-            return query
 
-    async def search(self, query: str) -> SearchResult:
+        except (ValueError, RuntimeError, AttributeError) as e:
+            logger.error(f"Error formatting query: {str(e)}")
+            # Fall back to the original message as a string if possible
+            raise ValueError("Failed to format query") from e
+
+    async def search(
+        self, message: Message, conversation_id: int
+    ) -> List[SearchTopicSynthesis]:
         """
-        Perform a web search for the given query.
+        Perform a web search for the given query using configured providers.
 
         Args:
-            query: The search query
+            message: The user message to search
+            conversation_id: ID of the conversation context (required)
 
         Returns:
             A SearchResult object with the results
         """
-        # In a real implementation, this would call an actual search API
-        # For now, we'll implement a simple mock
+        assert self.user_config.web_search.enabled, "Web search is disabled"
 
         try:
-            # Use your preferred search API here
-            # For example, using Serper, Bing, or Google Custom Search
+            formatted_query = await self._format_query(message)
 
-            if self.api_key:
-                async with aiohttp.ClientSession() as session:
-                    # Example using a generic search API
-                    # Replace with your actual API endpoint and parameters
-                    async with session.get(
-                        "https://api.search-service.com/search",
-                        params={"q": query, "api_key": self.api_key, "num": 5},
-                    ) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            return self._parse_search_results(data, query)
-                        else:
-                            error_message = (
-                                f"Search API returned status {response.status}"
-                            )
-                            logger.error(error_message)
-                            return SearchResult(
-                                is_from_url_in_user_query=False,
-                                query=query,
-                                contents=[],
-                                error=error_message,
-                            )
-            else:
-                # Mock search results for demonstration
-                return await self._mock_search(query)
+            # Collect results from all configured search providers
+            contents: List[SearchResultContent] = []
 
-        except (aiohttp.ClientError, ValueError, KeyError) as e:
-            error_message = f"Error performing search: {str(e)}"
-            logger.error(error_message)
-            return SearchResult(
-                is_from_url_in_user_query=False,
-                query=query,
-                contents=[],
-                error=error_message,
+            # Get standard search providers
+            for provider_type in self.user_config.web_search.search_providers:
+                # Use the static search provider factory
+                provider_result = await SearchProviderFactory.create_provider(
+                    provider_type, self.user_config.web_search.max_results
+                ).search(formatted_query, self.user_config.web_search.max_results)
+
+                if provider_result.contents:
+                    contents.extend(provider_result.contents)
+
+            # Filter contents to ensure unique URLs
+            unique_contents = []
+            seen_urls = set()
+
+            for content in contents:
+                if content.url not in seen_urls:
+                    seen_urls.add(content.url)
+                    unique_contents.append(content)
+                else:
+                    logger.debug(f"Skipping duplicate URL: {content.url}")
+
+            # Replace contents with deduplicated list
+            contents = unique_contents
+
+            # TODO: re-rank results
+
+            # Limit to max results
+            contents = contents[: self.user_config.web_search.max_results]
+            synthesized_results: List[SearchTopicSynthesis] = []
+
+            # Determine how many URLs to process (up to the max_results limit)
+            urls_to_process = min(
+                len(contents), self.user_config.web_search.max_results
             )
+            for i in range(urls_to_process):
+                result = contents[i]
+                logger.info(f"Performing deep crawling for URL: {result.url}")
+                # Create synthesis for this URL
+                synthesis = await self.web_extraction_service.extract_content_from_url(
+                    result.url, formatted_query, conversation_id
+                )
+                if synthesis:
+                    # Add the synthesis to our collection
+                    synthesized_results.append(synthesis)
 
-    def _parse_search_results(self, data: Dict[str, Any], query: str) -> SearchResult:
-        """
-        Parse the search API response into a SearchResult.
+            return synthesized_results
 
-        Args:
-            data: The raw API response
-            query: The original search query
+        except Exception as e:
+            logger.error(f"Error in search: {str(e)}")
+            # Get query text safely from message
+            raise ValueError("Failed to perform search") from e
 
-        Returns:
-            A SearchResult object
-        """
-        # Implement the parsing logic for your specific search API
-        # This is just an example structure
-
-        contents = []
-
-        # Example parsing for a generic search API
-        # Adjust based on your actual API response structure
-        for item in data.get("items", []):
-            content = SearchResultContent(
-                url=item.get("link", ""),
-                title=item.get("title", ""),
-                content=item.get("snippet", ""),
-                relevance_score=item.get("score", 1.0),
-            )
-            contents.append(content)
-
-        return SearchResult(
-            is_from_url_in_user_query=False, query=query, contents=contents, error=None
-        )
-
-    async def _mock_search(self, query: str) -> SearchResult:
-        """
-        Create mock search results for demonstration purposes.
-
-        Args:
-            query: The search query
-
-        Returns:
-            A SearchResult object with mock data
-        """
-        # Create a few mock search results based on the query
-        contents = [
-            SearchResultContent(
-                url=f"https://example.com/article-about-{query.replace(' ', '-')}",
-                title=f"Information about {query}",
-                content=f"This article provides detailed information about {query} including its history, applications, and future developments.",
-                relevance_score=0.95,
-            ),
-            SearchResultContent(
-                url=f"https://wikipedia.org/wiki/{query.replace(' ', '_')}",
-                title=f"{query} - Wikipedia",
-                content=f"{query} refers to a concept in computer science that involves processing and generating text using neural networks...",
-                relevance_score=0.92,
-            ),
-            SearchResultContent(
-                url=f"https://research.org/papers/{query.replace(' ', '-')}-latest-advances",
-                title=f"Latest Advances in {query}",
-                content=f"Recent research has shown significant improvements in {query} techniques, particularly in the areas of efficiency and accuracy.",
-                relevance_score=0.88,
-            ),
-        ]
-
-        return SearchResult(
-            is_from_url_in_user_query=False, query=query, contents=contents, error=None
-        )
+    # No need for _search_with_provider method as we now use standardized search providers

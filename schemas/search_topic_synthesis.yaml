@@ -1,0 +1,34 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: SearchTopicSynthesis
+description: Schema for synthesizing search topics
+type: object
+properties:
+  urls:
+    type: array
+    description: List of URLs used to synthesize topics
+    items:
+      type: string
+  topics:
+    type: array
+    description: List of topics synthesized from the URLs
+    items:
+      type: string
+  synthesis:
+    type: string
+    description: The summary or synthesis of the topics from the content at the provided URLs
+  created_at:
+    type: string
+    format: date-time
+    description: The timestamp when the synthesis was created
+  id:
+    type: integer
+    description: The unique identifier for the synthesis
+  conversation_id:
+    type: integer
+    description: The ID of the conversation associated with this synthesis
+required:
+  - urls
+  - topics
+  - synthesis
+  - created_at
+  - conversation_id
