@@ -10,7 +10,7 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 
 import asyncio
 from datetime import datetime as dt
-from typing import Any, Coroutine, Optional
+from typing import Any, Coroutine
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
 from models.chat_req import ChatReq
@@ -20,7 +20,6 @@ from models.message import Message
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
 from models.message_role import MessageRole
-from models.model_profile import ModelProfile
 from runner.pipelines.factory import pipeline_factory
 from server.auth import get_request_id, get_user_id, is_admin
 from server.config import logger  # Import logger from config
@@ -28,7 +27,6 @@ from server.context.conversation import ConversationContext
 from server.db import storage  # Import database storage
 
 # Import utilities from modular structure
-from server.utils.chat import prepare_enhanced_messages
 from server.utils.chat.completion import enhanced_chat_completion_logic
 from server.context.conversation import get_conversation_context_from_request
 
@@ -37,10 +35,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 @router.post("/completions", response_model=ChatResponse)
 async def chat_completion(
-    chat_request: ChatReq,
-    request: Request,
-    background_tasks: BackgroundTasks,
-    stream: bool = False,
+    chat_request: ChatReq, request: Request, background_tasks: BackgroundTasks
 ):
     """
     Handle chat completions by processing a single user message and generating a response.
@@ -62,21 +57,19 @@ async def chat_completion(
     assert (
         len(chat_request.messages) > 0
     ), f"Empty messages list for request {request_id}"
-    # Get the latest user message from the messages list - Pydantic validates it's not empty
-    user_message = chat_request.messages[-1]
-    # Conversation ID is required by Pydantic schema and is already validated
-    conversation_id = chat_request.conversation_id
+
+    conversation_ctx = await get_conversation_context_from_request(
+        request, chat_request.conversation_id
+    )
     assert (
-        conversation_id >= 0
-    ), f"Invalid conversation ID {conversation_id} for request {request_id}"
+        conversation_ctx.conversation_id >= 0
+    ), f"Invalid conversation ID {conversation_ctx.conversation_id} for request {request_id}"
     # Verify message is from user - the only validation we still need
+    user_message = conversation_ctx.get_current_user_message(chat_request)
+    assert user_message, f"User message not found for request {request_id}"
     assert (
         user_message.role == MessageRole.USER
     ), f"Invalid message role {user_message.role} for request {request_id}"
-
-    conversation_ctx = await get_conversation_context_from_request(
-        request, conversation_id
-    )
     # Log the start of request processing
     logger.info(f"Processing chat completion request {request_id} for user {user_id}")
 
@@ -86,11 +79,13 @@ async def chat_completion(
     # Process user message with enhanced RAG
     try:
         # Add message - also sets intent
-        embeddings, message_id = await conversation_ctx.add_user_message(user_message)
+        embeddings, message_id = await conversation_ctx.add_message(user_message)
         if not embeddings:
             logger.warning(f"Empty embedding vector for message {message_id}")
 
-        summarization_task = conversation_ctx.summarize_messages()
+        summarization_task = conversation_ctx.summary_context.summarize(
+            conversation_ctx.messages
+        )
         query = next(
             (
                 c.text
@@ -100,15 +95,18 @@ async def chat_completion(
             "",
         )
         memory_task = (
-            conversation_ctx.retrieve_memories(embeddings)
+            conversation_ctx.memory_context.retrieve_memories(embeddings)
             if conversation_ctx.intent.memory and query
             else None
         )
         web_task = (
-            conversation_ctx.search_web(user_message)
+            conversation_ctx.search_context.search(
+                user_message, conversation_ctx.conversation_id
+            )
             if conversation_ctx.intent.web_search and user_message
             else None
         )
+
         # Create a list for asyncio.gather
         tasks: list[Coroutine[Any, Any, Any]] = [summarization_task]
         if memory_task:
@@ -117,42 +115,9 @@ async def chat_completion(
             tasks.append(web_task)
         await asyncio.gather(*tasks)
 
-        # Get primary pipeline from factory using the user's model profile
-        # Use the primary model profile from user config
-        model_id = str(user_cfg.model_profiles.primary_profile_id)
-        logger.info(f"Using primary model profile: {model_id}")
-
-        # Get the appropriate pipeline from the factory
-        pipeline, load_time = pipeline_factory.get_pipeline(model_id)
-        assert pipeline, f"Pipeline not found for model {model_id}"
-
-        logger.info(f"Model pipeline loaded in {load_time:.2f}ms")
-
-        # Add the current user message at the end
-        # Get the full model profile to access system prompt, thinking mode, and parameters
-        model_profile = await storage.get_service(
-            storage.model_profile
-        ).get_model_profile_by_id(user_cfg.model_profiles.primary_profile_id, user_id)
-        assert (
-            model_profile
-        ), f"Model profile {user_cfg.model_profiles.primary_profile_id} not found"
-
-        # Prepare the final prompt with context
-        enhanced_messages = prepare_enhanced_messages(
-            conversation_ctx,
-            model_profile,  # Pass the model profile to include system prompt
-        )
-
         # Use enhanced chat completion logic which determines whether to use agentic workflow
         return await enhanced_chat_completion_logic(
-            user_message=user_message,
             conversation_ctx=conversation_ctx,
-            pipeline_factory_arg=pipeline_factory,
-            model_profile=model_profile,
-            enhanced_messages=enhanced_messages,
-            conversation_id=conversation_id,
-            _user_id=user_id,
-            stream=stream,
             background_tasks=background_tasks,
         )
 
@@ -453,12 +418,7 @@ async def create_conversation(request: Request):
         conversation_id = new_conversation_id
         # Create context with pipeline factory IDs
         conversation_ctx = ConversationContext(
-            user_id=user_id,
             conversation_id=conversation_id,
-            embedding_profile_id=str(user_cfg.model_profiles.embedding_profile_id),
-            summarization_profile_id=str(
-                user_cfg.model_profiles.summarization_profile_id
-            ),
             user_config=user_cfg,
         )
         # Get formatting profile ID from model profiles

@@ -54,8 +54,6 @@ properties:
     description: Time taken for token evaluation in milliseconds
 required:
   - done
-  - created_at
-  - model
 definitions:
   Message:
     $ref: message.yaml

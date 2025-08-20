@@ -4,16 +4,8 @@ Integration helpers for using the dynamic tool system with chat completions
 
 import logging
 import re
-from typing import List, Optional
-
-from server.utils.chat.message import extract_message_text
-from server.context.conversation import ConversationContext
-from server.db import storage
-from models import Message
-from runner.pipelines.factory import pipeline_factory
-
-from .workflow import AgenticWorkflow
-from .production import ProductionDynamicToolSystem
+from models import Message, MessageRole, MessageContent, MessageContentType
+from runner.pipelines.base_pipeline import BasePipeline
 
 logger = logging.getLogger(__name__)
 
@@ -168,91 +160,45 @@ def extract_parameters_from_message(message: str) -> dict:
     return params
 
 
-async def create_agentic_chat_completion(
-    conversation_ctx: ConversationContext, model_id: str
-) -> str:
+async def analyze_tool_needs(user_message: Message, pipeline: BasePipeline) -> bool:
     """
-    Create an agentic chat completion with dynamic tool generation
-
+    Analyze if the request needs a new dynamic tool
     Args:
-        pipeline_factory: Factory for creating pipelines
-        conversation_ctx: Conversation context
         user_message: The user's message
-        model_id: ID of the model to use
-
     Returns:
-        str: The response from the agentic workflow
+        bool: True if a new tool is needed, False otherwise
     """
-    try:
-        # Create and initialize the agentic workflow
-        workflow = AgenticWorkflow(conversation_ctx)
-        await workflow.initialize(model_id)
-        assert conversation_ctx.current_user_message, "Current user message not set"
-        # Process the request
-        return await workflow.process_request(conversation_ctx.current_user_message)
-    except Exception as e:
-        logger.error(f"Error in agentic chat completion: {e}")
-        return f"I apologize, but I encountered an error: {str(e)}"
+    analysis_prompt = f"""
+Analyze this user request and determine if it requires creating a custom tool/function:
 
+User request: {"\n".join([c.text for c in user_message.content if c.text])}
 
-async def create_production_agentic_completion(
-    conversation_ctx: ConversationContext,
-) -> str:
-    """
-    Create an agentic completion using the production system with all advanced features
+Consider if the request:
+1. Involves complex calculations or data processing
+2. Requires specific algorithms or logic
+3. Needs custom data transformation
+4. Would benefit from a reusable function
 
-    Args:
-        pipeline_factory: Factory for creating pipelines
-        conversation_ctx: Conversation context
-        user_message: The user's message
-        model_id: ID of the model to use
-        user_id: Optional user ID for marketplace integration
+Available static tools:
+- Web search
+- Memory retrieval
+- Basic conversation
 
-    Returns:
-        str: The response from the production system
-    """
-    try:
-        mp = await storage.get_service(storage.model_profile).get_model_profile_by_id(
-            conversation_ctx.user_config.model_profiles.engineering_profile_id,
-            conversation_ctx.user_id,
-        )
-        assert mp, "Model profile not found"
-        # Get the primary pipeline
-        primary_pipeline, _ = pipeline_factory.get_pipeline(mp.name)
+Respond with only "YES" if a custom tool would be helpful, "NO" if existing tools are sufficient.
+"""
 
-        # Initialize the production system with marketplace enabled if user_id provided
-        tool_system = ProductionDynamicToolSystem(
-            llm=primary_pipeline,
-            enable_marketplace=True if conversation_ctx.user_id else False,
-        )
-
-        assert conversation_ctx.current_user_message, "Current user message not set"
-        msg_txt = extract_message_text(conversation_ctx.current_user_message)
-
-        # Create tool for the task
-        tool = await tool_system.create_and_validate_tool(
-            msg_txt,
-            conversation_ctx.user_id,
-        )
-
-        if not tool:
-            # Fall back to standard agentic workflow if tool creation fails
-            return await create_agentic_chat_completion(conversation_ctx, mp.name)
-
-        # Extract parameters from message
-        params = extract_parameters_from_message(msg_txt)
-
-        # Execute the tool
-        result = await tool_system.execute_tool_with_monitoring(tool, **params)
-
-        # Format the response
-        response = (
-            f"I created a tool to help with your request: '{tool.name}'\n\n"
-            f"Here's the result: {result}"
-        )
-
-        return response
-
-    except Exception as e:
-        logger.error(f"Error in production agentic completion: {e}")
-        return f"I apologize, but I encountered an error: {str(e)}"
+    response = pipeline.get(
+        [
+            Message(
+                role=MessageRole.USER,
+                content=[
+                    MessageContent(
+                        type=MessageContentType.TEXT,
+                        text=analysis_prompt,
+                        url=None,
+                    )
+                ],
+            )
+        ],
+    )
+    return "YES" in response.upper()

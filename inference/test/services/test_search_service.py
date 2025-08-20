@@ -4,7 +4,7 @@ Test the search service functionality.
 
 from unittest.mock import MagicMock, patch, AsyncMock
 
-from server.services.search_service import SearchService
+from server.context.search import SearchContext
 from server.services.search_providers import StandardSearchProvider
 from models import Message, SearchResult, SearchResultContent
 from models.web_search_providers import WebSearchProviders
