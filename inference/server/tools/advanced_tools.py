@@ -7,7 +7,9 @@ import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 
-from .dynamic_tool import DynamicTool
+from models import DynamicTool
+
+from .dynamic_tool import DynamicToolRunner
 from .generator import DynamicToolGenerator
 from .errors import ToolExecutionError, ToolValidationError, log_error, handle_error
 
@@ -26,7 +28,7 @@ class ToolCache:
         """Generate a cache key from task description"""
         return hashlib.md5(task_description.lower().strip().encode()).hexdigest()
 
-    def get_cached_tool(self, task_description: str) -> Optional[DynamicTool]:
+    def get_cached_tool(self, task_description: str) -> Optional[DynamicToolRunner]:
         """Retrieve a cached tool if available and not expired"""
         cache_key = self.get_cache_key(task_description)
 
@@ -36,11 +38,11 @@ class ToolCache:
             # Check if cache is still valid
             if datetime.now() - cached_data["timestamp"] < self.cache_duration:
                 tool_data = cached_data["tool_data"]
-                return DynamicTool(**tool_data)
+                return DynamicToolRunner(**tool_data)
 
         return None
 
-    def cache_tool(self, task_description: str, tool: DynamicTool) -> None:
+    def cache_tool(self, task_description: str, tool: DynamicToolRunner) -> None:
         """Cache a generated tool"""
         cache_key = self.get_cache_key(task_description)
 
@@ -62,8 +64,8 @@ class ToolComposer:
 
     @staticmethod
     def create_workflow_tool(
-        tools: List[DynamicTool], workflow_description: str
-    ) -> DynamicTool:
+        tools: List[DynamicToolRunner], workflow_description: str
+    ) -> DynamicToolRunner:
         """Create a meta-tool that orchestrates multiple tools"""
 
         # Generate code that calls multiple tools in sequence
@@ -102,13 +104,13 @@ def workflow_executor(**kwargs):
 # Include all component tool functions
 {tool_codes}
 """
-
-        return DynamicTool(
-            name=f"workflow_{'_'.join([t.name[:5] for t in tools])}",  # Shortened name
+        tool = DynamicTool(
+            name=f"workflow_{'_'.join([t.name[:5] for t in tools])}",
             description=f"Workflow: {workflow_description}",
             code=workflow_code,
             function_name="workflow_executor",
         )
+        return DynamicToolRunner(tool)
 
 
 # Tool Learning and Improvement
@@ -181,7 +183,7 @@ class EnhancedDynamicToolGenerator(DynamicToolGenerator):
         self.tool_learner = ToolLearner()
         self.tool_composer = ToolComposer()
 
-    async def generate_tool(self, task_description: str) -> Optional[DynamicTool]:
+    async def generate_tool(self, task_description: str) -> Optional[DynamicToolRunner]:
         """Generate a tool with caching and learning features"""
         # Check cache first
         cached_tool = self.tool_cache.get_cached_tool(task_description)
@@ -206,7 +208,7 @@ class EnhancedDynamicToolGenerator(DynamicToolGenerator):
 
     async def generate_complex_tool(
         self, task_description: str, subtasks: List[str]
-    ) -> Optional[DynamicTool]:
+    ) -> Optional[DynamicToolRunner]:
         """Generate a complex tool by composing multiple tools"""
         subtask_tools = []
 
@@ -231,7 +233,7 @@ class ToolValidator:
 
     @staticmethod
     async def validate_tool_with_test_cases(
-        tool: DynamicTool, test_cases: List[Dict[str, Any]]
+        tool: DynamicToolRunner, test_cases: List[Dict[str, Any]]
     ) -> bool:
         """Validate a tool with predefined test cases"""
 
@@ -295,7 +297,7 @@ class ToolValidator:
 
     @staticmethod
     def validate_tool(
-        tool: DynamicTool, test_cases: Optional[List[Dict[str, Any]]] = None
+        tool: DynamicToolRunner, test_cases: Optional[List[Dict[str, Any]]] = None
     ) -> bool:
         """Basic validation of tool format and structure
 
@@ -326,7 +328,7 @@ class ToolMarketplace:
         self.tool_ratings: Dict[str, List[float]] = {}
         self.tool_tags: Dict[str, List[str]] = {}
 
-    def publish_tool(self, tool: DynamicTool, user_id: str) -> None:
+    def publish_tool(self, tool: DynamicToolRunner, user_id: str) -> None:
         """Publish a tool to the marketplace"""
         self.public_tools[f"{tool.name}_{user_id}"] = {
             "tool": tool,
@@ -336,7 +338,7 @@ class ToolMarketplace:
         }
         logger.info(f"Published tool to marketplace: {tool.name}")
 
-    def search_tools(self, query: str) -> List[DynamicTool]:
+    def search_tools(self, query: str) -> List[DynamicToolRunner]:
         """Search for tools by query"""
         results = []
         query_lower = query.lower()
@@ -386,7 +388,7 @@ class ProductionDynamicToolSystem:
 
     async def create_and_validate_tool(
         self, task_description: str, user_id: Optional[str] = None
-    ) -> Optional[DynamicTool]:
+    ) -> Optional[DynamicToolRunner]:
         """Create a tool with full validation pipeline"""
 
         # Generate the tool
@@ -411,7 +413,9 @@ class ProductionDynamicToolSystem:
 
         return tool
 
-    async def execute_tool_with_monitoring(self, tool: DynamicTool, **kwargs) -> str:
+    async def execute_tool_with_monitoring(
+        self, tool: DynamicToolRunner, **kwargs
+    ) -> str:
         """Execute a tool with performance monitoring"""
         start_time = datetime.now()
 

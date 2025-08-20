@@ -1,17 +1,19 @@
 """
 Tool composition system for creating complex workflow tools from simple ones
 """
+
 from typing import List
 
-from .dynamic_tool import DynamicTool
+from .dynamic_tool import DynamicToolRunner
+
 
 class ToolComposer:
     """Compose multiple tools into complex workflows"""
 
     @staticmethod
     def create_workflow_tool(
-        tools: List[DynamicTool], workflow_description: str
-    ) -> DynamicTool:
+        tools: List[DynamicToolRunner], workflow_description: str
+    ) -> DynamicToolRunner:
         """Create a meta-tool that orchestrates multiple tools"""
 
         # Generate code that calls multiple tools in sequence
@@ -23,7 +25,7 @@ class ToolComposer:
         tool_codes = "\n".join([tool.code for tool in tools])
         # Join all tool calls
         tools_call_str = "\n".join(tool_calls)
-        
+
         # Create results list for formatted string
         result_list = []
         for i in range(len(tools)):
@@ -51,7 +53,7 @@ def workflow_executor(**kwargs):
 {tool_codes}
 """
 
-        return DynamicTool(
+        return DynamicToolRunner(
             name=f"workflow_{'_'.join([t.name[:5] for t in tools])}",  # Shortened name
             description=f"Workflow: {workflow_description}",
             code=workflow_code,
@@ -60,33 +62,37 @@ def workflow_executor(**kwargs):
 
     @staticmethod
     def create_parallel_tool(
-        tools: List[DynamicTool], workflow_description: str
-    ) -> DynamicTool:
+        tools: List[DynamicToolRunner], workflow_description: str
+    ) -> DynamicToolRunner:
         """Create a tool that executes multiple tools in parallel"""
-        
+
         # First, import necessary libraries for parallel execution
         import_code = """
 import asyncio
 import concurrent.futures
 """
-        
+
         # Generate function stubs for parallel execution
         tool_functions = []
         for i, tool in enumerate(tools):
-            tool_functions.append(f"""
+            tool_functions.append(
+                f"""
 def execute_tool_{i}(**kwargs):
     return {tool.function_name}(**kwargs)
-""")
-        
+"""
+            )
+
         # Join tool functions and codes
         tool_functions_str = "".join(tool_functions)
         tool_codes = "\n".join([tool.code for tool in tools])
-        
+
         # Create futures append statements
         futures_append = ""
         for i in range(len(tools)):
-            futures_append += f'futures.append(executor.submit(execute_tool_{i}, **kwargs))\n        '
-        
+            futures_append += (
+                f"futures.append(executor.submit(execute_tool_{i}, **kwargs))\n        "
+            )
+
         # Generate parallel execution code
         workflow_code = f"""{import_code}
 
@@ -124,7 +130,7 @@ def workflow_parallel_executor(**kwargs):
 {tool_codes}
 """
 
-        return DynamicTool(
+        return DynamicToolRunner(
             name=f"parallel_workflow_{hash(workflow_description) % 1000}",
             description=f"Parallel Workflow: {workflow_description}",
             code=workflow_code,
