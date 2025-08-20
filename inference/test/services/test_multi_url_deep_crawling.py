@@ -16,7 +16,7 @@ from models.message_role import MessageRole
 from models.search_result import SearchResult
 from models.search_result_content import SearchResultContent
 from models.search_topic_synthesis import SearchTopicSynthesis
-from server.services.search_service import SearchService
+from server.context.search import SearchContext
 
 
 class TestMultiURLDeepCrawling:
@@ -96,7 +96,7 @@ class TestMultiURLDeepCrawling:
         mock_get_provider.return_value = mock_provider
 
         # Create the search service
-        service = SearchService(user_config)
+        service = SearchContext(user_config)
         # Replace the web extraction service with our mock
         service.web_extraction_service = mock_web_extraction
 

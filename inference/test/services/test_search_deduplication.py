@@ -15,7 +15,7 @@ from models.message_content_type import MessageContentType
 from models.message_role import MessageRole
 from models.search_result import SearchResult
 from models.search_result_content import SearchResultContent
-from server.services.search_service import SearchService
+from server.context.search import SearchContext
 
 
 class TestSearchDeduplication:
@@ -85,7 +85,7 @@ class TestSearchDeduplication:
         mock_extraction_service.return_value = mock_extraction_service_instance
 
         # Create the search service
-        service = SearchService(user_config)
+        service = SearchContext(user_config)
 
         # Create a message for testing
         message = Message(

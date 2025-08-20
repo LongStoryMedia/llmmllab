@@ -4,7 +4,8 @@ Agentic workflow implementation with dynamic tool generation
 
 import logging
 import asyncio
-from typing import Dict, Optional, List
+from typing import AsyncIterable, Dict, Optional, List
+from datetime import datetime
 
 from langchain_core.tools import BaseTool
 from langchain_core.callbacks.manager import CallbackManagerForToolRun
@@ -17,7 +18,9 @@ from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
 from models.message_role import MessageRole
 from models.message import Message
+from models.chat_response import ChatResponse
 from server.context.conversation import ConversationContext
+from server.utils.chat.message import to_lc_message
 from runner.pipelines.base_pipeline import BasePipeline
 from runner.pipelines.factory import pipeline_factory
 
@@ -92,156 +95,11 @@ class AgenticWorkflow:
                 **kwargs,
             ) -> List[Memory]:
                 # Use the conversation context to retrieve memories
-                return asyncio.run(conversation_ctx.retrieve_memories(embeddings))
-
-        return MemoryTool()
-
-    async def process_request(self, user_message: Message) -> str:
-        """
-        Process a user request with agentic workflow
-
-        Args:
-            user_message: The user's message
-
-        Returns:
-            str: The response from the agentic workflow
-        """
-        try:
-            # First, determine if we need to generate new tools
-            needs_tool = await self._analyze_tool_needs(user_message)
-
-            if needs_tool:
-                # Extract message content text for tool generation
-                message_text = "\n".join(
-                    [
-                        c.text
-                        for c in user_message.content
-                        if hasattr(c, "text") and c.text
-                    ]
+                return asyncio.run(
+                    conversation_ctx.memory_context.retrieve_memories(embeddings)
                 )
 
-                # Generate a dynamic tool
-                tool = await self.tool_generator.generate_tool(message_text)
-                if tool:
-                    self.dynamic_tools[tool.name] = tool
-                    logger.info(f"Generated dynamic tool for request: {tool.name}")
-
-            # Combine static and dynamic tools
-            all_tools = self.static_tools + list(self.dynamic_tools.values())
-
-            # Create agent prompt
-            agent_prompt = self._create_agent_prompt()
-
-            # Use our adapter to convert the pipeline to an LLM compatible object
-            # We're using structured_chat_agent as it's more flexible and works well with different LLM implementations
-
-            # Create the agent using the adapter
-            agent = create_structured_chat_agent(
-                llm=self.primary_pipeline, tools=all_tools, prompt=agent_prompt
-            )
-
-            # Create agent executor
-            agent_executor = AgentExecutor(
-                agent=agent,
-                tools=all_tools,
-                verbose=True,
-                max_iterations=10,
-                early_stopping_method="generate",
-            )
-
-            # Execute the agent
-            result = await agent_executor.ainvoke(
-                {
-                    "input": user_message,
-                    "chat_history": [],  # Could include conversation history
-                }
-            )
-
-            return result["output"]
-
-        except (ValueError, TypeError, AttributeError) as e:
-            # Handle specific errors
-            error_handler(
-                e,
-                message="Specific error in agentic workflow",
-                context={"user_message": user_message},
-                raise_error=False,
-            )
-            return f"I apologize, but I encountered an error processing your request: {str(e)}"
-        except Exception as e:
-            # Handle unexpected errors
-            error_handler(
-                e,
-                message="Unexpected error in agentic workflow",
-                context={"user_message": user_message},
-                raise_error=False,
-            )
-            return f"I apologize, but I encountered an error processing your request. Our team has been notified."
-
-    async def _analyze_tool_needs(self, user_message: Message) -> bool:
-        """
-        Analyze if the request needs a new dynamic tool
-
-        Args:
-            user_message: The user's message
-
-        Returns:
-            bool: True if a new tool is needed, False otherwise
-        """
-        analysis_prompt = f"""
-Analyze this user request and determine if it requires creating a custom tool/function:
-
-User request: {"\n".join([c.text for c in user_message.content if c.text])}
-
-Consider if the request:
-1. Involves complex calculations or data processing
-2. Requires specific algorithms or logic
-3. Needs custom data transformation
-4. Would benefit from a reusable function
-
-Available static tools:
-- Web search
-- Memory retrieval
-- Basic conversation
-
-Respond with only "YES" if a custom tool would be helpful, "NO" if existing tools are sufficient.
-"""
-
-        try:
-            response = self.primary_pipeline.get(
-                [
-                    Message(
-                        role=MessageRole.USER,
-                        content=[
-                            MessageContent(
-                                type=MessageContentType.TEXT,
-                                text=analysis_prompt,
-                                url=None,
-                            )
-                        ],
-                    )
-                ],
-            )
-            return "YES" in response.upper()
-        except (ValueError, TypeError, AttributeError) as e:
-            # Handle specific errors
-            error_handler(
-                e,
-                message="Specific error analyzing tool needs",
-                context={"user_message": user_message},
-                raise_error=False,
-            )
-            return False
-        except Exception as e:
-            # Handle unexpected errors
-            error_handler(
-                e,
-                message="Unexpected error analyzing tool needs",
-                context={"user_message": user_message},
-                raise_error=False,
-            )
-            logger.warning(f"Defaulting to no tool generation due to error: {e}")
-            return False
+        return MemoryTool()
 
     def _create_agent_prompt(self) -> ChatPromptTemplate:
         """
