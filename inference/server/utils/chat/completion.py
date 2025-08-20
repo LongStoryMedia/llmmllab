@@ -9,7 +9,16 @@ from typing import AsyncIterable, List, Optional, Dict, Any
 
 from fastapi import BackgroundTasks, HTTPException, status
 from fastapi.responses import StreamingResponse
+from langchain.agents.agent_iterator import AgentExecutor
+from langchain.agents.structured_chat.base import (
+    BaseTool,
+    ChatPromptTemplate,
+    create_structured_chat_agent,
+)
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.prompts.chat import MessagesPlaceholder
 
+from models.dynamic_tool import DynamicTool
 from models.message import Message
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
@@ -19,9 +28,38 @@ from models.chat_req import ChatReq
 from server.db import storage
 from server.context.conversation import ConversationContext
 from server.config import logger
-from server.utils.chat.message import extract_message_text
+from server.utils.chat.message import extract_message_text, to_lc_message
 from server.tools.production import ProductionDynamicToolSystem
+from server.tools.dynamic_tool import DynamicToolRunner
+from server.tools.integration import analyze_tool_needs
 from runner.pipelines.factory import pipeline_factory
+
+
+class StreamingCallbackHandler(BaseCallbackHandler):
+    """Callback handler to capture streaming output from LangChain agents."""
+
+    def __init__(self):
+        self.tokens = []
+        self.current_step = ""
+
+    def on_llm_new_token(self, token: str, **kwargs) -> None:
+        """Called when a new token is generated."""
+        self.tokens.append(token)
+
+    def on_agent_action(self, action, **kwargs) -> None:
+        """Called when agent takes an action."""
+        self.current_step = f"Using tool: {action.tool}"
+
+    def on_tool_start(
+        self, serialized: Dict[str, Any], input_str: str, **kwargs
+    ) -> None:
+        """Called when a tool starts running."""
+        tool_name = serialized.get("name", "unknown")
+        self.current_step = f"Running {tool_name}..."
+
+    def on_tool_end(self, output: str, **kwargs) -> None:
+        """Called when a tool finishes."""
+        self.current_step = "Processing results..."
 
 
 async def enhanced_chat_completion_logic(
@@ -170,20 +208,40 @@ async def stream_agentic_response(
     if user_id and tool_system.marketplace:
         yield "🏪 **Marketplace integration enabled - checking for existing tools...**\n"
 
-    # Step 2: Analyze if we need dynamic tools
-    needs_dynamic_tool = await analyze_dynamic_tool_needs(pipeline, user_text)
+    # Step 2: Get available tools and analyze if we need dynamic tools
+    tool_needs = await analyze_tool_needs(user_message, pipeline)
+
+    # List available tools
+    yield "🧰 **Available Tools:**\n"
+    for tool in tool_needs.available_tools:
+        yield f"- {tool.name}: {tool.description} ({tool.type})\n"
 
     dynamic_tool = None
     tool_results = []
 
-    if needs_dynamic_tool:
-        yield "🔍 **Analyzing request for tool generation...**\n"
+    # Check if we need a dynamic tool
+    if tool_needs.needs_dynamic_tool:
+        yield "\n🔍 **Analyzing request for tool generation...**\n"
 
         try:
-            # Use production system to create and validate tool
-            dynamic_tool = await tool_system.create_and_validate_tool(
-                task_description=user_text, user_id=user_id
-            )
+            # If we already have dynamic tool data from analyze_tool_needs
+            if tool_needs.dynamic_tool:
+                # Convert to DynamicTool format for the production system
+
+                dynamic_tool = DynamicToolRunner(tool_needs.dynamic_tool)
+
+                # Validate with production system
+                validated_tool = await tool_system.create_and_validate_tool(
+                    task_description=user_text, user_id=user_id
+                )
+
+                if validated_tool:
+                    dynamic_tool = validated_tool
+            else:
+                # Use production system to create and validate tool
+                dynamic_tool = await tool_system.create_and_validate_tool(
+                    task_description=user_text, user_id=user_id
+                )
 
             if dynamic_tool:
                 # Check if this was from marketplace or newly created
@@ -356,79 +414,91 @@ Please provide a detailed, authoritative response:"""
         yield f"\n\n❌ **Error in response generation:** {str(e)}"
 
 
-async def stream_agentic_response_simple(
-    pipeline, conversation_ctx: ConversationContext, model_profile
+async def stream_agentic_response_with_langchain(
+    pipeline, conversation_ctx: ConversationContext, tools: list[BaseTool]
 ) -> AsyncIterable[str]:
     """
-    Fallback to simple agentic response if ProductionDynamicToolSystem is not available.
-    This is the original simplified implementation.
+    Stream response using LangChain agents, converting to text chunks.
     """
-    user_message = conversation_ctx.current_user_message
-    assert user_message, "User message not found"
-    user_text = extract_message_text(user_message)
-
-    yield "🔧 **Using simplified tool system (production system not available)...**\n\n"
-
-    # Simple tool detection and execution (original implementation)
-    needs_dynamic_tool = await analyze_dynamic_tool_needs(pipeline, user_text)
-
-    dynamic_tool = None
-    tool_results = []
-
-    if needs_dynamic_tool:
-        yield "🛠️ **Generating basic custom tool...**\n"
-        dynamic_tool = await generate_dynamic_tool_streaming(pipeline, user_text)
-
-        if dynamic_tool:
-            yield f"✅ **Created tool: {dynamic_tool['name']}**\n"
-            try:
-                tool_result = await execute_dynamic_tool(dynamic_tool, user_text)
-                tool_results.append(f"Tool result: {tool_result}")
-                yield f"✓ **Tool executed**\n"
-            except Exception as e:
-                yield f"❌ Tool execution failed: {str(e)}\n"
-
-    # Continue with standard tools and response generation...
-    # (Rest of the original implementation)
-    yield "\n📝 **Generating response...**\n\n"
-
-    # Create basic enhanced prompt and stream response
-    enhanced_prompt = f"""User asked: {user_text}
-
-Tool results: {'; '.join(tool_results) if tool_results else 'No tools used'}
-
-Please provide a helpful response."""
-
-    req = ChatReq(
-        stream=True,
-        messages=[
-            Message(
-                role=MessageRole.USER,
-                content=[
-                    MessageContent(
-                        type=MessageContentType.TEXT, text=enhanced_prompt, url=None
-                    )
-                ],
-            )
-        ],
-        conversation_id=conversation_ctx.conversation_id,
-        options=model_profile.parameters,
-    )
-
     try:
-        stream = pipeline.run(req)
-        for chunk in stream:
-            if chunk.message and chunk.message.content:
-                text_chunk = "".join(
-                    content_item.text or ""
-                    for content_item in chunk.message.content
-                    if content_item.text
-                )
-                if text_chunk:
-                    yield text_chunk
+        # Create callback handler for streaming
+        callback_handler = StreamingCallbackHandler()
+
+        # Create agent prompt
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    """You are a helpful AI assistant with access to tools. 
+             Use the available tools when needed to help answer questions.
+             Explain your reasoning and what tools you're using.""",
+                ),
+                MessagesPlaceholder(variable_name="chat_history"),
+                ("human", "{input}"),
+                MessagesPlaceholder(variable_name="agent_scratchpad"),
+            ]
+        )
+
+        # Create agent
+        agent = create_structured_chat_agent(llm=pipeline, tools=tools, prompt=prompt)
+
+        # Create agent executor
+        agent_executor = AgentExecutor(
+            agent=agent,
+            tools=tools,
+            verbose=True,
+            max_iterations=5,
+            callbacks=[callback_handler],
+        )
+
+        # Get user input
+        user_message = conversation_ctx.current_user_message
+        assert user_message, "User message not found"
+        user_input = extract_message_text(user_message)
+
+        # Convert conversation history to LangChain format
+        chat_history = [
+            to_lc_message(msg)
+            for msg in conversation_ctx.messages[:-1]  # Exclude current message
+        ]
+
+        # Stream the agent execution
+        # Note: astream returns chunks that contain intermediate steps
+        response_text = ""
+
+        # First, yield a thinking indicator
+        yield "[Analyzing your request...]\n\n"
+
+        # Run the agent (this is synchronous, but you could make it async)
+        try:
+            # For streaming, we need to handle this differently
+            # LangChain's astream is complex, so let's simplify
+
+            result = await agent_executor.ainvoke(
+                {"input": user_input, "chat_history": chat_history}
+            )
+
+            # Extract the final response
+            if isinstance(result, dict):
+                output = result.get("output", str(result))
+            else:
+                output = str(result)
+
+            # Stream the response word by word for a more natural feel
+            words = output.split()
+            for i, word in enumerate(words):
+                if i == 0:
+                    yield word
+                else:
+                    yield " " + word
+
+        except Exception as e:
+            logger.error(f"Error in agent execution: {e}")
+            yield f"\n\nI encountered an error: {str(e)}"
+
     except Exception as e:
-        logger.error(f"Error in simple agentic pipeline: {e}")
-        yield f"\n\n❌ **Error:** {str(e)}"
+        logger.error(f"Error setting up agent: {e}")
+        yield f"Error setting up agentic workflow: {str(e)}"
 
 
 def extract_tool_parameters(user_text: str, dynamic_tool) -> dict:
@@ -464,181 +534,6 @@ def extract_tool_parameters(user_text: str, dynamic_tool) -> dict:
         params["input"] = user_text
 
     return params
-
-
-async def analyze_dynamic_tool_needs(pipeline, user_text: str) -> bool:
-    """
-    Use the LLM to determine if the request needs a dynamic tool.
-    """
-    analysis_prompt = f"""Analyze this user request and determine if it requires creating a custom tool/function:
-
-User request: {user_text}
-
-Consider if the request:
-1. Involves complex calculations or data processing that can't be done with basic math
-2. Requires specific algorithms or logic beyond simple operations  
-3. Needs custom data transformation or analysis
-4. Would benefit from a specialized, reusable function
-5. Involves domain-specific processing
-
-Examples that NEED dynamic tools:
-- "Calculate compound interest over 5 years with varying rates"
-- "Analyze this data pattern and find anomalies" 
-- "Create a function to convert between multiple units"
-- "Process this text according to specific formatting rules"
-
-Examples that DON'T need dynamic tools:
-- "What's 2 + 2?" (basic math)
-- "Search for current news" (standard search)
-- "What did we discuss earlier?" (memory retrieval)
-
-Respond with only "YES" if a custom dynamic tool would be helpful, "NO" if standard tools are sufficient."""
-
-    try:
-        req = ChatReq(
-            stream=False,
-            messages=[
-                Message(
-                    role=MessageRole.USER,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT, text=analysis_prompt, url=None
-                        )
-                    ],
-                )
-            ],
-            conversation_id=0,
-        )
-
-        # Use the pipeline to analyze
-        response = pipeline.get(req.messages)
-        return "YES" in response.upper()
-    except Exception as e:
-        logger.warning(f"Error analyzing tool needs: {e}")
-        return False
-
-
-async def generate_dynamic_tool_streaming(
-    pipeline, user_text: str
-) -> Optional[Dict[str, str]]:
-    """
-    Generate a dynamic tool definition using the LLM.
-    """
-    generation_prompt = f"""Create a custom tool/function for this user request:
-
-User request: {user_text}
-
-Generate a tool definition with:
-1. A clear, descriptive name (snake_case, no spaces)
-2. A detailed description of what it does
-3. Python code that implements the functionality
-4. Clear parameter definitions
-
-Format your response as JSON:
-{{
-    "name": "tool_name_here",
-    "description": "Clear description of what this tool does",
-    "code": "def tool_name_here(param1, param2):\\n    # Implementation here\\n    return result",
-    "parameters": ["param1", "param2"]
-}}
-
-Make the tool specific to the user's request but generalizable for similar tasks."""
-
-    try:
-        req = ChatReq(
-            stream=False,
-            messages=[
-                Message(
-                    role=MessageRole.USER,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=generation_prompt,
-                            url=None,
-                        )
-                    ],
-                )
-            ],
-            conversation_id=0,
-        )
-
-        response = pipeline.get(req.messages)
-
-        # Try to extract JSON from response
-        import json
-        import re
-
-        # Look for JSON in the response
-        json_match = re.search(r"\{.*\}", response, re.DOTALL)
-        if json_match:
-            tool_def = json.loads(json_match.group())
-            return tool_def
-
-    except Exception as e:
-        logger.error(f"Error generating dynamic tool: {e}")
-
-    return None
-
-
-async def execute_dynamic_tool(tool_def: Dict[str, str], user_text: str) -> str:
-    """
-    Execute a dynamically generated tool.
-    """
-    try:
-        # Extract parameters from user text (simplified approach)
-        import re
-
-        # Get numbers from the text
-        numbers = re.findall(r"-?\d+(?:\.\d+)?", user_text)
-
-        # Create a safe execution environment
-        exec_globals = {
-            "__builtins__": {
-                "abs": abs,
-                "round": round,
-                "min": min,
-                "max": max,
-                "sum": sum,
-                "len": len,
-                "range": range,
-                "enumerate": enumerate,
-                "str": str,
-                "int": int,
-                "float": float,
-                "bool": bool,
-                "list": list,
-                "dict": dict,
-            },
-            "math": __import__("math"),
-            "re": __import__("re"),
-        }
-
-        # Execute the tool code
-        exec(tool_def["code"], exec_globals)
-
-        # Get the function
-        func_name = tool_def["name"]
-        tool_func = exec_globals[func_name]
-
-        # Prepare arguments (simplified - you'd want better parameter extraction)
-        args = []
-        if numbers:
-            args = [
-                float(n) if "." in n else int(n)
-                for n in numbers[: len(tool_def.get("parameters", []))]
-            ]
-
-        # Execute the tool
-        if args:
-            result = tool_func(*args)
-        else:
-            result = tool_func(user_text)  # Pass the text if no numbers found
-
-        return str(result)
-
-    except Exception as e:
-        logger.error(f"Error executing dynamic tool: {e}")
-        return f"Tool execution failed: {str(e)}"
 
 
 async def stream_standard_response(

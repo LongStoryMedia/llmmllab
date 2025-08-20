@@ -1,11 +1,13 @@
 """
 Caching system for dynamic tools to avoid regeneration
 """
+
 import hashlib
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 
-from .dynamic_tool import DynamicTool
+from .dynamic_tool import DynamicToolRunner
+
 
 class ToolCache:
     """Cache for generated tools to avoid regeneration"""
@@ -18,7 +20,7 @@ class ToolCache:
         """Generate a cache key from task description"""
         return hashlib.md5(task_description.lower().strip().encode()).hexdigest()
 
-    def get_cached_tool(self, task_description: str) -> Optional[DynamicTool]:
+    def get_cached_tool(self, task_description: str) -> Optional[DynamicToolRunner]:
         """Retrieve a cached tool if available and not expired"""
         cache_key = self.get_cache_key(task_description)
 
@@ -28,11 +30,11 @@ class ToolCache:
             # Check if cache is still valid
             if datetime.now() - cached_data["timestamp"] < self.cache_duration:
                 tool_data = cached_data["tool_data"]
-                return DynamicTool(**tool_data)
+                return DynamicToolRunner(**tool_data)
 
         return None
 
-    def cache_tool(self, task_description: str, tool: DynamicTool):
+    def cache_tool(self, task_description: str, tool: DynamicToolRunner):
         """Cache a generated tool"""
         cache_key = self.get_cache_key(task_description)
 
@@ -55,6 +57,6 @@ class ToolCache:
             for key, value in self.cache.items()
             if now - value["timestamp"] > self.cache_duration
         ]
-        
+
         for key in expired_keys:
             del self.cache[key]

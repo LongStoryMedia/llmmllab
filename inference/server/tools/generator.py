@@ -1,11 +1,12 @@
 """
 Tool generation functionality for creating dynamic tools
 """
+
 import logging
 import re
 from typing import Dict, Any, Optional
 
-from .dynamic_tool import DynamicTool
+from .dynamic_tool import DynamicToolRunner
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,7 @@ class DynamicToolGenerator:
 
     def __init__(self, llm):
         self.llm = llm
-        self.generated_tools: Dict[str, DynamicTool] = {}
+        self.generated_tools: Dict[str, DynamicToolRunner] = {}
 
     def generate_tool_prompt(self, task_description: str) -> str:
         """Create a prompt for generating tool code"""
@@ -56,7 +57,7 @@ Also provide:
 Task: {task_description}
 """
 
-    async def generate_tool(self, task_description: str) -> Optional[DynamicTool]:
+    async def generate_tool(self, task_description: str) -> Optional[DynamicToolRunner]:
         """Generate a dynamic tool for the given task"""
         try:
             prompt = self.generate_tool_prompt(task_description)
@@ -72,7 +73,7 @@ Task: {task_description}
                 return None
 
             # Create the dynamic tool
-            tool = DynamicTool(
+            tool = DynamicToolRunner(
                 name=tool_info["name"],
                 description=tool_info["description"],
                 code=tool_info["code"],

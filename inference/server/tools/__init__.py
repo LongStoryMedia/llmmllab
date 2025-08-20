@@ -8,7 +8,7 @@ from typing import Optional
 
 # Export all components needed for integration
 from .security import ToolSecurityValidator
-from .dynamic_tool import DynamicTool
+from .dynamic_tool import DynamicToolRunner
 from .generator import DynamicToolGenerator
 from .caching import ToolCache
 from .learning import ToolLearner
@@ -19,19 +19,19 @@ from .enhanced_generator import EnhancedDynamicToolGenerator
 from .production import ProductionDynamicToolSystem
 from .workflow import AgenticWorkflow
 from .errors import (
-    ToolError, 
+    ToolError,
     ToolExecutionError,
     ToolValidationError,
     ToolCreationError,
     ToolRegistryError,
     log_error,
-    handle_error
+    handle_error,
 )
 from .integration import (
     should_use_agentic_workflow,
     extract_parameters_from_message,
     create_agentic_chat_completion,
-    create_production_agentic_completion
+    create_production_agentic_completion,
 )
 
 # Configure logging
@@ -40,8 +40,8 @@ logger = logging.getLogger(__name__)
 # For backward compatibility
 __all__ = [
     "ToolSecurityValidator",
-    "DynamicTool",
-    "DynamicToolGenerator", 
+    "DynamicToolRunner",
+    "DynamicToolGenerator",
     "ToolCache",
     "ToolLearner",
     "ToolComposer",
@@ -57,7 +57,7 @@ __all__ = [
 ]
 
 # Legacy code has been moved to inference/server/tools/legacy/original_tools.py
-# Import from there if needed for backward compatibility 
+# Import from there if needed for backward compatibility
 
 
 # Example usage in your chat_new.py

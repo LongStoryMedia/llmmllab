@@ -25,7 +25,7 @@ from runner.pipelines.base_pipeline import BasePipeline
 from runner.pipelines.factory import pipeline_factory
 
 from .generator import DynamicToolGenerator
-from .dynamic_tool import DynamicTool
+from .dynamic_tool import DynamicToolRunner
 from .errors import handle_error as error_handler
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ class AgenticWorkflow:
         self.tool_generator: DynamicToolGenerator
         # self.primary_pipeline: BasePipeline
         self.static_tools = []
-        self.dynamic_tools: Dict[str, DynamicTool] = {}
+        self.dynamic_tools: Dict[str, DynamicToolRunner] = {}
 
     async def initialize(self, model_id: str):
         """

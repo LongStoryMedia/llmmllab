@@ -11,12 +11,14 @@ from langchain_core.tools import BaseTool
 from langchain_core.callbacks import CallbackManagerForToolRun
 from pydantic import Field
 
+from models import DynamicTool
+
 from .security import ToolSecurityValidator
 
 logger = logging.getLogger(__name__)
 
 
-class DynamicTool(BaseTool):
+class DynamicToolRunner(BaseTool):
     """Dynamically generated tool that can execute custom code"""
 
     name: str = "dynamic_tool"
@@ -24,6 +26,13 @@ class DynamicTool(BaseTool):
     code: str
     function_name: str
     parameters: Dict[str, Any] = Field(default_factory=dict)
+
+    def __init__(self, dynamic_tool: DynamicTool):
+        self.name = dynamic_tool.name
+        self.description = dynamic_tool.description
+        self.code = dynamic_tool.code
+        self.function_name = dynamic_tool.function_name
+        self.parameters = dynamic_tool.parameters or {}
 
     def _run(
         self, run_manager: Optional[CallbackManagerForToolRun] = None, **kwargs
@@ -92,7 +101,7 @@ class DynamicTool(BaseTool):
             error_buffer = io.StringIO()
 
             with redirect_stdout(output_buffer), redirect_stderr(error_buffer):
-                # Execute the code
+                # pylint: disable-next=exec-used
                 exec(self.code, restricted_globals)
 
                 # Get the function

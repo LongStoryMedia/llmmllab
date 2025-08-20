@@ -4,7 +4,18 @@ Integration helpers for using the dynamic tool system with chat completions
 
 import logging
 import re
-from models import Message, MessageRole, MessageContent, MessageContentType
+import json
+
+from server.utils.chat.message import extract_message_text
+from models import (
+    Message,
+    MessageRole,
+    MessageContent,
+    MessageContentType,
+    ToolNeeds,
+    AvailableTool,
+    DynamicTool,
+)
 from runner.pipelines.base_pipeline import BasePipeline
 
 logger = logging.getLogger(__name__)
@@ -160,24 +171,64 @@ def extract_parameters_from_message(message: str) -> dict:
     return params
 
 
-async def analyze_tool_needs(user_message: Message, pipeline: BasePipeline) -> bool:
+async def analyze_tool_needs(
+    user_message: Message, pipeline: BasePipeline
+) -> ToolNeeds:
     """
-    Analyze if the request needs a new dynamic tool
+    Analyze if the request needs tools and return available tools
     Args:
         user_message: The user's message
+        pipeline: The LLM pipeline to use
     Returns:
-        bool: True if a new tool is needed, False otherwise
+        ToolNeeds: A Pydantic model with the following structure:
+            - available_tools: List of StaticTool objects (name, description, type)
+            - needs_dynamic_tool: Boolean indicating if a dynamic tool is needed
+            - dynamic_tool: DynamicTool object if generated, else None
     """
+    user_message_text = extract_message_text(user_message)
+
+    # Start with static tools that are always available
+    available_tools = [
+        AvailableTool(
+            name="web_search",
+            description="Search the web for information",
+            type="static",
+        ),
+        AvailableTool(
+            name="memory_retrieval",
+            description="Retrieve information from conversation history",
+            type="static",
+        ),
+    ]
+
+    # Initialize the ToolNeeds model
+    result = ToolNeeds(
+        available_tools=available_tools, needs_dynamic_tool=False, dynamic_tool=None
+    )
+
+    # Analyze if a dynamic tool is needed
     analysis_prompt = f"""
 Analyze this user request and determine if it requires creating a custom tool/function:
 
-User request: {"\n".join([c.text for c in user_message.content if c.text])}
+User request: {user_message_text}
 
 Consider if the request:
-1. Involves complex calculations or data processing
-2. Requires specific algorithms or logic
-3. Needs custom data transformation
-4. Would benefit from a reusable function
+1. Involves complex calculations or data processing that can't be done with basic math
+2. Requires specific algorithms or logic beyond simple operations  
+3. Needs custom data transformation or analysis
+4. Would benefit from a specialized, reusable function
+5. Involves domain-specific processing
+
+Examples that NEED dynamic tools:
+- "Calculate compound interest over 5 years with varying rates"
+- "Analyze this data pattern and find anomalies" 
+- "Create a function to convert between multiple units"
+- "Process this text according to specific formatting rules"
+
+Examples that DON'T need dynamic tools:
+- "What's 2 + 2?" (basic math)
+- "Search for current news" (standard search)
+- "What did we discuss earlier?" (memory retrieval)
 
 Available static tools:
 - Web search
@@ -201,4 +252,70 @@ Respond with only "YES" if a custom tool would be helpful, "NO" if existing tool
             )
         ],
     )
-    return "YES" in response.upper()
+
+    needs_dynamic_tool = "YES" in response.upper()
+    result.needs_dynamic_tool = needs_dynamic_tool
+
+    # If a dynamic tool is needed, generate it
+    if needs_dynamic_tool:
+        # Generate the dynamic tool
+        generation_prompt = f"""Create a custom tool/function for this user request:
+
+User request: {user_message_text}
+
+Generate a tool definition with:
+1. A clear, descriptive name (snake_case, no spaces)
+2. A detailed description of what it does
+3. Python code that implements the functionality
+4. Clear parameter definitions
+
+Format your response as JSON that is valid against this json-schema:
+{DynamicTool.model_json_schema()}
+
+Make the tool specific to the user's request but generalizable for similar tasks."""
+
+        tool_response = pipeline.get(
+            [
+                Message(
+                    role=MessageRole.USER,
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT,
+                            text=generation_prompt,
+                            url=None,
+                        )
+                    ],
+                )
+            ],
+        )
+
+        # Parse the JSON response
+        try:
+            # Extract JSON from the response
+            json_match = re.search(
+                r"```json\n(.*?)\n```|```(.*?)```|(\{.*?\})", tool_response, re.DOTALL
+            )
+            if json_match:
+                json_str = (
+                    json_match.group(1) or json_match.group(2) or json_match.group(3)
+                )
+                dynamic_tool_data = json.loads(json_str)
+
+                # Create a DynamicTool Pydantic model
+                dynamic_tool = DynamicTool(**dynamic_tool_data)
+
+                # Set the dynamic tool
+                result.dynamic_tool = dynamic_tool
+
+                # Add the dynamic tool to available tools
+                result.available_tools.append(
+                    AvailableTool(
+                        name=dynamic_tool.name,
+                        description=dynamic_tool.description,
+                        type="dynamic",
+                    )
+                )
+        except Exception as e:
+            logger.error(f"Error parsing dynamic tool response: {e}", exc_info=True)
+
+    return result

@@ -4,6 +4,7 @@
 # Import all model modules
 try:
     from . import auth_config
+    from . import available_tool
     from . import chat_req
     from . import chat_response
     from . import config
@@ -12,6 +13,7 @@ try:
     from . import default_configs
     from . import default_model_profiles
     from . import dev_stats
+    from . import dynamic_tool
     from . import image_generation_config
     from . import image_generation_request
     from . import image_generation_response
@@ -48,6 +50,7 @@ try:
     from . import server_config
     from . import summarization_config
     from . import summary
+    from . import tool_needs
     from . import user
     from . import user_config
     from . import web_search_config
@@ -59,6 +62,7 @@ except ImportError as e:
 # Define what gets imported with 'from models import *'
 __all__ = [
     'auth_config',
+    'available_tool',
     'chat_req',
     'chat_response',
     'config',
@@ -67,6 +71,7 @@ __all__ = [
     'default_configs',
     'default_model_profiles',
     'dev_stats',
+    'dynamic_tool',
     'image_generation_config',
     'image_generation_request',
     'image_generation_response',
@@ -103,17 +108,20 @@ __all__ = [
     'server_config',
     'summarization_config',
     'summary',
+    'tool_needs',
     'user',
     'user_config',
     'web_search_config',
     'web_search_providers',
     'AuthConfig',
+    'AvailableTool',
     'ChatReq',
     'ChatResponse',
     'Config',
     'Conversation',
     'DatabaseConfig',
     'DevStats',
+    'DynamicTool',
     'ImageGenerationConfig',
     'ImageGenerateRequest',
     'ImageGenerateResponse',
@@ -154,6 +162,7 @@ __all__ = [
     'ServerConfig',
     'SummarizationConfig',
     'Summary',
+    'ToolNeeds',
     'User',
     'UserConfig',
     'WebSearchConfig',
@@ -163,6 +172,9 @@ __all__ = [
 # Re-export all model classes for easy importing and IDE autocompletion
 from .auth_config import (
     AuthConfig,
+)
+from .available_tool import (
+    AvailableTool,
 )
 from .chat_req import (
     ChatReq,
@@ -181,6 +193,9 @@ from .database_config import (
 )
 from .dev_stats import (
     DevStats,
+)
+from .dynamic_tool import (
+    DynamicTool,
 )
 from .image_generation_config import (
     ImageGenerationConfig,
@@ -291,6 +306,9 @@ from .summarization_config import (
 )
 from .summary import (
     Summary,
+)
+from .tool_needs import (
+    ToolNeeds,
 )
 from .user import (
     User,

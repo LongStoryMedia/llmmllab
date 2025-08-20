@@ -6,7 +6,7 @@ import logging
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime
 
-from .dynamic_tool import DynamicTool
+from .dynamic_tool import DynamicToolRunner
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class ToolMarketplace:
         self.tool_ratings: Dict[str, List[float]] = {}
         self.tool_tags: Dict[str, List[str]] = {}
 
-    def publish_tool(self, tool: DynamicTool, user_id: str, tags: List[str] = []):
+    def publish_tool(self, tool: DynamicToolRunner, user_id: str, tags: List[str] = []):
         """
         Publish a tool to the marketplace
 
@@ -49,7 +49,7 @@ class ToolMarketplace:
 
         logger.info(f"Published tool to marketplace: {tool.name} by {user_id}")
 
-    def search_tools(self, query: str) -> List[DynamicTool]:
+    def search_tools(self, query: str) -> List[DynamicToolRunner]:
         """
         Search for tools in the marketplace
 
@@ -125,7 +125,7 @@ class ToolMarketplace:
                 tool_data["usage_count"] += 1
                 break
 
-    def get_tool_by_name(self, tool_name: str) -> Optional[DynamicTool]:
+    def get_tool_by_name(self, tool_name: str) -> Optional[DynamicToolRunner]:
         """
         Retrieve a tool by name
 
