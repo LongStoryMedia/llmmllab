@@ -1,0 +1,25 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Pagination Schema
+description: Schema defining pagination parameters and metadata for API responses
+type: object
+properties:
+  total_count:
+    type: integer
+    description: Total number of items available
+    minimum: 0
+  limit:
+    type: integer
+    description: Maximum number of items per page
+    minimum: 1
+  offset:
+    type: integer
+    description: Starting position of the current page
+    minimum: 0
+  has_more:
+    type: boolean
+    description: Indicates whether more items are available beyond the current page
+required:
+  - total_count
+  - limit
+  - offset
+  - has_more

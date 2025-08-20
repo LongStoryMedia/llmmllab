@@ -22,7 +22,7 @@ from models.message import Message
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
 from models.message_role import MessageRole
-from server.context.conversation import ConversationContext
+from server.context.conversation import ConversationContext, SummaryContext
 from server.utils.chat.message import extract_message_text, to_lc_message
 from server.config import logger
 
@@ -40,16 +40,15 @@ class MemoryRetrievalTool(BaseTool):
         "Retrieve relevant information from conversation history using semantic search"
     )
 
-    def __init__(self, memory_context):
+    def __init__(self, conversation_ctx: ConversationContext):
         super().__init__()
-        self.memory_context = memory_context
+        self.memory_context = conversation_ctx.memory_context
 
-    async def _arun(self, query: str, **kwargs) -> str:
+    async def _arun(
+        self, embeddings: List[List[float]], run_manager=None, **kwargs
+    ) -> str:
         """Async implementation for memory retrieval"""
         try:
-            # Get embeddings for the query
-            embeddings = await self._get_query_embeddings(query)
-
             # Retrieve memories
             memories = await self.memory_context.retrieve_memories(embeddings)
 
@@ -60,15 +59,9 @@ class MemoryRetrievalTool(BaseTool):
             logger.error(f"Memory retrieval error: {e}")
             return f"Memory retrieval failed: {str(e)}"
 
-    def _run(self, query: str, **kwargs) -> str:
+    def _run(self, embeddings: List[List[float]], **kwargs) -> str:
         """Sync fallback - not recommended for production"""
-        return "Memory retrieval requires async execution"
-
-    async def _get_query_embeddings(self, query: str):
-        """Get embeddings for the query"""
-        # This would use your embedding pipeline
-        # For now, return empty list as placeholder
-        return []
+        return asyncio.run(self._arun(embeddings, **kwargs))
 
 
 class WebSearchTool(BaseTool):
@@ -77,22 +70,16 @@ class WebSearchTool(BaseTool):
     name = "web_search"
     description = "Search the web for current information and relevant content"
 
-    def __init__(self, search_context):
+    def __init__(self, conversation_ctx: ConversationContext):
         super().__init__()
-        self.search_context = search_context
+        self.search_context = conversation_ctx.search_context
 
-    async def _arun(self, query: str, **kwargs) -> str:
+    async def _arun(self, query: Message, run_manager=None, **kwargs) -> str:
         """Async implementation for web search"""
         try:
-            # Create a mock message for search
-            search_message = Message(
-                role=MessageRole.USER,
-                content=[MessageContent(type=MessageContentType.TEXT, text=query)],
-            )
-
             # Perform search
             results = await self.search_context.search(
-                search_message, kwargs.get("conversation_id", 0)
+                query, kwargs.get("conversation_id", 0)
             )
 
             if results:
@@ -102,9 +89,9 @@ class WebSearchTool(BaseTool):
             logger.error(f"Web search error: {e}")
             return f"Web search failed: {str(e)}"
 
-    def _run(self, query: str, **kwargs) -> str:
+    def _run(self, query: Message, **kwargs) -> str:
         """Sync fallback"""
-        return "Web search requires async execution"
+        return asyncio.run(self._arun(query, **kwargs))
 
 
 class SummarizationTool(BaseTool):
@@ -113,41 +100,15 @@ class SummarizationTool(BaseTool):
     name = "summarization"
     description = "Summarize conversation history to maintain context"
 
-    def __init__(self, summary_context):
+    def __init__(self, conversation_ctx: ConversationContext):
         super().__init__()
-        self.summary_context = summary_context
+        self.summary_context = conversation_ctx.summary_context
 
-    async def _arun(self, messages: str, **kwargs) -> str:
+    async def _arun(self, messages: List, run_manager=None, **kwargs) -> str:
         """Async implementation for summarization"""
         try:
-            # Parse messages if they're JSON string
-            if isinstance(messages, str):
-                try:
-                    parsed_messages = json.loads(messages)
-                    # Convert to Message objects if needed
-                    if isinstance(parsed_messages, list):
-                        message_objects = []
-                        for msg in parsed_messages:
-                            if isinstance(msg, dict):
-                                message_objects.append(Message(**msg))
-                            else:
-                                message_objects.append(msg)
-                        messages = message_objects
-                except json.JSONDecodeError:
-                    # If not JSON, treat as single message
-                    messages = [
-                        Message(
-                            role=MessageRole.USER,
-                            content=[
-                                MessageContent(
-                                    type=MessageContentType.TEXT, text=messages
-                                )
-                            ],
-                        )
-                    ]
-
             # Perform summarization
-            summary = await self.summary_context.summarize(messages)
+            await self.summary_context.summarize(messages)
 
             if summary:
                 return f"Conversation summary: {summary}"

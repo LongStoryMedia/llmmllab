@@ -27,6 +27,7 @@ class SummaryContext:
 
     summaries: List[Summary]
     master_summary: Optional[Summary]
+    is_summarized: bool
 
     def __init__(self, user_cfg: UserConfig, conversation_id: int):
         """
@@ -42,6 +43,7 @@ class SummaryContext:
         self.logger = logger
         self.summaries = []
         self.master_summary = None
+        self.is_summarized = False
 
     async def load_summaries(self) -> None:
         """

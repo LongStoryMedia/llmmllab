@@ -20,7 +20,7 @@ from server.auth import get_request_id, get_user_id, is_admin
 from server.utils.chat.message import extract_message_text
 from server.config import logger
 
-from .intent import Intent, detect_intent
+from .intent import Intent
 from ..db import storage
 from .search import SearchContext
 from .memory import MemoryContext
@@ -127,7 +127,7 @@ class ConversationContext:
         """
         # Detect intent from the message
         if message.role == MessageRole.USER:
-            self.intent = detect_intent(message, self.user_config)
+            self.intent.detect(message, self.user_config)
 
         # Store message in database
         message_id = await storage.get_service(storage.message).add_message(

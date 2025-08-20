@@ -60,6 +60,7 @@ from server.routers import (
 )
 from server.auth import AuthMiddleware
 from server.config import API_VERSION
+from server.db.maintenance import maintenance_service
 
 # from server.routers.openai_compatible import (
 #     cleanup_vllm_service,
@@ -177,6 +178,20 @@ async def lifespan(_: FastAPI):
                 schema_initialized = await initialize_database(storage.pool)
                 if schema_initialized:
                     print("Database schema initialized successfully")
+
+                    # Initialize and start the database maintenance service
+                    # Set interval to 24 hours by default (can be configured via environment variable)
+                    maintenance_interval = int(
+                        os.environ.get("DB_MAINTENANCE_INTERVAL_HOURS", "24")
+                    )
+                    print(
+                        f"Initializing database maintenance service with {maintenance_interval} hour interval"
+                    )
+                    await maintenance_service.initialize(
+                        storage.pool, maintenance_interval
+                    )
+                    await maintenance_service.start_maintenance_schedule()
+                    print("Database maintenance service started")
                 else:
                     print("Failed to initialize database schema")
                     # If schema initialization failed, don't consider the storage initialized
@@ -315,6 +330,14 @@ async def lifespan(_: FastAPI):
     finally:
         # Shutdown: clean up resources
         print("Shutting down services...")
+
+        # Stop database maintenance service if running
+        try:
+            print("Stopping database maintenance service...")
+            await maintenance_service.stop_maintenance_schedule()
+            print("Database maintenance service stopped")
+        except Exception as e:
+            print(f"Error stopping database maintenance service: {e}")
 
         # Stop vLLM service
         try:
@@ -527,8 +550,10 @@ app.include_router(users.router)
 
 # Import and include the internal router
 from server.routers import internal
+from server.routers import db_admin
 
 app.include_router(internal.router)
+app.include_router(db_admin.router)
 
 # Include versioned routers
 version = API_VERSION
