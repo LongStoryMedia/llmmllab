@@ -17,48 +17,51 @@ class Intent:
     memory: bool
     deep_research: bool
     image_generation: bool
+    statically_discovered: bool
 
     def __init__(self):
         self.web_search = False
         self.memory = False
         self.deep_research = False
         self.image_generation = False
+        self.statically_discovered = False
 
+    def detect(self, message: Message, user_config: UserConfig) -> "Intent":
+        """
+        Detect the intent of a user message.
 
-def detect_intent(message: Message, user_config: UserConfig) -> Intent:
-    """
-    Detect the intent of a user message.
+        Args:
+            message: User message to analyze
+            user_config: User configuration that may affect intent detection
 
-    Args:
-        message: User message to analyze
-        user_config: User configuration that may affect intent detection
+        Returns:
+            Intent object with flags set based on the message content
+        """
+        if self.statically_discovered:
+            return self
 
-    Returns:
-        Intent object with flags set based on the message content
-    """
-    intent = Intent()
+        # Extract text from message
+        text_content = extract_message_text(message)
 
-    # Extract text from message
-    text_content = extract_message_text(message)
+        # Check web search intent
+        if user_config.web_search.enabled:
+            self.web_search = should_search_web(text_content)
 
-    # Check web search intent
-    if user_config.web_search.enabled:
-        intent.web_search = should_search_web(text_content)
+        # Check memory retrieval intent
+        if user_config.memory.always_retrieve:
+            self.memory = True
+        elif user_config.memory.enabled:
+            self.memory = should_retrieve_memories(text_content)
 
-    # Check memory retrieval intent
-    if user_config.memory.always_retrieve:
-        intent.memory = True
-    elif user_config.memory.enabled:
-        intent.memory = should_retrieve_memories(text_content)
+        # Check image generation intent
+        if user_config.image_generation.enabled:
+            self.image_generation = should_generate_image(text_content)
 
-    # Check image generation intent
-    if user_config.image_generation.enabled:
-        intent.image_generation = should_generate_image(text_content)
+        # Log the detected intent
+        logger.info(f"Detected intent: {vars(self)}")
+        self.statically_discovered = True
 
-    # Log the detected intent
-    logger.info(f"Detected intent: {vars(intent)}")
-
-    return intent
+        return self
 
 
 def should_search_web(text: str) -> bool:

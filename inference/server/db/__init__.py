@@ -17,6 +17,7 @@ from .model_storage import ModelStorage
 from .summary_storage import SummaryStorage
 from .memory_storage import MemoryStorage
 from .search_storage import SearchStorage
+from .dynamic_tool_storage import DynamicToolStorage
 from .queries import get_query
 from typing import Optional, Protocol, Any, Callable, cast
 
@@ -44,6 +45,7 @@ class Storage:
         self.summary = None
         self.memory = None
         self.search = None
+        self.dynamic_tool = None
         self.get_query = get_query
         self.initialized = False
 
@@ -66,6 +68,7 @@ class Storage:
             self.summary = SummaryStorage(self.pool, get_query)
             self.memory = MemoryStorage(self.pool, get_query)
             self.search = SearchStorage(self.pool, get_query)
+            self.dynamic_tool = DynamicToolStorage(self.pool, get_query)
 
             self.initialized = True
             logger.info("Storage components initialized successfully")

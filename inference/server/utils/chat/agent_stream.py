@@ -15,6 +15,8 @@ from langchain_core.tools import BaseTool
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnableParallel
+from langchain_core.messages import AIMessageChunk
 
 from models.chat_req import ChatReq
 from models.chat_response import ChatResponse
@@ -22,12 +24,22 @@ from models.message import Message
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
 from models.message_role import MessageRole
+from pipelines.base_pipeline import BasePipeline
 from server.context.conversation import ConversationContext
-from server.utils.chat.message import extract_message_text, to_lc_message
+from server.utils.chat.message import (
+    extract_message_text,
+    to_lc_message,
+    from_lc_message,
+)
 from server.config import logger
+from server.db import storage
+from server.tools.rag_tools import MemoryRetrievalTool, WebSearchTool, SummarizationTool
+from server.tools.integration import get_tools
+from server.tools.dynamic_tool import DynamicToolRunner
+from runner.pipelines.factory import pipeline_factory
 
 
-async def enhanced_chat_completion_logic(
+async def agent_chat_completion(
     conversation_ctx: ConversationContext,
     background_tasks: Optional[BackgroundTasks] = None,
 ) -> StreamingResponse:
@@ -49,7 +61,7 @@ async def enhanced_chat_completion_logic(
     )
 
     return StreamingResponse(
-        stream_langchain_response(
+        stream_agentic_response(
             conversation_ctx=conversation_ctx,
             use_agentic=use_agentic,
             background_tasks=background_tasks,
@@ -58,7 +70,7 @@ async def enhanced_chat_completion_logic(
     )
 
 
-async def stream_langchain_response(
+async def stream_agentic_response(
     conversation_ctx: ConversationContext,
     use_agentic: bool,
     background_tasks: Optional[BackgroundTasks] = None,
@@ -77,8 +89,6 @@ async def stream_langchain_response(
             else conversation_ctx.user_config.model_profiles.primary_profile_id
         )
 
-        from server.db import storage
-
         model_profile = await storage.get_service(
             storage.model_profile
         ).get_model_profile_by_id(profile_id, conversation_ctx.user_config.user_id)
@@ -88,28 +98,25 @@ async def stream_langchain_response(
 
         model_name = model_profile.name
 
-        # Get pipeline
-        from runner.pipelines.factory import pipeline_factory
-
         pipeline, _ = pipeline_factory.get_pipeline(model_name)
 
         if use_agentic:
             # Use LangChain agent with RAG tools
             async for chunk in stream_langchain_agent_response(
-                pipeline, conversation_ctx, model_profile
+                pipeline, conversation_ctx
             ):
                 full_response += chunk
-                yield create_streaming_chunk(chunk, model_name, done=False)
+                yield create_streaming_chunk(chunk, False)
         else:
             # Use LangChain chain for standard response
             async for chunk in stream_langchain_standard_response(
-                pipeline, conversation_ctx, model_profile
+                pipeline, conversation_ctx
             ):
                 full_response += chunk
-                yield create_streaming_chunk(chunk, model_name, done=False)
+                yield create_streaming_chunk(chunk, False)
 
         # Send final done message
-        yield create_streaming_chunk("", model_name, done=True)
+        yield create_streaming_chunk("", True)
 
         # Store response in background
         if background_tasks and full_response.strip():
@@ -128,28 +135,27 @@ async def stream_langchain_response(
 
 
 async def stream_langchain_agent_response(
-    pipeline, conversation_ctx: ConversationContext, model_profile
+    pipeline: BasePipeline, conversation_ctx: ConversationContext
 ) -> AsyncIterable[str]:
     """
     Stream response using LangChain agent with RAG tools integrated.
     """
     user_message = conversation_ctx.current_user_message
+    assert user_message
     user_text = extract_message_text(user_message)
 
     # Create RAG tools
     tools = [
-        MemoryRetrievalTool(conversation_ctx.memory_context),
-        WebSearchTool(conversation_ctx.search_context),
-        SummarizationTool(conversation_ctx.summary_context),
+        MemoryRetrievalTool(conversation_ctx),
+        WebSearchTool(conversation_ctx),
+        SummarizationTool(conversation_ctx),
     ]
 
     # Add any dynamic tools that were created
-    from server.tools.integration import analyze_tool_needs
 
-    tool_needs = await analyze_tool_needs(user_message, pipeline)
+    tool_needs = await get_tools(user_message, pipeline)
 
     if tool_needs.dynamic_tool:
-        from server.tools.dynamic_tool import DynamicToolRunner
 
         dynamic_tool = DynamicToolRunner(tool_needs.dynamic_tool)
         tools.append(dynamic_tool)
@@ -241,13 +247,12 @@ Current conversation context:
 
 
 async def stream_langchain_standard_response(
-    pipeline, conversation_ctx: ConversationContext, model_profile
+    pipeline, conversation_ctx: ConversationContext
 ) -> AsyncIterable[str]:
     """
     Stream response using LangChain chain for standard (non-agentic) responses.
     """
     # Create a simple RAG chain
-    from langchain_core.runnables import RunnableParallel
 
     # Get conversation summary and recent context
     summary = await conversation_ctx.summary_context.get_current_summary()
@@ -331,7 +336,7 @@ def should_use_agentic_workflow(user_text: str) -> bool:
     return any(keyword in user_lower for keyword in agentic_keywords)
 
 
-def create_streaming_chunk(text: str, model_name: str, done: bool = False) -> str:
+def create_streaming_chunk(text: str, done: bool = False) -> str:
     """
     Create a streaming chunk as a JSON ChatResponse.
     """
@@ -349,12 +354,11 @@ def create_streaming_chunk(text: str, model_name: str, done: bool = False) -> st
     response = ChatResponse(
         done=done,
         message=message,
-        model=model_name,
         created_at=dt.now(),
         finish_reason="stop" if done else None,
     )
 
-    return json.dumps(response.dict()) + "\n"
+    return response.model_dump_json() + "\n"
 
 
 def create_error_chunk(error_message: str) -> ChatResponse:
@@ -446,7 +450,6 @@ class PipelineToLangChainLLM:
                 )
                 if text_chunk:
                     # Yield in LangChain-compatible format
-                    from langchain_core.messages import AIMessageChunk
 
                     yield AIMessageChunk(content=text_chunk)
 
@@ -455,7 +458,6 @@ class PipelineToLangChainLLM:
         Convert LangChain messages to ChatReq format.
         """
         # Convert LangChain messages to your Message format
-        from server.utils.chat.message import from_lc_message
 
         converted_messages = []
         if isinstance(messages, str):

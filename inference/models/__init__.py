@@ -39,6 +39,7 @@ try:
     from . import model_profile_config
     from . import model_profile_image_settings
     from . import model_task
+    from . import pagination
     from . import preferences_config
     from . import rabbitmq_config
     from . import redis_config
@@ -97,6 +98,7 @@ __all__ = [
     'model_profile_config',
     'model_profile_image_settings',
     'model_task',
+    'pagination',
     'preferences_config',
     'rabbitmq_config',
     'redis_config',
@@ -146,6 +148,7 @@ __all__ = [
     'ModelProfileConfig',
     'ModelProfileImageSettings',
     'ModelTask',
+    'PaginationSchema',
     'PreferencesConfig',
     'RabbitmqConfig',
     'RedisConfig',
@@ -268,6 +271,9 @@ from .model_profile_image_settings import (
 )
 from .model_task import (
     ModelTask,
+)
+from .pagination import (
+    PaginationSchema,
 )
 from .preferences_config import (
     PreferencesConfig,

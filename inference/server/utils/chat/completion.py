@@ -31,7 +31,7 @@ from server.config import logger
 from server.utils.chat.message import extract_message_text, to_lc_message
 from server.tools.production import ProductionDynamicToolSystem
 from server.tools.dynamic_tool import DynamicToolRunner
-from server.tools.integration import analyze_tool_needs
+from server.tools.integration import get_tools
 from runner.pipelines.factory import pipeline_factory
 
 
@@ -209,7 +209,7 @@ async def stream_agentic_response(
         yield "🏪 **Marketplace integration enabled - checking for existing tools...**\n"
 
     # Step 2: Get available tools and analyze if we need dynamic tools
-    tool_needs = await analyze_tool_needs(user_message, pipeline)
+    tool_needs = await get_tools(user_message, pipeline)
 
     # List available tools
     yield "🧰 **Available Tools:**\n"

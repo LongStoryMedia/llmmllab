@@ -135,7 +135,15 @@ async def initialize_database(connection_pool: Any) -> bool:
                 ),
                 # Step 7: Create image tables
                 ("Creating image tables", [("images.create_images_schema", [])]),
-                # Step 8: Create research tables
+                # Step 8: Create dynamic tools tables
+                (
+                    "Creating dynamic tools tables",
+                    [
+                        ("tool.create_tool_table", []),
+                        ("tool.create_embedding_index", ["vector"]),
+                    ],
+                ),
+                # Step 9: Create research tables
                 (
                     "Creating research tables",
                     [
@@ -143,7 +151,7 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("research.create_research_subtasks_table", []),
                     ],
                 ),
-                # Step 9: Create search tables
+                # Step 10: Create search tables
                 (
                     "Creating search tables",
                     [

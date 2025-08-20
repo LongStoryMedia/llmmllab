@@ -5,7 +5,15 @@ Integration helpers for using the dynamic tool system with chat completions
 import logging
 import re
 import json
+from typing import Sequence
 
+from langchain_community.tools import BaseTool
+
+from inference.server.tools.dynamic_tool import DynamicToolRunner
+from runner.pipelines.factory import pipeline_factory
+from server.db import storage
+from server.tools.rag_tools import WebSearchTool, MemoryRetrievalTool, SummarizationTool
+from server.context.conversation import ConversationContext
 from server.utils.chat.message import extract_message_text
 from models import (
     Message,
@@ -16,7 +24,6 @@ from models import (
     AvailableTool,
     DynamicTool,
 )
-from runner.pipelines.base_pipeline import BasePipeline
 
 logger = logging.getLogger(__name__)
 
@@ -171,40 +178,39 @@ def extract_parameters_from_message(message: str) -> dict:
     return params
 
 
-async def analyze_tool_needs(
-    user_message: Message, pipeline: BasePipeline
-) -> ToolNeeds:
+async def get_tools(conversation_ctx: ConversationContext) -> Sequence[BaseTool]:
     """
     Analyze if the request needs tools and return available tools
     Args:
-        user_message: The user's message
-        pipeline: The LLM pipeline to use
+        conversation_ctx: The conversation context containing memory and search contexts
     Returns:
         ToolNeeds: A Pydantic model with the following structure:
             - available_tools: List of StaticTool objects (name, description, type)
             - needs_dynamic_tool: Boolean indicating if a dynamic tool is needed
             - dynamic_tool: DynamicTool object if generated, else None
     """
-    user_message_text = extract_message_text(user_message)
 
-    # Start with static tools that are always available
-    available_tools = [
-        AvailableTool(
-            name="web_search",
-            description="Search the web for information",
-            type="static",
-        ),
-        AvailableTool(
-            name="memory_retrieval",
-            description="Retrieve information from conversation history",
-            type="static",
-        ),
-    ]
+    user_message = conversation_ctx.current_user_message
+    assert user_message, "No user message found in conversation context"
 
-    # Initialize the ToolNeeds model
-    result = ToolNeeds(
-        available_tools=available_tools, needs_dynamic_tool=False, dynamic_tool=None
+    mp = await storage.get_service(storage.model_profile).get_model_profile_by_id(
+        conversation_ctx.user_config.model_profiles.analysis_profile_id,
+        conversation_ctx.user_config.user_id,
     )
+    assert mp, "Model profile not found"
+
+    pipeline, _ = pipeline_factory.get_pipeline(mp.name)
+
+    tools: Sequence[BaseTool] = []
+
+    tools.append(SummarizationTool(conversation_ctx))
+
+    if conversation_ctx.intent.web_search:
+        tools.append(WebSearchTool(conversation_ctx))
+    if conversation_ctx.intent.memory:
+        tools.append(MemoryRetrievalTool(conversation_ctx))
+
+    user_message_text = extract_message_text(user_message)
 
     # Analyze if a dynamic tool is needed
     analysis_prompt = f"""
@@ -230,12 +236,8 @@ Examples that DON'T need dynamic tools:
 - "Search for current news" (standard search)
 - "What did we discuss earlier?" (memory retrieval)
 
-Available static tools:
-- Web search
-- Memory retrieval
-- Basic conversation
-
-Respond with only "YES" if a custom tool would be helpful, "NO" if existing tools are sufficient.
+Respond with only "NO" if existing tools are sufficient.
+If a dynamic tool is needed, describe its purpose and functionality in less than 50 words, and only provide the tool definition, without any additional context.
 """
 
     response = pipeline.get(
@@ -251,17 +253,37 @@ Respond with only "YES" if a custom tool would be helpful, "NO" if existing tool
                 ],
             )
         ],
+        mp.parameters,
     )
 
-    needs_dynamic_tool = "YES" in response.upper()
-    result.needs_dynamic_tool = needs_dynamic_tool
+    needs_dynamic_tool = response.upper() != "NO" and len(response.split()) > 5
 
     # If a dynamic tool is needed, generate it
     if needs_dynamic_tool:
-        # Generate the dynamic tool
-        generation_prompt = f"""Create a custom tool/function for this user request:
+        description = response.strip()
+        embedding_profile = await storage.get_service(
+            storage.model_profile
+        ).get_model_profile_by_id(
+            conversation_ctx.user_config.model_profiles.embedding_profile_id,
+            conversation_ctx.user_config.user_id,
+        )
+        assert embedding_profile, "Embedding profile not found"
+        embedding_pipeline, _ = pipeline_factory.get_pipeline(embedding_profile.name)
+        embedding = await embedding_pipeline.emb(description, True, 768)
+        # first see if there are tools that exist which meet the need
+        existing_tools, _ = await storage.get_service(
+            storage.dynamic_tool
+        ).search_tools_by_embedding(embedding[0])
+
+        if existing_tools:
+            et = DynamicToolRunner(existing_tools[0])
+            tools.append(et)
+        else:
+            # Generate the dynamic tool
+            generation_prompt = f"""Create a custom tool/function for this user request:
 
 User request: {user_message_text}
+Tool description: {description}
 
 Generate a tool definition with:
 1. A clear, descriptive name (snake_case, no spaces)
@@ -274,48 +296,54 @@ Format your response as JSON that is valid against this json-schema:
 
 Make the tool specific to the user's request but generalizable for similar tasks."""
 
-        tool_response = pipeline.get(
-            [
-                Message(
-                    role=MessageRole.USER,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=generation_prompt,
-                            url=None,
-                        )
-                    ],
-                )
-            ],
-        )
-
-        # Parse the JSON response
-        try:
-            # Extract JSON from the response
-            json_match = re.search(
-                r"```json\n(.*?)\n```|```(.*?)```|(\{.*?\})", tool_response, re.DOTALL
+            engineering_profile = await storage.get_service(
+                storage.model_profile
+            ).get_model_profile_by_id(
+                conversation_ctx.user_config.model_profiles.engineering_profile_id,
+                conversation_ctx.user_config.user_id,
             )
-            if json_match:
-                json_str = (
-                    json_match.group(1) or json_match.group(2) or json_match.group(3)
-                )
-                dynamic_tool_data = json.loads(json_str)
+            assert engineering_profile, "Engineering profile not found"
+            engineering_pipeline, _ = pipeline_factory.get_pipeline(
+                engineering_profile.name
+            )
 
-                # Create a DynamicTool Pydantic model
-                dynamic_tool = DynamicTool(**dynamic_tool_data)
-
-                # Set the dynamic tool
-                result.dynamic_tool = dynamic_tool
-
-                # Add the dynamic tool to available tools
-                result.available_tools.append(
-                    AvailableTool(
-                        name=dynamic_tool.name,
-                        description=dynamic_tool.description,
-                        type="dynamic",
+            tool_response = engineering_pipeline.get(
+                [
+                    Message(
+                        role=MessageRole.USER,
+                        content=[
+                            MessageContent(
+                                type=MessageContentType.TEXT,
+                                text=generation_prompt,
+                                url=None,
+                            )
+                        ],
                     )
-                )
-        except Exception as e:
-            logger.error(f"Error parsing dynamic tool response: {e}", exc_info=True)
+                ],
+                engineering_profile.parameters,
+            )
 
-    return result
+            # Parse the JSON response
+            try:
+                # Extract JSON from the response
+                json_match = re.search(
+                    r"```json\n(.*?)\n```|```(.*?)```|(\{.*?\})",
+                    tool_response,
+                    re.DOTALL,
+                )
+                if json_match:
+                    json_str = (
+                        json_match.group(1)
+                        or json_match.group(2)
+                        or json_match.group(3)
+                    )
+                    dynamic_tool_data = json.loads(json_str)
+
+                    # Create a DynamicTool Pydantic model
+                    dynamic_tool = DynamicTool(**dynamic_tool_data)
+
+                    tools.append(DynamicToolRunner(dynamic_tool))
+            except Exception as e:
+                logger.error(f"Error parsing dynamic tool response: {e}", exc_info=True)
+
+    return tools
