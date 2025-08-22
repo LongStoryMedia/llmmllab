@@ -3,20 +3,21 @@ Conversation Context Manager for RAG functionality.
 Handles conversation state, summarization, and retrieval of relevant context.
 """
 
+import logging
 from typing import List, Optional, Tuple
 from fastapi import HTTPException, Request, status
 
 from runner.pipelines.base_pipeline import Embeddings
 from runner.pipelines.factory import pipeline_factory
 
-from models.chat_req import ChatReq
 from models.message import Message
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
 from models.message_role import MessageRole
 from models.user_config import UserConfig
 from models.image_metadata import ImageMetadata
-from server.auth import get_request_id, get_user_id, is_admin
+from models.conversation import Conversation
+from server.auth import get_request_id, get_user_id
 from server.utils.chat.message import extract_message_text
 from server.config import logger
 
@@ -36,8 +37,9 @@ class ConversationContext:
     messages: List[Message]
     notes: List[str]
     images: List[ImageMetadata]
-    conversation_id: int
+    conversation: Conversation
     current_user_message: Optional[Message]
+    conversation_ctx: int
 
     def __init__(
         self,
@@ -56,7 +58,6 @@ class ConversationContext:
         """
         # Core conversation metadata
         self.conversation_id = conversation_id
-        self.title = ""
 
         # Conversation content
         self.current_user_message = None
@@ -66,8 +67,7 @@ class ConversationContext:
         self.user_config = user_config
 
         # Set up logging
-        self.logger = logger
-        self.logger.name = "ConversationContext"
+        self.logger = logging.getLogger("ConversationContext")
 
         # Initialize context services
         self.summary_context = SummaryContext(
@@ -84,6 +84,28 @@ class ConversationContext:
     # Private Methods - Helper methods for internal use
     # -------------------------------------------------------------------------
 
+    def create_system_prompt(
+        self, system_prompt_base: str, dynamic_tool_info: str
+    ) -> str:
+        """
+        Creates a system prompt
+        """
+        prompt = system_prompt_base or "You are a helpful assistant."
+
+        if dynamic_tool_info:
+            prompt += f"\n\nAvailable tools:\n{dynamic_tool_info}\n\nUse these tools strategically to provide comprehensive, accurate responses. Always explain your reasoning and cite your sources when using retrieved information."
+
+        if self.user_config.memory.enabled:
+            prompt += f"\n\nRelevant memories:\n{self.memory_context.memory}"
+
+        if self.user_config.web_search.enabled:
+            prompt += f"\n\nResearch findings:\n{self.search_context.research_findings}"
+
+        if self.user_config.summarization.enabled:
+            prompt += f"\n\nConversation summary:\n{self.summary_context.full_summary}"
+
+        return prompt
+
     async def load_conversation_data(self) -> None:
         """
         Load all conversation data from storage (conversation details, messages, and summaries).
@@ -91,11 +113,11 @@ class ConversationContext:
         """
         # Get conversation details
         try:
-            conversation = await storage.get_service(
-                storage.conversation
-            ).get_conversation(self.conversation_id)
-            if conversation:
-                self.title = conversation.title
+            convo = await storage.get_service(storage.conversation).get_conversation(
+                self.conversation_id
+            )
+            if convo:
+                self.conversation = convo
         except Exception as e:
             self.logger.error(f"Error loading conversation details: {e}")
             # Continue - we can still work with other data
@@ -127,14 +149,11 @@ class ConversationContext:
         """
         # Detect intent from the message
         if message.role == MessageRole.USER:
+            self.current_user_message = message
             self.intent.detect(message, self.user_config)
 
         # Store message in database
-        message_id = await storage.get_service(storage.message).add_message(
-            self.conversation_id,
-            message.role.value,
-            message.content,
-        )
+        message_id = await storage.get_service(storage.message).add_message(message)
 
         # Update message ID and add to messages list
         if message_id:
@@ -155,7 +174,7 @@ class ConversationContext:
         if text:
             try:
                 # Get embedding pipeline from factory
-                embedding_pipeline, _ = pipeline_factory.get_pipeline(mp.name)
+                embedding_pipeline, _ = pipeline_factory.get_pipeline(mp.model_name)
                 return await embedding_pipeline.emb(text, True, 768), message_id
             except Exception as e:
                 self.logger.error(f"Error creating embeddings: {e}")
@@ -181,7 +200,7 @@ class ConversationContext:
                 raise ValueError("Formatting model profile not found")
 
             # Get formatting pipeline from factory
-            formatting_pipeline, _ = pipeline_factory.get_pipeline(mp.name)
+            formatting_pipeline, _ = pipeline_factory.get_pipeline(mp.model_name)
             # Prepare prompt for title generation
             title_prompt = (
                 "Create a short, descriptive title (max 5 words) for this conversation."
@@ -194,7 +213,10 @@ class ConversationContext:
                 ],
             )
             # Run the pipeline to get formatted title - use get method which is sync
-            return formatting_pipeline.get([*self.messages, format_message])
+            title = formatting_pipeline.get([*self.messages, format_message])
+            self.conversation.title = title
+            return title
+
         except Exception as e:
             self.logger.error(f"Error generating conversation title: {e}")
             raise
@@ -202,29 +224,6 @@ class ConversationContext:
     def clear_notes(self) -> None:
         """Clear all notes"""
         self.notes = []
-
-    def get_current_user_message(self, request: ChatReq) -> Optional[Message]:
-        """
-        Get the current user message from a chat request.
-
-        Args:
-            request: The chat request
-
-        Returns:
-            The current user message if found, None otherwise
-        """
-        if not request or not request.messages:
-            return None
-        if self.current_user_message:
-            return self.current_user_message
-
-        # Find the last user message
-        for i in range(len(request.messages) - 1, -1, -1):
-            if request.messages[i].role == MessageRole.USER:
-                self.current_user_message = request.messages[i]
-                return request.messages[i]
-
-        return None
 
 
 async def get_conversation_context_from_request(
@@ -267,35 +266,6 @@ async def get_conversation_context_from_request(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="User config service not properly initialized",
-        ) from e
-
-    # Get model profiles from user config
-    model_profiles = user_config.model_profiles
-
-    # Get profile IDs from user config
-    embedding_profile_id = str(model_profiles.embedding_profile_id)
-    summarization_profile_id = str(model_profiles.summarization_profile_id)
-
-    logger.info(f"Using embedding profile: {embedding_profile_id}")
-    logger.info(f"Using summarization profile: {summarization_profile_id}")
-
-    # Verify conversation exists and user has access
-    try:
-        conversation = await storage.get_service(storage.conversation).get_conversation(
-            conversation_id
-        )
-        if not conversation or (
-            conversation.user_id != user_id and not is_admin(request)
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to access this conversation",
-            )
-    except AttributeError as e:
-        logger.error(f"Error accessing conversation service: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Conversation service not properly initialized",
         ) from e
 
     # Initialize conversation context

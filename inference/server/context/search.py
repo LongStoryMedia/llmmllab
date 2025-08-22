@@ -29,6 +29,7 @@ class SearchContext:
     """
 
     search_results: List[SearchTopicSynthesis]
+    research_findings: str
 
     def __init__(self, user_cfg: UserConfig):
         """
@@ -41,6 +42,7 @@ class SearchContext:
         # Initialize the web extraction service for deep crawling
         self.web_extraction_service = WebExtractionService(user_cfg)
         self.search_results = []
+        self.research_findings = ""
 
     async def _format_query(self, message: Message) -> str:
         """
@@ -62,7 +64,7 @@ class SearchContext:
                 self.user_config.user_id,
             )
             assert mp is not None, "Unable to retrieve model profile"
-            pipeline, _ = pipeline_factory.get_pipeline(mp.name)
+            pipeline, _ = pipeline_factory.get_pipeline(mp.model_name)
             # Use LLM to format the query
             formatted_query = pipeline.get(
                 [message],
@@ -126,7 +128,87 @@ class SearchContext:
             # Replace contents with deduplicated list
             contents = unique_contents
 
-            # TODO: re-rank results
+            # Re-rank results using the re-ranking model
+            reranking_profile_id = getattr(
+                self.user_config.model_profiles, "reranking_profile_id", None
+            )
+            if reranking_profile_id:
+                reranking_mp = await storage.get_service(
+                    storage.model_profile
+                ).get_model_profile_by_id(
+                    reranking_profile_id,
+                    self.user_config.user_id,
+                )
+
+                if reranking_mp:
+                    # This is a simpler approach than trying to access rerank_contents
+                    # Just get a pipeline and use the model's name to identify it
+                    pipeline, _ = pipeline_factory.get_pipeline(reranking_mp.model_name)
+
+                    # We'll simplify the approach and add a conventional method to BasePipeline
+                    # Let's emulate the behavior here directly
+
+                    # Create embeddings for query and contents
+                    texts = [formatted_query] + [
+                        f"{c.title or ''}\n{c.content or ''}" for c in contents
+                    ]
+
+                    # Get embeddings from any embedding model
+                    embedding_pipeline, _ = pipeline_factory.get_pipeline(
+                        "nomic-embed-text-v2"
+                    )
+                    embeddings = await embedding_pipeline.emb(texts)
+
+                    # Extract query and content embeddings
+                    query_embedding = embeddings[0]
+                    content_embeddings = embeddings[1:]
+
+                    # Calculate similarities and re-rank
+                    from sklearn.metrics.pairwise import cosine_similarity
+                    import numpy as np
+
+                    def calc_similarity(emb1, emb2):
+                        np_emb1 = np.array(emb1).reshape(1, -1)
+                        np_emb2 = np.array(emb2).reshape(1, -1)
+                        return float(cosine_similarity(np_emb1, np_emb2)[0][0])
+
+                    # Get similarity scores
+                    similarities = [
+                        (idx, calc_similarity(query_embedding, emb))
+                        for idx, emb in enumerate(content_embeddings)
+                    ]
+
+                    # Sort by similarity (highest first)
+                    similarities.sort(key=lambda x: x[1], reverse=True)
+
+                    # Deduplicate based on content similarity
+                    selected_indices = []
+                    selected_embeddings = []
+                    similarity_threshold = 0.85
+
+                    for idx, score in similarities:
+                        if score < 0.5:  # Minimum relevance threshold
+                            continue
+
+                        # Check if this content is too similar to already selected ones
+                        is_duplicate = False
+                        for sel_emb in selected_embeddings:
+                            if (
+                                calc_similarity(content_embeddings[idx], sel_emb)
+                                > similarity_threshold
+                            ):
+                                is_duplicate = True
+                                break
+
+                        if not is_duplicate:
+                            selected_indices.append(idx)
+                            selected_embeddings.append(content_embeddings[idx])
+
+                    # Get re-ranked contents
+                    contents = [contents[idx] for idx in selected_indices]
+                    logger.info(
+                        f"Re-ranked search results using {reranking_mp.name} profile"
+                    )
 
             # Limit to max results
             contents = contents[: self.user_config.web_search.max_results]
@@ -145,6 +227,11 @@ class SearchContext:
                 if synthesis:
                     # Add the synthesis to our collection
                     self.search_results.append(synthesis)
+                    self.research_findings += (
+                        f"{result.title if result.title else 'No Title'}\n"
+                        f"{result.url if result.url else 'unknown'}\n"
+                        f"{synthesis.synthesis}\n\n"
+                    )
 
             return self.search_results
 

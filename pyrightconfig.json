@@ -1,12 +1,12 @@
 {
     "include": [
-        "inference",
-        "maistro",
-        "ui"
+        "inference/server"
     ],
     "exclude": [
         "**/node_modules",
-        "**/__pycache__"
+        "**/__pycache__",
+        "**/venv",
+        "**/.venv"
     ],
     "typeCheckingMode": "basic",
     "reportMissingImports": true,

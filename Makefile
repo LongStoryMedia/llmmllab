@@ -56,5 +56,19 @@ sync-inference:
 	rsync -avzr --exclude="venv" root@lsnode-3:/data/code-base/config ./inference/s-config
 	rsync -avzru --delete --exclude="venv" ./inference/* root@lsnode-3:/data/code-base
 
-.PHONY: inference maistro ui
+validate:
+	@echo "Validating TypeScript in UI project..."
+	@cd ui && npx tsc --noEmit
+	@echo "Validating Python syntax in inference project..."
+	@python -m compileall -q -x '(venv|\.venv)' ./inference
+	@echo "Checking for Python type errors using Pyright (VSCode's Pylance engine)..."
+	@if command -v pyright >/dev/null 2>&1; then \
+		pyright -p ./pyrightconfig.json; \
+	else \
+		echo "Pyright not found. Installing..."; \
+		npm install -g pyright && pyright -p ./pyrightconfig.json; \
+	fi
+	@echo "Validation complete!"
+
+.PHONY: inference maistro ui validate
 

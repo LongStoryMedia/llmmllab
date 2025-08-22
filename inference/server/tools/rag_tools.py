@@ -35,11 +35,6 @@ from server.config import logger
 class MemoryRetrievalTool(BaseTool):
     """Tool for retrieving conversation memories using embeddings"""
 
-    name = "memory_retrieval"
-    description = (
-        "Retrieve relevant information from conversation history using semantic search"
-    )
-
     def __init__(self, conversation_ctx: ConversationContext):
         super().__init__()
         self.memory_context = conversation_ctx.memory_context
@@ -66,9 +61,6 @@ class MemoryRetrievalTool(BaseTool):
 
 class WebSearchTool(BaseTool):
     """Tool for web search functionality"""
-
-    name = "web_search"
-    description = "Search the web for current information and relevant content"
 
     def __init__(self, conversation_ctx: ConversationContext):
         super().__init__()
@@ -97,9 +89,6 @@ class WebSearchTool(BaseTool):
 class SummarizationTool(BaseTool):
     """Tool for conversation summarization"""
 
-    name = "summarization"
-    description = "Summarize conversation history to maintain context"
-
     def __init__(self, conversation_ctx: ConversationContext):
         super().__init__()
         self.summary_context = conversation_ctx.summary_context
@@ -110,8 +99,6 @@ class SummarizationTool(BaseTool):
             # Perform summarization
             await self.summary_context.summarize(messages)
 
-            if summary:
-                return f"Conversation summary: {summary}"
             return "No summary generated"
         except Exception as e:
             logger.error(f"Summarization error: {e}")

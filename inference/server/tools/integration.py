@@ -2,26 +2,28 @@
 Integration helpers for using the dynamic tool system with chat completions
 """
 
+from datetime import datetime
 import logging
 import re
 import json
-from typing import Sequence
+from typing import List, AsyncGenerator, Union
 
 from langchain_community.tools import BaseTool
+from langchain_core.messages import AIMessageChunk
 
-from inference.server.tools.dynamic_tool import DynamicToolRunner
 from runner.pipelines.factory import pipeline_factory
+from server.tools.dynamic_tool import DynamicToolRunner
 from server.db import storage
 from server.tools.rag_tools import WebSearchTool, MemoryRetrievalTool, SummarizationTool
 from server.context.conversation import ConversationContext
-from server.utils.chat.message import extract_message_text
+from server.utils.chat.message import extract_message_text, from_lc_message
 from models import (
+    ChatReq,
+    ChatResponse,
     Message,
     MessageRole,
     MessageContent,
     MessageContentType,
-    ToolNeeds,
-    AvailableTool,
     DynamicTool,
 )
 
@@ -178,20 +180,26 @@ def extract_parameters_from_message(message: str) -> dict:
     return params
 
 
-async def get_tools(conversation_ctx: ConversationContext) -> Sequence[BaseTool]:
+async def get_tools(
+    conversation_ctx: ConversationContext,
+) -> AsyncGenerator[Union[str, List[BaseTool]], None]:
     """
-    Analyze if the request needs tools and return available tools
+    Analyze if the request needs tools and return available tools.
+    This function yields status strings during processing and finally yields the list of tools.
+
     Args:
         conversation_ctx: The conversation context containing memory and search contexts
-    Returns:
-        ToolNeeds: A Pydantic model with the following structure:
-            - available_tools: List of StaticTool objects (name, description, type)
-            - needs_dynamic_tool: Boolean indicating if a dynamic tool is needed
-            - dynamic_tool: DynamicTool object if generated, else None
+
+    Yields:
+        Union[str, List[BaseTool]]:
+            - Status messages as strings during tool processing
+            - The final list of BaseTool instances as the last yield
     """
 
     user_message = conversation_ctx.current_user_message
     assert user_message, "No user message found in conversation context"
+
+    yield create_streaming_chunk("Initializing tool analysis...", False)
 
     mp = await storage.get_service(storage.model_profile).get_model_profile_by_id(
         conversation_ctx.user_config.model_profiles.analysis_profile_id,
@@ -199,16 +207,15 @@ async def get_tools(conversation_ctx: ConversationContext) -> Sequence[BaseTool]
     )
     assert mp, "Model profile not found"
 
-    pipeline, _ = pipeline_factory.get_pipeline(mp.name)
+    yield create_streaming_chunk("Loading analysis pipeline...", False)
+    pipeline, _ = pipeline_factory.get_pipeline(mp.model_name)
 
-    tools: Sequence[BaseTool] = []
-
-    tools.append(SummarizationTool(conversation_ctx))
-
-    if conversation_ctx.intent.web_search:
-        tools.append(WebSearchTool(conversation_ctx))
-    if conversation_ctx.intent.memory:
-        tools.append(MemoryRetrievalTool(conversation_ctx))
+    yield create_streaming_chunk("Preparing standard tools...", False)
+    tools: List[BaseTool] = [
+        MemoryRetrievalTool(conversation_ctx),
+        WebSearchTool(conversation_ctx),
+        SummarizationTool(conversation_ctx),
+    ]
 
     user_message_text = extract_message_text(user_message)
 
@@ -240,6 +247,7 @@ Respond with only "NO" if existing tools are sufficient.
 If a dynamic tool is needed, describe its purpose and functionality in less than 50 words, and only provide the tool definition, without any additional context.
 """
 
+    yield create_streaming_chunk("Analyzing if dynamic tools are needed...", False)
     response = pipeline.get(
         [
             Message(
@@ -260,6 +268,9 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
 
     # If a dynamic tool is needed, generate it
     if needs_dynamic_tool:
+        yield create_streaming_chunk(
+            "Dynamic tool needed, processing request...", False
+        )
         description = response.strip()
         embedding_profile = await storage.get_service(
             storage.model_profile
@@ -268,17 +279,30 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
             conversation_ctx.user_config.user_id,
         )
         assert embedding_profile, "Embedding profile not found"
-        embedding_pipeline, _ = pipeline_factory.get_pipeline(embedding_profile.name)
+
+        yield create_streaming_chunk("Loading embedding pipeline...", False)
+        embedding_pipeline, _ = pipeline_factory.get_pipeline(
+            embedding_profile.model_name
+        )
         embedding = await embedding_pipeline.emb(description, True, 768)
+
+        yield create_streaming_chunk("Searching for existing similar tools...", False)
         # first see if there are tools that exist which meet the need
         existing_tools, _ = await storage.get_service(
             storage.dynamic_tool
         ).search_tools_by_embedding(embedding[0])
 
         if existing_tools:
-            et = DynamicToolRunner(existing_tools[0])
-            tools.append(et)
+            yield create_streaming_chunk(
+                "Found existing tools that match the request...", False
+            )
+            for et in existing_tools:
+                det = DynamicToolRunner(et)
+                tools.append(det)
         else:
+            yield create_streaming_chunk(
+                "No existing tools found, generating a new custom tool...", False
+            )
             # Generate the dynamic tool
             generation_prompt = f"""Create a custom tool/function for this user request:
 
@@ -303,10 +327,14 @@ Make the tool specific to the user's request but generalizable for similar tasks
                 conversation_ctx.user_config.user_id,
             )
             assert engineering_profile, "Engineering profile not found"
+            yield create_streaming_chunk("Loading engineering pipeline...", False)
             engineering_pipeline, _ = pipeline_factory.get_pipeline(
                 engineering_profile.name
             )
 
+            yield create_streaming_chunk(
+                "Generating custom tool implementation...", False
+            )
             tool_response = engineering_pipeline.get(
                 [
                     Message(
@@ -325,6 +353,7 @@ Make the tool specific to the user's request but generalizable for similar tasks
 
             # Parse the JSON response
             try:
+                yield create_streaming_chunk("Parsing tool implementation...", False)
                 # Extract JSON from the response
                 json_match = re.search(
                     r"```json\n(.*?)\n```|```(.*?)```|(\{.*?\})",
@@ -343,7 +372,129 @@ Make the tool specific to the user's request but generalizable for similar tasks
                     dynamic_tool = DynamicTool(**dynamic_tool_data)
 
                     tools.append(DynamicToolRunner(dynamic_tool))
+                    yield create_streaming_chunk(
+                        f"Created custom tool: {dynamic_tool.name}", False
+                    )
+                else:
+                    yield create_streaming_chunk(
+                        "Failed to extract valid JSON for tool creation", False
+                    )
             except Exception as e:
-                logger.error(f"Error parsing dynamic tool response: {e}", exc_info=True)
+                error_msg = f"Error parsing dynamic tool response: {e}"
+                logger.error(error_msg, exc_info=True)
+                yield create_streaming_chunk(f"Error: {error_msg}", False)
 
-    return tools
+    # Final yield with the completed tools list
+    yield tools
+
+
+def create_streaming_chunk(text: str, done: bool = False) -> str:
+    """
+    Create a streaming chunk as a JSON ChatResponse.
+    """
+    message = None
+    if text or not done:
+        message = Message(
+            role=MessageRole.ASSISTANT,
+            content=(
+                [MessageContent(type=MessageContentType.TEXT, text=text)]
+                if text
+                else []
+            ),
+        )
+
+    response = ChatResponse(
+        done=done,
+        message=message,
+        created_at=datetime.now(),
+        finish_reason="stop" if done else None,
+    )
+
+    return response.model_dump_json() + "\n"
+
+
+def create_error_chunk(error_message: str) -> ChatResponse:
+    """
+    Create an error chunk as a ChatResponse.
+    """
+    return ChatResponse(
+        done=True,
+        message=Message(
+            role=MessageRole.ASSISTANT,
+            content=[
+                MessageContent(
+                    type=MessageContentType.TEXT,
+                    text=f"I apologize, but I encountered an error: {error_message}",
+                )
+            ],
+        ),
+        model="error",
+        created_at=datetime.now(),
+        finish_reason="error",
+    )
+
+
+# ============================================================================
+# LangChain-Compatible Pipeline Wrapper
+# ============================================================================
+
+
+class PipelineToLangChainLLM:
+    """
+    Wrapper to make your existing pipeline compatible with LangChain.
+    This allows seamless integration without changing your pipeline architecture.
+    """
+
+    def __init__(self, pipeline):
+        self.pipeline = pipeline
+        self.streaming = True
+
+    async def astream(self, messages, **kwargs):
+        """
+        Stream tokens from the pipeline in LangChain-compatible format.
+        """
+        # Convert LangChain messages to your ChatReq format
+        chat_req = self._convert_to_chat_req(messages, **kwargs)
+
+        # Use your existing pipeline streaming
+        stream = self.pipeline.run(chat_req)
+
+        for chunk in stream:
+            if chunk.message and chunk.message.content:
+                text_chunk = "".join(
+                    content_item.text or ""
+                    for content_item in chunk.message.content
+                    if content_item.text
+                )
+                if text_chunk:
+                    # Yield in LangChain-compatible format
+
+                    yield AIMessageChunk(content=text_chunk)
+
+    def _convert_to_chat_req(self, messages, **kwargs) -> ChatReq:
+        """
+        Convert LangChain messages to ChatReq format.
+        """
+        # Convert LangChain messages to your Message format
+
+        converted_messages = []
+        if isinstance(messages, str):
+            # Single string input
+            converted_messages = [
+                Message(
+                    role=MessageRole.USER,
+                    content=[
+                        MessageContent(type=MessageContentType.TEXT, text=messages)
+                    ],
+                )
+            ]
+        elif isinstance(messages, list):
+            # List of LangChain messages
+            converted_messages = [from_lc_message(msg) for msg in messages]
+
+        return ChatReq(
+            messages=converted_messages,
+            stream=True,
+            conversation_id=kwargs.get("conversation_id", 0),
+            options=kwargs.get("options"),
+        )

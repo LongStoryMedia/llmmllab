@@ -115,18 +115,6 @@ async def lifespan(_: FastAPI):
 
     # Build connection string from individual environment variables if not already set
     connection_string = DB_CONNECTION_STRING
-    if not connection_string:
-        db_host = os.environ.get("DB_HOST")
-        db_port = os.environ.get("DB_PORT")
-        db_name = os.environ.get("DB_NAME")
-        db_user = os.environ.get("DB_USER")
-        db_password = os.environ.get("DB_PASSWORD")
-
-        if db_host and db_port and db_name and db_user and db_password:
-            connection_string = (
-                f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
-            )
-            logger.info("Built database connection string from environment variables")
 
     if connection_string:
         try:
@@ -192,51 +180,19 @@ async def lifespan(_: FastAPI):
                     )
                     await maintenance_service.start_maintenance_schedule()
                     print("Database maintenance service started")
+
+                    print("Creating/Updating default model profiles...")
+                    try:
+                        await storage.get_service(
+                            storage.model_profile
+                        ).upsert_default_model_profiles()
+                        print("Default model profiles created/updated successfully.")
+                    except Exception as e:
+                        print(f"Error creating/updating default model profiles: {e}")
                 else:
                     print("Failed to initialize database schema")
                     # If schema initialization failed, don't consider the storage initialized
                     storage.initialized = False
-
-                # Validate database components are accessible
-                if storage.initialized:
-                    # First check if SQL files exist and are loaded
-                    try:
-                        from server.db.queries import get_loader
-
-                        loader = get_loader()
-                        critical_queries = [
-                            "user.create_users_table",
-                            "user.get_config",
-                            "user.get_all_users",
-                        ]
-                        missing_queries = [
-                            q for q in critical_queries if q not in loader.queries
-                        ]
-                        if missing_queries:
-                            print(
-                                f"ERROR: Critical SQL queries are missing: {missing_queries}"
-                            )
-                            print("This will cause database operations to fail!")
-                            storage.initialized = False
-                        else:
-                            print("All critical SQL files are loaded correctly")
-                    except Exception as e:
-                        print(f"Warning: Error checking SQL files: {e}")
-
-                    # Test query execution if still initialized
-                    if storage.initialized:
-                        try:
-                            # Test a simple query to ensure the database is working
-                            if storage.user_config:
-                                users = await storage.user_config.get_all_users()
-
-                                print(
-                                    f"Database validation successful, found {len(users)} users"
-                                )
-                        except Exception as e:
-                            print(f"Warning: Database component validation failed: {e}")
-                            print("Some database features may not work correctly")
-                            # Don't mark as uninitialized here since it might be just that there are no users yet
         except Exception as e:
             print(f"Error initializing database connection: {e}")
             print("Some features that depend on the database may not work properly")

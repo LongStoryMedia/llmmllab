@@ -51,10 +51,10 @@ END;
 $$
 LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS cascade_delete_memories_on_search_topic_synthesis ON search_topic_synthesis;
+DROP TRIGGER IF EXISTS cascade_delete_memories_on_search_topic_synthesis ON search_topic_syntheses;
 
 CREATE TRIGGER cascade_delete_memories_on_search_topic_synthesis
-  BEFORE DELETE ON search_topic_synthesis
+  BEFORE DELETE ON search_topic_syntheses
   FOR EACH ROW
   EXECUTE FUNCTION delete_memories_on_search_topic_synthesis_delete();
 

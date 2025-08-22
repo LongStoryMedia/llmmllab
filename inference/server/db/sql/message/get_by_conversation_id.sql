@@ -8,13 +8,6 @@ FROM
     messages
 WHERE
     conversation_id = $1
-    AND id NOT IN (
-        SELECT
-            source_id
-        FROM
-            summaries
-        WHERE
-            conversation_id = $1
-            AND level = 1)
 ORDER BY
     created_at ASC
+LIMIT $2 OFFSET $3

@@ -2,14 +2,15 @@ import { useCallback, useMemo, useRef } from 'react';
 import { ChatState, ChatActions } from './useChatState';
 import { useAuth } from '../../auth';
 import { chat, getManyConversations, getMessages, removeConversation, startConversation, getModels, getToken, getUserConversations, getLllabUsers, pause, cancel, resume } from '../../api';
-import { Message } from '../../types/Message';
 import { Conversation } from '../../types/Conversation';
-import { ChatRequest } from '../../types/ChatRequest';
+import { useNavigate } from 'react-router-dom';
+import { Message } from '../../types/Message';
 
 export const useChatOperations = (state: ChatState, actions: ChatActions) => {
   const auth = useAuth();
   const abortController = useRef<AbortController | null>(null);
   const currentUserId = useMemo(() => auth.user?.profile?.preferred_username ?? '', [auth.user]);
+  const navigate = useNavigate()
 
   // Fetch models
   const fetchModels = useCallback(async () => {
@@ -86,20 +87,19 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     } catch (err: unknown) {
       actions.setError((err as Error).message);
       console.error("Error fetching messages:", err);
+      navigate('/');
     } finally {
       actions.setIsLoading(false);
     }
   }, [actions, auth.user, state.conversations, fetchConversations]);
 
   // Start a new conversation
-  const startNewConversation = useCallback(async (model?: string) => {
+  const startNewConversation = useCallback(async () => {
     actions.setIsLoading(true);
     actions.setError(null);
 
-    const modelToUse = model || state.selectedModel;
-
     try {
-      const newConversation = await startConversation(getToken(auth.user), modelToUse);
+      const newConversation = await startConversation(getToken(auth.user));
 
       // Update local state
       actions.setCurrentConversation(newConversation);
@@ -175,7 +175,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
   }, [actions, auth.user, state.currentConversation?.id]);
 
   // Send a message in the current conversation
-  const sendMessage = useCallback(async (message: ChatRequest) => {
+  const sendMessage = useCallback(async (message: Message) => {
     if (state.isTyping) {
       console.warn("Already typing, please wait.");
       return;

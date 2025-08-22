@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS search_topic_syntheses(
     synthesis text NOT NULL,
     created_at timestamp with time zone DEFAULT NOW(),
     conversation_id integer,
-    PRIMARY KEY (id, created_at) CONSTRAINT fk_conversation FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    PRIMARY KEY (id, created_at)
 );
 
 -- Create index for faster searches

@@ -2,14 +2,13 @@
 Direct port of Maistro's summary.go storage logic to Python with cache integration.
 """
 
+import json
+import logging
 from typing import List, Optional
 import asyncpg
 from server.db.db_utils import typed_pool
-import json
-import logging
-from datetime import datetime
-from models.summary import Summary
 from server.db.cache_storage import cache_storage
+from models.summary import Summary
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +71,8 @@ class SummaryStorage:
             # Cache the results for future use
             if summaries:
                 summary_objects = []
-                for sum in summaries:
-                    summary_objects.append(sum)
+                for summ in summaries:
+                    summary_objects.append(summ)
 
                 if summary_objects:
                     cache_storage.cache_summaries_by_conversation_id(

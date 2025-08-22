@@ -5,6 +5,7 @@ Tool composition system for creating complex workflow tools from simple ones
 from typing import List
 
 from .dynamic_tool import DynamicToolRunner
+from models.dynamic_tool import DynamicTool
 
 
 class ToolComposer:
@@ -12,7 +13,7 @@ class ToolComposer:
 
     @staticmethod
     def create_workflow_tool(
-        tools: List[DynamicToolRunner], workflow_description: str
+        tools: List[DynamicTool], workflow_description: str, user_id: str
     ) -> DynamicToolRunner:
         """Create a meta-tool that orchestrates multiple tools"""
 
@@ -54,15 +55,18 @@ def workflow_executor(**kwargs):
 """
 
         return DynamicToolRunner(
-            name=f"workflow_{'_'.join([t.name[:5] for t in tools])}",  # Shortened name
-            description=f"Workflow: {workflow_description}",
-            code=workflow_code,
-            function_name="workflow_executor",
+            DynamicTool(
+                name=f"workflow_{'_'.join([t.name[:5] for t in tools])}",  # Shortened name
+                description=f"Workflow: {workflow_description}",
+                code=workflow_code,
+                function_name="workflow_executor",
+                user_id=user_id,
+            )
         )
 
     @staticmethod
     def create_parallel_tool(
-        tools: List[DynamicToolRunner], workflow_description: str
+        tools: List[DynamicToolRunner], workflow_description: str, user_id: str
     ) -> DynamicToolRunner:
         """Create a tool that executes multiple tools in parallel"""
 
@@ -131,8 +135,11 @@ def workflow_parallel_executor(**kwargs):
 """
 
         return DynamicToolRunner(
-            name=f"parallel_workflow_{hash(workflow_description) % 1000}",
-            description=f"Parallel Workflow: {workflow_description}",
-            code=workflow_code,
-            function_name="workflow_parallel_executor",
+            DynamicTool(
+                name=f"parallel_workflow_{hash(workflow_description) % 1000}",
+                description=f"Parallel Workflow: {workflow_description}",
+                code=workflow_code,
+                function_name="workflow_parallel_executor",
+                user_id=user_id,
+            )
         )

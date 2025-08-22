@@ -1,11 +1,7 @@
 """
 Embedding model pipeline for Nomic Embed Text v2 model.
 
-This pipeline implemen                # Log model info for debugging
-        self._logger.info(f"Model ID: {self.model_def.id}")
-
-        # Get the GGUF file path
-        gguf = (e Nomic Embed Text v2 Mixture of Experts (MoE) model for generating
+This pipeline implements the Nomic Embed Text v2 Mixture of Experts (MoE) model for generating
 text embeddings. It properly applies the required task instruction prefixes as per the model's
 usage guidelines.
 
@@ -23,22 +19,19 @@ For more details see: https://huggingface.co/nomic-ai/nomic-embed-text-v2-moe
 import datetime
 import logging
 import os
-import numpy as np
+from typing import Any, List, Generator, Optional, Union, cast
 import torch
-from typing import Any, Dict, List, Generator, Optional, Union
-from llama_cpp import Llama  # type: ignore # pylint: disable=E0401
+from llama_cpp import Llama
 
 from models import (
     Model,
     Message,
     ChatResponse,
-    ModelParameters,
     MessageContent,
     MessageContentType,
     ChatReq,
+    MessageRole,
 )
-from models.message_role import MessageRole
-from models.message_content_type import MessageContentType
 from ..base_pipeline import BasePipeline
 
 
@@ -58,68 +51,66 @@ class NomicEmbedTextPipe(BasePipeline):
     """
 
     # Class-level attributes
-    model: Any = None
-    tokenizer: Any = None
-    encoder: Any = None
+    model: Optional[Llama] = None
 
     def __init__(self, model_definition: Model):
         """Initialize the Nomic Embed Text pipeline."""
-        # Call base class initialization first
         super().__init__(model_definition)
 
-        # Set up logger
         self._logger = logging.getLogger(__name__)
         self._logger.info("Initializing NomicEmbedTextPipe")
-        self._logger.info(f"Model definition: {self.model_def.json()}")
 
-        # Ensure model details for GGUF are provided
+        # Validate model definition
         if not (self.model_def.details and self.model_def.model):
             raise ValueError(
                 "Model definition for NomicEmbedTextPipe must include model path details."
             )
 
-        # Ensure model details for GGUF are provided
-        if not (model_definition.details and model_definition.model):
-            raise ValueError(
-                "Model definition for NomicEmbedTextPipe must include model path details."
-            )
-
-        # Log model info for debugging
-        self._logger.info(f"Model ID: {self.model_def.id}")
-
         # Get the GGUF file path
-        gguf = (
-            model_definition.details.gguf_file
-            if hasattr(model_definition.details, "gguf_file")
-            and model_definition.details.gguf_file
-            else model_definition.model
+        gguf_path = self._get_gguf_path()
+
+        # Validate file
+        self._validate_gguf_file(gguf_path)
+
+        # Initialize the model
+        self._initialize_model(gguf_path)
+
+    def _get_gguf_path(self) -> str:
+        """Get the GGUF file path from model definition."""
+        return (
+            self.model_def.details.gguf_file
+            if hasattr(self.model_def.details, "gguf_file")
+            and self.model_def.details.gguf_file
+            else self.model_def.model
         )
 
-        # Check file size
-        file_size = os.path.getsize(gguf)
+    def _validate_gguf_file(self, gguf_path: str) -> None:
+        """Validate the GGUF file exists and has reasonable size."""
+        if not os.path.exists(gguf_path):
+            raise FileNotFoundError(f"GGUF file not found: {gguf_path}")
+
+        file_size = os.path.getsize(gguf_path)
         if file_size < 1_000_000:  # Less than 1MB is suspicious
             raise ValueError(
-                f"GGUF file is too small ({file_size} bytes), likely a placeholder: {gguf}"
+                f"GGUF file is too small ({file_size} bytes), likely a placeholder: {gguf_path}"
             )
 
-        # Log the file path we're actually using
         self._logger.info(
-            f"Using GGUF file path: {gguf} (size: {file_size/1_000_000:.2f} MB)"
+            f"Using GGUF file: {gguf_path} (size: {file_size/1_000_000:.2f} MB)"
         )
 
-        # Load the GGUF model using llama-cpp-python for embedding
+    def _initialize_model(self, gguf_path: str) -> None:
+        """Initialize the Llama model for embedding."""
         try:
-            # Using n_ctx=512 as per the model's specifications in the documentation
-            # https://huggingface.co/nomic-ai/nomic-embed-text-v2-moe
             self.model = Llama(
-                model_path=gguf,
+                model_path=gguf_path,
                 n_ctx=512,  # 512 is the maximum sequence length for this model
                 n_gpu_layers=-1,  # Offload all layers to GPU
                 n_threads=4,
                 use_mlock=True,
                 embedding=True,  # Enable embedding mode
+                verbose=False,  # Reduce verbosity
             )
-
             self._logger.info(
                 f"Nomic Embed Text model '{self.model_def.name}' loaded successfully."
             )
@@ -129,129 +120,118 @@ class NomicEmbedTextPipe(BasePipeline):
             )
             raise
 
-    def run(self, req: ChatReq) -> Generator[ChatResponse, Any, None]:
+    def _add_task_prefix(self, text: str, is_query: Optional[bool] = None) -> str:
+        """Add appropriate task prefix to text based on content or explicit flag."""
+        # Check if text already has a prefix
+        if text.startswith(("search_document: ", "search_query: ")):
+            return text
+
+        # Determine prefix based on is_query flag or text length heuristic
+        if is_query is True:
+            prefix = "search_query: "
+        elif is_query is False:
+            prefix = "search_document: "
+        else:
+            # Auto-detect: shorter texts are likely queries, longer ones are documents
+            prefix = "search_query: " if len(text) < 100 else "search_document: "
+
+        return f"{prefix}{text}"
+
+    def _extract_texts_from_messages(self, messages: List[Message]) -> List[str]:
+        """Extract text content from messages."""
+        texts = []
+        for message in messages:
+            if not message.content:
+                continue
+            for content in message.content:
+                if (
+                    hasattr(content, "type")
+                    and hasattr(content, "text")
+                    and content.text
+                ):
+                    texts.append(content.text)
+        return texts
+
+    def _generate_embeddings(
+        self, texts: List[str], normalize: bool = True
+    ) -> List[List[float]]:
         """
-        Process input messages to generate embeddings for text.
+        Generate embeddings for multiple texts using Llama's built-in embed method.
 
         Args:
-            req (ChatReq): The chat request containing messages, model parameters, and other settings.
+            texts: List of texts to embed
+            normalize: Whether to normalize embeddings
 
-        Yields:
-            Generator[ChatResponse, Any, None]: Yields ChatResponse objects.
+        Returns:
+            List of embeddings, one per text
         """
-        start_time = datetime.datetime.now(tz=datetime.timezone.utc)
-        load_time = 0.0  # No loading time measurement in this case
+        if not self.model:
+            raise RuntimeError("Model not initialized")
+
+        if not texts:
+            return []
 
         try:
-            # Extract text from messages in the request
-            inputs = []
-            for message in req.messages:
-                if not message.content:
-                    continue
-                for content in message.content:
-                    if (
-                        hasattr(content, "type")
-                        and hasattr(content, "text")
-                        and content.text
-                    ):
-                        # Add required task instruction prefix according to Nomic Embed v2 requirements
-                        # Using "search_document: " prefix as we're embedding content
-                        # See: https://huggingface.co/nomic-ai/nomic-embed-text-v2-moe
-                        if not content.text.startswith(
-                            "search_document: "
-                        ) and not content.text.startswith("search_query: "):
-                            # Determine if this is more likely a query or a document
-                            # For simplicity, treating shorter texts (< 100 chars) as queries, longer as documents
-                            if len(content.text) < 100:
-                                prefix = "search_query: "
-                            else:
-                                prefix = "search_document: "
-                            processed_text = f"{prefix}{content.text}"
-                        else:
-                            # Already has a prefix
-                            processed_text = content.text
+            # Use Llama's built-in embed method which handles batching, tokenization, and truncation
+            embeddings = self.model.embed(
+                input=texts,
+                normalize=normalize,  # Let Llama handle normalization
+                truncate=True,  # Automatically truncate to model's max context
+            )
 
-                        inputs.append(processed_text)
+            # Convert the embeddings to the expected List[List[float]] format
+            result = []
 
-            if not inputs:
+            # Handle tuple return format (embeddings, token_count)
+            if isinstance(embeddings, tuple):
+                embeddings = embeddings[0]
+
+            # Handle single embedding (List[float])
+            if embeddings and not isinstance(embeddings[0], list):
+                result = [embeddings]
+            else:
+                result = embeddings
+
+            self._logger.debug(
+                f"Generated {len(result)} embeddings using Llama's embed method"
+            )
+            return cast(List[List[float]], result)
+
+        except Exception as e:
+            self._logger.error(f"Error generating embeddings: {str(e)}")
+            # Return zero vectors as fallback
+            return [[0.0] * 768 for _ in texts]
+
+    def run(self, req: ChatReq) -> Generator[ChatResponse, Any, None]:
+        """Process input messages to generate embeddings for text."""
+        start_time = datetime.datetime.now(tz=datetime.timezone.utc)
+
+        try:
+            # Extract texts from messages
+            raw_texts = self._extract_texts_from_messages(req.messages)
+
+            if not raw_texts:
                 self._logger.warning("No text inputs found in messages")
-                inputs = ["search_document: "]  # Add empty input to avoid errors
+                raw_texts = [""]  # Add empty input to avoid errors
 
-            self._logger.info(f"Running embedding model with {len(inputs)} inputs")
+            # Add task prefixes to texts
+            processed_texts = [self._add_task_prefix(text) for text in raw_texts]
 
-            embeddings = []
-            # Check if matryoshka dimension is specified in parameters
-            matryoshka_dim = None
-            # if hasattr(req, "parameters") and req.parameters:
-            #     if (
-            #         hasattr(req.parameters, "matryoshka_dim")
-            #         and req.parameters.matryoshka_dim
-            #     ):
-            #         try:
-            #             matryoshka_dim = int(req.parameters.matryoshka_dim)
-            #             # Valid Matryoshka dimensions are 256, 512, and 768 (full size)
-            #             if matryoshka_dim not in [256, 512, 768]:
-            #                 self.logger.warning(
-            #                     f"Invalid matryoshka_dim: {matryoshka_dim}. Using full 768 dimensions."
-            #                 )
-            #                 matryoshka_dim = None
-            #         except (ValueError, TypeError):
-            #             self.logger.warning(
-            #                 f"Invalid matryoshka_dim value: {req.parameters.matryoshka_dim}. Using full 768 dimensions."
-            #             )
+            self._logger.info(
+                f"Processing {len(processed_texts)} text inputs for embedding"
+            )
 
-            for text_input in inputs:
-                if self.model and hasattr(self.model, "embed"):
-                    # Generate embedding for each input text
-                    embedding_result = self.model.embed(text_input)
-                    self._logger.info(f"Raw embedding type: {type(embedding_result)}")
-
-                    # Extract embeddings array from model output
-                    self._logger.debug(
-                        f"Processing embedding result type={type(embedding_result)}"
-                    )
-                    # The model returns a direct list of numbers for embeddings
-                    embedding = embedding_result
-                    self._logger.debug(f"Using raw embedding list: {type(embedding)}")
-
-                    # Convert to numpy array for processing, handle both list and numpy array inputs
-                    embedding_array = np.asarray(embedding)
-
-                    # Apply Matryoshka truncation if specified
-                    if matryoshka_dim and matryoshka_dim < len(embedding_array):
-                        self._logger.info(
-                            f"Truncating embedding to {matryoshka_dim} dimensions"
-                        )
-                        embedding_array = embedding_array[:matryoshka_dim]
-
-                    # Normalize embedding (required by the model)
-                    norm = np.linalg.norm(embedding_array)
-                    if norm > 0:
-                        embedding_array = embedding_array / norm
-
-                    embeddings.append(embedding_array.tolist())
-                else:
-                    self._logger.error(
-                        "Model not properly initialized or doesn't support embedding"
-                    )
-                    embedding_dim = 768 if not matryoshka_dim else matryoshka_dim
-                    embeddings.append(
-                        [0.0] * embedding_dim
-                    )  # Return empty embedding as fallback
+            # Generate embeddings using Llama's built-in method
+            embeddings = self._generate_embeddings(processed_texts, normalize=True)
 
             end_time = datetime.datetime.now(tz=datetime.timezone.utc)
             total_duration = (end_time - start_time).total_seconds() * 1000
 
-            # Log embedding information before creating response
             self._logger.debug(
-                f"Final embeddings type: {type(embeddings)}, length: {len(embeddings) if embeddings else 0}"
+                f"Generated {len(embeddings)} embeddings with {len(embeddings[0]) if embeddings else 0} dimensions each"
             )
-            if embeddings and len(embeddings) > 0:
-                self._logger.debug(
-                    f"First embedding type: {type(embeddings[0])}, length: {len(embeddings[0]) if isinstance(embeddings[0], (list, np.ndarray)) else 'N/A'}"
-                )
 
-            # Create a ChatResponse object to return
+            # Create response
             response = ChatResponse(
                 message=Message(
                     id=None,
@@ -269,9 +249,9 @@ class NomicEmbedTextPipe(BasePipeline):
                 ),
                 done=True,
                 finish_reason="success",
-                context=embeddings,
+                context=embeddings,  # Store embeddings in context
                 total_duration=total_duration,
-                load_duration=load_time,
+                load_duration=0.0,
                 prompt_eval_count=0,
                 prompt_eval_duration=0,
                 eval_count=0,
@@ -281,9 +261,8 @@ class NomicEmbedTextPipe(BasePipeline):
             )
             yield response
 
-        except (RuntimeError, ValueError) as e:
+        except Exception as e:
             self._logger.error(f"Error running Nomic Embed Text model: {str(e)}")
-            # Create error response
             error_response = ChatResponse(
                 message=Message(
                     id=None,
@@ -301,12 +280,12 @@ class NomicEmbedTextPipe(BasePipeline):
                 ),
                 done=True,
                 finish_reason="error",
-                # context argument removed
+                context=[],  # Empty context on error
                 total_duration=(
                     datetime.datetime.now(tz=datetime.timezone.utc) - start_time
                 ).total_seconds()
                 * 1000,
-                load_duration=load_time,
+                load_duration=0.0,
                 prompt_eval_count=0,
                 prompt_eval_duration=0,
                 eval_count=0,
@@ -324,11 +303,11 @@ class NomicEmbedTextPipe(BasePipeline):
         matryoshka_dim: Optional[int] = None,
     ) -> List[List[float]]:
         """
-        Generate embeddings for one or more texts using the runner.
+        Generate embeddings for one or more texts using Llama's built-in embed method.
+        Always returns List[List[float]] where each embedding is 768 dimensions (or matryoshka_dim).
 
         Args:
             texts: The text or list of texts to embed
-            model_path: Path or ID of the embedding model
             is_query: Whether the text is a query (True), document (False), or auto-detect (None)
             matryoshka_dim: Optional dimension for Matryoshka embedding truncation (256, 512, or 768)
 
@@ -339,85 +318,90 @@ class NomicEmbedTextPipe(BasePipeline):
         if isinstance(texts, str):
             texts = [texts]
 
-        # Process embeddings for all texts
-        all_embeddings = []
+        if not texts:
+            return []
 
         try:
-            for text in texts:
-                # Apply appropriate prefix based on is_query setting
-                has_prefix = text.startswith("search_document: ") or text.startswith(
-                    "search_query: "
+            # Add appropriate prefixes to all texts
+            processed_texts = [self._add_task_prefix(text, is_query) for text in texts]
+
+            # Generate embeddings using Llama's built-in method
+            embeddings = self._generate_embeddings(processed_texts, normalize=True)
+
+            # Apply Matryoshka truncation if specified
+            if matryoshka_dim and matryoshka_dim in [256, 512, 768]:
+                self._logger.debug(
+                    f"Truncating embeddings to {matryoshka_dim} dimensions"
+                )
+                embeddings = [emb[:matryoshka_dim] for emb in embeddings]
+            elif matryoshka_dim and matryoshka_dim not in [256, 512, 768]:
+                self._logger.warning(
+                    f"Invalid matryoshka_dim: {matryoshka_dim}. Using full 768 dimensions."
                 )
 
-                if not has_prefix:
-                    if is_query is True:
-                        text = f"search_query: {text}"
-                    elif is_query is False:
-                        text = f"search_document: {text}"
-                    else:
-                        # Auto-detect based on text length
-                        prefix = (
-                            "search_query: " if len(text) < 100 else "search_document: "
-                        )
-                        text = f"{prefix}{text}"
+            # Ensure all embeddings have consistent dimensions
+            expected_dim = matryoshka_dim if matryoshka_dim in [256, 512, 768] else 768
+            normalized_embeddings = []
 
-                # Create message with all required fields
-                message = Message(
-                    role=MessageRole.USER,
-                    content=[MessageContent(type=MessageContentType.TEXT, text=text)],
-                    id=None,  # Optional field
-                    created_at=datetime.datetime.now(
-                        tz=datetime.timezone.utc
-                    ),  # Set current timestamp with timezone
-                )
+            for embedding in embeddings:
+                if len(embedding) > expected_dim:
+                    embedding = embedding[:expected_dim]
+                elif len(embedding) < expected_dim:
+                    embedding.extend([0.0] * (expected_dim - len(embedding)))
+                normalized_embeddings.append(embedding)
 
-                # Create request with all required fields
-                req = ChatReq(
-                    messages=[message],
-                    conversation_id=999,
-                    stream=True,  # Required field
-                )
-
-                # Execute the request using PipelineFactory
-                try:
-                    # Get pipeline for the model
-                    # Generate embeddings using the pipeline
-                    responses = list(self.run(req))
-
-                    # Extract embedding from response
-                    embedding = self._extract_embedding_from_response(responses)
-                    if embedding:
-                        all_embeddings.append(embedding)
-                    else:
-                        # Return empty embedding as fallback
-                        dim = matryoshka_dim or 768
-                        all_embeddings.append([0.0] * dim)
-
-                except Exception:
-                    # Return empty embedding as fallback
-                    dim = matryoshka_dim or 768
-                    all_embeddings.append([0.0] * dim)
-
-            return all_embeddings
+            self._logger.debug(
+                f"Generated {len(normalized_embeddings)} embeddings from {len(texts)} input texts"
+            )
+            return normalized_embeddings
 
         except Exception as e:
+            self._logger.error(f"Error in emb method: {str(e)}")
             # Return empty embeddings as fallback
-            dim = matryoshka_dim or 768
-            return [[0.0] * dim] * len(texts)
+            dim = matryoshka_dim if matryoshka_dim in [256, 512, 768] else 768
+            return [[0.0] * dim for _ in texts]
 
-    def __del__(self) -> None:
+    def _extract_embedding_from_response(
+        self, responses
+    ) -> Optional[List[List[float]]]:
         """
-        Clean up resources used by the NomicEmbedTextPipe.
+        Extract embeddings from model responses.
+        Always returns List[List[float]] format.
+
+        Args:
+            responses: List of responses from the model
+
+        Returns:
+            List of embedding vectors or None if not found
         """
+        # Extract embeddings from the context field of ChatResponse
+        for response in responses:
+            if hasattr(response, "context") and response.context:
+                # Ensure we always return List[List[float]]
+                if isinstance(response.context, list):
+                    # Check if it's already List[List[float]]
+                    if response.context and isinstance(response.context[0], list):
+                        return response.context
+                    # Convert List[float] to List[List[float]]
+                    elif response.context and isinstance(
+                        response.context[0], (int, float)
+                    ):
+                        return [response.context]
+                return response.context
+
+        return None
+        """Clean up resources used by the NomicEmbedTextPipe."""
         try:
-            self._logger.info(
-                f"NomicEmbedTextPipe for {self.model_def.name if hasattr(self, 'model_def') else 'unknown'}: Cleanup initiated"
-            )
+            if hasattr(self, "_logger"):
+                self._logger.info(f"NomicEmbedTextPipe cleanup initiated")
+
             if hasattr(self, "model") and self.model is not None:
-                # llama-cpp-python models should have their resources cleaned up
+                del self.model
                 self.model = None
+
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-        except (RuntimeError, AttributeError, ValueError) as e:
+
+        except Exception as e:
             logger = logging.getLogger(__name__)
             logger.error(f"Error cleaning up NomicEmbedTextPipe resources: {str(e)}")
