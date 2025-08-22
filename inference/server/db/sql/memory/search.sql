@@ -60,7 +60,7 @@ similar_search_topics_unfiltered AS (
         1 -(e.embedding <=> $1) AS similarity
     FROM
         memories e
-        JOIN search_topic_synthesis st ON e.source_id = st.id
+        JOIN search_topic_syntheses st ON e.source_id = st.id
     WHERE
         e.source = 'search'
         AND 1 -(e.embedding <=> $1) > $2
@@ -332,7 +332,7 @@ FROM
         AND u.source_type = 'message'
     LEFT JOIN summaries s ON u.source_id = s.id
         AND u.source_type = 'summary'
-    LEFT JOIN search_topic_synthesis ss ON u.source_id = ss.id
+    LEFT JOIN search_topic_syntheses ss ON u.source_id = ss.id
         AND u.source_type = 'search'
 WHERE
     u.pair_key IN (

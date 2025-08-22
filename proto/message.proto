@@ -31,4 +31,6 @@ message Message {
   int32 id = 5;
   // Timestamp of when the message was created
   google.protobuf.Timestamp created_at = 6;
+  // Unique identifier for the conversation
+  int32 conversation_id = 7;
 }

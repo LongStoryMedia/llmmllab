@@ -13,21 +13,18 @@ from datetime import datetime as dt
 from typing import Any, Coroutine
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
-from models.chat_req import ChatReq
+from fastapi.responses import StreamingResponse
 from models.chat_response import ChatResponse
 from models.conversation import Conversation
 from models.message import Message
-from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
 from models.message_role import MessageRole
-from runner.pipelines.factory import pipeline_factory
 from server.auth import get_request_id, get_user_id, is_admin
 from server.config import logger  # Import logger from config
-from server.context.conversation import ConversationContext
 from server.db import storage  # Import database storage
 
 # Import utilities from modular structure
-from server.utils.chat.completion import enhanced_chat_completion_logic
+from server.utils.chat.agent_stream import agent_chat_completion
 from server.context.conversation import get_conversation_context_from_request
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -35,7 +32,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 @router.post("/completions", response_model=ChatResponse)
 async def chat_completion(
-    chat_request: ChatReq, request: Request, background_tasks: BackgroundTasks
+    msg: Message, request: Request, background_tasks: BackgroundTasks
 ):
     """
     Handle chat completions by processing a single user message and generating a response.
@@ -54,22 +51,19 @@ async def chat_completion(
     user_id = get_user_id(request)
     request_id = get_request_id(request)
     assert user_id, f"User ID not found for request {request_id}"
-    assert (
-        len(chat_request.messages) > 0
-    ), f"Empty messages list for request {request_id}"
+    assert msg.conversation_id, f"Conversation ID not found for request {request_id}"
 
     conversation_ctx = await get_conversation_context_from_request(
-        request, chat_request.conversation_id
+        request, msg.conversation_id
     )
     assert (
         conversation_ctx.conversation_id >= 0
     ), f"Invalid conversation ID {conversation_ctx.conversation_id} for request {request_id}"
     # Verify message is from user - the only validation we still need
-    user_message = conversation_ctx.get_current_user_message(chat_request)
-    assert user_message, f"User message not found for request {request_id}"
+    assert msg, f"User message not found for request {request_id}"
     assert (
-        user_message.role == MessageRole.USER
-    ), f"Invalid message role {user_message.role} for request {request_id}"
+        msg.role == MessageRole.USER
+    ), f"Invalid message role {msg.role} for request {request_id}"
     # Log the start of request processing
     logger.info(f"Processing chat completion request {request_id} for user {user_id}")
 
@@ -79,7 +73,7 @@ async def chat_completion(
     # Process user message with enhanced RAG
     try:
         # Add message - also sets intent
-        embeddings, message_id = await conversation_ctx.add_message(user_message)
+        embeddings, message_id = await conversation_ctx.add_message(msg)
         if not embeddings:
             logger.warning(f"Empty embedding vector for message {message_id}")
 
@@ -89,7 +83,7 @@ async def chat_completion(
         query = next(
             (
                 c.text
-                for c in user_message.content
+                for c in msg.content
                 if c.type == MessageContentType.TEXT and c.text
             ),
             "",
@@ -101,9 +95,9 @@ async def chat_completion(
         )
         web_task = (
             conversation_ctx.search_context.search(
-                user_message, conversation_ctx.conversation_id
+                msg, conversation_ctx.conversation_id
             )
-            if conversation_ctx.intent.web_search and user_message
+            if conversation_ctx.intent.web_search and msg
             else None
         )
 
@@ -115,10 +109,16 @@ async def chat_completion(
             tasks.append(web_task)
         await asyncio.gather(*tasks)
 
+        if len(conversation_ctx.messages) == 1:
+            await conversation_ctx.generate_title()
+
         # Use enhanced chat completion logic which determines whether to use agentic workflow
-        return await enhanced_chat_completion_logic(
-            conversation_ctx=conversation_ctx,
-            background_tasks=background_tasks,
+        return StreamingResponse(
+            agent_chat_completion(
+                conversation_ctx=conversation_ctx,
+                background_tasks=background_tasks,
+            ),
+            media_type="text/event-stream",
         )
 
     except Exception as e:  # noqa: BLE001
@@ -249,106 +249,101 @@ async def get_conversation_messages(conversation_id: int, request: Request):
             )
 
         # Get all messages for the conversation
-        messages = await storage.message.get_conversation_history(conversation_id)
+        messages = await storage.message.get_messages_by_conversation_id(
+            conversation_id, 500, 0
+        )
 
         # Log retrieved messages for debugging
         logger.debug(
             f"Retrieved {len(messages)} messages for conversation {conversation_id}"
         )
 
-        # Format messages for the response using proper Message objects
-        formatted_messages = []
-        try:
-            for i, msg in enumerate(messages):
-                # Log each message for debugging
-                logger.debug(
-                    "Processing message %s: id=%s, role=%s, content_type=%s",
-                    i,
-                    msg.id if hasattr(msg, "id") else "unknown",
-                    msg.role if hasattr(msg, "role") else "unknown",
-                    type(msg.content) if hasattr(msg, "content") else "None",
-                )
+        return messages or []
 
-                # Ensure we have a valid message content list
-                content_list = []
-                if (
-                    hasattr(msg, "content")
-                    and msg.content
-                    and isinstance(msg.content, list)
-                    and len(msg.content) > 0
-                ):
-                    # Use the existing content list
-                    content_list = msg.content
-                else:
-                    # Create a new content list with the text, if available
-                    content_text = ""
-                    if hasattr(msg, "content"):
-                        if msg.content and not isinstance(msg.content, list):
-                            # If content is a string, use it
-                            content_text = str(msg.content)
-                        elif (
-                            msg.content
-                            and isinstance(msg.content, list)
-                            and len(msg.content) > 0
-                        ):
-                            if hasattr(msg.content[0], "text"):
-                                content_text = msg.content[0].text or ""
+        # # Format messages for the response using proper Message objects
+        # formatted_messages = []
+        # try:
+        #     for i, msg in enumerate(messages):
+        #         # Ensure we have a valid message content list
+        #         content_list = []
+        #         if (
+        #             hasattr(msg, "content")
+        #             and msg.content
+        #             and isinstance(msg.content, list)
+        #             and len(msg.content) > 0
+        #         ):
+        #             # Use the existing content list
+        #             content_list = msg.content
+        #         else:
+        #             # Create a new content list with the text, if available
+        #             content_text = ""
+        #             if hasattr(msg, "content"):
+        #                 if msg.content and not isinstance(msg.content, list):
+        #                     # If content is a string, use it
+        #                     content_text = str(msg.content)
+        #                 elif (
+        #                     msg.content
+        #                     and isinstance(msg.content, list)
+        #                     and len(msg.content) > 0
+        #                 ):
+        #                     if hasattr(msg.content[0], "text"):
+        #                         content_text = msg.content[0].text or ""
 
-                    # Create a valid MessageContent object
-                    content_list = [
-                        MessageContent(
-                            type=MessageContentType.TEXT, text=content_text, url=None
-                        )
-                    ]
+        #             # Create a valid MessageContent object
+        #             content_list = [
+        #                 MessageContent(
+        #                     type=MessageContentType.TEXT, text=content_text, url=None
+        #                 )
+        #             ]
 
-                # Get message ID
-                msg_id = msg.id if hasattr(msg, "id") else None
+        #         # Get message ID
+        #         msg_id = msg.id if hasattr(msg, "id") else None
 
-                # Get message role
-                msg_role = msg.role if hasattr(msg, "role") else MessageRole.USER
+        #         # Get message role
+        #         msg_role = msg.role if hasattr(msg, "role") else MessageRole.USER
 
-                # Get message created_at
-                msg_created_at = (
-                    msg.created_at
-                    if hasattr(msg, "created_at") and msg.created_at
-                    else dt.now()
-                )
+        #         # Get message created_at
+        #         msg_created_at = (
+        #             msg.created_at
+        #             if hasattr(msg, "created_at") and msg.created_at
+        #             else dt.now()
+        #         )
 
-                # Get thinking
-                msg_thinking = msg.thinking if hasattr(msg, "thinking") else None
+        #         # Get thinking
+        #         msg_thinking = msg.thinking if hasattr(msg, "thinking") else None
 
-                # Get tool_calls
-                msg_tool_calls = msg.tool_calls if hasattr(msg, "tool_calls") else None
+        #         # Get tool_calls
+        #         msg_tool_calls = msg.tool_calls if hasattr(msg, "tool_calls") else None
 
-                # Create a valid Message object with all required fields
-                formatted_messages.append(
-                    Message(
-                        id=msg_id,
-                        role=msg_role,
-                        content=content_list,
-                        created_at=msg_created_at,
-                        thinking=msg_thinking,
-                        tool_calls=msg_tool_calls,
-                    )
-                )
-        except (KeyError, ValueError, AttributeError, TypeError) as e:
-            logger.error(f"Error formatting messages: {e}")
-            # If there's an error in formatting, create a default error message
-            formatted_messages = [
-                Message(
-                    id=1,
-                    role=MessageRole.SYSTEM,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=f"Error retrieving messages: {str(e)}",
-                        )
-                    ],
-                    created_at=dt.now(),
-                )
-            ]
+        #         # Create a valid Message object with all required fields
+        #         formatted_messages.append(
+        #             Message(
+        #                 id=msg_id,
+        #                 role=msg_role,
+        #                 content=content_list,
+        #                 created_at=msg_created_at,
+        #                 thinking=msg_thinking,
+        #                 tool_calls=msg_tool_calls,
+        #             )
+        #         )
+        # except (KeyError, ValueError, AttributeError, TypeError) as e:
+        #     logger.error(f"Error formatting messages: {e}")
+        #     # If there's an error in formatting, create a default error message
+        #     formatted_messages = [
+        #         Message(
+        #             id=1,
+        #             role=MessageRole.SYSTEM,
+        #             content=[
+        #                 MessageContent(
+        #                     type=MessageContentType.TEXT,
+        #                     text=f"Error retrieving messages: {str(e)}",
+        #                 )
+        #             ],
+        #             created_at=dt.now(),
+        #         )
+        #     ]
 
-        return formatted_messages
+        # return formatted_messages
     except HTTPException as e:
         raise e
     except Exception as e:  # noqa: BLE001, justified for DB errors
@@ -403,47 +398,14 @@ async def create_conversation(request: Request):
     Create a new conversation.
     """
     user_id = get_user_id(request)
-    assert user_id, "User ID not found"
-
-    user_cfg = await storage.get_service(storage.user_config).get_user_config(user_id)
-    assert user_cfg, "User configuration not found"
 
     try:
-        # Create the conversation with a temporary title
-        new_conversation_id = await storage.get_service(
-            storage.conversation
-        ).create_conversation(user_id, "New conversation")
-        if not new_conversation_id:
-            raise ValueError("Failed to create conversation: no ID returned")
-        conversation_id = new_conversation_id
-        # Create context with pipeline factory IDs
-        conversation_ctx = ConversationContext(
-            conversation_id=conversation_id,
-            user_config=user_cfg,
-        )
-        # Get formatting profile ID from model profiles
-        formatting_profile_id = str(user_cfg.model_profiles.formatting_profile_id)
-        logger.info(f"Using formatting profile: {formatting_profile_id}")
-        # Generate title using formatting model
-        generated_title = await conversation_ctx.generate_title()
-        # Update the title with the generated one
-        await storage.get_service(storage.conversation).update_conversation_title(
-            conversation_id, generated_title
-        )
-        logger.info(
-            f"Created new conversation with ID {conversation_id} and title '{generated_title}'"
-        )
-    except Exception as e:
-        logger.error(f"Failed to create conversation: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create conversation: {str(e)}",
-        ) from e
-
-    try:
+        assert user_id, "User ID not found"
         convo = storage.get_service(storage.conversation)
         # Create the conversation in the database
-        conversation_id = await convo.create_conversation(user_id=user_id)
+        conversation_id = await convo.create_conversation(
+            user_id, f"New conversation ({dt.now().strftime('%Y-%m-%d %H:%M')})"
+        )
 
         if not conversation_id:
             raise HTTPException(status_code=500, detail="Failed to create conversation")

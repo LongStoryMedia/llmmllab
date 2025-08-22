@@ -31,6 +31,7 @@ MODEL_PROFILE_TYPE_FORMATTING = 15
 MODEL_PROFILE_TYPE_IMAGE_GENERATION_PROMPT = 16
 MODEL_PROFILE_TYPE_IMAGE_GENERATION = 17
 MODEL_PROFILE_TYPE_ENGINEERING = 18
+MODEL_PROFILE_TYPE_RERANKING = 19
 
 # Create default UUIDs (similar to the Go implementation)
 DEFAULT_PRIMARY_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
@@ -55,11 +56,12 @@ DEFAULT_IMAGE_GENERATION_PROMPT_PROFILE_ID = uuid.UUID(
 )
 DEFAULT_IMAGE_GENERATION_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000017")
 DEFAULT_ENGINEERING_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000018")
+DEFAULT_RERANKING_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000019")
 
 # Default model IDs from models.json
-DEFAULT_TEXT_TO_TEXT_MODEL = "qwen-qwen3-30b-a3b"
+DEFAULT_TEXT_TO_TEXT_MODEL = "qwen3-30b-a3b-q4-k-m"
 DEFAULT_VISION_TEXT_TO_TEXT_MODEL = "qwen2.5-vl-32b-instruct-q4-k-m"
-DEFAULT_TEXT_TO_IMAGE_MODEL = "stabilityai-stable-diffusion-3.5-large"
+DEFAULT_TEXT_TO_IMAGE_MODEL = "black-forest-labs-flux.1-dev"
 DEFAULT_IMAGE_TO_IMAGE_MODEL = "black-forest-labs-flux.1-kontext-dev"
 DEFAULT_TEXT_TO_EMBEDDINGS_MODEL = "nomic-embed-text-v2"
 
@@ -400,6 +402,23 @@ DEFAULT_EMBEDDING_PROFILE = ModelProfile(
     updated_at=datetime.now(),
 )
 
+DEFAULT_RERANKING_PROFILE = ModelProfile(
+    id=DEFAULT_RERANKING_PROFILE_ID,
+    user_id="system",
+    name="Content Re-ranking (Default)",
+    type=MODEL_PROFILE_TYPE_RERANKING,
+    description="Profile for re-ranking and de-duplicating search results.",
+    model_name="rerank-content",  # This is a virtual model ID that will be mapped to the ReRankPipeline
+    parameters=ModelParameters(
+        num_ctx=2048,
+        temperature=0.0,  # No randomness for re-ranking
+        seed=0,
+    ),
+    system_prompt="Re-rank and deduplicate search results based on relevance to the query.",
+    created_at=datetime.now(),
+    updated_at=datetime.now(),
+)
+
 DEFAULT_FORMATTING_PROFILE = ModelProfile(
     id=DEFAULT_FORMATTING_PROFILE_ID,
     user_id="system",
@@ -509,6 +528,7 @@ DEFAULT_MODEL_PROFILE_CONFIG = ModelProfileConfig(
     image_generation_prompt_profile_id=DEFAULT_IMAGE_GENERATION_PROMPT_PROFILE_ID,
     image_generation_profile_id=DEFAULT_IMAGE_GENERATION_PROFILE_ID,
     engineering_profile_id=DEFAULT_ENGINEERING_PROFILE_ID,
+    reranking_profile_id=DEFAULT_RERANKING_PROFILE_ID,
 )
 
 
@@ -566,5 +586,6 @@ DEFAULT_PROFILES = {
     "formatting": DEFAULT_FORMATTING_PROFILE,
     "image_generation_prompt": DEFAULT_IMAGE_GENERATION_PROMPT_PROFILE,
     "image_generation": DEFAULT_IMAGE_GENERATION_PROFILE,
+    "reranking": DEFAULT_RERANKING_PROFILE,
     "engineering": DEFAULT_ENGINEERING_PROFILE,
 }

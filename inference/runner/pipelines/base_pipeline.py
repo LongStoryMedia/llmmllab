@@ -436,7 +436,7 @@ class BasePipeline(LLM, ABC):
             logger.warning(f"Error consuming generator: {e}")
             return full_text  # Return whatever we've collected so far
 
-    def _extract_embedding_from_response(self, responses):
+    def _extract_embedding_from_response(self, responses) -> Optional[List[float]]:
         """
         Extract embedding from model responses.
 

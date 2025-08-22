@@ -1,8 +1,7 @@
 import { Message } from "../types/Message";
-import { ChatRequest } from "../types/ChatRequest";
 import { gen, getHeaders, req } from "./base";
 
-export async function* chat(accessToken: string, message: ChatRequest, abortSignal?: AbortSignal): AsyncGenerator<string> {
+export async function* chat(accessToken: string, message: Message, abortSignal?: AbortSignal): AsyncGenerator<string> {
   console.log('Sending message to chat API:', message);
 
   try {
@@ -22,12 +21,12 @@ export async function* chat(accessToken: string, message: ChatRequest, abortSign
       } else if (chunk.message) {
         // Handle case where content might not be properly formatted
         console.warn('Received improperly formatted message content:', chunk.message);
-        
+
         // If content exists but isn't an array, try to convert it
         if (chunk.message.content && !Array.isArray(chunk.message.content)) {
           const textContent = String(chunk.message.content);
           yield textContent;
-          
+
           // Fix the message content structure for downstream code
           chunk.message.content = [{
             type: "text",

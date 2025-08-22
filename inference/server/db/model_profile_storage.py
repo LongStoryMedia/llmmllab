@@ -2,12 +2,12 @@
 Storage implementation for ModelProfile objects.
 """
 
-from typing import List, Optional, Dict, Any
-import asyncpg
 import uuid
 from datetime import datetime
 import json
 import logging
+from typing import List, Optional
+import asyncpg
 from models.model_profile import ModelProfile
 from models.default_model_profiles import DEFAULT_PROFILES
 from server.db.db_utils import typed_pool
@@ -195,3 +195,26 @@ class ModelProfileStorage:
             )
 
             return "DELETE" in result
+
+    async def upsert_default_model_profiles(self) -> None:
+        """Create or update default model profiles"""
+
+        async with self.typed_pool.acquire() as conn:
+            for profile in DEFAULT_PROFILES.values():
+                # Serialize parameters to JSON if needed with advanced object handling
+                if profile.parameters:
+                    params_dict = profile.parameters.model_dump()
+                    params_json = serialize_to_json(params_dict)
+                else:
+                    params_json = "{}"
+                await conn.execute(
+                    self.get_query("modelprofile.create_default_profile"),
+                    profile.user_id,
+                    profile.name,
+                    profile.description,
+                    profile.model_name,
+                    params_json,
+                    profile.system_prompt,
+                    profile.model_version,
+                    profile.type,
+                )

@@ -112,7 +112,18 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("summary.enable_summaries_compression", ["timescaledb"]),
                     ],
                 ),
-                # Step 6: Create memory tables (requires vector extension)
+                # Step 6: Create search tables
+                (
+                    "Creating search tables",
+                    [
+                        ("search.create_search_topic_synthesis_table", []),
+                        (
+                            "search.create_search_topic_synthesis_hypertable",
+                            ["timescaledb"],
+                        ),
+                    ],
+                ),
+                # Step 7: Create memory tables (requires vector extension)
                 (
                     "Creating memory tables",
                     [
@@ -133,9 +144,9 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("memory.memories_retention_policy", ["timescaledb"]),
                     ],
                 ),
-                # Step 7: Create image tables
+                # Step 8: Create image tables
                 ("Creating image tables", [("images.create_images_schema", [])]),
-                # Step 8: Create dynamic tools tables
+                # Step 9: Create dynamic tools tables
                 (
                     "Creating dynamic tools tables",
                     [
@@ -143,23 +154,12 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("tool.create_embedding_index", ["vector"]),
                     ],
                 ),
-                # Step 9: Create research tables
+                # Step 10: Create research tables
                 (
                     "Creating research tables",
                     [
                         ("research.create_research_tasks_table", []),
                         ("research.create_research_subtasks_table", []),
-                    ],
-                ),
-                # Step 10: Create search tables
-                (
-                    "Creating search tables",
-                    [
-                        ("search.create_search_topic_synthesis_table", []),
-                        (
-                            "search.create_search_topic_synthesis_hypertable",
-                            ["timescaledb"],
-                        ),
                     ],
                 ),
             ]

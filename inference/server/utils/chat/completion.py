@@ -209,7 +209,7 @@ async def stream_agentic_response(
         yield "🏪 **Marketplace integration enabled - checking for existing tools...**\n"
 
     # Step 2: Get available tools and analyze if we need dynamic tools
-    tool_needs = await get_tools(user_message, pipeline)
+    tool_needs = await get_tools(conversation_ctx)
 
     # List available tools
     yield "🧰 **Available Tools:**\n"

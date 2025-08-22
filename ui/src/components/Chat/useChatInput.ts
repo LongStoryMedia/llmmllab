@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useConfigContext } from "../../context/ConfigContext";
 import { useChat } from "../../chat";
+import { MessageContentTypeValues } from "../../types/MessageContentType";
+import { MessageRoleValues } from "../../types/MessageRole";
 
 
 const useChatInput = () => {
   const [input, setInput] = useState('');
-  const { sendMessage, isTyping, currentConversation, isPaused } = useChat();
+  const { sendMessage, isTyping, currentConversation } = useChat();
   const { config, updatePartialConfig } = useConfigContext();
   const alwaysRetrieve = config?.memory?.always_retrieve || false;
 
@@ -95,19 +97,20 @@ const useChatInput = () => {
     if (trimmedInput && !isTyping && hasConversation) {
       // Add a flag to the message metadata if image generation is requested
       sendMessage({
-        content: trimmedInput,
-        conversation_id: currentConversation.id!,
-        metadata: {
-          generate_image: selectedOptions.includes('generateImage') ? true : false,
-          is_continuation: isPaused ? true : false, // indicate if this is a continuation of a paused conversation
-          type: isPaused ? 'resume' : 'chat'
-        }
+        role: MessageRoleValues.USER,
+        content: [
+          {
+            type: selectedOptions.includes('generateImage') ? MessageContentTypeValues.IMAGE_GENERATION : MessageContentTypeValues.TEXT,
+            text: trimmedInput
+          }
+        ],
+        conversation_id: currentConversation.id!
       });
       setInput('');
 
       // Reset the image toggle and autoPromptRefinement after sending if needed
       if (selectedOptions.includes('generateImage') || selectedOptions.includes('autoPromptRefinement')) {
-        setSelectedOptions(prev => prev.filter(option => 
+        setSelectedOptions(prev => prev.filter(option =>
           option !== 'generateImage' && option !== 'autoPromptRefinement'
         ));
       }

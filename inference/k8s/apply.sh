@@ -20,11 +20,6 @@ kubectl create secret generic serper-api-key \
 --from-file=serper-api-key="$(dirname "$0")/.secrets/serper-api-key" \
 --dry-run=client -o yaml | kubectl apply -f - --wait=true
 
-# Create secrets for Searx host
-kubectl create secret generic searx-host \
--n ollama \
---from-file=searx-host="$(dirname "$0")/.secrets/searx-host" \
---dry-run=client -o yaml | kubectl apply -f - --wait=trueded
 DOCKER_TAG=${DOCKER_TAG:-latest}
 # Replace slashes with dots in the tag name for Docker compatibility
 DOCKER_TAG=$(echo "$DOCKER_TAG" | tr '/' '.')

@@ -2,13 +2,13 @@
 Memory retrieval functionality for RAG system.
 """
 
+import logging
 from typing import List, Optional
 from datetime import datetime
 
 from runner.pipelines.base_pipeline import Embeddings
 from models import Memory, UserConfig
 from server.db import storage
-from server.config import logger
 
 
 class MemoryContext:
@@ -17,6 +17,7 @@ class MemoryContext:
     """
 
     retrieved_memories: List[Memory]
+    memory: str
 
     def __init__(self, user_cfg: UserConfig, conversation_id: int):
         """
@@ -29,8 +30,9 @@ class MemoryContext:
         self.user_config = user_cfg
         self.user_id = user_cfg.user_id
         self.conversation_id = conversation_id
-        self.logger = logger
+        self.logger = logging.getLogger("MemoryContext")
         self.retrieved_memories = []
+        self.memory = ""
 
     async def retrieve_memories(
         self,
@@ -72,7 +74,11 @@ class MemoryContext:
                 end_date=end_date,
             )
             self.retrieved_memories = memories
+            for m in memories:
+                self.memory += f"\n\n({m.created_at})\n".join(
+                    [f"{f.role.name}: {f.content}" for f in m.fragments]
+                )
             return memories
         except Exception as e:
-            self.logger.error(f"Error retrieving memories: {e}")
-            return []
+            self.logger.error(f"Error retrieving memories: {e}", exc_info=True)
+            raise RuntimeError(f"Error retrieving memories: {e}") from e

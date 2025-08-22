@@ -111,7 +111,7 @@ spec:
                   key: api_key
             - name: MAISTRO_BASE_URL
               value: "http://maistro.maistro.svc.cluster.local:8080"
-              
+
             # Authentication configuration
             - name: AUTH_ISSUER
               value: "https://auth.longstorymedia.com"
@@ -126,7 +126,7 @@ spec:
                   key: client_secret
             - name: AUTH_JWKS_URI
               value: "https://auth.longstorymedia.com/keys"
-              
+
             # Database configuration
             - name: DB_HOST
               value: "192.168.0.71"
@@ -143,7 +143,7 @@ spec:
               value: "llmmll"
             - name: DB_SSLMODE
               value: "disable"
-              
+
             # Redis configuration
             - name: REDIS_ENABLED
               value: "true"
@@ -165,7 +165,7 @@ spec:
               value: "2"
             - name: REDIS_CONNECT_TIMEOUT
               value: "5"
-              
+
             # Summarization configuration
             - name: MESSAGES_BEFORE_SUMMARY
               value: "6"
@@ -181,7 +181,7 @@ spec:
               value: "0.7"
             - name: MASTER_SUMMARY_PROMPT
               value: "Create a comprehensive summary of the conversation, giving most weight to the most recent points and gradually less weight to older information. This is a master summary that will be used for long-term context."
-            
+
             # Image generation configuration
             - name: IMAGE_GENERATION_ENABLED
               value: "true"
@@ -191,17 +191,17 @@ spec:
               value: "2048"
             - name: IMAGE_RETENTION_HOURS
               value: "24"
-              
+
             # Inference services configuration
             - name: INFERENCE_SERVICES_OLLAMA_BASE_URL
               value: "http://localhost:11434"
             - name: INFERENCE_SERVICES_SD_BASE_URL
               value: "http://localhost:8000"
             - name: INFERENCE_SERVICES_HOST
-              value: "0.0.0.0" 
+              value: "0.0.0.0"
             - name: INFERENCE_SERVICES_PORT
               value: "50051"
-              
+
             # Internal security configuration
             - name: INTERNAL_API_KEY
               valueFrom:
@@ -210,7 +210,7 @@ spec:
                   key: api_key
             - name: INTERNAL_ALLOWED_IPS
               value: "192.168.0.0/24,10.43.0.0/16"
-              
+
             # Log level
             - name: LOG_LEVEL
               value: "debug"
@@ -229,7 +229,7 @@ spec:
               value: "-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_PATH=/llama.cpp/build/bin"
             - name: LLAMA_CPP_LIB_PATH
               value: "/llama.cpp/build/bin"
-              
+
             # Search API keys configuration
             - name: GOOGLE_SEARCH_API_KEY
               valueFrom:
@@ -252,10 +252,7 @@ spec:
                   name: serper-api-key
                   key: serper-api-key
             - name: SEARX_HOST
-              valueFrom:
-                secretKeyRef:
-                  name: searx-host
-                  key: searx-host
-                  
+              value: "http://searxng.searxng.svc.cluster.local:8080"
+
   strategy:
     type: Recreate

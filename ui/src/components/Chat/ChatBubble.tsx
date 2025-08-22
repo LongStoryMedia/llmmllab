@@ -14,7 +14,6 @@ interface ChatBubbleProps {
 const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
   const { isLoading, isTyping } = useChat();
   const inProgress = isLoading || isTyping;
-  console.log(message)
   const content = typeof message.content === 'string' ? message.content : message?.content?.map(c => {
     if (c.type === MessageContentTypeValues.TEXT) {
       return c.text;

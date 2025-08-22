@@ -2,8 +2,8 @@
 Internal API endpoints for database maintenance and administration.
 """
 
-from fastapi import APIRouter, HTTPException
-from server.auth import AuthMiddleware
+from fastapi import APIRouter, HTTPException, Request
+from server.auth import is_admin
 from server.db.maintenance import maintenance_service
 
 router = APIRouter(
@@ -27,12 +27,15 @@ async def get_maintenance_status():
 
 
 @router.post("/maintenance/run")
-async def trigger_maintenance():
+async def trigger_maintenance(request: Request):
     """Manually trigger a database maintenance run"""
     if not maintenance_service:
         raise HTTPException(
             status_code=503, detail="Database maintenance service not available"
         )
+
+    if not is_admin(request):
+        raise HTTPException(status_code=403, detail="Admin access required")
 
     try:
         success = await maintenance_service.perform_maintenance()

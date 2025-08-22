@@ -26,9 +26,6 @@ import threading
 import json
 from typing import Optional, List, Any, Type, Callable
 from uuid import UUID
-
-# Set up logger
-logger = logging.getLogger(__name__)
 import redis
 from models.message import Message
 from models.summary import Summary
@@ -36,6 +33,8 @@ from models.conversation import Conversation
 from models.model_profile import ModelProfile
 from models.user_config import UserConfig
 
+# Set up logger
+logger = logging.getLogger(__name__)
 __all__ = ["cache_storage", "CacheStorage"]
 
 
@@ -49,6 +48,7 @@ class CacheStorage:
     SUMMARY_KEY_PREFIX = "llmmll:summary:"
     CONVERSATION_KEY_PREFIX = "llmmll:conversation:"
     CONVERSATION_LIST_PREFIX = "llmmll:conversations:"
+    CONVERSATION_MESSAGES_PREFIX = "llmmll:conversation:messages:"
     MESSAGES_LIST_PREFIX = "llmmll:messages:"
     SUMMARIES_LIST_PREFIX = "llmmll:summaries:"
     USERCONFIG_KEY_PREFIX = "llmmll:userconfig:"
@@ -256,6 +256,27 @@ class CacheStorage:
         """Cache all messages for a conversation."""
         self._cache_list(
             self.MESSAGES_LIST_PREFIX, conversation_id, messages, self.cache_message
+        )
+
+    def get_conversation_messages(
+        self, conversation_id: int
+    ) -> Optional[List[Message]]:
+        """Get all messages for a conversation from cache."""
+        return self._get_list_from_cache(
+            self.CONVERSATION_MESSAGES_PREFIX,
+            conversation_id,
+            self.get_message_from_cache,
+        )
+
+    def cache_conversation_messages(
+        self, conversation_id: int, messages: List[Message]
+    ):
+        """Cache all messages for a conversation."""
+        self._cache_list(
+            self.CONVERSATION_MESSAGES_PREFIX,
+            conversation_id,
+            messages,
+            self.cache_message,
         )
 
     # ========== Summary Cache Operations ==========

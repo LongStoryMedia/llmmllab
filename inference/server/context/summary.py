@@ -28,6 +28,7 @@ class SummaryContext:
     summaries: List[Summary]
     master_summary: Optional[Summary]
     is_summarized: bool
+    full_summary: str
 
     def __init__(self, user_cfg: UserConfig, conversation_id: int):
         """
@@ -44,6 +45,7 @@ class SummaryContext:
         self.summaries = []
         self.master_summary = None
         self.is_summarized = False
+        self.full_summary = ""
 
     async def load_summaries(self) -> None:
         """
@@ -277,7 +279,9 @@ class SummaryContext:
             )
             assert profile, "Failed to retrieve model profile"
             # Get summarization pipeline from factory
-            summarization_pipeline, _ = pipeline_factory.get_pipeline(profile.name)
+            summarization_pipeline, _ = pipeline_factory.get_pipeline(
+                profile.model_name
+            )
             if summarization_pipeline:
                 # Run the pipeline to get summary
                 summary_text = summarization_pipeline.get(msgs, profile.parameters)
@@ -343,6 +347,22 @@ class SummaryContext:
         if new_master:
             self.master_summary = new_master
 
+        self._set_full_summary()
+        self.is_summarized = True
+
+    def _set_full_summary(self):
+        """
+        Concatenates all summaries into a single string
+        """
+        if not self.summaries:
+            return ""
+
+        # Sort summaries by creation time
+        self.summaries.sort(key=lambda s: s.created_at)
+
+        # Concatenate all summary texts
+        self.full_summary = "\n\n".join(s.content for s in self.summaries)
+
     async def _create_or_update_master_summary(
         self,
         summaries: List[Summary],
@@ -389,7 +409,9 @@ class SummaryContext:
             )
             assert profile, "Failed to retrieve model profile"
             # Get summarization pipeline from factory
-            summarization_pipeline, _ = pipeline_factory.get_pipeline(profile.name)
+            summarization_pipeline, _ = pipeline_factory.get_pipeline(
+                profile.model_name
+            )
             if summarization_pipeline:
                 # Convert each summary to a Message object
                 summary_messages = []

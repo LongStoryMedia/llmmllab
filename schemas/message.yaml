@@ -26,6 +26,9 @@ properties:
     type: string
     format: date-time
     description: Timestamp of when the message was created
+  conversation_id:
+    type: integer
+    description: Unique identifier for the conversation
 required:
   - role
   - content

@@ -171,18 +171,18 @@ class MemoryStorage:
                         )
 
                     if current_mem is not None:
-                        current_mem.fragments.append(fragment)
+                        current_mem.fragments = list(current_mem.fragments) + [fragment]
 
-                        if source_type == "summary":
-                            memories.append(current_mem)
-                            current_mem = None
-                            last_pair_key = None
-                        else:
+                        if source_type == "message":
                             last_pair_key = pair_key
                             if len(current_mem.fragments) == 2:
                                 memories.append(current_mem)
                                 current_mem = None
                                 last_pair_key = None
+                        else:
+                            memories.append(current_mem)
+                            current_mem = None
+                            last_pair_key = None
 
                 # Add any remaining memory
                 if current_mem is not None and current_mem.fragments:

@@ -107,10 +107,21 @@ class JWTValidator:
     async def _fetch_jwks(self) -> Dict[str, Any]:
         """Fetch JWKS from the provided URI"""
         try:
+            self.logger.debug(f"Fetching JWKS from {self.jwks_uri}")
             async with httpx.AsyncClient() as client:
                 response = await client.get(self.jwks_uri)
                 response.raise_for_status()
-                return response.json()
+                jwks_data = response.json()
+
+                # Log some information about the fetched JWKS
+                keys = jwks_data.get("keys", [])
+                self.logger.debug(f"Fetched {len(keys)} keys from JWKS")
+                for i, key in enumerate(keys):
+                    self.logger.debug(
+                        f"Key {i+1}: kid={key.get('kid')}, alg={key.get('alg')}, kty={key.get('kty', 'N/A')}"
+                    )
+
+                return jwks_data
         except Exception as e:
             self.logger.error(f"Failed to fetch JWKS from {self.jwks_uri}: {e}")
             raise HTTPException(
@@ -118,16 +129,20 @@ class JWTValidator:
                 detail="Failed to fetch JWKS",
             ) from e
 
-    async def _get_jwks(self) -> Dict[str, Any]:
+    async def _get_jwks(self, force_refresh=False) -> Dict[str, Any]:
         """Get JWKS with caching"""
         current_time = time.time()
 
         if (
             self.jwks_cache is None
+            or force_refresh
             or current_time - self._last_fetch > self.cache_timeout
         ):
+            self.logger.debug(f"Refreshing JWKS cache (force={force_refresh})")
             self.jwks_cache = await self._fetch_jwks()
             self._last_fetch = current_time
+        else:
+            self.logger.debug("Using cached JWKS")
 
         return self.jwks_cache
 
@@ -137,10 +152,17 @@ class JWTValidator:
 
         for key in keys:
             if key.get("kid") == kid:
-                if key.get("kty") == "RSA":
-                    # Convert JWK to PEM format using PyJWK
+                # Don't strictly require kty=RSA, just use PyJWK to convert the key
+                try:
                     jwk_key = PyJWK(key)
                     return jwk_key.key
+                except Exception as e:
+                    self.logger.error(f"Failed to parse JWK key: {e}")
+                    continue
+
+        # If we get here, we couldn't find a matching key
+        self.logger.error(f"No matching key found for kid: {kid}")
+        self.logger.debug(f"Available keys: {[k.get('kid') for k in keys]}")
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -155,7 +177,11 @@ class JWTValidator:
         try:
             # Decode token header to get key ID
             unverified_header = jwt.get_unverified_header(token_str)
+            self.logger.debug(f"Token header: {unverified_header}")
             kid = unverified_header.get("kid")
+            alg = unverified_header.get(
+                "alg", "RS256"
+            )  # Default to RS256 if not specified
 
             if not kid:
                 raise HTTPException(
@@ -163,9 +189,17 @@ class JWTValidator:
                     detail="Token missing key ID",
                 )
 
-            # Get JWKS and extract key
-            jwks = await self._get_jwks()
-            key = self._get_key_from_jwks(jwks, kid)
+            # First try with cached JWKS
+            try:
+                jwks = await self._get_jwks(force_refresh=False)
+                key = self._get_key_from_jwks(jwks, kid)
+            except HTTPException:
+                # If key not found, try refreshing JWKS and try again
+                self.logger.info(
+                    f"Key with kid={kid} not found in cached JWKS. Refreshing from source."
+                )
+                jwks = await self._get_jwks(force_refresh=True)
+                key = self._get_key_from_jwks(jwks, kid)
 
             # Decode and validate token
             audience = (
@@ -175,7 +209,7 @@ class JWTValidator:
             payload = jwt.decode(
                 token_str,
                 key,
-                algorithms=["RS256"],  # Adjust algorithms as needed
+                algorithms=[alg],  # Use the algorithm from the token header
                 audience=audience,
                 options={"verify_exp": True, "verify_aud": audience is not None},
             )
@@ -194,14 +228,18 @@ class JWTValidator:
             if isinstance(groups, list):
                 user_is_admin = "admins" in groups
 
+            self.logger.debug(f"Token validated successfully for user: {user_id}")
             return TokenValidationResult(
                 user_id=user_id, claims=payload, is_admin=user_is_admin
             )
+        except HTTPException:
+            # Re-raise HTTP exceptions as is
+            raise
         except Exception as e:
             self.logger.error(f"Token validation failed: {e}")
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Token validation failed",
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Token validation failed: {str(e)}",
             ) from e
 
 
