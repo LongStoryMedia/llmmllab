@@ -1,87 +1,94 @@
 """
-Embedding model pipeline for Nomic Embed Text v2 model.
-
-This pipeline implements the Nomic Embed Text v2 Mixture of Experts (MoE) model for generating
-text embeddings. It properly applies the required task instruction prefixes as per the model's
-usage guidelines.
-
-Requirements:
-- Input must include a task instruction prefix:
-  - "search_query: " for queries/questions
-  - "search_document: " for documents/content
-- Maximum input length is 512 tokens
-- The pipeline automatically determines the appropriate prefix based on text length
-- Embeddings are normalized by default
-
-For more details see: https://huggingface.co/nomic-ai/nomic-embed-text-v2-moe
+Enhanced Nomic Embed Text v2 pipeline with token counting and text splitting.
 """
 
 import datetime
 import logging
 import os
-from typing import Any, List, Generator, Optional, Union, cast
+import re
+from typing import List, Optional, Union, AsyncGenerator, cast, Tuple
 import torch
-from llama_cpp import Llama
+import numpy as np
+from langchain_community.embeddings import LlamaCppEmbeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from models import (
     Model,
     Message,
-    ChatResponse,
-    MessageContent,
-    MessageContentType,
-    ChatReq,
-    MessageRole,
+    ModelProfile,
 )
-from ..base_pipeline import BasePipeline
+from ..base_dual_pipeline import EmbeddingPipeline
+from ..helpers import extract_message_text
 
 
-class NomicEmbedTextPipe(BasePipeline):
+logger = logging.getLogger(__name__)
+
+
+class NomicEmbedTextPipe(EmbeddingPipeline):
     """
-    Pipeline for running text embeddings with Nomic Embed Text v2 model.
+    Enhanced pipeline for Nomic Embed Text v2 MoE model with token splitting.
 
-    This pipeline supports the nomic-ai/nomic-embed-text-v2-moe model in GGUF format.
-
-    Key features of the model:
-    - Multilingual MoE (Mixture of Experts) text embedding model
-    - Supports ~100 languages with 768-dimensional embeddings (truncatable to 256)
-    - Uses task-specific prefixes: "search_query: " for queries and "search_document: " for documents
-    - Maximum sequence length is 512 tokens
-    - Model size: 305M parameters (475M total, 305M active during inference)
-    - Trained on 1.6B multilingual pairs
+    Features:
+    - Multilingual MoE text embedding (305M active, 475M total parameters)
+    - Supports ~100 languages with 768-dimensional embeddings
+    - Task-specific prefixes: "search_query:" for queries, "search_document:" for documents
+    - Maximum sequence length: 512 tokens with automatic text splitting
+    - Matryoshka embedding support (256, 512, 768 dimensions)
+    - Automatic token counting and text chunking
     """
 
-    # Class-level attributes
-    model: Optional[Llama] = None
+    llm: LlamaCppEmbeddings
 
-    def __init__(self, model_definition: Model):
+    def __init__(self, model: Model, profile: ModelProfile):
         """Initialize the Nomic Embed Text pipeline."""
-        super().__init__(model_definition)
+        super().__init__(model, profile)
 
         self._logger = logging.getLogger(__name__)
         self._logger.info("Initializing NomicEmbedTextPipe")
 
+        # Nomic-specific parameters
+        self.max_context_tokens = 512
+        self.embedding_dim = 768
+
         # Validate model definition
-        if not (self.model_def.details and self.model_def.model):
+        if not (model.details and model.model):
             raise ValueError(
                 "Model definition for NomicEmbedTextPipe must include model path details."
             )
 
-        # Get the GGUF file path
+        # Get and validate GGUF file
         gguf_path = self._get_gguf_path()
-
-        # Validate file
         self._validate_gguf_file(gguf_path)
 
-        # Initialize the model
+        # Initialize model with optimizations
         self._initialize_model(gguf_path)
+
+        # Initialize text splitter for handling long texts
+        self._init_text_splitter()
+
+    def _init_text_splitter(self) -> None:
+        """Initialize the text splitter with conservative token estimates."""
+        # Use conservative character-to-token ratio (3:1) to avoid exceeding limits
+        max_chunk_chars = self.max_context_tokens * 3
+
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=max_chunk_chars,
+            chunk_overlap=max_chunk_chars // 10,  # 10% overlap
+            separators=["\n\n", "\n", ". ", "? ", "! ", " ", ""],
+            keep_separator=True,
+        )
+
+        self._logger.debug(
+            f"Initialized text splitter with max_chunk_chars={max_chunk_chars}"
+        )
 
     def _get_gguf_path(self) -> str:
         """Get the GGUF file path from model definition."""
+        assert self.model
         return (
-            self.model_def.details.gguf_file
-            if hasattr(self.model_def.details, "gguf_file")
-            and self.model_def.details.gguf_file
-            else self.model_def.model
+            self.model.details.gguf_file
+            if hasattr(self.model.details, "gguf_file") and self.model.details.gguf_file
+            else self.model.model
         )
 
     def _validate_gguf_file(self, gguf_path: str) -> None:
@@ -99,26 +106,204 @@ class NomicEmbedTextPipe(BasePipeline):
             f"Using GGUF file: {gguf_path} (size: {file_size/1_000_000:.2f} MB)"
         )
 
-    def _initialize_model(self, gguf_path: str) -> None:
-        """Initialize the Llama model for embedding."""
+    def _get_optimal_threads(self) -> int:
+        """Get optimal thread count based on system capabilities."""
         try:
-            self.model = Llama(
-                model_path=gguf_path,
-                n_ctx=512,  # 512 is the maximum sequence length for this model
-                n_gpu_layers=-1,  # Offload all layers to GPU
-                n_threads=4,
-                use_mlock=True,
-                embedding=True,  # Enable embedding mode
-                verbose=False,  # Reduce verbosity
+            import multiprocessing
+
+            cpu_count = multiprocessing.cpu_count()
+            optimal_threads = min(max(cpu_count // 2, 2), 8)
+            self._logger.debug(
+                f"Using {optimal_threads} threads (CPU count: {cpu_count})"
             )
+            return optimal_threads
+        except Exception:
+            self._logger.warning(
+                "Could not determine CPU count, using default threading"
+            )
+            return 4
+
+    def _initialize_model(self, gguf_path: str) -> None:
+        """Initialize the LangChain LlamaCppEmbeddings model with optimizations."""
+        try:
+            # Use the same context size as the model's maximum (512 for Nomic)
+            context_size = min(self.profile.parameters.num_ctx or 512, 512)
+
+            self.llm = LlamaCppEmbeddings(
+                model_path=gguf_path,
+                n_ctx=context_size,  # Maximum sequence length for this model
+                n_gpu_layers=-1,  # Offload all layers to GPU
+                n_threads=self._get_optimal_threads(),
+                f16_kv=True,
+                verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "debug",
+                n_batch=512,  # Optimized batch size
+                n_parts=-1,
+                seed=self.profile.parameters.seed or -1,
+                logits_all=False,
+                vocab_only=False,
+                use_mlock=False,  # Better memory management
+                device="cuda" if torch.cuda.is_available() else "cpu",
+            )
+
             self._logger.info(
-                f"Nomic Embed Text model '{self.model_def.name}' loaded successfully."
+                f"Nomic Embed Text model '{self.model.name}' loaded successfully "
+                f"(max_tokens: {self.max_context_tokens}, dims: {self.embedding_dim})"
             )
         except Exception as e:
             self._logger.error(
                 f"Error initializing {self.__class__.__name__}: {str(e)}"
             )
             raise
+
+    def _estimate_tokens(self, text: str) -> int:
+        """
+        Estimate token count for text using simple heuristics.
+        """
+        if not text:
+            return 0
+
+        # Method 1: Word-based estimate (English: ~1.3 tokens per word)
+        word_count = len(text.split())
+        word_estimate = int(word_count * 1.5)  # Conservative
+
+        # Method 2: Character-based estimate (English: ~4 chars per token)
+        char_count = len(text)
+        char_estimate = int(char_count / 3)  # Conservative
+
+        # Method 3: Whitespace and punctuation based
+        words = len(re.findall(r"\S+", text))
+        punctuation = len(re.findall(r"[.,!?;:]", text))
+        special_chars = len(re.findall(r"[^\w\s.,!?;:]", text))
+        heuristic_estimate = words + punctuation + special_chars
+
+        # Take the maximum for conservative estimation
+        estimate = max(word_estimate, char_estimate, heuristic_estimate)
+
+        self._logger.debug(
+            f"Token estimates - Word: {word_estimate}, Char: {char_estimate}, "
+            f"Heuristic: {heuristic_estimate}, Using: {estimate}"
+        )
+
+        return estimate
+
+    def _split_text_if_needed(self, text: str) -> List[str]:
+        """Split text into chunks if it exceeds context length."""
+        if not text:
+            return []
+
+        # Estimate tokens for the full text
+        estimated_tokens = self._estimate_tokens(text)
+
+        # If within limits, return as-is
+        if estimated_tokens <= self.max_context_tokens:
+            return [text]
+
+        self._logger.info(
+            f"Text exceeds token limit ({estimated_tokens} > {self.max_context_tokens}), splitting..."
+        )
+
+        # Split the text
+        chunks = self.text_splitter.split_text(text)
+
+        # Validate each chunk and further split if necessary
+        final_chunks = []
+        for chunk in chunks:
+            chunk_tokens = self._estimate_tokens(chunk)
+
+            if chunk_tokens <= self.max_context_tokens:
+                final_chunks.append(chunk)
+            else:
+                # If still too long, do aggressive character-based splitting
+                self._logger.warning(
+                    f"Chunk still too long ({chunk_tokens} tokens), doing aggressive split"
+                )
+
+                # Calculate safe character limit
+                safe_char_limit = self.max_context_tokens * 3  # Very conservative
+
+                # Split by characters with word boundaries
+                words = chunk.split()
+                current_chunk = ""
+
+                for word in words:
+                    test_chunk = f"{current_chunk} {word}".strip()
+
+                    if len(test_chunk) <= safe_char_limit:
+                        current_chunk = test_chunk
+                    else:
+                        if current_chunk:
+                            final_chunks.append(current_chunk)
+                        current_chunk = word
+
+                if current_chunk:
+                    final_chunks.append(current_chunk)
+
+        self._logger.info(f"Split text into {len(final_chunks)} chunks")
+        return final_chunks
+
+    def _process_texts_with_splitting(
+        self, texts: List[str]
+    ) -> Tuple[List[str], List[int]]:
+        """Process texts with automatic splitting and return mapping information."""
+        processed_chunks = []
+        chunk_counts = []
+
+        for text in texts:
+            chunks = self._split_text_if_needed(text)
+            processed_chunks.extend(chunks)
+            chunk_counts.append(len(chunks))
+
+            if len(chunks) > 1:
+                self._logger.debug(f"Split text into {len(chunks)} chunks")
+
+        return processed_chunks, chunk_counts
+
+    def _aggregate_embeddings(
+        self,
+        embeddings: List[List[float]],
+        chunk_counts: List[int],
+        aggregation_method: str = "mean",
+    ) -> List[List[float]]:
+        """Aggregate embeddings from split chunks back to original text count."""
+        if not embeddings or not chunk_counts:
+            return []
+
+        aggregated = []
+        start_idx = 0
+
+        for chunk_count in chunk_counts:
+            if chunk_count == 1:
+                # Single chunk, use as-is
+                aggregated.append(embeddings[start_idx])
+            else:
+                # Multiple chunks, aggregate
+                chunk_embeddings = embeddings[start_idx : start_idx + chunk_count]
+
+                if aggregation_method == "mean":
+                    # Average the embeddings
+                    aggregated_emb = np.mean(chunk_embeddings, axis=0).tolist()
+                elif aggregation_method == "max":
+                    # Element-wise maximum
+                    aggregated_emb = np.max(chunk_embeddings, axis=0).tolist()
+                elif aggregation_method == "first":
+                    # Use first chunk
+                    aggregated_emb = chunk_embeddings[0]
+                elif aggregation_method == "last":
+                    # Use last chunk
+                    aggregated_emb = chunk_embeddings[-1]
+                else:
+                    # Default to mean
+                    aggregated_emb = np.mean(chunk_embeddings, axis=0).tolist()
+
+                aggregated.append(aggregated_emb)
+
+                self._logger.debug(
+                    f"Aggregated {chunk_count} chunks using {aggregation_method} method"
+                )
+
+            start_idx += chunk_count
+
+        return aggregated
 
     def _add_task_prefix(self, text: str, is_query: Optional[bool] = None) -> str:
         """Add appropriate task prefix to text based on content or explicit flag."""
@@ -137,271 +322,240 @@ class NomicEmbedTextPipe(BasePipeline):
 
         return f"{prefix}{text}"
 
-    def _extract_texts_from_messages(self, messages: List[Message]) -> List[str]:
-        """Extract text content from messages."""
-        texts = []
-        for message in messages:
-            if not message.content:
-                continue
-            for content in message.content:
-                if (
-                    hasattr(content, "type")
-                    and hasattr(content, "text")
-                    and content.text
-                ):
-                    texts.append(content.text)
-        return texts
+    async def run(
+        self, messages: List[Message]
+    ) -> AsyncGenerator[List[List[float]], None]:
+        """
+        Process messages to generate embeddings with task prefixes and automatic splitting.
+        """
+        start_time = datetime.datetime.now(datetime.timezone.utc)
 
-    def _generate_embeddings(
-        self, texts: List[str], normalize: bool = True
+        try:
+            # Extract and process texts with prefixes
+            texts = []
+            for message in messages:
+                text = extract_message_text(message)
+                if text:
+                    # Add task prefix (auto-detect query vs document)
+                    prefixed_text = self._add_task_prefix(text)
+                    texts.append(prefixed_text)
+
+            if not texts:
+                self._logger.warning("No text inputs found in messages")
+                yield [[0.0] * self.embedding_dim]
+                return
+
+            self._logger.info(
+                f"Processing {len(texts)} text inputs with task prefixes and splitting"
+            )
+
+            # Generate embeddings with splitting
+            embeddings = await self._generate_embeddings_with_splitting(
+                texts, aggregation_method="mean"
+            )
+
+            # Log performance
+            duration = (
+                datetime.datetime.now(datetime.timezone.utc) - start_time
+            ).total_seconds()
+            self._logger.debug(
+                f"Generated {len(embeddings)} embeddings in {duration:.2f}s "
+                f"({len(embeddings[0]) if embeddings else 0} dimensions each)"
+            )
+
+            yield embeddings
+
+        except Exception as e:
+            self._logger.error(f"Error in embedding generation: {e}")
+            # Return zero embeddings as fallback
+            yield [
+                [0.0] * self.embedding_dim
+                for _ in range(len(texts) if "texts" in locals() else 1)
+            ]
+
+    async def _generate_embeddings_with_splitting(
+        self, texts: List[str], aggregation_method: str = "mean"
     ) -> List[List[float]]:
-        """
-        Generate embeddings for multiple texts using Llama's built-in embed method.
-
-        Args:
-            texts: List of texts to embed
-            normalize: Whether to normalize embeddings
-
-        Returns:
-            List of embeddings, one per text
-        """
-        if not self.model:
-            raise RuntimeError("Model not initialized")
-
+        """Generate embeddings with automatic text splitting and aggregation."""
         if not texts:
             return []
 
         try:
-            # Use Llama's built-in embed method which handles batching, tokenization, and truncation
-            embeddings = self.model.embed(
-                input=texts,
-                normalize=normalize,  # Let Llama handle normalization
-                truncate=True,  # Automatically truncate to model's max context
-            )
+            # Process texts with splitting
+            processed_chunks, chunk_counts = self._process_texts_with_splitting(texts)
 
-            # Convert the embeddings to the expected List[List[float]] format
-            result = []
-
-            # Handle tuple return format (embeddings, token_count)
-            if isinstance(embeddings, tuple):
-                embeddings = embeddings[0]
-
-            # Handle single embedding (List[float])
-            if embeddings and not isinstance(embeddings[0], list):
-                result = [embeddings]
-            else:
-                result = embeddings
-
-            self._logger.debug(
-                f"Generated {len(result)} embeddings using Llama's embed method"
-            )
-            return cast(List[List[float]], result)
-
-        except Exception as e:
-            self._logger.error(f"Error generating embeddings: {str(e)}")
-            # Return zero vectors as fallback
-            return [[0.0] * 768 for _ in texts]
-
-    def run(self, req: ChatReq) -> Generator[ChatResponse, Any, None]:
-        """Process input messages to generate embeddings for text."""
-        start_time = datetime.datetime.now(tz=datetime.timezone.utc)
-
-        try:
-            # Extract texts from messages
-            raw_texts = self._extract_texts_from_messages(req.messages)
-
-            if not raw_texts:
-                self._logger.warning("No text inputs found in messages")
-                raw_texts = [""]  # Add empty input to avoid errors
-
-            # Add task prefixes to texts
-            processed_texts = [self._add_task_prefix(text) for text in raw_texts]
+            if not processed_chunks:
+                return [[0.0] * self.embedding_dim for _ in texts]
 
             self._logger.info(
-                f"Processing {len(processed_texts)} text inputs for embedding"
+                f"Processing {len(processed_chunks)} chunks from {len(texts)} original texts"
             )
 
-            # Generate embeddings using Llama's built-in method
-            embeddings = self._generate_embeddings(processed_texts, normalize=True)
+            # Generate embeddings for all chunks using LangChain
+            chunk_embeddings = await self.llm.aembed_documents(processed_chunks)
 
-            end_time = datetime.datetime.now(tz=datetime.timezone.utc)
-            total_duration = (end_time - start_time).total_seconds() * 1000
+            if not chunk_embeddings:
+                self._logger.warning("No embeddings returned from model")
+                return [[0.0] * self.embedding_dim for _ in texts]
 
-            self._logger.debug(
-                f"Generated {len(embeddings)} embeddings with {len(embeddings[0]) if embeddings else 0} dimensions each"
+            # Validate embedding dimensions
+            if chunk_embeddings and len(chunk_embeddings[0]) != self.embedding_dim:
+                self._logger.warning(
+                    f"Unexpected embedding dimension: {len(chunk_embeddings[0])}, expected {self.embedding_dim}"
+                )
+
+            # Aggregate chunks back to original texts
+            aggregated_embeddings = self._aggregate_embeddings(
+                chunk_embeddings, chunk_counts, aggregation_method
             )
 
-            # Create response
-            response = ChatResponse(
-                message=Message(
-                    id=None,
-                    role=MessageRole.ASSISTANT,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=f"Generated {len(embeddings)} embeddings with {len(embeddings[0]) if embeddings else 0} dimensions each",
-                            url=None,
-                        )
-                    ],
-                    tool_calls=None,
-                    thinking=None,
-                    created_at=start_time,
-                ),
-                done=True,
-                finish_reason="success",
-                context=embeddings,  # Store embeddings in context
-                total_duration=total_duration,
-                load_duration=0.0,
-                prompt_eval_count=0,
-                prompt_eval_duration=0,
-                eval_count=0,
-                eval_duration=0,
-                created_at=start_time,
-                model=str(self.model_def.id),
-            )
-            yield response
+            return cast(List[List[float]], aggregated_embeddings)
 
         except Exception as e:
-            self._logger.error(f"Error running Nomic Embed Text model: {str(e)}")
-            error_response = ChatResponse(
-                message=Message(
-                    id=None,
-                    role=MessageRole.ASSISTANT,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=f"Error generating embeddings: {str(e)}",
-                            url=None,
-                        )
-                    ],
-                    tool_calls=None,
-                    thinking=None,
-                    created_at=start_time,
-                ),
-                done=True,
-                finish_reason="error",
-                context=[],  # Empty context on error
-                total_duration=(
-                    datetime.datetime.now(tz=datetime.timezone.utc) - start_time
-                ).total_seconds()
-                * 1000,
-                load_duration=0.0,
-                prompt_eval_count=0,
-                prompt_eval_duration=0,
-                eval_count=0,
-                eval_duration=0,
-                created_at=start_time,
-                model=str(self.model_def.id),
-            )
-            yield error_response
-            raise
+            self._logger.error(f"Error generating embeddings with splitting: {e}")
+            return [[0.0] * self.embedding_dim for _ in texts]
 
-    async def emb(
+    async def embed_texts(
         self,
         texts: Union[str, List[str]],
         is_query: Optional[bool] = None,
         matryoshka_dim: Optional[int] = None,
+        aggregation_method: str = "mean",
     ) -> List[List[float]]:
         """
-        Generate embeddings for one or more texts using Llama's built-in embed method.
-        Always returns List[List[float]] where each embedding is 768 dimensions (or matryoshka_dim).
-
-        Args:
-            texts: The text or list of texts to embed
-            is_query: Whether the text is a query (True), document (False), or auto-detect (None)
-            matryoshka_dim: Optional dimension for Matryoshka embedding truncation (256, 512, or 768)
-
-        Returns:
-            A list of embeddings for each input text
+        Convenience method for direct text embedding with task prefixes and splitting.
         """
-        # Standardize input to list format
         if isinstance(texts, str):
             texts = [texts]
 
-        if not texts:
-            return []
+        # Add task prefixes
+        processed_texts = [self._add_task_prefix(text, is_query) for text in texts]
 
-        try:
-            # Add appropriate prefixes to all texts
-            processed_texts = [self._add_task_prefix(text, is_query) for text in texts]
+        # Generate embeddings with splitting
+        embeddings = await self._generate_embeddings_with_splitting(
+            processed_texts, aggregation_method
+        )
 
-            # Generate embeddings using Llama's built-in method
-            embeddings = self._generate_embeddings(processed_texts, normalize=True)
-
-            # Apply Matryoshka truncation if specified
-            if matryoshka_dim and matryoshka_dim in [256, 512, 768]:
-                self._logger.debug(
-                    f"Truncating embeddings to {matryoshka_dim} dimensions"
-                )
-                embeddings = [emb[:matryoshka_dim] for emb in embeddings]
-            elif matryoshka_dim and matryoshka_dim not in [256, 512, 768]:
-                self._logger.warning(
-                    f"Invalid matryoshka_dim: {matryoshka_dim}. Using full 768 dimensions."
-                )
-
-            # Ensure all embeddings have consistent dimensions
-            expected_dim = matryoshka_dim if matryoshka_dim in [256, 512, 768] else 768
-            normalized_embeddings = []
-
-            for embedding in embeddings:
-                if len(embedding) > expected_dim:
-                    embedding = embedding[:expected_dim]
-                elif len(embedding) < expected_dim:
-                    embedding.extend([0.0] * (expected_dim - len(embedding)))
-                normalized_embeddings.append(embedding)
-
-            self._logger.debug(
-                f"Generated {len(normalized_embeddings)} embeddings from {len(texts)} input texts"
+        # Apply Matryoshka truncation if requested
+        if matryoshka_dim and matryoshka_dim in [256, 512, 768]:
+            self._logger.debug(f"Truncating embeddings to {matryoshka_dim} dimensions")
+            embeddings = [emb[:matryoshka_dim] for emb in embeddings]
+        elif matryoshka_dim and matryoshka_dim not in [256, 512, 768]:
+            self._logger.warning(
+                f"Invalid matryoshka_dim: {matryoshka_dim}. Using full {self.embedding_dim} dimensions."
             )
-            return normalized_embeddings
+
+        return embeddings
+
+    async def embed_query(
+        self,
+        query: str,
+        matryoshka_dim: Optional[int] = None,
+        aggregation_method: str = "mean",
+    ) -> List[float]:
+        """Embed a single query with proper task prefix and splitting."""
+        embeddings = await self.embed_texts(
+            [query],
+            is_query=True,
+            matryoshka_dim=matryoshka_dim,
+            aggregation_method=aggregation_method,
+        )
+        return (
+            embeddings[0]
+            if embeddings
+            else [0.0] * (matryoshka_dim or self.embedding_dim)
+        )
+
+    async def embed_documents(
+        self,
+        documents: List[str],
+        matryoshka_dim: Optional[int] = None,
+        aggregation_method: str = "mean",
+    ) -> List[List[float]]:
+        """Embed multiple documents with proper task prefix and splitting."""
+        return await self.embed_texts(
+            documents,
+            is_query=False,
+            matryoshka_dim=matryoshka_dim,
+            aggregation_method=aggregation_method,
+        )
+
+    async def compute_similarity(
+        self,
+        query: str,
+        documents: List[str],
+        top_k: Optional[int] = None,
+        aggregation_method: str = "mean",
+    ) -> List[tuple[int, float, str]]:
+        """Compute similarity between query and documents with automatic splitting."""
+        try:
+            # Generate embeddings with proper task prefixes and splitting
+            query_prefixed = self._add_task_prefix(query, is_query=True)
+            docs_prefixed = [
+                self._add_task_prefix(doc, is_query=False) for doc in documents
+            ]
+
+            query_embeddings = await self._generate_embeddings_with_splitting(
+                [query_prefixed], aggregation_method
+            )
+            doc_embeddings = await self._generate_embeddings_with_splitting(
+                docs_prefixed, aggregation_method
+            )
+
+            if not query_embeddings or not doc_embeddings:
+                self._logger.error("Failed to generate embeddings")
+                return []
+
+            # Compute cosine similarities
+            query_emb = np.array(query_embeddings[0])
+            similarities = []
+
+            for i, doc_emb in enumerate(doc_embeddings):
+                doc_emb_array = np.array(doc_emb)
+                similarity = float(
+                    np.dot(query_emb, doc_emb_array)
+                )  # Already normalized
+                similarities.append((i, similarity, documents[i]))
+
+            # Sort by similarity (descending)
+            similarities.sort(key=lambda x: x[1], reverse=True)
+
+            return similarities[:top_k] if top_k else similarities
 
         except Exception as e:
-            self._logger.error(f"Error in emb method: {str(e)}")
-            # Return empty embeddings as fallback
-            dim = matryoshka_dim if matryoshka_dim in [256, 512, 768] else 768
-            return [[0.0] * dim for _ in texts]
+            self._logger.error(f"Error computing similarities: {e}")
+            return [
+                (i, 0.0, doc)
+                for i, doc in enumerate(documents[:top_k] if top_k else documents)
+            ]
 
-    def _extract_embedding_from_response(
-        self, responses
-    ) -> Optional[List[List[float]]]:
-        """
-        Extract embeddings from model responses.
-        Always returns List[List[float]] format.
+    def get_token_count_estimate(self, text: str) -> int:
+        """Get token count estimate for a text (including any prefixes)."""
+        prefixed_text = self._add_task_prefix(text)
+        return self._estimate_tokens(prefixed_text)
 
-        Args:
-            responses: List of responses from the model
+    def will_text_be_split(self, text: str, is_query: Optional[bool] = None) -> bool:
+        """Check if a text will be split due to token limits."""
+        prefixed_text = self._add_task_prefix(text, is_query)
+        estimated_tokens = self._estimate_tokens(prefixed_text)
+        return estimated_tokens > self.max_context_tokens
 
-        Returns:
-            List of embedding vectors or None if not found
-        """
-        # Extract embeddings from the context field of ChatResponse
-        for response in responses:
-            if hasattr(response, "context") and response.context:
-                # Ensure we always return List[List[float]]
-                if isinstance(response.context, list):
-                    # Check if it's already List[List[float]]
-                    if response.context and isinstance(response.context[0], list):
-                        return response.context
-                    # Convert List[float] to List[List[float]]
-                    elif response.context and isinstance(
-                        response.context[0], (int, float)
-                    ):
-                        return [response.context]
-                return response.context
-
-        return None
-        """Clean up resources used by the NomicEmbedTextPipe."""
+    def __del__(self) -> None:
+        """Clean up resources with enhanced error handling."""
         try:
-            if hasattr(self, "_logger"):
-                self._logger.info(f"NomicEmbedTextPipe cleanup initiated")
+            model_name = (
+                getattr(self.model, "name", "unknown")
+                if hasattr(self, "model")
+                else "unknown"
+            )
+            self._logger.info(f"NomicEmbedTextPipe for {model_name}: Cleanup initiated")
 
-            if hasattr(self, "model") and self.model is not None:
-                del self.model
-                self.model = None
+            if hasattr(self, "llm") and self.llm is not None:
+                del self.llm
 
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+                torch.cuda.synchronize()
 
         except Exception as e:
-            logger = logging.getLogger(__name__)
-            logger.error(f"Error cleaning up NomicEmbedTextPipe resources: {str(e)}")
+            logger.error(f"Error cleaning up NomicEmbedTextPipe: {e}")

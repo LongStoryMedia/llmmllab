@@ -1,5 +1,6 @@
 # main.py
 import argparse
+import asyncio
 import logging
 import statistics
 from typing import List
@@ -7,7 +8,7 @@ from typing import List
 from evaluation.suite import AcademicBenchmarkSuite
 
 
-def main():
+async def main():
     """Main function to run academic benchmarks."""
     parser = argparse.ArgumentParser(description="Academic LLM Benchmark Suite")
     parser.add_argument(
@@ -73,7 +74,7 @@ def main():
         benchmark_suite = AcademicBenchmarkSuite(data_dir=args.data_dir)
 
         # Run benchmarks
-        all_results = benchmark_suite.run_full_benchmark_suite(
+        all_results = await benchmark_suite.run_full_benchmark_suite(
             model_ids=args.models,
             output_file=args.output,
             benchmarks_to_run=args.benchmarks,
@@ -97,7 +98,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
 
 # ===== Package Init Files =====
 

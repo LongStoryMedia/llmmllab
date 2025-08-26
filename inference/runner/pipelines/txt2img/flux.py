@@ -1,30 +1,31 @@
 import logging
-from models.model import Model
-from models import ChatReq
-from typing import Optional, Any
 import torch
+from typing import Optional, Any, List, AsyncGenerator
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_community.tools import BaseTool
+
+from models import Model, Message, ChatResponse, ModelProfile
 from diffusers.pipelines.flux.pipeline_flux import FluxPipeline
 from diffusers.models.transformers.transformer_flux import FluxTransformer2DModel
 from diffusers.quantizers.quantization_config import BitsAndBytesConfig
-from ..base_pipeline import BasePipeline
+from ..base_dual_pipeline import BasePipelineDual
 
 
-class FluxPipe(BasePipeline):
-    def __init__(self, model: Model):
+class FluxPipe(BasePipelineDual[Any]):
+    def __init__(self, model: Model, profile: ModelProfile):
         """
         Initialize a FluxPipe instance and load the pipeline.
 
         Args:
             model (Model): The model configuration to load.
+            profile (ModelProfile): The model profile with parameters.
         """
-        super().__init__(model)
-        self.model = model
+        super().__init__(model, profile)
         self.logger = logging.getLogger(__name__)
 
         self.logger.info(
             f"Loading Flux pipeline for model: {model.name} (ID: {model.id}, dtype: {torch.bfloat16})"
         )
-        self.model_def = model
         quantization_config = self._setup_quantization_config()
         transformer_kwargs = {
             "torch_dtype": torch.bfloat16,
@@ -80,33 +81,88 @@ class FluxPipe(BasePipeline):
         Returns:
             Optional[BitsAndBytesConfig]: The quantization configuration or None.
         """
-        return super()._setup_quantization_config()
+        # Set up 8-bit quantization by default for efficiency
+        return BitsAndBytesConfig(
+            load_in_8bit=True, bnb_8bit_compute_dtype=torch.bfloat16
+        )
 
-    def run(self, req: ChatReq) -> Any:
+    async def run(
+        self, messages: List[Message], prompt: ChatPromptTemplate, tools: List[BaseTool]
+    ) -> AsyncGenerator[ChatResponse, None]:
         """
         Process the input messages and generate an image using the Flux pipeline.
 
         Args:
-            req (ChatReq): The chat request containing messages and parameters.
+            messages: List of messages from the conversation
+            prompt: The chat prompt template (not used directly for image generation)
+            tools: List of available tools (not used for image generation)
 
-        Returns:
-            Any: The generated image.
+        Yields:
+            AsyncGenerator[ChatResponse, None]: A streaming response with the generated image
         """
         if not self.pipeline:
-            raise RuntimeError("Pipeline not initialized. Call load() first.")
+            raise ValueError("Pipeline not initialized")
 
-        messages = req.messages
-
-        # Extract prompt from messages
-        prompt = ""
+        # Extract prompt text from messages
+        prompt_text = ""
         for message in messages:
-            if message.role == "user" and isinstance(message.content, str):
-                prompt = message.content
-                break
+            if hasattr(message, "content") and message.content:
+                # Extract text from message content
+                for content in message.content:
+                    if hasattr(content, "text") and content.text:
+                        prompt_text += content.text + "\n"
+
+        prompt_text = prompt_text.strip()
+        if not prompt_text:
+            prompt_text = "A beautiful landscape"  # Default prompt if none provided
 
         # Generate image with the pipeline
-        result = self.pipeline(prompt=prompt)
-        return result
+        import datetime
+        from models import MessageRole, MessageContent, MessageContentType
+
+        try:
+            # Generate image
+            result = self.pipeline(prompt=prompt_text)
+
+            # Create the image URL (in a real implementation, this would save and return an actual URL)
+            # For this example, we're just indicating that an image was generated
+            image_url = "generated_image.png"
+
+            # Create response
+            response = ChatResponse(
+                created_at=datetime.datetime.now(),
+                done=True,
+                message=Message(
+                    role=MessageRole.ASSISTANT,
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT,
+                            text=f"Generated image for prompt: {prompt_text}",
+                        ),
+                        MessageContent(type=MessageContentType.IMAGE, url=image_url),
+                    ],
+                ),
+            )
+
+            yield response
+
+        except Exception as e:
+            # Return error message
+            response = ChatResponse(
+                created_at=datetime.datetime.now(),
+                done=True,
+                message=Message(
+                    role=MessageRole.ASSISTANT,
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT,
+                            text=f"Error generating image: {str(e)}",
+                        )
+                    ],
+                ),
+            )
+
+            yield response
 
     def __del__(self) -> None:
         """

@@ -56,7 +56,7 @@ if [ "$1" = "--watch" ] || [ "$1" = "-w" ]; then
     fi
 
     fswatch -o "${SCRIPT_DIR}" | while read f; do
-        echo "Change detected, syncing..."
+        echo "Change detected in ${f}, syncing..."
         rsync -avruz --delete \
             --exclude='.git/' \
             --exclude='.venv/' \

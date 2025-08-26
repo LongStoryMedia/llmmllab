@@ -28,11 +28,13 @@ class DynamicToolRunner(BaseTool):
     parameters: Dict[str, Any] = Field(default_factory=dict)
 
     def __init__(self, dynamic_tool: DynamicTool):
-        self.name = dynamic_tool.name
-        self.description = dynamic_tool.description
-        self.code = dynamic_tool.code
-        self.function_name = dynamic_tool.function_name
-        self.parameters = dynamic_tool.parameters or {}
+        super().__init__(
+            name=dynamic_tool.name,
+            description=dynamic_tool.description,
+            code=dynamic_tool.code,
+            function_name=dynamic_tool.function_name,
+            parameters=dynamic_tool.parameters or {},
+        )
 
     def _run(
         self, run_manager: Optional[CallbackManagerForToolRun] = None, **kwargs

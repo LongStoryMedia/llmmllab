@@ -119,7 +119,7 @@ class MMLUBenchmark(BenchmarkBase):
             },
         ]
 
-    def run(
+    async def run(
         self,
         model_id: str,
         num_samples: int = 100,
@@ -140,8 +140,8 @@ class MMLUBenchmark(BenchmarkBase):
         detailed_results = []
         subject_scores = {}
 
-        def aq(q):
-            is_correct, result = self.answer_question(model_id, q)
+        async def aq(q):
+            is_correct, result = await self.answer_question(model_id, q)
             detailed_results.append(result)
             nonlocal total_answers
             nonlocal correct_answers
@@ -163,41 +163,67 @@ class MMLUBenchmark(BenchmarkBase):
                 if is_correct:
                     subject_scores[q["subject"]]["correct"] += 1
 
-        questions_processed = False
-
-        # Try to get questions from HuggingFace dataset first
+        # If dataset_path is provided, load from HuggingFace
         if dataset_path:
             try:
                 # Load dataset with proper error handling
                 dataset = self.load_dataset_from_huggingface(
-                    dataset_path, "all", num_samples=num_samples
+                    dataset_path, config_name="all", num_samples=num_samples
                 )
 
                 if dataset and hasattr(dataset, "__iter__"):
                     self.logger.info(f"Successfully loaded dataset: {dataset_path}")
-                    c = 0
 
-                    for q in dataset:
-                        if c >= num_samples:
-                            break
+                    # Convert dataset to a list so we can select random samples
+                    dataset_list = list(dataset)
+                    total_questions = len(dataset_list)
+                    self.logger.info(f"Total questions available: {total_questions}")
 
-                        # Skip if subjects filter is specified and question doesn't match
-                        if (
-                            subjects
-                            and isinstance(q, Dict)
-                            and q.get("subject", "") not in subjects
-                        ):
-                            continue
+                    # Filter by subjects if specified
+                    if subjects:
+                        dataset_list = [
+                            q
+                            for q in dataset_list
+                            if isinstance(q, Dict) and q.get("subject", "") in subjects
+                        ]
+                        self.logger.info(
+                            f"Questions after subject filtering: {len(dataset_list)}"
+                        )
 
-                        print(f"MMLU Question {c+1}/{num_samples}")
-                        aq(q)
-                        c += 1
+                    if not dataset_list:
+                        self.logger.error("No questions available after filtering")
+                        return BenchmarkResult(
+                            score=0.0,
+                            total_questions=0,
+                            correct_answers=0,
+                            detailed_results=[],
+                            metadata={
+                                "error": "No questions available after filtering"
+                            },
+                        )
 
-                    questions_processed = True
+                    # Adjust num_samples if we don't have enough questions
+                    sample_size = min(num_samples, len(dataset_list))
+                    self.logger.info(
+                        f"Randomly selecting {sample_size} questions from {len(dataset_list)} available questions"
+                    )
+
+                    # Randomly select questions
+                    selected_questions = random.sample(dataset_list, sample_size)
+
+                    # Process the selected questions
+                    for i, q in enumerate(selected_questions):
+                        print(f"MMLU Question {i+1}/{sample_size}")
+                        await aq(q)
 
                 else:
-                    self.logger.warning(
-                        "Dataset is empty or invalid, falling back to sample questions"
+                    self.logger.error("Dataset is empty or invalid")
+                    return BenchmarkResult(
+                        score=0.0,
+                        total_questions=0,
+                        correct_answers=0,
+                        detailed_results=[],
+                        metadata={"error": "Dataset is empty or invalid"},
                     )
 
             except Exception as e:
@@ -210,8 +236,8 @@ class MMLUBenchmark(BenchmarkBase):
                     metadata={"error": str(e)},
                 )
 
-        # Fall back to sample questions if dataset loading failed or no dataset specified
-        if not questions_processed:
+        # If no dataset_path is provided, use sample questions
+        else:
             questions = self.get_sample_questions()
 
             # Filter by subjects if specified
@@ -243,7 +269,7 @@ class MMLUBenchmark(BenchmarkBase):
 
             for i, question in enumerate(questions):
                 print(f"MMLU Question {i+1}/{len(questions)}")
-                aq(question)
+                await aq(question)
 
         # Calculate subject-wise scores
         subject_accuracy = {}
@@ -275,9 +301,20 @@ class MMLUBenchmark(BenchmarkBase):
             metadata={"subject_accuracy": subject_accuracy},
         )
 
-    def answer_question(
-        self, model_id: str, question: Dict
-    ) -> Tuple[bool, Dict]:  # Format prompt following MMLU format
+    async def answer_question(self, model_id: str, question: Dict) -> Tuple[bool, Dict]:
+        """
+        Process a single MMLU question and get the model's answer.
+
+        Args:
+            model_id: The ID of the model to use
+            question: Dictionary containing question data
+
+        Returns:
+            Tuple of (is_correct, result_dict)
+
+        Raises:
+            Exception: Any exception during inference or evaluation is propagated
+        """
         # Use the multiple_choice_template from PromptTemplates
         prompt = PromptTemplates.multiple_choice_template(
             question=question["question"],
@@ -286,19 +323,40 @@ class MMLUBenchmark(BenchmarkBase):
         )
 
         self._print_question_debug(question)
-        response = self.inference_engine.run_single_inference(
+
+        # Run inference - will raise exception on failure
+        response = await self.inference_engine.run_single_inference(
             model_id=model_id, prompt=prompt
         )
-        full_response = response.get("response", "")
+
+        full_response = response["response"]  # No need to .get() with default
         print("\nMODEL RESPONSE:")
         print(f"{full_response}")
+
+        # Extract answer - will raise exception on failure
         extracted_answer, confidence = self.extractor.extract(full_response, question)
         print("\nEXTRACTION:")
         print(f"Extracted answer: {extracted_answer} (confidence: {confidence:.2f})")
-        is_correct, eval_confidence, _ = self.evaluator.evaluate(
-            extracted_answer, question["answer"], question, confidence
+
+        # Convert the answer to string if it's an integer
+        correct_answer = question["answer"]
+        if isinstance(correct_answer, int):
+            # Handle both 0-based indexing (from HuggingFace dataset) and 1-based indexing
+            if (
+                correct_answer >= 0 and correct_answer <= 3
+            ):  # 0-based indexing (0,1,2,3)
+                correct_answer = chr(65 + correct_answer)  # 0->A, 1->B, 2->C, 3->D
+            else:  # 1-based indexing (1,2,3,4)
+                correct_answer = chr(64 + correct_answer)  # 1->A, 2->B, 3->C, 4->D
+        elif not isinstance(correct_answer, str):
+            correct_answer = str(correct_answer)
+
+        # Evaluate answer - will raise exception on failure
+        is_correct, eval_confidence, eval_metadata = self.evaluator.evaluate(
+            extracted_answer, correct_answer, question, confidence
         )
         print(f"Correct? {'YES' if is_correct else 'NO'}")
+
         return is_correct, {
             "subject": question["subject"],
             "question": (
@@ -306,12 +364,13 @@ class MMLUBenchmark(BenchmarkBase):
                 if len(question["question"]) > 100
                 else question["question"]
             ),
-            "correct_answer": question["answer"],
+            "correct_answer": correct_answer,
             "model_answer": extracted_answer,
             "extraction_confidence": confidence,
             "eval_confidence": eval_confidence,
             "is_correct": is_correct,
             "response": full_response[:50],
+            "evaluation_metadata": eval_metadata,
         }
 
     def _print_question_debug(self, question: Dict) -> None:
@@ -322,5 +381,17 @@ class MMLUBenchmark(BenchmarkBase):
         print("CHOICES:")
         for i, choice in enumerate(question["choices"]):
             print(f"{chr(65+i)}. {choice}")
-        print(f"CORRECT ANSWER: {question['answer']}")
+
+        # Convert the answer to letter format if it's an integer
+        answer_display = question["answer"]
+        if isinstance(answer_display, int):
+            # Handle both 0-based indexing (from HuggingFace dataset) and 1-based indexing
+            if (
+                answer_display >= 0 and answer_display <= 3
+            ):  # 0-based indexing (0,1,2,3)
+                answer_display = chr(65 + answer_display)  # 0->A, 1->B, 2->C, 3->D
+            else:  # 1-based indexing (1,2,3,4)
+                answer_display = chr(64 + answer_display)  # 1->A, 2->B, 3->C, 4->D
+
+        print(f"CORRECT ANSWER: {answer_display}")
         print("-" * 50 + "\n")

@@ -1,0 +1,20 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Intent
+description: Represents the intent detected from a user's message
+type: object
+properties:
+  web_search:
+    type: boolean
+    description: Indicates if the intent involves a web search
+  memory:
+    type: boolean
+    description: Indicates if the intent involves memory retrieval
+  deep_research:
+    type: boolean
+    description: Indicates if the intent involves deep research
+  image_generation:
+    type: boolean
+    description: Indicates if the intent involves image generation
+  statically_discovered:
+    type: boolean
+    description: Indicates if the intent was statically discovered

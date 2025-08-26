@@ -9,16 +9,15 @@ import json
 from typing import List, AsyncGenerator, Union
 
 from langchain_community.tools import BaseTool
-from langchain_core.messages import AIMessageChunk
 
+from server.services.hardware_manager import hardware_manager
 from runner.pipelines.factory import pipeline_factory
 from server.tools.dynamic_tool import DynamicToolRunner
 from server.db import storage
 from server.tools.rag_tools import WebSearchTool, MemoryRetrievalTool, SummarizationTool
 from server.context.conversation import ConversationContext
-from server.utils.chat.message import extract_message_text, from_lc_message
+from server.utils.chat.message import extract_message_text
 from models import (
-    ChatReq,
     ChatResponse,
     Message,
     MessageRole,
@@ -182,7 +181,7 @@ def extract_parameters_from_message(message: str) -> dict:
 
 async def get_tools(
     conversation_ctx: ConversationContext,
-) -> AsyncGenerator[Union[str, List[BaseTool]], None]:
+) -> AsyncGenerator[Union[ChatResponse, List[BaseTool]], None]:
     """
     Analyze if the request needs tools and return available tools.
     This function yields status strings during processing and finally yields the list of tools.
@@ -212,9 +211,9 @@ async def get_tools(
 
     yield create_streaming_chunk("Preparing standard tools...", False)
     tools: List[BaseTool] = [
-        MemoryRetrievalTool(conversation_ctx),
-        WebSearchTool(conversation_ctx),
-        SummarizationTool(conversation_ctx),
+        MemoryRetrievalTool(conversation_ctx=conversation_ctx),
+        WebSearchTool(conversation_ctx=conversation_ctx),
+        SummarizationTool(conversation_ctx=conversation_ctx),
     ]
 
     user_message_text = extract_message_text(user_message)
@@ -263,6 +262,8 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
         ],
         mp.parameters,
     )
+
+    hardware_manager.clear_memory(aggressive=True)
 
     needs_dynamic_tool = response.upper() != "NO" and len(response.split()) > 5
 
@@ -315,6 +316,13 @@ Generate a tool definition with:
 3. Python code that implements the functionality
 4. Clear parameter definitions
 
+Requirements:
+- Use snake_case for names
+- Include complete working Python code
+- No imports unless absolutely necessary
+- Handle edge cases
+- Return meaningful results
+
 Format your response as JSON that is valid against this json-schema:
 {DynamicTool.model_json_schema()}
 
@@ -329,7 +337,7 @@ Make the tool specific to the user's request but generalizable for similar tasks
             assert engineering_profile, "Engineering profile not found"
             yield create_streaming_chunk("Loading engineering pipeline...", False)
             engineering_pipeline, _ = pipeline_factory.get_pipeline(
-                engineering_profile.name
+                engineering_profile.model_name
             )
 
             yield create_streaming_chunk(
@@ -366,6 +374,7 @@ Make the tool specific to the user's request but generalizable for similar tasks
                         or json_match.group(2)
                         or json_match.group(3)
                     )
+                    logger.debug(f"Extracted JSON for tool creation: {json_str}")
                     dynamic_tool_data = json.loads(json_str)
 
                     # Create a DynamicTool Pydantic model
@@ -388,14 +397,16 @@ Make the tool specific to the user's request but generalizable for similar tasks
     yield tools
 
 
-def create_streaming_chunk(text: str, done: bool = False) -> str:
+def create_streaming_chunk(
+    text: str, done: bool = False, role: MessageRole = MessageRole.ASSISTANT
+) -> ChatResponse:
     """
     Create a streaming chunk as a JSON ChatResponse.
     """
     message = None
     if text or not done:
         message = Message(
-            role=MessageRole.ASSISTANT,
+            role=role,
             content=(
                 [MessageContent(type=MessageContentType.TEXT, text=text)]
                 if text
@@ -403,14 +414,19 @@ def create_streaming_chunk(text: str, done: bool = False) -> str:
             ),
         )
 
-    response = ChatResponse(
+    return ChatResponse(
         done=done,
         message=message,
         created_at=datetime.now(),
         finish_reason="stop" if done else None,
     )
 
-    return response.model_dump_json() + "\n"
+
+def create_streaming_string(res: ChatResponse) -> str:
+    """
+    Create a streaming string representation.
+    """
+    return res.model_dump_json() + "\n"
 
 
 def create_error_chunk(error_message: str) -> ChatResponse:
@@ -420,7 +436,7 @@ def create_error_chunk(error_message: str) -> ChatResponse:
     return ChatResponse(
         done=True,
         message=Message(
-            role=MessageRole.ASSISTANT,
+            role=MessageRole.OBSERVER,
             content=[
                 MessageContent(
                     type=MessageContentType.TEXT,
@@ -434,67 +450,44 @@ def create_error_chunk(error_message: str) -> ChatResponse:
     )
 
 
-# ============================================================================
-# LangChain-Compatible Pipeline Wrapper
-# ============================================================================
-
-
-class PipelineToLangChainLLM:
+def extract_json_from_response(response: str) -> dict | None:
     """
-    Wrapper to make your existing pipeline compatible with LangChain.
-    This allows seamless integration without changing your pipeline architecture.
+    Extract JSON from LLM response with multiple fallback strategies.
     """
+    try:
+        # Strategy 1: Direct parse
+        return json.loads(response.strip())
+    except json.JSONDecodeError:
+        pass
 
-    def __init__(self, pipeline):
-        self.pipeline = pipeline
-        self.streaming = True
-
-    async def astream(self, messages, **kwargs):
-        """
-        Stream tokens from the pipeline in LangChain-compatible format.
-        """
-        # Convert LangChain messages to your ChatReq format
-        chat_req = self._convert_to_chat_req(messages, **kwargs)
-
-        # Use your existing pipeline streaming
-        stream = self.pipeline.run(chat_req)
-
-        for chunk in stream:
-            if chunk.message and chunk.message.content:
-                text_chunk = "".join(
-                    content_item.text or ""
-                    for content_item in chunk.message.content
-                    if content_item.text
-                )
-                if text_chunk:
-                    # Yield in LangChain-compatible format
-
-                    yield AIMessageChunk(content=text_chunk)
-
-    def _convert_to_chat_req(self, messages, **kwargs) -> ChatReq:
-        """
-        Convert LangChain messages to ChatReq format.
-        """
-        # Convert LangChain messages to your Message format
-
-        converted_messages = []
-        if isinstance(messages, str):
-            # Single string input
-            converted_messages = [
-                Message(
-                    role=MessageRole.USER,
-                    content=[
-                        MessageContent(type=MessageContentType.TEXT, text=messages)
-                    ],
-                )
-            ]
-        elif isinstance(messages, list):
-            # List of LangChain messages
-            converted_messages = [from_lc_message(msg) for msg in messages]
-
-        return ChatReq(
-            messages=converted_messages,
-            stream=True,
-            conversation_id=kwargs.get("conversation_id", 0),
-            options=kwargs.get("options"),
+    try:
+        # Strategy 2: Extract from code blocks
+        json_match = re.search(
+            r"```(?:json)?\s*(\{.*?\})\s*```", response, re.DOTALL | re.IGNORECASE
         )
+        if json_match:
+            return json.loads(json_match.group(1))
+    except json.JSONDecodeError:
+        pass
+
+    try:
+        # Strategy 3: Find first complete JSON object
+        json_match = re.search(r"(\{.*?\})", response, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(1)
+
+            # Fix common issues
+            # Remove trailing commas
+            json_str = re.sub(r",\s*}", "}", json_str)
+            json_str = re.sub(r",\s*]", "]", json_str)
+
+            # Fix unescaped newlines in strings
+            json_str = json_str.replace("\n    ", "\\n    ")
+            json_str = json_str.replace("\n", "\\n")
+
+            return json.loads(json_str)
+    except json.JSONDecodeError:
+        pass
+
+    logger.error(f"Could not extract valid JSON from response: {response[:200]}...")
+    return None

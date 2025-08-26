@@ -31,4 +31,8 @@ message ModelParameters {
   double min_p = 10;
   // Whether to enable "thinking" mode for the model
   bool think = 11;
+  // Maximum number of tokens to generate in a single response
+  int32 max_tokens = 12;
+  // Number of parts to split the model into. -1 means auto.
+  int32 n_parts = 13;
 }

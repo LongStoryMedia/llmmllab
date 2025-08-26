@@ -25,6 +25,7 @@ from models.message_role import MessageRole
 from server.context.conversation import ConversationContext, SummaryContext
 from server.utils.chat.message import extract_message_text, to_lc_message
 from server.config import logger
+from server.context.memory import MemoryContext
 
 
 # ============================================================================
@@ -35,17 +36,25 @@ from server.config import logger
 class MemoryRetrievalTool(BaseTool):
     """Tool for retrieving conversation memories using embeddings"""
 
+    name: str = "memory_retrieval"
+    description: str = "Retrieve relevant memories based on query embeddings"
+    conversation_ctx: ConversationContext
+
     def __init__(self, conversation_ctx: ConversationContext):
-        super().__init__()
-        self.memory_context = conversation_ctx.memory_context
+        super().__init__(conversation_ctx=conversation_ctx)
 
     async def _arun(
         self, embeddings: List[List[float]], run_manager=None, **kwargs
     ) -> str:
         """Async implementation for memory retrieval"""
         try:
+            assert (
+                self.conversation_ctx.memory_context
+            ), "Memory context must be initialized"
             # Retrieve memories
-            memories = await self.memory_context.retrieve_memories(embeddings)
+            memories = await self.conversation_ctx.memory_context.retrieve_memories(
+                embeddings
+            )
 
             if memories:
                 return f"Retrieved memories: {json.dumps(memories)}"
@@ -62,15 +71,18 @@ class MemoryRetrievalTool(BaseTool):
 class WebSearchTool(BaseTool):
     """Tool for web search functionality"""
 
+    name: str = "web_search"
+    description: str = "Perform a web search and retrieve relevant results"
+    conversation_ctx: ConversationContext
+
     def __init__(self, conversation_ctx: ConversationContext):
-        super().__init__()
-        self.search_context = conversation_ctx.search_context
+        super().__init__(conversation_ctx=conversation_ctx)
 
     async def _arun(self, query: Message, run_manager=None, **kwargs) -> str:
         """Async implementation for web search"""
         try:
             # Perform search
-            results = await self.search_context.search(
+            results = await self.conversation_ctx.search_context.search(
                 query, kwargs.get("conversation_id", 0)
             )
 
@@ -89,15 +101,18 @@ class WebSearchTool(BaseTool):
 class SummarizationTool(BaseTool):
     """Tool for conversation summarization"""
 
+    name: str = "summarization"
+    description: str = "Summarize the conversation context"
+    conversation_ctx: ConversationContext
+
     def __init__(self, conversation_ctx: ConversationContext):
-        super().__init__()
-        self.summary_context = conversation_ctx.summary_context
+        super().__init__(conversation_ctx=conversation_ctx)
 
     async def _arun(self, messages: List, run_manager=None, **kwargs) -> str:
         """Async implementation for summarization"""
         try:
             # Perform summarization
-            await self.summary_context.summarize(messages)
+            await self.conversation_ctx.summary_context.summarize(messages)
 
             return "No summary generated"
         except Exception as e:

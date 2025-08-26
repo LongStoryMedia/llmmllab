@@ -80,7 +80,7 @@ class AcademicBenchmarkSuite:
 
         self.logger.info("Benchmark data directories created")
 
-    def run_full_benchmark_suite(
+    async def run_full_benchmark_suite(
         self,
         model_ids: List[str],
         output_file: Optional[str] = None,
@@ -127,7 +127,7 @@ class AcademicBenchmarkSuite:
                             samples = 1
 
                         # Pass dataset_path to the benchmark run method
-                        result = self.benchmarks[benchmark_name].run(
+                        result = await self.benchmarks[benchmark_name].run(
                             model_id=model_id,
                             num_samples=samples,
                             dataset_path=dataset_path,
