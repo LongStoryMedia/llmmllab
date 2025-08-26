@@ -257,7 +257,7 @@ search_results_to_fetch AS (
         ss.similarity AS original_similarity,
         CONCAT('search-', ss.source_id) AS pair_key -- Each search result is its own group
     FROM
-        similar_searches_unfiltered ss
+        similar_search_topics_unfiltered ss
     WHERE
         -- If conversation_id is specified, this entire user check is skipped.
         $5::bigint IS NOT NULL
@@ -321,7 +321,7 @@ limited_pairs AS (
 SELECT
     COALESCE(m.role, 'system') AS role,
     u.source_id,
-    COALESCE(m.content, s.content, ss.synthesis) AS content,
+    COALESCE(mc.text_content, s.content, ss.synthesis) AS content,
     u.source_type,
     u.similarity,
     COALESCE(m.conversation_id, s.conversation_id, ss.conversation_id) AS conversation_id,
@@ -329,6 +329,8 @@ SELECT
 FROM
     unique_results u
     LEFT JOIN messages m ON u.source_id = m.id
+        AND u.source_type = 'message'
+    LEFT JOIN message_contents mc ON m.id = mc.message_id
         AND u.source_type = 'message'
     LEFT JOIN summaries s ON u.source_id = s.id
         AND u.source_type = 'summary'

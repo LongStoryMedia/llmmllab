@@ -24,7 +24,7 @@ class BenchmarkBase(ABC):
         self.huggingface_dataset = None  # Will be loaded when needed
 
     @abstractmethod
-    def run(
+    async def run(
         self, model_id: str, num_samples: int = 50, dataset_path: Optional[str] = None
     ) -> BenchmarkResult:
         """

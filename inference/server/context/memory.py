@@ -6,7 +6,6 @@ import logging
 from typing import List, Optional
 from datetime import datetime
 
-from runner.pipelines.base_pipeline import Embeddings
 from models import Memory, UserConfig
 from server.db import storage
 
@@ -36,7 +35,7 @@ class MemoryContext:
 
     async def retrieve_memories(
         self,
-        embeddings: Embeddings,
+        embeddings: List[List[float]],
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
     ) -> List[Memory]:

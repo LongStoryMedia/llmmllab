@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Callable
+from typing import List, Dict, Any, Callable, Optional
 import logging
 import re
 from ..base.benchmark_base import BenchmarkBase
@@ -45,7 +45,9 @@ class IFEvalBenchmark(BenchmarkBase):
             },
         ]
 
-    def run(self, model_id: str, num_samples: int = 50) -> BenchmarkResult:
+    async def run(
+        self, model_id: str, num_samples: int = 50, dataset_path: Optional[str] = None
+    ) -> BenchmarkResult:
         """Run IFEVAL benchmark."""
         self.logger.info(f"\n--- IFEVAL Benchmark ---")
 
@@ -59,43 +61,39 @@ class IFEvalBenchmark(BenchmarkBase):
         for i, task in enumerate(extended_tasks):
             self.logger.info(f"IFEVAL Task {i+1}/{len(extended_tasks)}")
 
-            try:
-                # Use instruction_following_template from PromptTemplates
-                prompt = PromptTemplates.instruction_following_template(
-                    task["instruction"]
-                )
-                response = self.inference_engine.run_single_inference(
-                    model_id, prompt, max_tokens=200, temperature=0.3
-                )
-                model_response = response.get("response", "")
+            # No try/except - let errors propagate to show actual failures
+            # Use instruction_following_template from PromptTemplates
+            prompt = PromptTemplates.instruction_following_template(task["instruction"])
 
-                # Check if instruction was followed using our constraint methods
-                follows_instruction, confidence, metadata = (
-                    self.check_instruction_following(
-                        model_response, task["constraint"], **task["constraint_params"]
-                    )
+            response = await self.inference_engine.run_single_inference(
+                model_id, prompt, max_tokens=200, temperature=0.3
+            )
+            model_response = response["response"]  # No need for .get() with default
+
+            # Check if instruction was followed using our constraint methods
+            follows_instruction, confidence, metadata = (
+                self.check_instruction_following(
+                    model_response, task["constraint"], **task["constraint_params"]
                 )
+            )
 
-                if follows_instruction:
-                    successful_instructions += 1
+            if follows_instruction:
+                successful_instructions += 1
 
-                detailed_results.append(
-                    {
-                        "task_id": i,
-                        "constraint": task["constraint"],
-                        "follows_instruction": follows_instruction,
-                        "confidence": confidence,
-                        "metadata": metadata,
-                        "response": (
-                            model_response[:150] + "..."
-                            if len(model_response) > 150
-                            else model_response
-                        ),
-                    }
-                )
-
-            except Exception as e:
-                self.logger.error(f"Error in IFEVAL task {i}: {str(e)}")
+            detailed_results.append(
+                {
+                    "task_id": i,
+                    "constraint": task["constraint"],
+                    "follows_instruction": follows_instruction,
+                    "confidence": confidence,
+                    "metadata": metadata,
+                    "response": (
+                        model_response[:150] + "..."
+                        if len(model_response) > 150
+                        else model_response
+                    ),
+                }
+            )
 
         ifeval_score = (
             successful_instructions / len(extended_tasks) if extended_tasks else 0

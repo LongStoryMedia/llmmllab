@@ -1,69 +1,66 @@
-import datetime
+"""
+Updated factory.py to integrate LangGraph-based pipelines.
+This maintains the existing factory pattern while supporting both legacy and modern pipeline implementations.
+"""
+
 import json
 import logging
 import os
 import time
 import threading
-from typing import Dict, List, Optional, Tuple
-import server.config as config
-from models import Model, LoraWeight, ModelDetails
-from .base_pipeline import BasePipeline
+from typing import Any, Dict, List, Optional, cast
 
-# Basic Formula: A rough estimate for VRAM usage (in GB) is: Number of Parameters (in billions) * (Precision / 8) * 1.2.
-# Inference Rule of Thumb (Half Precision): For LLMs in half precision (FP16), estimate approximately 2GB of GPU memory per 1B parameters.
-# Inference Estimate: VRAM (in GB) = 2x model parameters (in billions) + 1x context length (in thousands).
-# Training Estimate: VRAM (in GB) = 40x model parameters (in billions).
+from models import Model, LoraWeight, ModelDetails, ModelProfile
+from .base_dual_pipeline import BasePipelineDual, BasePipelineCore
 
 
 class PipelineCacheEntry:
-    """
-    A class to store BasePipeline cache entries with timeout information.
-    """
+    """A class to store BasePipeline cache entries with timeout information."""
 
-    def __init__(self, pipeline: BasePipeline, timestamp: Optional[float] = None):
+    def __init__(self, pipeline: BasePipelineDual, timestamp: Optional[float] = None):
         self.pipeline = pipeline
         self.last_accessed = timestamp if timestamp is not None else time.time()
 
 
-class PipelineFactory:
+class ModernPipelineFactory:
     """
-    Factory class to create pipelines based on model configurations.
+    Enhanced factory class supporting both legacy AgentExecutor and modern LangGraph pipelines.
 
-    This class implements a caching mechanism that keeps pipeline instances in memory for a configurable
-    period (default 5 minutes). After the timeout period, pipelines that haven't been accessed are
-    automatically cleaned up - their resources are moved to CPU and then removed from memory to free up GPU
-    resources. The cache timeout can be configured using the set_cache_timeout method.
+    This factory automatically determines the appropriate pipeline implementation based on model
+    configuration and maintains backward compatibility while enabling modern LangGraph features.
 
     Key features:
-    - Automatic caching of BasePipeline instances by model ID
-    - Configurable timeout period (default: 5 minutes)
-    - Automatic cleanup of expired pipelines
-    - Resource management for GPU memory
+    - Automatic pipeline type detection and selection
+    - Backward compatibility with existing AgentExecutor pipelines
+    - Modern LangGraph integration for improved performance and control
+    - Configurable timeout and cleanup mechanisms
+    - Resource management for GPU memory optimization
     """
 
-    # Cache for loaded pipelines (only BasePipeline instances)
+    # Cache for loaded pipelines
     _pipelines: Dict[str, PipelineCacheEntry] = {}
     _available_models: Dict[str, Model] = {}
 
     # Cache configuration
-    _cache_timeout = 300  # Default cache timeout: 5 minutes (in seconds)
+    _cache_timeout = 300  # 5 minutes default
     _cleanup_thread = None
-    _cleanup_lock = threading.RLock()  # Lock for thread-safe cache access
+    _cleanup_lock = threading.RLock()
 
-    def __init__(self):
+    def __init__(self, prefer_langgraph: bool = True):
         """
-        Initialize the PipelineFactory with empty model and tokenizer caches.
-        Loads all available models from the models.json file and starts the cleanup thread.
+        Initialize the factory.
+
+        Args:
+            prefer_langgraph: If True, use LangGraph implementations when available.
+                             If False, prefer legacy AgentExecutor implementations.
         """
         self.logger = logging.getLogger(__name__)
+        self.prefer_langgraph = prefer_langgraph
         self._load_available_models()
-        # Start the cleanup thread
         self._start_cleanup_thread()
 
     def _load_available_models(self):
-        """
-        Load all models from the model service into the available_models dictionary.
-        """
+        """Load all models from the model service into the available_models dictionary."""
         try:
             models_file = "/app/.models.json"
             if not os.path.exists(models_file):
@@ -71,11 +68,11 @@ class PipelineFactory:
                 return
 
             with open(models_file, "r", encoding="utf-8") as f:
-                models_data = json.load(f)
+                models_data = cast(List[Dict[str, Any]], json.load(f))
 
             for data in models_data:
                 try:
-                    # Create lora weights and model details more concisely
+                    # Create lora weights and model details
                     loras = [
                         LoraWeight(
                             id=lw.get("id", ""),
@@ -88,27 +85,33 @@ class PipelineFactory:
                         if lw
                     ]
 
+                    details_dict = data.get("details", {})
+                    if not isinstance(details_dict, dict):
+                        details_dict = {}
+
                     details = ModelDetails(
-                        **{
-                            k: data.get("details", {}).get(k, v)
-                            for k, v in {
-                                "parent_model": "",
-                                "format": "",
-                                "family": "",
-                                "families": [],
-                                "parameter_size": "",
-                                "quantization_level": "",
-                                "specialization": "",
-                                "dtype": "bf16",
-                                "precision": "fp16",
-                                "weight": 1.0,
-                                "gguf_file": None,
-                                "description": None,
-                            }.items()
-                        }
+                        parent_model=str(details_dict.get("parent_model", "")) or None,
+                        format=str(details_dict.get("format", "")),
+                        family=str(details_dict.get("family", "")),
+                        families=(
+                            list(details_dict.get("families", []))
+                            if isinstance(details_dict.get("families"), list)
+                            else []
+                        ),
+                        parameter_size=str(details_dict.get("parameter_size", "")),
+                        quantization_level=str(
+                            details_dict.get("quantization_level", "")
+                        )
+                        or None,
+                        specialization=str(details_dict.get("specialization", ""))
+                        or None,
+                        dtype=str(details_dict.get("dtype", "bf16")),
+                        precision=str(details_dict.get("precision", "fp16")),
+                        weight=float(details_dict.get("weight", 1.0)),
+                        gguf_file=str(details_dict.get("gguf_file", "")) or None,
+                        description=str(details_dict.get("description", "")) or None,
                     )
 
-                    # Create model and add to available models if valid
                     model = Model(
                         id=data.get("id"),
                         name=data["name"],
@@ -121,62 +124,56 @@ class PipelineFactory:
                         details=details,
                         task=data.get("task", "TextToText"),
                     )
+
                     assert (
                         model.details and model.model
                     ), "Missing required model fields"
                     self._available_models[data["id"]] = model
+
                 except Exception as e:
                     self.logger.error(
                         f"Error creating model from {data.get('id', 'unknown')}: {e}"
                     )
 
             self.logger.info(f"Loaded {len(self._available_models)} models from config")
+
         except Exception as e:
             self.logger.error(f"Error loading models config: {e}")
 
-        self.logger.info(
-            f"Loaded {len(self._available_models)} models into available models dictionary"
-        )
-
-    def get_pipeline(self, model_id: str) -> Tuple[BasePipeline, float]:
+    def get_pipeline(self, profile: ModelProfile) -> BasePipelineDual:
         """
-        Get the appropriate pipeline for the given model.
-        If a pipeline for this model is already cached and not expired,
-        returns the cached pipeline and updates its last accessed timestamp.
-        Otherwise, creates a new pipeline and caches it.
-
-        Args:
-            model_id (str): The ID of the model to create a pipeline for.
-
-        Returns:
-            BasePipeline: The created pipeline instance or None if the model type is unsupported.
+        Get the appropriate pipeline for the given model profile.
+        Automatically selects between legacy and modern implementations.
         """
-        start_time = datetime.datetime.now(tz=datetime.timezone.utc)
+        model_id = profile.model_name
 
-        # Check if we already have this pipeline cached
+        # Check cache first
         with self._cleanup_lock:
             if model_id in self._pipelines:
                 self.logger.info(f"Using cached pipeline for model: {model_id}")
-                # Update the last accessed timestamp
                 self._pipelines[model_id].last_accessed = time.time()
-                end_time = datetime.datetime.now(tz=datetime.timezone.utc)
-                return (
-                    self._pipelines[model_id].pipeline,
-                    (end_time - start_time).total_seconds() * 1000,
-                )
+                return self._pipelines[model_id].pipeline
 
-        # Check if model exists in our available models dictionary
+        model = self._get_model_by_id(model_id)
+        if model is None:
+            raise RuntimeError(f"Model with ID '{model_id}' not found.")
+
+        pipe = self.create_pipeline(model, profile)
+        if pipe is None:
+            raise RuntimeError(f"Failed to create pipeline for model {model.name}.")
+
+        # Cache the pipeline
+        with self._cleanup_lock:
+            self._pipelines[model_id] = PipelineCacheEntry(pipe)
+
+        return pipe
+
+    def _get_model_by_id(self, model_id: str) -> Model:
+        """Retrieve a model by its ID from the available models dictionary."""
         self.logger.info(f"Available models: {list(self._available_models.keys())}")
+
         if not self._available_models:
-            self.logger.error(
-                "Available models dictionary is empty. Trying to reload from model service."
-            )
-            # Try to load models if dictionary is empty
-            # if model_service.models is None:
-            #     raise RuntimeError("Model service is not initialized or models are not loaded.")
-            # self._available_models = {
-            #     model_id: model for model_id, model in model_service.models.items()
-            # }
+            raise RuntimeError("Available models dictionary is empty.")
 
         if model_id not in self._available_models:
             raise RuntimeError(
@@ -185,165 +182,225 @@ class PipelineFactory:
 
         model = self._available_models[model_id]
         self.logger.info(f"Creating pipeline for model: {model.name} (ID: {model.id})")
+        return model
 
-        pipe = self.create_pipeline(model)
-
-        if pipe is None:
-            raise RuntimeError(f"Failed to create pipeline for model {model.name}.")
-
-        # Cache the pipeline for future use
-        with self._cleanup_lock:
-            self._pipelines[model_id] = PipelineCacheEntry(pipe)
-
-        end_time = datetime.datetime.now(tz=datetime.timezone.utc)
-        return (pipe, (end_time - start_time).total_seconds() * 1000)
-
-    def create_pipeline(self, model: Model) -> Optional[BasePipeline]:
+    def create_pipeline(
+        self, model: Model, profile: ModelProfile
+    ) -> Optional[BasePipelineDual]:
         """
-        Factory method to create and return the appropriate pipeline based on the model configuration.
-        Creates a BasePipeline-derived instance for the given model.
-
-        Args:
-            model (Model): The model configuration to create the pipeline for.
-
-        Returns:
-            BasePipeline: The created pipeline instance or None if the model type is unsupported.
+        Enhanced factory method with automatic LangGraph/legacy selection.
         """
-        pipe = None
-
         # Clear memory before loading new model
         # hardware_manager.clear_memory()
 
         if model.task.endswith("TextToText"):
-            if model.pipeline == "GLM4VPipeline":
-                self.logger.info(f"Creating GLM4V pipeline for model {model.name}")
-                from .imgtxt2txt.glm4v import GLM4VPipe
 
-                pipe = GLM4VPipe(model)
-            elif model.pipeline == "GLM4VGGUFPipeline":
-                self.logger.info(f"Creating GLM4V GGUF pipeline for model {model.name}")
-                from .imgtxt2txt.glm4v_gguf import GLM4VGGUFPipe
+            # Qwen models - prefer LangGraph implementation
+            if (
+                model.pipeline == "Qwen30A3BQ4KMPipe"
+                or model.pipeline == "Qwen30A3BCoderQ4KMPipe"
+            ):
 
-                pipe = GLM4VGGUFPipe(model)
-            elif model.pipeline == "Qwen25VLGGUFPipeline":
+                if self.prefer_langgraph:
+                    self.logger.info(
+                        f"Creating LangGraph Qwen pipeline for model {model.name}"
+                    )
+                    try:
+                        # Import the new LangGraph implementation
+                        from .txt2txt.qwen3moe import QwenLangGraphPipe
+
+                        return QwenLangGraphPipe(model, profile)
+                    except ImportError as e:
+                        self.logger.warning(
+                            f"LangGraph implementation not available: {e}"
+                        )
+                        # Fall back to legacy implementation
+
+                # Legacy implementation fallback
                 self.logger.info(
-                    f"Creating Qwen 2.5 VL GGUF pipeline for model {model.name}"
+                    f"Creating legacy Qwen pipeline for model {model.name}"
                 )
-                from .imgtxt2txt.qwen25_vl_gguf import Qwen25VLGGUFPipe
+                from .txt2txt.qwen3_a3b import QwenGGUFPipe
 
-                pipe = Qwen25VLGGUFPipe(model)
-            elif model.pipeline == "Qwen30A3BQ4KMPipe":
-                self.logger.info(f"Creating Qwen GGUF pipeline for model {model.name}")
-                from .txt2txt.qwen30a3b_q4km import QwenGGUFPipe
+                return QwenGGUFPipe(model, profile)
 
-                pipe = QwenGGUFPipe(model)
+            # Vision-Language models
+            if model.pipeline == "Qwen25VLGGUFPipeline":
+                if self.prefer_langgraph:
+                    self.logger.info(
+                        f"Creating LangGraph Qwen 2.5 VL pipeline for model {model.name}"
+                    )
+                    try:
+                        from .imgtxt2txt.qwen25vl import (
+                            Qwen25VLLangGraphPipe,
+                        )
 
-        elif model.task == "TextToImage":
-            if model.pipeline == "StableDiffusion3Pipeline":
-                self.logger.info(f"Creating SD3 pipeline for model {model.name}")
-                from .txt2img.sd3 import SD3Pipe
+                        return Qwen25VLLangGraphPipe(model, profile)
+                    except ImportError:
+                        self.logger.warning(
+                            "LangGraph VL implementation not available, using legacy"
+                        )
 
-                pipe = SD3Pipe(model)
-            elif model.pipeline == "StableDiffusionXLPipeline":
-                self.logger.info(f"Creating SDXL pipeline for model {model.name}")
-                from .txt2img.sdxl import SDXLPipe
+                # Legacy fallback
+                self.logger.info(
+                    f"Creating legacy Qwen 2.5 VL pipeline for model {model.name}"
+                )
+                from .imgtxt2txt.qwen25_vl import Qwen25VLGGUFPipe
 
-                pipe = SDXLPipe(model)
-            elif model.pipeline == "FluxPipeline":
+                return Qwen25VLGGUFPipe(model, profile)
+
+            # BART Summarization
+            if model.pipeline == "BARTSummarizationPipe":
+                if self.prefer_langgraph:
+                    try:
+                        from .txt2txt.bartsumm import (
+                            BARTSummarizationLangGraphPipe,
+                        )
+
+                        return BARTSummarizationLangGraphPipe(model, profile)
+                    except ImportError:
+                        pass
+
+                from .txt2txt.bartsum import BARTSummarizationPipe
+
+                return BARTSummarizationPipe(model, profile)
+
+        # Image generation tasks
+        if model.task == "TextToImage":
+            if model.pipeline == "FluxPipeline":
                 self.logger.info(f"Creating Flux pipeline for model {model.name}")
                 from .txt2img.flux import FluxPipe
 
-                pipe = FluxPipe(model)
+                return FluxPipe(model, profile)
 
-        elif model.task == "ImageToImage":
-            if model.pipeline == "StableDiffusionXLImg2ImgPipeline":
-                self.logger.info(
-                    f"Creating SDXL Img2Img pipeline for model {model.name}"
-                )
-                from .img2img.sdxl import SDXLRefinerPipe
-
-                pipe = SDXLRefinerPipe(model)
-            elif model.pipeline == "FluxKontextPipeline":
+        # Image-to-image tasks
+        if model.task == "ImageToImage":
+            if model.pipeline == "FluxKontextPipeline":
                 self.logger.info(
                     f"Creating FluxKontext pipeline for model {model.name}"
                 )
                 from .img2img.flux import FluxKontextPipe
 
-                pipe = FluxKontextPipe(model)
-            elif model.pipeline == "StableDiffusionInstructPix2PixPipeline":
-                self.logger.info(f"Creating Pix2Pix pipeline for model {model.name}")
-                from .img2img.p2p import Pix2PixPipe
+                return FluxKontextPipe(model, profile)
 
-                pipe = Pix2PixPipe(model)
-
-        elif model.task == "TextToEmbeddings":
+        # Embedding tasks
+        if model.task == "TextToEmbeddings":
             if model.pipeline == "NomicEmbedTextPipe":
                 self.logger.info(
                     f"Creating Nomic Embed Text pipeline for model {model.name}"
                 )
-                from .emb.nom2 import NomicEmbedTextPipe
-
                 try:
-                    pipe = NomicEmbedTextPipe(model)
+                    from .emb.nom2 import NomicEmbedTextPipe
+
+                    return NomicEmbedTextPipe(model, profile)
                 except Exception as e:
                     self.logger.error(f"Failed to initialize NomicEmbedTextPipe: {e}")
                     raise
 
-        if pipe is None:
-            self.logger.error(
-                f"Unsupported pipeline type '{model.pipeline}' for model {model.name}"
-            )
-            return None
+            if model.pipeline == "Qwen3EmbeddingPipe":
+                self.logger.info(
+                    f"Creating Qwen3 Embedding pipeline for model {model.name}"
+                )
+                try:
+                    from .emb.qwen3emb import Qwen3EmbeddingPipe
 
-        return pipe
+                    return Qwen3EmbeddingPipe(model, profile)
+                except Exception as e:
+                    self.logger.error(f"Failed to initialize Qwen3EmbeddingPipe: {e}")
+                    raise
+
+        # Reranking tasks
+        if model.task == "TextToRanking":
+            if model.pipeline == "Qwen3RerankerPipe":
+                self.logger.info(
+                    f"Creating Qwen3 Reranker pipeline for model {model.name}"
+                )
+                try:
+                    from .emb.qwen3rr import Qwen3RerankerPipe
+
+                    return Qwen3RerankerPipe(model, profile)
+                except Exception as e:
+                    self.logger.error(f"Failed to initialize Qwen3RerankerPipe: {e}")
+                    raise
+
+        self.logger.error(
+            f"Unsupported pipeline type '{model.pipeline}' for model {model.name}"
+        )
+        return None
 
     def get_available_models(self) -> Dict[str, Model]:
-        """
-        Get a dictionary of all available models.
-
-        Returns:
-            Dict[str, Model]: Dictionary of model IDs to model objects
-        """
+        """Get a dictionary of all available models."""
         if not self._available_models:
-            logger = logging.getLogger(__name__)
-            logger.warning(
-                "Available models dictionary is empty. Trying to reload from model service."
-            )
-            # Try to load models if dictionary is empty
-            # if model_service.models is not None:
-            #     self._available_models = {
-            #         model_id: model for model_id, model in model_service.models.items()
-            #     }
+            self.logger.warning("Available models dictionary is empty.")
         return self._available_models
 
     def is_model_available(self, model_id: str) -> bool:
-        """
-        Check if a model with the given ID is available.
-
-        Args:
-            model_id (str): The ID of the model to check for.
-
-        Returns:
-            bool: True if the model is available, False otherwise.
-        """
+        """Check if a model with the given ID is available."""
         return model_id in self.get_available_models()
 
     def set_cache_timeout(self, timeout_seconds: int) -> None:
-        """
-        Set the timeout duration for the pipeline cache.
-        Pipelines that have not been accessed for this duration will be removed from
-        the cache, moved to CPU, and their GPU memory will be freed.
-
-        Args:
-            timeout_seconds (int): Duration in seconds before cached pipelines are removed.
-                                  Default is 300 seconds (5 minutes).
-        """
+        """Set the timeout duration for the pipeline cache."""
         self._cache_timeout = timeout_seconds
 
+    def set_langgraph_preference(self, prefer_langgraph: bool) -> None:
+        """
+        Set the preference for LangGraph vs legacy implementations.
+
+        Args:
+            prefer_langgraph: If True, prefer LangGraph implementations when available.
+        """
+        self.prefer_langgraph = prefer_langgraph
+        self.logger.info(f"LangGraph preference set to: {prefer_langgraph}")
+
+    def get_pipeline_info(self, model_id: str) -> Dict[str, Any]:
+        """
+        Get information about the pipeline implementation for a given model.
+
+        Returns:
+            Dictionary containing pipeline type, implementation, and capabilities.
+        """
+        if model_id not in self._available_models:
+            return {"error": f"Model {model_id} not found"}
+
+        model = self._available_models[model_id]
+
+        # Determine if LangGraph implementation is available
+        langgraph_available = False
+        if model.task.endswith("TextToText"):
+            if (
+                model.pipeline == "Qwen30A3BQ4KMPipe"
+                or model.pipeline == "Qwen30A3BCoderQ4KMPipe"
+                or model.pipeline == "Qwen25VLGGUFPipeline"
+            ):
+                try:
+                    # Check if LangGraph implementation exists
+                    if (
+                        "Qwen30A3B" in model.pipeline
+                        or "Qwen30A3BCoder" in model.pipeline
+                    ):
+                        from .txt2txt import qwen3moe
+                    elif "Qwen25VL" in model.pipeline:
+                        from .imgtxt2txt import qwen25vl
+                    langgraph_available = True
+                except ImportError:
+                    pass
+
+        return {
+            "model_id": model_id,
+            "model_name": model.name,
+            "pipeline_type": model.pipeline,
+            "task": model.task,
+            "langgraph_available": langgraph_available,
+            "will_use_langgraph": langgraph_available and self.prefer_langgraph,
+            "implementation": (
+                "langgraph"
+                if (langgraph_available and self.prefer_langgraph)
+                else "legacy"
+            ),
+        }
+
     def _start_cleanup_thread(self):
-        """
-        Start a background thread to periodically clean up expired cache entries.
-        """
+        """Start a background thread to periodically clean up expired cache entries."""
         if self._cleanup_thread is None or not self._cleanup_thread.is_alive():
             self._cleanup_thread = threading.Thread(
                 target=self._cleanup_cache_task, daemon=True
@@ -351,25 +408,18 @@ class PipelineFactory:
             self._cleanup_thread.start()
 
     def _cleanup_cache_task(self):
-        """
-        Background task that periodically checks and removes expired cache entries.
-        """
-        logger = logging.getLogger(__name__)
-        logger.info("Starting pipeline cache cleanup thread")
+        """Background task that periodically checks and removes expired cache entries."""
+        self.logger.info("Starting pipeline cache cleanup thread")
 
         while True:
             time.sleep(60)  # Check every minute
-
             try:
                 self._cleanup_expired_entries()
             except Exception as e:
-                logger.error(f"Error in cache cleanup task: {str(e)}")
+                self.logger.error(f"Error in cache cleanup task: {str(e)}")
 
     def _cleanup_expired_entries(self) -> None:
-        """
-        Remove expired entries from the pipeline cache.
-        """
-        logger = logging.getLogger(__name__)
+        """Remove expired entries from the pipeline cache."""
         current_time = time.time()
         models_to_remove = []
 
@@ -381,74 +431,63 @@ class PipelineFactory:
 
             # Remove expired entries
             for model_id in models_to_remove:
-                logger.info(
+                self.logger.info(
                     f"Removing expired pipeline for model {model_id} from cache"
                 )
-                pipe_entry = self._pipelines.pop(
-                    model_id, None
-                )  # Clean up the pipeline's resources
+                pipe_entry = self._pipelines.pop(model_id, None)
                 if pipe_entry and pipe_entry.pipeline:
                     self._cleanup_pipeline_resources(pipe_entry.pipeline)
 
-            # Clear memory if we removed anything
-            # if len(models_to_remove) > 0:
-            #     from services.hardware_manager import hardware_manager
-            #     hardware_manager.clear_memory(aggressive=True)
-
-    def _cleanup_pipeline_resources(self, pipeline: "BasePipeline") -> None:
-        """
-        Clean up resources used by a BasePipeline instance by calling its __del__ method.
-        This helps ensure GPU memory is properly freed when pipelines are removed from cache.
-
-        Args:
-            pipeline: The BasePipeline instance to clean up.
-        """
+    def _cleanup_pipeline_resources(self, pipeline: BasePipelineCore) -> None:
+        """Clean up resources used by a pipeline instance."""
         try:
-            # Call the pipeline's __del__ method to clean up resources
             if pipeline is not None:
-                self.logger.debug(
-                    f"Calling __del__ method on {type(pipeline).__name__}"
-                )
+                self.logger.debug(f"Cleaning up {type(pipeline).__name__}")
                 del pipeline
         except Exception:
-            self.logger.warning(f"Unexpected error during pipeline cleanup")
+            self.logger.warning("Unexpected error during pipeline cleanup")
 
     def clear_cache(self, model_id: Optional[str] = None) -> None:
-        """
-        Manually clear the pipeline cache and clean up resources.
-        If model_id is provided, only that specific model's pipeline will be removed.
-        Otherwise, all cached pipelines will be removed.
-
-        Args:
-            model_id (Optional[str]): The ID of the specific model to remove from cache.
-                                      If None, all pipelines will be removed.
-        """
-        logger = logging.getLogger(__name__)
-
+        """Manually clear the pipeline cache and clean up resources."""
         with self._cleanup_lock:
             if model_id is not None:
-                # Remove specific pipeline
-                logger.info(
+                self.logger.info(
                     f"Manually removing pipeline for model {model_id} from cache"
                 )
-                pipe_entry = self._pipelines.pop(
-                    model_id, None
-                )  # Clean up the pipeline's resources
+                pipe_entry = self._pipelines.pop(model_id, None)
                 if pipe_entry and pipe_entry.pipeline:
                     self._cleanup_pipeline_resources(pipe_entry.pipeline)
             else:
-                # Remove all pipelines
-                logger.info("Manually clearing all pipelines from cache")
+                self.logger.info("Manually clearing all pipelines from cache")
                 model_ids = list(self._pipelines.keys())
-
                 for m_id in model_ids:
                     pipe_entry = self._pipelines.pop(m_id, None)
                     if pipe_entry and pipe_entry.pipeline:
                         self._cleanup_pipeline_resources(pipe_entry.pipeline)
 
-        # Clear memory
-        # from services.hardware_manager import hardware_manager
-        # hardware_manager.clear_memory(aggressive=True)
+    def get_factory_stats(self) -> Dict[str, Any]:
+        """Get comprehensive factory statistics."""
+        with self._cleanup_lock:
+            cached_models = list(self._pipelines.keys())
+            cache_ages = {
+                model_id: time.time() - entry.last_accessed
+                for model_id, entry in self._pipelines.items()
+            }
+
+        return {
+            "total_available_models": len(self._available_models),
+            "cached_pipelines": len(cached_models),
+            "cached_model_ids": cached_models,
+            "cache_timeout": self._cache_timeout,
+            "prefer_langgraph": self.prefer_langgraph,
+            "cache_ages_seconds": cache_ages,
+            "models_with_langgraph": [
+                model_id
+                for model_id in self._available_models.keys()
+                if self.get_pipeline_info(model_id).get("langgraph_available", False)
+            ],
+        }
 
 
-pipeline_factory = PipelineFactory()
+# Create factory instance with LangGraph preference
+pipeline_factory = ModernPipelineFactory(prefer_langgraph=True)

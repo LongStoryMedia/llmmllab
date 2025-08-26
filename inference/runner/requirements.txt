@@ -16,6 +16,4 @@ sentencepiece>=0.1.99  # For tokenization
 protobuf>=4.23.0  # For communication with gRPC server
 ninja>=1.11.1  # For building C++ extensions
 packaging
-# torch
-# torchvision
-# torchaudio
+tiktoken

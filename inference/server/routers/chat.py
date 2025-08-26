@@ -10,6 +10,7 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 
 import asyncio
 from datetime import datetime as dt
+import string
 from typing import Any, Coroutine
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
@@ -109,7 +110,9 @@ async def chat_completion(
             tasks.append(web_task)
         await asyncio.gather(*tasks)
 
-        if len(conversation_ctx.messages) == 1:
+        if len(
+            conversation_ctx.messages
+        ) == 1 or conversation_ctx.conversation.title.startswith("New Conversation"):
             await conversation_ctx.generate_title()
 
         # Use enhanced chat completion logic which determines whether to use agentic workflow

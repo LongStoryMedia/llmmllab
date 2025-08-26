@@ -475,7 +475,11 @@ async def stream_agentic_response_with_langchain(
             # LangChain's astream is complex, so let's simplify
 
             result = await agent_executor.ainvoke(
-                {"input": user_input, "chat_history": chat_history}
+                {
+                    "input": user_input,
+                    "chat_history": chat_history,
+                    "agent_scratchpad": [],  # Initialize with empty list as required
+                }
             )
 
             # Extract the final response

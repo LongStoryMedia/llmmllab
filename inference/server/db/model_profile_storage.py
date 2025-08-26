@@ -11,7 +11,7 @@ import asyncpg
 from models.model_profile import ModelProfile
 from models.default_model_profiles import DEFAULT_PROFILES
 from server.db.db_utils import typed_pool
-from server.db.serialization_utils import serialize_to_json
+from server.utils.serialization_utils import serialize_to_json
 
 logger = logging.getLogger(__name__)
 

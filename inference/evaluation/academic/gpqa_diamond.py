@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from ..base.benchmark_base import BenchmarkBase
 from ..base.result_types import BenchmarkResult
 from ..utils.inference import InferenceEngine
@@ -68,7 +68,9 @@ class GPQADiamondBenchmark(BenchmarkBase):
             },
         ]
 
-    def run(self, model_id: str, num_samples: int = 10) -> BenchmarkResult:
+    async def run(
+        self, model_id: str, num_samples: int = 50, dataset_path: Optional[str] = None
+    ) -> BenchmarkResult:
         """Run the GPQA-Diamond benchmark on specified model."""
         print("\n--- GPQA-Diamond Benchmark ---")
 
@@ -91,58 +93,51 @@ class GPQADiamondBenchmark(BenchmarkBase):
                 subject=question["subject"],
             )
 
-            try:
-                self._print_question_debug(question)
+            # No try/except - let errors propagate to show actual failures
+            self._print_question_debug(question)
 
-                response = self.inference_engine.run_single_inference(
-                    model_id, prompt, max_tokens=200, temperature=0.1
-                )
-                full_response = response.get("response", "")
+            response = await self.inference_engine.run_single_inference(
+                model_id, prompt, max_tokens=200, temperature=0.1
+            )
+            full_response = response["response"]  # No need for .get() with default
 
-                print("\nMODEL RESPONSE:")
-                print(
-                    f"{full_response[:500]}{'...' if len(full_response) > 500 else ''}"
-                )
+            print("\nMODEL RESPONSE:")
+            print(f"{full_response[:500]}{'...' if len(full_response) > 500 else ''}")
 
-                extracted_answer, confidence = self.extractor.extract(
-                    full_response, question
-                )
+            extracted_answer, confidence = self.extractor.extract(
+                full_response, question
+            )
 
-                print("\nEXTRACTION:")
-                print(
-                    f"Extracted answer: {extracted_answer} (confidence: {confidence:.2f})"
-                )
+            print("\nEXTRACTION:")
+            print(
+                f"Extracted answer: {extracted_answer} (confidence: {confidence:.2f})"
+            )
 
-                is_correct, eval_confidence, metadata = self.evaluator.evaluate(
-                    extracted_answer, question["answer"], question, confidence
-                )
-                print(f"Correct? {'YES' if is_correct else 'NO'}")
+            is_correct, eval_confidence, metadata = self.evaluator.evaluate(
+                extracted_answer, question["answer"], question, confidence
+            )
+            print(f"Correct? {'YES' if is_correct else 'NO'}")
 
-                if is_correct:
-                    correct_answers += 1
+            if is_correct:
+                correct_answers += 1
 
-                detailed_results.append(
-                    {
-                        "question_id": i,
-                        "subject": question["subject"],
-                        "correct_answer": question["answer"],
-                        "model_answer": extracted_answer,
-                        "extraction_confidence": confidence,
-                        "eval_confidence": eval_confidence,
-                        "is_correct": is_correct,
-                        "response": (
-                            full_response[:100] + "..."
-                            if len(full_response) > 100
-                            else full_response
-                        ),
-                    }
-                )
-
-            except Exception as e:
-                self.logger.error(f"Error in GPQA question {i}: {str(e)}")
-                detailed_results.append(
-                    {"question_id": i, "subject": question["subject"], "error": str(e)}
-                )
+            detailed_results.append(
+                {
+                    "question_id": i,
+                    "subject": question["subject"],
+                    "correct_answer": question["answer"],
+                    "model_answer": extracted_answer,
+                    "extraction_confidence": confidence,
+                    "eval_confidence": eval_confidence,
+                    "is_correct": is_correct,
+                    "metadata": metadata,
+                    "response": (
+                        full_response[:100] + "..."
+                        if len(full_response) > 100
+                        else full_response
+                    ),
+                }
+            )
 
         gpqa_score = (
             correct_answers / len(extended_questions) if extended_questions else 0

@@ -17,6 +17,7 @@ from models.message_role import MessageRole
 from models.user_config import UserConfig
 from models.image_metadata import ImageMetadata
 from models.conversation import Conversation
+from models.conversation_ctx import ConversationCtx
 from server.auth import get_request_id, get_user_id
 from server.utils.chat.message import extract_message_text
 from server.config import logger
@@ -28,7 +29,7 @@ from .memory import MemoryContext
 from .summary import SummaryContext
 
 
-class ConversationContext:
+class ConversationContext(ConversationCtx):
     """
     Manages context for a conversation, including messages, summaries, and retrieved memories.
     Provides methods for adding messages, summarizing conversations, and retrieving relevant context.
@@ -38,8 +39,8 @@ class ConversationContext:
     notes: List[str]
     images: List[ImageMetadata]
     conversation: Conversation
-    current_user_message: Optional[Message]
-    conversation_ctx: int
+    current_user_message: Optional[Message] = None
+    intent: Optional[Intent] = None
 
     def __init__(
         self,
@@ -57,7 +58,6 @@ class ConversationContext:
             user_config: User configuration settings
         """
         # Core conversation metadata
-        self.conversation_id = conversation_id
 
         # Conversation content
         self.current_user_message = None
@@ -93,18 +93,18 @@ class ConversationContext:
         prompt = system_prompt_base or "You are a helpful assistant."
 
         if dynamic_tool_info:
-            prompt += f"\n\nAvailable tools:\n{dynamic_tool_info}\n\nUse these tools strategically to provide comprehensive, accurate responses. Always explain your reasoning and cite your sources when using retrieved information."
+            prompt += f"\n\nAvailable tools:\n{dynamic_tool_info}\n\nUse these tools strategically to provide comprehensive, accurate responses."
 
         if self.user_config.memory.enabled:
             prompt += f"\n\nRelevant memories:\n{self.memory_context.memory}"
 
         if self.user_config.web_search.enabled:
-            prompt += f"\n\nResearch findings:\n{self.search_context.research_findings}"
+            prompt += f"\n\nResearch findings:\n{self.search_context.research_findings}\n\nUse these findings to support your responses."
 
         if self.user_config.summarization.enabled:
             prompt += f"\n\nConversation summary:\n{self.summary_context.full_summary}"
 
-        return prompt
+        return f"{prompt}\n\nAlways explain your reasoning and cite your sources when using retrieved information."
 
     async def load_conversation_data(self) -> None:
         """
@@ -114,7 +114,7 @@ class ConversationContext:
         # Get conversation details
         try:
             convo = await storage.get_service(storage.conversation).get_conversation(
-                self.conversation_id
+                self.conversation.id
             )
             if convo:
                 self.conversation = convo
@@ -126,7 +126,7 @@ class ConversationContext:
         try:
             messages = await storage.get_service(
                 storage.message
-            ).get_conversation_history(self.conversation_id)
+            ).get_conversation_history(self.conversation.id)
             self.messages = messages or []
         except Exception as e:
             self.logger.error(f"Error loading messages: {e}")
@@ -150,7 +150,12 @@ class ConversationContext:
         # Detect intent from the message
         if message.role == MessageRole.USER:
             self.current_user_message = message
-            self.intent.detect(message, self.user_config)
+
+            (
+                self.intent.detect(message, self.user_config)
+                if self.intent is not None
+                else None
+            )
 
         # Store message in database
         message_id = await storage.get_service(storage.message).add_message(message)
@@ -174,8 +179,8 @@ class ConversationContext:
         if text:
             try:
                 # Get embedding pipeline from factory
-                embedding_pipeline, _ = pipeline_factory.get_pipeline(mp.model_name)
-                return await embedding_pipeline.emb(text, True, 768), message_id
+                embedding_pipeline = pipeline_factory.get_pipeline(mp)
+                return await embedding_pipeline.get([message]), message_id
             except Exception as e:
                 self.logger.error(f"Error creating embeddings: {e}")
 
@@ -200,7 +205,7 @@ class ConversationContext:
                 raise ValueError("Formatting model profile not found")
 
             # Get formatting pipeline from factory
-            formatting_pipeline, _ = pipeline_factory.get_pipeline(mp.model_name)
+            formatting_pipeline = pipeline_factory.get_pipeline(mp)
             # Prepare prompt for title generation
             title_prompt = (
                 "Create a short, descriptive title (max 5 words) for this conversation."
@@ -213,7 +218,7 @@ class ConversationContext:
                 ],
             )
             # Run the pipeline to get formatted title - use get method which is sync
-            title = formatting_pipeline.get([*self.messages, format_message])
+            title = await formatting_pipeline.get([*self.messages, format_message])
             self.conversation.title = title
             return title
 

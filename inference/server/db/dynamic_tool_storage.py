@@ -11,7 +11,8 @@ import numpy as np
 from models.dynamic_tool import DynamicTool
 from models.pagination import PaginationSchema
 from server.db.db_utils import typed_pool
-from server.db.serialization_utils import serialize_to_json
+from server.utils.serialization_utils import serialize_to_json
+from .memory_storage import MemoryStorage
 
 logger = logging.getLogger(__name__)
 
@@ -253,11 +254,13 @@ class DynamicToolStorage:
         Returns:
             Tuple containing list of tools and pagination metadata
         """
+        vector_str = MemoryStorage.format_embedding_for_pgvector(query_embedding)
+
         async with self.typed_pool.acquire() as conn:
             # Get total count for pagination
             count_row = await conn.fetchrow(
                 self.get_query("tool.count_tools_by_embedding"),
-                query_embedding,
+                vector_str,
                 similarity_threshold,
             )
             total_count = count_row["total_count"] if count_row else 0
@@ -265,7 +268,7 @@ class DynamicToolStorage:
             # Fetch paginated results
             rows = await conn.fetch(
                 self.get_query("tool.search_tools_by_embedding"),
-                query_embedding,
+                vector_str,
                 similarity_threshold,
                 limit,
                 offset,

@@ -10,7 +10,7 @@ import logging
 import uuid
 from models.user_config import UserConfig
 from models.default_model_profiles import DEFAULT_MODEL_PROFILE_CONFIG
-from server.db.serialization_utils import serialize_to_json
+from server.utils.serialization_utils import serialize_to_json
 from models.default_configs import (
     DEFAULT_PREFERENCES_CONFIG,
     DEFAULT_MEMORY_CONFIG,
