@@ -1,14 +1,28 @@
 """
-Integration helpers for using the dynamic tool system with chat completions
+Strongly typed tool integration system for LangGraph workflows.
+Removes code duplication and improves type safety.
 """
 
 from datetime import datetime
 import logging
 import re
 import json
-from typing import List, AsyncGenerator, Union
+from typing import (
+    List,
+    AsyncGenerator,
+    Union,
+    Optional,
+    Dict,
+    Any,
+    Protocol,
+    TypedDict,
+    Literal,
+    cast,
+)
+from enum import Enum
 
-from langchain_community.tools import BaseTool
+from langchain_core.tools import BaseTool
+from pydantic import BaseModel, Field, ValidationError
 
 from server.services.hardware_manager import hardware_manager
 from runner.pipelines.factory import pipeline_factory
@@ -29,197 +43,211 @@ from models import (
 logger = logging.getLogger(__name__)
 
 
-def should_use_agentic_workflow(user_message: str) -> bool:
-    """
-    Determine if a user message would benefit from agentic processing with tools
+class ToolAnalysisResult(BaseModel):
+    """Strongly typed result from tool analysis."""
 
-    Args:
-        user_message: The user's message text
+    needs_dynamic_tool: bool
+    description: str
+    confidence_score: float = Field(ge=0.0, le=1.0)
+    reasoning: str
 
-    Returns:
-        bool: True if agentic workflow should be used
-    """
+
+class ToolGenerationResult(BaseModel):
+    """Result of dynamic tool generation."""
+
+    success: bool
+    tool: Optional[DynamicTool] = None
+    error_message: Optional[str] = None
+
+
+class IntentAnalyzer:
+    """Analyzes user messages to determine tool requirements."""
+
     # Keywords that suggest need for tools/computation
-    tool_indicators = [
-        # Calculation keywords
-        "calculate",
-        "compute",
-        "add",
-        "subtract",
-        "multiply",
-        "divide",
-        "sum",
-        "average",
-        "mean",
-        "median",
-        "standard deviation",
-        "percentage",
-        "percent",
-        "ratio",
-        "proportion",
-        # Data processing keywords
-        "analyze",
-        "process",
-        "transform",
-        "convert",
-        "parse",
-        "filter",
-        "sort",
-        "group",
-        "aggregate",
-        "summarize",
-        # Programming/algorithm keywords
-        "algorithm",
-        "function",
-        "code",
-        "script",
-        "program",
-        "logic",
-        "formula",
-        "equation",
-        "solve",
-        # Complex task indicators
-        "step by step",
-        "break down",
-        "systematic",
-        "methodical",
-        "optimize",
-        "find the best",
-        "compare options",
-    ]
-
-    # Check for mathematical expressions
-    math_patterns = [
-        r"\d+\s*[+\-*/]\s*\d+",  # Basic math operations
-        r"\d+\s*%",  # Percentages
-        r"\$\d+",  # Currency
-        r"\d+\.\d+",  # Decimals
-    ]
-
-    message_lower = user_message.lower()
-
-    # Check for tool indicator keywords
-    for indicator in tool_indicators:
-        if indicator in message_lower:
-            return True
-
-    # Check for mathematical patterns
-    for pattern in math_patterns:
-        if re.search(pattern, user_message):
-            return True
-
-    # Check for question words that might need computation
-    computation_questions = [
-        "how many",
-        "how much",
-        "what is the",
-        "calculate the",
-        "find the",
-        "determine the",
-        "compute the",
-    ]
-
-    for question in computation_questions:
-        if question in message_lower:
-            return True
-
-    return False
-
-
-def extract_parameters_from_message(message: str) -> dict:
-    """
-    Extract parameters from a user message for tool execution
-
-    Args:
-        message: User message text
-
-    Returns:
-        dict: Extracted parameters
-    """
-    # This is a simple implementation - a more robust version might use
-    # the LLM to extract structured parameters from natural language
-
-    params = {}
-
-    # Look for numbers
-    number_pattern = r"(\d+(\.\d+)?)"
-    numbers = re.findall(number_pattern, message)
-    if numbers:
-        for i, (num, _) in enumerate(numbers[:2]):  # Limit to first two numbers
-            if "." in num:
-                params[f"number_{i+1}"] = float(num)
-            else:
-                params[f"number_{i+1}"] = int(num)
-
-    # Look for operation type
-    if (
-        "add" in message.lower()
-        or "+" in message
-        or "sum" in message.lower()
-        or "plus" in message.lower()
-    ):
-        params["operation"] = "add"
-    elif (
-        "subtract" in message.lower()
-        or "-" in message
-        or "minus" in message.lower()
-        or "difference" in message.lower()
-    ):
-        params["operation"] = "subtract"
-    elif (
-        "multiply" in message.lower()
-        or "*" in message
-        or "times" in message.lower()
-        or "product" in message.lower()
-    ):
-        params["operation"] = "multiply"
-    elif "divide" in message.lower() or "/" in message:
-        params["operation"] = "divide"
-
-    return params
-
-
-async def get_tools(
-    conversation_ctx: ConversationContext,
-) -> AsyncGenerator[Union[ChatResponse, List[BaseTool]], None]:
-    """
-    Analyze if the request needs tools and return available tools.
-    This function yields status strings during processing and finally yields the list of tools.
-
-    Args:
-        conversation_ctx: The conversation context containing memory and search contexts
-
-    Yields:
-        Union[str, List[BaseTool]]:
-            - Status messages as strings during tool processing
-            - The final list of BaseTool instances as the last yield
-    """
-
-    user_message = conversation_ctx.current_user_message
-    assert user_message, "No user message found in conversation context"
-
-    yield create_streaming_chunk("Initializing tool analysis...", False)
-
-    mp = await storage.get_service(storage.model_profile).get_model_profile_by_id(
-        conversation_ctx.user_config.model_profiles.analysis_profile_id,
-        conversation_ctx.user_config.user_id,
+    TOOL_INDICATORS = frozenset(
+        [
+            # Calculation keywords
+            "calculate",
+            "compute",
+            "add",
+            "subtract",
+            "multiply",
+            "divide",
+            "sum",
+            "average",
+            "mean",
+            "median",
+            "standard deviation",
+            "percentage",
+            "percent",
+            "ratio",
+            "proportion",
+            # Data processing keywords
+            "analyze",
+            "process",
+            "transform",
+            "convert",
+            "parse",
+            "filter",
+            "sort",
+            "group",
+            "aggregate",
+            "summarize",
+            # Programming/algorithm keywords
+            "algorithm",
+            "function",
+            "code",
+            "script",
+            "program",
+            "logic",
+            "formula",
+            "equation",
+            "solve",
+            # Complex task indicators
+            "step by step",
+            "break down",
+            "systematic",
+            "methodical",
+            "optimize",
+            "find the best",
+            "compare options",
+        ]
     )
-    assert mp, "Model profile not found"
 
-    yield create_streaming_chunk("Loading analysis pipeline...", False)
-    pipeline, _ = pipeline_factory.get_pipeline(mp.model_name)
-
-    yield create_streaming_chunk("Preparing standard tools...", False)
-    tools: List[BaseTool] = [
-        MemoryRetrievalTool(conversation_ctx=conversation_ctx),
-        WebSearchTool(conversation_ctx=conversation_ctx),
-        SummarizationTool(conversation_ctx=conversation_ctx),
+    # Mathematical expression patterns
+    MATH_PATTERNS = [
+        re.compile(r"\d+\s*[+\-*/]\s*\d+"),  # Basic math operations
+        re.compile(r"\d+\s*%"),  # Percentages
+        re.compile(r"\$\d+"),  # Currency
+        re.compile(r"\d+\.\d+"),  # Decimals
     ]
 
-    user_message_text = extract_message_text(user_message)
+    COMPUTATION_QUESTIONS = frozenset(
+        [
+            "how many",
+            "how much",
+            "what is the",
+            "calculate the",
+            "find the",
+            "determine the",
+            "compute the",
+        ]
+    )
 
-    # Analyze if a dynamic tool is needed
-    analysis_prompt = f"""
+    @classmethod
+    def should_use_agentic_workflow(cls, user_message: str) -> bool:
+        """
+        Determine if a user message would benefit from agentic processing with tools.
+
+        Args:
+            user_message: The user's message text
+
+        Returns:
+            bool: True if agentic workflow should be used
+        """
+        message_lower = user_message.lower()
+
+        # Check for tool indicator keywords
+        if any(indicator in message_lower for indicator in cls.TOOL_INDICATORS):
+            return True
+
+        # Check for mathematical patterns
+        if any(pattern.search(user_message) for pattern in cls.MATH_PATTERNS):
+            return True
+
+        # Check for computation questions
+        if any(question in message_lower for question in cls.COMPUTATION_QUESTIONS):
+            return True
+
+        return False
+
+    @classmethod
+    def extract_parameters_from_message(
+        cls, message: str
+    ) -> Dict[str, Union[int, float, str]]:
+        """
+        Extract parameters from a user message for tool execution.
+
+        Args:
+            message: User message text
+
+        Returns:
+            dict: Extracted parameters
+        """
+        params: Dict[str, Union[int, float, str]] = {}
+
+        # Look for numbers
+        number_pattern = r"(\d+(?:\.\d+)?)"
+        numbers = re.findall(number_pattern, message)
+
+        for i, num_str in enumerate(numbers[:2]):  # Limit to first two numbers
+            try:
+                if "." in num_str:
+                    params[f"number_{i+1}"] = float(num_str)
+                else:
+                    params[f"number_{i+1}"] = int(num_str)
+            except ValueError:
+                continue
+
+        # Look for operation type
+        message_lower = message.lower()
+        if any(op in message_lower for op in ["add", "+", "sum", "plus"]):
+            params["operation"] = "add"
+        elif any(
+            op in message_lower for op in ["subtract", "-", "minus", "difference"]
+        ):
+            params["operation"] = "subtract"
+        elif any(op in message_lower for op in ["multiply", "*", "times", "product"]):
+            params["operation"] = "multiply"
+        elif any(op in message_lower for op in ["divide", "/"]):
+            params["operation"] = "divide"
+
+        return params
+
+
+class StandardToolProvider:
+    """Provides standard RAG tools with proper typing."""
+
+    @staticmethod
+    def get_standard_tools(conversation_ctx: ConversationContext) -> List[BaseTool]:
+        """Get the standard set of RAG tools."""
+        return [
+            MemoryRetrievalTool(conversation_ctx=conversation_ctx),
+            WebSearchTool(conversation_ctx=conversation_ctx),
+            SummarizationTool(conversation_ctx=conversation_ctx),
+        ]
+
+
+class DynamicToolGenerator:
+    """Handles dynamic tool generation with proper error handling."""
+
+    def __init__(self):
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+
+    async def analyze_tool_need(
+        self, user_message_text: str, conversation_ctx: ConversationContext
+    ) -> ToolAnalysisResult:
+        """
+        Analyze if a dynamic tool is needed for the user request.
+
+        Args:
+            user_message_text: The user's message text
+            conversation_ctx: Conversation context
+
+        Returns:
+            ToolAnalysisResult with analysis details
+        """
+        mp = await storage.get_service(storage.model_profile).get_model_profile_by_id(
+            conversation_ctx.user_config.model_profiles.analysis_profile_id,
+            conversation_ctx.user_config.user_id,
+        )
+
+        if not mp:
+            raise ValueError("Analysis model profile not found")
+
+        pipeline = pipeline_factory.get_pipeline(mp)
+
+        analysis_prompt = f"""
 Analyze this user request and determine if it requires creating a custom tool/function:
 
 User request: {user_message_text}
@@ -243,69 +271,121 @@ Examples that DON'T need dynamic tools:
 - "What did we discuss earlier?" (memory retrieval)
 
 Respond with only "NO" if existing tools are sufficient.
-If a dynamic tool is needed, describe its purpose and functionality in less than 50 words, and only provide the tool definition, without any additional context.
+If a dynamic tool is needed, describe its purpose and functionality in less than 50 words.
 """
 
-    yield create_streaming_chunk("Analyzing if dynamic tools are needed...", False)
-    response = pipeline.get(
-        [
-            Message(
+        response = await pipeline.get(
+            [
+                Message(
+                    role=MessageRole.USER,
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT,
+                            text=analysis_prompt,
+                        )
+                    ],
+                )
+            ]
+        )
+
+        if not response.message:
+            return ToolAnalysisResult(
+                needs_dynamic_tool=False,
+                description="No response from analysis pipeline",
+                confidence_score=0.0,
+                reasoning="Pipeline returned no response",
+            )
+
+        text = extract_message_text(response.message)
+        needs_tool = text.upper() != "NO" and len(text.split()) > 5
+
+        return ToolAnalysisResult(
+            needs_dynamic_tool=needs_tool,
+            description=text.strip() if needs_tool else "No dynamic tool needed",
+            confidence_score=0.8 if needs_tool else 0.2,
+            reasoning=f"Analysis pipeline response: {text[:100]}...",
+        )
+
+    async def generate_tool(
+        self,
+        description: str,
+        user_message_text: str,
+        conversation_ctx: ConversationContext,
+    ) -> ToolGenerationResult:
+        """
+        Generate a dynamic tool based on the analysis.
+
+        Args:
+            description: Tool description from analysis
+            user_message_text: Original user message
+            conversation_ctx: Conversation context
+
+        Returns:
+            ToolGenerationResult with success status and tool
+        """
+        try:
+            # Search for existing tools first
+            embedding_profile = await storage.get_service(
+                storage.model_profile
+            ).get_model_profile_by_id(
+                conversation_ctx.user_config.model_profiles.embedding_profile_id,
+                conversation_ctx.user_config.user_id,
+            )
+
+            if not embedding_profile:
+                raise ValueError("Embedding profile not found")
+
+            embedding_pipeline = pipeline_factory.get_pipeline(embedding_profile)
+
+            # Create message for embedding
+            desc_message = Message(
                 role=MessageRole.USER,
                 content=[
-                    MessageContent(
-                        type=MessageContentType.TEXT,
-                        text=analysis_prompt,
-                        url=None,
-                    )
+                    MessageContent(type=MessageContentType.TEXT, text=description)
                 ],
             )
-        ],
-        mp.parameters,
-    )
 
-    hardware_manager.clear_memory(aggressive=True)
+            embedding = await embedding_pipeline.get([desc_message])
 
-    needs_dynamic_tool = response.upper() != "NO" and len(response.split()) > 5
+            # Search for existing tools
+            existing_tools, _ = await storage.get_service(
+                storage.dynamic_tool
+            ).search_tools_by_embedding(embedding[0] if embedding else [])
 
-    # If a dynamic tool is needed, generate it
-    if needs_dynamic_tool:
-        yield create_streaming_chunk(
-            "Dynamic tool needed, processing request...", False
-        )
-        description = response.strip()
-        embedding_profile = await storage.get_service(
+            if existing_tools:
+                self.logger.info(f"Found {len(existing_tools)} existing tools")
+                # Return the first matching tool
+                return ToolGenerationResult(success=True, tool=existing_tools[0])
+
+            # Generate new tool
+            return await self._generate_new_tool(
+                description, user_message_text, conversation_ctx
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error generating tool: {e}", exc_info=True)
+            return ToolGenerationResult(success=False, error_message=str(e))
+
+    async def _generate_new_tool(
+        self,
+        description: str,
+        user_message_text: str,
+        conversation_ctx: ConversationContext,
+    ) -> ToolGenerationResult:
+        """Generate a completely new dynamic tool."""
+        engineering_profile = await storage.get_service(
             storage.model_profile
         ).get_model_profile_by_id(
-            conversation_ctx.user_config.model_profiles.embedding_profile_id,
+            conversation_ctx.user_config.model_profiles.engineering_profile_id,
             conversation_ctx.user_config.user_id,
         )
-        assert embedding_profile, "Embedding profile not found"
 
-        yield create_streaming_chunk("Loading embedding pipeline...", False)
-        embedding_pipeline, _ = pipeline_factory.get_pipeline(
-            embedding_profile.model_name
-        )
-        embedding = await embedding_pipeline.emb(description, True, 768)
+        if not engineering_profile:
+            raise ValueError("Engineering profile not found")
 
-        yield create_streaming_chunk("Searching for existing similar tools...", False)
-        # first see if there are tools that exist which meet the need
-        existing_tools, _ = await storage.get_service(
-            storage.dynamic_tool
-        ).search_tools_by_embedding(embedding[0])
+        engineering_pipeline = pipeline_factory.get_pipeline(engineering_profile)
 
-        if existing_tools:
-            yield create_streaming_chunk(
-                "Found existing tools that match the request...", False
-            )
-            for et in existing_tools:
-                det = DynamicToolRunner(et)
-                tools.append(det)
-        else:
-            yield create_streaming_chunk(
-                "No existing tools found, generating a new custom tool...", False
-            )
-            # Generate the dynamic tool
-            generation_prompt = f"""Create a custom tool/function for this user request:
+        generation_prompt = f"""Create a custom tool/function for this user request:
 
 User request: {user_message_text}
 Tool description: {description}
@@ -323,86 +403,158 @@ Requirements:
 - Handle edge cases
 - Return meaningful results
 
-Format your response as JSON that is valid against this json-schema:
+Format your response as valid JSON matching this schema:
 {DynamicTool.model_json_schema()}
 
 Make the tool specific to the user's request but generalizable for similar tasks."""
 
-            engineering_profile = await storage.get_service(
-                storage.model_profile
-            ).get_model_profile_by_id(
-                conversation_ctx.user_config.model_profiles.engineering_profile_id,
-                conversation_ctx.user_config.user_id,
-            )
-            assert engineering_profile, "Engineering profile not found"
-            yield create_streaming_chunk("Loading engineering pipeline...", False)
-            engineering_pipeline, _ = pipeline_factory.get_pipeline(
-                engineering_profile.model_name
-            )
-
-            yield create_streaming_chunk(
-                "Generating custom tool implementation...", False
-            )
-            tool_response = engineering_pipeline.get(
-                [
-                    Message(
-                        role=MessageRole.USER,
-                        content=[
-                            MessageContent(
-                                type=MessageContentType.TEXT,
-                                text=generation_prompt,
-                                url=None,
-                            )
-                        ],
-                    )
-                ],
-                engineering_profile.parameters,
-            )
-
-            # Parse the JSON response
-            try:
-                yield create_streaming_chunk("Parsing tool implementation...", False)
-                # Extract JSON from the response
-                json_match = re.search(
-                    r"```json\n(.*?)\n```|```(.*?)```|(\{.*?\})",
-                    tool_response,
-                    re.DOTALL,
+        tool_response = await engineering_pipeline.get(
+            [
+                Message(
+                    role=MessageRole.USER,
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT,
+                            text=generation_prompt,
+                        )
+                    ],
                 )
-                if json_match:
-                    json_str = (
-                        json_match.group(1)
-                        or json_match.group(2)
-                        or json_match.group(3)
-                    )
-                    logger.debug(f"Extracted JSON for tool creation: {json_str}")
-                    dynamic_tool_data = json.loads(json_str)
+            ]
+        )
 
-                    # Create a DynamicTool Pydantic model
-                    dynamic_tool = DynamicTool(**dynamic_tool_data)
+        if not tool_response:
+            raise ValueError("No response from engineering pipeline")
 
-                    tools.append(DynamicToolRunner(dynamic_tool))
-                    yield create_streaming_chunk(
-                        f"Created custom tool: {dynamic_tool.name}", False
-                    )
+        response_text = extract_message_text(tool_response)
+
+        # Extract and parse JSON
+        json_data = self._extract_json_from_response(response_text)
+        if not json_data:
+            raise ValueError("Could not extract valid JSON from response")
+
+        # Create DynamicTool
+        try:
+            dynamic_tool = DynamicTool(**json_data)
+            return ToolGenerationResult(success=True, tool=dynamic_tool)
+        except ValidationError as e:
+            self.logger.error(f"Tool validation error: {e}")
+            raise ValueError(f"Generated tool failed validation: {e}")
+
+    def _extract_json_from_response(self, response: str) -> Optional[Dict[str, Any]]:
+        """Extract JSON from LLM response with multiple fallback strategies."""
+        try:
+            # Strategy 1: Direct parse
+            return cast(Dict[str, Any], json.loads(response.strip()))
+        except json.JSONDecodeError:
+            pass
+
+        try:
+            # Strategy 2: Extract from code blocks
+            json_match = re.search(
+                r"```(?:json)?\s*(\{.*?\})\s*```", response, re.DOTALL | re.IGNORECASE
+            )
+            if json_match:
+                return cast(Dict[str, Any], json.loads(json_match.group(1)))
+        except json.JSONDecodeError:
+            pass
+
+        try:
+            # Strategy 3: Find first complete JSON object
+            json_match = re.search(r"(\{.*?\})", response, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+                # Fix common issues
+                json_str = re.sub(r",\s*}", "}", json_str)
+                json_str = re.sub(r",\s*]", "]", json_str)
+                return cast(Dict[str, Any], json.loads(json_str))
+        except json.JSONDecodeError:
+            pass
+
+        self.logger.error(
+            f"Could not extract valid JSON from response: {response[:200]}..."
+        )
+        return None
+
+
+class ModernToolManager:
+    """
+    Modern tool management system replacing the old integration approach.
+    """
+
+    def __init__(self):
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.intent_analyzer = IntentAnalyzer()
+        self.tool_provider = StandardToolProvider()
+        self.dynamic_generator = DynamicToolGenerator()
+
+    async def get_tools(
+        self, conversation_ctx: ConversationContext
+    ) -> AsyncGenerator[Union[str, List[BaseTool]], None]:
+        """
+        Get all available tools for the conversation context.
+
+        Args:
+            conversation_ctx: The conversation context
+
+        Yields:
+            Status strings during processing, then final list of tools
+        """
+        user_message = conversation_ctx.current_user_message
+        if not user_message:
+            yield "No user message found"
+            yield []
+            return
+
+        yield "Initializing tool analysis..."
+
+        # Get standard tools
+        yield "Loading standard RAG tools..."
+        tools: List[BaseTool] = self.tool_provider.get_standard_tools(conversation_ctx)
+
+        user_message_text = extract_message_text(user_message)
+
+        # Analyze if dynamic tool is needed
+        yield "Analyzing tool requirements..."
+
+        try:
+            analysis = await self.dynamic_generator.analyze_tool_need(
+                user_message_text, conversation_ctx
+            )
+
+            if analysis.needs_dynamic_tool:
+                yield f"Dynamic tool needed: {analysis.description}"
+
+                # Generate or find dynamic tool
+                tool_result = await self.dynamic_generator.generate_tool(
+                    analysis.description, user_message_text, conversation_ctx
+                )
+
+                if tool_result.success and tool_result.tool:
+                    dynamic_tool_runner = DynamicToolRunner(tool_result.tool)
+                    tools.append(dynamic_tool_runner)
+                    yield f"✅ Added dynamic tool: {tool_result.tool.name}"
                 else:
-                    yield create_streaming_chunk(
-                        "Failed to extract valid JSON for tool creation", False
-                    )
-            except Exception as e:
-                error_msg = f"Error parsing dynamic tool response: {e}"
-                logger.error(error_msg, exc_info=True)
-                yield create_streaming_chunk(f"Error: {error_msg}", False)
+                    yield f"❌ Failed to create dynamic tool: {tool_result.error_message}"
+            else:
+                yield "No dynamic tools needed for this request"
 
-    # Final yield with the completed tools list
-    yield tools
+        except Exception as e:
+            self.logger.error(f"Error in dynamic tool analysis: {e}")
+            yield f"Error analyzing tools: {str(e)}"
+
+        finally:
+            # Clean up memory
+            hardware_manager.clear_memory(aggressive=True)
+
+        # Final yield with completed tools
+        yield tools
 
 
+# Utility functions for backward compatibility
 def create_streaming_chunk(
     text: str, done: bool = False, role: MessageRole = MessageRole.ASSISTANT
 ) -> ChatResponse:
-    """
-    Create a streaming chunk as a JSON ChatResponse.
-    """
+    """Create a streaming chunk as a ChatResponse."""
     message = None
     if text or not done:
         message = Message(
@@ -422,17 +574,8 @@ def create_streaming_chunk(
     )
 
 
-def create_streaming_string(res: ChatResponse) -> str:
-    """
-    Create a streaming string representation.
-    """
-    return res.model_dump_json() + "\n"
-
-
 def create_error_chunk(error_message: str) -> ChatResponse:
-    """
-    Create an error chunk as a ChatResponse.
-    """
+    """Create an error chunk as a ChatResponse."""
     return ChatResponse(
         done=True,
         message=Message(
@@ -444,50 +587,20 @@ def create_error_chunk(error_message: str) -> ChatResponse:
                 )
             ],
         ),
-        model="error",
         created_at=datetime.now(),
         finish_reason="error",
     )
 
 
-def extract_json_from_response(response: str) -> dict | None:
+# Global tool manager instance
+tool_manager = ModernToolManager()
+
+
+async def get_tools(
+    conversation_ctx: ConversationContext,
+) -> AsyncGenerator[Union[str, List[BaseTool]], None]:
     """
-    Extract JSON from LLM response with multiple fallback strategies.
+    Main entry point for getting tools - delegates to the modern tool manager.
     """
-    try:
-        # Strategy 1: Direct parse
-        return json.loads(response.strip())
-    except json.JSONDecodeError:
-        pass
-
-    try:
-        # Strategy 2: Extract from code blocks
-        json_match = re.search(
-            r"```(?:json)?\s*(\{.*?\})\s*```", response, re.DOTALL | re.IGNORECASE
-        )
-        if json_match:
-            return json.loads(json_match.group(1))
-    except json.JSONDecodeError:
-        pass
-
-    try:
-        # Strategy 3: Find first complete JSON object
-        json_match = re.search(r"(\{.*?\})", response, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(1)
-
-            # Fix common issues
-            # Remove trailing commas
-            json_str = re.sub(r",\s*}", "}", json_str)
-            json_str = re.sub(r",\s*]", "]", json_str)
-
-            # Fix unescaped newlines in strings
-            json_str = json_str.replace("\n    ", "\\n    ")
-            json_str = json_str.replace("\n", "\\n")
-
-            return json.loads(json_str)
-    except json.JSONDecodeError:
-        pass
-
-    logger.error(f"Could not extract valid JSON from response: {response[:200]}...")
-    return None
+    async for result in tool_manager.get_tools(conversation_ctx):
+        yield result

@@ -5,13 +5,22 @@ Web search functionality for RAG system.
 from typing import List
 
 # Import models from the correct location
-from models import Message, UserConfig, SearchResultContent, SearchTopicSynthesis
+from models import (
+    Message,
+    UserConfig,
+    SearchResultContent,
+    SearchTopicSynthesis,
+    MessageRole,
+    MessageContentType,
+    MessageContent,
+)
 from server.db import storage
 from server.services.search_providers import SearchProviderFactory
 from server.services.web_extraction_service import WebExtractionService
 from server.config import logger
 
 from runner.pipelines.factory import pipeline_factory
+from runner.pipelines.streaming import run_pipeline
 
 
 class SearchContext:
@@ -64,11 +73,11 @@ class SearchContext:
                 self.user_config.user_id,
             )
             assert mp is not None, "Unable to retrieve model profile"
-            pipeline, _ = pipeline_factory.get_pipeline(mp.model_name)
+            pipeline = pipeline_factory.get_pipeline(mp, str)
             # Use LLM to format the query
-            formatted_query = pipeline.get(
+            formatted_query = await run_pipeline(
                 [message],
-                mp.parameters,
+                pipeline,
             )
             # Clean up the response
             formatted_query = formatted_query.strip()
@@ -143,7 +152,9 @@ class SearchContext:
                 if reranking_mp:
                     # This is a simpler approach than trying to access rerank_contents
                     # Just get a pipeline and use the model's name to identify it
-                    pipeline, _ = pipeline_factory.get_pipeline(reranking_mp.model_name)
+                    pipeline = pipeline_factory.get_pipeline(
+                        reranking_mp, List[List[float]]
+                    )
 
                     # We'll simplify the approach and add a conventional method to BasePipeline
                     # Let's emulate the behavior here directly
@@ -153,11 +164,30 @@ class SearchContext:
                         f"{c.title or ''}\n{c.content or ''}" for c in contents
                     ]
 
-                    # Get embeddings from any embedding model
-                    embedding_pipeline, _ = pipeline_factory.get_pipeline(
-                        "nomic-embed-text-v2"
+                    emb_mp = await storage.get_service(
+                        storage.model_profile
+                    ).get_model_profile_by_id(
+                        self.user_config.model_profiles.embedding_profile_id,
+                        self.user_config.user_id,
                     )
-                    embeddings = await embedding_pipeline.emb(texts)
+                    assert emb_mp is not None, "Embedding model profile not found"
+
+                    # Get embeddings from any embedding model
+                    embedding_pipeline = pipeline_factory.get_pipeline(
+                        emb_mp, List[List[float]]
+                    )
+                    embeddings = await run_pipeline(
+                        [
+                            Message(
+                                role=MessageRole.USER,
+                                content=[
+                                    MessageContent(type=MessageContentType.TEXT, text=t)
+                                ],
+                            )
+                            for t in texts
+                        ],
+                        embedding_pipeline,
+                    )
 
                     # Extract query and content embeddings
                     query_embedding = embeddings[0]

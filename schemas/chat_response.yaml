@@ -13,9 +13,6 @@ properties:
     type: string
     format: date-time
     description: Timestamp when the response was created
-  model:
-    type: string
-    description: The name or identifier of the model used for generation
   context:
     type: array
     items:

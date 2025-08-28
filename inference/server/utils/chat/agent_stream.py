@@ -206,7 +206,7 @@ async def stream_langchain_agent_response(
     )
     assert mp
 
-    pipeline = pipeline_factory.get_pipeline(mp)
+    llm = pipeline_factory.get_pipeline(mp).as_llm()
 
     system_message = conversation_ctx.create_system_prompt(
         system_prompt_base=mp.system_prompt,

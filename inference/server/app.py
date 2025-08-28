@@ -96,7 +96,6 @@ else:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # Ensure os module is available within this scope
     import os
 
     # Startup: initialize hardware monitoring and cleanup service

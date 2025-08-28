@@ -10,23 +10,16 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 
 import asyncio
 from datetime import datetime as dt
-import string
 from typing import Any, Coroutine
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
-from models.chat_response import ChatResponse
-from models.conversation import Conversation
-from models.message import Message
-from models.message_content_type import MessageContentType
-from models.message_role import MessageRole
+from models import ChatResponse, Conversation, Message, MessageContentType, MessageRole
 from server.auth import get_request_id, get_user_id, is_admin
 from server.config import logger  # Import logger from config
 from server.db import storage  # Import database storage
-
-# Import utilities from modular structure
-from server.utils.chat.agent_stream import agent_chat_completion
-from server.context.conversation import get_conversation_context_from_request
+from server.services.completion import agent_chat_completion
+from server.services.context import get_conversation_context_from_request
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -58,8 +51,8 @@ async def chat_completion(
         request, msg.conversation_id
     )
     assert (
-        conversation_ctx.conversation_id >= 0
-    ), f"Invalid conversation ID {conversation_ctx.conversation_id} for request {request_id}"
+        conversation_ctx.conversation.id >= 0
+    ), f"Invalid conversation ID {conversation_ctx.conversation.id} for request {request_id}"
     # Verify message is from user - the only validation we still need
     assert msg, f"User message not found for request {request_id}"
     assert (
@@ -89,6 +82,7 @@ async def chat_completion(
             ),
             "",
         )
+        assert conversation_ctx.intent, "Intent not set in conversation context"
         memory_task = (
             conversation_ctx.memory_context.retrieve_memories(embeddings)
             if conversation_ctx.intent.memory and query
@@ -96,7 +90,7 @@ async def chat_completion(
         )
         web_task = (
             conversation_ctx.search_context.search(
-                msg, conversation_ctx.conversation_id
+                msg, conversation_ctx.conversation.id
             )
             if conversation_ctx.intent.web_search and msg
             else None
@@ -263,90 +257,6 @@ async def get_conversation_messages(conversation_id: int, request: Request):
 
         return messages or []
 
-        # # Format messages for the response using proper Message objects
-        # formatted_messages = []
-        # try:
-        #     for i, msg in enumerate(messages):
-        #         # Ensure we have a valid message content list
-        #         content_list = []
-        #         if (
-        #             hasattr(msg, "content")
-        #             and msg.content
-        #             and isinstance(msg.content, list)
-        #             and len(msg.content) > 0
-        #         ):
-        #             # Use the existing content list
-        #             content_list = msg.content
-        #         else:
-        #             # Create a new content list with the text, if available
-        #             content_text = ""
-        #             if hasattr(msg, "content"):
-        #                 if msg.content and not isinstance(msg.content, list):
-        #                     # If content is a string, use it
-        #                     content_text = str(msg.content)
-        #                 elif (
-        #                     msg.content
-        #                     and isinstance(msg.content, list)
-        #                     and len(msg.content) > 0
-        #                 ):
-        #                     if hasattr(msg.content[0], "text"):
-        #                         content_text = msg.content[0].text or ""
-
-        #             # Create a valid MessageContent object
-        #             content_list = [
-        #                 MessageContent(
-        #                     type=MessageContentType.TEXT, text=content_text, url=None
-        #                 )
-        #             ]
-
-        #         # Get message ID
-        #         msg_id = msg.id if hasattr(msg, "id") else None
-
-        #         # Get message role
-        #         msg_role = msg.role if hasattr(msg, "role") else MessageRole.USER
-
-        #         # Get message created_at
-        #         msg_created_at = (
-        #             msg.created_at
-        #             if hasattr(msg, "created_at") and msg.created_at
-        #             else dt.now()
-        #         )
-
-        #         # Get thinking
-        #         msg_thinking = msg.thinking if hasattr(msg, "thinking") else None
-
-        #         # Get tool_calls
-        #         msg_tool_calls = msg.tool_calls if hasattr(msg, "tool_calls") else None
-
-        #         # Create a valid Message object with all required fields
-        #         formatted_messages.append(
-        #             Message(
-        #                 id=msg_id,
-        #                 role=msg_role,
-        #                 content=content_list,
-        #                 created_at=msg_created_at,
-        #                 thinking=msg_thinking,
-        #                 tool_calls=msg_tool_calls,
-        #             )
-        #         )
-        # except (KeyError, ValueError, AttributeError, TypeError) as e:
-        #     logger.error(f"Error formatting messages: {e}")
-        #     # If there's an error in formatting, create a default error message
-        #     formatted_messages = [
-        #         Message(
-        #             id=1,
-        #             role=MessageRole.SYSTEM,
-        #             content=[
-        #                 MessageContent(
-        #                     type=MessageContentType.TEXT,
-        #                     text=f"Error retrieving messages: {str(e)}",
-        #                 )
-        #             ],
-        #             created_at=dt.now(),
-        #         )
-        #     ]
-
-        # return formatted_messages
     except HTTPException as e:
         raise e
     except Exception as e:  # noqa: BLE001, justified for DB errors

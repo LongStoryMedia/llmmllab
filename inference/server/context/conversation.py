@@ -3,12 +3,13 @@ Conversation Context Manager for RAG functionality.
 Handles conversation state, summarization, and retrieval of relevant context.
 """
 
+import asyncio
 import logging
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Any
 from fastapi import HTTPException, Request, status
-
-from runner.pipelines.base_pipeline import Embeddings
+from datetime import datetime
 from runner.pipelines.factory import pipeline_factory
+from runner.pipelines.streaming import stream_pipeline, run_pipeline
 
 from models.message import Message
 from models.message_content import MessageContent
@@ -22,7 +23,7 @@ from server.auth import get_request_id, get_user_id
 from server.utils.chat.message import extract_message_text
 from server.config import logger
 
-from .intent import Intent
+from .intent import IntentCtx
 from ..db import storage
 from .search import SearchContext
 from .memory import MemoryContext
@@ -35,12 +36,21 @@ class ConversationContext(ConversationCtx):
     Provides methods for adding messages, summarizing conversations, and retrieving relevant context.
     """
 
-    messages: List[Message]
-    notes: List[str]
-    images: List[ImageMetadata]
-    conversation: Conversation
-    current_user_message: Optional[Message] = None
-    intent: Optional[Intent] = None
+    # messages: List[Message]
+    # notes: List[str]
+    # images: List[ImageMetadata]
+    # conversation: Conversation
+    # current_user_message: Message = Message(
+    #     role=MessageRole.USER,
+    #     content=[MessageContent(type=MessageContentType.TEXT, text="")],
+    #     conversation_id=-1,
+    # )
+    # intent: IntentCtx = IntentCtx()
+    # user_config: UserConfig
+    # summary_context: SummaryContext
+    # memory_context: MemoryContext
+    # search_context: SearchContext
+    # logger: logging.Logger
 
     def __init__(
         self,
@@ -51,23 +61,37 @@ class ConversationContext(ConversationCtx):
         Initialize a new conversation context.
 
         Args:
-            user_id: The ID of the user who owns this conversation
             conversation_id: The unique ID of this conversation
-            embedding_profile_id: The ID of the embedding model profile to use
-            summarization_profile_id: The ID of the summarization model profile to use
             user_config: User configuration settings
         """
-        # Core conversation metadata
+        current_time = datetime.now()
+        user_id = (
+            user_config.user_id if hasattr(user_config, "user_id") else "default_user"
+        )
 
-        # Conversation content
-        self.current_user_message = None
-        self.notes = []
-        self.images = []
-        self.intent = Intent()
-        self.user_config = user_config
+        # Create a placeholder conversation object
+        # We'll properly load it in load_conversation_data
+        placeholder_conversation = Conversation(
+            id=conversation_id,
+            user_id=user_id,
+            created_at=current_time,
+            updated_at=current_time,
+            title="Untitled Conversation",
+        )
 
-        # Set up logging
+        super().__init__(
+            messages=[],
+            notes=[],
+            images=[],
+            conversation=placeholder_conversation,
+            current_user_message=self.current_user_message,
+            intent=self.intent,
+        )
+        self.intent_ctx = IntentCtx()
+
+        # Set up logging and other fields
         self.logger = logging.getLogger("ConversationContext")
+        self.user_config = user_config
 
         # Initialize context services
         self.summary_context = SummaryContext(
@@ -111,10 +135,12 @@ class ConversationContext(ConversationCtx):
         Load all conversation data from storage (conversation details, messages, and summaries).
         Should be called after creating a new ConversationContext for an existing conversation.
         """
+        conversation_id = self.conversation.id
+
         # Get conversation details
         try:
             convo = await storage.get_service(storage.conversation).get_conversation(
-                self.conversation.id
+                conversation_id
             )
             if convo:
                 self.conversation = convo
@@ -126,7 +152,7 @@ class ConversationContext(ConversationCtx):
         try:
             messages = await storage.get_service(
                 storage.message
-            ).get_conversation_history(self.conversation.id)
+            ).get_conversation_history(conversation_id)
             self.messages = messages or []
         except Exception as e:
             self.logger.error(f"Error loading messages: {e}")
@@ -136,7 +162,9 @@ class ConversationContext(ConversationCtx):
     # Public Methods - Main API for interacting with ConversationContext
     # -------------------------------------------------------------------------
 
-    async def add_message(self, message: Message) -> Tuple[Embeddings, Optional[int]]:
+    async def add_message(
+        self, message: Message
+    ) -> Tuple[List[List[float]], Optional[int]]:
         """
         Add a user message to the conversation, store it in the database,
         discover user intent, update the context, and create embeddings.
@@ -151,11 +179,8 @@ class ConversationContext(ConversationCtx):
         if message.role == MessageRole.USER:
             self.current_user_message = message
 
-            (
-                self.intent.detect(message, self.user_config)
-                if self.intent is not None
-                else None
-            )
+            if self.intent_ctx is not None:
+                self.intent = self.intent_ctx.detect(message, self.user_config)
 
         # Store message in database
         message_id = await storage.get_service(storage.message).add_message(message)
@@ -179,8 +204,10 @@ class ConversationContext(ConversationCtx):
         if text:
             try:
                 # Get embedding pipeline from factory
-                embedding_pipeline = pipeline_factory.get_pipeline(mp)
-                return await embedding_pipeline.get([message]), message_id
+                embedding_pipeline = pipeline_factory.get_pipeline(
+                    mp, List[List[float]]
+                )
+                return await run_pipeline([message], embedding_pipeline), message_id
             except Exception as e:
                 self.logger.error(f"Error creating embeddings: {e}")
 
@@ -205,7 +232,7 @@ class ConversationContext(ConversationCtx):
                 raise ValueError("Formatting model profile not found")
 
             # Get formatting pipeline from factory
-            formatting_pipeline = pipeline_factory.get_pipeline(mp)
+            formatting_pipeline = pipeline_factory.get_pipeline(mp, str)
             # Prepare prompt for title generation
             title_prompt = (
                 "Create a short, descriptive title (max 5 words) for this conversation."
@@ -218,7 +245,10 @@ class ConversationContext(ConversationCtx):
                 ],
             )
             # Run the pipeline to get formatted title - use get method which is sync
-            title = await formatting_pipeline.get([*self.messages, format_message])
+            title = await run_pipeline(
+                [*self.messages, format_message],
+                formatting_pipeline,
+            )
             self.conversation.title = title
             return title
 
@@ -273,25 +303,28 @@ async def get_conversation_context_from_request(
             detail="User config service not properly initialized",
         ) from e
 
-    # Initialize conversation context
-    conversation_ctx = ConversationContext(
-        conversation_id=conversation_id,
-        user_config=user_config,
-    )
-
     try:
+        # Create new conversation context
+        conversation_ctx = ConversationContext(
+            conversation_id=conversation_id,
+            user_config=user_config,
+        )
+
         # Load the conversation data
         await conversation_ctx.load_conversation_data()
         logger.info(
             f"Loaded existing conversation context for conversation {conversation_id}"
         )
+
+        return conversation_ctx
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to load conversation context: {e}")
+        logger.error(f"Failed to create/load conversation context: {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to load conversation context: {str(e)}",
+            detail=f"Failed to create/load conversation context: {str(e)}",
         ) from e
-
-    return conversation_ctx

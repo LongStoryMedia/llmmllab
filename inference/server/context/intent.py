@@ -3,30 +3,28 @@ Intent detection module for determining how to process user queries.
 """
 
 from models import UserConfig, Message
+from pydantic import Field
 from server.utils.chat.message import extract_message_text
 from server.config import logger
+from models import Intent
 
 
-class Intent:
+class IntentCtx(Intent):
     """
     Intent detection for user messages.
     Determines what processing steps are needed for a given message.
     """
 
-    web_search: bool
-    memory: bool
-    deep_research: bool
-    image_generation: bool
-    statically_discovered: bool
-
     def __init__(self):
-        self.web_search = False
-        self.memory = False
-        self.deep_research = False
-        self.image_generation = False
-        self.statically_discovered = False
+        super().__init__(
+            web_search=False,
+            memory=False,
+            deep_research=False,
+            image_generation=False,
+            statically_discovered=False,
+        )
 
-    def detect(self, message: Message, user_config: UserConfig) -> "Intent":
+    def detect(self, message: Message, user_config: UserConfig) -> "IntentCtx":
         """
         Detect the intent of a user message.
 
@@ -57,8 +55,8 @@ class Intent:
         if user_config.image_generation.enabled:
             self.image_generation = should_generate_image(text_content)
 
-        # Log the detected intent
-        logger.info(f"Detected intent: {vars(self)}")
+        # Log the detected intent using Pydantic v2 method
+        logger.info(f"Detected intent: {self.model_dump()}")
         self.statically_discovered = True
 
         return self
