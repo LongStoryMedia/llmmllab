@@ -18,15 +18,13 @@ message ChatResponse {
   Message message = 2;
   // Timestamp when the response was created
   google.protobuf.Timestamp created_at = 3;
-  // The name or identifier of the model used for generation
-  string model = 4;
   message ContextList {
     repeated double values = 1;
   }
   
 
   // Vectors representing the tokenized context (embeddings)
-  repeated ContextList context = 5;
+  repeated ContextList context = 4;
   // Specific indicator of how or why the generation finished
   enum FinishReasonEnum {
     FINISHREASONENUM_UNSPECIFIED = 0;
@@ -41,17 +39,17 @@ message ChatResponse {
   
 
   // Specific indicator of how or why the generation finished
-  FinishReasonEnum finish_reason = 6;
+  FinishReasonEnum finish_reason = 5;
   // Total time taken for the entire generation process in milliseconds
-  double total_duration = 7;
+  double total_duration = 6;
   // Time taken to load the model in milliseconds
-  double load_duration = 8;
+  double load_duration = 7;
   // Number of tokens in the prompt that were evaluated
-  double prompt_eval_count = 9;
+  double prompt_eval_count = 8;
   // Time taken to evaluate the prompt tokens in milliseconds
-  double prompt_eval_duration = 10;
+  double prompt_eval_duration = 9;
   // Total number of tokens evaluated
-  double eval_count = 11;
+  double eval_count = 10;
   // Time taken for token evaluation in milliseconds
-  double eval_duration = 12;
+  double eval_duration = 11;
 }

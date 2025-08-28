@@ -80,7 +80,11 @@ class InferenceEngine:
 
         try:
             async for response in pipe.run([message]):
-                if response.message.content and len(response.message.content) > 0:
+                if (
+                    response.message
+                    and response.message.content
+                    and len(response.message.content) > 0
+                ):
                     content = response.message.content[0].text or ""
                     # print(content, end="", flush=True)
                     full_response += content

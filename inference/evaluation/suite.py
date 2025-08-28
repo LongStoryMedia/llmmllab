@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 import logging
 
+from .base.benchmark_base import BenchmarkBase
+
 # Store benchmark classes and availability status
 benchmarks_available = {}
 benchmark_classes = {}
@@ -46,7 +48,7 @@ class AcademicBenchmarkSuite:
         self.data_dir.mkdir(exist_ok=True)
 
         # Initialize available benchmarks
-        self.benchmarks = {}
+        self.benchmarks: Dict[str, BenchmarkBase] = {}
 
         # Create instances of available benchmarks
         for key, is_available in benchmarks_available.items():
@@ -140,10 +142,10 @@ class AcademicBenchmarkSuite:
                             "metadata": result.metadata,
                         }
                         if output_file:
-                            self.save_results(result, output_file)
+                            self.save_results(result.detailed_results, output_file)
                         else:
                             self.save_results(
-                                result,
+                                result.detailed_results,
                                 f"benchmark_data/{str(model_id)}/{benchmark_name}/{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
                             )
 

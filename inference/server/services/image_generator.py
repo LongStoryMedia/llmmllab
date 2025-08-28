@@ -1,10 +1,13 @@
 import json
 import server.config as config
-from runner.pipelines.factory import PipelineFactory
-from models.model import Model
-from models.inference_queue_message import InferenceQueueMessage
-from models.image_generation_request import ImageGenerateRequest
-from models.image_generation_response import ImageGenerateResponse
+from runner.pipelines.factory import pipeline_factory
+from models import (
+    Model,
+    default_model_profiles,
+    InferenceQueueMessage,
+    ImageGenerateRequest,
+    ImageGenerateResponse,
+)
 import os
 import io
 import time
@@ -179,7 +182,9 @@ class ImageGenerator:
             image_request.model = config.DEFAULT_MODEL_ID
 
         self.logger.info(f"Generating image with prompt: {image_request.prompt}")
-        pipeline = PipelineFactory().get_pipeline(image_request.model)
+        pipeline = pipeline_factory.get_pipeline(
+            default_model_profiles.DEFAULT_IMAGE_GENERATION_PROFILE
+        )
 
         # Set default parameters if not provided, ensuring they're never None
         width = int(image_request.width or 1024)  # Default to 1024 if None or 0
@@ -242,7 +247,9 @@ class ImageGenerator:
         model_id = "black-forest-labs-flux.1-kontext-dev"
 
         self.logger.info(f"Editing image with prompt: {prompt}")
-        pipeline = PipelineFactory().get_pipeline(model_id)
+        pipeline = pipeline_factory.get_pipeline(
+            default_model_profiles.DEFAULT_IMAGE_GENERATION_PROFILE
+        )
 
         # Set default parameters if not provided, ensuring they're never None
         width = int(kwargs.get("width", 1024) or 1024)  # Default to 1024 if None or 0

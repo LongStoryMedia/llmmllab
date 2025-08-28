@@ -8,16 +8,18 @@ import logging
 import os
 import time
 import threading
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, Type, cast
 
-from models import Model, LoraWeight, ModelDetails, ModelProfile
-from .base_dual_pipeline import BasePipelineDual, BasePipelineCore
+from models import Model, LoraWeight, ModelDetails, ModelProfile, ChatResponse
+
+# from .base_dual_pipeline import BasePipelineDual, BasePipelineCore
+from .base_pipeline import BasePipelineCore
 
 
 class PipelineCacheEntry:
     """A class to store BasePipeline cache entries with timeout information."""
 
-    def __init__(self, pipeline: BasePipelineDual, timestamp: Optional[float] = None):
+    def __init__(self, pipeline: BasePipelineCore, timestamp: Optional[float] = None):
         self.pipeline = pipeline
         self.last_accessed = timestamp if timestamp is not None else time.time()
 
@@ -140,7 +142,9 @@ class ModernPipelineFactory:
         except Exception as e:
             self.logger.error(f"Error loading models config: {e}")
 
-    def get_pipeline(self, profile: ModelProfile) -> BasePipelineDual:
+    def get_pipeline[P: str | List[List[float]] | ChatResponse](
+        self, profile: ModelProfile, _: Type[P] = ChatResponse
+    ) -> BasePipelineCore[P]:
         """
         Get the appropriate pipeline for the given model profile.
         Automatically selects between legacy and modern implementations.
@@ -166,7 +170,7 @@ class ModernPipelineFactory:
         with self._cleanup_lock:
             self._pipelines[model_id] = PipelineCacheEntry(pipe)
 
-        return pipe
+        return cast(BasePipelineCore[P], pipe)
 
     def _get_model_by_id(self, model_id: str) -> Model:
         """Retrieve a model by its ID from the available models dictionary."""
@@ -186,7 +190,7 @@ class ModernPipelineFactory:
 
     def create_pipeline(
         self, model: Model, profile: ModelProfile
-    ) -> Optional[BasePipelineDual]:
+    ) -> Optional[BasePipelineCore]:
         """
         Enhanced factory method with automatic LangGraph/legacy selection.
         """
@@ -328,77 +332,6 @@ class ModernPipelineFactory:
         )
         return None
 
-    def get_available_models(self) -> Dict[str, Model]:
-        """Get a dictionary of all available models."""
-        if not self._available_models:
-            self.logger.warning("Available models dictionary is empty.")
-        return self._available_models
-
-    def is_model_available(self, model_id: str) -> bool:
-        """Check if a model with the given ID is available."""
-        return model_id in self.get_available_models()
-
-    def set_cache_timeout(self, timeout_seconds: int) -> None:
-        """Set the timeout duration for the pipeline cache."""
-        self._cache_timeout = timeout_seconds
-
-    def set_langgraph_preference(self, prefer_langgraph: bool) -> None:
-        """
-        Set the preference for LangGraph vs legacy implementations.
-
-        Args:
-            prefer_langgraph: If True, prefer LangGraph implementations when available.
-        """
-        self.prefer_langgraph = prefer_langgraph
-        self.logger.info(f"LangGraph preference set to: {prefer_langgraph}")
-
-    def get_pipeline_info(self, model_id: str) -> Dict[str, Any]:
-        """
-        Get information about the pipeline implementation for a given model.
-
-        Returns:
-            Dictionary containing pipeline type, implementation, and capabilities.
-        """
-        if model_id not in self._available_models:
-            return {"error": f"Model {model_id} not found"}
-
-        model = self._available_models[model_id]
-
-        # Determine if LangGraph implementation is available
-        langgraph_available = False
-        if model.task.endswith("TextToText"):
-            if (
-                model.pipeline == "Qwen30A3BQ4KMPipe"
-                or model.pipeline == "Qwen30A3BCoderQ4KMPipe"
-                or model.pipeline == "Qwen25VLGGUFPipeline"
-            ):
-                try:
-                    # Check if LangGraph implementation exists
-                    if (
-                        "Qwen30A3B" in model.pipeline
-                        or "Qwen30A3BCoder" in model.pipeline
-                    ):
-                        from .txt2txt import qwen3moe
-                    elif "Qwen25VL" in model.pipeline:
-                        from .imgtxt2txt import qwen25vl
-                    langgraph_available = True
-                except ImportError:
-                    pass
-
-        return {
-            "model_id": model_id,
-            "model_name": model.name,
-            "pipeline_type": model.pipeline,
-            "task": model.task,
-            "langgraph_available": langgraph_available,
-            "will_use_langgraph": langgraph_available and self.prefer_langgraph,
-            "implementation": (
-                "langgraph"
-                if (langgraph_available and self.prefer_langgraph)
-                else "legacy"
-            ),
-        }
-
     def _start_cleanup_thread(self):
         """Start a background thread to periodically clean up expired cache entries."""
         if self._cleanup_thread is None or not self._cleanup_thread.is_alive():
@@ -464,29 +397,6 @@ class ModernPipelineFactory:
                     pipe_entry = self._pipelines.pop(m_id, None)
                     if pipe_entry and pipe_entry.pipeline:
                         self._cleanup_pipeline_resources(pipe_entry.pipeline)
-
-    def get_factory_stats(self) -> Dict[str, Any]:
-        """Get comprehensive factory statistics."""
-        with self._cleanup_lock:
-            cached_models = list(self._pipelines.keys())
-            cache_ages = {
-                model_id: time.time() - entry.last_accessed
-                for model_id, entry in self._pipelines.items()
-            }
-
-        return {
-            "total_available_models": len(self._available_models),
-            "cached_pipelines": len(cached_models),
-            "cached_model_ids": cached_models,
-            "cache_timeout": self._cache_timeout,
-            "prefer_langgraph": self.prefer_langgraph,
-            "cache_ages_seconds": cache_ages,
-            "models_with_langgraph": [
-                model_id
-                for model_id in self._available_models.keys()
-                if self.get_pipeline_info(model_id).get("langgraph_available", False)
-            ],
-        }
 
 
 # Create factory instance with LangGraph preference

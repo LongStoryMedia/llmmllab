@@ -17,6 +17,7 @@ from server.db import storage
 from server.config import logger
 
 from runner.pipelines.factory import pipeline_factory
+from runner.pipelines.streaming import run_pipeline
 
 
 class SummaryContext:
@@ -143,7 +144,6 @@ class SummaryContext:
     async def _create_summary(
         self,
         messages: List[Message],
-        summarization_profile_id: str,
     ) -> Optional[Summary]:
         """
         Create a summary from the provided messages.
@@ -159,12 +159,17 @@ class SummaryContext:
             return None
 
         try:
-            # Get summarization pipeline from factory
-            summarization_pipeline, _ = pipeline_factory.get_pipeline(
-                summarization_profile_id
+            mp = await storage.get_service(
+                storage.model_profile
+            ).get_model_profile_by_id(
+                self.user_config.model_profiles.summarization_profile_id,
+                self.user_config.user_id,
             )
+            assert mp
+            # Get summarization pipeline from factory
+            summarization_pipeline = pipeline_factory.get_pipeline(mp, str)
             # Run the pipeline to get summary - use get method which is synchronous
-            summary_text = summarization_pipeline.get(messages)
+            summary_text = await run_pipeline(messages, summarization_pipeline)
             if summary_text:
                 # Get source message IDs for tracking
                 source_ids = [m.id for m in messages if m.id is not None]
@@ -279,12 +284,10 @@ class SummaryContext:
             )
             assert profile, "Failed to retrieve model profile"
             # Get summarization pipeline from factory
-            summarization_pipeline, _ = pipeline_factory.get_pipeline(
-                profile.model_name
-            )
+            summarization_pipeline = pipeline_factory.get_pipeline(profile, str)
             if summarization_pipeline:
                 # Run the pipeline to get summary
-                summary_text = summarization_pipeline.get(msgs, profile.parameters)
+                summary_text = await run_pipeline(msgs, summarization_pipeline)
 
                 if summary_text:
                     # Get source summary IDs for tracking
@@ -333,10 +336,7 @@ class SummaryContext:
         if self._should_summarize(messages):
             unsummarized = self._get_unsummarized_messages(messages, self.summaries)
             if unsummarized:
-                new_summary = await self._create_summary(
-                    unsummarized,
-                    str(self.user_config.model_profiles.summarization_profile_id),
-                )
+                new_summary = await self._create_summary(unsummarized)
                 if new_summary:
                     self.summaries.append(new_summary)
 
@@ -409,9 +409,7 @@ class SummaryContext:
             )
             assert profile, "Failed to retrieve model profile"
             # Get summarization pipeline from factory
-            summarization_pipeline, _ = pipeline_factory.get_pipeline(
-                profile.model_name
-            )
+            summarization_pipeline = pipeline_factory.get_pipeline(profile, str)
             if summarization_pipeline:
                 # Convert each summary to a Message object
                 summary_messages = []
@@ -429,8 +427,8 @@ class SummaryContext:
                     summary_messages.append(summary_message)
 
                 # Run the pipeline to get summary
-                summary_text = summarization_pipeline.get(
-                    summary_messages, profile.parameters
+                summary_text = await run_pipeline(
+                    summary_messages, summarization_pipeline
                 )
 
                 if summary_text:
