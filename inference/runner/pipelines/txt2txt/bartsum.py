@@ -5,18 +5,17 @@ Optimized summarization pipeline for BART-large-CNN model with performance enhan
 import os
 import datetime
 import logging
-from typing import AsyncGenerator, List, cast, Optional, Dict, Any
+from typing import AsyncGenerator, List, cast, Optional, Dict, Any, TypeVar, Union
 import torch
 from transformers import AutoTokenizer
-from langchain.agents import (
-    AgentExecutor,
-    create_openai_tools_agent,
-)
 from langchain_community.chat_models.llamacpp import ChatLlamaCpp
-from langchain_community.tools import BaseTool
 from langchain_core.callbacks import CallbackManager, StreamingStdOutCallbackHandler
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables.schema import StandardStreamEvent
+
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.state import CompiledStateGraph
+from langchain_core.tools import BaseTool
+
 from models import (
     MessageContent,
     MessageContentType,
@@ -26,15 +25,22 @@ from models import (
     ChatResponse,
     ModelProfile,
 )
-from ..base_dual_pipeline import TextPipeline
-from ..helpers import get_role, to_lc_message, extract_message_text
-from ..streaming import StreamingCallbackHandler, EventStreamProcessor
+from utils.message import extract_message_text
+from utils.response import create_streaming_chunk
+from ..base import BasePipelineCore
+
+# Define generic return type for text pipelines
+T = TypeVar("T", bound=Union[str, ChatResponse])
+
+# Type hints for factory usage
+BARTSummarizationChatPipe = "BARTSummarizationPipe[ChatResponse]"
+BARTSummarizationTextPipe = "BARTSummarizationPipe[str]"
 
 
 logger = logging.getLogger(__name__)
 
 
-class BARTSummarizationPipe(TextPipeline):
+class BARTSummarizationPipe(BasePipelineCore[T]):
     """
     Optimized pipeline for BART-large-CNN summarization model with enhanced performance.
 
@@ -52,9 +58,13 @@ class BARTSummarizationPipe(TextPipeline):
     _summary_cache: Dict[str, str] = {}
     _performance_metrics: dict
 
-    def __init__(self, model: Model, profile: ModelProfile):
+    def __init__(
+        self, model: Model, profile: ModelProfile, return_type: type = ChatResponse
+    ):
         """Initialize optimized BARTSummarizationPipe instance."""
         super().__init__(model, profile)
+
+        self._return_type = return_type
 
         # Initialize performance tracking
         self._performance_metrics = {
@@ -279,6 +289,214 @@ Summary:"""
         except Exception:
             return 0.5  # Neutral score on error
 
+    async def process_messages(
+        self, messages: List[Message], tools: Optional[List[BaseTool]] = None
+    ) -> T:
+        """Process messages and return appropriate response type."""
+
+        try:
+            # Extract and preprocess text
+            input_texts = []
+            for message in messages:
+                text = extract_message_text(message)
+                if text:
+                    input_texts.append(text)
+
+            if not input_texts:
+                error_msg = "No text content found to summarize"
+                if self._return_type == str:
+                    return cast(T, error_msg)
+
+                return cast(
+                    T,
+                    ChatResponse(
+                        done=True,
+                        message=Message(
+                            role=MessageRole.ASSISTANT,
+                            content=[
+                                MessageContent(
+                                    type=MessageContentType.TEXT,
+                                    text=error_msg,
+                                )
+                            ],
+                        ),
+                        created_at=datetime.datetime.now(datetime.timezone.utc),
+                        finish_reason="error",
+                    ),
+                )
+
+            combined_text = "\n\n".join(input_texts)
+
+            # Check cache first
+            cache_key = self._generate_cache_key(combined_text)
+            if cache_key in self._summary_cache:
+                self._performance_metrics["cache_hits"] += 1
+                self._logger.info("Using cached summary")
+                cached_summary = self._summary_cache[cache_key]
+
+                if self._return_type == str:
+                    return cast(T, cached_summary)
+
+                return cast(
+                    T,
+                    ChatResponse(
+                        done=True,
+                        message=Message(
+                            role=MessageRole.ASSISTANT,
+                            content=[
+                                MessageContent(
+                                    type=MessageContentType.TEXT,
+                                    text=cached_summary,
+                                )
+                            ],
+                        ),
+                        created_at=datetime.datetime.now(datetime.timezone.utc),
+                        finish_reason="stop",
+                    ),
+                )
+
+            # Generate summary using direct approach (simpler than agent)
+            summary = await self._direct_summarization_simple(combined_text)
+
+            # Cache the result
+            self._summary_cache[cache_key] = summary
+
+            if self._return_type == str:
+                return cast(T, summary)
+
+            return cast(
+                T,
+                ChatResponse(
+                    done=True,
+                    message=Message(
+                        role=MessageRole.ASSISTANT,
+                        content=[
+                            MessageContent(
+                                type=MessageContentType.TEXT,
+                                text=summary,
+                            )
+                        ],
+                    ),
+                    created_at=datetime.datetime.now(datetime.timezone.utc),
+                    finish_reason="stop",
+                ),
+            )
+
+        except Exception as e:
+            self._logger.error(f"Error in process_messages: {e}")
+            error_msg = f"Error: {str(e)[:100]}..."
+
+            if self._return_type == str:
+                return cast(T, error_msg)
+
+            return cast(
+                T,
+                ChatResponse(
+                    done=True,
+                    message=Message(
+                        role=MessageRole.ASSISTANT,
+                        content=[
+                            MessageContent(
+                                type=MessageContentType.TEXT,
+                                text=error_msg,
+                            )
+                        ],
+                    ),
+                    created_at=datetime.datetime.now(datetime.timezone.utc),
+                    finish_reason="error",
+                ),
+            )
+
+    async def prompt(self, text: str | List[str]) -> T:
+        """Process a single message and return appropriate response type."""
+        if isinstance(text, list):
+            text = " ".join(text)
+
+        # Create a simple user message
+        message = Message(
+            role=MessageRole.USER,
+            content=[
+                MessageContent(
+                    type=MessageContentType.TEXT,
+                    text=text,
+                )
+            ],
+        )
+
+        return await self.process_messages([message])
+
+    def create_graph(
+        self, tools: Optional[List[BaseTool]] = None
+    ) -> CompiledStateGraph:
+        """Create a simple LangGraph for BART summarization."""
+        from models import LangGraphState
+
+        # Simple state graph that just processes the input
+        workflow = StateGraph(LangGraphState)
+
+        async def summarize_node(state: LangGraphState) -> Dict[str, Any]:
+            """Node that performs summarization."""
+            try:
+                # Extract text from messages
+                combined_text = ""
+                for msg in state.messages:
+                    if hasattr(msg, "content") and msg.content:
+                        combined_text += str(msg.content) + "\n"
+
+                # Generate summary
+                summary = await self._direct_summarization_simple(combined_text)
+
+                # Return as a message
+                from langchain_core.messages import AIMessage
+
+                return {"messages": [AIMessage(content=summary)]}
+            except Exception as e:
+                from langchain_core.messages import AIMessage
+
+                return {"messages": [AIMessage(content=f"Error: {str(e)}")]}
+
+        workflow.add_node("summarize", summarize_node)
+        workflow.add_edge(START, "summarize")
+        workflow.add_edge("summarize", END)
+
+        return workflow.compile()
+
+    async def _direct_summarization_simple(self, text: str) -> str:
+        """Simple direct summarization without complex agent setup."""
+        try:
+            # Preprocess text
+            cleaned_text = self._preprocess_text(text)
+            summary_length = self._calculate_optimal_summary_length(cleaned_text)
+
+            # Create simple prompt
+            prompt = f"""Summarize the following text in about {summary_length} words. Be concise and capture the key points:
+
+{cleaned_text[:4000]}  # Limit input size
+
+Summary:"""
+
+            # Direct LLM call
+            from langchain_core.messages import HumanMessage
+
+            response = await self.llm.ainvoke([HumanMessage(content=prompt)])
+
+            summary = ""
+            if response.content:
+                if isinstance(response.content, str):
+                    summary = response.content
+                elif isinstance(response.content, list):
+                    for content in response.content:
+                        if isinstance(content, str):
+                            summary += content + " "
+                        elif isinstance(content, dict) and "text" in content:
+                            summary += content["text"] + " "
+
+            return summary.strip()
+
+        except Exception as e:
+            self._logger.error(f"Error in direct summarization: {e}")
+            return f"Error generating summary: {str(e)[:100]}..."
+
     async def run(
         self, messages: List[Message], prompt: ChatPromptTemplate, tools: List[BaseTool]
     ) -> AsyncGenerator[ChatResponse, None]:
@@ -344,35 +562,38 @@ Summary:"""
             yield self._create_error_response(f"Summarization error: {str(e)}")
 
     async def _agent_summarization(
-        self, messages: List[Message], prompt: ChatPromptTemplate, tools: List[BaseTool]
+        self,
+        messages: List[Message],
+        _prompt: ChatPromptTemplate,
+        _tools: List[BaseTool],
     ) -> AsyncGenerator[ChatResponse, None]:
-        """Agent-based summarization for complex tasks."""
+        """Simple agent-based summarization replacement."""
         try:
-            agent = create_openai_tools_agent(llm=self.llm, tools=tools, prompt=prompt)
-            agent_executor = AgentExecutor(
-                agent=agent,
-                tools=tools,
-                verbose=True,
-                max_iterations=8,  # Fewer iterations for summarization
-                max_execution_time=120,  # 2 minute timeout
-                return_intermediate_steps=True,
-                handle_parsing_errors=True,
-                callbacks=[StreamingCallbackHandler()],
+            # Convert to simple text processing since we removed AgentExecutor
+            combined_text = ""
+            for message in messages:
+                text = extract_message_text(message)
+                if text:
+                    combined_text += text + "\n"
+
+            # Generate summary using direct method
+            summary = await self._direct_summarization_simple(combined_text)
+
+            # Yield as ChatResponse
+            yield ChatResponse(
+                done=True,
+                message=Message(
+                    role=MessageRole.ASSISTANT,
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT,
+                            text=summary,
+                        )
+                    ],
+                ),
+                created_at=datetime.datetime.now(datetime.timezone.utc),
+                finish_reason="stop",
             )
-
-            chat_history = [to_lc_message(msg) for msg in messages[:-1]]
-            processor = EventStreamProcessor(thinking_phase=True)
-
-            async for event in agent_executor.astream_events(
-                {
-                    "input": extract_message_text(messages[-1]),
-                    "chat_history": chat_history,
-                },
-                version="v2",
-                include_types=["chat_model", "tool", "llm", "agent"],
-            ):
-                for chunk in processor.stream_event(cast(StandardStreamEvent, event)):
-                    yield chunk
 
         except Exception as e:
             self._logger.error(f"Error in agent summarization: {e}")
@@ -382,15 +603,11 @@ Summary:"""
         self, text: str
     ) -> AsyncGenerator[ChatResponse, None]:
         """Direct summarization without agents."""
-        processor = EventStreamProcessor(thinking_phase=False)
-
         try:
             # Create optimized prompt
             summary_prompt = self._create_optimized_summary_prompt(text)
 
-            yield processor.create_streaming_chunk(
-                "📄 Generating optimized summary...\n\n"
-            )
+            yield create_streaming_chunk("📄 Generating optimized summary...\n\n")
 
             # Stream the summarization
             response_chunks = []
@@ -400,11 +617,11 @@ Summary:"""
                     response_chunks.append(chunk_content)
 
                     if isinstance(chunk_content, str):
-                        yield processor.create_streaming_chunk(chunk_content)
+                        yield create_streaming_chunk(chunk_content)
                     elif isinstance(chunk_content, list):
                         for item in chunk_content:
                             if isinstance(item, str):
-                                yield processor.create_streaming_chunk(item)
+                                yield create_streaming_chunk(item)
 
             # Validate and finalize
             full_summary = "".join(response_chunks).strip()
@@ -413,13 +630,15 @@ Summary:"""
                 self._logger.info(
                     f"Generated summary with quality score: {quality:.2f}"
                 )
-                yield processor.create_streaming_chunk("", done=True)
+                yield create_streaming_chunk("", done=True)
             else:
-                yield processor.create_error_chunk("Failed to generate summary")
+                yield create_streaming_chunk("Failed to generate summary", done=True)
 
         except Exception as e:
             self._logger.error(f"Error in direct summarization: {e}")
-            yield processor.create_error_chunk(f"Direct summarization error: {str(e)}")
+            yield create_streaming_chunk(
+                f"Direct summarization error: {str(e)}", done=True
+            )
 
     def _create_summary_response(
         self, summary_text: str, from_cache: bool = False
@@ -438,7 +657,6 @@ Summary:"""
                     )
                 ],
             ),
-            model=self.model.model,
             created_at=datetime.datetime.now(datetime.timezone.utc),
             finish_reason="stop",
         )
@@ -456,13 +674,12 @@ Summary:"""
                     )
                 ],
             ),
-            model=self.model.model,
             created_at=datetime.datetime.now(datetime.timezone.utc),
             finish_reason="error",
         )
 
     def _update_performance_metrics(
-        self, input_text: str, start_time: datetime.datetime
+        self, input_text: str, _start_time: datetime.datetime
     ) -> None:
         """Update performance tracking metrics."""
         input_length = len(input_text.split())
@@ -521,8 +738,8 @@ Summary:"""
             return "".join(summary_chunks).strip()
 
         except Exception as e:
-            self._logger.error(f"Error in summarize_text: {e}")
-            return f"Error generating summary: {str(e)}"
+            self._logger.error(f"Error generating summary: {e}")
+            return f"Error: {str(e)}"
 
     def clear_cache(self) -> None:
         """Clear the summary cache."""

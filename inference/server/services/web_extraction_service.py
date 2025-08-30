@@ -33,16 +33,18 @@ except Exception as e:
     # It's ok if it's already installed
     pass
 
-from models.message import Message
-from models.message_content import MessageContent
-from models.message_content_type import MessageContentType
-from models.message_role import MessageRole
-from models.search_topic_synthesis import SearchTopicSynthesis
-from models.user_config import UserConfig
-from models.memory_source import MemorySource
+from models import (
+    Message,
+    MessageContent,
+    MessageContentType,
+    MessageRole,
+    SearchTopicSynthesis,
+    UserConfig,
+    MemorySource,
+)
 
 from server.db import storage
-from runner.pipelines.factory import pipeline_factory
+from runner import pipeline_factory, Embeddings
 
 logger = logging.getLogger(__name__)
 
@@ -282,7 +284,7 @@ class WebExtractionService:
             created_at=datetime.now(),
             conversation_id=conversation_id,
         )
-        messages: List[Message] = []
+        messages: List[str] = []
 
         # Step 2: Generate labels/tags using the keywords profile
         try:
@@ -294,18 +296,27 @@ class WebExtractionService:
             )
             assert mp, "Unable to retrieve key points model profile"
 
-            # Create a message from the query
-            query_message = Message(
-                role=MessageRole.USER,
-                content=[MessageContent(type=MessageContentType.TEXT, text=query)],
-            )
+            prompt = f"""
+Extract 5-12 concise keywords from the user query below. 
 
-            pipeline, _ = pipeline_factory.get_pipeline(mp.model_name)
-            topics_text = pipeline.get([query_message], mp.parameters)
+Output rules: 
+- return ONLY a single line of comma-separated keywords, no extra text
+- deduplicate
+- prefer canonical/singular forms
+- keep proper nouns, versions, and technical terms; exclude stopwords and punctuation
+- max 3 words per keyword
+- lowercase unless a proper noun
 
-            # Parse topics (assuming topics are returned as comma-separated values)
-            topics = [topic.strip() for topic in topics_text.split(",")]
-            synthesis.topics = topics
+Query: {query}
+
+Answer:
+"""
+            with pipeline_factory.pipeline(mp, str) as pipe:
+                topics_text = await pipe.prompt(prompt)
+
+                # Parse topics (assuming topics are returned as comma-separated values)
+                topics = [topic.strip() for topic in topics_text.split(",")]
+                synthesis.topics = topics
 
             # Step 3: Run the Scrapy spider to collect content
             content_items = await self._run_spider(
@@ -320,16 +331,7 @@ class WebExtractionService:
 
                 # Create a message for this content
                 content_text = f"Content from {item['url']}: {item['content']}"
-                content_message = Message(
-                    role=MessageRole.SYSTEM,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=content_text,
-                        )
-                    ],
-                )
-                messages.append(content_message)
+                messages.append(content_text)
 
             # Generate synthesis after collecting all content
             if messages:
@@ -343,72 +345,54 @@ class WebExtractionService:
                     summarization_mp
                 ), "Unable to retrieve summarization model profile"
 
-                pipeline, _ = pipeline_factory.get_pipeline(summarization_mp.model_name)
-                synthesis_text = pipeline.get(messages, summarization_mp.parameters)
+                with pipeline_factory.pipeline(summarization_mp, str) as pipe:
+                    synthesis_text = await pipe.prompt(messages)
+                assert synthesis_text
                 synthesis.synthesis = synthesis_text
-
-                # Make sure the pool is initialized
-                if storage.pool is None:
-                    logger.error("Database pool is not initialized")
-                    return None
 
                 synthesis_id = await storage.get_service(storage.search).create(
                     synthesis
                 )
+                assert synthesis_id
 
-                if synthesis_id:
-                    # Generate embedding for the synthesis
-                    embedding_mp = await storage.get_service(
-                        storage.model_profile
-                    ).get_model_profile_by_id(
-                        self.user_config.model_profiles.embedding_profile_id,
-                        self.user_config.user_id,
-                    )
-                    assert embedding_mp, "Unable to retrieve embedding model profile"
+                # Generate embedding for the synthesis
+                embedding_mp = await storage.get_service(
+                    storage.model_profile
+                ).get_model_profile_by_id(
+                    self.user_config.model_profiles.embedding_profile_id,
+                    self.user_config.user_id,
+                )
+                assert embedding_mp, "Unable to retrieve embedding model profile"
 
-                    # Create a message for embedding
-                    embed_message = Message(
-                        role=MessageRole.SYSTEM,
-                        content=[
-                            MessageContent(
-                                type=MessageContentType.TEXT, text=synthesis.synthesis
-                            )
-                        ],
-                    )
+                # Create a message for embedding
+                embed_message = Message(
+                    role=MessageRole.SYSTEM,
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT, text=synthesis.synthesis
+                        )
+                    ],
+                )
 
-                    # Use base pipeline to create embeddings
-                    pipeline, _ = pipeline_factory.get_pipeline(embedding_mp.model_name)
-
-                    # Create a ChatReq for embedding
-                    from models import ChatReq
-
-                    req = ChatReq(
-                        messages=[embed_message],
-                        stream=True,
-                        conversation_id=999,  # Dummy ID
-                    )
-
-                    # Generate embeddings
-                    # For now, we'll just use a simple dummy embedding
-                    # Run the pipeline but we don't need the responses right now
-                    for _ in pipeline.run(req):
-                        pass  # Process each response if needed in the future
-
+                # Use base pipeline to create embeddings
+                with pipeline_factory.pipeline(embedding_mp, Embeddings) as pipe:
+                    embeddings = await pipe.prompt(synthesis.synthesis)
+                if not embeddings:
+                    logger.warning("No embeddings returned, using default.")
                     embeddings = [
                         [0.0] * 768
                     ]  # Default empty embedding with standard dimension
-                    logger.info("Using default embedding for search synthesis")
 
-                    # Store as memory
-                    await storage.get_service(storage.memory).store_memory(
-                        user_id=self.user_config.user_id,
-                        source=MemorySource.SEARCH,
-                        role=MessageRole.SYSTEM,
-                        source_id=synthesis_id,
-                        embeddings=embeddings,
-                    )
+                # Store as memory
+                await storage.get_service(storage.memory).store_memory(
+                    user_id=self.user_config.user_id,
+                    source=MemorySource.SEARCH,
+                    role=MessageRole.SYSTEM,
+                    source_id=synthesis_id,
+                    embeddings=embeddings,
+                )
 
-                    return synthesis
+                return synthesis
 
             return None
 

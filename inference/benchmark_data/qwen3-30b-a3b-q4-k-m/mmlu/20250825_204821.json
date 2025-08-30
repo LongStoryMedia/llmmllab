@@ -1,0 +1,1 @@
+"BenchmarkResult(score=0.0, total_questions=0, correct_answers=0, detailed_results=[], metadata={'error': \"cannot import name 'QwenGGUFPipe' from 'runner.pipelines.txt2txt.qwen3_a3b' (/app/runner/pipelines/txt2txt/qwen3_a3b.py)\"})"

@@ -9,14 +9,13 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 import os
 from typing import List, Dict, Any, Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from models.model import Model
-from models.requests import Malloc, ModelRequest, ModelsListResponse
+from models.requests import Malloc
 
 # Make sure this imports the enhanced version
-from services.hardware_manager import hardware_manager
+from server.services.hardware_manager import hardware_manager
 import nvsmi
 
 router = APIRouter(prefix="/resources", tags=["resources"])

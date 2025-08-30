@@ -7,29 +7,16 @@ from datetime import datetime
 import logging
 import re
 import json
-from typing import (
-    List,
-    AsyncGenerator,
-    Union,
-    Optional,
-    Dict,
-    Any,
-    Protocol,
-    TypedDict,
-    Literal,
-    cast,
-)
-from enum import Enum
+from typing import List, AsyncGenerator, Union, Optional, Dict, Any, cast
 
 from langchain_core.tools import BaseTool
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import ValidationError
 
+from runner import pipeline_factory, Embeddings
 from server.services.hardware_manager import hardware_manager
-from runner.pipelines.factory import pipeline_factory
 from server.tools.dynamic_tool import DynamicToolRunner
 from server.db import storage
-from server.tools.rag_tools import WebSearchTool, MemoryRetrievalTool, SummarizationTool
-from server.context.conversation import ConversationContext
+from server.services.context import ConversationContext
 from server.utils.chat.message import extract_message_text
 from models import (
     ChatResponse,
@@ -38,26 +25,12 @@ from models import (
     MessageContent,
     MessageContentType,
     DynamicTool,
+    ToolAnalysisResponse,
+    ToolGenerationResult,
 )
+from .rag_tools import WebSearchTool, MemoryRetrievalTool, SummarizationTool
 
 logger = logging.getLogger(__name__)
-
-
-class ToolAnalysisResult(BaseModel):
-    """Strongly typed result from tool analysis."""
-
-    needs_dynamic_tool: bool
-    description: str
-    confidence_score: float = Field(ge=0.0, le=1.0)
-    reasoning: str
-
-
-class ToolGenerationResult(BaseModel):
-    """Result of dynamic tool generation."""
-
-    success: bool
-    tool: Optional[DynamicTool] = None
-    error_message: Optional[str] = None
 
 
 class IntentAnalyzer:
@@ -211,11 +184,12 @@ class StandardToolProvider:
     @staticmethod
     def get_standard_tools(conversation_ctx: ConversationContext) -> List[BaseTool]:
         """Get the standard set of RAG tools."""
-        return [
+        tools: List[BaseTool] = [
             MemoryRetrievalTool(conversation_ctx=conversation_ctx),
             WebSearchTool(conversation_ctx=conversation_ctx),
             SummarizationTool(conversation_ctx=conversation_ctx),
         ]
+        return tools
 
 
 class DynamicToolGenerator:
@@ -226,7 +200,7 @@ class DynamicToolGenerator:
 
     async def analyze_tool_need(
         self, user_message_text: str, conversation_ctx: ConversationContext
-    ) -> ToolAnalysisResult:
+    ) -> ToolAnalysisResponse:
         """
         Analyze if a dynamic tool is needed for the user request.
 
@@ -245,9 +219,9 @@ class DynamicToolGenerator:
         if not mp:
             raise ValueError("Analysis model profile not found")
 
-        pipeline = pipeline_factory.get_pipeline(mp)
+        with pipeline_factory.pipeline(mp, str) as pipeline:
 
-        analysis_prompt = f"""
+            analysis_prompt = f"""
 Analyze this user request and determine if it requires creating a custom tool/function:
 
 User request: {user_message_text}
@@ -274,37 +248,29 @@ Respond with only "NO" if existing tools are sufficient.
 If a dynamic tool is needed, describe its purpose and functionality in less than 50 words.
 """
 
-        response = await pipeline.get(
-            [
-                Message(
-                    role=MessageRole.USER,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=analysis_prompt,
-                        )
-                    ],
-                )
-            ]
-        )
-
-        if not response.message:
-            return ToolAnalysisResult(
-                needs_dynamic_tool=False,
-                description="No response from analysis pipeline",
-                confidence_score=0.0,
-                reasoning="Pipeline returned no response",
+            response = await pipeline.process_messages(
+                [
+                    Message(
+                        role=MessageRole.USER,
+                        content=[
+                            MessageContent(
+                                type=MessageContentType.TEXT,
+                                text=analysis_prompt,
+                            )
+                        ],
+                    )
+                ]
             )
+            needs_tool = response.upper() != "NO" and len(response.split()) > 5
 
-        text = extract_message_text(response.message)
-        needs_tool = text.upper() != "NO" and len(text.split()) > 5
-
-        return ToolAnalysisResult(
-            needs_dynamic_tool=needs_tool,
-            description=text.strip() if needs_tool else "No dynamic tool needed",
-            confidence_score=0.8 if needs_tool else 0.2,
-            reasoning=f"Analysis pipeline response: {text[:100]}...",
-        )
+            return ToolAnalysisResponse(
+                needs_dynamic_tool=needs_tool,
+                description=(
+                    response.strip() if needs_tool else "No dynamic tool needed"
+                ),
+                confidence_score=0.8 if needs_tool else 0.2,
+                reasoning=f"Analysis pipeline response: {response[:100]}...",
+            )
 
     async def generate_tool(
         self,
@@ -335,8 +301,6 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
             if not embedding_profile:
                 raise ValueError("Embedding profile not found")
 
-            embedding_pipeline = pipeline_factory.get_pipeline(embedding_profile)
-
             # Create message for embedding
             desc_message = Message(
                 role=MessageRole.USER,
@@ -345,22 +309,30 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
                 ],
             )
 
-            embedding = await embedding_pipeline.get([desc_message])
+            with pipeline_factory.pipeline(embedding_profile, Embeddings) as pipe:
+                embedding_result = await pipe.process_messages([desc_message])
+                embedding_vector: List[float] = []
+                if (
+                    isinstance(embedding_result, list)
+                    and embedding_result
+                    and isinstance(embedding_result[0], list)
+                ):
+                    embedding_vector = embedding_result[0]
 
-            # Search for existing tools
-            existing_tools, _ = await storage.get_service(
-                storage.dynamic_tool
-            ).search_tools_by_embedding(embedding[0] if embedding else [])
+                # Search for existing tools
+                existing_tools, _ = await storage.get_service(
+                    storage.dynamic_tool
+                ).search_tools_by_embedding(embedding_vector)
 
-            if existing_tools:
-                self.logger.info(f"Found {len(existing_tools)} existing tools")
-                # Return the first matching tool
-                return ToolGenerationResult(success=True, tool=existing_tools[0])
+                if existing_tools:
+                    self.logger.info(f"Found {len(existing_tools)} existing tools")
+                    # Return the first matching tool
+                    return ToolGenerationResult(success=True, tool=existing_tools[0])
 
-            # Generate new tool
-            return await self._generate_new_tool(
-                description, user_message_text, conversation_ctx
-            )
+                # Generate new tool
+                return await self._generate_new_tool(
+                    description, user_message_text, conversation_ctx
+                )
 
         except Exception as e:
             self.logger.error(f"Error generating tool: {e}", exc_info=True)
@@ -383,9 +355,8 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
         if not engineering_profile:
             raise ValueError("Engineering profile not found")
 
-        engineering_pipeline = pipeline_factory.get_pipeline(engineering_profile)
-
-        generation_prompt = f"""Create a custom tool/function for this user request:
+        with pipeline_factory.pipeline(engineering_profile, str) as pipe:
+            generation_prompt = f"""Create a custom tool/function for this user request:
 
 User request: {user_message_text}
 Tool description: {description}
@@ -408,37 +379,35 @@ Format your response as valid JSON matching this schema:
 
 Make the tool specific to the user's request but generalizable for similar tasks."""
 
-        tool_response = await engineering_pipeline.get(
-            [
-                Message(
-                    role=MessageRole.USER,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=generation_prompt,
-                        )
-                    ],
-                )
-            ]
-        )
+            tool_response = await pipe.process_messages(
+                [
+                    Message(
+                        role=MessageRole.USER,
+                        content=[
+                            MessageContent(
+                                type=MessageContentType.TEXT,
+                                text=generation_prompt,
+                            )
+                        ],
+                    )
+                ]
+            )
 
-        if not tool_response:
-            raise ValueError("No response from engineering pipeline")
+            if not tool_response:
+                raise ValueError("No response from engineering pipeline")
 
-        response_text = extract_message_text(tool_response)
+            # Extract and parse JSON
+            json_data = self._extract_json_from_response(tool_response)
+            if not json_data:
+                raise ValueError("Could not extract valid JSON from response")
 
-        # Extract and parse JSON
-        json_data = self._extract_json_from_response(response_text)
-        if not json_data:
-            raise ValueError("Could not extract valid JSON from response")
-
-        # Create DynamicTool
-        try:
-            dynamic_tool = DynamicTool(**json_data)
-            return ToolGenerationResult(success=True, tool=dynamic_tool)
-        except ValidationError as e:
-            self.logger.error(f"Tool validation error: {e}")
-            raise ValueError(f"Generated tool failed validation: {e}")
+            # Create DynamicTool
+            try:
+                dynamic_tool = DynamicTool(**json_data)
+                return ToolGenerationResult(success=True, tool=dynamic_tool)
+            except ValidationError as e:
+                self.logger.error(f"Tool validation error: {e}")
+                raise ValueError(f"Generated tool failed validation: {e}") from e
 
     def _extract_json_from_response(self, response: str) -> Optional[Dict[str, Any]]:
         """Extract JSON from LLM response with multiple fallback strategies."""

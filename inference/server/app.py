@@ -47,11 +47,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from huggingface_hub import login
 
+from server.routers import model
 from server.routers import chat as chat
 from server.config import CONFIG_DIR, IMAGE_DIR
 from server.routers import (
     images,
-    models,
     resources,
     config,
     static,
@@ -61,12 +61,6 @@ from server.routers import (
 from server.auth import AuthMiddleware
 from server.config import API_VERSION
 from server.db.maintenance import maintenance_service
-
-# from server.routers.openai_compatible import (
-#     cleanup_vllm_service,
-#     initialize_vllm_service,
-# )
-# from server.routers.openai_compatible import router as openai_router
 from server.services.cleanup_service import cleanup_service
 from server.services.hardware_manager import hardware_manager  # Import hardware manager
 from server.services.rabbitmq_consumer import (
@@ -96,8 +90,6 @@ else:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    import os
-
     # Startup: initialize hardware monitoring and cleanup service
     print("Initializing services...")
     hardware_manager.clear_memory()
@@ -209,8 +201,6 @@ async def lifespan(_: FastAPI):
         print("=" * 80 + "\n")
 
         # Log critical information to help debug
-        import os
-
         print("Database-related environment variables:")
         db_vars = [
             "DB_HOST",
@@ -238,7 +228,6 @@ async def lifespan(_: FastAPI):
     from server.config import (
         RABBITMQ_ENABLED,
         RABBITMQ_PASSWORD,
-        INFERENCE_SERVICES_PORT,
     )
 
     if not RABBITMQ_ENABLED:
@@ -495,7 +484,7 @@ app.middleware("http")(db_init_middleware)
 
 # Include non-versioned routers (for backward compatibility)
 app.include_router(images.router)
-app.include_router(models.router)
+app.include_router(model.router)
 app.include_router(resources.router)
 app.include_router(chat.router)
 app.include_router(config.router)
@@ -513,7 +502,7 @@ app.include_router(db_admin.router)
 # Include versioned routers
 version = API_VERSION
 app.include_router(images.router, prefix=f"/{version}")
-app.include_router(models.router, prefix=f"/{version}")
+app.include_router(model.router, prefix=f"/{version}")
 app.include_router(resources.router, prefix=f"/{version}")
 app.include_router(chat.router, prefix=f"/{version}")
 app.include_router(config.router, prefix=f"/{version}")
@@ -536,7 +525,6 @@ async def root():
         "endpoints": {
             "image_generation": "/docs#/images",
             "chat": "/docs#/chat",
-            "openai_compatible": "/v1/",
             "models": "/docs#/models",
             "loras": "/docs#/loras",
             "resources": "/docs#/resources",
@@ -549,12 +537,6 @@ async def root():
             "resources": f"/{API_VERSION}/resources",
             "websockets": f"/{API_VERSION}/ws",
             "users": f"/{API_VERSION}/users",
-        },
-        "openai_endpoints": {
-            "models": "/v1/models",
-            "chat_completions": "/v1/chat/completions",
-            "completions": "/v1/completions",
-            "health": "/v1/health",
         },
     }
 

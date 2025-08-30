@@ -1,135 +1,117 @@
-import logging
-import torch
-from typing import Optional, Any, List, AsyncGenerator
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_community.tools import BaseTool
+"""
+Pipeline for Flux text-to-image models.
+Clean implementation with only essential methods for public API.
+"""
 
-from models import Model, Message, ChatResponse, ModelProfile
+import logging
+import datetime
+from typing import Optional, List
+
+import torch
+from langchain_core.tools import BaseTool
+
+from models import (
+    Model,
+    Message,
+    ChatResponse,
+    ModelProfile,
+    MessageRole,
+    MessageContent,
+    MessageContentType,
+)
 from diffusers.pipelines.flux.pipeline_flux import FluxPipeline
 from diffusers.models.transformers.transformer_flux import FluxTransformer2DModel
 from diffusers.quantizers.quantization_config import BitsAndBytesConfig
-from ..base_dual_pipeline import BasePipelineDual
+from ..base import BasePipelineCore
 
 
-class FluxPipe(BasePipelineDual[Any]):
+class FluxPipe(BasePipelineCore[ChatResponse]):
+    """
+    Pipeline class for Flux text-to-image models.
+    Clean implementation with only essential methods.
+    """
+
     def __init__(self, model: Model, profile: ModelProfile):
-        """
-        Initialize a FluxPipe instance and load the pipeline.
-
-        Args:
-            model (Model): The model configuration to load.
-            profile (ModelProfile): The model profile with parameters.
-        """
         super().__init__(model, profile)
         self.logger = logging.getLogger(__name__)
+        self._pipeline: Optional[FluxPipeline] = None
 
-        self.logger.info(
-            f"Loading Flux pipeline for model: {model.name} (ID: {model.id}, dtype: {torch.bfloat16})"
+        self.logger.info(f"Initialized Flux pipeline: {model.name}")
+
+    def _setup_quantization_config(self) -> Optional[BitsAndBytesConfig]:
+        """Setup quantization configuration for the model."""
+        return BitsAndBytesConfig(
+            load_in_8bit=True, bnb_8bit_compute_dtype=torch.bfloat16
         )
-        quantization_config = self._setup_quantization_config()
+
+    def _initialize_pipeline(self) -> None:
+        """Initialize the Flux pipeline."""
+        if self._pipeline is not None:
+            return
+
+        self.logger.info(f"Loading Flux pipeline for model: {self.model.name}")
+
         transformer_kwargs = {
             "torch_dtype": torch.bfloat16,
             "subfolder": "transformer",
         }
 
+        quantization_config = self._setup_quantization_config()
         if quantization_config is not None:
             transformer_kwargs["quantization_config"] = quantization_config
 
-        # Load the transformer model
         transformer = FluxTransformer2DModel.from_pretrained(
-            model.model,
-            **transformer_kwargs,
+            self.model.model, **transformer_kwargs
         )
 
-        # Load the full pipeline
-        self.pipeline = FluxPipeline.from_pretrained(
-            model.name,
-            # device_map="balanced",
+        self._pipeline = FluxPipeline.from_pretrained(
+            self.model.name,
             torch_dtype=torch.bfloat16,
             use_safetensors=True,
             transformer=transformer,
         )
 
-        self.pipeline.enable_model_cpu_offload()
+        if self._pipeline:
+            self._pipeline.enable_model_cpu_offload()
 
-        if not hasattr(self.pipeline, "load_lora_weights"):
-            self.logger.warning(
-                f"Pipeline {type(self.pipeline).__name__} does not support LoRA weights."
-            )
-            return
+            # Load LoRA weights if specified
+            if hasattr(self._pipeline, "load_lora_weights") and self.model.lora_weights:
+                for lora_weight in self.model.lora_weights:
+                    lw_kwargs = {}
+                    if lora_weight.weight_name:
+                        lw_kwargs["weight_name"] = lora_weight.weight_name
+                    if lora_weight.adapter_name:
+                        lw_kwargs["adapter_name"] = lora_weight.adapter_name
+                    self.logger.info(f"Loading LoRA weight '{lora_weight.name}'")
+                    self._pipeline.load_lora_weights(lora_weight.name, **lw_kwargs)
 
-        if model.lora_weights is not None and len(model.lora_weights) > 0:
-            for lora_weight in model.lora_weights:
-                lw_kwargs = {}
-                if lora_weight.weight_name:
-                    lw_kwargs["weight_name"] = lora_weight.weight_name
-                if lora_weight.adapter_name:
-                    lw_kwargs["adapter_name"] = lora_weight.adapter_name
+    async def process_messages(
+        self, messages: List[Message], tools: Optional[List[BaseTool]] = None
+    ) -> ChatResponse:
+        """Process messages and generate an image response."""
+        # Initialize pipeline if needed
+        if self._pipeline is None:
+            self._initialize_pipeline()
 
-                self.logger.info(
-                    f"Loading LoRA weight '{lora_weight.name}' for model '{model.name}' with kwargs: {lw_kwargs}"
-                )
-
-                # Load the LoRA weights into the pipeline
-                self.pipeline.load_lora_weights(lora_weight.name, **lw_kwargs)
-        # self.pipeline.enable_sequential_cpu_offload()
-
-    def _setup_quantization_config(self) -> Optional[BitsAndBytesConfig]:
-        """
-        Set up the quantization configuration based on the model details.
-
-        Returns:
-            Optional[BitsAndBytesConfig]: The quantization configuration or None.
-        """
-        # Set up 8-bit quantization by default for efficiency
-        return BitsAndBytesConfig(
-            load_in_8bit=True, bnb_8bit_compute_dtype=torch.bfloat16
-        )
-
-    async def run(
-        self, messages: List[Message], prompt: ChatPromptTemplate, tools: List[BaseTool]
-    ) -> AsyncGenerator[ChatResponse, None]:
-        """
-        Process the input messages and generate an image using the Flux pipeline.
-
-        Args:
-            messages: List of messages from the conversation
-            prompt: The chat prompt template (not used directly for image generation)
-            tools: List of available tools (not used for image generation)
-
-        Yields:
-            AsyncGenerator[ChatResponse, None]: A streaming response with the generated image
-        """
-        if not self.pipeline:
+        if not self._pipeline:
             raise ValueError("Pipeline not initialized")
 
         # Extract prompt text from messages
         prompt_text = ""
         for message in messages:
             if hasattr(message, "content") and message.content:
-                # Extract text from message content
                 for content in message.content:
                     if hasattr(content, "text") and content.text:
-                        prompt_text += content.text + "\n"
-
-        prompt_text = prompt_text.strip()
-        if not prompt_text:
-            prompt_text = "A beautiful landscape"  # Default prompt if none provided
-
-        # Generate image with the pipeline
-        import datetime
-        from models import MessageRole, MessageContent, MessageContentType
+                        prompt_text += str(content.text) + "\n"
+        prompt_text = prompt_text.strip() or "A beautiful landscape"
 
         try:
             # Generate image
-            result = self.pipeline(prompt=prompt_text)
-
-            # Create the image URL (in a real implementation, this would save and return an actual URL)
-            # For this example, we're just indicating that an image was generated
+            self._pipeline(prompt=prompt_text)
+            # In a real implementation, you would save the image and return its URL
             image_url = "generated_image.png"
 
-            # Create response
-            response = ChatResponse(
+            return ChatResponse(
                 created_at=datetime.datetime.now(),
                 done=True,
                 message=Message(
@@ -143,12 +125,9 @@ class FluxPipe(BasePipelineDual[Any]):
                     ],
                 ),
             )
-
-            yield response
-
         except Exception as e:
-            # Return error message
-            response = ChatResponse(
+            self.logger.error(f"Error generating image: {e}")
+            return ChatResponse(
                 created_at=datetime.datetime.now(),
                 done=True,
                 message=Message(
@@ -160,22 +139,9 @@ class FluxPipe(BasePipelineDual[Any]):
                         )
                     ],
                 ),
+                finish_reason="error",
             )
 
-            yield response
-
-    def __del__(self) -> None:
-        """
-        Clean up resources used by the FluxPipe.
-        This method releases GPU memory by moving models to CPU.
-        """
-        try:
-            if hasattr(self, "pipeline") and self.pipeline is not None:
-                # Move the pipeline to CPU to free GPU memory
-                self.pipeline.to("cpu")
-                self.logger.debug(
-                    f"FluxPipe for {self.model.name}: Resources moved to CPU during cleanup"
-                )
-        except (RuntimeError, AttributeError, ValueError, TypeError) as e:
-            # Use a direct print as logger might be gone during deletion
-            print(f"Error cleaning up FluxPipe resources: {str(e)}")
+    def create_graph(self, tools: Optional[List[BaseTool]] = None):  # type: ignore[override]
+        """Image pipelines do not use LangGraph graphs."""
+        raise NotImplementedError("Image pipelines do not use LangGraph graphs")

@@ -1,15 +1,16 @@
 """
 Pipeline for Qwen 2.5 Vision Language GGUF models.
+Clean implementation with only essential methods for public API.
 """
 
 import os
 import logging
 import datetime
-from typing import AsyncGenerator, AsyncIterator, List, Optional
-import torch
-from llama_cpp import ChatCompletionTool, Llama
+from typing import List, Optional, Dict, Any, cast
+from llama_cpp import Llama
 from llama_cpp.llama_chat_format import Qwen25VLChatHandler
-from langchain_community.tools import BaseTool
+from langchain_core.tools import BaseTool
+from langgraph.graph.state import CompiledStateGraph
 
 from models import (
     ChatResponse,
@@ -20,63 +21,57 @@ from models import (
     Model,
     ModelProfile,
 )
-from ..base_dual_pipeline import TextPipeline
-from ..helpers import lc_to_llama_tool
+from ..base import BasePipelineCore
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
 
 
-class Qwen25VLGGUFPipe(TextPipeline):
+class Qwen25VLGGUFPipe(BasePipelineCore[ChatResponse]):
     """
     Pipeline class for Qwen 2.5 Vision Language GGUF models using llama-cpp-python.
     Uses the Qwen25VLChatHandler for proper multimodal support.
+    Clean implementation with only essential methods.
     """
-
-    llm: Llama
 
     def __init__(self, model: Model, profile: ModelProfile):
         """Initialize a Qwen25VLGGUFPipe instance."""
         super().__init__(model, profile)
-        self.model_def: Model = model
-        self.logger: logging.Logger = logging.getLogger(__name__)
-        self.logger.info(
-            f"Loading Qwen 2.5 VL GGUF model: {model.name} (ID: {model.id})"
+        self.logger = logging.getLogger(__name__)
+        self.llm: Optional[Llama] = None
+
+        # Validate required model details
+        if not (model.details and model.model):
+            raise ValueError("Model definition requires model details.")
+
+        self.logger.info(f"Initialized Qwen 2.5 VL GGUF pipeline: {model.name}")
+
+    def _get_gguf_path(self) -> str:
+        """Get GGUF file path."""
+        return (
+            self.model.details.gguf_file
+            if self.model.details.gguf_file
+            else self.model.model
         )
 
-        # Get file paths
-        gguf_path = (
-            self.model_def.details.gguf_file
-            if self.model_def.details.gguf_file
-            else self.model_def.model
-        )
+    def _initialize_llm(self) -> None:
+        """Initialize the Llama model with multimodal support."""
+        if self.llm is not None:
+            return
+
+        gguf_path = self._get_gguf_path()
         mmproj_path = "/models/qwen2.5-vl-32b-instruct/mmproj-Qwen_Qwen2.5-VL-32B-Instruct-bf16.gguf"
 
-        if not mmproj_path:
-            raise ValueError("mmproj_file is required for multimodal models")
-
-        self.logger.info(f"Loading GGUF model from: {gguf_path}")
-        self.logger.info(f"Loading mmproj from: {mmproj_path}")
-
-        # Check if files exist
+        # Validate file paths
         if not os.path.exists(gguf_path):
             raise FileNotFoundError(f"GGUF model file not found: {gguf_path}")
         if not os.path.exists(mmproj_path):
             raise FileNotFoundError(f"MMProj file not found: {mmproj_path}")
 
-        # Create the Qwen2.5-VL chat handler with mmproj
-        self.logger.info("Initializing Qwen2.5-VL chat handler...")
+        self.logger.info(f"Loading GGUF model from: {gguf_path}")
+        self.logger.info(f"Loading mmproj from: {mmproj_path}")
+
         try:
             chat_handler = Qwen25VLChatHandler(clip_model_path=mmproj_path)
-            self.logger.info("Successfully created Qwen2.5-VL chat handler")
-        except (ImportError, ValueError, RuntimeError) as e:
-            self.logger.error(f"Failed to create chat handler: {e}")
-            raise RuntimeError(
-                f"Failed to initialize Qwen2.5-VL chat handler: {e}"
-            ) from e
-
-        # Load the model with the chat handler
-        self.logger.info("Loading Llama model with Qwen2.5-VL chat handler...")
-        try:
             self.llm = Llama(
                 model_path=gguf_path,
                 chat_handler=chat_handler,
@@ -86,8 +81,8 @@ class Qwen25VLGGUFPipe(TextPipeline):
                 logits_all=False,
                 embedding=False,
                 n_ctx=96000,
-                type_k=1,  # f16 keys instead of f32
-                type_v=1,  # f16 values instead of f32
+                type_k=1,
+                type_v=1,
                 n_batch=256,
                 n_ubatch=128,
                 flash_attn=True,
@@ -97,59 +92,16 @@ class Qwen25VLGGUFPipe(TextPipeline):
                 use_mmap=True,
                 numa=True,
             )
-            self.logger.info("Successfully loaded Qwen 2.5 VL model with chat handler")
-        except (ImportError, RuntimeError, ValueError, OSError) as e:
+            self.logger.info("Successfully loaded Qwen 2.5 VL model")
+        except Exception as e:
             self.logger.error(f"Failed to load model: {e}")
             raise RuntimeError(f"Failed to load Qwen2.5-VL model: {e}") from e
 
-    def __del__(self) -> None:
-        """Clean up resources used by the Qwen25VLGGUFPipe."""
-        try:
-            if hasattr(self, "model_def") and hasattr(self.model_def, "name"):
-                self.logger.info(
-                    f"Cleaning up resources for Qwen 2.5 VL GGUF model: {self.model_def.name}"
-                )
-
-            # Free the model resources
-            if hasattr(self, "llm") and self.llm is not None:
-                del self.llm
-
-            # Force garbage collection
-            import gc
-
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.ipc_collect()
-        except (RuntimeError, AttributeError) as e:
-            print(f"Error cleaning up Qwen25VLGGUFPipe resources: {str(e)}")
-        except (ValueError, TypeError, IOError) as e:
-            print(f"Unexpected error cleaning up Qwen25VLGGUFPipe resources: {str(e)}")
-
-    async def run(
-        self,
-        messages: List[Message],
-        tools: Optional[List[BaseTool]] = None,
-    ) -> AsyncIterator[ChatResponse]:
-        """
-        Process the input request and generate a response using the Qwen 2.5 VL GGUF model.
-
-        Args:
-            req (ChatReq): The chat request containing messages, model parameters, and other settings.
-
-        Yields:
-            ChatResponse: Streaming response chunks.
-        """
-        load_time = 0.0  # For backward compatibility
-        start_time = datetime.datetime.now(tz=datetime.timezone.utc)
-
-        # Extract messages and params from the request
-        params = self.profile.parameters
-
-        # Convert to OpenAI format messages
+    def _format_messages(self, messages: List[Message]) -> List[Dict[str, Any]]:
+        """Convert internal messages to OpenAI format."""
         formatted_messages = []
         for message in messages:
-            role = message.role.value.lower()  # Convert enum to string
+            role = message.role.value.lower()
             content_list = []
 
             for content_item in message.content:
@@ -165,165 +117,99 @@ class Qwen25VLGGUFPipe(TextPipeline):
                         )
 
             formatted_messages.append({"role": role, "content": content_list})
+        return formatted_messages
 
-        # Extract generation parameters
-        temperature = (
-            params.temperature if params and params.temperature is not None else 0.7
-        )
-        top_p = params.top_p if params and params.top_p is not None else 0.95
-        top_k = params.top_k if params and params.top_k is not None else 40
-        max_tokens = (
-            params.num_predict if params and params.num_predict is not None else 1024
-        )
+    async def process_messages(
+        self, messages: List[Message], tools: Optional[List[BaseTool]] = None
+    ) -> ChatResponse:
+        """Process messages and return ChatResponse."""
+        start_time = datetime.datetime.now(tz=datetime.timezone.utc)
 
-        self.logger.info(
-            f"Generation parameters: temperature={temperature}, top_p={top_p}, top_k={top_k}, max_tokens={max_tokens}"
-        )
+        # Initialize model if needed
+        if self.llm is None:
+            self._initialize_llm()
+
+        assert self.llm is not None, "Failed to initialize LLM"
+
+        # Convert messages to OpenAI format
+        formatted_messages = self._format_messages(messages)
+
+        # Prepare generation parameters
+        params = self.profile.parameters
+        temperature = params.temperature if params and params.temperature else 0.7
+        top_p = params.top_p if params and params.top_p else 0.95
+        top_k = params.top_k if params and params.top_k else 40
+        max_tokens = params.num_predict if params and params.num_predict else 1024
 
         try:
-            prompt_eval_start = datetime.datetime.now(tz=datetime.timezone.utc)
-            if self.llm is None:
-                raise RuntimeError("Model is not loaded")
-            llama_tools: List[ChatCompletionTool] = []
-            if tools:
-                for tool in tools:
-                    llama_tool = lc_to_llama_tool(tool)
-                    if llama_tool:
-                        llama_tools.append(llama_tool)
-
-            # Use the high-level chat completion API with the chat handler
+            # Generate response (non-streaming for simplicity)
             completion = self.llm.create_chat_completion(
-                messages=formatted_messages,
+                messages=cast(
+                    Any, formatted_messages
+                ),  # Type cast to handle llama-cpp types
                 temperature=temperature,
                 top_p=top_p,
                 top_k=top_k,
                 max_tokens=max_tokens,
-                stream=True,  # Always use streaming in the new interface
-                tools=llama_tools,
-                stop=(
-                    self.profile.parameters.stop
-                    if self.profile.parameters.stop
-                    else None
-                ),
-                repeat_penalty=(
-                    self.profile.parameters.repeat_penalty
-                    if self.profile.parameters.repeat_penalty
-                    else 1.1
-                ),
-                min_p=(
-                    self.profile.parameters.min_p
-                    if self.profile.parameters.min_p
-                    else 0.0
-                ),
+                stream=False,
             )
 
-            prompt_eval_end = datetime.datetime.now(tz=datetime.timezone.utc)
-            prompt_eval_duration = (
-                prompt_eval_end - prompt_eval_start
-            ).total_seconds() * 1000
+            # Extract response content - handle as dictionary
+            response_text = ""
+            if isinstance(completion, dict):
+                choices = completion.get("choices", [])
+                if choices and len(choices) > 0:
+                    choice = choices[0]
+                    message_data = choice.get("message", {})
+                    response_text = message_data.get("content", "")
 
-            most_recent_message = messages[-1] if messages else None
-            generated_tokens = 0
-
-            for chunk in completion:
-                if (
-                    isinstance(chunk, dict)
-                    and "choices" in chunk
-                    and len(chunk["choices"]) > 0
-                ):
-                    delta = chunk["choices"][0].get("delta", {})
-                    content = delta.get("content", "")
-
-                    if content:
-                        generated_tokens += 1
-
-                        response_message = Message(
-                            role=MessageRole.ASSISTANT,
-                            content=[
-                                MessageContent(
-                                    type=MessageContentType.TEXT, text=content, url=None
-                                )
-                            ],
-                            id=most_recent_message.id if most_recent_message else 999,
-                            conversation_id=(
-                                most_recent_message.conversation_id
-                                if most_recent_message
-                                else 999
-                            ),
-                            created_at=datetime.datetime.now(tz=datetime.timezone.utc),
-                            tool_calls=None,
-                            thinking=None,
-                        )
-
-                        finish_reason = chunk["choices"][0].get("finish_reason", None)
-                        is_done = finish_reason is not None
-
-                        current_time = datetime.datetime.now(tz=datetime.timezone.utc)
-                        total_duration = (
-                            current_time - start_time
-                        ).total_seconds() * 1000
-
-                        response = ChatResponse(
-                            message=response_message,
-                            done=is_done,
-                            finish_reason=finish_reason if is_done else None,
-                            total_duration=total_duration,
-                            load_duration=load_time,
-                            prompt_eval_duration=prompt_eval_duration,
-                            eval_duration=total_duration
-                            - prompt_eval_duration
-                            - load_time,
-                            context=None,
-                            prompt_eval_count=getattr(self.model, "n_tokens", 0),
-                            eval_count=generated_tokens,
-                            model=self.model_def.model,
-                            created_at=datetime.datetime.now(tz=datetime.timezone.utc),
-                        )
-
-                        yield response
-
-                        if is_done:
-                            break
-
-        except (RuntimeError, ValueError, AttributeError, KeyError, OSError) as e:
-            self.logger.error(
-                f"Error running Qwen 2.5 VL GGUF model: {str(e)}", exc_info=True
+            # Create response message
+            response_message = Message(
+                role=MessageRole.ASSISTANT,
+                content=[
+                    MessageContent(
+                        type=MessageContentType.TEXT,
+                        text=response_text or "No response generated",
+                    )
+                ],
             )
 
-            # Create error response
+            end_time = datetime.datetime.now(tz=datetime.timezone.utc)
+            total_duration = (end_time - start_time).total_seconds() * 1000
+
+            return ChatResponse(
+                message=response_message,
+                done=True,
+                finish_reason="stop",
+                total_duration=total_duration,
+                created_at=end_time,
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error processing messages: {e}")
             error_message = Message(
                 role=MessageRole.ASSISTANT,
                 content=[
                     MessageContent(
                         type=MessageContentType.TEXT,
                         text=f"Error processing multimodal request: {str(e)}",
-                        url=None,
                     )
                 ],
-                id=messages[-1].id if messages else 999,
-                conversation_id=messages[-1].conversation_id if messages else 999,
-                created_at=datetime.datetime.now(tz=datetime.timezone.utc),
-                tool_calls=None,
-                thinking=None,
             )
 
-            end_time = datetime.datetime.now(tz=datetime.timezone.utc)
-            total_duration = (end_time - start_time).total_seconds() * 1000
-
-            error_response = ChatResponse(
+            return ChatResponse(
                 message=error_message,
                 done=True,
                 finish_reason="error",
-                total_duration=total_duration,
-                load_duration=load_time,
-                prompt_eval_duration=0,
-                eval_duration=0,
-                prompt_eval_count=0,
-                eval_count=0,
-                model=self.model_def.model,
+                total_duration=0,
                 created_at=datetime.datetime.now(tz=datetime.timezone.utc),
-                context=None,
             )
 
-            yield error_response
-            raise
+    def create_graph(
+        self, tools: Optional[List[BaseTool]] = None
+    ) -> CompiledStateGraph:
+        """Create a simple state graph for multimodal processing."""
+        # Placeholder - implement if LangGraph integration needed
+        raise NotImplementedError(
+            "LangGraph integration not implemented for multimodal pipeline"
+        )
