@@ -4,10 +4,8 @@ import gc
 import logging
 import time
 import subprocess
-import signal
 import psutil
-from typing import Dict, List, Tuple, Optional, Any, Union
-import numpy as np
+from typing import Dict, List, Optional, Union
 import nvsmi
 
 from models.dev_stats import DevStats

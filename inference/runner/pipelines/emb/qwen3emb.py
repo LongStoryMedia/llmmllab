@@ -1,12 +1,11 @@
 """
-Enhanced Qwen3-Embedding-0.6B pipeline with token counting and text splitting.
+Clean Qwen3-Embedding-0.6B pipeline with essential functionality.
 """
 
-import datetime
 import logging
 import os
 import re
-from typing import List, Optional, Union, AsyncGenerator, Tuple
+from typing import List, Optional, Tuple
 import torch
 import numpy as np
 from langchain_community.embeddings import LlamaCppEmbeddings
@@ -17,25 +16,16 @@ from models import (
     Message,
     ModelProfile,
 )
-from ..base_dual_pipeline import EmbeddingPipeline
-from ..helpers import extract_message_text
+from ..base import EmbeddingPipeline
+from langchain_core.tools import BaseTool
+from utils.message import extract_message_text
 
 
 logger = logging.getLogger(__name__)
 
 
 class Qwen3EmbeddingPipe(EmbeddingPipeline):
-    """
-    Enhanced pipeline for Qwen3-Embedding-0.6B model with token splitting.
-
-    Features:
-    - Multilingual text embedding model (0.6B parameters)
-    - Context length up to 8192 tokens with automatic text splitting
-    - 1024-dimensional embeddings
-    - Optimized for semantic similarity tasks
-    - Supports batch processing and async operations
-    - Automatic token counting and text chunking
-    """
+    """Clean pipeline for Qwen3-Embedding-0.6B model with optimized implementation."""
 
     llm: LlamaCppEmbeddings
 
@@ -44,7 +34,6 @@ class Qwen3EmbeddingPipe(EmbeddingPipeline):
         super().__init__(model, profile)
 
         self._logger = logging.getLogger(__name__)
-        self._logger.info("Initializing Qwen3EmbeddingPipe")
 
         # Qwen3-specific parameters
         self.max_context_tokens = 8192
@@ -78,9 +67,24 @@ class Qwen3EmbeddingPipe(EmbeddingPipeline):
             keep_separator=True,
         )
 
-        self._logger.debug(
-            f"Initialized text splitter with max_chunk_chars={max_chunk_chars}"
+    async def process_messages(
+        self, messages: List[Message], tools: Optional[List[BaseTool]] = None
+    ) -> List[List[float]]:
+        """Process messages and return embeddings (no tools/graph needed)."""
+        texts: List[str] = []
+        for message in messages:
+            text = extract_message_text(message)
+            if text:
+                texts.append(text)
+        if not texts:
+            return [[0.0] * self.embedding_dim]
+        return await self._generate_embeddings_with_splitting(
+            texts, aggregation_method="mean"
         )
+
+    def create_graph(self, tools: Optional[List[BaseTool]] = None):  # type: ignore[override]
+        """Embeddings pipeline doesn't use LangGraph workflows."""
+        raise NotImplementedError("Embedding pipelines do not use LangGraph graphs")
 
     def _get_gguf_path(self) -> str:
         """Get the GGUF file path from model definition."""
@@ -100,28 +104,6 @@ class Qwen3EmbeddingPipe(EmbeddingPipeline):
             raise ValueError(
                 f"GGUF file is too small ({file_size} bytes), likely a placeholder: {gguf_path}"
             )
-
-        self._logger.info(
-            f"Using GGUF file: {gguf_path} (size: {file_size/1_000_000:.2f} MB)"
-        )
-
-    def _get_optimal_threads(self) -> int:
-        """Get optimal thread count based on system capabilities."""
-        try:
-            import multiprocessing
-
-            cpu_count = multiprocessing.cpu_count()
-            # Use half the CPU cores, capped at 8 for optimal performance
-            optimal_threads = min(max(cpu_count // 2, 2), 8)
-            self._logger.debug(
-                f"Using {optimal_threads} threads (CPU count: {cpu_count})"
-            )
-            return optimal_threads
-        except Exception:
-            self._logger.warning(
-                "Could not determine CPU count, using default threading"
-            )
-            return 4
 
     def _initialize_model(self, gguf_path: str) -> None:
         """Initialize the LangChain LlamaCppEmbeddings model with optimizations."""
@@ -144,21 +126,26 @@ class Qwen3EmbeddingPipe(EmbeddingPipeline):
                 use_mlock=False,  # Better memory management
                 device="cuda" if torch.cuda.is_available() else "cpu",
             )
-
-            self._logger.info(
-                f"Qwen3 Embedding model '{self.model.name}' loaded successfully "
-                f"(max_tokens: {self.max_context_tokens}, dims: {self.embedding_dim})"
-            )
         except Exception as e:
             self._logger.error(
                 f"Error initializing {self.__class__.__name__}: {str(e)}"
             )
             raise
 
+    def _get_optimal_threads(self) -> int:
+        """Get optimal thread count based on system capabilities."""
+        try:
+            import multiprocessing
+
+            cpu_count = multiprocessing.cpu_count()
+            # Use half the CPU cores, capped at 8 for optimal performance
+            optimal_threads = min(max(cpu_count // 2, 2), 8)
+            return optimal_threads
+        except Exception:
+            return 4
+
     def _estimate_tokens(self, text: str) -> int:
-        """
-        Estimate token count for text using simple heuristics.
-        """
+        """Estimate token count for text using simple heuristics."""
         if not text:
             return 0
 
@@ -177,14 +164,7 @@ class Qwen3EmbeddingPipe(EmbeddingPipeline):
         heuristic_estimate = words + punctuation + special_chars
 
         # Take the maximum for conservative estimation
-        estimate = max(word_estimate, char_estimate, heuristic_estimate)
-
-        self._logger.debug(
-            f"Token estimates - Word: {word_estimate}, Char: {char_estimate}, "
-            f"Heuristic: {heuristic_estimate}, Using: {estimate}"
-        )
-
-        return estimate
+        return max(word_estimate, char_estimate, heuristic_estimate)
 
     def _split_text_if_needed(self, text: str) -> List[str]:
         """Split text into chunks if it exceeds context length."""
@@ -198,10 +178,6 @@ class Qwen3EmbeddingPipe(EmbeddingPipeline):
         if estimated_tokens <= self.max_context_tokens:
             return [text]
 
-        self._logger.info(
-            f"Text exceeds token limit ({estimated_tokens} > {self.max_context_tokens}), splitting..."
-        )
-
         # Split the text
         chunks = self.text_splitter.split_text(text)
 
@@ -214,10 +190,6 @@ class Qwen3EmbeddingPipe(EmbeddingPipeline):
                 final_chunks.append(chunk)
             else:
                 # If still too long, do aggressive character-based splitting
-                self._logger.warning(
-                    f"Chunk still too long ({chunk_tokens} tokens), doing aggressive split"
-                )
-
                 # Calculate safe character limit
                 safe_char_limit = self.max_context_tokens * 3  # Very conservative
 
@@ -238,7 +210,6 @@ class Qwen3EmbeddingPipe(EmbeddingPipeline):
                 if current_chunk:
                     final_chunks.append(current_chunk)
 
-        self._logger.info(f"Split text into {len(final_chunks)} chunks")
         return final_chunks
 
     def _process_texts_with_splitting(
@@ -252,9 +223,6 @@ class Qwen3EmbeddingPipe(EmbeddingPipeline):
             chunks = self._split_text_if_needed(text)
             processed_chunks.extend(chunks)
             chunk_counts.append(len(chunks))
-
-            if len(chunks) > 1:
-                self._logger.debug(f"Split text into {len(chunks)} chunks")
 
         return processed_chunks, chunk_counts
 
@@ -297,62 +265,9 @@ class Qwen3EmbeddingPipe(EmbeddingPipeline):
 
                 aggregated.append(aggregated_emb)
 
-                self._logger.debug(
-                    f"Aggregated {chunk_count} chunks using {aggregation_method} method"
-                )
-
             start_idx += chunk_count
 
         return aggregated
-
-    async def run(
-        self, messages: List[Message]
-    ) -> AsyncGenerator[List[List[float]], None]:
-        """
-        Process messages to generate embeddings with automatic text splitting.
-        """
-        start_time = datetime.datetime.now(datetime.timezone.utc)
-
-        try:
-            # Extract texts from messages
-            texts = []
-            for message in messages:
-                text = extract_message_text(message)
-                if text:
-                    texts.append(text)
-
-            if not texts:
-                self._logger.warning("No text inputs found in messages")
-                yield [[0.0] * self.embedding_dim]
-                return
-
-            self._logger.info(
-                f"Processing {len(texts)} text inputs with automatic splitting"
-            )
-
-            # Generate embeddings with automatic splitting and aggregation
-            embeddings = await self._generate_embeddings_with_splitting(
-                texts, aggregation_method="mean"  # Use mean for general embedding tasks
-            )
-
-            # Log performance
-            duration = (
-                datetime.datetime.now(datetime.timezone.utc) - start_time
-            ).total_seconds()
-            self._logger.debug(
-                f"Generated {len(embeddings)} embeddings in {duration:.2f}s "
-                f"({len(embeddings[0]) if embeddings else 0} dimensions each)"
-            )
-
-            yield embeddings
-
-        except Exception as e:
-            self._logger.error(f"Error in embedding generation: {e}")
-            # Return zero embeddings as fallback
-            yield [
-                [0.0] * self.embedding_dim
-                for _ in range(len(texts) if "texts" in locals() else 1)
-            ]
 
     async def _generate_embeddings_with_splitting(
         self, texts: List[str], aggregation_method: str = "mean"
@@ -368,22 +283,11 @@ class Qwen3EmbeddingPipe(EmbeddingPipeline):
             if not processed_chunks:
                 return [[0.0] * self.embedding_dim for _ in texts]
 
-            self._logger.info(
-                f"Processing {len(processed_chunks)} chunks from {len(texts)} original texts"
-            )
-
             # Generate embeddings for all chunks using LangChain
             chunk_embeddings = self.llm.embed_documents(processed_chunks)
 
             if not chunk_embeddings:
-                self._logger.warning("No embeddings returned from model")
                 return [[0.0] * self.embedding_dim for _ in texts]
-
-            # Validate embedding dimensions
-            if chunk_embeddings and len(chunk_embeddings[0]) != self.embedding_dim:
-                self._logger.warning(
-                    f"Unexpected embedding dimension: {len(chunk_embeddings[0])}, expected {self.embedding_dim}"
-                )
 
             # Aggregate chunks back to original texts
             aggregated_embeddings = self._aggregate_embeddings(
@@ -395,111 +299,3 @@ class Qwen3EmbeddingPipe(EmbeddingPipeline):
         except Exception as e:
             self._logger.error(f"Error generating embeddings with splitting: {e}")
             return [[0.0] * self.embedding_dim for _ in texts]
-
-    async def embed_texts(
-        self,
-        texts: Union[str, List[str]],
-        normalize: bool = True,
-        truncate_dim: Optional[int] = None,
-        aggregation_method: str = "mean",
-    ) -> List[List[float]]:
-        """
-        Convenience method for direct text embedding with automatic splitting.
-        """
-        if isinstance(texts, str):
-            texts = [texts]
-
-        # Generate embeddings with splitting
-        embeddings = await self._generate_embeddings_with_splitting(
-            texts, aggregation_method
-        )
-
-        # Apply truncation if requested
-        if truncate_dim and truncate_dim < self.embedding_dim:
-            self._logger.debug(f"Truncating embeddings to {truncate_dim} dimensions")
-            embeddings = [emb[:truncate_dim] for emb in embeddings]
-        elif truncate_dim and truncate_dim >= self.embedding_dim:
-            self._logger.warning(
-                f"Truncate dimension {truncate_dim} >= embedding dimension {self.embedding_dim}, ignoring"
-            )
-
-        return embeddings
-
-    async def compute_similarity(
-        self,
-        query: str,
-        documents: List[str],
-        top_k: Optional[int] = None,
-        aggregation_method: str = "mean",
-    ) -> List[tuple[int, float, str]]:
-        """
-        Compute similarity between query and documents with automatic text splitting.
-        """
-        try:
-            # Generate embeddings with splitting
-            all_texts = [query] + documents
-            embeddings = await self._generate_embeddings_with_splitting(
-                all_texts, aggregation_method
-            )
-
-            if len(embeddings) < len(all_texts):
-                self._logger.error("Not enough embeddings generated")
-                return []
-
-            # Compute cosine similarities
-            query_emb = np.array(embeddings[0])
-            doc_embeddings = [np.array(emb) for emb in embeddings[1:]]
-
-            similarities = []
-            for i, doc_emb in enumerate(doc_embeddings):
-                similarity = float(np.dot(query_emb, doc_emb))  # Already normalized
-                similarities.append((i, similarity, documents[i]))
-
-            # Sort by similarity (descending)
-            similarities.sort(key=lambda x: x[1], reverse=True)
-
-            return similarities[:top_k] if top_k else similarities
-
-        except Exception as e:
-            self._logger.error(f"Error computing similarities: {e}")
-            return [
-                (i, 0.0, doc)
-                for i, doc in enumerate(documents[:top_k] if top_k else documents)
-            ]
-
-    def get_token_count_estimate(self, text: str) -> int:
-        """Get token count estimate for a text."""
-        return self._estimate_tokens(text)
-
-    def will_text_be_split(self, text: str) -> bool:
-        """Check if a text will be split due to token limits."""
-        estimated_tokens = self._estimate_tokens(text)
-        return estimated_tokens > self.max_context_tokens
-
-    def get_max_context_tokens(self) -> int:
-        """Get the maximum context length in tokens."""
-        return self.max_context_tokens
-
-    def get_embedding_dimension(self) -> int:
-        """Get the embedding dimension."""
-        return self.embedding_dim
-
-    def __del__(self) -> None:
-        """Clean up resources with enhanced error handling."""
-        try:
-            model_name = (
-                getattr(self.model, "name", "unknown")
-                if hasattr(self, "model")
-                else "unknown"
-            )
-            self._logger.info(f"Qwen3EmbeddingPipe for {model_name}: Cleanup initiated")
-
-            if hasattr(self, "llm") and self.llm is not None:
-                del self.llm
-
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
-
-        except Exception as e:
-            logger.error(f"Error cleaning up Qwen3EmbeddingPipe: {e}")

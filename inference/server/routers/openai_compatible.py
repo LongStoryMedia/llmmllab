@@ -1,3 +1,6 @@
+# This file has been removed as part of dead code cleanup.
+# It previously contained OpenAI-compatible endpoints which are no longer supported.
+# The file is now empty and should be deleted.
 """
 OpenAI Compatible Router for existing FastAPI application.
 Integrates vLLM and LangChain with existing chat infrastructure.

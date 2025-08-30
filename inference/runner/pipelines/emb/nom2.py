@@ -6,7 +6,7 @@ import datetime
 import logging
 import os
 import re
-from typing import List, Optional, Union, AsyncGenerator, cast, Tuple
+from typing import List, Optional, Union, AsyncGenerator, cast, Tuple, Any
 import torch
 import numpy as np
 from langchain_community.embeddings import LlamaCppEmbeddings
@@ -17,8 +17,8 @@ from models import (
     Message,
     ModelProfile,
 )
-from ..base_dual_pipeline import EmbeddingPipeline
-from ..helpers import extract_message_text
+from ..base import EmbeddingPipeline
+from utils.message import extract_message_text
 
 
 logger = logging.getLogger(__name__)
@@ -65,6 +65,29 @@ class NomicEmbedTextPipe(EmbeddingPipeline):
 
         # Initialize text splitter for handling long texts
         self._init_text_splitter()
+
+    # --- BasePipelineCore required methods ---
+    async def process_messages(
+        self, messages: List[Message], tools: Optional[List[Any]] = None
+    ) -> List[List[float]]:
+        """Process messages and return embeddings (no tools/graph needed)."""
+        # Extract and process texts with prefixes
+        texts: List[str] = []
+        for message in messages:
+            text = extract_message_text(message)
+            if text:
+                texts.append(self._add_task_prefix(text))
+
+        if not texts:
+            return [[0.0] * self.embedding_dim]
+
+        return await self._generate_embeddings_with_splitting(
+            texts, aggregation_method="mean"
+        )
+
+    def create_graph(self, tools: Optional[List[Any]] = None):  # type: ignore[override]
+        """Embeddings pipeline doesn't use LangGraph workflows."""
+        raise NotImplementedError("Embedding pipelines do not use LangGraph graphs")
 
     def _init_text_splitter(self) -> None:
         """Initialize the text splitter with conservative token estimates."""

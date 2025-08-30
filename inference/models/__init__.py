@@ -65,6 +65,7 @@ try:
     from . import tool_analysis_request
     from . import tool_analysis_response
     from . import tool_execution_result
+    from . import tool_generation_result
     from . import tool_needs
     from . import user
     from . import user_config
@@ -138,6 +139,7 @@ __all__ = [
     'tool_analysis_request',
     'tool_analysis_response',
     'tool_execution_result',
+    'tool_generation_result',
     'tool_needs',
     'user',
     'user_config',
@@ -209,6 +211,7 @@ __all__ = [
     'ToolAnalysisRequest',
     'ToolAnalysisResponse',
     'ToolExecutionResult',
+    'ToolGenerationResult',
     'ToolNeeds',
     'User',
     'UserConfig',
@@ -400,6 +403,9 @@ from .tool_analysis_response import (
 )
 from .tool_execution_result import (
     ToolExecutionResult,
+)
+from .tool_generation_result import (
+    ToolGenerationResult,
 )
 from .tool_needs import (
     ToolNeeds,

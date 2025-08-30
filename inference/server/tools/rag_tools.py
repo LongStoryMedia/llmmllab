@@ -1,31 +1,16 @@
 """
-Complete LangChain integration that preserves existing Pydantic models and streaming interface
+LangChain tool wrappers for RAG components compatible with latest BaseTool API.
 """
 
 import asyncio
 import json
-import logging
-from datetime import datetime as dt
-from typing import Any, AsyncIterable, Dict, List, Optional
+from typing import List
 
-from fastapi import BackgroundTasks
-from fastapi.responses import StreamingResponse
-from langchain.agents import AgentExecutor, create_structured_chat_agent
 from langchain_core.tools import BaseTool
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
 
-from models.chat_req import ChatReq
-from models.chat_response import ChatResponse
 from models.message import Message
-from models.message_content import MessageContent
-from models.message_content_type import MessageContentType
-from models.message_role import MessageRole
-from server.context.conversation import ConversationContext, SummaryContext
-from server.utils.chat.message import extract_message_text, to_lc_message
+from server.services.context import ConversationContext
 from server.config import logger
-from server.context.memory import MemoryContext
 
 
 # ============================================================================
@@ -43,15 +28,16 @@ class MemoryRetrievalTool(BaseTool):
     def __init__(self, conversation_ctx: ConversationContext):
         super().__init__(conversation_ctx=conversation_ctx)
 
-    async def _arun(
-        self, embeddings: List[List[float]], run_manager=None, **kwargs
-    ) -> str:
+    async def _arun(self, *args, **kwargs) -> str:
         """Async implementation for memory retrieval"""
         try:
-            assert (
-                self.conversation_ctx.memory_context
-            ), "Memory context must be initialized"
-            # Retrieve memories
+            tool_input = args[0] if args else kwargs.get("tool_input")
+            embeddings: List[List[float]] = (
+                tool_input if isinstance(tool_input, list) else []
+            )
+            if not embeddings:
+                return "No embeddings provided"
+
             memories = await self.conversation_ctx.memory_context.retrieve_memories(
                 embeddings
             )
@@ -63,9 +49,9 @@ class MemoryRetrievalTool(BaseTool):
             logger.error(f"Memory retrieval error: {e}")
             return f"Memory retrieval failed: {str(e)}"
 
-    def _run(self, embeddings: List[List[float]], **kwargs) -> str:
+    def _run(self, *args, **kwargs) -> str:
         """Sync fallback - not recommended for production"""
-        return asyncio.run(self._arun(embeddings, **kwargs))
+        return asyncio.run(self._arun(*args, **kwargs))
 
 
 class WebSearchTool(BaseTool):
@@ -78,12 +64,14 @@ class WebSearchTool(BaseTool):
     def __init__(self, conversation_ctx: ConversationContext):
         super().__init__(conversation_ctx=conversation_ctx)
 
-    async def _arun(self, query: Message, run_manager=None, **kwargs) -> str:
+    async def _arun(self, *args, **kwargs) -> str:
         """Async implementation for web search"""
         try:
+            tool_input = args[0] if args else kwargs.get("tool_input")
+            query: Message = tool_input if isinstance(tool_input, Message) else None  # type: ignore
             # Perform search
             results = await self.conversation_ctx.search_context.search(
-                query, kwargs.get("conversation_id", 0)
+                query, getattr(self.conversation_ctx.conversation, "id", 0)
             )
 
             if results:
@@ -93,9 +81,9 @@ class WebSearchTool(BaseTool):
             logger.error(f"Web search error: {e}")
             return f"Web search failed: {str(e)}"
 
-    def _run(self, query: Message, **kwargs) -> str:
+    def _run(self, *args, **kwargs) -> str:
         """Sync fallback"""
-        return asyncio.run(self._arun(query, **kwargs))
+        return asyncio.run(self._arun(*args, **kwargs))
 
 
 class SummarizationTool(BaseTool):
@@ -108,10 +96,12 @@ class SummarizationTool(BaseTool):
     def __init__(self, conversation_ctx: ConversationContext):
         super().__init__(conversation_ctx=conversation_ctx)
 
-    async def _arun(self, messages: List, run_manager=None, **kwargs) -> str:
+    async def _arun(self, *args, **kwargs) -> str:
         """Async implementation for summarization"""
         try:
             # Perform summarization
+            tool_input = args[0] if args else kwargs.get("tool_input")
+            messages = tool_input if isinstance(tool_input, list) else []
             await self.conversation_ctx.summary_context.summarize(messages)
 
             return "No summary generated"
@@ -119,6 +109,6 @@ class SummarizationTool(BaseTool):
             logger.error(f"Summarization error: {e}")
             return f"Summarization failed: {str(e)}"
 
-    def _run(self, messages: str, **kwargs) -> str:
+    def _run(self, *args, **kwargs) -> str:
         """Sync fallback"""
         return "Summarization requires async execution"
