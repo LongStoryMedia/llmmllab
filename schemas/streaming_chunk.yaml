@@ -1,0 +1,33 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: StreamingChunk
+description: "Individual chunk in a streaming response"
+properties:
+  chunk_id:
+    type: string
+    description: "Unique identifier for this chunk"
+  sequence_number:
+    type: integer
+    minimum: 0
+    description: "Sequence number in the stream"
+  chunk_type:
+    type: string
+    enum: ["text", "tool_call", "tool_result", "thinking", "error", "metadata"]
+    description: "Type of chunk content"
+  content:
+    type: string
+    description: "The actual content of the chunk"
+  metadata:
+    type: object
+    description: "Additional metadata for the chunk"
+    additionalProperties: true
+  timestamp:
+    type: string
+    format: "date-time"
+    description: "When this chunk was generated"
+  is_final:
+    type: boolean
+    default: false
+    description: "Whether this is the final chunk"
+required: ["chunk_id", "sequence_number", "chunk_type", "timestamp"]
+additionalProperties: false

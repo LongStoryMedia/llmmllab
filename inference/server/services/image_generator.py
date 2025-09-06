@@ -1,12 +1,13 @@
 import json
 import server.config as config
-from runner.pipelines.factory import pipeline_factory
+from runner import pipeline_factory
 from models import (
     Model,
     default_model_profiles,
     InferenceQueueMessage,
     ImageGenerateRequest,
     ImageGenerateResponse,
+    ChatResponse,
 )
 import os
 import io
@@ -24,7 +25,6 @@ from diffusers.utils.loading_utils import load_image
 # Import config to use configuration values
 import server.config as config
 from models.inference_queue_message import InferenceQueueMessage
-from services.model_service import model_service
 from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import (
     StableDiffusion3Pipeline,
 )
@@ -135,7 +135,6 @@ class ImageGenerator:
     def __init__(self):
         """Initialize the image generator."""
         self.logger = logging.getLogger(__name__)
-        self.model_service = model_service
         # Use config.IMAGE_DIR if defined, otherwise fallback to environment variable or default
         self.output_dir = (
             config.IMAGE_DIR
@@ -183,7 +182,7 @@ class ImageGenerator:
 
         self.logger.info(f"Generating image with prompt: {image_request.prompt}")
         pipeline = pipeline_factory.get_pipeline(
-            default_model_profiles.DEFAULT_IMAGE_GENERATION_PROFILE
+            default_model_profiles.DEFAULT_IMAGE_GENERATION_PROFILE, ChatResponse
         )
 
         # Set default parameters if not provided, ensuring they're never None
@@ -248,7 +247,7 @@ class ImageGenerator:
 
         self.logger.info(f"Editing image with prompt: {prompt}")
         pipeline = pipeline_factory.get_pipeline(
-            default_model_profiles.DEFAULT_IMAGE_GENERATION_PROFILE
+            default_model_profiles.DEFAULT_IMAGE_GENERATION_PROFILE, ChatResponse
         )
 
         # Set default parameters if not provided, ensuring they're never None

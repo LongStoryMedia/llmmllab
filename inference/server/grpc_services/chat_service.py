@@ -11,7 +11,7 @@ from models import (
     MessageRole,
     ModelParameters,
 )
-from ..services.hardware_manager import hardware_manager
+from utils.hardware_manager import hardware_manager
 
 import server.config
 

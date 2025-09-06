@@ -13,7 +13,15 @@ from abc import ABC, abstractmethod
 from langchain_community.utilities.brave_search import BraveSearchWrapper
 from langchain_community.utilities.duckduckgo_search import DuckDuckGoSearchAPIWrapper
 from langchain_community.utilities.google_serper import GoogleSerperAPIWrapper
-from langchain_community.utilities.google_search import GoogleSearchAPIWrapper
+
+# Prefer the new package if available; fall back to community package
+try:
+    # New recommended location
+    from langchain_google_community import GoogleSearchAPIWrapper  # type: ignore
+except Exception:  # noqa: BLE001
+    from langchain_community.utilities.google_search import (  # type: ignore
+        GoogleSearchAPIWrapper,
+    )
 from langchain_community.utilities.searx_search import SearxSearchWrapper
 
 from models import SearchResult, SearchResultContent
@@ -74,6 +82,13 @@ class BraveSearchProviderWrapper(StandardSearchProvider):
         results = []
         error = None
         try:
+            if not query.strip():
+                return SearchResult(
+                    is_from_url_in_user_query=False,
+                    query=query,
+                    contents=results,
+                    error="Empty query",
+                )
             # Brave search wrapper returns a formatted string
             search_response = self.wrapper.run(query)
 
@@ -106,37 +121,78 @@ class DuckDuckGoSearchProviderWrapper(StandardSearchProvider):
     """Wrapper for DuckDuckGo Search API."""
 
     def __init__(self, **kwargs):
-        self.wrapper = DuckDuckGoSearchAPIWrapper(**kwargs)
+        # Lazy init to avoid ImportError (ddgs) crashing the flow
+        self._kwargs = kwargs
+        self.wrapper: Optional[DuckDuckGoSearchAPIWrapper] = None  # type: ignore[type-arg]
+        self._init_error: Optional[str] = None
+
+    def _ensure_wrapper(self) -> None:
+        if self.wrapper is not None or self._init_error is not None:
+            return
+        try:
+            self.wrapper = DuckDuckGoSearchAPIWrapper(**self._kwargs)
+        except Exception as e:  # noqa: BLE001
+            self._init_error = str(e)
+            logger.error(f"DuckDuckGo initialization failed: {self._init_error}")
 
     async def search(self, query: str, max_results: int) -> SearchResult:
         """Execute search using DuckDuckGo Search API."""
         results = []
         error = None
         try:
-            # Brave search wrapper returns a formatted string
+            if not query.strip():
+                return SearchResult(
+                    is_from_url_in_user_query=False,
+                    query=query,
+                    contents=results,
+                    error="Empty query",
+                )
+
+            self._ensure_wrapper()
+            if not self.wrapper:
+                reason = self._init_error or "Unknown initialization error"
+                return SearchResult(
+                    is_from_url_in_user_query=False,
+                    query=query,
+                    contents=results,
+                    error=(
+                        "DuckDuckGo search unavailable: "
+                        + reason
+                        + ". Install ddgs: pip install -U ddgs."
+                    ),
+                )
+
             search_response = self.wrapper.run(query)
 
-            # Parse the string results - Brave returns stringified json
-            # that is an array of objects which have "title", "link", and "snippet"
-            entries = cast(list[dict[str, str]], json.loads(search_response))
+            # Improved JSON parsing with better error handling
+            try:
+                entries = cast(list[dict[str, str]], json.loads(search_response))
+            except json.JSONDecodeError as json_err:
+                logger.error(
+                    f"DuckDuckGo returned invalid JSON: {json_err}. Response: {search_response[:200]}..."
+                )
+                # Try to handle cases where response might be empty or malformed
+                if not search_response.strip():
+                    raise ValueError("DuckDuckGo returned empty response")
+                elif search_response.strip().startswith("<"):
+                    raise ValueError("DuckDuckGo returned HTML instead of JSON")
+                else:
+                    raise ValueError(f"DuckDuckGo returned malformed JSON: {json_err}")
+
             for e in entries[:max_results]:
                 title = e.get("title")
                 url = e.get("link")
                 content = e.get("snippet")
-
                 if not url:
                     continue
-
                 results.append(
                     self._create_search_result(
                         url=url, title=title or "", content=content or ""
                     )
                 )
-        except Exception as e:
-            # Fallback to the run method which returns a string
-            logger.warning(
-                f"Error with DuckDuckGo structured results: {e}, falling back to text results"
-            )
+        except Exception as e:  # noqa: BLE001
+            error = f"Error with DuckDuckGo search: {e}"
+            logger.error(error)
 
         return SearchResult(
             is_from_url_in_user_query=False, query=query, contents=results, error=error
@@ -155,6 +211,13 @@ class SearxSearchProviderWrapper(StandardSearchProvider):
         results = []
         error = None
         try:
+            if not query.strip():
+                return SearchResult(
+                    is_from_url_in_user_query=False,
+                    query=query,
+                    contents=results,
+                    error="Empty query",
+                )
             # Searx returns a string by default
             raw_results = self.wrapper.run(query)
 
@@ -218,6 +281,13 @@ class GoogleSerperSearchProviderWrapper(StandardSearchProvider):
         results = []
         error = None
         try:
+            if not query.strip():
+                return SearchResult(
+                    is_from_url_in_user_query=False,
+                    query=query,
+                    contents=results,
+                    error="Empty query",
+                )
             raw_results = self.wrapper.results(query, k=max_results)
 
             # Handle Serper's result format
@@ -257,17 +327,46 @@ class GoogleSearchProviderWrapper(StandardSearchProvider):
     ):
         self.google_api_key = google_api_key or os.getenv("GOOGLE_SEARCH_API_KEY", "")
         self.google_cse_id = google_cse_id or os.getenv("GOOGLE_SEARCH_CX", "")
-        self.wrapper = GoogleSearchAPIWrapper(
-            google_api_key=self.google_api_key,
-            google_cse_id=self.google_cse_id,
-            **kwargs,
-        )
+        # Defer expensive/fragile initialization until first use to avoid crashing the whole search flow
+        self._kwargs = kwargs
+        self.wrapper: Optional[GoogleSearchAPIWrapper] = None  # type: ignore[type-arg]
+        self._init_error: Optional[str] = None
+
+    def _ensure_wrapper(self) -> None:
+        """Lazily initialize the GoogleSearchAPIWrapper, capturing missing deps as a soft error."""
+        if self.wrapper is not None or self._init_error is not None:
+            return
+        try:
+            self.wrapper = GoogleSearchAPIWrapper(  # type: ignore[call-arg]
+                google_api_key=self.google_api_key,
+                google_cse_id=self.google_cse_id,
+                **self._kwargs,
+            )
+        except Exception as e:  # Missing deps etc.
+            self._init_error = str(e)
+            logger.error(f"GoogleSearch initialization failed: {self._init_error}")
 
     async def search(self, query: str, max_results: int) -> SearchResult:
         """Execute search using Google Search API."""
         results = []
         error = None
         try:
+            # Ensure the wrapper is ready; if not, return a graceful error without raising
+            self._ensure_wrapper()
+            if not self.wrapper:
+                reason = self._init_error or "Unknown initialization error"
+                error = (
+                    "Google search unavailable: "
+                    + reason
+                    + ". Install google-api-python-client>=2.100.0 and set GOOGLE_SEARCH_API_KEY/GOOGLE_SEARCH_CX to enable."
+                )
+                return SearchResult(
+                    is_from_url_in_user_query=False,
+                    query=query,
+                    contents=results,
+                    error=error,
+                )
+
             entries = cast(
                 list[dict[str, str]],
                 self.wrapper.results(query, num_results=max_results),

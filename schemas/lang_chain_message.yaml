@@ -1,0 +1,37 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: LangChainMessage
+type: object
+description: "Base abstract message class. Messages are the inputs and outputs of ChatModels."
+properties:
+  content:
+    oneOf:
+      - type: string
+      - type: array
+        items:
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
+    description: "The string contents of the message."
+  additional_kwargs:
+    type: object
+    default: {}
+    description: "Reserved for additional payload data associated with the message."
+  response_metadata:
+    type: object
+    default: {}
+    description: "Response metadata. For example: response headers, logprobs, token counts, model name."
+  type:
+    type: string
+    description: "The type of the message. Must be a string that is unique to the message type."
+    default: "text"
+  name:
+    type: "string"
+    description: "An optional name for the message."
+  id:
+    type: "string"
+    description: "An optional unique identifier for the message."
+additionalProperties: true
+required:
+  - content
+  - type

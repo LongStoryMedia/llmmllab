@@ -1,0 +1,32 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: ToolAnalysisResponse
+description: "Response from tool analysis containing recommendations"
+properties:
+  needs_dynamic_tool:
+    type: boolean
+    description: "Whether a dynamic tool is needed"
+  confidence_score:
+    type: number
+    minimum: 0.0
+    maximum: 1.0
+    description: "Confidence score for the analysis"
+  description:
+    type: string
+    description: "Description of the recommended tool or analysis result"
+    maxLength: 500
+  reasoning:
+    type: string
+    description: "Reasoning behind the analysis decision"
+    maxLength: 1000
+  suggested_tools:
+    type: array
+    items:
+      type: string
+    description: "List of suggested existing tools that might help"
+  estimated_complexity:
+    type: string
+    enum: ["low", "medium", "high"]
+    description: "Estimated complexity of creating the needed tool"
+required: ["needs_dynamic_tool", "confidence_score", "description", "reasoning"]
+additionalProperties: false

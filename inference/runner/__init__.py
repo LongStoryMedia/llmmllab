@@ -8,7 +8,8 @@ from .pipeline_factory import (
     pipeline_factory,
     PipelineCacheEntry,
     PipeReturn,
-    Embeddings,
 )
+
+from .pipelines.base import Embeddings
 
 __all__ = ["pipeline_factory", "PipelineCacheEntry", "PipeReturn", "Embeddings"]

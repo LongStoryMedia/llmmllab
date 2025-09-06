@@ -4,6 +4,7 @@ Database module that initializes all storage components and provides access to t
 
 import asyncpg
 import logging
+import os
 
 from asyncpg import Pool
 
@@ -56,7 +57,18 @@ class Storage:
 
         try:
             logger.info("Initializing database connection pool")
-            self.pool = await asyncpg.create_pool(connection_string)
+            # Avoid stale OID errors from server-side prepared statements by disabling or sizing the cache
+            stmt_cache_size_str = os.environ.get("DB_STATEMENT_CACHE_SIZE", "0")
+            try:
+                stmt_cache_size = int(stmt_cache_size_str)
+            except ValueError:
+                stmt_cache_size = 0
+            self.pool = await asyncpg.create_pool(
+                connection_string, statement_cache_size=stmt_cache_size
+            )
+            logger.info(
+                f"Database pool created (statement_cache_size={stmt_cache_size})"
+            )
 
             # Initialize all storage components
             self.user_config = UserConfigStorage(self.pool, get_query)

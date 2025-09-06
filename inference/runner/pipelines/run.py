@@ -21,15 +21,17 @@ from models import (
     MessageRole,
     MessageContent,
     MessageContentType,
-    LangGraphState,
+    EventStreamConfig,
 )
+from utils.langgraph import build_langgraph_state
 
 from utils.message import (
     to_lc_message,
     extract_message_text,
 )
 from utils.response import create_streaming_chunk
-from utils.serialization import serialize_to_json
+
+# from utils.serialization import serialize_to_json  # unused
 
 from .base import BasePipelineCore
 
@@ -46,7 +48,6 @@ class StreamingCallbackHandler(BaseCallbackHandler):
     def on_llm_new_token(self, token: str, **kwargs) -> None:
         """Called when a new token is generated."""
         try:
-            self.logger.debug(f"New token: {token}")
             self.tokens.append(token)
         except Exception as e:
             self.logger.error(f"Error handling new token: {e}")
@@ -89,46 +90,65 @@ class StreamingCallbackHandler(BaseCallbackHandler):
 
 
 class EventStreamProcessor:
-    """
-    Enhanced stream processor with better safety mechanisms.
-    """
+    """Stream processor with configurable repetition controls and dedup."""
 
-    def __init__(self, thinking_phase: bool = True):
-        self.thinking_phase = thinking_phase
-        self.last_content = ""
-        self.repetition_count = 0
-        self.max_repetitions = 3
-        self.repetition_buffer_size = 200
+    def __init__(
+        self, thinking_phase: bool = True, config: Optional[EventStreamConfig] = None
+    ):
+        self.config = config or EventStreamConfig(thinking_phase_initial=thinking_phase)
+        self.thinking_phase = self.config.thinking_phase_initial
         self.total_content_length = 0
-        self.max_content_length = 50000  # Reasonable limit
+        self._buffer = ""
+        self.repetition_count = 0
+        self._last_hashes: List[int] = []
         self.logger = logging.getLogger(__name__)
 
+    def _update_buffer(self, new_content: str) -> str:
+        self._buffer = (self._buffer + new_content)[
+            -self.config.repetition_buffer_chars :
+        ]
+        return self._buffer
+
+    def _dedup(self, content: str) -> bool:
+        """Return True if this content chunk appears to be a duplicate of recent ones."""
+        h = hash(content)
+        if h in self._last_hashes:
+            return True
+        self._last_hashes.append(h)
+        if len(self._last_hashes) > self.config.dedup_last_hashes:
+            self._last_hashes.pop(0)
+        return False
+
     def _is_repetitive(self, new_content: str) -> bool:
-        """Detect repetitive patterns in generated text."""
         if not new_content:
             return False
 
         try:
-            # Update buffer
-            combined = self.last_content + new_content
-            if len(combined) > self.repetition_buffer_size:
-                combined = combined[-self.repetition_buffer_size :]
-            self.last_content = combined
+            buf = self._update_buffer(new_content)
 
-            # Check for repetitive patterns
-            if len(combined) > 50:
-                # Look for repeating phrases
-                for phrase_len in range(20, min(50, len(combined) // 2)):
-                    phrase = combined[-phrase_len:]
-                    if phrase in combined[:-phrase_len]:
+            # n-gram repetition near the tail
+            words = buf.split()
+            if len(words) > self.config.ngram_max:
+                tail_window = words[-max(50, self.config.ngram_max * 4) :]
+                prior = (
+                    words[: -len(tail_window)] if len(words) > len(tail_window) else []
+                )
+                prior_text = " ".join(prior)
+                for n in range(self.config.ngram_min, self.config.ngram_max + 1):
+                    if len(tail_window) < n:
+                        break
+                    ngram = " ".join(tail_window[-n:])
+                    # Require n-gram to be meaningful (>= 3 words default)
+                    if ngram.strip().count(" ") + 1 < n:
+                        continue
+                    if prior_text.count(ngram) >= self.config.ngram_repeat_threshold:
                         return True
 
-            # Check for word stuttering
-            words = combined.split()
-            if len(words) >= 8:
-                last_words = words[-8:]
-                unique_words = set(last_words)
-                if len(unique_words) <= 3 and len(last_words) >= 6:
+            # stutter detection (very lax)
+            if len(words) >= self.config.stutter_window_words:
+                last = words[-self.config.stutter_window_words :]
+                unique_ratio = len(set(last)) / max(1, len(last))
+                if unique_ratio <= self.config.stutter_unique_ratio_threshold:
                     return True
 
             return False
@@ -144,7 +164,11 @@ class EventStreamProcessor:
             if event_type in ["on_chat_model_start", "on_llm_start", "on_agent_start"]:
                 if self.thinking_phase:
                     self.thinking_phase = False
-                    return create_streaming_chunk("🤔 Analyzing request...\n\n")
+                    return create_streaming_chunk(
+                        "🤔 Analyzing request...\n\n",
+                        done=False,
+                        role=MessageRole.OBSERVER,
+                    )
 
             if event_type in [
                 "on_chat_model_stream",
@@ -165,8 +189,8 @@ class EventStreamProcessor:
             if event_type == "on_agent_finish":
                 return self._process_agent_finish(evt)
 
-            # Default: serialize unknown events
-            return create_streaming_chunk(serialize_to_json(evt))
+            # Skip unknown/unhandled events instead of serializing them
+            return None
 
         except Exception as e:
             self.logger.error(f"Error processing event: {e}")
@@ -187,13 +211,17 @@ class EventStreamProcessor:
 
             # Check content length limit
             self.total_content_length += len(content)
-            if self.total_content_length > self.max_content_length:
+            if self.total_content_length > self.config.max_content_length:
                 return create_streaming_chunk("\n\n[Content limit reached]", done=True)
+
+            # Drop exact duplicates to reduce flicker
+            if self._dedup(content):
+                return None
 
             # Check for repetitive patterns
             if self._is_repetitive(content):
                 self.repetition_count += 1
-                if self.repetition_count >= self.max_repetitions:
+                if self.repetition_count >= self.config.max_repetitions:
                     return create_streaming_chunk(
                         "\n\n[Stopping repetitive output]", done=True
                     )
@@ -221,10 +249,16 @@ class EventStreamProcessor:
 
             if tool_txt:
                 return create_streaming_chunk(
-                    f"\n\n🔧 **Using {tool_name}**\n{tool_txt}"
+                    f"\n\n🔧 **Using {tool_name}**\n{tool_txt}",
+                    done=False,
+                    role=MessageRole.OBSERVER,
                 )
             else:
-                return create_streaming_chunk(f"\n\n🔧 **Using {tool_name}**\n")
+                return create_streaming_chunk(
+                    f"\n\n🔧 **Using {tool_name}**\n",
+                    done=False,
+                    role=MessageRole.OBSERVER,
+                )
 
         except Exception as e:
             self.logger.error(f"Error processing tool start: {e}")
@@ -239,7 +273,11 @@ class EventStreamProcessor:
             if len(tool_output) > 500:  # Limit output length
                 tool_output = tool_output[:500] + "..."
 
-            return create_streaming_chunk(f"✅ **Tool completed**\n{tool_output}\n\n")
+            return create_streaming_chunk(
+                f"✅ **Tool completed**\n{tool_output}\n\n",
+                done=False,
+                role=MessageRole.OBSERVER,
+            )
 
         except Exception as e:
             self.logger.error(f"Error processing tool end: {e}")
@@ -252,7 +290,11 @@ class EventStreamProcessor:
             output = str(data.get("output", ""))
 
             if output:
-                return create_streaming_chunk(f"\n\n**Final Answer:**\n{output}\n")
+                return create_streaming_chunk(
+                    f"\n\n**Final Answer:**\n{output}\n",
+                    done=False,
+                    role=MessageRole.OBSERVER,
+                )
             else:
                 return create_streaming_chunk("", done=True)
 
@@ -275,6 +317,21 @@ async def stream_pipeline(
         # Validate inputs
         if not messages:
             yield create_streaming_chunk("No messages provided", done=True)
+            return
+
+        # Enforce that streaming requires ChatResponse-capable pipelines
+        try:
+            if hasattr(
+                pipeline, "allows_return_type"
+            ) and not pipeline.allows_return_type(ChatResponse):
+                yield create_streaming_chunk(
+                    "Pipeline does not support streaming ChatResponse chunks.",
+                    done=True,
+                )
+                return
+        except Exception as e:
+            logger.error(f"Error checking pipeline type capabilities: {e}")
+            yield create_streaming_chunk("Invalid pipeline configuration", done=True)
             return
 
         # Convert messages to LangChain format
@@ -319,17 +376,16 @@ async def stream_pipeline(
         if latest_message and latest_message.content:
             user_input = extract_message_text(latest_message)
 
-        # Create initial state
-        initial_state = LangGraphState(
-            messages=lc_messages,  # type: ignore
-            user_input=user_input,
-        )
+        # Create initial state via builder to decouple from generated model
+        initial_state = build_langgraph_state(lc_messages, user_input)
 
         # Initialize processor
         processor = EventStreamProcessor(thinking_phase=True)
 
         # Stream execution
         try:
+            logger.info(f"Starting graph streaming for {len(lc_messages)} messages")
+            event_count = 0
             async for event in graph.astream_events(
                 initial_state.model_dump(),
                 config=config,
@@ -344,9 +400,12 @@ async def stream_pipeline(
                     "prompt",
                 ],
             ):
+                event_count += 1
                 chunk = processor.process_event(cast(StandardStreamEvent, event))
                 if chunk:
                     yield chunk
+
+            logger.info(f"Graph streaming completed with {event_count} events")
 
         except Exception as e:
             logger.error(f"Error during streaming execution: {e}")

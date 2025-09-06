@@ -2,15 +2,14 @@
 Direct port of Maistro's userconfig.go storage logic to Python with cache integration.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 import asyncpg
 from server.db.db_utils import typed_pool
 import json
 import logging
-import uuid
 from models.user_config import UserConfig
 from models.default_model_profiles import DEFAULT_MODEL_PROFILE_CONFIG
-from server.utils.serialization_utils import serialize_to_json
+from utils.serialization import serialize_to_json
 from models.default_configs import (
     DEFAULT_PREFERENCES_CONFIG,
     DEFAULT_MEMORY_CONFIG,

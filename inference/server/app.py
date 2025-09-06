@@ -62,7 +62,7 @@ from server.auth import AuthMiddleware
 from server.config import API_VERSION
 from server.db.maintenance import maintenance_service
 from server.services.cleanup_service import cleanup_service
-from server.services.hardware_manager import hardware_manager  # Import hardware manager
+from utils.hardware_manager import hardware_manager  # Import hardware manager
 from server.services.rabbitmq_consumer import (
     rabbitmq_consumer,
 )  # Import RabbitMQ consumer
@@ -157,6 +157,16 @@ async def lifespan(_: FastAPI):
                 schema_initialized = await initialize_database(storage.pool)
                 if schema_initialized:
                     print("Database schema initialized successfully")
+
+                    # Align sequences at startup to avoid ID drift after restores/migrations
+                    try:
+                        await maintenance_service.initialize(storage.pool)
+                        await maintenance_service.align_sequences()
+                        print("Database sequences aligned successfully at startup")
+                    except Exception as e:
+                        print(
+                            f"Warning: failed to align database sequences at startup: {e}"
+                        )
 
                     # Initialize and start the database maintenance service
                     # Set interval to 24 hours by default (can be configured via environment variable)

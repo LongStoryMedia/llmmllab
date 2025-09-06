@@ -4,11 +4,12 @@ Image service implementation for the gRPC server.
 
 from server.protos.image_generation_response_pb2 import ImageGenerateResponse
 from server.protos.image_generation_request_pb2 import ImageGenerateRequest
-from server.services.model_service import model_service
+
+# from server.services.model_service import model_service
 from server.services.image_generator import image_generator
-from server.services.hardware_manager import hardware_manager
 from server.config import logger, IMAGE_DIR
 import models
+from utils.hardware_manager import hardware_manager
 import torch
 import grpc
 import os

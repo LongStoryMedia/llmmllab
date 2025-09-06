@@ -6,14 +6,14 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 - Versioned: /v1/models/...
 """
 
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Union
 from datetime import datetime
 import uuid
 import time
 import json
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 
 import server.config as config
 from server.auth import get_user_id, is_admin
@@ -117,6 +117,34 @@ async def create_model_profile(profile_req: ModelProfile, request: Request):
         raise HTTPException(status_code=401, detail="Authentication required")
 
     try:
+        # Import here to avoid circular imports
+        from models.default_model_profiles import DEFAULT_PROFILES
+
+        # Handle UUID generation and validation
+        if profile_req.id is None:
+            # Generate a new UUID if none provided
+            profile_req.id = uuid.uuid4()
+            logger.info(f"Generated new UUID {profile_req.id} for new user profile")
+        else:
+            # Check if the user is trying to create a profile with a system default UUID
+            is_default_uuid = any(
+                profile_req.id == default_profile.id
+                for default_profile in DEFAULT_PROFILES.values()
+            )
+
+            if is_default_uuid:
+                # Generate a new UUID for user-created profile based on default
+                profile_req.id = uuid.uuid4()
+                logger.info(
+                    f"Generated new UUID {profile_req.id} for user profile based on default"
+                )
+
+        # Ensure the profile is associated with the current user
+        profile_req.user_id = user_id
+
+        # Set timestamps
+        profile_req.created_at = datetime.now()
+        profile_req.updated_at = datetime.now()
 
         # Save to database
         return await storage.get_service(storage.model_profile).create_model_profile(
@@ -147,25 +175,39 @@ async def update_model_profile(
 
     try:
         # First check if profile exists and belongs to user
-        profile = await storage.get_service(
+        existing_profile = await storage.get_service(
             storage.model_profile
         ).get_model_profile_by_id(profile_uuid, user_id)
 
-        if not profile:
+        if not existing_profile:
             raise HTTPException(status_code=404, detail="Profile not found")
 
         # Check if profile belongs to user or user is admin
-        if profile.user_id != user_id and not is_admin(request):
+        if existing_profile.user_id != user_id and not is_admin(request):
             raise HTTPException(status_code=403, detail="Access denied")
+
+        # Convert the request to a ModelProfile object
+        profile_data = profile_req.dict(exclude_unset=True)
+
+        # Maintain the original ID and user_id
+        profile_data["id"] = profile_uuid
+        profile_data["user_id"] = existing_profile.user_id
+        profile_data["created_at"] = existing_profile.created_at
+        profile_data["updated_at"] = datetime.now()
+
+        # Create the ModelProfile object
+        profile = ModelProfile(**profile_data)
+
         # Update in database
         return await storage.get_service(storage.model_profile).update_model_profile(
-            profile_req
+            profile
         )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error updating model profile: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}") from e
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}") from e
 
 
