@@ -18,6 +18,7 @@ from models import (
 )
 from utils.serialization import serialize_to_json
 from utils.message import extract_message_text
+from utils.response import create_error_chunk, create_streaming_chunk
 
 from runner.pipeline_factory import pipeline_factory
 from runner.pipelines.run import stream_pipeline
@@ -25,8 +26,6 @@ from runner.pipelines.run import stream_pipeline
 from server.config import logger
 from server.db import storage
 from server.tools.integration import (
-    create_error_chunk,
-    create_streaming_chunk,
     get_tools,
 )
 from ..services.context import ConversationContext
@@ -85,13 +84,6 @@ class CompletionHandler:
         """
         async with self._resources() as rc:
             try:
-                # 1) Run optional RAG side effects
-                try:
-                    msg = conversation_ctx.current_user_message
-                    if msg is not None:
-                        await conversation_ctx.process_rag_operations(msg)
-                except Exception:
-                    pass
 
                 # 2) Acquire tools, streaming status updates
                 tools: List[BaseTool] = []
@@ -121,21 +113,28 @@ class CompletionHandler:
                 with pipeline_factory.pipeline(mp, ChatResponse) as pipeline:
                     rc.add("pipeline", pipeline)
 
-                    # 4) Build message list (ensure latest user message is included)
-                    msgs = list(conversation_ctx.messages)
-                    if conversation_ctx.current_user_message:
-                        if (
-                            not msgs
-                            or msgs[-1] is not conversation_ctx.current_user_message
-                        ):
-                            msgs = msgs + [conversation_ctx.current_user_message]
-
-                    # 5) Stream execution
-                    async for chunk in stream_pipeline(msgs, pipeline, tools):
-                        full_response += (
+                    # 4) Stream execution
+                    logger.info(
+                        f"Starting pipeline execution with {len(conversation_ctx.messages)} messages and {len(tools)} tools"
+                    )
+                    chunk_count = 0
+                    async for chunk in stream_pipeline(
+                        conversation_ctx.messages, pipeline, tools
+                    ):
+                        chunk_count += 1
+                        # Extract text content for accumulation
+                        chunk_text = (
                             extract_message_text(chunk.message) if chunk.message else ""
                         )
+                        full_response += chunk_text
+
+                        # For streaming, only send serialized ChatResponse with text content
+                        # Status messages and tool info come through as special chunks
                         yield serialize_to_json(chunk)
+
+                    logger.info(
+                        f"Pipeline execution completed with {chunk_count} chunks, response length: {len(full_response)}"
+                    )
 
                 # Store response in background
                 if background_tasks and full_response.strip():

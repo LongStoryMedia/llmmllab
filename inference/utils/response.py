@@ -55,3 +55,8 @@ def create_error_response(error_message: str) -> ChatResponse:
         created_at=datetime.datetime.now(datetime.timezone.utc),
         finish_reason="error",
     )
+
+
+def create_error_chunk(error_message: str) -> ChatResponse:
+    """Create an error chunk as a ChatResponse."""
+    return create_error_response(error_message)

@@ -8,6 +8,7 @@ from typing import List, Optional, Tuple, Any, Dict
 from contextlib import asynccontextmanager
 from datetime import datetime
 from fastapi import HTTPException, Request, status
+from pydantic import PrivateAttr
 
 from runner import pipeline_factory, Embeddings
 
@@ -20,8 +21,9 @@ from models import (
     Conversation,
     ConversationCtx,
 )
+from utils.message import extract_message_text
+
 from server.auth import get_request_id, get_user_id
-from server.utils.chat.message import extract_message_text
 from server.config import logger
 
 from .intent import IntentCtx
@@ -67,6 +69,14 @@ class ConversationContext(ConversationCtx):
     Enhanced conversation context with proper resource management and concurrent operations.
     """
 
+    # Private attributes (not part of the Pydantic model state)
+    _user_config: UserConfig = PrivateAttr()
+    _logger: logging.Logger = PrivateAttr()
+    _resource_manager: ResourceManager = PrivateAttr()
+    _summary_context: SummaryContext = PrivateAttr()
+    _memory_context: MemoryContext = PrivateAttr()
+    _search_context: SearchContext = PrivateAttr()
+
     def __init__(
         self,
         conversation_id: int,
@@ -84,8 +94,7 @@ class ConversationContext(ConversationCtx):
             updated_at=current_time,
             title="Untitled Conversation",
         )
-        self.intent_ctx = IntentCtx()
-
+        # IMPORTANT: initialize BaseModel first to set up internal pydantic state
         super().__init__(
             messages=[],
             notes=[],
@@ -96,27 +105,52 @@ class ConversationContext(ConversationCtx):
                 content=[MessageContent(type=MessageContentType.TEXT, text="")],
                 conversation_id=conversation_id,
             ),
-            intent=self.intent_ctx,
+            intent=IntentCtx(),
         )
 
         # Initialize components
-        self.user_config = user_config
-        self.logger = logging.getLogger("ConversationContext")
-        self.resource_manager = ResourceManager()
+        self._user_config = user_config
+        self._logger = logging.getLogger("ConversationContext")
+        self._resource_manager = ResourceManager()
 
         # Initialize context services
-        self.summary_context = SummaryContext(
+        self._summary_context = SummaryContext(
             user_cfg=user_config, conversation_id=conversation_id
         )
-        self.memory_context = MemoryContext(
+        self._memory_context = MemoryContext(
             user_cfg=user_config, conversation_id=conversation_id
         )
-        self.search_context = SearchContext(user_cfg=user_config)
+        self._search_context = SearchContext(user_cfg=user_config)
 
         # Add resources to manager
-        self.resource_manager.add_resource("summary_context", self.summary_context)
-        self.resource_manager.add_resource("memory_context", self.memory_context)
-        self.resource_manager.add_resource("search_context", self.search_context)
+        self._resource_manager.add_resource("summary_context", self._summary_context)
+        self._resource_manager.add_resource("memory_context", self._memory_context)
+        self._resource_manager.add_resource("search_context", self._search_context)
+
+    # Public read-only properties for ergonomics
+    @property
+    def user_config(self) -> UserConfig:
+        return self._user_config
+
+    @property
+    def logger(self) -> logging.Logger:
+        return self._logger
+
+    @property
+    def resource_manager(self) -> ResourceManager:
+        return self._resource_manager
+
+    @property
+    def summary_context(self) -> SummaryContext:
+        return self._summary_context
+
+    @property
+    def memory_context(self) -> MemoryContext:
+        return self._memory_context
+
+    @property
+    def search_context(self) -> SearchContext:
+        return self._search_context
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -168,30 +202,26 @@ class ConversationContext(ConversationCtx):
         conversation_id = self.conversation.id
 
         try:
-            # Load conversation details and messages concurrently
-            conversation_task = self._load_conversation_details(conversation_id)
-            messages_task = self._load_messages(conversation_id)
-
-            conversation_result, messages_result = await asyncio.gather(
-                conversation_task, messages_task, return_exceptions=True
-            )
-
-            assert conversation_result
+            # Load conversation details first
+            conversation_result = await self._load_conversation_details(conversation_id)
 
             # Handle conversation result
-            if isinstance(conversation_result, Exception):
-                self.logger.error(f"Error loading conversation: {conversation_result}")
-            elif conversation_result:
+            if conversation_result:
                 assert isinstance(conversation_result, Conversation)
                 self.conversation = conversation_result
+            else:
+                self.logger.error("No conversation found for conversation_id")
+
+            # Load messages sequentially after conversation
+            messages_result = await self._load_messages(conversation_id)
 
             # Handle messages result
-            if isinstance(messages_result, Exception) or not messages_result:
-                self.logger.error(f"Error loading messages: {messages_result}")
-                self.messages = []
-            else:
+            if messages_result:
                 assert isinstance(messages_result, list)
                 self.messages = messages_result or []
+            else:
+                self.logger.error("No messages found for conversation")
+                self.messages = []
 
         except Exception as e:
             self.logger.error(f"Error in load_conversation_data: {e}")
@@ -222,40 +252,39 @@ class ConversationContext(ConversationCtx):
             return []
 
     async def add_message(self, message: Message) -> Tuple[Embeddings, Optional[int]]:
-        """Add message with enhanced error handling and concurrent processing."""
+        """Add message with enhanced error handling and sequential processing."""
         try:
             # Detect intent for user messages
             if message.role == MessageRole.USER:
                 self.current_user_message = message
-                if hasattr(self, "intent_ctx"):
-                    self.intent = self.intent_ctx.detect(message, self.user_config)
+                # Use the model field 'intent' which is an Intent/IntentCtx instance
+                if isinstance(self.intent, IntentCtx):
+                    self.intent.detect(message, self.user_config)
+                else:
+                    self.intent = IntentCtx().detect(message, self.user_config)
 
-            # Create tasks for concurrent execution
-            storage_task = self._store_message(message)
-            embedding_task = self._create_embeddings(message)
-
-            # Execute concurrently
-            storage_result, embedding_result = await asyncio.gather(
-                storage_task, embedding_task, return_exceptions=True
-            )
+            # Execute storage operation first
+            storage_result = await self._store_message(message)
 
             # Handle storage result
             message_id = None
-            if isinstance(storage_result, Exception):
-                self.logger.error(f"Error storing message: {storage_result}")
-            else:
+            if storage_result:
                 message_id = storage_result
-                if message_id:
-                    assert isinstance(message_id, int)
-                    message.id = message_id
-                    self.messages.append(message)
+                assert isinstance(message_id, int)
+                message.id = message_id
+                self.messages.append(message)
+            else:
+                self.logger.error("Error storing message")
+
+            # Execute embedding operation after storage
+            embedding_result = await self._create_embeddings(message)
 
             # Handle embedding result
             embeddings = []
-            if isinstance(embedding_result, Exception):
-                self.logger.error(f"Error creating embeddings: {embedding_result}")
-            else:
+            if embedding_result:
                 embeddings = embedding_result or []
+            else:
+                self.logger.error("Error creating embeddings")
 
             assert isinstance(embeddings, list)
 
@@ -338,12 +367,15 @@ class ConversationContext(ConversationCtx):
             with pipeline_factory.pipeline(mp, str) as pipe:
                 result = await pipe.process_messages([*self.messages, format_message])
 
-                if isinstance(result, str):
-                    title = result.strip()
-                    self.conversation.title = title
-                    return title
+            if isinstance(result, str):
+                title = result.strip()
+                self.conversation.title = title
+                await storage.get_service(
+                    storage.conversation
+                ).update_conversation_title(self.conversation.id, title)
+                return title
 
-                return "New Conversation"
+            return "New Conversation"
 
         except Exception as e:
             self.logger.error(f"Error generating title: {e}")
@@ -356,50 +388,23 @@ class ConversationContext(ConversationCtx):
         except Exception as e:
             self.logger.error(f"Error clearing notes: {e}")
 
-    async def process_rag_operations(self, message: Message) -> None:
+    async def process_rag_operations(self, embeddings: List[List[float]]) -> None:
         """Process RAG operations concurrently with proper error handling."""
         try:
-            tasks = []
+            assert self.current_user_message, "Current user message not found"
 
-            # Always run summarization
-            if self.user_config.summarization.enabled:
-                summarization_task = asyncio.create_task(
-                    self.summary_context.summarize(self.messages)
+            await self.summary_context.summarize(self.messages)
+            query = extract_message_text(self.current_user_message)
+            assert self.intent, "Intent not set in conversation context"
+            assert query, "Query not found"
+
+            if self.intent.memory:
+                await self.memory_context.retrieve_memories(embeddings)
+
+            if self.intent.web_search:
+                await self.search_context.search(
+                    self.current_user_message, self.conversation.id
                 )
-                tasks.append(("summarization", summarization_task))
-
-            assert self.intent, "Intent must be set before processing RAG operations"
-
-            # Conditional memory retrieval
-            if self.user_config.memory.enabled and self.intent.memory:
-                embeddings, _ = await self.add_message(message)
-                if embeddings:
-                    memory_task = asyncio.create_task(
-                        self.memory_context.retrieve_memories(embeddings)
-                    )
-                    tasks.append(("memory", memory_task))
-
-            # Conditional web search
-            if self.user_config.web_search.enabled and self.intent.web_search:
-                search_task = asyncio.create_task(
-                    self.search_context.search(message, self.conversation.id)
-                )
-                tasks.append(("search", search_task))
-
-            if not tasks:
-                return
-
-            # Execute all tasks concurrently
-            results = await asyncio.gather(
-                *[task for _, task in tasks], return_exceptions=True
-            )
-
-            # Process results
-            for (task_name, _), result in zip(tasks, results):
-                if isinstance(result, Exception):
-                    self.logger.error(f"Error in {task_name} task: {result}")
-                else:
-                    self.logger.debug(f"{task_name} task completed successfully")
 
         except Exception as e:
             self.logger.error(f"Error processing RAG operations: {e}")

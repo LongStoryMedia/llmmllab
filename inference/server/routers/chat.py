@@ -10,7 +10,7 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 
 import asyncio
 from datetime import datetime as dt
-from typing import Any, Coroutine
+
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -67,47 +67,19 @@ async def chat_completion(
     # Process user message with enhanced RAG
     try:
         # Add message - also sets intent
-        embeddings, message_id = await conversation_ctx.add_message(msg)
-        if not embeddings:
-            logger.warning(f"Empty embedding vector for message {message_id}")
+        embeddings, _ = await conversation_ctx.add_message(msg)
+        assert embeddings, "Embeddings not generated for user message"
 
-        summarization_task = conversation_ctx.summary_context.summarize(
-            conversation_ctx.messages
-        )
-        query = next(
-            (
-                c.text
-                for c in msg.content
-                if c.type == MessageContentType.TEXT and c.text
-            ),
-            "",
-        )
-        assert conversation_ctx.intent, "Intent not set in conversation context"
-        memory_task = (
-            conversation_ctx.memory_context.retrieve_memories(embeddings)
-            if conversation_ctx.intent.memory and query
-            else None
-        )
-        web_task = (
-            conversation_ctx.search_context.search(
-                msg, conversation_ctx.conversation.id
-            )
-            if conversation_ctx.intent.web_search and msg
-            else None
-        )
+        await conversation_ctx.process_rag_operations(embeddings)
 
-        # Create a list for asyncio.gather
-        tasks: list[Coroutine[Any, Any, Any]] = [summarization_task]
-        if memory_task:
-            tasks.append(memory_task)
-        if web_task:
-            tasks.append(web_task)
-        await asyncio.gather(*tasks)
-
-        if len(
-            conversation_ctx.messages
-        ) == 1 or conversation_ctx.conversation.title.startswith("New Conversation"):
-            await conversation_ctx.generate_title()
+        # Title generation: run asynchronously so we don't block first-token streaming
+        title = conversation_ctx.conversation.title or ""
+        if (
+            len(conversation_ctx.messages) <= 1
+            or not title.strip()
+            or title.lower().startswith(("new conversation", "untitled"))
+        ):
+            background_tasks.add_task(conversation_ctx.generate_title)
 
         # Use enhanced chat completion logic which determines whether to use agentic workflow
         return StreamingResponse(

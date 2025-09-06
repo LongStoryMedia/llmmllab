@@ -1,10 +1,15 @@
--- Get a message by ID
+-- Get a message by ID with content
 SELECT
-    id,
-    conversation_id,
-    ROLE,
-    created_at
+    m.id,
+    m.conversation_id,
+    m.ROLE,
+    m.created_at,
+    mc.text_content as content,
+    mc.type as content_type,
+    mc.url as content_url
 FROM
-    messages
+    messages m
+LEFT JOIN 
+    message_contents mc ON m.id = mc.message_id
 WHERE
-    id = $1
+    m.id = $1

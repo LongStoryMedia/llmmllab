@@ -3,8 +3,7 @@ Intent detection module for determining how to process user queries.
 """
 
 from models import UserConfig, Message
-from pydantic import Field
-from server.utils.chat.message import extract_message_text
+from utils.message import extract_message_text
 from server.config import logger
 from models import Intent
 

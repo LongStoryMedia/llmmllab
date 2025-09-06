@@ -1,0 +1,67 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+title: "EventStreamConfig"
+description: "Configuration schema for event stream processing"
+type: "object"
+properties:
+  thinking_phase_initial:
+    type: "boolean"
+    default: true
+    description: "Initial thinking phase flag"
+  max_content_length:
+    type: "integer"
+    default: 50000
+    minimum: 0
+    description: "Maximum content length allowed"
+  repetition_buffer_chars:
+    type: "integer"
+    default: 400
+    minimum: 0
+    description: "Buffer size for repetition detection in characters"
+  ngram_min:
+    type: "integer"
+    default: 3
+    minimum: 1
+    description: "Minimum n-gram size"
+  ngram_max:
+    type: "integer"
+    default: 6
+    minimum: 1
+    description: "Maximum n-gram size"
+  ngram_repeat_threshold:
+    type: "integer"
+    default: 2
+    minimum: 0
+    description: "Number of prior occurrences to consider repetitive"
+  stutter_window_words:
+    type: "integer"
+    default: 16
+    minimum: 1
+    description: "Window size for stutter detection in words"
+  stutter_unique_ratio_threshold:
+    type: "number"
+    default: 0.25
+    minimum: 0
+    maximum: 1
+    description: "Threshold for unique ratio in stutter window (≤ 25% unique)"
+  max_repetitions:
+    type: "integer"
+    default: 6
+    minimum: 0
+    description: "Maximum allowed repetitions"
+  dedup_last_hashes:
+    type: "integer"
+    default: 8
+    minimum: 0
+    description: "Number of last hashes to keep for deduplication"
+required:
+  - thinking_phase_initial
+  - max_content_length
+  - repetition_buffer_chars
+  - ngram_min
+  - ngram_max
+  - ngram_repeat_threshold
+  - stutter_window_words
+  - stutter_unique_ratio_threshold
+  - max_repetitions
+  - dedup_last_hashes
+additionalProperties: false

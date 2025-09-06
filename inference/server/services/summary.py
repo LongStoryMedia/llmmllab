@@ -3,7 +3,7 @@ Conversation summarization functionality for RAG system.
 """
 
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from models import (
     Message,
@@ -12,11 +12,13 @@ from models import (
     MessageRole,
     MessageContent,
     MessageContentType,
+    ChatResponse,
 )
 from server.db import storage
 from server.config import logger
 
 from runner import pipeline_factory
+from utils.message import extract_message_text
 
 
 class SummaryContext:
@@ -65,9 +67,7 @@ class SummaryContext:
                     if master_summaries:
                         self.master_summary = max(
                             master_summaries,
-                            key=lambda s: (
-                                s.created_at if s.created_at else datetime.min
-                            ),
+                            key=lambda s: self._aware(s.created_at),
                         )
                 except Exception as e:
                     self.logger.error(f"Error finding master summary: {e}")
@@ -89,6 +89,19 @@ class SummaryContext:
             True if messages should be summarized, False otherwise
         """
         return len(messages) >= self.user_config.summarization.messages_before_summary
+
+    def _aware(self, dt: Optional[datetime]) -> datetime:
+        """Return a timezone-aware UTC datetime for comparisons/sorts.
+
+        - If dt is None, return datetime.min in UTC.
+        - If dt is naive, assume UTC and attach tzinfo=UTC.
+        - If dt is aware, convert to UTC.
+        """
+        if dt is None:
+            return datetime.min.replace(tzinfo=timezone.utc)
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
 
     def _get_unsummarized_messages(
         self, messages: List[Message], summaries: List[Summary]
@@ -119,23 +132,20 @@ class SummaryContext:
             # Find the timestamp of the most recent level 1 summary
             most_recent_summary = max(
                 level_1_summaries,
-                key=lambda s: (
-                    s.created_at if s.created_at is not None else datetime.min
-                ),
+                key=lambda s: self._aware(s.created_at),
             )
-            most_recent_timestamp = most_recent_summary.created_at
+            most_recent_timestamp = self._aware(most_recent_summary.created_at)
 
             # Get all messages created after the most recent level 1 summary
             unsummarized_messages = [
                 m
                 for m in messages
-                if m.created_at is not None and m.created_at > most_recent_timestamp
+                if m.created_at is not None
+                and self._aware(m.created_at) > most_recent_timestamp
             ]
 
         # Sort them by creation time (oldest first)
-        unsummarized_messages.sort(
-            key=lambda m: m.created_at if m.created_at is not None else datetime.min
-        )
+        unsummarized_messages.sort(key=lambda m: self._aware(m.created_at))
 
         # Return unsummarized messages limited by config
         return unsummarized_messages[:messages_limit]
@@ -169,6 +179,13 @@ class SummaryContext:
             with pipeline_factory.pipeline(mp, str) as pipe:
                 # Run the pipeline to get summary - use get method which is synchronous
                 summary_text = await pipe.process_messages(messages)
+            # Coerce ChatResponse to text if pipeline returned ChatResponse
+            if isinstance(summary_text, ChatResponse):
+                summary_text = (
+                    extract_message_text(summary_text.message)
+                    if summary_text.message
+                    else ""
+                )
             if summary_text:
                 # Get source message IDs for tracking
                 source_ids = [m.id for m in messages if m.id is not None]
@@ -179,7 +196,7 @@ class SummaryContext:
                     content=summary_text,
                     level=1,
                     source_ids=source_ids,
-                    created_at=datetime.now(),
+                    created_at=datetime.now(timezone.utc),
                 )
                 # Create and store the summary using the appropriate method
                 summary_id = await storage.get_service(storage.summary).create_summary(
@@ -261,7 +278,7 @@ class SummaryContext:
             return None
 
         # Sort by creation time
-        level_summaries.sort(key=lambda s: s.created_at)
+        level_summaries.sort(key=lambda s: self._aware(s.created_at))
 
         msgs = [
             Message(
@@ -286,6 +303,13 @@ class SummaryContext:
             with pipeline_factory.pipeline(profile, str) as pipe:
                 summary_text = await pipe.process_messages(msgs)
 
+                if isinstance(summary_text, ChatResponse):
+                    summary_text = (
+                        extract_message_text(summary_text.message)
+                        if summary_text.message
+                        else ""
+                    )
+
                 if summary_text:
                     # Get source summary IDs for tracking
                     source_ids = [s.id for s in level_summaries]
@@ -295,7 +319,7 @@ class SummaryContext:
                         content=summary_text,
                         level=level + 1,
                         source_ids=source_ids,
-                        created_at=datetime.now(),
+                        created_at=datetime.now(timezone.utc),
                     )
 
                     # Create and store the higher-level summary
@@ -352,7 +376,7 @@ class SummaryContext:
             return ""
 
         # Sort summaries by creation time
-        self.summaries.sort(key=lambda s: s.created_at)
+        self.summaries.sort(key=lambda s: self._aware(s.created_at))
 
         # Concatenate all summary texts
         self.full_summary = "\n\n".join(s.content for s in self.summaries)
@@ -384,7 +408,7 @@ class SummaryContext:
             return None
 
         # Sort max level summaries by creation time
-        max_level_summaries.sort(key=lambda s: s.created_at)
+        max_level_summaries.sort(key=lambda s: self._aware(s.created_at))
 
         # Determine which summaries to consolidate
         summaries_to_consolidate = max_level_summaries
@@ -393,7 +417,7 @@ class SummaryContext:
         if master_summary:
             summaries_to_consolidate = max_level_summaries + [master_summary]
             # Re-sort including the master summary
-            summaries_to_consolidate.sort(key=lambda s: s.created_at)
+            summaries_to_consolidate.sort(key=lambda s: self._aware(s.created_at))
 
         try:
             profile = await storage.get_service(
@@ -421,6 +445,12 @@ class SummaryContext:
             with pipeline_factory.pipeline(profile, str) as pipe:
                 # Run the pipeline to get summary
                 summary_text = await pipe.process_messages(summary_messages)
+                if isinstance(summary_text, ChatResponse):
+                    summary_text = (
+                        extract_message_text(summary_text.message)
+                        if summary_text.message
+                        else ""
+                    )
                 if summary_text:
                     # Get source summary IDs for tracking
                     source_ids = [s.id for s in summaries_to_consolidate]
@@ -432,7 +462,7 @@ class SummaryContext:
                         content=summary_text,
                         level=max_level + 1,  # Special level for master summary
                         source_ids=source_ids,
-                        created_at=datetime.now(),
+                        created_at=datetime.now(timezone.utc),
                     )
 
                     # Create and store the master summary

@@ -29,8 +29,8 @@ RUN ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/li
 # Build llama.cpp
 RUN cd /tmp && git clone https://github.com/ggerganov/llama.cpp.git && \
     cd llama.cpp && \
-    git checkout ab14019 && \
-    git checkout -b llmmll && \
+    # git checkout ab14019 && \
+    # git checkout -b llmmll && \
     cmake -B build \
     -DGGML_CUDA=ON \
     -DCMAKE_CUDA_ARCHITECTURES="75;86" \

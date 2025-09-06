@@ -33,13 +33,19 @@ class SearchContext:
     SEARCH_FORMAT_PROMPT = """
     {query}
     ***
-    Everything above the three asterisks is input from a user. Do not respond to it directly or provide any explanations.
-    Instead, understand the intent of the user's input, and construct a concise search query that captures the essence of what they are asking.
-    Don't include any extra information or context, just the key words that will yield relevant results.
+    Everything above the three asterisks is input from a user. Do NOT reply to it.
+    Your task: output a single line with 5-12 concise search keywords only.
+    - No sentences, no explanations, no punctuation except spaces
+    - No quotes, no newlines
+    - Do not include personal data or internal notes
+    - Keep it focused on the user's intent
+    Example output: arduino scrolling newsfeed bill of materials led matrix firmware
     """
 
     search_results: List[SearchTopicSynthesis]
     research_findings: str
+    _formatted_query: str | None
+    _topics: List[str] | None
 
     def __init__(self, user_cfg: UserConfig):
         """
@@ -53,6 +59,83 @@ class SearchContext:
         self.web_extraction_service = WebExtractionService(user_cfg)
         self.search_results = []
         self.research_findings = ""
+        self._formatted_query = None
+        self._topics = None
+
+    def _heuristic_keywords_from_text(self, text: str, max_terms: int = 12) -> str:
+        """
+        Fallback keyword extractor without LLM. Produces a short, safe query.
+
+        - lowercases
+        - removes punctuation
+        - drops common stopwords
+        - keeps up to max_terms terms
+        """
+        import re
+
+        stop = {
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "if",
+            "then",
+            "so",
+            "of",
+            "for",
+            "to",
+            "in",
+            "on",
+            "at",
+            "with",
+            "about",
+            "this",
+            "that",
+            "those",
+            "these",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "it",
+            "its",
+            "as",
+            "by",
+            "from",
+            "we",
+            "i",
+            "you",
+            "they",
+            "he",
+            "she",
+            "them",
+            "his",
+            "her",
+            "our",
+            "their",
+            "my",
+            "your",
+            "me",
+            "us",
+        }
+        # keep letters, numbers and spaces
+        cleaned = re.sub(r"[^\w\s]", " ", text.lower())
+        tokens = [t for t in cleaned.split() if t and t not in stop]
+        # de-duplicate preserving order
+        seen = set()
+        uniq = []
+        for t in tokens:
+            if t not in seen:
+                seen.add(t)
+                uniq.append(t)
+            if len(uniq) >= max_terms:
+                break
+        return " ".join(uniq)
 
     async def _format_query(self, message: Message) -> str:
         """
@@ -64,6 +147,10 @@ class SearchContext:
         Returns:
             A formatted query suitable for web search
         """
+
+        # Cached result avoids repeated formatting calls per request
+        if self._formatted_query is not None:
+            return self._formatted_query
 
         try:
             # Format the query using a model if a formatting profile is configured
@@ -81,12 +168,34 @@ class SearchContext:
                 # Clean up the response
                 formatted_query = formatted_query.strip()
                 logger.info(f"Formatted search query: {formatted_query}")
+                self._formatted_query = formatted_query
                 return formatted_query
 
         except (ValueError, RuntimeError, AttributeError) as e:
             logger.error(f"Error formatting query: {str(e)}")
             # Fall back to the original message as a string if possible
             raise ValueError("Failed to format query") from e
+
+    def _compute_topics(self, base_query: str) -> List[str]:
+        """Compute topics once per search turn from the formatted query or a heuristic fallback."""
+        if self._topics is not None:
+            return self._topics
+
+        # Use simple split; keep 5-12 tokens
+        parts = [p.strip() for p in (base_query or "").split() if p.strip()]
+        # de-duplicate preserving order
+        seen = set()
+        uniq: List[str] = []
+        for p in parts:
+            if p not in seen:
+                seen.add(p)
+                uniq.append(p)
+        # clamp size
+        if len(uniq) < 5:
+            # try to pad using heuristic on original text if available later
+            pass
+        self._topics = uniq[:12]
+        return self._topics
 
     async def search(
         self, message: Message, conversation_id: int
@@ -108,6 +217,37 @@ class SearchContext:
 
         try:
             formatted_query = await self._format_query(message)
+            # Guard: if formatting produced an empty/whitespace query, fall back to raw text
+            if not formatted_query or not formatted_query.strip():
+                logger.warning(
+                    "Formatted query is empty; falling back to raw user text and skipping provider calls if still empty."
+                )
+                # Extract raw text from message
+                raw_text = ""
+                try:
+                    parts = []
+                    for c in message.content or []:
+                        if getattr(c, "type", None) == MessageContentType.TEXT:
+                            txt = getattr(c, "text", None)
+                            if isinstance(txt, str) and txt.strip():
+                                parts.append(txt.strip())
+                    raw_text = "\n".join(parts).strip()
+                except Exception:
+                    raw_text = ""
+
+                formatted_query = (
+                    self._heuristic_keywords_from_text(raw_text) if raw_text else ""
+                )
+                # If still empty, skip search this turn
+                if not formatted_query:
+                    logger.info(
+                        "No usable query text; skipping web search for this turn."
+                    )
+                    self.search_results = []
+                    return self.search_results
+
+            # Compute topics once per request
+            topics = self._compute_topics(formatted_query)
 
             # Collect results from all configured search providers
             contents: List[SearchResultContent] = []
@@ -115,12 +255,14 @@ class SearchContext:
             # Get standard search providers
             for provider_type in self.user_config.web_search.search_providers:
                 # Use the static search provider factory
-                provider_result = await SearchProviderFactory.create_provider(
-                    provider_type, self.user_config.web_search.max_results
-                ).search(formatted_query, self.user_config.web_search.max_results)
-
-                if provider_result.contents:
-                    contents.extend(provider_result.contents)
+                try:
+                    provider_result = await SearchProviderFactory.create_provider(
+                        provider_type, self.user_config.web_search.max_results
+                    ).search(formatted_query, self.user_config.web_search.max_results)
+                    if provider_result and provider_result.contents:
+                        contents.extend(provider_result.contents)
+                except Exception as e:
+                    logger.warning(f"Search provider {provider_type} failed: {e}")
 
             # Filter contents to ensure unique URLs
             unique_contents = []
@@ -210,17 +352,18 @@ class SearchContext:
                 # Limit to max results
                 contents = contents[: self.user_config.web_search.max_results]
 
-                # Determine how many URLs to process (up to the max_results limit)
-                urls_to_process = min(
-                    len(contents), self.user_config.web_search.max_results
-                )
+                # Determine how many URLs to process (limit depth to reduce loops)
+                urls_to_process = min(len(contents), 2)
                 for i in range(urls_to_process):
                     result = contents[i]
                     logger.info(f"Performing deep crawling for URL: {result.url}")
                     # Create synthesis for this URL
                     synthesis = (
                         await self.web_extraction_service.extract_content_from_url(
-                            result.url, formatted_query, conversation_id
+                            result.url,
+                            formatted_query,
+                            conversation_id,
+                            topics,
                         )
                     )
                     if synthesis:

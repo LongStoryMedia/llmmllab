@@ -1,0 +1,41 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: ConversationSummary
+description: "Summary of conversation history"
+properties:
+  conversation_id:
+    type: integer
+    description: "Associated conversation ID"
+  summary_type:
+    type: string
+    enum: ["brief", "detailed", "full"]
+    description: "Type of summary"
+  content:
+    type: string
+    description: "The summary content"
+    maxLength: 5000
+  key_points:
+    type: array
+    items:
+      type: string
+    description: "Key points from the conversation"
+  entities_mentioned:
+    type: array
+    items:
+      type: string
+    description: "Important entities mentioned"
+  topics_covered:
+    type: array
+    items:
+      type: string
+    description: "Topics covered in the conversation"
+  generated_at:
+    type: string
+    format: "date-time"
+    description: "When summary was generated"
+  message_count:
+    type: integer
+    minimum: 0
+    description: "Number of messages summarized"
+required: ["conversation_id", "summary_type", "content", "generated_at"]
+additionalProperties: false

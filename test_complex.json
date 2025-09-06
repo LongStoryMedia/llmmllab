@@ -1,0 +1,10 @@
+{
+    "role": "user",
+    "content": [
+        {
+            "type": "text",
+            "text": "Come up with ideas for a surprise party for someone who loves current events and has great humor. Include Arduino scrolling newsfeed ideas with BOM and code."
+        }
+    ],
+    "conversation_id": 998
+}

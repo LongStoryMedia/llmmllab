@@ -1,0 +1,27 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: ResourceUsage
+description: "Resource usage metrics for operations"
+properties:
+  cpu_percent:
+    type: number
+    minimum: 0
+    maximum: 100
+    description: "CPU usage percentage"
+  memory_mb:
+    type: number
+    minimum: 0
+    description: "Memory usage in MB"
+  gpu_memory_mb:
+    type: number
+    minimum: 0
+    description: "GPU memory usage in MB"
+  disk_io_mb:
+    type: number
+    minimum: 0
+    description: "Disk I/O in MB"
+  network_io_mb:
+    type: number
+    minimum: 0
+    description: "Network I/O in MB"
+additionalProperties: false

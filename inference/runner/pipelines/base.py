@@ -21,6 +21,7 @@ from datetime import datetime
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import BaseTool
 from langchain_core.messages import AIMessage
+from langchain_core.callbacks import CallbackManager, StreamingStdOutCallbackHandler
 
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.checkpoint.memory import MemorySaver
@@ -71,12 +72,91 @@ class BasePipelineCore(ABC, Generic[PipeType]):
     Simplified to remove complex generics that were causing type issues.
     """
 
-    def __init__(self, model: Model, profile: ModelProfile):
+    # Subclasses should override to restrict supported return types
+    allowed_return_types: tuple[type, ...] = (str, ChatResponse, list)
+    # Optional subclass default; if provided, will be used when expected_return_type not passed
+    default_return_type: Optional[type] = None
+
+    def __init__(
+        self,
+        model: Model,
+        profile: ModelProfile,
+        expected_return_type: Optional[type] = None,
+    ):
         """Initialize the pipeline with model definition and parameters."""
         self.model = model
         self.profile = profile
         self.memory = MemorySaver()
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        # Resolve expected type and validate against allowed types
+        self.expected_return_type: Optional[type] = (
+            expected_return_type
+            if expected_return_type is not None
+            else self.default_return_type
+        )
+        if self.expected_return_type is not None and not self._allows_return_type(
+            self.expected_return_type
+        ):
+            allowed = ", ".join(t.__name__ for t in self.allowed_return_types)
+            raise TypeError(
+                f"{self.__class__.__name__} does not support return type "
+                f"{getattr(self.expected_return_type, '__name__', str(self.expected_return_type))}. "
+                f"Allowed: {allowed}"
+            )
+
+    # ---- Return-type enforcement helpers ----
+    def _allows_return_type(self, t: type) -> bool:
+        return t in self.allowed_return_types
+
+    def allows_return_type(self, t: type) -> bool:
+        """Public check for whether this pipeline supports a return type."""
+        return self._allows_return_type(t)
+
+    def validate_return_value(self, value: Any) -> None:
+        """Validate that a produced value matches the configured expected return type.
+
+        - If expected_return_type is set, enforce it strictly.
+        - If not set, ensure the value matches one of the allowed types.
+        """
+
+        def _is_embeddings(v: Any) -> bool:
+            # A very light structural check: list of lists of floats (or empty)
+            if not isinstance(v, list):
+                return False
+            if not v:
+                return True
+            return isinstance(v[0], list)
+
+        expected = self.expected_return_type
+        if expected is ChatResponse and not isinstance(value, ChatResponse):
+            raise TypeError(
+                f"Expected ChatResponse from {self.__class__.__name__}, got {type(value).__name__}"
+            )
+        if expected is str and not isinstance(value, str):
+            raise TypeError(
+                f"Expected str from {self.__class__.__name__}, got {type(value).__name__}"
+            )
+        if expected is list and not _is_embeddings(value):
+            raise TypeError(
+                f"Expected embeddings (List[List[float]]) from {self.__class__.__name__}, got {type(value).__name__}"
+            )
+
+        if expected is None:
+            # No explicit expectation; permit anything within allowed types
+            if isinstance(value, ChatResponse) and not self._allows_return_type(
+                ChatResponse
+            ):
+                raise TypeError(
+                    f"{self.__class__.__name__} is not configured to return ChatResponse"
+                )
+            if isinstance(value, str) and not self._allows_return_type(str):
+                raise TypeError(
+                    f"{self.__class__.__name__} is not configured to return str"
+                )
+            if _is_embeddings(value) and not self._allows_return_type(list):
+                raise TypeError(
+                    f"{self.__class__.__name__} is not configured to return embeddings"
+                )
 
     @abstractmethod
     def create_graph(
@@ -135,14 +215,47 @@ class BasePipelineCore(ABC, Generic[PipeType]):
     def _cleanup_resources(self) -> None:
         """Subclass-specific cleanup. Override as needed."""
 
+    def get_common_args(self):
+        """Get common arguments for the pipeline."""
+        # Calculate optimal context size
+        size_map = {
+            "0.5b": 32768,
+            "1.5b": 32768,
+            "3b": 32768,
+            "7b": 32768,
+            "14b": 65536,
+            "30b": 131072,
+            "72b": 131072,
+        }
+        model_name = self.model.name.lower()
+        context_size = next(
+            (size for key, size in size_map.items() if key in model_name), 32768
+        )
+        return {
+            "n_ctx": self.profile.parameters.num_ctx or context_size,
+            "seed": self.profile.parameters.seed or -1,
+            "temperature": self.profile.parameters.temperature or 0.7,
+            "max_tokens": self.profile.parameters.max_tokens or 4096,
+            "top_p": self.profile.parameters.top_p or 0.8,
+            "top_k": self.profile.parameters.top_k or 20,
+            "repeat_penalty": self.profile.parameters.repeat_penalty or 1.05,
+            "stop": self.profile.parameters.stop
+            or ["<|im_end|>", "<|endoftext|>", "<|end|>"],
+            "callback_manager": CallbackManager([StreamingStdOutCallbackHandler()]),
+        }
+
 
 class ChatPipeline(BasePipelineCore, LangGraphCapable):
     """
     Base class for chat pipelines with LangGraph support.
     """
 
+    # Chat pipelines must return ChatResponse
+    allowed_return_types: tuple[type, ...] = (ChatResponse,)
+    default_return_type: Optional[type] = ChatResponse
+
     def __init__(self, model: Model, profile: ModelProfile):
-        super().__init__(model, profile)
+        super().__init__(model, profile, expected_return_type=ChatResponse)
         self.graph_cache: Dict[
             str,
             CompiledStateGraph[LangGraphState, None, LangGraphState, LangGraphState],
@@ -178,7 +291,7 @@ class ChatPipeline(BasePipelineCore, LangGraphCapable):
                         elif isinstance(content, dict) and "text" in content:
                             response_text += content["text"] + " "
 
-            return ChatResponse(
+            result = ChatResponse(
                 done=True,
                 message=Message(
                     role=MessageRole.ASSISTANT,
@@ -192,6 +305,9 @@ class ChatPipeline(BasePipelineCore, LangGraphCapable):
                 created_at=datetime.now(),
                 finish_reason="stop",
             )
+            # Enforce expected return type contract
+            self.validate_return_value(result)
+            return result
         except Exception as e:
             self.logger.error(f"Error processing messages: {e}")
             raise
@@ -292,6 +408,13 @@ class ChatPipeline(BasePipelineCore, LangGraphCapable):
 class EmbeddingPipeline(BasePipelineCore):
     """Base class for embedding pipelines."""
 
+    # Embedding pipelines must return embeddings (list[list[float]])
+    allowed_return_types: tuple[type, ...] = (list,)
+    default_return_type: Optional[type] = list
+
+    def __init__(self, model: Model, profile: ModelProfile):
+        super().__init__(model, profile, expected_return_type=list)
+
     @abstractmethod
     async def process_messages(
         self, messages: List[Message], tools: Optional[List[BaseTool]] = None
@@ -310,6 +433,13 @@ class EmbeddingPipeline(BasePipelineCore):
 
 class TextPipeline(BasePipelineCore):
     """Base class for text-only pipelines (summarization, etc.)."""
+
+    # Text pipelines must return plain text (str)
+    allowed_return_types: tuple[type, ...] = (str,)
+    default_return_type: Optional[type] = str
+
+    def __init__(self, model: Model, profile: ModelProfile):
+        super().__init__(model, profile, expected_return_type=str)
 
     @abstractmethod
     async def process_messages(

@@ -1,0 +1,12 @@
+{
+    "model": "openai-gpt-oss-20b-uncensored-q5_1",
+    "messages": [
+        {
+            "role": "user",
+            "content": "Write a short Python function to calculate the factorial of a number using recursion. Include comments explaining the logic."
+        }
+    ],
+    "stream": false,
+    "max_tokens": 512,
+    "temperature": 0.7
+}

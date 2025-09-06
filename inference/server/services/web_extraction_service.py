@@ -6,6 +6,7 @@ follow relevant links, and synthesize the information into a cohesive summary.
 """
 
 import logging
+import asyncio
 import re
 import os
 import json
@@ -34,9 +35,6 @@ except Exception as e:
     pass
 
 from models import (
-    Message,
-    MessageContent,
-    MessageContentType,
     MessageRole,
     SearchTopicSynthesis,
     UserConfig,
@@ -174,11 +172,13 @@ class WebExtractionService:
         # Configure Scrapy settings
         self.crawler_settings.update(
             {
-                "USER_AGENT": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36",
+                "USER_AGENT": "Mozilla/5.0 (compatible; LLMWebExtractor/1.0; +https://example.com/bot)",
                 "ROBOTSTXT_OBEY": True,
                 "CONCURRENT_REQUESTS": 4,
                 "DOWNLOAD_TIMEOUT": 10,
                 "LOG_LEVEL": "ERROR",
+                "TELNETCONSOLE_ENABLED": False,
+                "RETRY_TIMES": 1,
             }
         )
 
@@ -228,8 +228,8 @@ class WebExtractionService:
         self.crawler_settings.update(
             {
                 "FEEDS": {output_file: {"format": "json", "overwrite": True}},
-                "CLOSESPIDER_TIMEOUT": 60,  # 60 seconds max
-                "DEPTH_LIMIT": max_depth,
+                "CLOSESPIDER_TIMEOUT": 25,  # shorter overall cap
+                "DEPTH_LIMIT": min(max_depth, 2),
             }
         )
 
@@ -238,7 +238,10 @@ class WebExtractionService:
 
         try:
             # Create and run the spider with proper async handling
-            await runner.crawl(
+            # Use asyncio to wrap the Scrapy crawl call properly
+            # Twisted Deferred is returned implicitly; no direct import needed here
+
+            deferred_result = runner.crawl(
                 ContentSpider,
                 start_url=url,
                 topics=topics,
@@ -246,13 +249,24 @@ class WebExtractionService:
                 max_depth=max_depth,
             )
 
-            # Read from the output file if no items were collected via signals
-            if not content_items and os.path.exists(output_file):
+            # Await crawl completion by bridging Deferred -> Future manually
+            loop = asyncio.get_running_loop()
+            future = loop.create_future()
+
+            def _done(_):
+                if not future.done():
+                    future.set_result(True)
+
+            deferred_result.addBoth(_done)
+            await future
+
+            # Use collector items first, then fall back to file
+            if collector.items:
+                content_items = collector.items
+            elif os.path.exists(output_file):
                 try:
                     with open(output_file, "r", encoding="utf-8") as f:
                         content_items = json.load(f)
-                    # Clean up the temporary file
-                    os.remove(output_file)
                 except Exception as e:
                     logger.error(f"Error reading spider results file: {str(e)}")
 
@@ -261,9 +275,20 @@ class WebExtractionService:
         except Exception as e:
             logger.error(f"Error running spider: {str(e)}")
             return []
+        finally:
+            # Clean up any remaining files
+            if os.path.exists(output_file):
+                try:
+                    os.remove(output_file)
+                except Exception:
+                    pass
 
     async def extract_content_from_url(
-        self, url: str, query: str, conversation_id: int
+        self,
+        url: str,
+        query: str,
+        conversation_id: int,
+        topics: Optional[List[str]] = None,
     ) -> Optional[SearchTopicSynthesis]:
         """
         Extract content from a URL and synthesize a summary based on the content.
@@ -286,37 +311,22 @@ class WebExtractionService:
         )
         messages: List[str] = []
 
-        # Step 2: Generate labels/tags using the keywords profile
+        # Step 2: Generate labels/tags using provided topics or minimal fallback
         try:
-            mp = await storage.get_service(
-                storage.model_profile
-            ).get_model_profile_by_id(
-                self.user_config.model_profiles.key_points_profile_id,
-                self.user_config.user_id,
-            )
-            assert mp, "Unable to retrieve key points model profile"
-
-            prompt = f"""
-Extract 5-12 concise keywords from the user query below. 
-
-Output rules: 
-- return ONLY a single line of comma-separated keywords, no extra text
-- deduplicate
-- prefer canonical/singular forms
-- keep proper nouns, versions, and technical terms; exclude stopwords and punctuation
-- max 3 words per keyword
-- lowercase unless a proper noun
-
-Query: {query}
-
-Answer:
-"""
-            with pipeline_factory.pipeline(mp, str) as pipe:
-                topics_text = await pipe.prompt(prompt)
-
-                # Parse topics (assuming topics are returned as comma-separated values)
-                topics = [topic.strip() for topic in topics_text.split(",")]
-                synthesis.topics = topics
+            if topics is None or not topics:
+                # Minimal non-LLM fallback: split query words, take first 8 unique
+                cleaned = re.sub(r"[^\w\s]", " ", (query or "").lower())
+                toks = [t for t in cleaned.split() if t]
+                seen = set()
+                uniq = []
+                for t in toks:
+                    if t not in seen:
+                        seen.add(t)
+                        uniq.append(t)
+                    if len(uniq) >= 8:
+                        break
+                topics = uniq
+            synthesis.topics = topics
 
             # Step 3: Run the Scrapy spider to collect content
             content_items = await self._run_spider(
@@ -363,16 +373,6 @@ Answer:
                     self.user_config.user_id,
                 )
                 assert embedding_mp, "Unable to retrieve embedding model profile"
-
-                # Create a message for embedding
-                embed_message = Message(
-                    role=MessageRole.SYSTEM,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT, text=synthesis.synthesis
-                        )
-                    ],
-                )
 
                 # Use base pipeline to create embeddings
                 with pipeline_factory.pipeline(embedding_mp, Embeddings) as pipe:

@@ -3,8 +3,8 @@ Strongly typed tool integration system for LangGraph workflows.
 Removes code duplication and improves type safety.
 """
 
-from datetime import datetime
 import logging
+import asyncio
 import re
 import json
 from typing import List, AsyncGenerator, Union, Optional, Dict, Any, cast
@@ -13,13 +13,12 @@ from langchain_core.tools import BaseTool
 from pydantic import ValidationError
 
 from runner import pipeline_factory, Embeddings
-from server.services.hardware_manager import hardware_manager
+from utils.hardware_manager import hardware_manager
 from server.tools.dynamic_tool import DynamicToolRunner
 from server.db import storage
 from server.services.context import ConversationContext
-from server.utils.chat.message import extract_message_text
+from utils.message import extract_message_text
 from models import (
-    ChatResponse,
     Message,
     MessageRole,
     MessageContent,
@@ -222,6 +221,7 @@ class DynamicToolGenerator:
         with pipeline_factory.pipeline(mp, str) as pipeline:
 
             analysis_prompt = f"""
+You are a tool analysis assistant. If you are enable to answer a question with sufficient confidence using what you already know, respond negatively.
 Analyze this user request and determine if it requires creating a custom tool/function:
 
 User request: {user_message_text}
@@ -248,28 +248,39 @@ Respond with only "NO" if existing tools are sufficient.
 If a dynamic tool is needed, describe its purpose and functionality in less than 50 words.
 """
 
-            response = await pipeline.process_messages(
-                [
-                    Message(
-                        role=MessageRole.USER,
-                        content=[
-                            MessageContent(
-                                type=MessageContentType.TEXT,
-                                text=analysis_prompt,
-                            )
-                        ],
-                    )
-                ]
+            response = await pipeline.prompt(analysis_prompt)
+
+            # Enforce string return type for analysis pipeline
+            if not isinstance(response, str):
+                raise TypeError(
+                    f"Analysis pipeline returned {type(response).__name__} instead of str. "
+                    f"Pipeline declared as str type should only return strings."
+                )
+
+            response_text = response.strip()
+            # Gating rules:
+            # - Hard block if response is exactly 'NO' (any case) or starts with 'NO\n'
+            # - Block if response is very short (<= 5 words) or contains obvious negations
+            # - Allow only when there's a substantive description
+            normalized = response_text.lower()
+            is_negative = (
+                normalized == "no"
+                or normalized.startswith("no\n")
+                or "do not" in normalized
+                or "does not" in normalized
+                or "don't" in normalized
+                or "not needed" in normalized
+                or "no tool" in normalized
             )
-            needs_tool = response.upper() != "NO" and len(response.split()) > 5
+            needs_tool = (not is_negative) and (len(response_text.split()) >= 6)
 
             return ToolAnalysisResponse(
                 needs_dynamic_tool=needs_tool,
                 description=(
-                    response.strip() if needs_tool else "No dynamic tool needed"
+                    response_text.strip() if needs_tool else "No dynamic tool needed"
                 ),
                 confidence_score=0.8 if needs_tool else 0.2,
-                reasoning=f"Analysis pipeline response: {response[:100]}...",
+                reasoning=f"Analysis pipeline response: {response_text[:100]}...",
             )
 
     async def generate_tool(
@@ -517,48 +528,6 @@ class ModernToolManager:
 
         # Final yield with completed tools
         yield tools
-
-
-# Utility functions for backward compatibility
-def create_streaming_chunk(
-    text: str, done: bool = False, role: MessageRole = MessageRole.ASSISTANT
-) -> ChatResponse:
-    """Create a streaming chunk as a ChatResponse."""
-    message = None
-    if text or not done:
-        message = Message(
-            role=role,
-            content=(
-                [MessageContent(type=MessageContentType.TEXT, text=text)]
-                if text
-                else []
-            ),
-        )
-
-    return ChatResponse(
-        done=done,
-        message=message,
-        created_at=datetime.now(),
-        finish_reason="stop" if done else None,
-    )
-
-
-def create_error_chunk(error_message: str) -> ChatResponse:
-    """Create an error chunk as a ChatResponse."""
-    return ChatResponse(
-        done=True,
-        message=Message(
-            role=MessageRole.OBSERVER,
-            content=[
-                MessageContent(
-                    type=MessageContentType.TEXT,
-                    text=f"I apologize, but I encountered an error: {error_message}",
-                )
-            ],
-        ),
-        created_at=datetime.now(),
-        finish_reason="error",
-    )
 
 
 # Global tool manager instance

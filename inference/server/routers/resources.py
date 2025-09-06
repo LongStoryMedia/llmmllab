@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from models.requests import Malloc
 
 # Make sure this imports the enhanced version
-from server.services.hardware_manager import hardware_manager
+from utils.hardware_manager import hardware_manager
 import nvsmi
 
 router = APIRouter(prefix="/resources", tags=["resources"])

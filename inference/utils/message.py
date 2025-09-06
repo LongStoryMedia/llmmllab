@@ -2,8 +2,7 @@
 Message utility functions for validating and formatting Message objects.
 """
 
-from datetime import datetime as dt
-from typing import List, Sequence
+from typing import List
 
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
 
@@ -20,7 +19,9 @@ def extract_message_text(message: Message) -> str:
     for content in message.content:
         if content.type == MessageContentType.TEXT and content.text:
             text_parts.append(content.text)
-    return "\n".join(text_parts).strip()
+    # Do not strip whitespace here; streaming tokens often include leading spaces
+    # and trimming per-chunk will remove necessary spacing between words.
+    return "\n".join(text_parts)
 
 
 def convert_string_to_message_content(message_text: str) -> List[MessageContent]:
@@ -39,7 +40,7 @@ def ensure_message_content_list(message: Message) -> Message:
             try:
                 text = str(message.content)
                 message.content = convert_string_to_message_content(text)
-            except:
+            except Exception:
                 message.content = [
                     MessageContent(type=MessageContentType.TEXT, text="", url=None)
                 ]
@@ -57,7 +58,7 @@ def ensure_message_content_list(message: Message) -> Message:
                 message.content[i] = MessageContent(
                     type=MessageContentType.TEXT, text=text, url=None
                 )
-            except:
+            except Exception:
                 message.content[i] = MessageContent(
                     type=MessageContentType.TEXT, text="", url=None
                 )

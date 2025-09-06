@@ -1,0 +1,34 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: LangGraphNodeState
+description: "State for individual nodes in LangGraph workflows"
+properties:
+  node_id:
+    type: string
+    description: "Unique identifier for the node"
+  node_type:
+    type: string
+    enum: ["agent", "tool", "decision", "memory", "search"]
+    description: "Type of the node"
+  input_data:
+    type: object
+    description: "Input data for the node"
+    additionalProperties: true
+  output_data:
+    type: object
+    description: "Output data from the node"
+    additionalProperties: true
+  execution_time_ms:
+    type: number
+    minimum: 0
+    description: "Time taken to execute this node"
+  error_count:
+    type: integer
+    minimum: 0
+    description: "Number of errors encountered"
+  retry_count:
+    type: integer
+    minimum: 0
+    description: "Number of retries attempted"
+required: ["node_id", "node_type"]
+additionalProperties: false

@@ -8,7 +8,7 @@ import asyncpg
 from typing import Optional
 import datetime
 import contextlib
-from server.db.queries import get_query
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -58,26 +58,79 @@ class DatabaseMaintenanceService:
                     logger.error(f"Failed to run VACUUM ANALYZE: {str(e)}")
                     success = False
 
-                # 2. Reindex tables to optimize indexes
-                logger.info("Running REINDEX on database...")
+                # 1b. Align sequences to prevent ID drift causing duplicates on restore/migration
+                logger.info(
+                    "Aligning sequences for hypertables (messages, message_contents)..."
+                )
                 try:
-                    # Note: We use the current database name rather than hardcoding "ollama"
-                    # Get current database name
-                    db_name_row = await conn.fetchrow(
-                        "SELECT current_database() as db_name"
-                    )
-                    db_name = db_name_row["db_name"]
-
-                    # Run reindex
+                    # Never move sequence backwards: use GREATEST with current last_value
                     await conn.execute(
-                        f"REINDEX (VERBOSE, CONCURRENTLY) DATABASE {db_name}"
+                        """
+                        SELECT setval(
+                            'messages_id_seq',
+                            GREATEST(
+                                COALESCE((SELECT MAX(id) FROM messages), 0),
+                                (SELECT last_value FROM messages_id_seq)
+                            ),
+                            true
+                        );
+                        """
                     )
-                    logger.info(
-                        f"REINDEX completed successfully on database '{db_name}'"
+                    await conn.execute(
+                        """
+                        SELECT setval(
+                            'message_contents_id_seq',
+                            GREATEST(
+                                COALESCE((SELECT MAX(id) FROM message_contents), 0),
+                                (SELECT last_value FROM message_contents_id_seq)
+                            ),
+                            true
+                        );
+                        """
                     )
+                    logger.info("Sequence alignment completed successfully")
                 except Exception as e:
-                    logger.error(f"Failed to run REINDEX: {str(e)}")
+                    logger.error(f"Failed to align sequences: {str(e)}")
                     success = False
+
+                # 2. Optional REINDEX (off by default to avoid stale OID plan errors during traffic)
+                reindex_enabled = os.environ.get(
+                    "DB_REINDEX_ON_MAINTENANCE", "false"
+                ).lower() in ("1", "true", "yes")
+                if reindex_enabled:
+                    logger.info(
+                        "Running REINDEX on database (DB_REINDEX_ON_MAINTENANCE=true)..."
+                    )
+                    try:
+                        # Note: We use the current database name rather than hardcoding
+                        db_name_row = await conn.fetchrow(
+                            "SELECT current_database() as db_name"
+                        )
+                        db_name = db_name_row["db_name"]
+
+                        # Run reindex concurrently
+                        await conn.execute(
+                            f"REINDEX (VERBOSE, CONCURRENTLY) DATABASE {db_name}"
+                        )
+                        logger.info(
+                            f"REINDEX completed successfully on database '{db_name}'"
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to run REINDEX: {str(e)}")
+                        success = False
+
+                    # Flush statement caches across pool connections to avoid stale OID references
+                    try:
+                        await self._flush_pool_caches()
+                        logger.info("Flushed statement caches across pool connections")
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to flush some connection caches (will recover on reconnect): {str(e)}"
+                        )
+                else:
+                    logger.info(
+                        "Skipping REINDEX (DB_REINDEX_ON_MAINTENANCE not enabled)"
+                    )
 
                 # 3. Run TimescaleDB-specific maintenance
                 logger.info("Running TimescaleDB policy refresh...")
@@ -140,7 +193,16 @@ class DatabaseMaintenanceService:
         """Internal loop that runs maintenance at the specified interval"""
         try:
             while self._is_running:
-                # Run maintenance immediately at startup
+                # Optional initial delay to avoid racing with app traffic on startup
+                try:
+                    initial_delay = int(
+                        os.environ.get("DB_MAINTENANCE_INITIAL_DELAY_SECONDS", "300")
+                    )
+                except ValueError:
+                    initial_delay = 300
+                if initial_delay > 0 and self._last_run is None:
+                    await asyncio.sleep(initial_delay)
+
                 await self.perform_maintenance()
 
                 # Wait for the specified interval before running again
@@ -177,6 +239,85 @@ class DatabaseMaintenanceService:
             "last_run": self._last_run.isoformat() if self._last_run else None,
             "next_run": self.next_run.isoformat() if self.next_run else None,
         }
+
+    async def align_sequences(self) -> bool:
+        """Align sequences to the current MAX(id) without moving backwards.
+
+        Returns True if alignment commands executed without error.
+        """
+        if not self.pool:
+            logger.error("Cannot align sequences: database pool not initialized")
+            return False
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    SELECT setval(
+                        'messages_id_seq',
+                        GREATEST(
+                            COALESCE((SELECT MAX(id) FROM messages), 0),
+                            (SELECT last_value FROM messages_id_seq)
+                        ),
+                        true
+                    );
+                    """
+                )
+                await conn.execute(
+                    """
+                    SELECT setval(
+                        'message_contents_id_seq',
+                        GREATEST(
+                            COALESCE((SELECT MAX(id) FROM message_contents), 0),
+                            (SELECT last_value FROM message_contents_id_seq)
+                        ),
+                        true
+                    );
+                    """
+                )
+            logger.info("Sequence alignment executed successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Error aligning sequences: {str(e)}")
+            return False
+
+    async def _flush_pool_caches(self) -> None:
+        """Cycle through pool connections and clear prepared statements/schema cache.
+
+        This prevents errors like 'could not open relation with OID ...' after REINDEX or DDL.
+        """
+        if not self.pool:
+            return
+
+        conns = []
+        try:
+            # Acquire as many connections as the pool allows
+            max_to_acquire = getattr(self.pool, "_maxsize", 10)
+            for _ in range(max_to_acquire):
+                try:
+                    c = await self.pool.acquire(timeout=0.5)
+                except Exception:
+                    break
+                if not c:
+                    break
+                conns.append(c)
+
+            # Flush each connection's state
+            for c in conns:
+                try:
+                    await c.execute("DISCARD ALL;")
+                except Exception:
+                    # Some connections may not have any statements; ignore
+                    pass
+                try:
+                    await c.reload_schema_state()
+                except Exception:
+                    pass
+        finally:
+            # Release back to pool
+            for c in conns:
+                with contextlib.suppress(Exception):
+                    await self.pool.release(c)
 
 
 # Create singleton instance

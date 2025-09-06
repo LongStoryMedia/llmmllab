@@ -46,14 +46,11 @@ properties:
     type: boolean
     description: Whether to use think mode for the model profile
 required:
-  - id
   - user_id
   - name
   - model_name
   - parameters
   - system_prompt
-  - created_at
-  - updated_at
   - type
 definitions:
   ModelParameters:

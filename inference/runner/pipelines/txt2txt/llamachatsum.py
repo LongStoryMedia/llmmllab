@@ -1,10 +1,12 @@
 """
-Optimized summarization pipeline for BART-large-CNN model with performance enhancements.
+Optimized summarization pipeline for Llama-Chat-Summary-3.2-3B model with performance enhancements.
 """
 
 import os
 import datetime
 import logging
+import hashlib
+import multiprocessing
 from typing import AsyncGenerator, List, cast, Optional, Dict, Any, TypeVar, Union
 import torch
 from transformers import AutoTokenizer
@@ -26,44 +28,46 @@ from models import (
     ModelProfile,
 )
 from utils.message import extract_message_text
-from utils.response import create_streaming_chunk
+from utils.response import create_streaming_chunk, create_error_response
 from ..base import BasePipelineCore
 
 # Define generic return type for text pipelines
 T = TypeVar("T", bound=Union[str, ChatResponse])
 
 # Type hints for factory usage
-BARTSummarizationChatPipe = "BARTSummarizationPipe[ChatResponse]"
-BARTSummarizationTextPipe = "BARTSummarizationPipe[str]"
+LlamaChatSummarizationChatPipe = "LlamaChatSummPipe[ChatResponse]"
+LlamaChatSummarizationTextPipe = "LlamaChatSummPipe[str]"
 
 
 logger = logging.getLogger(__name__)
 
 
-class BARTSummarizationPipe(BasePipelineCore[T]):
+class LlamaChatSummPipe(BasePipelineCore[T]):
     """
-    Optimized pipeline for BART-large-CNN summarization model with enhanced performance.
+    Optimized pipeline for Llama-Chat-Summary-3.2-3B model with enhanced performance.
 
     Key optimizations:
     - Smart text preprocessing and chunking
     - Adaptive summary length based on input size
-    - Enhanced prompt engineering for better summaries
+    - Enhanced prompt engineering optimized for Llama
     - Performance monitoring and caching
     - Memory-efficient processing
     - Quality scoring for summary validation
     """
 
     llm: ChatLlamaCpp
-    tokenizer: AutoTokenizer
+    tokenizer: Optional[AutoTokenizer]
     _summary_cache: Dict[str, str] = {}
     _performance_metrics: dict
+    # Only str or ChatResponse supported
+    allowed_return_types = (str, ChatResponse)
 
     def __init__(
         self, model: Model, profile: ModelProfile, return_type: type = ChatResponse
     ):
-        """Initialize optimized BARTSummarizationPipe instance."""
-        super().__init__(model, profile)
-
+        """Initialize optimized LlamaChatSummPipe instance."""
+        # Enforce expected return type (str or ChatResponse)
+        super().__init__(model, profile, expected_return_type=return_type)
         self._return_type = return_type
 
         # Initialize performance tracking
@@ -75,15 +79,15 @@ class BARTSummarizationPipe(BasePipelineCore[T]):
             "average_compression_ratio": 0.0,
         }
 
-        # Validate model requirements
-        if not (model.details and model.model and model.details.parent_model):
+        # Validate model requirements - Llama models need GGUF file
+        if not (model.details and model.model):
             raise ValueError(
-                "Model definition for BARTSummarizationPipe must include details for 'gguf_file' and 'parent_model'."
+                "Model definition for LlamaChatSummPipe must include model path or details.gguf_file"
             )
 
         self._logger = logging.getLogger(__name__)
         self._logger.info(
-            f"Initializing optimized BARTSummarizationPipe for model: {model.id}"
+            f"Initializing optimized LlamaChatSummPipe for model: {model.id}"
         )
 
         # Get and validate GGUF file
@@ -125,32 +129,44 @@ class BARTSummarizationPipe(BasePipelineCore[T]):
         )
 
     def _initialize_tokenizer(self) -> None:
-        """Initialize tokenizer with error handling."""
+        """Initialize tokenizer with error handling for Llama model."""
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                self.model.details.parent_model,
-                use_fast=True,
-            )
-            self._logger.info("BART tokenizer loaded successfully")
-        except Exception as e:
-            self._logger.warning(f"Fast tokenizer failed, falling back to slow: {e}")
-            try:
+            # For Llama Chat Summary, try to load tokenizer from parent model if available
+            if (
+                self.model.details
+                and hasattr(self.model.details, "parent_model")
+                and self.model.details.parent_model
+            ):
                 self.tokenizer = AutoTokenizer.from_pretrained(
                     self.model.details.parent_model,
-                    use_fast=False,
+                    use_fast=True,
                 )
-            except Exception as e2:
-                raise RuntimeError(f"Failed to load BART tokenizer: {e2}")
+                self._logger.info(
+                    "Llama tokenizer loaded successfully from parent model"
+                )
+            else:
+                # Fallback to meta-llama/Llama-2-7b-chat-hf for Llama-based models
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    "meta-llama/Llama-2-7b-chat-hf",
+                    use_fast=True,
+                )
+                self._logger.info("Llama tokenizer loaded successfully from fallback")
+        except Exception as e:
+            self._logger.warning(
+                f"Tokenizer initialization failed, will use GGUF-based tokenization: {e}"
+            )
+            self.tokenizer = None
 
     def _initialize_llm(self, gguf_path: str) -> None:
-        """Initialize LLM with BART-specific optimizations."""
+        """Initialize LLM with Llama-Chat-Summary-specific optimizations."""
         try:
-            # BART-specific optimized settings
+            # Llama-Chat-Summary-3.2-3B optimized settings
             self.llm = ChatLlamaCpp(
                 model_path=gguf_path,
                 n_gpu_layers=-1,  # Offload all layers to GPU
                 n_batch=512,
-                n_ctx=self.profile.parameters.num_ctx or 4096,  # BART context
+                n_ctx=self.profile.parameters.num_ctx
+                or 8192,  # Llama context (increased from BART)
                 f16_kv=True,
                 callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "debug",
@@ -162,44 +178,45 @@ class BARTSummarizationPipe(BasePipelineCore[T]):
                 n_threads=self._get_optimal_threads(),
                 suffix="",
                 logprobs=0,
-                # BART-specific generation parameters optimized for summarization
+                # Llama-specific generation parameters optimized for summarization
                 temperature=self.profile.parameters.temperature
-                or 0.3,  # Lower for consistency
+                or 0.1,  # Very low temperature to reduce repetition
                 max_tokens=self.profile.parameters.num_predict
-                or 512,  # Typical summary length
-                top_p=self.profile.parameters.top_p or 0.95,
-                top_k=self.profile.parameters.top_k or 40,
-                repeat_penalty=self.profile.parameters.repeat_penalty or 1.1,
+                or 512,  # Reduced from 1024 to prevent verbose output
+                top_p=self.profile.parameters.top_p or 0.85,  # Reduced from 0.9
+                top_k=self.profile.parameters.top_k or 30,  # Reduced from 50
+                repeat_penalty=self.profile.parameters.repeat_penalty
+                or 1.15,  # Increased from 1.05
                 streaming=True,
-                # BART-specific stop tokens optimized for summarization
-                stop=self._get_summarization_stop_tokens(),
+                # Llama-specific stop tokens optimized for summarization
+                stop=self.profile.parameters.stop
+                or self._get_summarization_stop_tokens(),
             )
 
-            self._logger.info("BART summarization model loaded successfully")
+            self._logger.info("Llama Chat Summary model loaded successfully")
 
         except Exception as e:
-            self._logger.error(f"Failed to initialize BART LLM: {e}")
+            self._logger.error(f"Failed to initialize Llama LLM: {e}")
             raise
 
     def _get_optimal_threads(self) -> int:
-        """Get optimal thread count for BART model."""
+        """Get optimal thread count for Llama model."""
         try:
-            import multiprocessing
-
             cpu_count = multiprocessing.cpu_count()
-            # BART benefits from more threads due to encoder-decoder architecture
-            optimal_threads = min(max(cpu_count // 2, 4), 12)
-            self._logger.debug(f"Using {optimal_threads} threads for BART")
+            # Llama models are efficient with moderate threading
+            optimal_threads = min(max(cpu_count // 2, 4), 8)
+            self._logger.debug(f"Using {optimal_threads} threads for Llama")
             return optimal_threads
         except Exception:
-            return 6  # Good default for BART
+            return 4  # Conservative default for Llama
 
     def _get_summarization_stop_tokens(self) -> List[str]:
-        """Get stop tokens optimized for BART summarization."""
+        """Get stop tokens optimized for Llama summarization."""
         return self.profile.parameters.stop or [
-            "</s>",  # BART's primary EOS token
-            "<|endoftext|>",  # Fallback EOS
-            "<pad>",  # BART's padding token
+            "</s>",  # Llama's primary EOS token
+            "<|endoftext|>",  # Alternative EOS
+            "<|end|>",  # Llama-2 style EOS
+            "[/INST]",  # Llama instruction format
             "</tool_call>",  # Tool boundaries
             "</tool_response>",
             "</think>",
@@ -207,8 +224,16 @@ class BARTSummarizationPipe(BasePipelineCore[T]):
             "\n\nText:",  # Prevent text repetition
             "Human:",  # Prevent role bleeding
             "Assistant:",
+            "User:",  # Llama chat format
             "Original text:",  # Prevent confusion
             "Summary:",
+            "SUMMARY:",
+            "\n\n\n",  # Multiple newlines often indicate repetition
+            "The user",  # Prevent meta-commentary
+            "In this",  # Common repetitive phrase starter
+            "Additionally,",  # Common repetitive connector
+            "Furthermore,",  # Common repetitive connector
+            "Moreover,",  # Common repetitive connector
         ]
 
     def _preprocess_text(self, text: str) -> str:
@@ -239,19 +264,19 @@ class BARTSummarizationPipe(BasePipelineCore[T]):
     def _create_optimized_summary_prompt(
         self, text: str, max_length: Optional[int] = None
     ) -> str:
-        """Create an optimized prompt for BART summarization."""
+        """Create an optimized prompt for Llama-Chat-Summary."""
         processed_text = self._preprocess_text(text)
         optimal_length = max_length or self._calculate_optimal_summary_length(
             processed_text
         )
 
-        return f"""Please provide a concise, accurate summary of the following text. 
-Focus on the key points and main ideas. Keep the summary to approximately {optimal_length} words.
+        # Use Llama-style instruction format for better performance
+        return f"""<s>[INST] Please provide a concise and accurate summary of the following text. Focus on the key points and main ideas. Keep the summary to approximately {optimal_length} words.
 
 Text to summarize:
 {processed_text}
 
-Summary:"""
+Summary: [/INST]"""
 
     def _generate_cache_key(self, text: str) -> str:
         """Generate a cache key for the input text."""
@@ -462,18 +487,20 @@ Summary:"""
         return workflow.compile()
 
     async def _direct_summarization_simple(self, text: str) -> str:
-        """Simple direct summarization without complex agent setup."""
+        """Simple direct summarization optimized for Llama-Chat-Summary."""
         try:
             # Preprocess text
             cleaned_text = self._preprocess_text(text)
             summary_length = self._calculate_optimal_summary_length(cleaned_text)
 
-            # Create simple prompt
-            prompt = f"""Summarize the following text in about {summary_length} words. Be concise and capture the key points:
+            # Create Llama-optimized prompt with instruction format
+            prompt = f"""<s>[INST] Summarize the following text in about {summary_length} words. Be concise and capture the key points:
 
-{cleaned_text[:4000]}  # Limit input size
+{cleaned_text[:6000]}
 
-Summary:"""
+Provide only the summary without any additional text. [/INST]
+
+Summary: """
 
             # Direct LLM call
             from langchain_core.messages import HumanMessage
@@ -488,10 +515,17 @@ Summary:"""
                     for content in response.content:
                         if isinstance(content, str):
                             summary += content + " "
+                        elif hasattr(content, "text"):
+                            summary += content.text + " "
                         elif isinstance(content, dict) and "text" in content:
                             summary += content["text"] + " "
 
-            return summary.strip()
+            # Clean up Llama response artifacts
+            summary = summary.strip()
+            if summary.startswith("Summary:"):
+                summary = summary[8:].strip()
+
+            return summary
 
         except Exception as e:
             self._logger.error(f"Error in direct summarization: {e}")
@@ -514,7 +548,7 @@ Summary:"""
                     input_texts.append(text)
 
             if not input_texts:
-                yield self._create_error_response("No text content found to summarize")
+                yield create_error_response("No text content found to summarize")
                 return
 
             combined_text = "\n\n".join(input_texts)
@@ -559,7 +593,7 @@ Summary:"""
 
         except Exception as e:
             self._logger.error(f"Error in BART summarization: {e}", exc_info=True)
-            yield self._create_error_response(f"Summarization error: {str(e)}")
+            yield create_error_response(f"Summarization error: {str(e)}")
 
     async def _agent_summarization(
         self,
@@ -597,7 +631,7 @@ Summary:"""
 
         except Exception as e:
             self._logger.error(f"Error in agent summarization: {e}")
-            yield self._create_error_response(f"Agent summarization error: {str(e)}")
+            yield create_error_response(f"Agent summarization error: {str(e)}")
 
     async def _direct_summarization(
         self, text: str
@@ -661,23 +695,6 @@ Summary:"""
             finish_reason="stop",
         )
 
-    def _create_error_response(self, error_message: str) -> ChatResponse:
-        """Create standardized error response."""
-        return ChatResponse(
-            done=True,
-            message=Message(
-                role=MessageRole.ASSISTANT,
-                content=[
-                    MessageContent(
-                        type=MessageContentType.TEXT,
-                        text=f"I apologize, but I encountered an error: {error_message}",
-                    )
-                ],
-            ),
-            created_at=datetime.datetime.now(datetime.timezone.utc),
-            finish_reason="error",
-        )
-
     def _update_performance_metrics(
         self, input_text: str, _start_time: datetime.datetime
     ) -> None:
@@ -714,19 +731,21 @@ Summary:"""
 
             style_instruction = style_prompts.get(style, style_prompts["balanced"])
 
-            # Create styled prompt
+            # Create styled prompt with Llama instruction format
             processed_text = self._preprocess_text(text)
             optimal_length = max_length or self._calculate_optimal_summary_length(
                 processed_text
             )
 
-            summary_prompt = f"""{style_instruction}
+            summary_prompt = f"""<s>[INST] {style_instruction}
 Keep the summary to approximately {optimal_length} words.
 
 Text to summarize:
 {processed_text}
 
-Summary:"""
+Provide only the summary without any additional text. [/INST]
+
+Summary: """
 
             # Generate summary
             summary_chunks = []
@@ -777,7 +796,7 @@ Summary:"""
                     self.get_cache_stats() if hasattr(self, "_summary_cache") else {}
                 )
                 self._logger.info(
-                    f"BARTSummarizationPipe {model_name} final metrics: "
+                    f"LlamaChatSummPipe {model_name} final metrics: "
                     f"summaries={metrics['summaries_generated']}, "
                     f"cache_hits={metrics['cache_hits']}, "
                     f"avg_input_length={metrics['average_input_length']:.1f}, "
@@ -787,7 +806,7 @@ Summary:"""
             # Clean up resources
             if hasattr(self, "_summary_cache"):
                 self._summary_cache.clear()
-            if hasattr(self, "tokenizer"):
+            if hasattr(self, "tokenizer") and self.tokenizer:
                 del self.tokenizer
             if hasattr(self, "llm"):
                 del self.llm
@@ -798,4 +817,4 @@ Summary:"""
                 torch.cuda.synchronize()
 
         except Exception as e:
-            logger.error(f"Error cleaning up BARTSummarizationPipe: {e}")
+            logger.error(f"Error cleaning up LlamaChatSummPipe: {e}")

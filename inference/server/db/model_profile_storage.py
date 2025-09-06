@@ -11,7 +11,7 @@ import asyncpg
 from models.model_profile import ModelProfile
 from models.default_model_profiles import DEFAULT_PROFILES
 from server.db.db_utils import typed_pool
-from server.utils.serialization_utils import serialize_to_json
+from utils.serialization import serialize_to_json
 
 logger = logging.getLogger(__name__)
 
@@ -107,8 +107,8 @@ class ModelProfileStorage:
 
     async def create_model_profile(self, profile: ModelProfile) -> ModelProfile:
         """Create a new model profile"""
-        # Don't allow overwriting system default profiles
-        if any(
+        # Don't allow overwriting system default profiles (profiles with system UUIDs and user_id="system")
+        if profile.user_id == "system" and any(
             profile.id == default_profile.id
             for default_profile in DEFAULT_PROFILES.values()
         ):
@@ -147,8 +147,8 @@ class ModelProfileStorage:
 
     async def update_model_profile(self, profile: ModelProfile) -> ModelProfile:
         """Update an existing model profile"""
-        # Don't allow modifying system default profiles
-        if any(
+        # Don't allow modifying system default profiles (profiles with system UUIDs and user_id="system")
+        if profile.user_id == "system" and any(
             profile.id == default_profile.id
             for default_profile in DEFAULT_PROFILES.values()
         ):

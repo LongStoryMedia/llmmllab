@@ -64,6 +64,7 @@ DEFAULT_VISION_TEXT_TO_TEXT_MODEL = "qwen2.5-vl-32b-instruct-q4-k-m"
 DEFAULT_TEXT_TO_IMAGE_MODEL = "black-forest-labs-flux.1-dev"
 DEFAULT_IMAGE_TO_IMAGE_MODEL = "black-forest-labs-flux.1-kontext-dev"
 DEFAULT_TEXT_TO_EMBEDDINGS_MODEL = "nomic-embed-text-v2"
+DEFAULT_SUMMARIZATION_MODEL = "llama-chat-summary-3_2-3b-q5-k-m"
 
 # Define default model profiles
 DEFAULT_PRIMARY_PROFILE = ModelProfile(
@@ -74,24 +75,39 @@ DEFAULT_PRIMARY_PROFILE = ModelProfile(
     description="Primary model profile for general chat and reasoning.",
     model_name=DEFAULT_TEXT_TO_TEXT_MODEL,
     parameters=ModelParameters(
-        num_ctx=40960,
-        repeat_last_n=-1,
-        repeat_penalty=1.05,
-        temperature=0.3,
-        seed=0,
+        num_ctx=40960,  # Restore original working context
+        repeat_last_n=128,
+        repeat_penalty=1.1,
+        temperature=0.65,
+        seed=-1,
         num_predict=-1,
-        top_k=20,
-        top_p=0.8,
-        min_p=0.0,
-        max_tokens=4096,
+        top_k=30,
+        top_p=0.85,
+        min_p=0.05,
+        max_tokens=16384,  # Restore original working tokens
         n_parts=-1,
         stop=[
             "<|im_end|>",
             "<|endoftext|>",
             "<|end|>",
         ],
+        think=True,
     ),
-    system_prompt="You are a helpful AI assistant.",
+    system_prompt="""You are a helpful AI assistant. When thinking through problems:
+
+CRITICAL THINKING GUIDELINES:
+- Keep your reasoning concise and focused (max 2-3 short paragraphs)
+- Avoid repeating the same logic or analysis multiple times
+- If you find yourself restating similar points, STOP and provide your answer
+- Do not elaborate on the same concept repeatedly
+- Make your thinking efficient and direct
+
+RESPONSE STRUCTURE:
+1. Brief analysis (if needed)
+2. Direct, clear answer
+3. Move on immediately
+
+Avoid circular reasoning, excessive elaboration, or repetitive explanations. Be decisive and concise.""",
     created_at=datetime.now(),
     updated_at=datetime.now(),
 )
@@ -102,26 +118,33 @@ DEFAULT_SUMMARIZATION_PROFILE = ModelProfile(
     name="Summarization (Default)",
     type=MODEL_PROFILE_TYPE_PRIMARY_SUMMARY,
     description="Default profile for conversation summarization.",
-    model_name=DEFAULT_TEXT_TO_TEXT_MODEL,
+    model_name=DEFAULT_SUMMARIZATION_MODEL,
     parameters=ModelParameters(
-        num_ctx=40960,
-        repeat_last_n=-1,
-        repeat_penalty=1.05,
-        temperature=0.3,
+        num_ctx=131072,  # Increased context for summarization
+        repeat_last_n=128,  # Increased for better repetition detection
+        repeat_penalty=1.15,  # Higher penalty to prevent repetition
+        temperature=0.1,  # Very low temperature for focused summaries
         seed=0,
-        num_predict=-1,
-        top_k=20,
-        top_p=0.8,
-        min_p=0.0,
-        max_tokens=4096,
+        num_predict=512,  # Reduced max tokens
+        top_k=30,  # Reduced for more focused output
+        top_p=0.85,  # Reduced for less randomness
+        min_p=0.05,
+        max_tokens=512,  # Explicit max tokens
         n_parts=-1,
         stop=[
-            "<|im_end|>",
+            "</s>",
             "<|endoftext|>",
             "<|end|>",
+            "[/INST]",
+            "\n\nSummary:",
+            "\n\nText:",
+            "Additionally,",
+            "Furthermore,",
+            "Moreover,",
         ],
+        think=False,
     ),
-    system_prompt="Summarize the conversation so far in a concise paragraph. Include key points and conclusions, but omit redundant details.",
+    system_prompt="Summarize the conversation so far in a concise paragraph. Include key points and conclusions, but omit redundant details. Be brief and focused.",
     created_at=datetime.now(),
     updated_at=datetime.now(),
 )
@@ -132,7 +155,7 @@ DEFAULT_MASTER_SUMMARY_PROFILE = ModelProfile(
     name="Master Summary (Default)",
     type=MODEL_PROFILE_TYPE_MASTER_SUMMARY,
     description="Profile for generating master summaries.",
-    model_name=DEFAULT_TEXT_TO_TEXT_MODEL,
+    model_name=DEFAULT_SUMMARIZATION_MODEL,
     parameters=ModelParameters(
         num_ctx=2048,
         repeat_last_n=64,
@@ -143,6 +166,7 @@ DEFAULT_MASTER_SUMMARY_PROFILE = ModelProfile(
         top_k=40,
         top_p=0.9,
         min_p=0.0,
+        think=False,
     ),
     system_prompt="Create a comprehensive summary of the conversation, giving most weight to the most recent points and less to older information.",
     created_at=datetime.now(),
@@ -155,7 +179,7 @@ DEFAULT_BRIEF_SUMMARY_PROFILE = ModelProfile(
     name="Brief Summary (Default)",
     type=MODEL_PROFILE_TYPE_BRIEF_SUMMARY,
     description="Profile for generating brief summaries.",
-    model_name=DEFAULT_TEXT_TO_TEXT_MODEL,
+    model_name=DEFAULT_SUMMARIZATION_MODEL,
     parameters=ModelParameters(
         num_ctx=2048,
         repeat_last_n=64,
@@ -178,7 +202,7 @@ DEFAULT_KEY_POINTS_PROFILE = ModelProfile(
     name="Key Points (Default)",
     type=MODEL_PROFILE_TYPE_KEY_POINTS,
     description="Profile for extracting key points from messages.",
-    model_name=DEFAULT_TEXT_TO_TEXT_MODEL,
+    model_name=DEFAULT_SUMMARIZATION_MODEL,
     parameters=ModelParameters(
         num_ctx=2048,
         repeat_last_n=64,
@@ -187,8 +211,9 @@ DEFAULT_KEY_POINTS_PROFILE = ModelProfile(
         seed=0,
         num_predict=-1,
         top_k=40,
-        top_p=0.9,
+        top_p=0.6,
         min_p=0.0,
+        think=False,
     ),
     system_prompt="Extract and list the key points from these detailed messages. Identify the main ideas and important details, organizing them in a clear structure.",
     created_at=datetime.now(),
@@ -265,6 +290,7 @@ DEFAULT_MEMORY_RETRIEVAL_PROFILE = ModelProfile(
         top_k=40,
         top_p=0.9,
         min_p=0.0,
+        think=False,
     ),
     system_prompt="Retrieve relevant information from memory and present it concisely.",
     created_at=datetime.now(),
@@ -277,17 +303,25 @@ DEFAULT_ANALYSIS_PROFILE = ModelProfile(
     name="Analysis (Default)",
     type=MODEL_PROFILE_TYPE_ANALYSIS,
     description="Profile for detailed analysis of text.",
-    model_name=DEFAULT_TEXT_TO_TEXT_MODEL,
+    model_name=DEFAULT_SUMMARIZATION_MODEL,
     parameters=ModelParameters(
-        num_ctx=2048,
-        repeat_last_n=64,
-        repeat_penalty=1.1,
-        temperature=0.3,
+        num_ctx=40960,
+        repeat_last_n=-1,
+        repeat_penalty=1.05,
+        temperature=0.7,
         seed=0,
         num_predict=-1,
-        top_k=40,
-        top_p=0.9,
+        top_k=20,
+        top_p=0.8,
         min_p=0.0,
+        max_tokens=16384,
+        n_parts=-1,
+        stop=[
+            "<|im_end|>",
+            "<|endoftext|>",
+            "<|end|>",
+        ],
+        think=False,
     ),
     system_prompt="Perform an in-depth analysis of the provided text. Identify key themes, patterns, and insights.",
     created_at=datetime.now(),
@@ -311,6 +345,7 @@ DEFAULT_RESEARCH_TASK_PROFILE = ModelProfile(
         top_k=50,
         top_p=0.9,
         min_p=0.05,
+        think=False,
     ),
     system_prompt="Generate specific research tasks based on the research goals. Each task should be focused, actionable, and help address the overall research objective.",
     created_at=datetime.now(),
@@ -371,15 +406,22 @@ DEFAULT_RESEARCH_ANALYSIS_PROFILE = ModelProfile(
     description="Profile for analyzing research results.",
     model_name=DEFAULT_TEXT_TO_TEXT_MODEL,
     parameters=ModelParameters(
-        num_ctx=4096,
-        repeat_last_n=64,
-        repeat_penalty=1.1,
-        temperature=0.3,
+        num_ctx=40960,
+        repeat_last_n=-1,
+        repeat_penalty=1.05,
+        temperature=0.7,
         seed=0,
         num_predict=-1,
-        top_k=40,
-        top_p=0.9,
+        top_k=20,
+        top_p=0.8,
         min_p=0.0,
+        max_tokens=16384,
+        n_parts=-1,
+        stop=[
+            "<|im_end|>",
+            "<|endoftext|>",
+            "<|end|>",
+        ],
     ),
     system_prompt="Analyze the research findings critically. Evaluate the strength of evidence, identify potential biases, and suggest areas for further investigation.",
     created_at=datetime.now(),
@@ -426,17 +468,25 @@ DEFAULT_FORMATTING_PROFILE = ModelProfile(
     name="Formatting (Default)",
     type=MODEL_PROFILE_TYPE_FORMATTING,
     description="Profile for text formatting and structure.",
-    model_name=DEFAULT_TEXT_TO_TEXT_MODEL,
+    model_name=DEFAULT_SUMMARIZATION_MODEL,
     parameters=ModelParameters(
-        num_ctx=2048,
+        num_ctx=40960,
         repeat_last_n=-1,
         repeat_penalty=1.05,
-        temperature=0.1,
-        seed=42,
+        temperature=0.7,
+        seed=0,
         num_predict=-1,
-        top_k=40,
-        top_p=0.7,
+        top_k=20,
+        top_p=0.8,
         min_p=0.0,
+        max_tokens=16384,
+        n_parts=-1,
+        stop=[
+            "<|im_end|>",
+            "<|endoftext|>",
+            "<|end|>",
+        ],
+        think=False,
     ),
     system_prompt="Format the provided text according to best practices. Improve structure, organization, and readability while preserving all content.",
     created_at=datetime.now(),
@@ -492,14 +542,21 @@ DEFAULT_ENGINEERING_PROFILE = ModelProfile(
     model_name="qwen3-coder-30b-a3b",
     parameters=ModelParameters(
         num_ctx=1000000,
-        repeat_last_n=64,
-        repeat_penalty=1.1,
-        temperature=0.2,
+        repeat_last_n=-1,
+        repeat_penalty=1.05,
+        temperature=0.7,
         seed=0,
         num_predict=-1,
-        top_k=40,
-        top_p=0.9,
+        top_k=20,
+        top_p=0.8,
         min_p=0.0,
+        max_tokens=16384,
+        n_parts=-1,
+        stop=[
+            "<|im_end|>",
+            "<|endoftext|>",
+            "<|end|>",
+        ],
     ),
     system_prompt="Assist with engineering tasks, providing detailed explanations and solutions.",
     created_at=datetime.now(),

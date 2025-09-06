@@ -213,8 +213,8 @@ spec:
 
             # Log level
             - name: LOG_LEVEL
-              value: "debug"
-            # API versioning configuration
+              value: "info"
+            # API versioning configurationEL
             - name: API_VERSION
               value: "v1"
             - name: EVALUATION_VENV
@@ -229,6 +229,50 @@ spec:
               value: "-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_PATH=/llama.cpp/build/bin"
             - name: LLAMA_CPP_LIB_PATH
               value: "/llama.cpp/build/bin"
+
+            # CUDA and Memory Optimization Configuration
+            # Comprehensive CUDA graphs disabling for stability
+            - name: LLAMA_CUDA_USE_GRAPHS
+              value: "0"
+            - name: GGML_CUDA_USE_GRAPHS
+              value: "0"
+            - name: CUDA_USE_GRAPHS
+              value: "0"
+            - name: LLAMA_GRAPH
+              value: "0"
+            - name: GGML_GRAPH
+              value: "0"
+            # Force basic CUBLAS instead of optimized routines
+            - name: LLAMA_CUBLAS
+              value: "1"
+            - name: GGML_CUDA_FORCE_CUBLAS
+              value: "1"
+            - name: GGML_CUDA_FORCE_MMQ
+              value: "0"
+            # Memory management optimizations for 3-GPU setup
+            - name: GGML_CUDA_POOL_SIZE
+              value: "2147483648" # 2GB pool limit per GPU
+            - name: LLAMA_CUDA_POOL_SIZE
+              value: "2147483648"
+            - name: CUDA_MEMORY_FRACTION
+              value: "0.8" # Use max 80% of VRAM per device
+            # Additional CUDA optimizations
+            - name: GGML_USE_CUBLAS
+              value: "1"
+            - name: GGML_CUDA_NO_PINNED
+              value: "1"
+            - name: CUDA_VISIBLE_DEVICES
+              value: "0,1,2" # Explicitly list available devices
+            - name: CUDA_DEVICE_ORDER
+              value: "PCI_BUS_ID"
+            # Python memory optimizations
+            - name: PYTHONMALLOC
+              value: "malloc"
+            - name: MALLOC_ARENA_MAX
+              value: "2"
+            # Logging configuration for debugging
+            - name: GGML_LOG_LEVEL
+              value: "2"
 
             # Search API keys configuration
             - name: GOOGLE_SEARCH_API_KEY

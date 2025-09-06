@@ -1,0 +1,10 @@
+{
+    "role": "user",
+    "content": [
+        {
+            "type": "text",
+            "text": "What is 2+2?"
+        }
+    ],
+    "conversation_id": 999
+}

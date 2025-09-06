@@ -1,13 +1,18 @@
--- Get all messages for a conversation, ordered chronologically
+-- Get all messages for a conversation with content, ordered chronologically
 SELECT
-    id,
-    conversation_id,
-    ROLE,
-    created_at
+    m.id,
+    m.conversation_id,
+    m.ROLE,
+    m.created_at,
+    mc.text_content as content,
+    mc.type as content_type,
+    mc.url as content_url
 FROM
-    messages
+    messages m
+LEFT JOIN 
+    message_contents mc ON m.id = mc.message_id
 WHERE
-    conversation_id = $1
+    m.conversation_id = $1
 ORDER BY
-    created_at ASC
+    m.created_at ASC
 LIMIT $2 OFFSET $3

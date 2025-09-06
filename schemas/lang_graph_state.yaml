@@ -1,0 +1,45 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: LangGraphState
+description: Strongly typed state for LangGraph workflows.
+type: object
+properties:
+  messages:
+    type: array
+    description: Sequence of messages
+    items:
+      $ref: lang_chain_message.yaml
+      description: A message in the conversation
+  user_input:
+    type: string
+    description: Latest user input
+  error_count:
+    type: integer
+    description: Number of errors encountered during workflow execution
+    default: 0
+  max_iterations:
+    type: integer
+    description: Maximum number of iterations allowed in the workflow
+    default: 10
+  current_iteration:
+    type: integer
+    description: Current iteration count in the workflow execution
+    default: 0
+  tools_used:
+    type: array
+    description: List of tools or functions that have been used in the workflow
+    items:
+      type: string
+    default: []
+  intermediate_results:
+    type: object
+    description: Storage for intermediate computation results during workflow execution
+    default: {}
+    additionalProperties: true
+required:
+  - messages
+  - user_input
+  - error_count
+  - max_iterations
+  - current_iteration
+  - tools_used
+  - intermediate_results

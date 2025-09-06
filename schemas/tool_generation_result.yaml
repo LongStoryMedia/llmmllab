@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+type: object
+description: Result of dynamic tool generation.
+title: ToolGenerationResult
+required:
+  - success
+properties:
+  success:
+    type: boolean
+    description: Indicates if tool generation was successful
+  tool:
+    $ref: dynamic_tool.yaml
+    description: The generated tool, if successful
+  error_message:
+    type: string
+    description: Error message in case of failure

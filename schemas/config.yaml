@@ -34,6 +34,8 @@ properties:
     description: Log level
   internal:
     $ref: internal_config.yaml
+  event_stream:
+    $ref: event_stream_config.yaml
 required:
   - server
   - database
