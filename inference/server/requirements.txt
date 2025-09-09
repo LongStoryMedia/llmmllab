@@ -41,3 +41,6 @@ langgraph==0.6.6
 ddgs==9.5.5
 google-api-python-client>=2.100.0  # For Google Search API
 google-search-results>=2.4.2  # For alternative Google search
+uvicorn[standard]
+watchfiles
+websockets

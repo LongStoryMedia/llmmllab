@@ -48,7 +48,7 @@ from fastapi.responses import JSONResponse
 from huggingface_hub import login
 
 from server.routers import model
-from server.routers import chat as chat
+from server.routers import chat
 from server.config import CONFIG_DIR, IMAGE_DIR
 from server.routers import (
     images,
@@ -62,10 +62,10 @@ from server.auth import AuthMiddleware
 from server.config import API_VERSION
 from server.db.maintenance import maintenance_service
 from server.services.cleanup_service import cleanup_service
-from utils.hardware_manager import hardware_manager  # Import hardware manager
 from server.services.rabbitmq_consumer import (
     rabbitmq_consumer,
 )  # Import RabbitMQ consumer
+from utils.hardware_manager import hardware_manager  # Import hardware manager
 
 # Create required directories if they don't exist
 os.makedirs(IMAGE_DIR, exist_ok=True)
