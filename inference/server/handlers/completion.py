@@ -100,41 +100,61 @@ class CompletionHandler:
                     logger.warning(f"Tool acquisition failed: {e}")
                     tools = []
 
-                # 3) Resolve model profile and pipeline
+                # 3) Resolve model profile and pipeline with fallback
                 mp = await storage.get_service(
                     storage.model_profile
                 ).get_model_profile_by_id(
                     conversation_ctx.user_config.model_profiles.primary_profile_id,
                     conversation_ctx.user_config.user_id,
                 )
-                assert mp
+                
+                # If primary profile fails, try fallback profile
+                if not mp:
+                    logger.warning(f"Primary model profile not found, trying fallback")
+                    mp = await storage.get_service(
+                        storage.model_profile
+                    ).get_model_profile_by_id(
+                        conversation_ctx.user_config.model_profiles.fallback_profile_id,
+                        conversation_ctx.user_config.user_id,
+                    )
+                
+                assert mp, "No valid model profile found (primary or fallback)"
                 full_response = ""
 
-                with pipeline_factory.pipeline(mp, ChatResponse) as pipeline:
-                    rc.add("pipeline", pipeline)
+                try:
+                    with pipeline_factory.pipeline(mp, ChatResponse) as pipeline:
+                        rc.add("pipeline", pipeline)
 
-                    # 4) Stream execution
-                    logger.info(
-                        f"Starting pipeline execution with {len(conversation_ctx.messages)} messages and {len(tools)} tools"
-                    )
-                    chunk_count = 0
-                    async for chunk in stream_pipeline(
-                        conversation_ctx.messages, pipeline, tools
-                    ):
-                        chunk_count += 1
-                        # Extract text content for accumulation
-                        chunk_text = (
-                            extract_message_text(chunk.message) if chunk.message else ""
+                        # 4) Stream execution
+                        logger.info(
+                            f"Starting pipeline execution with {len(conversation_ctx.messages)} messages and {len(tools)} tools"
                         )
-                        full_response += chunk_text
+                        chunk_count = 0
+                        async for chunk in stream_pipeline(
+                            conversation_ctx.messages, pipeline, tools
+                        ):
+                            chunk_count += 1
+                            # Extract text content for accumulation
+                            chunk_text = (
+                                extract_message_text(chunk.message) if chunk.message else ""
+                            )
+                            full_response += chunk_text
 
-                        # For streaming, only send serialized ChatResponse with text content
-                        # Status messages and tool info come through as special chunks
-                        yield serialize_to_json(chunk)
+                            # For streaming, only send serialized ChatResponse with text content
+                            # Status messages and tool info come through as special chunks
+                            yield serialize_to_json(chunk)
 
-                    logger.info(
-                        f"Pipeline execution completed with {chunk_count} chunks, response length: {len(full_response)}"
-                    )
+                        logger.info(
+                            f"Pipeline execution completed with {chunk_count} chunks, response length: {len(full_response)}"
+                        )
+                except Exception as pipeline_error:
+                    logger.error(f"Pipeline execution failed: {pipeline_error}")
+                    # Try to provide a helpful error message to the user
+                    yield serialize_to_json(create_error_chunk(
+                        f"Model execution failed: {str(pipeline_error)}. "
+                        "This may be due to model compatibility issues or resource constraints."
+                    ))
+                    return
 
                 # Store response in background
                 if background_tasks and full_response.strip():

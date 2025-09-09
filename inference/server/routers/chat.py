@@ -92,9 +92,21 @@ async def chat_completion(
 
     except Exception as e:  # noqa: BLE001
         logger.error(f"Error in chat completion: {e}", exc_info=True)
+        
+        # Provide more specific error messages based on error type
+        error_detail = f"Error in chat completion: {str(e)}"
+        if "unknown model architecture" in str(e):
+            error_detail = "Model architecture not supported. Please try a different model or contact support."
+        elif "Failed to create llama_context" in str(e):
+            error_detail = "Model failed to load. This may be due to insufficient memory or model corruption."
+        elif "No valid model profile found" in str(e):
+            error_detail = "No compatible model available. Please check your model configuration."
+        elif "Tool generation failed" in str(e):
+            error_detail = "Dynamic tool creation failed. Continuing with basic functionality."
+        
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error in chat completion: {str(e)}",
+            detail=error_detail,
         ) from e
 
 

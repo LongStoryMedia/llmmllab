@@ -410,6 +410,7 @@ Make the tool specific to the user's request but generalizable for similar tasks
             # Extract and parse JSON
             json_data = self._extract_json_from_response(tool_response)
             if not json_data:
+                self.logger.error(f"Could not extract valid JSON from response: {tool_response[:500]}...")
                 raise ValueError("Could not extract valid JSON from response")
 
             # Create DynamicTool
@@ -418,6 +419,8 @@ Make the tool specific to the user's request but generalizable for similar tasks
                 return ToolGenerationResult(success=True, tool=dynamic_tool)
             except ValidationError as e:
                 self.logger.error(f"Tool validation error: {e}")
+                self.logger.error(f"Invalid JSON data: {json_data}")
+                raise ValueError(f"Tool validation failed: {str(e)}")
                 raise ValueError(f"Generated tool failed validation: {e}") from e
 
     def _extract_json_from_response(self, response: str) -> Optional[Dict[str, Any]]:

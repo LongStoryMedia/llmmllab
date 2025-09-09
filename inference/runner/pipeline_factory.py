@@ -496,6 +496,19 @@ class PipelineFactory:
             return None
         except Exception as e:
             self.logger.error(f"Error creating pipeline for {model.name}: {e}")
+            
+            # Check if model is disabled due to known issues
+            if hasattr(model.details, 'disabled') and model.details.disabled:
+                self.logger.info(f"Model {model.name} is disabled: {getattr(model.details, 'disable_reason', 'Unknown reason')}")
+            
+            # Log specific error types for better debugging
+            if "unknown model architecture" in str(e):
+                self.logger.error(f"Model {model.name} uses unsupported architecture - consider updating llama.cpp or using a different model")
+            elif "Failed to create llama_context" in str(e):
+                self.logger.error(f"Model {model.name} failed to load - may be corrupted or incompatible")
+            elif "validation error" in str(e).lower():
+                self.logger.error(f"Model {model.name} configuration validation failed")
+            
             return None
 
     def _create_text_pipeline(
