@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ninja-build \
     libcurl4-openssl-dev \
     pkg-config \
+    ccache \
     && rm -rf /var/lib/apt/lists/*
 
 
@@ -29,6 +30,8 @@ RUN ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/li
 # Build llama.cpp
 RUN cd /tmp && git clone https://github.com/ggerganov/llama.cpp.git && \
     cd llama.cpp && \
+    # git pull --all && \
+    git checkout tags/b6423 && \
     # git checkout ab14019 && \
     # git checkout -b llmmll && \
     cmake -B build \
@@ -45,9 +48,9 @@ RUN python3 -m venv /tmp/build_venv && \
     . /tmp/build_venv/bin/activate && \
     pip install --upgrade pip setuptools wheel && \
     pip wheel --wheel-dir /opt/wheels torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cu128 && \
-    CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_PATH=/llama.cpp/build/bin" \
+    CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_PATH=/tmp/llama.cpp/build/bin" \
     LLAMA_CPP_LIB_PATH=/tmp/llama.cpp/build/bin \
-    pip wheel --wheel-dir /opt/wheels llama-cpp-python
+    pip wheel --wheel-dir /opt/wheels llama-cpp-python==0.3.16
 
 
 # Runtime stage - minimal CUDA runtime
@@ -56,9 +59,16 @@ FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH="/app" \
+    RUNNER_DIR="/app/runner" \
+    SERVER_DIR="/app/server" \
+    EVALUATION_DIR="/app/evaluation" \
     EVALUATION_VENV="/opt/venv/evaluation" \
     SERVER_VENV="/opt/venv/server" \
     RUNNER_VENV="/opt/venv/runner" \
+    # llama.cpp runtime library locations (ensure dependent libs load)
+    LLAMA_CPP_LIB_PATH="/llama.cpp/build/bin" \
+    LLAMA_CPP_LIB="/llama.cpp/build/bin/libllama.so" \
+    LD_LIBRARY_PATH="/llama.cpp/build/bin:${LD_LIBRARY_PATH}" \
     DEBIAN_FRONTEND=noninteractive \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility,video \
@@ -95,12 +105,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     libgomp1 \
     ffmpeg \
+    binutils \
+    git \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
 # Copy pre-built artifacts from builder stage
-COPY --from=builder /tmp/llama.cpp/* /llama-cpp/
+COPY --from=builder /tmp/llama.cpp /llama.cpp
 COPY --from=builder /opt/wheels /opt/wheels
+
+# Ensure llama.cpp shared libs are discoverable by dynamic linker (POSIX sh compatible)
+RUN for f in /llama.cpp/build/bin/libggml*.so /llama.cpp/build/bin/libllama.so; do \
+    if [ ! -f "$f" ]; then echo "Missing expected library $f" >&2; exit 1; fi; \
+    ln -sf "$f" /usr/local/lib/; \
+    done; ldconfig || true
 
 # Set working directory and copy application code
 WORKDIR /app
@@ -117,16 +135,16 @@ RUN for venv in ${RUNNER_VENV} ${SERVER_VENV} ${EVALUATION_VENV}; do \
     pip install --no-cache-dir --upgrade pip setuptools wheel && \
     # Install shared dependencies from wheels directory first
     pip install --no-index --find-links=/opt/wheels torch torchaudio torchvision llama-cpp-python && \
-    pip install --no-cache-dir --find-links /opt/wheels --no-index torch torchaudio torchvision && \
+    # pip install --no-cache-dir --find-links /opt/wheels --no-index torch torchaudio torchvision && \
     deactivate; \
     done && \
     . ${RUNNER_VENV}/bin/activate && \
-    LLAMA_CPP_LIB_PATH=/llama.cpp/build/bin pip install --no-cache-dir --find-links /opt/wheels --no-index llama-cpp-python && \
+    # LLAMA_CPP_LIB_PATH=/llama.cpp/build/bin pip install --no-cache-dir --find-links /opt/wheels --no-index llama-cpp-python && \
     pip install --no-cache-dir -e /app/runner && \
     deactivate && \
     . ${SERVER_VENV}/bin/activate && \
     pip install --no-cache-dir -e /app/server && \
-    pip install --no-cache-dir "uvicorn[standard]" watchfiles websockets && \
+    # pip install --no-cache-dir "uvicorn[standard]" watchfiles websockets && \
     deactivate && \
     . ${EVALUATION_VENV}/bin/activate && \
     pip install --no-cache-dir -e /app/evaluation && \

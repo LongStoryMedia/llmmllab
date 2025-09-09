@@ -27,36 +27,36 @@ spec:
   claimRef:
     namespace: ollama
     name: ollama-models
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: sd-models
-  namespace: ollama
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 100Gi
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: sd-models
-  namespace: ollama
-spec:
-  storageClassName: ""
-  capacity:
-    storage: 100Gi
-  accessModes:
-    - ReadWriteOnce
-  hostPath:
-    path: /data/sd-models
-    type: DirectoryOrCreate
-  claimRef:
-    namespace: ollama
-    name: sd-models
+# ---
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: sd-models
+#   namespace: ollama
+# spec:
+#   accessModes:
+#     - ReadWriteOnce
+#   resources:
+#     requests:
+#       storage: 100Gi
+# ---
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: sd-models
+#   namespace: ollama
+# spec:
+#   storageClassName: ""
+#   capacity:
+#     storage: 100Gi
+#   accessModes:
+#     - ReadWriteOnce
+#   hostPath:
+#     path: /data/sd-models
+#     type: DirectoryOrCreate
+#   claimRef:
+#     namespace: ollama
+#     name: sd-models
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -117,36 +117,36 @@ spec:
   claimRef:
     namespace: ollama
     name: code-base
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: llama-cpp
-  namespace: ollama
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 30Gi
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: llama-cpp
-  namespace: ollama
-spec:
-  storageClassName: ""
-  capacity:
-    storage: 10Gi
-  accessModes:
-    - ReadWriteOnce
-  hostPath:
-    path: /llama.cpp
-    type: DirectoryOrCreate
-  claimRef:
-    namespace: ollama
-    name: llama-cpp
+# ---
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: llama.cpp
+#   namespace: ollama
+# spec:
+#   accessModes:
+#     - ReadWriteOnce
+#   resources:
+#     requests:
+#       storage: 30Gi
+# ---
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: llama.cpp
+#   namespace: ollama
+# spec:
+#   storageClassName: ""
+#   capacity:
+#     storage: 10Gi
+#   accessModes:
+#     - ReadWriteOnce
+#   hostPath:
+#     path: /llama.cpp
+#     type: DirectoryOrCreate
+#   claimRef:
+#     namespace: ollama
+#     name: llama.cpp
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

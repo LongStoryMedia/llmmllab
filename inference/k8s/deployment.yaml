@@ -23,19 +23,19 @@ spec:
           configMap:
             name: ollama-init-script
             defaultMode: 0755
-        - name: sd-models-volume
-          persistentVolumeClaim:
-            claimName: sd-models
+        # - name: sd-models-volume
+        #   persistentVolumeClaim:
+        #     claimName: sd-models
         - name: generated-images
           persistentVolumeClaim:
             claimName: generated-images
         - name: code-base
           persistentVolumeClaim:
             claimName: code-base
-        - name: llama-cpp
-          hostPath:
-            path: /llama.cpp
-            type: DirectoryOrCreate
+        # - name: llama-cpp
+        #   hostPath:
+        #     path: /llama.cpp
+        #     type: DirectoryOrCreate
         - name: models
           hostPath:
             path: /models
@@ -63,16 +63,16 @@ spec:
           volumeMounts:
             - name: ollama-models-volume
               mountPath: /root/.ollama
-            - name: sd-models-volume
-              mountPath: /root/.cache/huggingface/hub
+            # - name: sd-models-volume
+            #   mountPath: /root/.cache/huggingface/hub
             - name: init-script
               mountPath: /scripts
             - name: generated-images
               mountPath: /root/images
             - name: code-base
               mountPath: /app
-            - name: llama-cpp
-              mountPath: /llama.cpp
+            # - name: llama-cpp
+            #   mountPath: /llama.cpp
             - name: models
               mountPath: /models
           env:
@@ -232,35 +232,35 @@ spec:
 
             # CUDA and Memory Optimization Configuration
             # Comprehensive CUDA graphs disabling for stability
-            - name: LLAMA_CUDA_USE_GRAPHS
-              value: "0"
-            - name: GGML_CUDA_USE_GRAPHS
-              value: "0"
-            - name: CUDA_USE_GRAPHS
-              value: "0"
-            - name: LLAMA_GRAPH
-              value: "0"
-            - name: GGML_GRAPH
-              value: "0"
-            # Force basic CUBLAS instead of optimized routines
-            - name: LLAMA_CUBLAS
-              value: "1"
-            - name: GGML_CUDA_FORCE_CUBLAS
-              value: "1"
-            - name: GGML_CUDA_FORCE_MMQ
-              value: "0"
-            # Memory management optimizations for 3-GPU setup
-            - name: GGML_CUDA_POOL_SIZE
-              value: "2147483648" # 2GB pool limit per GPU
-            - name: LLAMA_CUDA_POOL_SIZE
-              value: "2147483648"
-            - name: CUDA_MEMORY_FRACTION
-              value: "0.8" # Use max 80% of VRAM per device
-            # Additional CUDA optimizations
-            - name: GGML_USE_CUBLAS
-              value: "1"
-            - name: GGML_CUDA_NO_PINNED
-              value: "1"
+            # - name: LLAMA_CUDA_USE_GRAPHS
+            #   value: "0"
+            # - name: GGML_CUDA_USE_GRAPHS
+            #   value: "0"
+            # - name: CUDA_USE_GRAPHS
+            #   value: "0"
+            # - name: LLAMA_GRAPH
+            #   value: "0"
+            # - name: GGML_GRAPH
+            #   value: "0"
+            # # Force basic CUBLAS instead of optimized routines
+            # - name: LLAMA_CUBLAS
+            #   value: "1"
+            # - name: GGML_CUDA_FORCE_CUBLAS
+            #   value: "1"
+            # - name: GGML_CUDA_FORCE_MMQ
+            #   value: "0"
+            # # Memory management optimizations for 3-GPU setup
+            # - name: GGML_CUDA_POOL_SIZE
+            #   value: "2147483648" # 2GB pool limit per GPU
+            # - name: LLAMA_CUDA_POOL_SIZE
+            #   value: "2147483648"
+            # - name: CUDA_MEMORY_FRACTION
+            #   value: "0.8" # Use max 80% of VRAM per device
+            # # Additional CUDA optimizations
+            # - name: GGML_USE_CUBLAS
+            #   value: "1"
+            # - name: GGML_CUDA_NO_PINNED
+            #   value: "1"
             - name: CUDA_VISIBLE_DEVICES
               value: "0,1,2" # Explicitly list available devices
             - name: CUDA_DEVICE_ORDER
