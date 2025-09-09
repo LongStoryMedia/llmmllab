@@ -4,7 +4,6 @@ This keeps custom logic out of schema-generated models.
 """
 
 from __future__ import annotations
-
 from typing import Any, Dict, Iterable
 
 from models.lang_graph_state import LangGraphState

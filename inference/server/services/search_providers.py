@@ -111,6 +111,13 @@ class BraveSearchProviderWrapper(StandardSearchProvider):
         except Exception as e:
             error = f"Error with Brave search: {e}"
             logger.error(error)
+            # Log additional context for debugging
+            if "422" in str(e):
+                logger.error(f"Brave search HTTP 422 error - likely rate limited or invalid query: {query}")
+            elif "401" in str(e):
+                logger.error("Brave search authentication failed - check API key")
+            elif "403" in str(e):
+                logger.error("Brave search forbidden - check API permissions")
 
         return SearchResult(
             is_from_url_in_user_query=False, query=query, contents=results, error=error
@@ -193,6 +200,11 @@ class DuckDuckGoSearchProviderWrapper(StandardSearchProvider):
         except Exception as e:  # noqa: BLE001
             error = f"Error with DuckDuckGo search: {e}"
             logger.error(error)
+            # Log additional context for debugging
+            if "JSONDecodeError" in str(e) or "malformed JSON" in str(e):
+                logger.error(f"DuckDuckGo returned non-JSON response for query: {query}")
+            elif "DNS" in str(e) or "Name or service not known" in str(e):
+                logger.error("DuckDuckGo DNS resolution failed - network connectivity issue")
 
         return SearchResult(
             is_from_url_in_user_query=False, query=query, contents=results, error=error
