@@ -133,6 +133,44 @@ class DuckDuckGoSearchProviderWrapper(StandardSearchProvider):
         self.wrapper: Optional[DuckDuckGoSearchAPIWrapper] = None  # type: ignore[type-arg]
         self._init_error: Optional[str] = None
 
+    def _parse_ddg_text_response(self, response: str) -> list[dict[str, str]]:
+        """Parse DuckDuckGo text response into structured format."""
+        entries = []
+        
+        # DuckDuckGo returns text like: "Title - Description URL"
+        # Split by lines and parse each result
+        lines = response.strip().split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Try to extract title, snippet, and URL from the text
+            # Format is usually: "Title - Description"
+            if ' - ' in line:
+                parts = line.split(' - ', 1)
+                title = parts[0].strip()
+                snippet = parts[1].strip() if len(parts) > 1 else ""
+                
+                # Generate a search URL since DDG doesn't provide direct links
+                url = f"https://duckduckgo.com/?q={title.replace(' ', '+')}"
+                
+                entries.append({
+                    "title": title,
+                    "snippet": snippet,
+                    "link": url
+                })
+            else:
+                # Fallback: treat the whole line as title
+                entries.append({
+                    "title": line,
+                    "snippet": "",
+                    "link": f"https://duckduckgo.com/?q={line.replace(' ', '+')}"
+                })
+        
+        return entries
+
     def _ensure_wrapper(self) -> None:
         if self.wrapper is not None or self._init_error is not None:
             return
@@ -171,20 +209,16 @@ class DuckDuckGoSearchProviderWrapper(StandardSearchProvider):
 
             search_response = self.wrapper.run(query)
 
-            # Improved JSON parsing with better error handling
+            # DuckDuckGo returns text, not JSON - parse it directly
             try:
-                entries = cast(list[dict[str, str]], json.loads(search_response))
-            except json.JSONDecodeError as json_err:
+                # DuckDuckGo wrapper returns formatted text, not JSON
+                # Parse the text response directly
+                entries = self._parse_ddg_text_response(search_response)
+            except Exception as parse_err:
                 logger.error(
-                    f"DuckDuckGo returned invalid JSON: {json_err}. Response: {search_response[:200]}..."
+                    f"DuckDuckGo text parsing failed: {parse_err}. Response: {search_response[:200]}..."
                 )
-                # Try to handle cases where response might be empty or malformed
-                if not search_response.strip():
-                    raise ValueError("DuckDuckGo returned empty response")
-                elif search_response.strip().startswith("<"):
-                    raise ValueError("DuckDuckGo returned HTML instead of JSON")
-                else:
-                    raise ValueError(f"DuckDuckGo returned malformed JSON: {json_err}")
+                raise ValueError(f"DuckDuckGo text parsing failed: {parse_err}")
 
             for e in entries[:max_results]:
                 title = e.get("title")

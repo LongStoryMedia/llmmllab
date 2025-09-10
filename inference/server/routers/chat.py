@@ -41,30 +41,29 @@ async def chat_completion(
     7. Enhanced prompt creation with retrieved contexts
     8. Streaming or complete response generation
     """
-    # Set up request context information
+    # Early validation and setup
     user_id = get_user_id(request)
     request_id = get_request_id(request)
-    assert user_id, f"User ID not found for request {request_id}"
-    assert msg.conversation_id, f"Conversation ID not found for request {request_id}"
+    
+    # Validate inputs early
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User ID not found")
+    if not msg.conversation_id:
+        raise HTTPException(status_code=400, detail="Conversation ID not found")
+    if not msg or msg.role != MessageRole.USER:
+        raise HTTPException(status_code=400, detail="Invalid user message")
+    
+    logger.info(f"Processing chat completion request {request_id} for user {user_id}")
 
+    # Load conversation context
     conversation_ctx = await get_conversation_context_from_request(
         request, msg.conversation_id
     )
-    assert (
-        conversation_ctx.conversation.id >= 0
-    ), f"Invalid conversation ID {conversation_ctx.conversation.id} for request {request_id}"
-    # Verify message is from user - the only validation we still need
-    assert msg, f"User message not found for request {request_id}"
-    assert (
-        msg.role == MessageRole.USER
-    ), f"Invalid message role {msg.role} for request {request_id}"
-    # Log the start of request processing
-    logger.info(f"Processing chat completion request {request_id} for user {user_id}")
+    
+    if conversation_ctx.conversation.id < 0:
+        raise HTTPException(status_code=400, detail="Invalid conversation ID")
 
-    user_cfg = await storage.get_service(storage.user_config).get_user_config(user_id)
-    assert user_cfg, f"User config not found for user {user_id}"
-
-    # Process user message with enhanced RAG
+    # Process user message with enhanced RAG (user_config already loaded in conversation_ctx)
     try:
         # Add message - also sets intent
         embeddings, _ = await conversation_ctx.add_message(msg)

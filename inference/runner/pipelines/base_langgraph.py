@@ -6,13 +6,15 @@ import asyncio
 import hashlib
 import uuid
 import logging
-from typing import Any, Dict, List, Optional, TypeVar
+import os
+from typing import Any, Dict, List, Optional, TypeVar, cast
 from abc import ABC, abstractmethod
 from datetime import datetime
 
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import BaseTool
 from langchain_core.runnables import RunnableConfig
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, AIMessageChunk
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.checkpoint.memory import MemorySaver
@@ -40,15 +42,17 @@ class CircuitBreakerConfig:
 
     def __init__(
         self,
-        base_timeout: float = 60.0,  # Base timeout in seconds
-        deep_research_timeout: float = 120.0,  # Extended timeout for deep research
+        base_timeout: float = 60.0,
+        deep_research_timeout: float = 120.0,
         max_retries: int = 2,
-        cooldown_period: float = 30.0,  # Time before allowing retry after failure
+        cooldown_period: float = 30.0,
+        perplexity_threshold: float = 15.0,
     ):
         self.base_timeout = base_timeout
         self.deep_research_timeout = deep_research_timeout
         self.max_retries = max_retries
         self.cooldown_period = cooldown_period
+        self.perplexity_threshold = perplexity_threshold
 
 
 class ModelState:
@@ -83,19 +87,165 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         self._logger = logging.getLogger(self.__class__.__name__)
 
         # Abstract attributes that subclasses must implement
-        self.llm = None
+        self.llm: Optional[BaseChatModel] = None
+
+    @property
+    @abstractmethod
+    def total_model_layers(self) -> int:
+        """Total number of layers in the model. Must be implemented by subclasses."""
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def model_size_category(self) -> str:
+        """Return model size category ('small', 'medium', 'large', 'xlarge')."""
+        raise NotImplementedError
 
     @abstractmethod
-    async def _initialize_llm(
-        self, gguf_path: str, tools: Optional[List[BaseTool]] = None
-    ) -> None:
-        """Initialize the LLM. Must be implemented by subclasses."""
-        raise NotImplementedError("Subclass must implement _initialize_llm")
+    def _create_llm_instance(
+        self,
+        gguf_path: str,
+        n_gpu_layers: int,
+        n_ctx: int,
+        tools: Optional[List[BaseTool]] = None,
+    ) -> Any:
+        """Create an instance of the LLM. Must be implemented by subclasses."""
+        raise NotImplementedError
 
     @abstractmethod
     def _get_gguf_path(self) -> str:
-        """Get the GGUF file path. Must be implemented by subclasses."""
-        raise NotImplementedError("Subclass must implement _get_gguf_path")
+        """Get the GGUF file path for the model. Must be implemented by subclasses."""
+        raise NotImplementedError
+
+    async def _initialize_llm(
+        self, gguf_path: str, tools: Optional[List[BaseTool]] = None
+    ) -> None:
+        """
+        Initialize the LLM with a sophisticated OOM fallback strategy.
+        1. Try optimal settings.
+        2. If OOM, gradually reduce GPU layers to a minimum threshold.
+        3. If still OOM, reduce n_ctx and repeat GPU layer reduction.
+        """
+        self._logger.info(f"Initializing LLM from {gguf_path}")
+
+        if os.environ.get("ALLOW_MISSING_GGUF", "false").lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+
+            class _DummyLLM(BaseChatModel):
+                def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+                    # This is a dummy implementation for sync generation
+                    return AIMessage(content="Dummy response for dev/test.")
+
+                async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+                    # This is a dummy implementation for async generation
+                    return AIMessage(content="Dummy response for dev/test.")
+
+                def _llm_type(self) -> str:
+                    return "dummy-llm"
+
+                def bind_tools(self, tools):
+                    return self
+
+                async def astream(self, messages, **kwargs):
+                    yield AIMessageChunk(content="Dummy response for dev/test.")
+
+                async def ainvoke(self, _messages, **_):
+                    return AIMessage(content="Dummy response for dev/test.")
+
+            self.llm = _DummyLLM()
+            if tools:
+                self.llm = cast(BaseChatModel, self.llm.bind_tools(tools))
+            return
+
+        from runner.pipeline_factory import pipeline_factory
+        from utils.hardware_manager import hardware_manager
+
+        min_gpu_layers = (self.total_model_layers * 2) // 3
+
+        requested_ctx = (
+            self.profile.parameters.num_ctx or 131072
+        )  # Default to a reasonable context
+        max_ctx = self.profile.parameters.num_ctx or 1048576
+
+        context_candidates = sorted(
+            list(
+                set(
+                    [
+                        min(requested_ctx, max_ctx),
+                        524288,
+                        262144,
+                        131072,
+                        65536,
+                        32768,
+                        16384,
+                    ]
+                )
+            ),
+            reverse=True,
+        )
+        unique_context_candidates = [
+            x for x in context_candidates if x <= requested_ctx
+        ]
+
+        for n_ctx in unique_context_candidates:
+            optimal_gpu_layers = self._calculate_optimal_gpu_layers(
+                n_ctx, self.model_size_category
+            )
+
+            gpu_layer_steps = sorted(
+                list(
+                    set(
+                        [
+                            optimal_gpu_layers,
+                            (optimal_gpu_layers + min_gpu_layers) // 2,
+                            min_gpu_layers + (optimal_gpu_layers - min_gpu_layers) // 4,
+                            min_gpu_layers,
+                        ]
+                    )
+                ),
+                reverse=True,
+            )
+
+            for n_gpu_layers in gpu_layer_steps:
+                if n_gpu_layers < min_gpu_layers:
+                    continue
+
+                try:
+                    self._logger.info(
+                        f"Attempting to load model with n_ctx={n_ctx}, n_gpu_layers={n_gpu_layers}"
+                    )
+
+                    self.llm = self._create_llm_instance(
+                        gguf_path=gguf_path,
+                        n_gpu_layers=n_gpu_layers,
+                        n_ctx=n_ctx,
+                        tools=tools,
+                    )
+
+                    self._logger.info(
+                        f"Successfully loaded model with n_ctx={n_ctx} and n_gpu_layers={n_gpu_layers}"
+                    )
+                    return
+
+                except Exception as e:
+                    self._logger.warning(
+                        f"Failed to load model with n_ctx={n_ctx} and n_gpu_layers={n_gpu_layers}: {e}. "
+                        "Freeing memory and retrying."
+                    )
+                    self.llm = None
+                    pipeline_factory.clear_unused_pipelines()
+                    hardware_manager.clear_memory(aggressive=True)
+                    await asyncio.sleep(1)
+
+        error_msg = (
+            "Failed to load model even with minimal settings after all fallbacks."
+        )
+        self._logger.error(error_msg)
+        self._mark_model_corrupted(error_msg)
+        raise RuntimeError(error_msg)
 
     @abstractmethod
     async def _create_system_prompt(
@@ -123,30 +273,44 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         - Lower context = more GPU layers (model weights in GPU VRAM)
         - Larger models need more conservative GPU allocation
         """
-        # Define base allocations per model size (optimized for 48GB VRAM)
+        # Define base allocations per model size (AGGRESSIVE for research/testing with 48GB VRAM)
         base_allocations = {
-            "small": {"max": 80, "high": 70, "medium": 60, "low": 50, "min": 40},
-            "medium": {"max": 70, "high": 60, "medium": 50, "low": 40, "min": 30},
-            "large": {"max": 60, "high": 50, "medium": 40, "low": 30, "min": 25},
-            "xlarge": {"max": 50, "high": 40, "medium": 30, "low": 25, "min": 20},
+            "small": {"max": 99, "high": 95, "medium": 90, "low": 85, "min": 80},
+            "medium": {"max": 95, "high": 90, "medium": 85, "low": 80, "min": 75},
+            "large": {
+                "max": 90,
+                "high": 85,
+                "medium": 80,
+                "low": 75,
+                "min": 70,
+            },  # Much more aggressive for 30B
+            "xlarge": {"max": 85, "high": 80, "medium": 75, "low": 70, "min": 65},
         }
 
         # Get allocation thresholds for the model category
         alloc = base_allocations.get(model_size_category, base_allocations["medium"])
 
-        # Determine GPU layers based on context size
+        # Determine GPU layers based on context size (AGGRESSIVE allocation)
         if n_ctx <= 4096:  # 4K context or less
-            return alloc["max"]  # More layers on GPU for smaller context
+            return alloc["max"]  # Maximum layers on GPU
         elif n_ctx <= 8192:  # 8K context
             return alloc["high"]  # High allocation
         elif n_ctx <= 16384:  # 16K context
-            return alloc["medium"]  # Balanced approach
+            return alloc["medium"]  # Still aggressive
         elif n_ctx <= 32768:  # 32K context
-            return alloc["low"]  # Conservative approach
+            return alloc["low"]  # Reasonable allocation
         elif n_ctx <= 65536:  # 64K context
-            return alloc["min"]  # Very conservative
-        else:  # > 64K context (extreme cases like 1M)
-            return max(15, alloc["min"] - 10)  # Still reasonable with 48GB VRAM
+            return alloc["min"]  # Still good allocation
+        elif n_ctx <= 131072:  # 128K context (model's trained context)
+            return max(
+                20, alloc["min"] - 5
+            )  # Slightly more conservative but still reasonable
+        elif n_ctx <= 262144:  # 256K context
+            return max(18, alloc["min"] - 7)  # More conservative for larger context
+        elif n_ctx <= 524288:  # 512K context
+            return max(15, alloc["min"] - 10)  # Very conservative for large context
+        else:  # > 512K context (1M tokens)
+            return max(12, alloc["min"] - 13)  # Minimal layers for extreme context
 
     def _should_use_extended_timeout(self, messages: List[Message]) -> bool:
         """
@@ -337,10 +501,10 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         else:
             # Bind tools if provided
             try:
-                if tools:
+                if tools and self.llm:
                     binder = getattr(self.llm, "bind_tools", None)
                     if callable(binder):
-                        self.llm = binder(tools)
+                        self.llm = cast(BaseChatModel, binder(tools))
             except Exception:
                 pass
 
@@ -412,8 +576,6 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
             )  # Allow up to 80% of pipeline timeout, min 90s
 
             try:
-                from typing import cast
-
                 llm = cast(Any, self.llm)
                 response = await asyncio.wait_for(
                     (
@@ -657,3 +819,88 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         # Clear caches
         self.graph_cache.clear()
         self.model_state = ModelState()
+
+    async def _generate_with_monitoring(self, messages: List[Dict[str, Any]]):
+        """
+        Generate response with real-time monitoring for perplexity and repetition,
+        using the modern astream_events API.
+        """
+        from collections import deque
+        import re
+        import math
+
+        # Configuration for monitoring
+        repetition_window_size = 30
+        repetition_threshold = 4
+        perplexity_threshold = self.circuit_config.perplexity_threshold
+
+        recent_phrases = deque(maxlen=repetition_window_size)
+        full_response = ""
+
+        if not self.llm:
+            raise RuntimeError("LLM not initialized. Cannot generate response.")
+
+        try:
+            # Convert dict messages to LangChain BaseMessage objects
+            lc_messages = build_lc_messages(messages)
+
+            async for event in self.llm.astream_events(lc_messages, version="v2"):
+                if event["event"] == "on_chat_model_stream":
+                    chunk = event["data"].get("chunk")
+                    if not isinstance(chunk, AIMessageChunk):
+                        continue
+
+                    # Aggregate content
+                    content_piece = chunk.content
+                    if isinstance(content_piece, str):
+                        full_response += content_piece
+                    elif isinstance(content_piece, list):
+                        for part in content_piece:
+                            if isinstance(part, str):
+                                full_response += part
+                            elif isinstance(part, dict) and part.get("type") == "text":
+                                full_response += part.get("text", "")
+
+                    # --- Perplexity Check ---
+                    if (
+                        perplexity_threshold > 0
+                        and chunk.response_metadata
+                        and "logprobs" in chunk.response_metadata
+                    ):
+                        logprobs_data = chunk.response_metadata["logprobs"]
+                        if isinstance(logprobs_data, list) and logprobs_data:
+                            logprob_item = logprobs_data[0]
+                            if isinstance(logprob_item, dict) and "logprob" in logprob_item:
+                                logprob = logprob_item["logprob"]
+                                if logprob != 0.0:
+                                    perplexity = math.exp(-logprob)
+                                    if perplexity > perplexity_threshold:
+                                        self._logger.warning(
+                                            f"High perplexity detected: {perplexity:.2f} > {perplexity_threshold}. "
+                                            "Model may be confused. Stopping generation."
+                                        )
+                                        full_response += "\n[Generation stopped due to high perplexity]"
+                                        return AIMessage(content=full_response)
+
+                    # --- Repetition Check ---
+                    words = re.findall(r"\b\w+\b", full_response.lower())
+                    if len(words) > 5:
+                        last_phrase = " ".join(words[-5:])
+                        if last_phrase in recent_phrases:
+                            count = recent_phrases.count(last_phrase)
+                            if count >= repetition_threshold:
+                                self._logger.warning(
+                                    f"Detected repetitive sequence: '{last_phrase}'. Stopping generation."
+                                )
+                                full_response += "\n[Response truncated due to repetition]"
+                                return AIMessage(content=full_response)
+                        recent_phrases.append(last_phrase)
+
+            return AIMessage(content=full_response)
+
+        except Exception as e:
+            self._logger.error(f"Error during monitored generation: {e}", exc_info=True)
+            # Fallback to a simple invoke on streaming error
+            if self.llm:
+                return await self.llm.ainvoke(messages)
+            return AIMessage(content=f"[Error in generation: {e}]")

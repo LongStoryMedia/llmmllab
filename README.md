@@ -45,9 +45,9 @@ Each component has its own detailed README with specific instructions:
 
 - [Inference Services](inference/README.md) - API services and model execution
 - [UI Application](ui/README.md) - User interface for interacting with the services
-- [gRPC Architecture](GRPC_README.md) - Details on the gRPC implementation
 - [YAML Schemas](schemas/README.md) - Data structure definitions
-- [Context Extension Architecture](context_extension.md) - LLM context window extension system
+- [Context Extension Architecture](docs/context_extension.md) - LLM context window extension system
+- [Dynamic Tool Generation](inference/server/tools/README.md) - Tool generation for model execution
 
 ## Getting Started
 
