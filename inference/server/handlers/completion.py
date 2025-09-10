@@ -3,6 +3,7 @@ Enhanced chat completion handler with proper LangGraph integration and resource 
 """
 
 import asyncio
+import time
 from typing import AsyncIterator, List, Optional
 from contextlib import asynccontextmanager
 from fastapi import BackgroundTasks
@@ -27,6 +28,7 @@ from server.config import logger
 from server.db import storage
 from server.tools.integration import (
     get_tools,
+    StandardToolProvider,
 )
 from ..services.context import ConversationContext
 
@@ -69,10 +71,59 @@ class ResourceContext:
 class CompletionHandler:
     """Chat completion orchestrator."""
 
+    def __init__(self):
+        self._model_profile_cache = {}
+        self._cache_ttl = 300  # 5 minutes
+
     @asynccontextmanager
     async def _resources(self) -> AsyncIterator[ResourceContext]:
         async with ResourceContext() as rc:
             yield rc
+
+    async def _get_model_profile(self, conversation_ctx: ConversationContext):
+        """Get model profile with caching."""
+        user_id = conversation_ctx.user_config.user_id
+        primary_id = conversation_ctx.user_config.model_profiles.primary_profile_id
+        
+        # Try cache first
+        cache_key = f"{user_id}:{primary_id}"
+        if cache_key in self._model_profile_cache:
+            cached_mp, timestamp = self._model_profile_cache[cache_key]
+            if time.time() - timestamp < self._cache_ttl:
+                return cached_mp
+        
+        # Get primary profile
+        mp = await storage.get_service(storage.model_profile).get_model_profile_by_id(
+            primary_id, user_id
+        )
+        
+        if mp:
+            self._model_profile_cache[cache_key] = (mp, time.time())
+            return mp
+        
+        raise ValueError(f"Model profile {primary_id} not found for user {user_id}")
+
+    def _should_skip_dynamic_tools(self, conversation_ctx: ConversationContext) -> bool:
+        """Determine if we can skip expensive dynamic tool generation."""
+        if not conversation_ctx.current_user_message:
+            return True
+        
+        message_text = extract_message_text(conversation_ctx.current_user_message)
+        if not message_text:
+            return True
+        
+        # Skip for simple conversational queries
+        simple_patterns = [
+            "hello", "hi", "how are you", "what is", "tell me about",
+            "explain", "describe", "who is", "where is", "when is"
+        ]
+        
+        message_lower = message_text.lower()
+        if any(pattern in message_lower for pattern in simple_patterns):
+            if len(message_text.split()) < 10:  # Short simple queries
+                return True
+        
+        return False
 
     async def handle_completion(
         self,
@@ -85,53 +136,75 @@ class CompletionHandler:
         async with self._resources() as rc:
             try:
 
-                # 2) Acquire tools, streaming status updates
+                # 2) Acquire tools efficiently (non-blocking)
                 tools: List[BaseTool] = []
                 try:
-                    async for item in get_tools(conversation_ctx):
-                        if isinstance(item, str):
+                    # Skip expensive dynamic tool generation for simple queries
+                    if self._should_skip_dynamic_tools(conversation_ctx):
+                        tools = StandardToolProvider.get_standard_tools(conversation_ctx)
+                        yield serialize_to_json(
+                            create_streaming_chunk("Using standard tools", done=False)
+                        )
+                    else:
+                        # Use much longer timeout for tool acquisition in research/testing
+                        tool_timeout = 300.0  # 5 minute timeout for tool generation
+                        try:
+                            tool_gen = get_tools(conversation_ctx)
+                            start_time = asyncio.get_event_loop().time()
+                            
+                            async for item in tool_gen:
+                                # Check timeout manually since asyncio.wait_for doesn't work with async generators
+                                if asyncio.get_event_loop().time() - start_time > tool_timeout:
+                                    raise asyncio.TimeoutError(f"Tool acquisition timed out after {tool_timeout}s")
+                                    
+                                if isinstance(item, str):
+                                    yield serialize_to_json(
+                                        create_streaming_chunk(item, done=False)
+                                    )
+                                else:
+                                    tools = item
+                                    break
+                        except asyncio.TimeoutError as e:
+                            logger.warning(f"Tool acquisition timed out: {e}, using standard tools")
+                            tools = StandardToolProvider.get_standard_tools(conversation_ctx)
                             yield serialize_to_json(
-                                create_streaming_chunk(item, done=False)
+                                create_streaming_chunk("Tool generation timed out, using standard tools", done=False)
                             )
-                        else:
-                            tools = item
-                            break
                 except Exception as e:
-                    logger.warning(f"Tool acquisition failed: {e}")
-                    tools = []
-
-                # 3) Resolve model profile and pipeline with fallback
-                mp = await storage.get_service(
-                    storage.model_profile
-                ).get_model_profile_by_id(
-                    conversation_ctx.user_config.model_profiles.primary_profile_id,
-                    conversation_ctx.user_config.user_id,
-                )
-                
-                # If primary profile fails, try fallback profile
-                if not mp:
-                    logger.warning(f"Primary model profile not found, trying fallback")
-                    mp = await storage.get_service(
-                        storage.model_profile
-                    ).get_model_profile_by_id(
-                        conversation_ctx.user_config.model_profiles.fallback_profile_id,
-                        conversation_ctx.user_config.user_id,
+                    logger.warning(f"Tool acquisition failed: {e}, using standard tools")
+                    tools = StandardToolProvider.get_standard_tools(conversation_ctx)
+                    yield serialize_to_json(
+                        create_streaming_chunk("Tool generation failed, using standard tools", done=False)
                     )
-                
-                assert mp, "No valid model profile found (primary or fallback)"
+
+                # 3) Resolve model profile
+                mp = await self._get_model_profile(conversation_ctx)
                 full_response = ""
 
                 try:
-                    with pipeline_factory.pipeline(mp, ChatResponse) as pipeline:
+                    # Use HIGH priority for main chat completion pipelines
+                    from runner.pipeline_factory import PipelinePriority
+                    with pipeline_factory.pipeline(mp, ChatResponse, PipelinePriority.HIGH) as pipeline:
                         rc.add("pipeline", pipeline)
 
                         # 4) Stream execution
                         logger.info(
                             f"Starting pipeline execution with {len(conversation_ctx.messages)} messages and {len(tools)} tools"
                         )
+                        
+                        # Ensure we have at least the current user message
+                        messages_to_process = conversation_ctx.messages
+                        if not messages_to_process and conversation_ctx.current_user_message:
+                            messages_to_process = [conversation_ctx.current_user_message]
+                        
+                        if not messages_to_process:
+                            logger.error("No messages to process")
+                            yield serialize_to_json(create_error_chunk("No messages to process"))
+                            return
+                        
                         chunk_count = 0
                         async for chunk in stream_pipeline(
-                            conversation_ctx.messages, pipeline, tools
+                            messages_to_process, pipeline, tools
                         ):
                             chunk_count += 1
                             # Extract text content for accumulation
@@ -173,7 +246,15 @@ class CompletionHandler:
 
             except Exception as e:
                 logger.error(f"Completion error: {e}", exc_info=True)
-                yield serialize_to_json(create_error_chunk(str(e)))
+                # Provide specific error message based on the error type
+                if "Model profile" in str(e) and "not found" in str(e):
+                    error_msg = "Model configuration not found. Please check your model settings."
+                elif "Tool" in str(e) and "failed" in str(e):
+                    error_msg = "Tool processing failed, but continuing with basic functionality."
+                else:
+                    error_msg = f"Processing error: {str(e)}"
+                
+                yield serialize_to_json(create_error_chunk(error_msg))
 
 
 # Global handler instance

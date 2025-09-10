@@ -102,6 +102,11 @@ class EventStreamProcessor:
         self.repetition_count = 0
         self._last_hashes: List[int] = []
         self.logger = logging.getLogger(__name__)
+        
+        # Pre-compute event type sets for faster lookup
+        self._start_events = frozenset(["on_chat_model_start", "on_llm_start", "on_agent_start"])
+        self._stream_events = frozenset(["on_chat_model_stream", "on_llm_stream", "on_agent_stream"])
+        self._end_events = frozenset(["on_chat_model_end", "on_llm_end"])
 
     def _update_buffer(self, new_content: str) -> str:
         self._buffer = (self._buffer + new_content)[
@@ -161,7 +166,8 @@ class EventStreamProcessor:
         try:
             event_type = evt.get("event", "")
 
-            if event_type in ["on_chat_model_start", "on_llm_start", "on_agent_start"]:
+            # Use a dispatch table for better performance
+            if event_type in self._start_events:
                 if self.thinking_phase:
                     self.thinking_phase = False
                     return create_streaming_chunk(
@@ -170,23 +176,19 @@ class EventStreamProcessor:
                         role=MessageRole.OBSERVER,
                     )
 
-            if event_type in [
-                "on_chat_model_stream",
-                "on_llm_stream",
-                "on_agent_stream",
-            ]:
+            elif event_type in self._stream_events:
                 return self._process_stream_chunk(evt)
 
-            if event_type in ["on_chat_model_end", "on_llm_end"]:
+            elif event_type in self._end_events:
                 return create_streaming_chunk("", done=True)
 
-            if event_type == "on_tool_start":
+            elif event_type == "on_tool_start":
                 return self._process_tool_start(evt)
 
-            if event_type == "on_tool_end":
+            elif event_type == "on_tool_end":
                 return self._process_tool_end(evt)
 
-            if event_type == "on_agent_finish":
+            elif event_type == "on_agent_finish":
                 return self._process_agent_finish(evt)
 
             # Skip unknown/unhandled events instead of serializing them

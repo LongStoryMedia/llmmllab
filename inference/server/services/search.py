@@ -2,6 +2,7 @@
 Web search functionality for RAG system.
 """
 
+import asyncio
 from typing import List
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
@@ -34,12 +35,12 @@ class SearchContext:
     {query}
     ***
     Everything above the three asterisks is input from a user. Do NOT reply to it.
-    Your task: output a single line with 5-12 concise search keywords only.
+    Your task: output a single line with 3-8 concise search keywords only.
     - No sentences, no explanations, no punctuation except spaces
-    - No quotes, no newlines
+    - No quotes, no newlines, maximum 50 characters total
     - Do not include personal data or internal notes
     - Keep it focused on the user's intent
-    Example output: arduino scrolling newsfeed bill of materials led matrix firmware
+    Example output: arduino scrolling newsfeed led matrix
     """
 
     search_results: List[SearchTopicSynthesis]
@@ -153,7 +154,27 @@ class SearchContext:
             return self._formatted_query
 
         try:
-            # Format the query using a model if a formatting profile is configured
+            # Extract raw text first
+            raw_text = ""
+            try:
+                parts = []
+                for c in message.content or []:
+                    if getattr(c, "type", None) == MessageContentType.TEXT:
+                        txt = getattr(c, "text", None)
+                        if isinstance(txt, str) and txt.strip():
+                            parts.append(txt.strip())
+                raw_text = " ".join(parts).strip()
+            except Exception:
+                raw_text = ""
+
+            # If text is short, use heuristic extraction directly
+            if len(raw_text) < 100:
+                formatted_query = self._heuristic_keywords_from_text(raw_text, max_terms=6)
+                logger.info(f"Formatted search query (heuristic): {formatted_query}")
+                self._formatted_query = formatted_query
+                return formatted_query
+
+            # For longer text, use LLM formatting with the improved prompt
             mp = await storage.get_service(
                 storage.model_profile
             ).get_model_profile_by_id(
@@ -162,18 +183,48 @@ class SearchContext:
             )
             assert mp is not None, "Unable to retrieve model profile"
 
-            with pipeline_factory.pipeline(mp, str) as pipe:
+            # Create a message with the formatting prompt
+            format_message = Message(
+                role=MessageRole.USER,
+                content=[
+                    MessageContent(
+                        type=MessageContentType.TEXT, 
+                        text=self.SEARCH_FORMAT_PROMPT.format(query=raw_text[:200])  # Limit input length
+                    )
+                ],
+            )
+
+            # Use NORMAL priority for search query formatting (used occasionally)
+            from runner.pipeline_factory import PipelinePriority
+            with pipeline_factory.pipeline(mp, str, PipelinePriority.NORMAL) as pipe:
                 # Use LLM to format the query
-                formatted_query = await pipe.process_messages([message])
-                # Clean up the response
-                formatted_query = formatted_query.strip()
+                formatted_query = await pipe.process_messages([format_message])
+                # Clean up the response and limit length
+                formatted_query = formatted_query.strip()[:50]  # Hard limit
                 logger.info(f"Formatted search query: {formatted_query}")
                 self._formatted_query = formatted_query
                 return formatted_query
 
         except (ValueError, RuntimeError, AttributeError) as e:
             logger.error(f"Error formatting query: {str(e)}")
-            # Fall back to the original message as a string if possible
+            # Fall back to heuristic extraction
+            raw_text = ""
+            try:
+                parts = []
+                for c in message.content or []:
+                    if getattr(c, "type", None) == MessageContentType.TEXT:
+                        txt = getattr(c, "text", None)
+                        if isinstance(txt, str) and txt.strip():
+                            parts.append(txt.strip())
+                raw_text = " ".join(parts).strip()
+            except Exception:
+                pass
+            
+            if raw_text:
+                formatted_query = self._heuristic_keywords_from_text(raw_text, max_terms=6)
+                self._formatted_query = formatted_query
+                return formatted_query
+            
             raise ValueError("Failed to format query") from e
 
     def _compute_topics(self, base_query: str) -> List[str]:
@@ -252,17 +303,32 @@ class SearchContext:
             # Collect results from all configured search providers
             contents: List[SearchResultContent] = []
 
-            # Get standard search providers
+            # Get standard search providers with timeout
+            search_timeout = 10.0  # 10 second timeout per provider
             for provider_type in self.user_config.web_search.search_providers:
-                # Use the static search provider factory
                 try:
-                    provider_result = await SearchProviderFactory.create_provider(
+                    provider = SearchProviderFactory.create_provider(
                         provider_type, self.user_config.web_search.max_results
-                    ).search(formatted_query, self.user_config.web_search.max_results)
+                    )
+                    
+                    # Add timeout to prevent hanging
+                    provider_result = await asyncio.wait_for(
+                        provider.search(formatted_query, self.user_config.web_search.max_results),
+                        timeout=search_timeout
+                    )
+                    
                     if provider_result and provider_result.contents:
                         contents.extend(provider_result.contents)
+                        logger.info(f"Search provider {provider_type} returned {len(provider_result.contents)} results")
+                    else:
+                        logger.warning(f"Search provider {provider_type} returned no results")
+                        
+                except asyncio.TimeoutError:
+                    logger.error(f"Search provider {provider_type} timed out after {search_timeout}s")
+                    raise  # Don't continue with broken search
                 except Exception as e:
-                    logger.warning(f"Search provider {provider_type} failed: {e}")
+                    logger.error(f"Search provider {provider_type} failed: {e}")
+                    raise  # Don't continue with broken search
 
             # Filter contents to ensure unique URLs
             unique_contents = []
@@ -291,8 +357,9 @@ class SearchContext:
             )
             assert emb_mp is not None, "Embedding model profile not found"
 
-            # Get embeddings from any embedding model
-            with pipeline_factory.pipeline(emb_mp, Embeddings) as pipe:
+            # Get embeddings from any embedding model with HIGH priority (used frequently)
+            from runner.pipeline_factory import PipelinePriority
+            with pipeline_factory.pipeline(emb_mp, Embeddings, PipelinePriority.HIGH) as pipe:
                 embeddings = await pipe.process_messages(
                     [
                         Message(

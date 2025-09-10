@@ -52,12 +52,12 @@ class QwenLangGraphPipe(BaseLangGraphPipeline[T]):
         profile: ModelProfile,
         expected_return_type: Optional[type] = None,
     ):
-        # Configure circuit breaker with appropriate timeouts for Qwen
+        # Configure circuit breaker with MUCH longer timeouts for research/testing
         circuit_config = CircuitBreakerConfig(
-            base_timeout=60.0,  # Increased from 30s
-            deep_research_timeout=180.0,  # 3 minutes for complex research
-            max_retries=2,
-            cooldown_period=45.0,
+            base_timeout=300.0,  # 5 minutes base timeout
+            deep_research_timeout=900.0,  # 15 minutes for complex research
+            max_retries=3,
+            cooldown_period=60.0,
         )
 
         super().__init__(model, profile, expected_return_type, circuit_config)
@@ -65,8 +65,8 @@ class QwenLangGraphPipe(BaseLangGraphPipeline[T]):
         self.profile = profile
         self._logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
-        # Initialize context manager
-        context_tokens = 32768 if "30b" in self.model.name.lower() else 16384
+        # Initialize context manager with max possible context
+        context_tokens = 1048576 if "30b" in self.model.name.lower() else 131072
         self.context_manager = ContextManager(max_context_tokens=context_tokens)
 
         # Validate GGUF file
@@ -101,125 +101,46 @@ class QwenLangGraphPipe(BaseLangGraphPipeline[T]):
         if not os.access(gguf_path, os.R_OK):
             raise PermissionError(f"Cannot read GGUF file: {gguf_path}")
 
-    async def _initialize_llm(
-        self, gguf_path: str, tools: Optional[List[BaseTool]] = None
-    ) -> None:
-        """Initialize the ChatLlamaCpp LLM with optimized parameters."""
-        self._logger.info(f"Initializing Qwen LLM from {gguf_path}")
+    def total_model_layers(self) -> int:
+        return 48
 
-        # Dev/test fallback or missing deps: use a simple dummy LLM
-        allow_dummy = os.environ.get("ALLOW_MISSING_GGUF", "false").lower() in (
-            "1",
-            "true",
-            "yes",
+    @property
+    def model_size_category(self) -> str:
+        return "large"
+
+    def _create_llm_instance(
+        self,
+        gguf_path: str,
+        n_gpu_layers: int,
+        n_ctx: int,
+        tools: Optional[List[BaseTool]] = None,
+    ) -> ChatLlamaCpp:
+        """Create an instance of the ChatLlamaCpp LLM."""
+        batch_size = min(2048, max(512, n_ctx // 64))
+
+        llm = ChatLlamaCpp(
+            model_path=gguf_path,
+            n_gpu_layers=n_gpu_layers,
+            n_ctx=n_ctx,
+            n_batch=batch_size,
+            temperature=self.profile.parameters.temperature or 0.7,
+            max_tokens=self.profile.parameters.max_tokens or -1,
+            top_p=self.profile.parameters.top_p or 0.95,
+            top_k=self.profile.parameters.top_k or 40,
+            repeat_penalty=getattr(self.profile.parameters, "repetition_penalty", 1.1)
+            or 1.1,
+            streaming=True,
+            verbose=True,
+            callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
+            logprobs=1,  # Enable logprobs for perplexity calculation
         )
-        if allow_dummy:
 
-            class _DummyLLM:
-                async def ainvoke(self, _messages, **_):  # noqa: ANN001
-                    return AIMessage(content="[dev] test response")
+        if tools:
+            llm = cast(ChatLlamaCpp, llm.bind_tools(tools))
 
-            self._logger.warning(
-                "Using dummy LLM (dev/test mode or missing ChatLlamaCpp)"
-            )
-            self.llm = _DummyLLM()
-            # Bind tools if provided (no-op for dummy)
-            if tools and hasattr(self.llm, "bind_tools"):
-                try:  # noqa: SIM105
-                    self.llm = cast(Any, self.llm).bind_tools(tools)  # type: ignore[attr-defined]
-                except Exception as e:  # noqa: BLE001
-                    self._logger.warning(f"Failed to bind tools: {e}")
-            return
+        return llm
 
-        else:
-            # Get context size with reasonable limits to prevent memory issues
-            requested_ctx = self.profile.parameters.num_ctx or 32768
-            # Cap context size for 30B models to prevent memory exhaustion
-            max_ctx = 65536 if "30b" in self.model.name.lower() else 32768
-            n_ctx = min(requested_ctx, max_ctx)
-            
-            if requested_ctx > max_ctx:
-                self._logger.warning(
-                    f"Requested context {requested_ctx} exceeds safe limit {max_ctx} for this model, "
-                    f"using {n_ctx} instead"
-                )
-            
-            optimal_gpu_layers = self._calculate_optimal_gpu_layers(n_ctx, "large")  # 30B is large size
-            
-            self._logger.info(
-                f"Dynamic GPU allocation: n_ctx={n_ctx}, using {optimal_gpu_layers} GPU layers"
-            )
-            
-            # Initialize ChatLlamaCpp with optimized parameters
-            # System prompt is incorporated upstream; creating LLM instance
-            try:
-                self.llm = ChatLlamaCpp(
-                    model_path=gguf_path,
-                    n_gpu_layers=optimal_gpu_layers,  # Dynamic GPU allocation based on context
-                    n_batch=512,  # Restore original batch size
-                    f16_kv=True,  # Enable f16 for GPU efficiency
-                    verbose=os.environ.get("LOG_LEVEL", "warning") == "debug",
-                    n_parts=-1,
-                    streaming=True,
-                    n_ctx=n_ctx,  # Use the determined context size
-                    use_mmap=True,  # Enable memory mapping for efficiency
-                    use_mlock=False,  # Disable mlock to avoid memory pressure
-                    # Model parameters
-                    seed=self.profile.parameters.seed or -1,
-                    temperature=self.profile.parameters.temperature or 0.7,
-                    max_tokens=self.profile.parameters.max_tokens or 4096,
-                    top_p=self.profile.parameters.top_p or 0.8,
-                    top_k=self.profile.parameters.top_k or 20,
-                    repeat_penalty=self.profile.parameters.repeat_penalty or 1.05,
-                    stop=self.profile.parameters.stop
-                    or [
-                        "<|im_end|>",
-                        "<|endoftext|>",
-                        "<|end|>",
-                    ],
-                    callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
-                )
-            except Exception as primary_error:
-                # Try with very conservative settings for 30B model
-                self._logger.warning(
-                    f"Primary model load failed: {primary_error}. "
-                    f"Trying with ultra-conservative settings for 30B model..."
-                )
-                try:
-                    conservative_ctx = min(n_ctx, 16384)  # Much smaller context
-                    conservative_gpu_layers = max(0, optimal_gpu_layers - 15)  # Fewer GPU layers
-                    
-                    self.llm = ChatLlamaCpp(
-                        model_path=gguf_path,
-                        n_gpu_layers=conservative_gpu_layers,
-                        n_batch=256,  # Smaller batch
-                        f16_kv=False,  # Disable f16_kv for compatibility
-                        verbose=True,  # Enable verbose for debugging
-                        n_parts=-1,
-                        streaming=True,
-                        n_ctx=conservative_ctx,
-                        use_mmap=False,  # Disable mmap
-                        use_mlock=False,
-                        seed=-1,
-                        temperature=0.7,
-                        callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
-                    )
-                    self._logger.info(
-                        f"30B model loaded with conservative settings: "
-                        f"ctx={conservative_ctx}, gpu_layers={conservative_gpu_layers}"
-                    )
-                except Exception as secondary_error:
-                    self._logger.error(
-                        f"Failed to load 30B model with both standard and conservative settings. "
-                        f"Primary: {primary_error}. Secondary: {secondary_error}"
-                    )
-                    raise secondary_error
 
-            # Prepend system prompt via bind if supported
-
-        # Bind tools if provided
-        if tools and hasattr(self.llm, "bind_tools"):
-            self.llm = self.llm.bind_tools(tools)
 
     async def _create_system_prompt(
         self, tools: Optional[List[BaseTool]] = None
@@ -395,10 +316,9 @@ Avoid circular reasoning, excessive elaboration, or repetitive explanations. Be 
                 else min(self.circuit_config.base_timeout, 60.0)
             )
 
-            # Execute with timeout protection - use ainvoke directly
-            # Execute with timeout protection - use ainvoke directly
+            # Execute with timeout protection and monitoring
             response = await asyncio.wait_for(
-                self.llm.ainvoke(messages),
+                self._generate_with_monitoring(messages),
                 timeout=timeout_seconds,
             )
 

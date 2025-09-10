@@ -169,16 +169,17 @@ class WebExtractionService:
         self.user_config = user_config
         self.visited_urls: Set[str] = set()
         self.crawler_settings = get_project_settings()
-        # Configure Scrapy settings
+        # Configure Scrapy settings with shorter timeouts
         self.crawler_settings.update(
             {
                 "USER_AGENT": "Mozilla/5.0 (compatible; LLMWebExtractor/1.0; +https://example.com/bot)",
                 "ROBOTSTXT_OBEY": True,
-                "CONCURRENT_REQUESTS": 4,
-                "DOWNLOAD_TIMEOUT": 10,
+                "CONCURRENT_REQUESTS": 2,  # Reduced concurrency
+                "DOWNLOAD_TIMEOUT": 5,     # Reduced timeout
                 "LOG_LEVEL": "ERROR",
                 "TELNETCONSOLE_ENABLED": False,
-                "RETRY_TIMES": 1,
+                "RETRY_TIMES": 0,          # No retries
+                "CLOSESPIDER_TIMEOUT": 15, # Overall timeout
             }
         )
 
@@ -228,8 +229,8 @@ class WebExtractionService:
         self.crawler_settings.update(
             {
                 "FEEDS": {output_file: {"format": "json", "overwrite": True}},
-                "CLOSESPIDER_TIMEOUT": 25,  # shorter overall cap
-                "DEPTH_LIMIT": min(max_depth, 2),
+                "CLOSESPIDER_TIMEOUT": 15,  # Reduced timeout
+                "DEPTH_LIMIT": min(max_depth, 1),  # Reduced depth
             }
         )
 

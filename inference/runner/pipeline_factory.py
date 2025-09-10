@@ -6,24 +6,44 @@ modern/legacy pipeline selection. Replaces the previous garbled version.
 import json
 import logging
 import os
-import time
 import threading
-from typing import Any, Dict, List, Optional, Type, cast
-from contextlib import contextmanager
+import time
 import weakref
+import gc
+from contextlib import contextmanager
+from enum import Enum, IntEnum
+from typing import Any, Dict, List, Optional, Type, cast, ContextManager, Iterator
 
 from models import Model, LoraWeight, ModelDetails, ModelProfile, ChatResponse
 from .pipelines.base import BasePipelineCore, PipeReturn
 from utils.hardware_manager import hardware_manager
 
 
-class PipelineCacheEntry:
-    """Cache entry with automatic cleanup via weak references."""
+class PipelinePriority(IntEnum):
+    """Pipeline priority levels for cache eviction."""
 
-    def __init__(self, pipeline: BasePipelineCore, timestamp: Optional[float] = None):
+    LOW = 1  # Tool generation, etc. (evict first)
+    MEDIUM = 5  # Standard pipelines
+    NORMAL = 5  # Standard pipelines
+    HIGH = 10  # Critical pipelines (main chat models)
+    CRITICAL = 20  # For primary/main models that should rarely be evicted
+
+
+class PipelineCacheEntry:
+    """Cache entry with automatic cleanup via weak references and priority-based eviction."""
+
+    def __init__(
+        self,
+        pipeline: BasePipelineCore,
+        priority: PipelinePriority = PipelinePriority.NORMAL,
+        timestamp: Optional[float] = None,
+    ):
         self._pipeline_ref = weakref.ref(pipeline)
         self.last_accessed = timestamp if timestamp is not None else time.time()
         self.creation_time = time.time()
+        self.priority = priority
+        self.access_count = 1  # Track how often this pipeline is used
+        self.lock = threading.Lock()
 
     @property
     def pipeline(self) -> Optional[BasePipelineCore]:
@@ -35,6 +55,47 @@ class PipelineCacheEntry:
 
     def touch(self) -> None:
         self.last_accessed = time.time()
+        self.access_count += 1
+
+    @contextmanager
+    def use_pipeline(self) -> Iterator[Optional[BasePipelineCore]]:
+        """A context manager to safely use the pipeline with a lock."""
+        if not self.is_alive():
+            raise RuntimeError("Pipeline is no longer available.")
+        
+        pipeline = self.pipeline
+        if pipeline is None:
+            raise RuntimeError("Pipeline reference is dead.")
+
+        with self.lock:
+            try:
+                yield pipeline
+            finally:
+                pass  # Lock is released automatically
+
+    def get_eviction_score(self, current_time: float) -> float:
+        """
+        Calculate eviction score. Lower scores are evicted first.
+
+        Score considers:
+        - Age since last access (older = lower score)
+        - Priority (higher priority = higher score)
+        - Access frequency (more used = higher score)
+        """
+        age_seconds = current_time - self.last_accessed
+
+        # Base score from priority
+        score = float(self.priority)
+
+        # Reduce score based on age (older items get lower scores)
+        age_penalty = age_seconds / 3600.0  # Penalty per hour
+        score -= age_penalty
+
+        # Boost score based on access frequency
+        frequency_boost = min(self.access_count / 10.0, 2.0)  # Cap at 2.0 boost
+        score += frequency_boost
+
+        return score
 
 
 class PipelineFactory:
@@ -49,6 +110,7 @@ class PipelineFactory:
     _available_models: Dict[str, Model] = {}
     _cache_timeout = 300  # seconds
     _cleanup_thread = None
+    _lock = threading.Lock()  # Lock to serialize pipeline creation
     _cleanup_lock = threading.RLock()
 
     def __init__(self, prefer_langgraph: bool = True, cache_timeout: int = 300):
@@ -166,7 +228,7 @@ class PipelineFactory:
 
     # ---------- Public API ----------
 
-    def _estimate_pipeline_memory_requirements(self, model: Model) -> float:
+    def _estimate_pipeline_memory_requirements(self, model: Model, profile: ModelProfile) -> float:
         """
         Estimate memory requirements for a pipeline based on model characteristics.
         Returns estimated bytes required.
@@ -241,17 +303,17 @@ class PipelineFactory:
                     f"Model size {model.size/1e9:.2f}GB seems unreasonable, using task-based estimate"
                 )
 
-        # Last resort: Task-based defaults
+        # Last resort: Task-based defaults (more conservative)
         if model_size_bytes == 0:
             task = getattr(model, "task", "TextToText")
             if task == "TextToEmbeddings":
                 model_size_bytes = 1 * 1024 * 1024 * 1024  # 1GB
             elif task in ["TextToText", "VisionTextToText"]:
-                model_size_bytes = 8 * 1024 * 1024 * 1024  # 8GB
+                model_size_bytes = 4 * 1024 * 1024 * 1024  # 4GB (reduced from 8GB)
             elif task in ["TextToImage", "ImageToImage"]:
-                model_size_bytes = 12 * 1024 * 1024 * 1024  # 12GB
+                model_size_bytes = 8 * 1024 * 1024 * 1024  # 8GB (reduced from 12GB)
             else:
-                model_size_bytes = 4 * 1024 * 1024 * 1024  # 4GB
+                model_size_bytes = 2 * 1024 * 1024 * 1024  # 2GB (reduced from 4GB)
 
             self.logger.debug(
                 f"Using task-based default for {task}: {model_size_bytes/1e9:.2f}GB"
@@ -261,8 +323,13 @@ class PipelineFactory:
         context_memory = 0
         task = getattr(model, "task", "")
         if task in ["TextToText", "VisionTextToText"]:
-            # Context memory scales with model size but caps at 2GB
-            context_memory = min(model_size_bytes * 0.1, 2 * 1024 * 1024 * 1024)
+            # Context memory scales with n_ctx
+            num_ctx = profile.parameters.num_ctx or 4096  # Default to 4096 if not set
+            # Heuristic: Each token in the context might take up space in KV cache.
+            # This varies wildly by model, but we can use a rough estimate.
+            # Let's say ~512 bytes per token in the context cache.
+            context_memory = num_ctx * 512
+            context_memory = min(context_memory, 4 * 1024 * 1024 * 1024) # Cap at 4GB
 
         total_estimated = base_memory + model_size_bytes + context_memory
 
@@ -281,6 +348,7 @@ class PipelineFactory:
     ) -> bool:
         """
         Ensure sufficient memory is available by evicting cached pipelines if necessary.
+        Uses priority-based eviction: lower priority and older pipelines are evicted first.
 
         Args:
             required_bytes: Memory required in bytes
@@ -295,7 +363,7 @@ class PipelineFactory:
 
         self.logger.info(
             f"Insufficient memory for pipeline requiring {required_bytes/1e9:.2f}GB. "
-            "Attempting cache eviction..."
+            "Attempting priority-based cache eviction..."
         )
 
         # Clear any already-dead entries first
@@ -305,6 +373,7 @@ class PipelineFactory:
             ]
             for k in dead_keys:
                 self._pipelines.pop(k, None)
+                self.logger.debug(f"Removed dead pipeline entry: {k}")
 
         # Try gentle memory clearing first
         hardware_manager.clear_memory(aggressive=False)
@@ -312,25 +381,35 @@ class PipelineFactory:
             self.logger.info("Sufficient memory available after gentle cleanup")
             return True
 
-        # Get entries sorted by last access time (oldest first)
+        # Get entries sorted by eviction score (lowest score = evicted first)
+        current_time = time.time()
         with self._cleanup_lock:
             eviction_candidates = [
-                (model_id, entry)
+                (model_id, entry, entry.get_eviction_score(current_time))
                 for model_id, entry in self._pipelines.items()
                 if entry.is_alive() and model_id != exclude_model
             ]
-            eviction_candidates.sort(key=lambda x: x[1].last_accessed)
+            # Sort by eviction score (lowest first), then by priority (lowest first), then by age (oldest first)
+            eviction_candidates.sort(
+                key=lambda x: (x[2], x[1].priority, x[1].last_accessed)
+            )
 
         # Evict cached pipelines until we have enough memory
         evicted_count = 0
-        for model_id, entry in eviction_candidates:
+        for model_id, entry, score in eviction_candidates:
             with self._cleanup_lock:
                 removed_entry = self._pipelines.pop(model_id, None)
                 if removed_entry and removed_entry.pipeline:
-                    self._cleanup_pipeline_resources(removed_entry.pipeline)
+                    # Rely on GC to clean up the pipeline resources
+                    pass
                 evicted_count += 1
 
-            self.logger.info(f"Evicted cached pipeline for model: {model_id}")
+            self.logger.info(
+                f"Evicted pipeline for model: {model_id} "
+                f"(priority: {entry.priority}, score: {score:.2f}, "
+                f"age: {(current_time - entry.last_accessed)/60:.1f}min, "
+                f"access_count: {entry.access_count})"
+            )
 
             # Try more aggressive memory clearing after each eviction
             hardware_manager.clear_memory(aggressive=True)
@@ -354,136 +433,72 @@ class PipelineFactory:
         )
         return False
 
-    def get_pipeline[T: PipeReturn](
-        self, profile: ModelProfile, expected_type: Type[T]
-    ) -> BasePipelineCore[T]:
-        model_id = profile.model_name
-
-        # Cache lookup
-        with self._cleanup_lock:
-            entry = self._pipelines.get(model_id)
-            if entry and entry.is_alive():
-                entry.touch()
-                pipeline = entry.pipeline
-                if pipeline:
-                    self.logger.debug(f"Using cached pipeline for model: {model_id}")
-                    return pipeline
-            elif entry:
-                self._pipelines.pop(model_id, None)
-
-        # Build fresh pipeline with resource management
-        model = self._get_model_by_id(model_id)
-        if not model:
-            raise RuntimeError(f"Model with ID '{model_id}' not found.")
-
-        # Estimate memory requirements for the new pipeline
-        required_memory = self._estimate_pipeline_memory_requirements(model)
-
-        # Ensure sufficient memory is available
-        if not self._ensure_sufficient_memory(required_memory, exclude_model=model_id):
-            raise RuntimeError(
-                f"Insufficient system resources to create pipeline for model {model.name}. "
-                f"Required: {required_memory/1e9:.2f}GB"
-            )
-
-        self.logger.info(
-            f"Creating pipeline for {model.name} (estimated memory: {required_memory/1e9:.2f}GB)"
-        )
-
-        pipeline = self.create_pipeline(model, profile, expected_type=expected_type)
-        if not pipeline:
-            raise RuntimeError(
-                f"Failed to create pipeline for model {getattr(model, 'name', model_id)}."
-            )
-
-        with self._cleanup_lock:
-            self._pipelines[model_id] = PipelineCacheEntry(pipeline)
-
-        self.logger.info(f"Created and cached pipeline for model: {model.name}")
-
-        # Update memory stats after successful creation
-        hardware_manager.update_all_memory_stats()
-
-        return cast(BasePipelineCore[T], pipeline)
-
-    def clear_cache(self, model_id: Optional[str] = None) -> None:
-        with self._cleanup_lock:
-            if model_id is not None:
-                entry = self._pipelines.pop(model_id, None)
-                if entry and entry.pipeline:
-                    self._cleanup_pipeline_resources(entry.pipeline)
-                self.logger.info(f"Cleared cache for model {model_id}")
-            else:
-                for m_id, entry in list(self._pipelines.items()):
-                    self._pipelines.pop(m_id, None)
-                    if entry and entry.pipeline:
-                        self._cleanup_pipeline_resources(entry.pipeline)
-                self.logger.info("Cleared all pipeline cache entries")
-
-    def get_cache_stats(self) -> Dict[str, Any]:
-        with self._cleanup_lock:
-            alive_count = sum(
-                1 for entry in self._pipelines.values() if entry.is_alive()
-            )
-
-            # Get memory statistics from hardware manager
-            memory_stats = hardware_manager.update_all_memory_stats()
-
-            return {
-                "total_entries": len(self._pipelines),
-                "alive_entries": alive_count,
-                "dead_entries": len(self._pipelines) - alive_count,
-                "available_models": len(self._available_models),
-                "cache_timeout": self._cache_timeout,
-                "memory_stats": {
-                    device_id: {
-                        "total_mb": stats.mem_total,
-                        "used_mb": stats.mem_used,
-                        "free_mb": stats.mem_free,
-                        "utilization_percent": stats.mem_util,
-                        "gpu_utilization_percent": stats.gpu_util,
-                        "temperature_c": stats.temperature,
-                    }
-                    for device_id, stats in memory_stats.items()
-                },
-                "hardware_manager_available": hardware_manager.has_gpu,
-                "gpu_count": (
-                    hardware_manager.gpu_count if hardware_manager.has_gpu else 0
-                ),
-            }
-
-    @contextmanager
-    def pipeline[T: PipeReturn](self, profile: ModelProfile, t: Type[T]):
-        pipeline = self.get_pipeline(profile, t)
-        try:
-            yield pipeline
-        finally:
-            # Keep cached; periodic cleanup will handle expiry
-            pass
-
-    # ---------- Internals ----------
-
-    def _get_model_by_id(self, model_id: str) -> Optional[Model]:
-        if not self._available_models:
-            self.logger.error("Available models dictionary is empty")
-            return None
-        if model_id not in self._available_models:
-            self.logger.error(
-                f"Model '{model_id}' not found. Available: {list(self._available_models.keys())}"
-            )
-            return None
-        return self._available_models[model_id]
-
-    def create_pipeline(
+    def get_pipeline(
         self,
-        model: Model,
+        model_id: str,
         profile: ModelProfile,
-        expected_type: Optional[Type[PipeReturn]] = None,
+        priority: PipelinePriority = PipelinePriority.NORMAL,
+    ) -> Optional[ContextManager[Optional[BasePipelineCore]]]:
+        """Get or create a pipeline for a given model ID and profile."""
+        with self._lock:
+            # First, check if a compatible pipeline is already cached and alive
+            cached_entry = self._pipelines.get(model_id)
+            if cached_entry and cached_entry.is_alive():
+                pipeline = cached_entry.pipeline
+                if pipeline:
+                    self.logger.info(f"Reusing cached pipeline for model: {model_id}")
+                    cached_entry.touch()
+                    # Update priority if a higher priority is requested
+                    if priority > cached_entry.priority:
+                        cached_entry.priority = priority
+                    return cached_entry.use_pipeline()
+
+            # If not cached or the weakref is dead, create a new one
+            model = self._available_models.get(model_id)
+            if not model:
+                self.logger.error(f"Model with ID '{model_id}' not found.")
+                return None
+
+            # Estimate memory before creation
+            estimated_bytes = self._estimate_pipeline_memory_requirements(model, profile)
+            self.logger.info(
+                f"Memory estimate for {model.name}: {estimated_bytes / 1024**3:.2f}GB"
+            )
+
+            # Check for available memory and perform cleanup if necessary
+            if not self._ensure_sufficient_memory(estimated_bytes, exclude_model=model_id):
+                self.logger.error(
+                    f"Unable to free sufficient memory for pipeline requiring {estimated_bytes / 1024**3:.2f}GB"
+                )
+                return None
+
+            self.logger.info(
+                f"Creating pipeline for {model.name} (estimated memory: {estimated_bytes / 1024**3:.2f}GB)"
+            )
+
+            try:
+                pipeline = self._create_pipeline_instance(model, profile)
+                if pipeline:
+                    entry = PipelineCacheEntry(pipeline, priority=priority)
+                    self._pipelines[model_id] = entry
+                    self.logger.info(f"Created and cached pipeline for model: {model.name}")
+                    return entry.use_pipeline()
+            except Exception as e:
+                self.logger.error(f"Error creating pipeline for {model.name}: {e}")
+                # Ensure a failed creation doesn't leave a bad entry
+                if model_id in self._pipelines:
+                    del self._pipelines[model_id]
+                return None
+
+        return None
+
+    def _create_pipeline_instance(
+        self, model: Model, profile: ModelProfile
     ) -> Optional[BasePipelineCore]:
         try:
             self.logger.info(f"Creating pipeline for {model.name} (task: {model.task})")
             if model.task.endswith("TextToText"):
-                return self._create_text_pipeline(model, profile, expected_type)
+                return self._create_text_pipeline(model, profile)
             if model.task == "TextToEmbeddings":
                 return self._create_embedding_pipeline(model, profile)
             if model.task == "TextToRanking":
@@ -496,20 +511,31 @@ class PipelineFactory:
             return None
         except Exception as e:
             self.logger.error(f"Error creating pipeline for {model.name}: {e}")
-            
-            # Check if model is disabled due to known issues
-            if hasattr(model.details, 'disabled') and model.details.disabled:
-                self.logger.info(f"Model {model.name} is disabled: {getattr(model.details, 'disable_reason', 'Unknown reason')}")
-            
+
             # Log specific error types for better debugging
             if "unknown model architecture" in str(e):
-                self.logger.error(f"Model {model.name} uses unsupported architecture - consider updating llama.cpp or using a different model")
+                self.logger.error(
+                    f"Model {model.name} uses unsupported architecture - consider updating llama.cpp or using a different model"
+                )
             elif "Failed to create llama_context" in str(e):
-                self.logger.error(f"Model {model.name} failed to load - may be corrupted or incompatible")
+                self.logger.error(
+                    f"Model {model.name} failed to load - may be corrupted or incompatible"
+                )
             elif "validation error" in str(e).lower():
-                self.logger.error(f"Model {model.name} configuration validation failed")
+                self.logger.error(f"Model profile validation error: {e}")
             
             return None
+
+    def _cleanup_pipeline_resources(self, pipeline: BasePipelineCore):
+        """Explicitly clean up resources of a pipeline."""
+        self.logger.debug(f"Cleaning up pipeline: {pipeline}")
+        # If the pipeline has a specific cleanup method, call it
+        if hasattr(pipeline, "cleanup"):
+            pipeline.cleanup()
+        del pipeline
+        gc.collect()
+        hardware_manager.clear_memory()
+
 
     def _create_text_pipeline(
         self,
@@ -553,10 +579,10 @@ class PipelineFactory:
                 model, profile, return_type=expected_type or ChatResponse
             )
 
-        if model.pipeline == "OpenAiGptOssPipe":
-            from .pipelines.txt2txt.openai_gpt_oss import OpenAiGptOssPipe
+        # if model.pipeline == "OpenAiGptOssPipe":
+        #     from .pipelines.txt2txt.openai_gpt_oss import OpenAiGptOssPipe
 
-            return OpenAiGptOssPipe(model, profile, expected_return_type=expected_type)
+        #     return OpenAiGptOssPipe(model, profile, expected_return_type=expected_type)
 
         return None
 
@@ -619,109 +645,109 @@ class PipelineFactory:
                 return None
         return None
 
-    # ---------- Cache and cleanup ----------
+    # ---------- Cache management and cleanup ----------
 
     def _start_cleanup_thread(self) -> None:
-        if (
-            self._cleanup_thread is None
-            or not getattr(self._cleanup_thread, "is_alive", lambda: False)()
-        ):
-            self._cleanup_thread = threading.Thread(
-                target=self._cleanup_task, daemon=True, name="PipelineCleanup"
-            )
-            self._cleanup_thread.start()
-            self.logger.info("Started pipeline cleanup thread")
+        if self._cleanup_thread and self._cleanup_thread.is_alive():
+            return
 
-    def _cleanup_task(self) -> None:
-        self.logger.info("Pipeline cleanup thread started")
-        while True:
-            try:
-                time.sleep(60)
-                self._cleanup_expired_entries()
-            except Exception as e:
-                self.logger.error(f"Error in cleanup task: {e}")
+        def cleanup_job() -> None:
+            while True:
+                time.sleep(self._cache_timeout)
+                self.clear_expired_pipelines()
 
-    def force_resource_cleanup(self, target_free_memory_gb: float = 4.0) -> int:
-        """
-        Force cleanup of cached pipelines to free memory.
+        self._cleanup_thread = threading.Thread(target=cleanup_job, daemon=True)
+        self._cleanup_thread.start()
 
-        Args:
-            target_free_memory_gb: Target amount of free memory in GB
-
-        Returns:
-            Number of pipelines evicted
-        """
-        target_bytes = target_free_memory_gb * 1024 * 1024 * 1024
-
-        if hardware_manager.check_memory_available(target_bytes):
-            self.logger.info(f"Already have {target_free_memory_gb}GB available")
-            return 0
-
-        return len(
-            [1 for _ in range(1) if self._ensure_sufficient_memory(target_bytes)]
-        )
-
-    def _cleanup_expired_entries(self) -> None:
-        current_time = time.time()
-        expired_keys: List[str] = []
-
-        # Check if we're under memory pressure
-        memory_pressure = False
-        try:
-            memory_stats = hardware_manager.update_all_memory_stats()
-            for device_id, stats in memory_stats.items():
-                if stats.mem_util > 85:  # More than 85% memory usage
-                    memory_pressure = True
-                    self.logger.info(
-                        f"Memory pressure detected on GPU {device_id}: {stats.mem_util}% used"
-                    )
-                    break
-        except Exception as e:
-            self.logger.debug(f"Error checking memory pressure: {e}")
-
+    def clear_expired_pipelines(self) -> None:
+        """Remove pipelines that haven't been used recently."""
         with self._cleanup_lock:
-            for model_id, entry in self._pipelines.items():
-                # More aggressive cleanup under memory pressure
-                cleanup_threshold = self._cache_timeout
-                if memory_pressure:
-                    cleanup_threshold = min(
-                        self._cache_timeout, 120
-                    )  # Reduce to 2 minutes under pressure
+            now = time.time()
+            expired_keys = [
+                key
+                for key, entry in self._pipelines.items()
+                if not entry.is_alive()
+                or (now - entry.last_accessed) > self._cache_timeout
+            ]
 
-                if (
-                    current_time - entry.last_accessed > cleanup_threshold
-                ) or not entry.is_alive():
-                    expired_keys.append(model_id)
+            if expired_keys:
+                self.logger.info(f"Removing {len(expired_keys)} expired pipelines...")
+                for key in expired_keys:
+                    if key in self._pipelines:
+                        del self._pipelines[key]
+                # Hint to the garbage collector
+                hardware_manager.clear_memory()
 
-            for model_id in expired_keys:
-                entry = self._pipelines.pop(model_id, None)
-                if entry:
-                    pipeline = entry.pipeline
-                    if pipeline:
-                        self._cleanup_pipeline_resources(pipeline)
-                    pressure_note = " (memory pressure)" if memory_pressure else ""
-                    self.logger.info(
-                        f"Removed expired pipeline for model {model_id}{pressure_note}"
-                    )
+    def clear_unused_pipelines(self) -> int:
+        """Force-clears all pipelines that are not currently in use."""
+        with self._cleanup_lock:
+            initial_count = len(self._pipelines)
+            if initial_count == 0:
+                return 0
 
-        # If under memory pressure, also do hardware cleanup
-        if memory_pressure and expired_keys:
+            # Identify pipelines that are still referenced elsewhere
+            in_use_keys = {
+                key for key, entry in self._pipelines.items() if entry.is_alive()
+            }
+            all_keys = set(self._pipelines.keys())
+            eviction_keys = all_keys - in_use_keys
+
+            if eviction_keys:
+                self.logger.info(
+                    f"Clearing {len(eviction_keys)} unused pipelines: {list(eviction_keys)}"
+                )
+                for key in eviction_keys:
+                    del self._pipelines[key]
+
+            # After clearing, trigger garbage collection
             hardware_manager.clear_memory(aggressive=True)
+            return len(eviction_keys)
 
-    def _cleanup_pipeline_resources(self, pipeline: BasePipelineCore) -> None:
-        try:
-            cleanup_fn = getattr(pipeline, "cleanup", None)
-            if callable(cleanup_fn):
-                cleanup_fn()
-            llm = getattr(pipeline, "llm", None)
-            if llm is not None:
-                llm_cleanup = getattr(llm, "cleanup", None)
-                if callable(llm_cleanup):
-                    llm_cleanup()
-            self.logger.debug(f"Cleaned up {type(pipeline).__name__}")
-        except Exception as e:
-            self.logger.error(f"Error cleaning up pipeline: {e}")
+    def _evict_pipelines_by_priority(self, required_space_gb: float) -> None:
+        """Evict pipelines based on score until enough space is freed."""
+        with self._cleanup_lock:
+            pass
 
 
-# Create global factory instance
-pipeline_factory = PipelineFactory(prefer_langgraph=True)
+    def clear_memory(self, aggressive: bool = False) -> None:
+        """Public method to trigger memory clearing."""
+        with self._cleanup_lock:
+            self.logger.info(
+                f"External request to clear memory (aggressive={aggressive})"
+            )
+            # Evict all pipelines that are not strongly referenced
+            self.clear_unused_pipelines()
+            hardware_manager.clear_memory(aggressive=aggressive)
+
+    # ---------- Memory estimation ----------
+
+    def _get_context_memory_gb(self, profile: ModelProfile) -> float:
+        """Estimate the context memory required for a given profile."""
+        # Simple heuristic: 32 bytes per token, with a minimum of 1MB
+        num_ctx = profile.parameters.num_ctx or 512  # Default to 512 if not set
+        per_token_bytes = 32
+        context_gb = max((num_ctx * per_token_bytes) / (1024**3), 1.0)
+
+        self.logger.debug(
+            f"Context memory estimate for {profile}: {context_gb:.2f}GB ({num_ctx} tokens)"
+        )
+        return context_gb
+
+    def _estimate_memory_usage(
+        self, model: Model, profile: ModelProfile
+    ) -> float:
+        """
+        Estimate the total memory usage for a pipeline given a model and profile.
+        """
+        # Base estimate from model size
+        model_gb = model.size / (1024**3) if model.size else 0.0
+
+        # Context memory based on profile
+        context_gb = self._get_context_memory_gb(profile)
+
+        # Total estimate is model size + context size + some base overhead
+        return model_gb + context_gb + 0.5 # 0.5 GB base overhead
+
+
+# Singleton instance
+pipeline_factory = PipelineFactory()
