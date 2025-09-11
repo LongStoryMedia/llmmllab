@@ -11,20 +11,21 @@ import torch
 import numpy as np
 from langchain_community.embeddings import LlamaCppEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_core.tools import BaseTool
 
 from models import (
     Model,
     Message,
     ModelProfile,
 )
-from ..base import EmbeddingPipeline
+from ..llamacpp.base_llamacpp import BaseLlamaCppCore
 from utils.message import extract_message_text
 
 
 logger = logging.getLogger(__name__)
 
 
-class NomicEmbedTextPipe(EmbeddingPipeline):
+class NomicEmbedTextPipe(BaseLlamaCppCore):
     """
     Enhanced pipeline for Nomic Embed Text v2 MoE model with token splitting.
 
@@ -41,7 +42,13 @@ class NomicEmbedTextPipe(EmbeddingPipeline):
 
     def __init__(self, model: Model, profile: ModelProfile):
         """Initialize the Nomic Embed Text pipeline."""
-        super().__init__(model, profile)
+        # Initialize with List[List[float]] as the expected return type for embeddings
+        super().__init__(
+            model,
+            profile,
+            expected_return_type=List[List[float]],
+            model_size_category="small",
+        )
 
         self._logger = logging.getLogger(__name__)
         self._logger.info("Initializing NomicEmbedTextPipe")
@@ -68,9 +75,15 @@ class NomicEmbedTextPipe(EmbeddingPipeline):
 
     # --- BasePipelineCore required methods ---
     async def process_messages(
-        self, messages: List[Message], tools: Optional[List[Any]] = None
+        self,
+        messages: List[Message],
+        tools: Optional[List[BaseTool]] = None,
+        is_tool_generation: bool = False,
     ) -> List[List[float]]:
         """Process messages and return embeddings (no tools/graph needed)."""
+        # Embedding pipelines don't use tools or tool generation flags
+        _ = tools, is_tool_generation  # Acknowledge unused parameters
+
         # Extract and process texts with prefixes
         texts: List[str] = []
         for message in messages:

@@ -16,7 +16,7 @@ from models import (
     Message,
     ModelProfile,
 )
-from ..base import EmbeddingPipeline
+from ..llamacpp.base_llamacpp import BaseLlamaCppCore
 from langchain_core.tools import BaseTool
 from utils.message import extract_message_text
 
@@ -24,14 +24,20 @@ from utils.message import extract_message_text
 logger = logging.getLogger(__name__)
 
 
-class Qwen3EmbeddingPipe(EmbeddingPipeline):
+class Qwen3EmbeddingPipe(BaseLlamaCppCore):
     """Clean pipeline for Qwen3-Embedding-0.6B model with optimized implementation."""
 
     llm: LlamaCppEmbeddings
 
     def __init__(self, model: Model, profile: ModelProfile):
         """Initialize the Qwen3 Embedding pipeline."""
-        super().__init__(model, profile)
+        # Initialize with List[List[float]] as the expected return type for embeddings
+        super().__init__(
+            model,
+            profile,
+            expected_return_type=List[List[float]],
+            model_size_category="medium",
+        )
 
         self._logger = logging.getLogger(__name__)
 
@@ -68,9 +74,15 @@ class Qwen3EmbeddingPipe(EmbeddingPipeline):
         )
 
     async def process_messages(
-        self, messages: List[Message], tools: Optional[List[BaseTool]] = None
+        self,
+        messages: List[Message],
+        tools: Optional[List[BaseTool]] = None,
+        is_tool_generation: bool = False,
     ) -> List[List[float]]:
         """Process messages and return embeddings (no tools/graph needed)."""
+        # Embedding pipelines don't use tools or tool generation flags
+        _ = tools, is_tool_generation  # Acknowledge unused parameters
+
         texts: List[str] = []
         for message in messages:
             text = extract_message_text(message)

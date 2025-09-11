@@ -6,17 +6,15 @@ Based on the QwenLangGraphPipe with optimizations for the OpenAI GPT OSS 20B mod
 import os
 import logging
 import asyncio
-from typing import List, Optional, TypeVar, Union, Dict, Any, cast
+from typing import List, Optional, Dict, Any
 
 # Avoid importing torch at module import time (can hang on GPU init in some envs)
 torch = None  # type: ignore
 
-from langchain_core.callbacks import CallbackManager, StreamingStdOutCallbackHandler
 from langchain_core.tools import BaseTool
 from langchain_core.messages import AIMessage
 
 # Avoid importing ChatLlamaCpp at module import time to prevent heavy GPU lib load in dev/test
-from langchain_community.chat_models.llamacpp import ChatLlamaCpp
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -35,13 +33,12 @@ from utils.langgraph import (
     build_lc_messages,
     coerce_to_langchain_message_dict,
 )
-from ..base_langgraph import BaseLangGraphPipeline, CircuitBreakerConfig
+from ..base_langgraph import CircuitBreakerConfig
+from ..llamacpp.base_llamacpp import BaseLlamaCppPipeline
 from .context_manager import ContextManager
 
-T = TypeVar("T", bound=Union[str, ChatResponse])
 
-
-class OpenAiGptOssPipe(BaseLangGraphPipeline[T]):
+class OpenAiGptOssPipe(BaseLlamaCppPipeline):
     """
     OpenAI GPT OSS 20B pipeline with enhanced timeout protection and circuit breaker functionality.
     Optimized for the DavidAU/OpenAi-GPT-oss-20b-abliterated-uncensored model.
@@ -61,13 +58,15 @@ class OpenAiGptOssPipe(BaseLangGraphPipeline[T]):
             cooldown_period=60.0,
         )
 
-        super().__init__(model, profile, expected_return_type, circuit_config)
+        super().__init__(model, profile, expected_return_type, circuit_config, "medium")
         self.model = model
         self.profile = profile
         self._logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
         # Initialize context manager with dynamic context for 20B model
-        context_tokens = self.profile.parameters.num_ctx or 4096  # Match dynamic context
+        context_tokens = (
+            self.profile.parameters.num_ctx or 4096
+        )  # Match dynamic context
         self.context_manager = ContextManager(max_context_tokens=context_tokens)
 
         # Validate GGUF file
@@ -100,109 +99,6 @@ class OpenAiGptOssPipe(BaseLangGraphPipeline[T]):
 
         if not os.access(gguf_path, os.R_OK):
             raise PermissionError(f"Cannot read GGUF file: {gguf_path}")
-
-    async def _initialize_llm(
-        self, gguf_path: str, tools: Optional[List[BaseTool]] = None
-    ) -> None:
-        """Initialize the ChatLlamaCpp LLM with optimized parameters for OpenAI GPT OSS 20B."""
-        self._logger.info(f"Initializing OpenAI GPT OSS 20B LLM from {gguf_path}")
-
-        # Dev/test fallback or missing deps: use a simple dummy LLM
-        allow_dummy = os.environ.get("ALLOW_MISSING_GGUF", "false").lower() in (
-            "1",
-            "true",
-            "yes",
-        )
-        if allow_dummy:
-
-            class _DummyLLM:
-                async def ainvoke(self, _messages, **_):  # noqa: ANN001
-                    return AIMessage(
-                        content="[dev] test response from OpenAI GPT OSS 20B"
-                    )
-
-            self._logger.warning(
-                "Using dummy LLM (dev/test mode or missing ChatLlamaCpp)"
-            )
-            self.llm = _DummyLLM()
-            # Bind tools if provided (no-op for dummy)
-            if tools and hasattr(self.llm, "bind_tools"):
-                try:  # noqa: SIM105
-                    self.llm = cast(Any, self.llm).bind_tools(tools)  # type: ignore[attr-defined]
-                except Exception as e:  # noqa: BLE001
-                    self._logger.warning(f"Failed to bind tools: {e}")
-            return
-
-        else:
-            # Get context size and calculate optimal GPU layers
-            n_ctx = self.profile.parameters.num_ctx or 4096  # Conservative default for 20B
-            optimal_gpu_layers = self._calculate_optimal_gpu_layers(n_ctx, "medium")  # 20B is medium size
-            
-            self._logger.info(
-                f"Dynamic GPU allocation: n_ctx={n_ctx}, using {optimal_gpu_layers} GPU layers"
-            )
-            
-            # Initialize ChatLlamaCpp with optimized parameters for 20B model
-            try:
-                self.llm = ChatLlamaCpp(
-                    model_path=gguf_path,
-                    n_gpu_layers=optimal_gpu_layers,  # Dynamic GPU allocation based on context
-                    n_batch=256,  # Smaller batch for 20B model
-                    f16_kv=True,  # Enable f16 for GPU efficiency
-                    verbose=os.environ.get("LOG_LEVEL", "warning") == "debug",
-                    n_parts=-1,
-                    streaming=True,
-                    n_ctx=n_ctx,  # Use the determined context size
-                    use_mmap=True,  # Enable memory mapping for efficiency
-                    use_mlock=False,  # Disable mlock to avoid memory pressure
-                    # Model parameters optimized for uncensored model
-                    seed=self.profile.parameters.seed or -1,
-                    temperature=self.profile.parameters.temperature or 0.7,
-                    max_tokens=self.profile.parameters.max_tokens or 4096,
-                    top_p=self.profile.parameters.top_p or 0.8,
-                    top_k=self.profile.parameters.top_k or 20,
-                    repeat_penalty=self.profile.parameters.repeat_penalty or 1.05,
-                    stop=self.profile.parameters.stop
-                    or [
-                        "<|im_end|>",
-                        "<|endoftext|>",
-                        "<|end|>",
-                    ],
-                    callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
-                )
-            except Exception as primary_error:
-                # Try with more conservative settings if initial load fails
-                self._logger.warning(
-                    f"Primary model load failed with error: {primary_error}. "
-                    f"Attempting with conservative settings..."
-                )
-                try:
-                    self.llm = ChatLlamaCpp(
-                        model_path=gguf_path,
-                        n_gpu_layers=max(0, optimal_gpu_layers - 10),  # Use fewer GPU layers
-                        n_batch=128,  # Smaller batch size
-                        f16_kv=False,  # Disable f16_kv in case of compatibility issues
-                        verbose=True,  # Enable verbose for debugging
-                        n_parts=-1,
-                        streaming=True,
-                        n_ctx=min(n_ctx, 16384),  # Reduce context if needed
-                        use_mmap=False,  # Disable mmap in case of file issues
-                        use_mlock=False,
-                        seed=-1,
-                        temperature=0.7,
-                        callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
-                    )
-                    self._logger.info("Model loaded successfully with conservative settings")
-                except Exception as secondary_error:
-                    self._logger.error(
-                        f"Failed to load model with both primary and conservative settings. "
-                        f"Primary error: {primary_error}. Secondary error: {secondary_error}"
-                    )
-                    raise secondary_error
-
-        # Bind tools if provided
-        if tools and hasattr(self.llm, "bind_tools"):
-            self.llm = self.llm.bind_tools(tools)
 
     async def _create_system_prompt(
         self, tools: Optional[List[BaseTool]] = None
@@ -282,7 +178,7 @@ Answer questions thoroughly and helpfully."""
                             return True
         return False
 
-    async def prompt(self, text: str | List[str]) -> T:
+    async def prompt(self, text: str | List[str]) -> str | ChatResponse:
         """Process a single message and return appropriate response type."""
         if isinstance(text, list):
             text = " ".join(text)
@@ -352,6 +248,12 @@ Answer questions thoroughly and helpfully."""
             if self.llm is None:
                 gguf_path = self._get_gguf_path()
                 await self._initialize_llm(gguf_path)
+
+            # Ensure LLM is properly initialized after the initialization call
+            if self.llm is None:
+                raise RuntimeError(
+                    "Failed to initialize LLM - llm is still None after initialization"
+                )
 
             # Build messages for LLM
             messages = build_lc_messages(state.messages)

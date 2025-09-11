@@ -21,12 +21,12 @@ from models import (
     Model,
     ModelProfile,
 )
-from ..base import BasePipelineCore
+from ..llamacpp.base_llamacpp import BaseLlamaCppCore
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
 
 
-class Qwen25VLPipeline(BasePipelineCore[ChatResponse]):
+class Qwen25VLPipeline(BaseLlamaCppCore):
     """
     Pipeline class for Qwen 2.5 Vision Language GGUF models using llama-cpp-python.
     Uses the Qwen25VLChatHandler for proper multimodal support.
@@ -35,7 +35,13 @@ class Qwen25VLPipeline(BasePipelineCore[ChatResponse]):
 
     def __init__(self, model: Model, profile: ModelProfile):
         """Initialize a Qwen25VLGGUFPipe instance."""
-        super().__init__(model, profile)
+        # Initialize with ChatResponse as the expected return type for multimodal
+        super().__init__(
+            model,
+            profile,
+            expected_return_type=ChatResponse,
+            model_size_category="large",
+        )
         self.logger = logging.getLogger(__name__)
         self.llm: Optional[Llama] = None
 
@@ -53,7 +59,7 @@ class Qwen25VLPipeline(BasePipelineCore[ChatResponse]):
             else self.model.model
         )
 
-    def _initialize_llm(self) -> None:
+    def _initialize_llama_cpp_direct(self) -> None:
         """Initialize the Llama model with multimodal support."""
         if self.llm is not None:
             return
@@ -120,14 +126,21 @@ class Qwen25VLPipeline(BasePipelineCore[ChatResponse]):
         return formatted_messages
 
     async def process_messages(
-        self, messages: List[Message], tools: Optional[List[BaseTool]] = None
+        self,
+        messages: List[Message],
+        session_id: Optional[str] = None,  # type: ignore
+        tools: Optional[List[BaseTool]] = None,
+        is_tool_generation: bool = False,
     ) -> ChatResponse:
         """Process messages and return ChatResponse."""
+        # Multimodal pipelines don't currently use tools or tool generation flags
+        _ = tools, is_tool_generation  # Acknowledge unused parameters
+
         start_time = datetime.datetime.now(tz=datetime.timezone.utc)
 
         # Initialize model if needed
         if self.llm is None:
-            self._initialize_llm()
+            self._initialize_llama_cpp_direct()
 
         assert self.llm is not None, "Failed to initialize LLM"
 

@@ -418,9 +418,9 @@ Make the tool specific to the user's request but generalizable for similar tasks
                                     ],
                                 )
                             ],
-                            is_tool_generation=True  # Deterministic flag for tool generation
+                            is_tool_generation=True,  # Deterministic flag for tool generation
                         ),
-                        timeout=120.0,  # 2 minute timeout for tool generation (reduced from 5 minutes)
+                        timeout=300.0,  # 5 minute timeout for tool generation (increased for complex tools)
                     )
 
                     if not tool_response:
