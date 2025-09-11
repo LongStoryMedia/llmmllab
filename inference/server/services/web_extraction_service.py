@@ -175,11 +175,11 @@ class WebExtractionService:
                 "USER_AGENT": "Mozilla/5.0 (compatible; LLMWebExtractor/1.0; +https://example.com/bot)",
                 "ROBOTSTXT_OBEY": True,
                 "CONCURRENT_REQUESTS": 2,  # Reduced concurrency
-                "DOWNLOAD_TIMEOUT": 5,     # Reduced timeout
+                "DOWNLOAD_TIMEOUT": 5,  # Reduced timeout
                 "LOG_LEVEL": "ERROR",
                 "TELNETCONSOLE_ENABLED": False,
-                "RETRY_TIMES": 0,          # No retries
-                "CLOSESPIDER_TIMEOUT": 15, # Overall timeout
+                "RETRY_TIMES": 0,  # No retries
+                "CLOSESPIDER_TIMEOUT": 15,  # Overall timeout
             }
         )
 

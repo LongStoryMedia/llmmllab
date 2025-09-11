@@ -6,15 +6,18 @@ import asyncio
 import hashlib
 import uuid
 import logging
-import os
-from typing import Any, Dict, List, Optional, TypeVar, cast
+from typing import Any, Dict, List, Optional, TypeVar
+import math
+import re
+from collections import deque
 from abc import ABC, abstractmethod
 from datetime import datetime
 
-from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import BaseTool
 from langchain_core.runnables import RunnableConfig
-from langchain_core.messages import AIMessage, AIMessageChunk
+from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.language_models import LanguageModelInput, BaseChatModel
+from langchain_core.runnables import Runnable
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.checkpoint.memory import MemorySaver
@@ -42,17 +45,71 @@ class CircuitBreakerConfig:
 
     def __init__(
         self,
-        base_timeout: float = 60.0,
-        deep_research_timeout: float = 120.0,
+        base_timeout: float = 60.0,  # Base timeout in seconds
+        deep_research_timeout: float = 120.0,  # Extended timeout for deep research
         max_retries: int = 2,
-        cooldown_period: float = 30.0,
-        perplexity_threshold: float = 15.0,
+        cooldown_period: float = 30.0,  # Time before allowing retry after failure
+        # Adaptive generation / perplexity guard settings
+        enable_perplexity_guard: bool = True,
+        perplexity_window: int = 40,
+        perplexity_threshold: float = 10.0,
+        avg_logprob_floor: float = -6.0,
+        repetition_ngram: int = 6,
+        repetition_threshold: int = 6,
+        min_tokens_for_eval: Optional[int] = None,
+        # Logging / telemetry for adaptive generation
+        perplexity_log_interval_tokens: int = 20,
+        log_repetition_events: bool = True,
     ):
         self.base_timeout = base_timeout
         self.deep_research_timeout = deep_research_timeout
         self.max_retries = max_retries
         self.cooldown_period = cooldown_period
+        # Perplexity guard config
+        self.enable_perplexity_guard = enable_perplexity_guard
+        self.perplexity_window = perplexity_window
         self.perplexity_threshold = perplexity_threshold
+        self.avg_logprob_floor = avg_logprob_floor
+        # Allow overrides via environment variables for rapid tuning
+        import os as _os  # local import to avoid global dependency at module import
+
+        env_ngram = _os.getenv("REPETITION_NGRAM")
+        env_thresh = _os.getenv("REPETITION_THRESHOLD")
+        try:
+            if env_ngram is not None:
+                repetition_ngram = max(2, int(env_ngram))
+        except Exception:
+            pass
+        try:
+            if env_thresh is not None:
+                repetition_threshold = max(2, int(env_thresh))
+        except Exception:
+            pass
+        self.repetition_ngram = repetition_ngram
+        self.repetition_threshold = repetition_threshold
+        self.min_tokens_for_eval = (
+            min_tokens_for_eval
+            if min_tokens_for_eval is not None
+            else max(10, perplexity_window // 2)
+        )
+        self.perplexity_log_interval_tokens = max(5, perplexity_log_interval_tokens)
+        self.log_repetition_events = log_repetition_events
+
+        # Tool generation guard settings (more aggressive)
+        self.tool_gen_repetition_ngram = 4  # Reduced from 6 for faster detection
+        self.tool_gen_repetition_threshold = 3  # Reduced from 4 for faster detection
+        env_tool_ngram = _os.getenv("TOOL_GEN_REPETITION_NGRAM")
+        env_tool_thresh = _os.getenv("TOOL_GEN_REPETITION_THRESHOLD")
+        try:
+            if env_tool_ngram is not None:
+                self.tool_gen_repetition_ngram = max(5, int(env_tool_ngram))
+        except Exception:
+            pass
+        try:
+            if env_tool_thresh is not None:
+                self.tool_gen_repetition_threshold = max(3, int(env_tool_thresh))
+        except Exception:
+            pass
 
 
 class ModelState:
@@ -87,165 +144,21 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         self._logger = logging.getLogger(self.__class__.__name__)
 
         # Abstract attributes that subclasses must implement
-        self.llm: Optional[BaseChatModel] = None
-
-    @property
-    @abstractmethod
-    def total_model_layers(self) -> int:
-        """Total number of layers in the model. Must be implemented by subclasses."""
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def model_size_category(self) -> str:
-        """Return model size category ('small', 'medium', 'large', 'xlarge')."""
-        raise NotImplementedError
+        self.llm: Optional[
+            Runnable[LanguageModelInput, BaseMessage] | BaseChatModel
+        ] = None
 
     @abstractmethod
-    def _create_llm_instance(
-        self,
-        gguf_path: str,
-        n_gpu_layers: int,
-        n_ctx: int,
-        tools: Optional[List[BaseTool]] = None,
-    ) -> Any:
-        """Create an instance of the LLM. Must be implemented by subclasses."""
-        raise NotImplementedError
-
-    @abstractmethod
-    def _get_gguf_path(self) -> str:
-        """Get the GGUF file path for the model. Must be implemented by subclasses."""
-        raise NotImplementedError
-
     async def _initialize_llm(
         self, gguf_path: str, tools: Optional[List[BaseTool]] = None
     ) -> None:
-        """
-        Initialize the LLM with a sophisticated OOM fallback strategy.
-        1. Try optimal settings.
-        2. If OOM, gradually reduce GPU layers to a minimum threshold.
-        3. If still OOM, reduce n_ctx and repeat GPU layer reduction.
-        """
-        self._logger.info(f"Initializing LLM from {gguf_path}")
+        """Initialize the LLM. Must be implemented by subclasses."""
+        raise NotImplementedError("Subclass must implement _initialize_llm")
 
-        if os.environ.get("ALLOW_MISSING_GGUF", "false").lower() in (
-            "1",
-            "true",
-            "yes",
-        ):
-
-            class _DummyLLM(BaseChatModel):
-                def _generate(self, messages, stop=None, run_manager=None, **kwargs):
-                    # This is a dummy implementation for sync generation
-                    return AIMessage(content="Dummy response for dev/test.")
-
-                async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
-                    # This is a dummy implementation for async generation
-                    return AIMessage(content="Dummy response for dev/test.")
-
-                def _llm_type(self) -> str:
-                    return "dummy-llm"
-
-                def bind_tools(self, tools):
-                    return self
-
-                async def astream(self, messages, **kwargs):
-                    yield AIMessageChunk(content="Dummy response for dev/test.")
-
-                async def ainvoke(self, _messages, **_):
-                    return AIMessage(content="Dummy response for dev/test.")
-
-            self.llm = _DummyLLM()
-            if tools:
-                self.llm = cast(BaseChatModel, self.llm.bind_tools(tools))
-            return
-
-        from runner.pipeline_factory import pipeline_factory
-        from utils.hardware_manager import hardware_manager
-
-        min_gpu_layers = (self.total_model_layers * 2) // 3
-
-        requested_ctx = (
-            self.profile.parameters.num_ctx or 131072
-        )  # Default to a reasonable context
-        max_ctx = self.profile.parameters.num_ctx or 1048576
-
-        context_candidates = sorted(
-            list(
-                set(
-                    [
-                        min(requested_ctx, max_ctx),
-                        524288,
-                        262144,
-                        131072,
-                        65536,
-                        32768,
-                        16384,
-                    ]
-                )
-            ),
-            reverse=True,
-        )
-        unique_context_candidates = [
-            x for x in context_candidates if x <= requested_ctx
-        ]
-
-        for n_ctx in unique_context_candidates:
-            optimal_gpu_layers = self._calculate_optimal_gpu_layers(
-                n_ctx, self.model_size_category
-            )
-
-            gpu_layer_steps = sorted(
-                list(
-                    set(
-                        [
-                            optimal_gpu_layers,
-                            (optimal_gpu_layers + min_gpu_layers) // 2,
-                            min_gpu_layers + (optimal_gpu_layers - min_gpu_layers) // 4,
-                            min_gpu_layers,
-                        ]
-                    )
-                ),
-                reverse=True,
-            )
-
-            for n_gpu_layers in gpu_layer_steps:
-                if n_gpu_layers < min_gpu_layers:
-                    continue
-
-                try:
-                    self._logger.info(
-                        f"Attempting to load model with n_ctx={n_ctx}, n_gpu_layers={n_gpu_layers}"
-                    )
-
-                    self.llm = self._create_llm_instance(
-                        gguf_path=gguf_path,
-                        n_gpu_layers=n_gpu_layers,
-                        n_ctx=n_ctx,
-                        tools=tools,
-                    )
-
-                    self._logger.info(
-                        f"Successfully loaded model with n_ctx={n_ctx} and n_gpu_layers={n_gpu_layers}"
-                    )
-                    return
-
-                except Exception as e:
-                    self._logger.warning(
-                        f"Failed to load model with n_ctx={n_ctx} and n_gpu_layers={n_gpu_layers}: {e}. "
-                        "Freeing memory and retrying."
-                    )
-                    self.llm = None
-                    pipeline_factory.clear_unused_pipelines()
-                    hardware_manager.clear_memory(aggressive=True)
-                    await asyncio.sleep(1)
-
-        error_msg = (
-            "Failed to load model even with minimal settings after all fallbacks."
-        )
-        self._logger.error(error_msg)
-        self._mark_model_corrupted(error_msg)
-        raise RuntimeError(error_msg)
+    @abstractmethod
+    def _get_gguf_path(self) -> str:
+        """Get the GGUF file path. Must be implemented by subclasses."""
+        raise NotImplementedError("Subclass must implement _get_gguf_path")
 
     @abstractmethod
     async def _create_system_prompt(
@@ -404,8 +317,306 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         self.model_state.last_error = error
         self._logger.error(f"Model marked as corrupted: {error}")
 
+    # ---------------- Adaptive Streaming & Guards -----------------
+    def _detect_repetition_smart(
+        self, full_response: str, is_tool_generation: bool = False
+    ) -> tuple[bool, str]:
+        """
+        Smart repetition detection that understands context and structure.
+
+        Returns:
+            (is_repetitive, reason) - True if repetitive with explanation
+        """
+        if len(full_response) < 100:  # Too short to analyze
+            return False, ""
+
+        # 1. Skip repetition detection in structured content
+        if self._is_structured_content(full_response[-500:]):  # Check last 500 chars
+            return False, "structured_content_exemption"
+
+        # 2. Check for actual problematic repetition patterns
+        if self._detect_token_loops(full_response[-200:]):  # Check last 200 chars
+            return True, "token_loop_detected"
+
+        # 3. For tool generation, use stricter semantic checks
+        if is_tool_generation:
+            if self._detect_json_malformation(full_response[-300:]):
+                return True, "malformed_json_repetition"
+
+        # 4. General semantic repetition (less aggressive)
+        if len(full_response) > 1000 and self._detect_semantic_repetition_conservative(
+            full_response
+        ):
+            return True, "semantic_repetition"
+
+        return False, ""
+
+    def _is_structured_content(self, text: str) -> bool:
+        """Check if the text contains structured content that naturally has repetition."""
+        text_lower = text.lower()
+
+        # JSON patterns - use regex to detect any key-value pairs
+        if '"' in text and re.search(r'"\w+"\s*:\s*[^,}]+', text):
+            return True
+
+        # Table patterns (markdown)
+        if "|" in text and any(pattern in text for pattern in ["**", "--", "---"]):
+            return True
+
+        # Code blocks
+        if any(
+            pattern in text
+            for pattern in ["```", "`", "def ", "class ", "import ", "function"]
+        ):
+            return True
+
+        # Lists and structured data
+        if text.count("\n") > 3 and any(
+            pattern in text for pattern in ["- ", "* ", "1. ", "2. ", "##"]
+        ):
+            return True
+
+        return False
+
+    def _detect_token_loops(self, text: str) -> bool:
+        """Detect actual problematic token loops (same sequence repeating)."""
+        words = re.findall(r"\b\w+\b", text.lower())
+        if len(words) < 10:
+            return False
+
+        # Look for exact sequence repetition (more than 4 words repeating 3+ times)
+        for seq_len in range(4, min(8, len(words) // 3)):
+            for start in range(len(words) - seq_len * 3):
+                sequence = words[start : start + seq_len]
+                sequence_str = " ".join(sequence)
+
+                # Count how many times this exact sequence appears consecutively
+                consecutive_count = 1
+                pos = start + seq_len
+
+                while pos + seq_len <= len(words):
+                    next_sequence = words[pos : pos + seq_len]
+                    if next_sequence == sequence:
+                        consecutive_count += 1
+                        pos += seq_len
+                    else:
+                        break
+
+                if consecutive_count >= 3:  # Same sequence 3+ times in a row
+                    return True
+
+        return False
+
+    def _detect_json_malformation(self, text: str) -> bool:
+        """Detect JSON-specific repetition that indicates malformation."""
+        # Try to find if JSON is being generated but malformed
+        if '"' not in text:
+            return False
+
+        # Count repeated key patterns in JSON-like text using general regex
+        json_like_patterns = re.findall(r'"(\w+)"\s*:\s*[^,}]+', text)
+        if len(json_like_patterns) > 5:
+            # Check if the same key appears too many times
+            from collections import Counter
+
+            key_counts = Counter(json_like_patterns)
+            for key, count in key_counts.items():
+                if count > 3:  # Same key appearing more than 3 times is suspicious
+                    return True
+
+        return False
+
+    def _detect_semantic_repetition_conservative(self, text: str) -> bool:
+        """Ultra-conservative semantic repetition detection for very obvious cases only."""
+        if len(text) < 600:  # Increased from 400 to be more conservative
+            return False
+
+        # Only look at the very end of the text to catch active loops
+        recent_text = text[-300:]  # Only check last 300 characters
+
+        # Split into sentences and check for near-identical content
+        sentences = re.split(r"[.!?]+", recent_text)
+        sentences = [
+            s.strip() for s in sentences if len(s.strip()) > 30
+        ]  # Increased from 20
+
+        if len(sentences) < 3:  # Reduced from 4 - need fewer sentences
+            return False
+
+        # Only check for very high similarity (near-exact duplicates)
+        recent_sentences = sentences[-3:]  # Only check last 3 sentences
+        for i, sent1 in enumerate(recent_sentences):
+            for sent2 in recent_sentences[i + 1 :]:
+                words1 = set(re.findall(r"\b\w+\b", sent1.lower()))
+                words2 = set(re.findall(r"\b\w+\b", sent2.lower()))
+
+                # Both sentences must be substantial and very similar
+                if len(words1) > 8 and len(words2) > 8:  # Increased from 5
+                    overlap = len(words1 & words2) / min(len(words1), len(words2))
+                    if (
+                        overlap > 0.95
+                    ):  # Increased from 0.85 - only catch near-exact duplicates
+                        return True
+
+        return False
+
+    def _detect_semantic_repetition(self, text: str, window_size: int = 50) -> bool:
+        """Legacy method - now delegates to smart detection."""
+        is_repetitive, _ = self._detect_repetition_smart(text, is_tool_generation=False)
+        return is_repetitive
+
+    async def _stream_with_adaptive_controls(
+        self, messages: List[Any], is_tool_generation: bool = False
+    ) -> AIMessage:
+        """Stream generation with repetition + (optional) perplexity monitoring.
+
+        Expects underlying self.llm to support .astream returning chunks whose
+        response_metadata may include a "logprobs" dict (OpenAI / llama.cpp w/ logprobs=1).
+        Falls back gracefully if logprobs absent.
+        """
+        if self.llm is None:
+            raise RuntimeError("LLM not initialized before streaming")
+
+        cfg = self.circuit_config
+
+        # Log tool generation configuration
+        if is_tool_generation:
+            self._logger.info(
+                f"Tool generation mode enabled. Using smart repetition detection."
+            )
+
+        token_logprobs_window: deque[float] = deque(maxlen=cfg.perplexity_window)
+        full_response = ""
+        tokens_seen = 0
+        last_logged_tokens = 0
+
+        # Pre-calculate evaluation thresholds
+        min_eval_tokens = cfg.min_tokens_for_eval
+
+        try:
+            async for chunk in self.llm.astream(
+                messages,
+                logprobs=True,  # Request logprobs if supported
+                top_logprobs=1,
+            ):
+                # Content accumulation
+                token_text = ""
+                if hasattr(chunk, "content") and chunk.content:
+                    if isinstance(chunk.content, str):
+                        token_text = chunk.content
+                    elif isinstance(chunk.content, list):
+                        token_text = "".join(str(c) for c in chunk.content)
+                    else:
+                        token_text = str(chunk.content)
+                    full_response += token_text
+
+                # Logprobs collection (if guard enabled)
+                if cfg.enable_perplexity_guard:
+                    logprobs_data = None
+                    # Primary: ChatGenerationChunk.generation_info
+                    if hasattr(chunk, "generation_info") and getattr(
+                        chunk, "generation_info"
+                    ):
+                        gi = getattr(chunk, "generation_info") or {}
+                        if isinstance(gi, dict):
+                            logprobs_data = gi.get("logprobs")
+                    # Fallback: some implementations may surface response_metadata
+                    if logprobs_data is None and hasattr(chunk, "response_metadata"):
+                        meta = getattr(chunk, "response_metadata", None)
+                        if isinstance(meta, dict):
+                            logprobs_data = meta.get("logprobs")
+                    # Extract per-token logprob entries (OpenAI / llama.cpp style)
+                    if isinstance(logprobs_data, dict):
+                        content_entries = logprobs_data.get("content") or []
+                        if isinstance(content_entries, list):
+                            for entry in content_entries:
+                                if isinstance(entry, dict) and "logprob" in entry:
+                                    lp = entry.get("logprob")
+                                    if isinstance(lp, (int, float)):
+                                        token_logprobs_window.append(float(lp))
+
+                # Smart repetition detection - periodically check for issues
+                if (
+                    tokens_seen > 50 and tokens_seen % 25 == 0
+                ):  # Check every 25 tokens after 50
+                    is_repetitive, reason = self._detect_repetition_smart(
+                        full_response, is_tool_generation
+                    )
+                    if is_repetitive:
+                        if cfg.log_repetition_events:
+                            self._logger.warning(
+                                "Smart repetition guard triggered: reason='%s' tokens=%d",
+                                reason,
+                                tokens_seen,
+                            )
+                        if reason == "token_loop_detected":
+                            full_response += "\n[Paused: repetitive output detected. Please clarify or ask to continue.]"
+                        elif reason == "malformed_json_repetition":
+                            full_response += "\n[Paused: JSON generation issue detected. Regenerating response.]"
+                        else:
+                            full_response += "\n[Paused: repetitive content detected. Providing concise response.]"
+                        return AIMessage(content=full_response)
+
+                # Periodic perplexity logging (non-guard informational)
+                tokens_seen += 1 if token_text else 0
+                if (
+                    cfg.enable_perplexity_guard
+                    and tokens_seen - last_logged_tokens
+                    >= cfg.perplexity_log_interval_tokens
+                ):
+                    avg_logprob_tmp = (
+                        sum(token_logprobs_window) / len(token_logprobs_window)
+                        if token_logprobs_window
+                        else 0.0
+                    )
+                    rolling_ppl_tmp = math.exp(-avg_logprob_tmp)
+                    self._logger.info(
+                        "\n\nPerplexity progress: tokens=%d window=%d avg_logprob=%.3f perplexity=%.2f\n\n",
+                        tokens_seen,
+                        len(token_logprobs_window),
+                        avg_logprob_tmp,
+                        rolling_ppl_tmp,
+                    )
+                    last_logged_tokens = tokens_seen
+
+                # Perplexity (rolling) evaluation
+                if (
+                    cfg.enable_perplexity_guard
+                    and len(token_logprobs_window) >= min_eval_tokens
+                ):
+                    avg_logprob = sum(token_logprobs_window) / len(
+                        token_logprobs_window
+                    )
+                    rolling_perplexity = math.exp(-avg_logprob)
+                    if (
+                        rolling_perplexity > cfg.perplexity_threshold
+                        or avg_logprob < cfg.avg_logprob_floor
+                    ):
+                        self._logger.info(
+                            "Perplexity guard: perplexity=%.2f avg_logprob=%.2f (threshold=%.2f)",
+                            rolling_perplexity,
+                            avg_logprob,
+                            cfg.perplexity_threshold,
+                        )
+                        full_response += "\n[Generation paused: high model uncertainty detected. Please refine or clarify to continue.]"
+                        return AIMessage(content=full_response)
+
+            return AIMessage(content=full_response)
+        except Exception as e:  # pragma: no cover
+            self._logger.error(f"Adaptive streaming error: {e}")
+            # Fallback: attempt non-streaming call if available
+            if hasattr(self.llm, "ainvoke"):
+                try:
+                    return await self.llm.ainvoke(messages)  # type: ignore[attr-defined]
+                except Exception as inner:
+                    return AIMessage(content=f"Error generating response: {inner}")
+            return AIMessage(content=f"Error generating response: {e}")
+
     async def process_messages(
-        self, messages: List[Message], tools: Optional[List[BaseTool]] = None
+        self,
+        messages: List[Message],
+        tools: Optional[List[BaseTool]] = None,
+        is_tool_generation: bool = False,
     ) -> Any:
         """Process messages with circuit breaker protection."""
 
@@ -437,7 +648,9 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
             lc_messages = [to_lc_message(msg) for msg in messages]
 
             # Create and run the graph with timeout protection
-            graph = await self._create_graph_with_timeout(tools, timeout)
+            graph = await self._create_graph_with_timeout(
+                tools, timeout, is_tool_generation
+            )
 
             # Prepare initial state
             initial_state = build_langgraph_state(
@@ -486,7 +699,10 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
             return self._create_error_response(error_msg)
 
     async def _create_graph_with_timeout(
-        self, tools: Optional[List[BaseTool]], timeout: float
+        self,
+        tools: Optional[List[BaseTool]],
+        timeout: float,
+        is_tool_generation: bool = False,
     ) -> CompiledStateGraph:
         """Create LangGraph with timeout-aware agent node."""
         tool_signature = hash(tuple(tool.name for tool in (tools or [])))
@@ -500,13 +716,14 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
             await self._initialize_llm(gguf_path, tools)
         else:
             # Bind tools if provided
-            try:
-                if tools and self.llm:
-                    binder = getattr(self.llm, "bind_tools", None)
-                    if callable(binder):
-                        self.llm = cast(BaseChatModel, binder(tools))
-            except Exception:
-                pass
+            if tools:
+                try:
+                    if not isinstance(self.llm, BaseChatModel):
+                        raise TypeError("LLM is not a BaseChatModel")
+                    if self.llm.bind_tools:
+                        self.llm = self.llm.bind_tools(tools)
+                except Exception as e:
+                    self._logger.warning(f"Failed to bind tools to LLM: {e}")
 
         # Build graph with timeout-aware agent node
         workflow = StateGraph(LangGraphState)
@@ -515,7 +732,9 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         async def timeout_protected_agent_node(
             state: LangGraphState, config: RunnableConfig | None = None
         ):
-            return await self._agent_node_with_timeout(state, config, timeout)
+            return await self._agent_node_with_timeout(
+                state, config, timeout, is_tool_generation
+            )
 
         workflow.add_node("agent", timeout_protected_agent_node)
 
@@ -535,9 +754,15 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         return compiled_graph
 
     async def _agent_node_with_timeout(
-        self, state: LangGraphState, config: RunnableConfig | None, timeout: float
+        self,
+        state: LangGraphState,
+        config: RunnableConfig | None,
+        timeout: float,
+        is_tool_generation: bool = False,
     ) -> Dict[str, Any]:
         """Agent node with built-in timeout protection and repetition detection."""
+        # Note: config parameter is reserved for future use by LangGraph
+        _ = config  # Silence unused argument warning
 
         # Check iteration limits
         if state.current_iteration >= state.max_iterations:
@@ -576,13 +801,10 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
             )  # Allow up to 80% of pipeline timeout, min 90s
 
             try:
-                llm = cast(Any, self.llm)
+                # Use the adaptive streaming method which contains the necessary guards
+                # and avoids re-entering the pipeline creation lock.
                 response = await asyncio.wait_for(
-                    (
-                        llm.ainvoke(messages, config=config)
-                        if config is not None
-                        else llm.ainvoke(messages)
-                    ),
+                    self._stream_with_adaptive_controls(messages, is_tool_generation),
                     timeout=llm_timeout,
                 )
 
@@ -739,8 +961,6 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
             try:
                 if not self.profile.parameters.think:
                     # Remove <think>...</think> sections and similar markers
-                    import re
-
                     response_text = re.sub(
                         r"<think>[\s\S]*?</think>",
                         "",
@@ -819,88 +1039,3 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         # Clear caches
         self.graph_cache.clear()
         self.model_state = ModelState()
-
-    async def _generate_with_monitoring(self, messages: List[Dict[str, Any]]):
-        """
-        Generate response with real-time monitoring for perplexity and repetition,
-        using the modern astream_events API.
-        """
-        from collections import deque
-        import re
-        import math
-
-        # Configuration for monitoring
-        repetition_window_size = 30
-        repetition_threshold = 4
-        perplexity_threshold = self.circuit_config.perplexity_threshold
-
-        recent_phrases = deque(maxlen=repetition_window_size)
-        full_response = ""
-
-        if not self.llm:
-            raise RuntimeError("LLM not initialized. Cannot generate response.")
-
-        try:
-            # Convert dict messages to LangChain BaseMessage objects
-            lc_messages = build_lc_messages(messages)
-
-            async for event in self.llm.astream_events(lc_messages, version="v2"):
-                if event["event"] == "on_chat_model_stream":
-                    chunk = event["data"].get("chunk")
-                    if not isinstance(chunk, AIMessageChunk):
-                        continue
-
-                    # Aggregate content
-                    content_piece = chunk.content
-                    if isinstance(content_piece, str):
-                        full_response += content_piece
-                    elif isinstance(content_piece, list):
-                        for part in content_piece:
-                            if isinstance(part, str):
-                                full_response += part
-                            elif isinstance(part, dict) and part.get("type") == "text":
-                                full_response += part.get("text", "")
-
-                    # --- Perplexity Check ---
-                    if (
-                        perplexity_threshold > 0
-                        and chunk.response_metadata
-                        and "logprobs" in chunk.response_metadata
-                    ):
-                        logprobs_data = chunk.response_metadata["logprobs"]
-                        if isinstance(logprobs_data, list) and logprobs_data:
-                            logprob_item = logprobs_data[0]
-                            if isinstance(logprob_item, dict) and "logprob" in logprob_item:
-                                logprob = logprob_item["logprob"]
-                                if logprob != 0.0:
-                                    perplexity = math.exp(-logprob)
-                                    if perplexity > perplexity_threshold:
-                                        self._logger.warning(
-                                            f"High perplexity detected: {perplexity:.2f} > {perplexity_threshold}. "
-                                            "Model may be confused. Stopping generation."
-                                        )
-                                        full_response += "\n[Generation stopped due to high perplexity]"
-                                        return AIMessage(content=full_response)
-
-                    # --- Repetition Check ---
-                    words = re.findall(r"\b\w+\b", full_response.lower())
-                    if len(words) > 5:
-                        last_phrase = " ".join(words[-5:])
-                        if last_phrase in recent_phrases:
-                            count = recent_phrases.count(last_phrase)
-                            if count >= repetition_threshold:
-                                self._logger.warning(
-                                    f"Detected repetitive sequence: '{last_phrase}'. Stopping generation."
-                                )
-                                full_response += "\n[Response truncated due to repetition]"
-                                return AIMessage(content=full_response)
-                        recent_phrases.append(last_phrase)
-
-            return AIMessage(content=full_response)
-
-        except Exception as e:
-            self._logger.error(f"Error during monitored generation: {e}", exc_info=True)
-            # Fallback to a simple invoke on streaming error
-            if self.llm:
-                return await self.llm.ainvoke(messages)
-            return AIMessage(content=f"[Error in generation: {e}]")

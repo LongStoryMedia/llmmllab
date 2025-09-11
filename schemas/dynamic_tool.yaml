@@ -29,8 +29,8 @@ properties:
   parameters:
     type: object
     additionalProperties:
-      type: string
-    description: Parameters for the tool with string values
+      type: [string, number, integer, boolean, object, array, null]
+    description: Parameters for the tool with any values
   created_at:
     type: string
     format: date-time

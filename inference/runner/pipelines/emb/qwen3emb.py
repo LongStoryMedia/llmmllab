@@ -121,7 +121,7 @@ class Qwen3EmbeddingPipe(EmbeddingPipeline):
                 n_batch=512,
                 n_parts=-1,
                 seed=self.profile.parameters.seed or -1,
-                logits_all=False,
+                logits_all=True,  # enforced
                 vocab_only=False,
                 use_mlock=False,  # Better memory management
                 device="cuda" if torch.cuda.is_available() else "cpu",

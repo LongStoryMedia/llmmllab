@@ -169,7 +169,9 @@ class SearchContext:
 
             # If text is short, use heuristic extraction directly
             if len(raw_text) < 100:
-                formatted_query = self._heuristic_keywords_from_text(raw_text, max_terms=6)
+                formatted_query = self._heuristic_keywords_from_text(
+                    raw_text, max_terms=6
+                )
                 logger.info(f"Formatted search query (heuristic): {formatted_query}")
                 self._formatted_query = formatted_query
                 return formatted_query
@@ -188,14 +190,17 @@ class SearchContext:
                 role=MessageRole.USER,
                 content=[
                     MessageContent(
-                        type=MessageContentType.TEXT, 
-                        text=self.SEARCH_FORMAT_PROMPT.format(query=raw_text[:200])  # Limit input length
+                        type=MessageContentType.TEXT,
+                        text=self.SEARCH_FORMAT_PROMPT.format(
+                            query=raw_text[:200]
+                        ),  # Limit input length
                     )
                 ],
             )
 
             # Use NORMAL priority for search query formatting (used occasionally)
             from runner.pipeline_factory import PipelinePriority
+
             with pipeline_factory.pipeline(mp, str, PipelinePriority.NORMAL) as pipe:
                 # Use LLM to format the query
                 formatted_query = await pipe.process_messages([format_message])
@@ -219,12 +224,14 @@ class SearchContext:
                 raw_text = " ".join(parts).strip()
             except Exception:
                 pass
-            
+
             if raw_text:
-                formatted_query = self._heuristic_keywords_from_text(raw_text, max_terms=6)
+                formatted_query = self._heuristic_keywords_from_text(
+                    raw_text, max_terms=6
+                )
                 self._formatted_query = formatted_query
                 return formatted_query
-            
+
             raise ValueError("Failed to format query") from e
 
     def _compute_topics(self, base_query: str) -> List[str]:
@@ -310,21 +317,29 @@ class SearchContext:
                     provider = SearchProviderFactory.create_provider(
                         provider_type, self.user_config.web_search.max_results
                     )
-                    
+
                     # Add timeout to prevent hanging
                     provider_result = await asyncio.wait_for(
-                        provider.search(formatted_query, self.user_config.web_search.max_results),
-                        timeout=search_timeout
+                        provider.search(
+                            formatted_query, self.user_config.web_search.max_results
+                        ),
+                        timeout=search_timeout,
                     )
-                    
+
                     if provider_result and provider_result.contents:
                         contents.extend(provider_result.contents)
-                        logger.info(f"Search provider {provider_type} returned {len(provider_result.contents)} results")
+                        logger.info(
+                            f"Search provider {provider_type} returned {len(provider_result.contents)} results"
+                        )
                     else:
-                        logger.warning(f"Search provider {provider_type} returned no results")
-                        
+                        logger.warning(
+                            f"Search provider {provider_type} returned no results"
+                        )
+
                 except asyncio.TimeoutError:
-                    logger.error(f"Search provider {provider_type} timed out after {search_timeout}s")
+                    logger.error(
+                        f"Search provider {provider_type} timed out after {search_timeout}s"
+                    )
                     raise  # Don't continue with broken search
                 except Exception as e:
                     logger.error(f"Search provider {provider_type} failed: {e}")
@@ -359,7 +374,10 @@ class SearchContext:
 
             # Get embeddings from any embedding model with HIGH priority (used frequently)
             from runner.pipeline_factory import PipelinePriority
-            with pipeline_factory.pipeline(emb_mp, Embeddings, PipelinePriority.HIGH) as pipe:
+
+            with pipeline_factory.pipeline(
+                emb_mp, Embeddings, PipelinePriority.HIGH
+            ) as pipe:
                 embeddings = await pipe.process_messages(
                     [
                         Message(

@@ -26,7 +26,7 @@ from ..base import BasePipelineCore
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
 
 
-class Qwen25VLGGUFPipe(BasePipelineCore[ChatResponse]):
+class Qwen25VLPipeline(BasePipelineCore[ChatResponse]):
     """
     Pipeline class for Qwen 2.5 Vision Language GGUF models using llama-cpp-python.
     Uses the Qwen25VLChatHandler for proper multimodal support.
@@ -78,7 +78,7 @@ class Qwen25VLGGUFPipe(BasePipelineCore[ChatResponse]):
                 n_gpu_layers=-1,
                 n_threads=4,
                 verbose=True,
-                logits_all=False,
+                logits_all=True,  # enforced
                 embedding=False,
                 n_ctx=96000,
                 type_k=1,
