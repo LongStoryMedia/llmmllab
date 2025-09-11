@@ -29,7 +29,7 @@ from models import (
 )
 from utils.message import extract_message_text
 from utils.response import create_streaming_chunk, create_error_response
-from ..base import BasePipelineCore
+from ..llamacpp.base_llamacpp import BaseLlamaCppCore
 
 # Define generic return type for text pipelines
 T = TypeVar("T", bound=Union[str, ChatResponse])
@@ -42,7 +42,7 @@ LlamaChatSummarizationTextPipe = "LlamaChatSummPipe[str]"
 logger = logging.getLogger(__name__)
 
 
-class LlamaChatSummPipe(BasePipelineCore[T]):
+class LlamaChatSummPipe(BaseLlamaCppCore):
     """
     Optimized pipeline for Llama-Chat-Summary-3.2-3B model with enhanced performance.
 
@@ -66,8 +66,13 @@ class LlamaChatSummPipe(BasePipelineCore[T]):
         self, model: Model, profile: ModelProfile, return_type: type = ChatResponse
     ):
         """Initialize optimized LlamaChatSummPipe instance."""
-        # Enforce expected return type (str or ChatResponse)
-        super().__init__(model, profile, expected_return_type=return_type)
+        # Enforce expected return type (str or ChatResponse) and use small model size for summarization
+        super().__init__(
+            model,
+            profile,
+            expected_return_type=return_type,
+            model_size_category="small",
+        )
         self._return_type = return_type
 
         # Initialize performance tracking
@@ -96,7 +101,7 @@ class LlamaChatSummPipe(BasePipelineCore[T]):
 
         # Initialize components with optimizations
         self._initialize_tokenizer()
-        self._initialize_llm(gguf_path)
+        self._initialize_llama_cpp_langchain(gguf_path)
 
     def _get_gguf_path(self) -> str:
         """Get the GGUF file path with fallback logic."""
@@ -122,7 +127,7 @@ class LlamaChatSummPipe(BasePipelineCore[T]):
             with open(gguf_path, "rb") as f:
                 f.read(8)  # Read first 8 bytes
         except Exception as e:
-            raise IOError(f"Cannot read GGUF file {gguf_path}: {e}")
+            raise IOError(f"Cannot read GGUF file {gguf_path}: {e}") from e
 
         self._logger.info(
             f"Using GGUF file: {gguf_path} (size: {file_size/1_000_000:.2f} MB)"
@@ -157,7 +162,7 @@ class LlamaChatSummPipe(BasePipelineCore[T]):
             )
             self.tokenizer = None
 
-    def _initialize_llm(self, gguf_path: str) -> None:
+    def _initialize_llama_cpp_langchain(self, gguf_path: str) -> None:
         """Initialize LLM with Llama-Chat-Summary-specific optimizations."""
         try:
             # Llama-Chat-Summary-3.2-3B optimized settings
@@ -280,8 +285,6 @@ Summary: [/INST]"""
 
     def _generate_cache_key(self, text: str) -> str:
         """Generate a cache key for the input text."""
-        import hashlib
-
         # Use first 100 and last 100 chars plus length for cache key
         key_text = (
             text[:100] + str(len(text)) + text[-100:] if len(text) > 200 else text
@@ -315,8 +318,8 @@ Summary: [/INST]"""
             return 0.5  # Neutral score on error
 
     async def process_messages(
-        self, messages: List[Message], tools: Optional[List[BaseTool]] = None
-    ) -> T:
+        self, messages: List[Message], session_id: Optional[str] = None, tools: Optional[List[BaseTool]] = None, is_tool_generation: bool = False  # type: ignore
+    ) -> Union[str, ChatResponse]:
         """Process messages and return appropriate response type."""
 
         try:
@@ -330,10 +333,10 @@ Summary: [/INST]"""
             if not input_texts:
                 error_msg = "No text content found to summarize"
                 if self._return_type == str:
-                    return cast(T, error_msg)
+                    return cast(Union[str, ChatResponse], error_msg)
 
                 return cast(
-                    T,
+                    Union[str, ChatResponse],
                     ChatResponse(
                         done=True,
                         message=Message(
@@ -360,10 +363,10 @@ Summary: [/INST]"""
                 cached_summary = self._summary_cache[cache_key]
 
                 if self._return_type == str:
-                    return cast(T, cached_summary)
+                    return cast(Union[str, ChatResponse], cached_summary)
 
                 return cast(
-                    T,
+                    Union[str, ChatResponse],
                     ChatResponse(
                         done=True,
                         message=Message(
@@ -387,10 +390,10 @@ Summary: [/INST]"""
             self._summary_cache[cache_key] = summary
 
             if self._return_type == str:
-                return cast(T, summary)
+                return cast(Union[str, ChatResponse], summary)
 
             return cast(
-                T,
+                Union[str, ChatResponse],
                 ChatResponse(
                     done=True,
                     message=Message(
@@ -412,10 +415,10 @@ Summary: [/INST]"""
             error_msg = f"Error: {str(e)[:100]}..."
 
             if self._return_type == str:
-                return cast(T, error_msg)
+                return cast(Union[str, ChatResponse], error_msg)
 
             return cast(
-                T,
+                Union[str, ChatResponse],
                 ChatResponse(
                     done=True,
                     message=Message(
@@ -432,7 +435,7 @@ Summary: [/INST]"""
                 ),
             )
 
-    async def prompt(self, text: str | List[str]) -> T:
+    async def prompt(self, text: str | List[str]) -> Union[str, ChatResponse]:
         """Process a single message and return appropriate response type."""
         if isinstance(text, list):
             text = " ".join(text)

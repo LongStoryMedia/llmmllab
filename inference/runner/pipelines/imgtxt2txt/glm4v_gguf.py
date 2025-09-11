@@ -4,9 +4,9 @@ Clean implementation with only essential methods for public API.
 """
 
 import base64
-import requests
-import logging
 import datetime
+import logging
+import requests
 from typing import List, Optional, Dict, Any, cast
 from llama_cpp import Llama
 from langchain_core.tools import BaseTool
@@ -21,10 +21,10 @@ from models import (
     Model,
     ModelProfile,
 )
-from ..base import BasePipelineCore
+from ..llamacpp.base_llamacpp import BaseLlamaCppCore
 
 
-class GLM4VGGUFPipe(BasePipelineCore[ChatResponse]):
+class GLM4VGGUFPipe(BaseLlamaCppCore):
     """
     Pipeline class for GLM-4.1V-9B GGUF model using llama-cpp-python.
     Clean implementation with only essential methods.
@@ -32,14 +32,19 @@ class GLM4VGGUFPipe(BasePipelineCore[ChatResponse]):
 
     def __init__(self, model: Model, profile: ModelProfile):
         """Initialize a GLM4VGGUFPipe instance."""
-        super().__init__(model, profile)
+        # Initialize with ChatResponse as the expected return type for multimodal
+        super().__init__(
+            model,
+            profile,
+            expected_return_type=ChatResponse,
+            model_size_category="large",
+        )
         self.logger = logging.getLogger(__name__)
-        self.llm: Optional[Llama] = None
-        
+
         # Validate required model details
         if not (model.details and model.model):
             raise ValueError("Model definition requires model details.")
-            
+
         self.logger.info(f"Initialized GLM-4.1V GGUF pipeline: {model.name}")
 
     def _get_gguf_path(self) -> str:
@@ -50,11 +55,11 @@ class GLM4VGGUFPipe(BasePipelineCore[ChatResponse]):
             else self.model.model
         )
 
-    def _initialize_llm(self) -> None:
-        """Initialize the Llama model."""
+    def _initialize_llama_cpp_direct(self) -> None:
+        """Initialize the Llama model using llama-cpp-python directly."""
         if self.llm is not None:
             return
-            
+
         gguf_path = self._get_gguf_path()
         self.logger.info(f"Loading GGUF model from: {gguf_path}")
 
@@ -81,7 +86,7 @@ class GLM4VGGUFPipe(BasePipelineCore[ChatResponse]):
                 response = requests.get(image_url, timeout=30)
                 response.raise_for_status()
                 image_data = response.content
-                
+
                 content_type = response.headers.get("content-type", "")
                 if "png" in content_type.lower():
                     format_type = "png"
@@ -94,7 +99,7 @@ class GLM4VGGUFPipe(BasePipelineCore[ChatResponse]):
             else:
                 with open(image_url, "rb") as f:
                     image_data = f.read()
-                    
+
                 if image_url.lower().endswith(".png"):
                     format_type = "png"
                 elif image_url.lower().endswith((".jpg", ".jpeg")):
@@ -129,20 +134,26 @@ class GLM4VGGUFPipe(BasePipelineCore[ChatResponse]):
         return formatted_messages
 
     async def process_messages(
-        self, messages: List[Message], tools: Optional[List[BaseTool]] = None
+        self,
+        messages: List[Message],
+        tools: Optional[List[BaseTool]] = None,
+        is_tool_generation: bool = False,
     ) -> ChatResponse:
         """Process messages and return ChatResponse."""
+        # Multimodal pipelines don't currently use tools or tool generation flags
+        _ = tools, is_tool_generation  # Acknowledge unused parameters
+
         start_time = datetime.datetime.now(tz=datetime.timezone.utc)
-        
+
         # Initialize model if needed
         if self.llm is None:
-            self._initialize_llm()
-            
+            self._initialize_llama_cpp_direct()
+
         assert self.llm is not None, "Failed to initialize LLM"
 
         # Convert messages to llama-cpp format
         formatted_messages = self._format_messages(messages)
-        
+
         # Prepare generation parameters
         params = self.profile.parameters
         temperature = params.temperature if params and params.temperature else 0.7
@@ -203,7 +214,7 @@ class GLM4VGGUFPipe(BasePipelineCore[ChatResponse]):
                     )
                 ],
             )
-            
+
             return ChatResponse(
                 message=error_message,
                 done=True,
@@ -212,6 +223,10 @@ class GLM4VGGUFPipe(BasePipelineCore[ChatResponse]):
                 created_at=datetime.datetime.now(tz=datetime.timezone.utc),
             )
 
-    def create_graph(self, tools: Optional[List[BaseTool]] = None) -> CompiledStateGraph:
+    def create_graph(
+        self, tools: Optional[List[BaseTool]] = None
+    ) -> CompiledStateGraph:
         """Create a simple state graph for multimodal processing."""
-        raise NotImplementedError("LangGraph integration not implemented for multimodal pipeline")
+        raise NotImplementedError(
+            "LangGraph integration not implemented for multimodal pipeline"
+        )

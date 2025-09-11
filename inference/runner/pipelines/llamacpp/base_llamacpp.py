@@ -24,6 +24,8 @@ from langchain_community.chat_models.llamacpp import ChatLlamaCpp
 from langchain_core.callbacks import CallbackManager
 from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
+from .utils import calculate_optimal_gpu_layers
+
 from runner.pipelines.base_langgraph import (
     BaseLangGraphPipeline,
     CircuitBreakerConfig,
@@ -150,7 +152,7 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
             )
 
             # 2. GPU layer allocation (secondary reduction axis)
-            base_gpu_layers = self._calculate_optimal_gpu_layers(
+            base_gpu_layers = calculate_optimal_gpu_layers(
                 n_ctx, self._model_size_category
             )
             min_gpu_layers = max(1, int(base_gpu_layers * 2 / 3))  # never below 2/3
@@ -313,4 +315,7 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
         return sorted(out, reverse=True)
 
 
-__all__ = ["BaseLlamaCppPipeline"]
+__all__ = ["BaseLlamaCppPipeline", "BaseLlamaCppCore"]
+
+# Alias for non-LangGraph pipelines (embedding, multimodal, etc.)
+BaseLlamaCppCore = BaseLlamaCppPipeline
