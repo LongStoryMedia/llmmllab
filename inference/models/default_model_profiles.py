@@ -541,7 +541,7 @@ DEFAULT_ENGINEERING_PROFILE = ModelProfile(
     description="Profile for engineering tasks.",
     model_name="qwen3-coder-30b-a3b",
     parameters=ModelParameters(
-        num_ctx=1000000,
+        num_ctx=100000,
         repeat_last_n=-1,
         repeat_penalty=1.05,
         temperature=0.7,
@@ -557,6 +557,7 @@ DEFAULT_ENGINEERING_PROFILE = ModelProfile(
             "<|endoftext|>",
             "<|end|>",
         ],
+        batch_size=256,
     ),
     system_prompt="Assist with engineering tasks, providing detailed explanations and solutions.",
     created_at=datetime.now(),

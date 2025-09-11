@@ -642,39 +642,72 @@ class EnhancedHardwareManager:
                     with torch.cuda.device(device_idx):
                         # Clear cache multiple times
                         for _ in range(3):
-                            torch.cuda.empty_cache()
-                            torch.cuda.synchronize(device_idx)
+                            try:
+                                torch.cuda.empty_cache()
+                                torch.cuda.synchronize(device_idx)
+                            except Exception as e:
+                                self.logger.warning(f"CUDA error during cache clear: {e}")
+                                # Try context reset if CUDA is corrupted
+                                self._reset_cuda_context(device_idx)
+                                break
 
                         # Try defragmentation technique
-                        free_mem = torch.cuda.get_device_properties(
-                            device_idx
-                        ).total_memory - torch.cuda.memory_allocated(device_idx)
+                        try:
+                            free_mem = torch.cuda.get_device_properties(
+                                device_idx
+                            ).total_memory - torch.cuda.memory_allocated(device_idx)
 
-                        if free_mem > 1024 * 1024 * 512:  # At least 512MB free
-                            try:
-                                # Allocate and free large blocks to reduce fragmentation
-                                test_size = int(free_mem * 0.3)
-                                test_tensor = torch.empty(
-                                    test_size // 4,
-                                    dtype=torch.float32,
-                                    device=f"cuda:{device_idx}",
-                                )
-                                del test_tensor
-                                torch.cuda.empty_cache()
-                            except torch.cuda.OutOfMemoryError:
-                                pass
+                            if free_mem > 1024 * 1024 * 512:  # At least 512MB free
+                                try:
+                                    # Allocate and free large blocks to reduce fragmentation
+                                    test_size = int(free_mem * 0.3)
+                                    test_tensor = torch.empty(
+                                        test_size // 4,
+                                        dtype=torch.float32,
+                                        device=f"cuda:{device_idx}",
+                                    )
+                                    del test_tensor
+                                    torch.cuda.empty_cache()
+                                except torch.cuda.OutOfMemoryError:
+                                    self.logger.debug(f"Expected OOM during defrag on GPU {device_idx}")
+                                except Exception as e:
+                                    self.logger.warning(f"Unexpected error during defrag on GPU {device_idx}: {e}")
+                        except Exception as e:
+                            self.logger.warning(f"Error getting memory info for GPU {device_idx}: {e}")
 
                 except Exception as e:
                     self.logger.warning(f"Error during aggressive memory clearing: {e}")
+                    # Last resort: try to reset CUDA context
+                    try:
+                        self._reset_cuda_context(device_idx)
+                    except Exception as reset_e:
+                        self.logger.error(f"Failed to reset CUDA context for GPU {device_idx}: {reset_e}")
 
-            with torch.cuda.device(device_idx):
-                torch.cuda.empty_cache()
+            # Standard memory clear
+            try:
+                with torch.cuda.device(device_idx):
+                    torch.cuda.empty_cache()
+            except Exception as e:
+                self.logger.warning(f"Error during standard memory clear on GPU {device_idx}: {e}")
+                try:
+                    self._reset_cuda_context(device_idx)
+                except Exception as reset_e:
+                    self.logger.error(f"Failed to reset CUDA context for GPU {device_idx}: {reset_e}")
         else:
             if aggressive:
                 for i in range(self.gpu_count):
                     self.clear_memory(i, aggressive=True)
             else:
-                torch.cuda.empty_cache()
+                try:
+                    torch.cuda.empty_cache()
+                except Exception as e:
+                    self.logger.warning(f"Error during global cache clear: {e}")
+                    # Try to reset all CUDA contexts
+                    for i in range(self.gpu_count):
+                        try:
+                            self._reset_cuda_context(i)
+                        except Exception as reset_e:
+                            self.logger.error(f"Failed to reset CUDA context for GPU {i}: {reset_e}")
 
         self.update_all_memory_stats()
 

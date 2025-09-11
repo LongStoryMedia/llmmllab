@@ -84,45 +84,53 @@ class CompletionHandler:
         """Get model profile with caching."""
         user_id = conversation_ctx.user_config.user_id
         primary_id = conversation_ctx.user_config.model_profiles.primary_profile_id
-        
+
         # Try cache first
         cache_key = f"{user_id}:{primary_id}"
         if cache_key in self._model_profile_cache:
             cached_mp, timestamp = self._model_profile_cache[cache_key]
             if time.time() - timestamp < self._cache_ttl:
                 return cached_mp
-        
+
         # Get primary profile
         mp = await storage.get_service(storage.model_profile).get_model_profile_by_id(
             primary_id, user_id
         )
-        
+
         if mp:
             self._model_profile_cache[cache_key] = (mp, time.time())
             return mp
-        
+
         raise ValueError(f"Model profile {primary_id} not found for user {user_id}")
 
     def _should_skip_dynamic_tools(self, conversation_ctx: ConversationContext) -> bool:
         """Determine if we can skip expensive dynamic tool generation."""
         if not conversation_ctx.current_user_message:
             return True
-        
+
         message_text = extract_message_text(conversation_ctx.current_user_message)
         if not message_text:
             return True
-        
+
         # Skip for simple conversational queries
         simple_patterns = [
-            "hello", "hi", "how are you", "what is", "tell me about",
-            "explain", "describe", "who is", "where is", "when is"
+            "hello",
+            "hi",
+            "how are you",
+            "what is",
+            "tell me about",
+            "explain",
+            "describe",
+            "who is",
+            "where is",
+            "when is",
         ]
-        
+
         message_lower = message_text.lower()
         if any(pattern in message_lower for pattern in simple_patterns):
             if len(message_text.split()) < 10:  # Short simple queries
                 return True
-        
+
         return False
 
     async def handle_completion(
@@ -141,22 +149,37 @@ class CompletionHandler:
                 try:
                     # Skip expensive dynamic tool generation for simple queries
                     if self._should_skip_dynamic_tools(conversation_ctx):
-                        tools = StandardToolProvider.get_standard_tools(conversation_ctx)
+                        tools = StandardToolProvider.get_standard_tools(
+                            conversation_ctx
+                        )
                         yield serialize_to_json(
                             create_streaming_chunk("Using standard tools", done=False)
                         )
                     else:
                         # Use much longer timeout for tool acquisition in research/testing
-                        tool_timeout = 300.0  # 5 minute timeout for tool generation
+                        tool_timeout = 120.0  # Reduced to 2 minutes for faster timeout
                         try:
                             tool_gen = get_tools(conversation_ctx)
                             start_time = asyncio.get_event_loop().time()
-                            
+                            chunk_count = 0  # Track chunks to detect stuck generation
+
                             async for item in tool_gen:
                                 # Check timeout manually since asyncio.wait_for doesn't work with async generators
-                                if asyncio.get_event_loop().time() - start_time > tool_timeout:
-                                    raise asyncio.TimeoutError(f"Tool acquisition timed out after {tool_timeout}s")
-                                    
+                                current_time = asyncio.get_event_loop().time()
+                                elapsed = current_time - start_time
+                                
+                                if elapsed > tool_timeout:
+                                    raise asyncio.TimeoutError(
+                                        f"Tool acquisition timed out after {tool_timeout}s"
+                                    )
+                                
+                                # Additional check: if we've been streaming for a while without completing
+                                chunk_count += 1
+                                if chunk_count > 100 and elapsed > 60.0:  # Many chunks after 1 minute
+                                    raise asyncio.TimeoutError(
+                                        f"Tool generation appears stuck after {elapsed:.1f}s ({chunk_count} chunks)"
+                                    )
+
                                 if isinstance(item, str):
                                     yield serialize_to_json(
                                         create_streaming_chunk(item, done=False)
@@ -165,16 +188,27 @@ class CompletionHandler:
                                     tools = item
                                     break
                         except asyncio.TimeoutError as e:
-                            logger.warning(f"Tool acquisition timed out: {e}, using standard tools")
-                            tools = StandardToolProvider.get_standard_tools(conversation_ctx)
+                            logger.warning(
+                                f"Tool acquisition timed out: {e}, using standard tools"
+                            )
+                            tools = StandardToolProvider.get_standard_tools(
+                                conversation_ctx
+                            )
                             yield serialize_to_json(
-                                create_streaming_chunk("Tool generation timed out, using standard tools", done=False)
+                                create_streaming_chunk(
+                                    "Tool generation timed out, using standard tools",
+                                    done=False,
+                                )
                             )
                 except Exception as e:
-                    logger.warning(f"Tool acquisition failed: {e}, using standard tools")
+                    logger.warning(
+                        f"Tool acquisition failed: {e}, using standard tools"
+                    )
                     tools = StandardToolProvider.get_standard_tools(conversation_ctx)
                     yield serialize_to_json(
-                        create_streaming_chunk("Tool generation failed, using standard tools", done=False)
+                        create_streaming_chunk(
+                            "Tool generation failed, using standard tools", done=False
+                        )
                     )
 
                 # 3) Resolve model profile
@@ -184,24 +218,34 @@ class CompletionHandler:
                 try:
                     # Use HIGH priority for main chat completion pipelines
                     from runner.pipeline_factory import PipelinePriority
-                    with pipeline_factory.pipeline(mp, ChatResponse, PipelinePriority.HIGH) as pipeline:
+
+                    with pipeline_factory.pipeline(
+                        mp, ChatResponse, PipelinePriority.HIGH
+                    ) as pipeline:
                         rc.add("pipeline", pipeline)
 
                         # 4) Stream execution
                         logger.info(
                             f"Starting pipeline execution with {len(conversation_ctx.messages)} messages and {len(tools)} tools"
                         )
-                        
+
                         # Ensure we have at least the current user message
                         messages_to_process = conversation_ctx.messages
-                        if not messages_to_process and conversation_ctx.current_user_message:
-                            messages_to_process = [conversation_ctx.current_user_message]
-                        
+                        if (
+                            not messages_to_process
+                            and conversation_ctx.current_user_message
+                        ):
+                            messages_to_process = [
+                                conversation_ctx.current_user_message
+                            ]
+
                         if not messages_to_process:
                             logger.error("No messages to process")
-                            yield serialize_to_json(create_error_chunk("No messages to process"))
+                            yield serialize_to_json(
+                                create_error_chunk("No messages to process")
+                            )
                             return
-                        
+
                         chunk_count = 0
                         async for chunk in stream_pipeline(
                             messages_to_process, pipeline, tools
@@ -209,7 +253,9 @@ class CompletionHandler:
                             chunk_count += 1
                             # Extract text content for accumulation
                             chunk_text = (
-                                extract_message_text(chunk.message) if chunk.message else ""
+                                extract_message_text(chunk.message)
+                                if chunk.message
+                                else ""
                             )
                             full_response += chunk_text
 
@@ -223,10 +269,12 @@ class CompletionHandler:
                 except Exception as pipeline_error:
                     logger.error(f"Pipeline execution failed: {pipeline_error}")
                     # Try to provide a helpful error message to the user
-                    yield serialize_to_json(create_error_chunk(
-                        f"Model execution failed: {str(pipeline_error)}. "
-                        "This may be due to model compatibility issues or resource constraints."
-                    ))
+                    yield serialize_to_json(
+                        create_error_chunk(
+                            f"Model execution failed: {str(pipeline_error)}. "
+                            "This may be due to model compatibility issues or resource constraints."
+                        )
+                    )
                     return
 
                 # Store response in background
@@ -253,7 +301,7 @@ class CompletionHandler:
                     error_msg = "Tool processing failed, but continuing with basic functionality."
                 else:
                     error_msg = f"Processing error: {str(e)}"
-                
+
                 yield serialize_to_json(create_error_chunk(error_msg))
 
 

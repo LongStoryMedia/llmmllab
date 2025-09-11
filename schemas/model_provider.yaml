@@ -1,0 +1,12 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ModelProvider
+description: Provider / runtime of the model (e.g., 'llama.cpp', 'hf', 'hugging face', 'openai', 'stable-diffusion.cpp', 'anthropic')
+type: string
+enum:
+  - llama_cpp
+  - hf
+  - hugging_face
+  - openai
+  - stable_diffusion_cpp
+  - anthropic
+  - other

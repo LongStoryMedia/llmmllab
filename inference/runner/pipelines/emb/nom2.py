@@ -162,7 +162,7 @@ class NomicEmbedTextPipe(EmbeddingPipeline):
                 n_batch=512,  # Optimized batch size
                 n_parts=-1,
                 seed=self.profile.parameters.seed or -1,
-                logits_all=False,
+                logits_all=True,  # enforced: required for logprobs usage elsewhere
                 vocab_only=False,
                 use_mlock=False,  # Better memory management
                 device="cuda" if torch.cuda.is_available() else "cpu",

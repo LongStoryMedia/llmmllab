@@ -166,7 +166,7 @@ class BasePipelineCore(ABC, Generic[PipeType]):
 
     @abstractmethod
     async def process_messages(
-        self, messages: List[Message], tools: Optional[List[BaseTool]] = None
+        self, messages: List[Message], tools: Optional[List[BaseTool]] = None, is_tool_generation: bool = False
     ) -> PipeType:
         """Process messages and return appropriate response type."""
 
@@ -267,7 +267,7 @@ class ChatPipeline(BasePipelineCore, LangGraphCapable):
         """Initialize the underlying LLM. Must be implemented by subclasses."""
 
     async def process_messages(
-        self, messages: List[Message], tools: Optional[List[BaseTool]] = None
+        self, messages: List[Message], tools: Optional[List[BaseTool]] = None, is_tool_generation: bool = False
     ) -> ChatResponse:
         """Process messages and return ChatResponse."""
         # Default implementation - subclasses can override
@@ -417,7 +417,7 @@ class EmbeddingPipeline(BasePipelineCore):
 
     @abstractmethod
     async def process_messages(
-        self, messages: List[Message], tools: Optional[List[BaseTool]] = None
+        self, messages: List[Message], tools: Optional[List[BaseTool]] = None, is_tool_generation: bool = False
     ) -> List[List[float]]:
         """Process messages and return embeddings."""
         # To be implemented by subclasses
@@ -443,7 +443,7 @@ class TextPipeline(BasePipelineCore):
 
     @abstractmethod
     async def process_messages(
-        self, messages: List[Message], tools: Optional[List[BaseTool]] = None
+        self, messages: List[Message], tools: Optional[List[BaseTool]] = None, is_tool_generation: bool = False
     ) -> str:
         """Process messages and return text."""
         # To be implemented by subclasses

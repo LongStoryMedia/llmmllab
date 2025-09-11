@@ -44,3 +44,6 @@ properties:
   n_parts:
     type: integer
     description: Number of parts to split the model into. -1 means auto.
+  batch_size:
+    type: integer
+    description: Batch size for processing inputs

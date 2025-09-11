@@ -220,7 +220,7 @@ class DynamicToolGenerator:
             raise ValueError("Analysis model profile not found")
 
         # Use NORMAL priority for tool analysis (used occasionally)
-        from runner.pipeline_factory import PipelinePriority
+
         with pipeline_factory.pipeline(mp, str, PipelinePriority.NORMAL) as pipeline:
 
             analysis_prompt = f"""
@@ -324,8 +324,11 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
             )
 
             # Use HIGH priority for embeddings (used frequently)
-            from runner.pipeline_factory import PipelinePriority
-            with pipeline_factory.pipeline(embedding_profile, Embeddings, PipelinePriority.HIGH) as pipe:
+            # (Removed duplicate import of PipelinePriority)
+
+            with pipeline_factory.pipeline(
+                embedding_profile, Embeddings, PipelinePriority.HIGH
+            ) as pipe:
                 embedding_result = await pipe.process_messages([desc_message])
                 embedding_vector: List[float] = []
                 if (
@@ -370,13 +373,14 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
 
         if not engineering_profile:
             raise ValueError("Engineering profile not found")
-
         # Try tool generation with memory-aware retry logic
         max_retries = 3
         for attempt in range(max_retries):
             try:
                 # Use LOW priority for tool generation (used rarely, can be evicted)
-                with pipeline_factory.pipeline(engineering_profile, str, PipelinePriority.LOW) as pipe:
+                with pipeline_factory.pipeline(
+                    engineering_profile, str, PipelinePriority.LOW
+                ) as pipe:
                     generation_prompt = f"""Create a custom tool/function for this user request:
 
 User request: {user_message_text}
@@ -413,9 +417,10 @@ Make the tool specific to the user's request but generalizable for similar tasks
                                         )
                                     ],
                                 )
-                            ]
+                            ],
+                            is_tool_generation=True  # Deterministic flag for tool generation
                         ),
-                        timeout=300.0  # 5 minute timeout for tool generation
+                        timeout=120.0,  # 2 minute timeout for tool generation (reduced from 5 minutes)
                     )
 
                     if not tool_response:
@@ -424,7 +429,9 @@ Make the tool specific to the user's request but generalizable for similar tasks
                     # Extract and parse JSON
                     json_data = self._extract_json_from_response(tool_response)
                     if not json_data:
-                        self.logger.error(f"Could not extract valid JSON from response: {tool_response[:500]}...")
+                        self.logger.error(
+                            f"Could not extract valid JSON from response: {tool_response[:500]}..."
+                        )
                         raise ValueError("Could not extract valid JSON from response")
 
                     # Create DynamicTool
@@ -435,30 +442,44 @@ Make the tool specific to the user's request but generalizable for similar tasks
                         self.logger.error(f"Tool validation error: {e}")
                         self.logger.error(f"Invalid JSON data: {json_data}")
                         raise ValueError(f"Tool validation failed: {str(e)}") from e
-                        
-                break  # Success, exit retry loop
-                    
+
             except Exception as e:
-                if "out of memory" in str(e).lower() or "failed to allocate" in str(e).lower():
-                    self.logger.warning(f"Tool generation failed due to memory (attempt {attempt + 1}): {e}")
+                if (
+                    "out of memory" in str(e).lower()
+                    or "failed to allocate" in str(e).lower()
+                ):
+                    self.logger.warning(
+                        f"Tool generation failed due to memory (attempt {attempt + 1}): {e}"
+                    )
                     if attempt < max_retries - 1:
                         # Clear some memory and try again
-                        pipeline_factory.clear_unused_pipelines()
-                        # Force garbage collection
+                        try:
+                            pipeline_factory.force_resource_cleanup(
+                                _target_free_memory_gb=1.0
+                            )
+                        except Exception:
+                            pass
                         import gc
+
                         gc.collect()
                         continue
-                    else:
-                        raise ValueError(f"Tool generation failed after {max_retries} attempts due to memory constraints")
-                else:
-                    raise  # Re-raise non-memory errors immediately
+                    raise ValueError(
+                        f"Tool generation failed after {max_retries} attempts due to memory constraints"
+                    ) from e
+                raise  # Re-raise non-memory errors immediately
+
+        # If we exit the retry loop without returning, treat as failure
+        return ToolGenerationResult(
+            success=False,
+            error_message="Tool generation retries exhausted without success",
+        )
 
     def _extract_json_from_response(self, response: str) -> Optional[Dict[str, Any]]:
         """Extract JSON from LLM response with multiple fallback strategies."""
         if not response or not response.strip():
             self.logger.error("Empty response received")
             return None
-            
+
         try:
             # Strategy 1: Direct parse
             return cast(Dict[str, Any], json.loads(response.strip()))
@@ -478,61 +499,63 @@ Make the tool specific to the user's request but generalizable for similar tasks
         try:
             # Strategy 3: Find first complete JSON object with better regex
             # Look for balanced braces more carefully
-            start_idx = response.find('{')
+            start_idx = response.find("{")
             if start_idx != -1:
                 brace_count = 0
                 in_string = False
                 escape_next = False
                 end_idx = start_idx
-                
+
                 for i, char in enumerate(response[start_idx:], start_idx):
                     if escape_next:
                         escape_next = False
                         continue
-                    
-                    if char == '\\':
+
+                    if char == "\\":
                         escape_next = True
                         continue
-                    
+
                     if char == '"' and not escape_next:
                         in_string = not in_string
                         continue
-                    
+
                     if not in_string:
-                        if char == '{':
+                        if char == "{":
                             brace_count += 1
-                        elif char == '}':
+                        elif char == "}":
                             brace_count -= 1
                             if brace_count == 0:
                                 end_idx = i + 1
                                 break
-                
+
                 if brace_count == 0:  # Found complete JSON
                     json_str = response[start_idx:end_idx]
                     # Clean up common issues
-                    json_str = re.sub(r',\s*}', '}', json_str)
-                    json_str = re.sub(r',\s*]', ']', json_str)
+                    json_str = re.sub(r",\s*}", "}", json_str)
+                    json_str = re.sub(r",\s*]", "]", json_str)
                     return cast(Dict[str, Any], json.loads(json_str))
         except (json.JSONDecodeError, ValueError):
             pass
 
         try:
             # Strategy 4: Try to repair truncated JSON by completing it
-            start_idx = response.find('{')
+            start_idx = response.find("{")
             if start_idx != -1:
                 # Take everything from the first brace to the end
                 json_candidate = response[start_idx:]
-                
+
                 # Try to complete incomplete JSON structures
-                if json_candidate.count('{') > json_candidate.count('}'):
+                if json_candidate.count("{") > json_candidate.count("}"):
                     # Add missing closing braces
-                    missing_braces = json_candidate.count('{') - json_candidate.count('}')
-                    json_candidate += '}' * missing_braces
-                
+                    missing_braces = json_candidate.count("{") - json_candidate.count(
+                        "}"
+                    )
+                    json_candidate += "}" * missing_braces
+
                 # Remove trailing commas and incomplete entries
-                json_candidate = re.sub(r',\s*}', '}', json_candidate)
-                json_candidate = re.sub(r',\s*]', ']', json_candidate)
-                
+                json_candidate = re.sub(r",\s*}", "}", json_candidate)
+                json_candidate = re.sub(r",\s*]", "]", json_candidate)
+
                 # Try to parse the repaired JSON
                 return cast(Dict[str, Any], json.loads(json_candidate))
         except (json.JSONDecodeError, ValueError):
@@ -590,7 +613,7 @@ class ModernToolManager:
                 self.dynamic_generator.analyze_tool_need(
                     user_message_text, conversation_ctx
                 ),
-                timeout=120.0  # 2 minute timeout
+                timeout=120.0,  # 2 minute timeout
             )
 
             if analysis.needs_dynamic_tool:
@@ -601,7 +624,7 @@ class ModernToolManager:
                     self.dynamic_generator.generate_tool(
                         analysis.description, user_message_text, conversation_ctx
                     ),
-                    timeout=300.0  # 5 minute timeout
+                    timeout=300.0,  # 5 minute timeout
                 )
 
                 if tool_result.success and tool_result.tool:
@@ -614,7 +637,9 @@ class ModernToolManager:
                 yield "No dynamic tools needed for this request"
 
         except asyncio.TimeoutError:
-            self.logger.warning("Tool generation timed out, continuing with standard tools")
+            self.logger.warning(
+                "Tool generation timed out, continuing with standard tools"
+            )
             yield "⏱️ Tool generation timed out, using standard tools"
         except Exception as e:
             self.logger.error(f"Error in dynamic tool analysis: {e}")

@@ -44,6 +44,7 @@ try:
     from . import model_profile
     from . import model_profile_config
     from . import model_profile_image_settings
+    from . import model_provider
     from . import model_task
     from . import pagination
     from . import pipeline_error
@@ -119,6 +120,7 @@ __all__ = [
     'model_profile',
     'model_profile_config',
     'model_profile_image_settings',
+    'model_provider',
     'model_task',
     'pagination',
     'pipeline_error',
@@ -185,6 +187,7 @@ __all__ = [
     'ModelProfile',
     'ModelProfileConfig',
     'ModelProfileImageSettings',
+    'ModelProvider',
     'ModelTask',
     'PaginationSchema',
     'PipelineError',
@@ -336,6 +339,9 @@ from .model_profile_config import (
 )
 from .model_profile_image_settings import (
     ModelProfileImageSettings,
+)
+from .model_provider import (
+    ModelProvider,
 )
 from .model_task import (
     ModelTask,

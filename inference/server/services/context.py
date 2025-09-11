@@ -20,7 +20,6 @@ from models import (
     UserConfig,
     Conversation,
     ConversationCtx,
-    ChatResponse,
 )
 from utils.message import extract_message_text
 
@@ -242,11 +241,13 @@ class ConversationContext(ConversationCtx):
     async def _load_messages(self, conversation_id: int) -> List[Message]:
         """Load conversation messages."""
         try:
-            messages = await storage.get_service(storage.message).get_conversation_history(
-                conversation_id
-            )
+            messages = await storage.get_service(
+                storage.message
+            ).get_conversation_history(conversation_id)
             if not messages:
-                self.logger.info(f"No messages found for conversation {conversation_id}")
+                self.logger.info(
+                    f"No messages found for conversation {conversation_id}"
+                )
                 return []
             return messages
         except Exception as e:
@@ -267,11 +268,8 @@ class ConversationContext(ConversationCtx):
 
             # Execute storage and embedding operations concurrently
             storage_task = self._store_message(message)
-            
-            # Get the pipeline context first
-            embedding_pipeline_context = await self._get_embedding_pipeline_context()
-            embedding_task = self._create_embeddings(message, embedding_pipeline_context)
-            
+            embedding_task = self._create_embeddings(message)
+
             storage_result, embedding_result = await asyncio.gather(
                 storage_task, embedding_task, return_exceptions=True
             )
@@ -310,9 +308,13 @@ class ConversationContext(ConversationCtx):
             self.logger.error(f"Error storing message: {e}")
             return None
 
-    async def _get_embedding_pipeline_context(self):
-        """Get the embedding pipeline context."""
+    async def _create_embeddings(self, message: Message) -> List[List[float]]:
+        """Create embeddings for message."""
         try:
+            text = extract_message_text(message)
+            if not text:
+                return []
+
             # Get embedding model profile
             mp = await storage.get_service(
                 storage.model_profile
@@ -320,42 +322,28 @@ class ConversationContext(ConversationCtx):
                 self.user_config.model_profiles.embedding_profile_id,
                 self.user_config.user_id,
             )
-            assert mp is not None, "Embedding model profile not found"
 
-            # Get embeddings from any embedding model with HIGH priority (used frequently)
-            from runner.pipeline_factory import PipelinePriority
-
-            return pipeline_factory.get_pipeline(
-                mp.model_name, mp, priority=PipelinePriority.HIGH
-            )
-        except Exception as e:
-            self.logger.error(f"Error getting embedding pipeline context: {e}")
-            return None
-
-    async def _create_embeddings(self, message: Message, pipeline_context) -> List[List[float]]:
-        """Create embeddings for message."""
-        if not pipeline_context:
-            self.logger.error("No embedding pipeline context provided")
-            return []
-            
-        try:
-            text = extract_message_text(message)
-            if not text:
+            if not mp:
+                self.logger.error("Embedding model profile not found")
                 return []
 
-            with pipeline_context as pipe:
-                if not pipe:
-                    self.logger.error("Failed to get embedding pipeline from context")
-                    return []
+            # Get embedding pipeline with HIGH priority (used frequently)
+            from runner.pipeline_factory import PipelinePriority
 
-                # Embedding pipelines should have an `embed_texts` method.
-                if hasattr(pipe, "embed_texts") and callable(getattr(pipe, "embed_texts")):
-                    embed_method = getattr(pipe, "embed_texts")
-                    embeddings = await embed_method([text])
-                    return embeddings
-                else:
-                    self.logger.error("Pipeline does not support `embed_texts` method")
-                    return []
+            embedding_pipeline = pipeline_factory.get_pipeline(
+                mp, Embeddings, PipelinePriority.HIGH
+            )
+
+            # Process message through pipeline
+            result = await embedding_pipeline.process_messages([message])
+
+            if isinstance(result, list) and all(
+                isinstance(item, list) for item in result
+            ):
+                return result
+            else:
+                self.logger.warning(f"Unexpected embedding result type: {type(result)}")
+                return []
 
         except Exception as e:
             self.logger.error(f"Error creating embeddings: {e}")
@@ -364,53 +352,46 @@ class ConversationContext(ConversationCtx):
     async def generate_title(self) -> str:
         """Generate conversation title with enhanced error handling."""
         try:
-            # Check if title already exists
-            if self.conversation and self.conversation.title not in [
-                "Untitled Conversation",
-                "",
-                None,
-            ]:
-                return self.conversation.title
-
-            # Ensure there are messages to generate a title from
-            if not self.messages:
-                return "New Chat"
-
-            # Get summarization model profile
             mp = await storage.get_service(
                 storage.model_profile
             ).get_model_profile_by_id(
-                self.user_config.model_profiles.summarization_profile_id,
+                self.user_config.model_profiles.formatting_profile_id,
                 self.user_config.user_id,
             )
-            assert mp is not None, "Summarization model profile not found"
 
+            if not mp:
+                raise ValueError("Formatting model profile not found")
+
+            # Create title generation prompt
+            title_prompt = (
+                "Create a short, descriptive title (max 5 words) for this conversation."
+            )
+            format_message = Message(
+                role=MessageRole.USER,
+                content=[
+                    MessageContent(type=MessageContentType.TEXT, text=title_prompt)
+                ],
+            )
+
+            # Use the pipeline in a context manager with NORMAL priority (used occasionally)
             from runner.pipeline_factory import PipelinePriority
-            
-            pipeline_context = pipeline_factory.get_pipeline(mp.model_name, mp, priority=PipelinePriority.NORMAL)
-            if not pipeline_context:
-                raise Exception("Failed to get summarization pipeline context")
 
-            with pipeline_context as pipe:
-                if not pipe:
-                    raise Exception("Failed to get summarization pipeline")
+            with pipeline_factory.pipeline(mp, str, PipelinePriority.NORMAL) as pipe:
+                result = await pipe.process_messages([*self.messages, format_message])
 
-                # Summarization pipelines use invoke
-                if hasattr(pipe, "invoke") and callable(getattr(pipe, "invoke")):
-                    invoke_method = getattr(pipe, "invoke")
-                    response = await invoke_method({"messages": self.messages})
-                    
-                    # Extract text from the response
-                    if isinstance(response, ChatResponse) and response.message:
-                        return extract_message_text(response.message)
-                    elif isinstance(response, str):
-                        return response
-                
-                return "New Chat"
+            if isinstance(result, str):
+                title = result.strip()
+                self.conversation.title = title
+                await storage.get_service(
+                    storage.conversation
+                ).update_conversation_title(self.conversation.id, title)
+                return title
+
+            return "New Conversation"
 
         except Exception as e:
             self.logger.error(f"Error generating title: {e}")
-            return "New Chat"
+            return "New Conversation"
 
     def clear_notes(self) -> None:
         """Clear all notes safely."""
@@ -424,25 +405,27 @@ class ConversationContext(ConversationCtx):
         try:
             assert self.current_user_message, "Current user message not found"
             assert self.intent, "Intent not set in conversation context"
-            
+
             query = extract_message_text(self.current_user_message)
             assert query, "Query not found"
 
             # Create tasks for concurrent execution
             tasks = []
-            
+
             # Always summarize (lightweight operation)
             tasks.append(self.summary_context.summarize(self.messages))
-            
+
             # Add conditional tasks based on intent
             if self.intent.memory:
                 tasks.append(self.memory_context.retrieve_memories(embeddings))
-            
+
             if self.intent.web_search:
-                tasks.append(self.search_context.search(
-                    self.current_user_message, self.conversation.id
-                ))
-            
+                tasks.append(
+                    self.search_context.search(
+                        self.current_user_message, self.conversation.id
+                    )
+                )
+
             # Execute all tasks concurrently
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)

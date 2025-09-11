@@ -35,6 +35,9 @@ properties:
     items:
       $ref: "#/definitions/LoraWeight"
     description: List of LoRA weights associated with the model
+  provider:
+    $ref: model_provider.yaml
+    description: Provider or runtime of the model (e.g., "llama.cpp", "hf", "openai")
 required:
   - name
   - model
@@ -43,6 +46,7 @@ required:
   - digest
   - details
   - task
+  - provider
 definitions:
   ModelDetails:
     $ref: model_details.yaml

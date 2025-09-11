@@ -172,7 +172,7 @@ class LlamaChatSummPipe(BasePipelineCore[T]):
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "debug",
                 n_parts=-1,
                 seed=self.profile.parameters.seed or -1,
-                logits_all=False,
+                logits_all=True,  # enforced: needed for logprobs
                 vocab_only=False,
                 use_mlock=False,
                 n_threads=self._get_optimal_threads(),
@@ -516,7 +516,7 @@ Summary: """
                         if isinstance(content, str):
                             summary += content + " "
                         elif hasattr(content, "text"):
-                            summary += content.text + " "
+                            summary += content.text + " "  # type: ignore
                         elif isinstance(content, dict) and "text" in content:
                             summary += content["text"] + " "
 

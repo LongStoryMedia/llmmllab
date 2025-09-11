@@ -35,4 +35,6 @@ message ModelParameters {
   int32 max_tokens = 12;
   // Number of parts to split the model into. -1 means auto.
   int32 n_parts = 13;
+  // Batch size for processing inputs
+  int32 batch_size = 14;
 }
