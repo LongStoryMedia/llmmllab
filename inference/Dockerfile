@@ -57,13 +57,6 @@ RUN CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_P
     LLAMA_CPP_LIB_PATH=/llama.cpp/build/bin \
     pip wheel --wheel-dir /opt/wheels llama-cpp-python==0.3.16 -vvv
 
-# Clean up llama-cpp-python build artifacts to save space
-# RUN find /tmp -name "*llama*" -type d -exec rm -rf {} + 2>/dev/null || true
-
-# Clean up build-time LD_LIBRARY_PATH to avoid runtime stub library conflicts
-ENV LD_LIBRARY_PATH="/llama.cpp/build/bin:/usr/local/cuda/lib64"
-
-
 # Runtime stage - minimal CUDA runtime
 # FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
 
@@ -121,7 +114,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     ffmpeg \
     binutils \
-    git \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean \
     && ln -sf /usr/bin/python3 /usr/bin/python
