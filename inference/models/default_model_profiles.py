@@ -143,6 +143,7 @@ DEFAULT_SUMMARIZATION_PROFILE = ModelProfile(
             "Moreover,",
         ],
         think=False,
+        batch_size=64,
     ),
     system_prompt="Summarize the conversation so far in a concise paragraph. Include key points and conclusions, but omit redundant details. Be brief and focused.",
     created_at=datetime.now(),

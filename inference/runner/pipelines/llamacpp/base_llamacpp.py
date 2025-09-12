@@ -152,23 +152,33 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
             )
 
             # 2. GPU layer allocation (secondary reduction axis)
+            # Always start with -1 (all layers on GPU) for the first attempt
             base_gpu_layers = calculate_optimal_gpu_layers(
                 n_ctx, self._model_size_category
             )
             min_gpu_layers = max(1, int(base_gpu_layers * 2 / 3))  # never below 2/3
+
+            # Start with -1 (all GPU layers) for optimal performance, then fallback
             raw_gpu_candidates = [
+                -1,  # First attempt: all layers on GPU
                 base_gpu_layers,
                 int(base_gpu_layers * 0.9),
                 int(base_gpu_layers * 0.8),
                 int(base_gpu_layers * 0.75),
                 int(base_gpu_layers * 0.7),
             ]
-            gpu_layer_candidates = [
-                g
-                for g in self._descending_unique(raw_gpu_candidates)
-                if g >= min_gpu_layers
-            ]
-            if not gpu_layer_candidates:
+            # Handle -1 (all GPU layers) separately since _descending_unique filters it out
+            gpu_layer_candidates = [-1]  # Always start with all GPU layers
+
+            # Add the rest of the candidates in descending order
+            other_candidates = self._descending_unique(
+                raw_gpu_candidates[1:]
+            )  # Skip -1
+            for g in other_candidates:
+                if g >= min_gpu_layers:
+                    gpu_layer_candidates.append(g)
+
+            if len(gpu_layer_candidates) == 1:  # Only -1 in the list
                 gpu_layer_candidates = [min_gpu_layers]
 
             # Fixed feature settings (always collect logits for all tokens so logprobs works)
@@ -253,13 +263,31 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
                             attempt_index,
                             e,
                         )
-                        # Free memory before next attempt
+
+                        # Only perform memory cleanup if this appears to be a memory-related error
+                        from utils.hardware_manager import is_memory_related_error
+
+                        # Always clean up the current model instance
                         self.llm = None
-                        try:
-                            pipeline_factory.force_resource_cleanup()
-                        except Exception:
-                            pass
-                        hardware_manager.clear_memory(aggressive=True)
+
+                        if is_memory_related_error(e):
+                            self._logger.info(
+                                "Memory-related error detected, performing cleanup"
+                            )
+                            try:
+                                pipeline_factory.force_resource_cleanup()
+                            except Exception:
+                                pass
+                            hardware_manager.clear_memory(aggressive=True)
+                        else:
+                            # For non-memory errors (file loading, model format, etc.),
+                            # just do basic cleanup without aggressive memory operations
+                            self._logger.debug(
+                                "Non-memory error detected, skipping aggressive cleanup"
+                            )
+                            import gc
+
+                            gc.collect()  # Basic garbage collection only
                     finally:
                         attempts_for_ctx += 1
                         if (

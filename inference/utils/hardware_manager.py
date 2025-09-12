@@ -11,6 +11,38 @@ import nvsmi
 from models.dev_stats import DevStats
 
 
+def is_memory_related_error(error: Union[str, Exception]) -> bool:
+    """
+    Determine if an error is related to memory issues.
+
+    Args:
+        error: Error message string or Exception object
+
+    Returns:
+        bool: True if the error appears to be memory-related
+    """
+    error_str = str(error).lower()
+    memory_keywords = [
+        "out of memory",
+        "memory allocation",
+        "cuda error",
+        "insufficient memory",
+        "allocation failed",
+        "memory exhausted",
+        "oom",
+        "device memory",
+        "failed to allocate",
+        "memory limit",
+        "not enough memory",
+        "cuda runtime error",
+        "gpu memory",
+        "vram",
+        "memory pool",
+        "allocation failure",
+    ]
+    return any(keyword in error_str for keyword in memory_keywords)
+
+
 class EnhancedHardwareManager:
     """Enhanced service for managing hardware resources with full GPU control."""
 
@@ -637,6 +669,39 @@ class EnhancedHardwareManager:
 
         if device_idx is not None:
             if aggressive:
+                # Check if system is in critical memory state before aggressive clearing
+                try:
+                    total_mem = torch.cuda.get_device_properties(
+                        device_idx
+                    ).total_memory
+                    allocated_mem = torch.cuda.memory_allocated(device_idx)
+                    free_mem = total_mem - allocated_mem
+                    memory_usage_ratio = allocated_mem / total_mem
+
+                    # If memory usage is >95%, skip aggressive clearing and go nuclear
+                    if memory_usage_ratio > 0.95:
+                        self.logger.warning(
+                            f"GPU {device_idx} critically low on memory ({memory_usage_ratio*100:.1f}% used), "
+                            f"escalating to nuclear cleanup"
+                        )
+                        self.nuclear_clear_memory(
+                            device_idx=device_idx, kill_processes=False
+                        )
+                        return
+
+                except Exception as mem_check_e:
+                    self.logger.warning(
+                        f"Could not check memory state for GPU {device_idx}: {mem_check_e}"
+                    )
+                    # If we can't check memory safely, go nuclear immediately
+                    self.logger.warning(
+                        "Escalating to nuclear cleanup due to memory check failure"
+                    )
+                    self.nuclear_clear_memory(
+                        device_idx=device_idx, kill_processes=False
+                    )
+                    return
+
                 # More aggressive clearing for specific device
                 try:
                     with torch.cuda.device(device_idx):
@@ -646,21 +711,32 @@ class EnhancedHardwareManager:
                                 torch.cuda.empty_cache()
                                 torch.cuda.synchronize(device_idx)
                             except Exception as e:
-                                self.logger.warning(f"CUDA error during cache clear: {e}")
+                                self.logger.warning(
+                                    f"CUDA error during cache clear: {e}"
+                                )
                                 # Try context reset if CUDA is corrupted
                                 self._reset_cuda_context(device_idx)
                                 break
 
-                        # Try defragmentation technique
+                        # Try defragmentation technique only if system isn't critically low on memory
                         try:
-                            free_mem = torch.cuda.get_device_properties(
+                            # Safely check memory status
+                            total_mem = torch.cuda.get_device_properties(
                                 device_idx
-                            ).total_memory - torch.cuda.memory_allocated(device_idx)
+                            ).total_memory
+                            allocated_mem = torch.cuda.memory_allocated(device_idx)
+                            free_mem = total_mem - allocated_mem
 
-                            if free_mem > 1024 * 1024 * 512:  # At least 512MB free
+                            # Only attempt defragmentation if we have substantial free memory (at least 1GB)
+                            # and the allocated memory is less than 90% of total
+                            if free_mem > 1024 * 1024 * 1024 and allocated_mem < (
+                                total_mem * 0.9
+                            ):
                                 try:
-                                    # Allocate and free large blocks to reduce fragmentation
-                                    test_size = int(free_mem * 0.3)
+                                    # Conservative defragmentation - only use 20% of free memory
+                                    test_size = max(
+                                        1024 * 1024, int(free_mem * 0.2)
+                                    )  # At least 1MB
                                     test_tensor = torch.empty(
                                         test_size // 4,
                                         dtype=torch.float32,
@@ -668,31 +744,75 @@ class EnhancedHardwareManager:
                                     )
                                     del test_tensor
                                     torch.cuda.empty_cache()
+                                    self.logger.debug(
+                                        f"Defragmentation completed for GPU {device_idx}"
+                                    )
                                 except torch.cuda.OutOfMemoryError:
-                                    self.logger.debug(f"Expected OOM during defrag on GPU {device_idx}")
+                                    # This is expected if memory is tight
+                                    self.logger.debug(
+                                        f"Skipped defrag due to insufficient memory on GPU {device_idx}"
+                                    )
                                 except Exception as e:
-                                    self.logger.warning(f"Unexpected error during defrag on GPU {device_idx}: {e}")
+                                    self.logger.warning(
+                                        f"Unexpected error during defrag on GPU {device_idx}: {e}"
+                                    )
+                            else:
+                                self.logger.debug(
+                                    f"Skipping defrag on GPU {device_idx} - insufficient free memory ({free_mem/1024/1024:.1f}MB free)"
+                                )
                         except Exception as e:
-                            self.logger.warning(f"Error getting memory info for GPU {device_idx}: {e}")
+                            self.logger.warning(
+                                f"Error checking memory for defrag on GPU {device_idx}: {e}"
+                            )
+                            # Don't attempt defragmentation if we can't safely check memory status
 
                 except Exception as e:
-                    self.logger.warning(f"Error during aggressive memory clearing: {e}")
+                    self.logger.warning(
+                        f"Error during aggressive memory clearing on GPU {device_idx}: {e}"
+                    )
+                    # Check if this is a critical memory error that requires nuclear intervention
+                    error_str = str(e).lower()
+                    if (
+                        "out of memory" in error_str
+                        or "failed to allocate" in error_str
+                        or "cuda error" in error_str
+                    ):
+                        self.logger.warning(
+                            f"Critical memory error detected on GPU {device_idx}, triggering nuclear cleanup"
+                        )
+                        try:
+                            # Trigger nuclear cleanup for this specific device
+                            self.nuclear_clear_memory(
+                                device_idx=device_idx, kill_processes=False
+                            )
+                            return  # Skip remaining cleanup steps as nuclear cleanup is comprehensive
+                        except Exception as nuclear_e:
+                            self.logger.error(
+                                f"Nuclear cleanup also failed for GPU {device_idx}: {nuclear_e}"
+                            )
+
                     # Last resort: try to reset CUDA context
                     try:
                         self._reset_cuda_context(device_idx)
                     except Exception as reset_e:
-                        self.logger.error(f"Failed to reset CUDA context for GPU {device_idx}: {reset_e}")
+                        self.logger.error(
+                            f"Failed to reset CUDA context for GPU {device_idx}: {reset_e}"
+                        )
 
             # Standard memory clear
             try:
                 with torch.cuda.device(device_idx):
                     torch.cuda.empty_cache()
             except Exception as e:
-                self.logger.warning(f"Error during standard memory clear on GPU {device_idx}: {e}")
+                self.logger.warning(
+                    f"Error during standard memory clear on GPU {device_idx}: {e}"
+                )
                 try:
                     self._reset_cuda_context(device_idx)
                 except Exception as reset_e:
-                    self.logger.error(f"Failed to reset CUDA context for GPU {device_idx}: {reset_e}")
+                    self.logger.error(
+                        f"Failed to reset CUDA context for GPU {device_idx}: {reset_e}"
+                    )
         else:
             if aggressive:
                 for i in range(self.gpu_count):
@@ -707,7 +827,9 @@ class EnhancedHardwareManager:
                         try:
                             self._reset_cuda_context(i)
                         except Exception as reset_e:
-                            self.logger.error(f"Failed to reset CUDA context for GPU {i}: {reset_e}")
+                            self.logger.error(
+                                f"Failed to reset CUDA context for GPU {i}: {reset_e}"
+                            )
 
         self.update_all_memory_stats()
 

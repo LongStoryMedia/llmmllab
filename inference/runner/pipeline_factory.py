@@ -541,10 +541,41 @@ class PipelineFactory:
             }
         return transformed
 
-    def force_memory_cleanup(self) -> int:
+    def force_memory_cleanup(self, nuclear_fallback: bool = False) -> int:
+        """Force aggressive memory cleanup including GPU memory defragmentation."""
         # Delegate to local cache full cleanup; ignore target bytes (future improvement)
         evicted = self.local_cache.force_cleanup()
         self.logger.info(f"Force cleanup evicted {evicted} local pipelines")
+
+        # Also force aggressive hardware memory cleanup
+        try:
+            if nuclear_fallback:
+                # Use nuclear clearing when aggressive has repeatedly failed
+                self.logger.warning("Using nuclear memory cleanup due to critical memory issues")
+                hardware_manager.nuclear_clear_memory(kill_processes=False)
+                self.logger.info("Nuclear memory cleanup completed")
+            else:
+                hardware_manager.clear_memory(aggressive=True)
+                self.logger.info("Hardware memory cleanup completed")
+        except Exception as e:
+            self.logger.warning(f"Hardware memory cleanup failed: {e}")
+            # If aggressive cleanup failed due to memory issues, try nuclear as fallback
+            error_str = str(e).lower()
+            if not nuclear_fallback and ("out of memory" in error_str or 
+                                       "failed to allocate" in error_str or 
+                                       "cuda error" in error_str):
+                self.logger.warning("Escalating to nuclear cleanup due to memory errors")
+                try:
+                    hardware_manager.nuclear_clear_memory(kill_processes=False)
+                    self.logger.info("Nuclear fallback cleanup completed")
+                except Exception as nuclear_e:
+                    self.logger.error(f"Nuclear fallback cleanup also failed: {nuclear_e}")
+
+        # Give GPU memory a moment to settle after cleanup
+        if evicted > 0:
+            time.sleep(2.0)  # Brief pause to allow GPU memory to be fully released
+            self.logger.debug("Waited for GPU memory to settle after cleanup")
+
         return evicted
 
     # Backward compatibility wrapper (legacy code may call this)

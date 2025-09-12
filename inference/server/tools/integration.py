@@ -452,15 +452,19 @@ Make the tool specific to the user's request but generalizable for similar tasks
                         f"Tool generation failed due to memory (attempt {attempt + 1}): {e}"
                     )
                     if attempt < max_retries - 1:
-                        # Clear some memory and try again
+                        # Use progressively more aggressive memory clearing
                         try:
-                            pipeline_factory.force_resource_cleanup(
-                                _target_free_memory_gb=1.0
-                            )
-                        except Exception:
-                            pass
+                            if attempt == 0:
+                                # First retry: normal aggressive cleanup
+                                pipeline_factory.force_resource_cleanup(_target_free_memory_gb=1.0)
+                            else:
+                                # Subsequent retries: nuclear cleanup
+                                self.logger.warning(f"Using nuclear cleanup for tool generation retry {attempt + 1}")
+                                pipeline_factory.force_memory_cleanup(nuclear_fallback=True)
+                        except Exception as cleanup_e:
+                            self.logger.warning(f"Memory cleanup failed during retry: {cleanup_e}")
+                        
                         import gc
-
                         gc.collect()
                         continue
                     raise ValueError(
@@ -637,6 +641,7 @@ class ModernToolManager:
                 yield "No dynamic tools needed for this request"
 
         except asyncio.TimeoutError:
+            self._tool_timeout_occurred = True  # Flag for nuclear cleanup
             self.logger.warning(
                 "Tool generation timed out, continuing with standard tools"
             )
@@ -646,11 +651,21 @@ class ModernToolManager:
             yield f"⚠️ Tool analysis failed, using standard tools: {str(e)[:100]}"
 
         finally:
-            # Clean up memory
+            # Clean up memory - use nuclear cleanup for tool generation timeouts
+            # as they indicate severe memory pressure
             try:
-                hardware_manager.clear_memory(aggressive=True)
+                if hasattr(self, '_tool_timeout_occurred') and self._tool_timeout_occurred:
+                    self.logger.warning("Using nuclear cleanup due to tool generation timeout")
+                    hardware_manager.nuclear_clear_memory(kill_processes=False)
+                else:
+                    hardware_manager.clear_memory(aggressive=True)
             except Exception as cleanup_error:
                 self.logger.warning(f"Memory cleanup failed: {cleanup_error}")
+                # If cleanup fails, try nuclear as last resort
+                try:
+                    hardware_manager.nuclear_clear_memory(kill_processes=False)
+                except Exception as nuclear_error:
+                    self.logger.error(f"Nuclear cleanup also failed: {nuclear_error}")
 
         # Final yield with completed tools
         yield tools

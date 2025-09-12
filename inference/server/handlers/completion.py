@@ -167,15 +167,17 @@ class CompletionHandler:
                                 # Check timeout manually since asyncio.wait_for doesn't work with async generators
                                 current_time = asyncio.get_event_loop().time()
                                 elapsed = current_time - start_time
-                                
+
                                 if elapsed > tool_timeout:
                                     raise asyncio.TimeoutError(
                                         f"Tool acquisition timed out after {tool_timeout}s"
                                     )
-                                
+
                                 # Additional check: if we've been streaming for a while without completing
                                 chunk_count += 1
-                                if chunk_count > 100 and elapsed > 60.0:  # Many chunks after 1 minute
+                                if (
+                                    chunk_count > 100 and elapsed > 60.0
+                                ):  # Many chunks after 1 minute
                                     raise asyncio.TimeoutError(
                                         f"Tool generation appears stuck after {elapsed:.1f}s ({chunk_count} chunks)"
                                     )
@@ -191,6 +193,18 @@ class CompletionHandler:
                             logger.warning(
                                 f"Tool acquisition timed out: {e}, using standard tools"
                             )
+
+                            # Force cleanup after tool timeout to free memory
+                            try:
+                                evicted = pipeline_factory.force_memory_cleanup()
+                                logger.info(
+                                    f"Force cleanup after tool timeout evicted {evicted} pipelines"
+                                )
+                            except Exception as cleanup_error:
+                                logger.warning(
+                                    f"Post-timeout cleanup failed: {cleanup_error}"
+                                )
+
                             tools = StandardToolProvider.get_standard_tools(
                                 conversation_ctx
                             )
@@ -268,6 +282,28 @@ class CompletionHandler:
                         )
                 except Exception as pipeline_error:
                     logger.error(f"Pipeline execution failed: {pipeline_error}")
+
+                    # Only force cleanup if this appears to be a memory-related error
+                    from utils.hardware_manager import is_memory_related_error
+
+                    if is_memory_related_error(pipeline_error):
+                        logger.info(
+                            "Memory-related pipeline failure detected, performing cleanup"
+                        )
+                        try:
+                            evicted = pipeline_factory.force_memory_cleanup()
+                            logger.info(
+                                f"Force cleanup after memory-related failure evicted {evicted} pipelines"
+                            )
+                        except Exception as cleanup_error:
+                            logger.warning(
+                                f"Post-failure cleanup failed: {cleanup_error}"
+                            )
+                    else:
+                        logger.debug(
+                            "Non-memory pipeline failure detected, skipping aggressive cleanup"
+                        )
+
                     # Try to provide a helpful error message to the user
                     yield serialize_to_json(
                         create_error_chunk(

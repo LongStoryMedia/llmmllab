@@ -31,15 +31,15 @@ class Qwen3EmbeddingPipe(BaseLlamaCppCore):
 
     def __init__(self, model: Model, profile: ModelProfile):
         """Initialize the Qwen3 Embedding pipeline."""
-        # Initialize with List[List[float]] as the expected return type for embeddings
+        # Initialize with list as the expected return type for embeddings
         super().__init__(
             model,
             profile,
-            expected_return_type=List[List[float]],
+            expected_return_type=list,
             model_size_category="medium",
         )
 
-        self._logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(__name__)
 
         # Qwen3-specific parameters
         self.max_context_tokens = 8192
@@ -139,9 +139,7 @@ class Qwen3EmbeddingPipe(BaseLlamaCppCore):
                 device="cuda" if torch.cuda.is_available() else "cpu",
             )
         except Exception as e:
-            self._logger.error(
-                f"Error initializing {self.__class__.__name__}: {str(e)}"
-            )
+            self.logger.error(f"Error initializing {self.__class__.__name__}: {str(e)}")
             raise
 
     def _get_optimal_threads(self) -> int:
@@ -309,5 +307,9 @@ class Qwen3EmbeddingPipe(BaseLlamaCppCore):
             return aggregated_embeddings
 
         except Exception as e:
-            self._logger.error(f"Error generating embeddings with splitting: {e}")
+            self.logger.error(f"Error generating embeddings with splitting: {e}")
             return [[0.0] * self.embedding_dim for _ in texts]
+
+    def _create_system_prompt(self) -> str:
+        """Stub implementation - embedding pipelines don't use system prompts."""
+        return ""

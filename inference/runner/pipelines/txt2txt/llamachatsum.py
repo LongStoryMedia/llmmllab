@@ -90,8 +90,7 @@ class LlamaChatSummPipe(BaseLlamaCppCore):
                 "Model definition for LlamaChatSummPipe must include model path or details.gguf_file"
             )
 
-        self._logger = logging.getLogger(__name__)
-        self._logger.info(
+        self.logger.info(
             f"Initializing optimized LlamaChatSummPipe for model: {model.id}"
         )
 
@@ -129,7 +128,7 @@ class LlamaChatSummPipe(BaseLlamaCppCore):
         except Exception as e:
             raise IOError(f"Cannot read GGUF file {gguf_path}: {e}") from e
 
-        self._logger.info(
+        self.logger.info(
             f"Using GGUF file: {gguf_path} (size: {file_size/1_000_000:.2f} MB)"
         )
 
@@ -146,7 +145,7 @@ class LlamaChatSummPipe(BaseLlamaCppCore):
                     self.model.details.parent_model,
                     use_fast=True,
                 )
-                self._logger.info(
+                self.logger.info(
                     "Llama tokenizer loaded successfully from parent model"
                 )
             else:
@@ -155,9 +154,9 @@ class LlamaChatSummPipe(BaseLlamaCppCore):
                     "meta-llama/Llama-2-7b-chat-hf",
                     use_fast=True,
                 )
-                self._logger.info("Llama tokenizer loaded successfully from fallback")
+                self.logger.info("Llama tokenizer loaded successfully from fallback")
         except Exception as e:
-            self._logger.warning(
+            self.logger.warning(
                 f"Tokenizer initialization failed, will use GGUF-based tokenization: {e}"
             )
             self.tokenizer = None
@@ -198,10 +197,10 @@ class LlamaChatSummPipe(BaseLlamaCppCore):
                 or self._get_summarization_stop_tokens(),
             )
 
-            self._logger.info("Llama Chat Summary model loaded successfully")
+            self.logger.info("Llama Chat Summary model loaded successfully")
 
         except Exception as e:
-            self._logger.error(f"Failed to initialize Llama LLM: {e}")
+            self.logger.error(f"Failed to initialize Llama LLM: {e}")
             raise
 
     def _get_optimal_threads(self) -> int:
@@ -210,7 +209,7 @@ class LlamaChatSummPipe(BaseLlamaCppCore):
             cpu_count = multiprocessing.cpu_count()
             # Llama models are efficient with moderate threading
             optimal_threads = min(max(cpu_count // 2, 4), 8)
-            self._logger.debug(f"Using {optimal_threads} threads for Llama")
+            self.logger.debug(f"Using {optimal_threads} threads for Llama")
             return optimal_threads
         except Exception:
             return 4  # Conservative default for Llama
@@ -359,7 +358,7 @@ Summary: [/INST]"""
             cache_key = self._generate_cache_key(combined_text)
             if cache_key in self._summary_cache:
                 self._performance_metrics["cache_hits"] += 1
-                self._logger.info("Using cached summary")
+                self.logger.info("Using cached summary")
                 cached_summary = self._summary_cache[cache_key]
 
                 if self._return_type == str:
@@ -411,7 +410,7 @@ Summary: [/INST]"""
             )
 
         except Exception as e:
-            self._logger.error(f"Error in process_messages: {e}")
+            self.logger.error(f"Error in process_messages: {e}")
             error_msg = f"Error: {str(e)[:100]}..."
 
             if self._return_type == str:
@@ -531,7 +530,7 @@ Summary: """
             return summary
 
         except Exception as e:
-            self._logger.error(f"Error in direct summarization: {e}")
+            self.logger.error(f"Error in direct summarization: {e}")
             return f"Error generating summary: {str(e)[:100]}..."
 
     async def run(
@@ -560,7 +559,7 @@ Summary: """
             cache_key = self._generate_cache_key(combined_text)
             if cache_key in self._summary_cache:
                 self._performance_metrics["cache_hits"] += 1
-                self._logger.info("Using cached summary")
+                self.logger.info("Using cached summary")
 
                 cached_summary = self._summary_cache[cache_key]
                 yield self._create_summary_response(cached_summary, from_cache=True)
@@ -585,7 +584,7 @@ Summary: """
                             )
                             if quality > 0.6:  # Only cache high-quality summaries
                                 self._summary_cache[cache_key] = summary_text
-                                self._logger.debug(
+                                self.logger.debug(
                                     f"Cached summary with quality score: {quality:.2f}"
                                 )
 
@@ -595,7 +594,7 @@ Summary: """
             self._update_performance_metrics(combined_text, start_time)
 
         except Exception as e:
-            self._logger.error(f"Error in BART summarization: {e}", exc_info=True)
+            self.logger.error(f"Error in BART summarization: {e}", exc_info=True)
             yield create_error_response(f"Summarization error: {str(e)}")
 
     async def _agent_summarization(
@@ -633,7 +632,7 @@ Summary: """
             )
 
         except Exception as e:
-            self._logger.error(f"Error in agent summarization: {e}")
+            self.logger.error(f"Error in agent summarization: {e}")
             yield create_error_response(f"Agent summarization error: {str(e)}")
 
     async def _direct_summarization(
@@ -664,15 +663,13 @@ Summary: """
             full_summary = "".join(response_chunks).strip()
             if full_summary:
                 quality = self._score_summary_quality(text, full_summary)
-                self._logger.info(
-                    f"Generated summary with quality score: {quality:.2f}"
-                )
+                self.logger.info(f"Generated summary with quality score: {quality:.2f}")
                 yield create_streaming_chunk("", done=True)
             else:
                 yield create_streaming_chunk("Failed to generate summary", done=True)
 
         except Exception as e:
-            self._logger.error(f"Error in direct summarization: {e}")
+            self.logger.error(f"Error in direct summarization: {e}")
             yield create_streaming_chunk(
                 f"Direct summarization error: {str(e)}", done=True
             )
@@ -760,13 +757,13 @@ Summary: """
             return "".join(summary_chunks).strip()
 
         except Exception as e:
-            self._logger.error(f"Error generating summary: {e}")
+            self.logger.error(f"Error generating summary: {e}")
             return f"Error: {str(e)}"
 
     def clear_cache(self) -> None:
         """Clear the summary cache."""
         self._summary_cache.clear()
-        self._logger.info("Summary cache cleared")
+        self.logger.info("Summary cache cleared")
 
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
@@ -798,7 +795,7 @@ Summary: """
                 cache_stats = (
                     self.get_cache_stats() if hasattr(self, "_summary_cache") else {}
                 )
-                self._logger.info(
+                self.logger.info(
                     f"LlamaChatSummPipe {model_name} final metrics: "
                     f"summaries={metrics['summaries_generated']}, "
                     f"cache_hits={metrics['cache_hits']}, "
@@ -821,3 +818,7 @@ Summary: """
 
         except Exception as e:
             logger.error(f"Error cleaning up LlamaChatSummPipe: {e}")
+
+    def _create_system_prompt(self) -> str:
+        """Stub implementation - summarization pipeline doesn't use traditional system prompts."""
+        return ""
