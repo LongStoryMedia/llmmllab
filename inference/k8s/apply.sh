@@ -89,7 +89,7 @@ kubectl apply -f "$(dirname "$0")/init-script.yaml" -n ollama --wait=true
 
 echo "Updating deployment image to use tag: $DOCKER_TAG"
 # Create a temporary file with the updated image tag
-sed "s|image: 192.168.0.71:31500/inference:latest|image: 192.168.0.71:31500/inference:$DOCKER_TAG|g" "$(dirname "$0")/deployment.yaml" > "$(dirname "$0")/deployment.yaml.tmp"
+sed "s|image: 192.168.0.71:31500/inference:.*|image: 192.168.0.71:31500/inference:$DOCKER_TAG|g" "$(dirname "$0")/deployment.yaml" > "$(dirname "$0")/deployment.yaml.tmp"
 mv "$(dirname "$0")/deployment.yaml.tmp" "$(dirname "$0")/deployment.yaml"
 
 echo "Applying Ollama deployment..."

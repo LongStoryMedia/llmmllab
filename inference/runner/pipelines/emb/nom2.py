@@ -42,16 +42,15 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
 
     def __init__(self, model: Model, profile: ModelProfile):
         """Initialize the Nomic Embed Text pipeline."""
-        # Initialize with List[List[float]] as the expected return type for embeddings
+        # Initialize with list as the expected return type for embeddings
         super().__init__(
             model,
             profile,
-            expected_return_type=List[List[float]],
+            expected_return_type=list,
             model_size_category="small",
         )
 
-        self._logger = logging.getLogger(__name__)
-        self._logger.info("Initializing NomicEmbedTextPipe")
+        self.logger.info("Initializing NomicEmbedTextPipe")
 
         # Nomic-specific parameters
         self.max_context_tokens = 512
@@ -114,7 +113,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
             keep_separator=True,
         )
 
-        self._logger.debug(
+        self.logger.debug(
             f"Initialized text splitter with max_chunk_chars={max_chunk_chars}"
         )
 
@@ -138,7 +137,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
                 f"GGUF file is too small ({file_size} bytes), likely a placeholder: {gguf_path}"
             )
 
-        self._logger.info(
+        self.logger.info(
             f"Using GGUF file: {gguf_path} (size: {file_size/1_000_000:.2f} MB)"
         )
 
@@ -149,12 +148,12 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
 
             cpu_count = multiprocessing.cpu_count()
             optimal_threads = min(max(cpu_count // 2, 2), 8)
-            self._logger.debug(
+            self.logger.debug(
                 f"Using {optimal_threads} threads (CPU count: {cpu_count})"
             )
             return optimal_threads
         except Exception:
-            self._logger.warning(
+            self.logger.warning(
                 "Could not determine CPU count, using default threading"
             )
             return 4
@@ -181,14 +180,12 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
                 device="cuda" if torch.cuda.is_available() else "cpu",
             )
 
-            self._logger.info(
+            self.logger.info(
                 f"Nomic Embed Text model '{self.model.name}' loaded successfully "
                 f"(max_tokens: {self.max_context_tokens}, dims: {self.embedding_dim})"
             )
         except Exception as e:
-            self._logger.error(
-                f"Error initializing {self.__class__.__name__}: {str(e)}"
-            )
+            self.logger.error(f"Error initializing {self.__class__.__name__}: {str(e)}")
             raise
 
     def _estimate_tokens(self, text: str) -> int:
@@ -215,7 +212,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
         # Take the maximum for conservative estimation
         estimate = max(word_estimate, char_estimate, heuristic_estimate)
 
-        self._logger.debug(
+        self.logger.debug(
             f"Token estimates - Word: {word_estimate}, Char: {char_estimate}, "
             f"Heuristic: {heuristic_estimate}, Using: {estimate}"
         )
@@ -234,7 +231,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
         if estimated_tokens <= self.max_context_tokens:
             return [text]
 
-        self._logger.info(
+        self.logger.info(
             f"Text exceeds token limit ({estimated_tokens} > {self.max_context_tokens}), splitting..."
         )
 
@@ -250,7 +247,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
                 final_chunks.append(chunk)
             else:
                 # If still too long, do aggressive character-based splitting
-                self._logger.warning(
+                self.logger.warning(
                     f"Chunk still too long ({chunk_tokens} tokens), doing aggressive split"
                 )
 
@@ -274,7 +271,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
                 if current_chunk:
                     final_chunks.append(current_chunk)
 
-        self._logger.info(f"Split text into {len(final_chunks)} chunks")
+        self.logger.info(f"Split text into {len(final_chunks)} chunks")
         return final_chunks
 
     def _process_texts_with_splitting(
@@ -290,7 +287,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
             chunk_counts.append(len(chunks))
 
             if len(chunks) > 1:
-                self._logger.debug(f"Split text into {len(chunks)} chunks")
+                self.logger.debug(f"Split text into {len(chunks)} chunks")
 
         return processed_chunks, chunk_counts
 
@@ -333,7 +330,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
 
                 aggregated.append(aggregated_emb)
 
-                self._logger.debug(
+                self.logger.debug(
                     f"Aggregated {chunk_count} chunks using {aggregation_method} method"
                 )
 
@@ -377,11 +374,11 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
                     texts.append(prefixed_text)
 
             if not texts:
-                self._logger.warning("No text inputs found in messages")
+                self.logger.warning("No text inputs found in messages")
                 yield [[0.0] * self.embedding_dim]
                 return
 
-            self._logger.info(
+            self.logger.info(
                 f"Processing {len(texts)} text inputs with task prefixes and splitting"
             )
 
@@ -394,7 +391,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
             duration = (
                 datetime.datetime.now(datetime.timezone.utc) - start_time
             ).total_seconds()
-            self._logger.debug(
+            self.logger.debug(
                 f"Generated {len(embeddings)} embeddings in {duration:.2f}s "
                 f"({len(embeddings[0]) if embeddings else 0} dimensions each)"
             )
@@ -402,7 +399,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
             yield embeddings
 
         except Exception as e:
-            self._logger.error(f"Error in embedding generation: {e}")
+            self.logger.error(f"Error in embedding generation: {e}")
             # Return zero embeddings as fallback
             yield [
                 [0.0] * self.embedding_dim
@@ -423,7 +420,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
             if not processed_chunks:
                 return [[0.0] * self.embedding_dim for _ in texts]
 
-            self._logger.info(
+            self.logger.info(
                 f"Processing {len(processed_chunks)} chunks from {len(texts)} original texts"
             )
 
@@ -431,12 +428,12 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
             chunk_embeddings = await self.llm.aembed_documents(processed_chunks)
 
             if not chunk_embeddings:
-                self._logger.warning("No embeddings returned from model")
+                self.logger.warning("No embeddings returned from model")
                 return [[0.0] * self.embedding_dim for _ in texts]
 
             # Validate embedding dimensions
             if chunk_embeddings and len(chunk_embeddings[0]) != self.embedding_dim:
-                self._logger.warning(
+                self.logger.warning(
                     f"Unexpected embedding dimension: {len(chunk_embeddings[0])}, expected {self.embedding_dim}"
                 )
 
@@ -448,7 +445,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
             return cast(List[List[float]], aggregated_embeddings)
 
         except Exception as e:
-            self._logger.error(f"Error generating embeddings with splitting: {e}")
+            self.logger.error(f"Error generating embeddings with splitting: {e}")
             return [[0.0] * self.embedding_dim for _ in texts]
 
     async def embed_texts(
@@ -474,10 +471,10 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
 
         # Apply Matryoshka truncation if requested
         if matryoshka_dim and matryoshka_dim in [256, 512, 768]:
-            self._logger.debug(f"Truncating embeddings to {matryoshka_dim} dimensions")
+            self.logger.debug(f"Truncating embeddings to {matryoshka_dim} dimensions")
             embeddings = [emb[:matryoshka_dim] for emb in embeddings]
         elif matryoshka_dim and matryoshka_dim not in [256, 512, 768]:
-            self._logger.warning(
+            self.logger.warning(
                 f"Invalid matryoshka_dim: {matryoshka_dim}. Using full {self.embedding_dim} dimensions."
             )
 
@@ -539,7 +536,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
             )
 
             if not query_embeddings or not doc_embeddings:
-                self._logger.error("Failed to generate embeddings")
+                self.logger.error("Failed to generate embeddings")
                 return []
 
             # Compute cosine similarities
@@ -559,7 +556,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
             return similarities[:top_k] if top_k else similarities
 
         except Exception as e:
-            self._logger.error(f"Error computing similarities: {e}")
+            self.logger.error(f"Error computing similarities: {e}")
             return [
                 (i, 0.0, doc)
                 for i, doc in enumerate(documents[:top_k] if top_k else documents)
@@ -584,7 +581,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
                 if hasattr(self, "model")
                 else "unknown"
             )
-            self._logger.info(f"NomicEmbedTextPipe for {model_name}: Cleanup initiated")
+            self.logger.info(f"NomicEmbedTextPipe for {model_name}: Cleanup initiated")
 
             if hasattr(self, "llm") and self.llm is not None:
                 del self.llm
@@ -595,3 +592,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
 
         except Exception as e:
             logger.error(f"Error cleaning up NomicEmbedTextPipe: {e}")
+
+    def _create_system_prompt(self) -> str:
+        """Stub implementation - embedding pipelines don't use system prompts."""
+        return ""

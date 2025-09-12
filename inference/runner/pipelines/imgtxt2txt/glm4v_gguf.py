@@ -230,3 +230,7 @@ class GLM4VGGUFPipe(BaseLlamaCppCore):
         raise NotImplementedError(
             "LangGraph integration not implemented for multimodal pipeline"
         )
+
+    def _create_system_prompt(self) -> str:
+        """Stub implementation - multimodal pipelines don't use traditional system prompts."""
+        return ""
