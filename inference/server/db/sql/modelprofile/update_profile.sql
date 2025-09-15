@@ -10,7 +10,8 @@ SET
   model_version = $7,
   type = $8,
   circuit_breaker = $9,
+  gpu_config = $10,
   updated_at = NOW()
 WHERE
   id = $1
-  AND user_id = $10
+  AND user_id = $11

@@ -6,17 +6,17 @@ When schemas are updated and models regenerated, the linter will indicate
 where these defaults need to be updated.
 """
 
-from models.preferences_config import PreferencesConfig
-from models.memory_config import MemoryConfig
-from models.summarization_config import SummarizationConfig
-from models.refinement_config import RefinementConfig
-from models.web_search_config import WebSearchConfig
-from models.image_generation_config import ImageGenerationConfig
-from models.model_profile_config import ModelProfileConfig
-from models.circuit_breaker_config import CircuitBreakerConfig
-from models.user_config import UserConfig, WebSearchProviders
+from .preferences_config import PreferencesConfig
+from .memory_config import MemoryConfig
+from .summarization_config import SummarizationConfig
+from .refinement_config import RefinementConfig
+from .web_search_config import WebSearchConfig
+from .image_generation_config import ImageGenerationConfig
+from .circuit_breaker_config import CircuitBreakerConfig
+from .gpu_config import GPUConfig
+from .user_config import UserConfig, WebSearchProviders
 
-from models.default_model_profiles import DEFAULT_MODEL_PROFILE_CONFIG
+from .default_model_profiles import DEFAULT_MODEL_PROFILE_CONFIG
 
 
 # Default preferences configuration
@@ -99,6 +99,18 @@ DEFAULT_CIRCUIT_BREAKER_CONFIG = CircuitBreakerConfig(
     tool_gen_repetition_threshold=3,
 )
 
+# Default GPU configuration
+DEFAULT_GPU_CONFIG = GPUConfig(
+    no_kv_offload=False,
+    main_gpu=-1,
+    main_gpu_device_id=None,
+    tensor_split=None,
+    tensor_split_devices=None,
+    n_cpu_moe=0,
+    split_mode="layer",
+    offload_kqv=True,
+)
+
 
 # Function to create a default user config
 def create_default_user_config(user_id: str) -> UserConfig:
@@ -113,4 +125,5 @@ def create_default_user_config(user_id: str) -> UserConfig:
         image_generation=DEFAULT_IMAGE_GENERATION_CONFIG,
         model_profiles=DEFAULT_MODEL_PROFILE_CONFIG,
         circuit_breaker=DEFAULT_CIRCUIT_BREAKER_CONFIG,
+        gpu_config=DEFAULT_GPU_CONFIG,
     )

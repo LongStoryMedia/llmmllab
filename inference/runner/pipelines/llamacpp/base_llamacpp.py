@@ -83,8 +83,8 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
         """
         kwargs = {}
         
-        # Get GPU config from profile parameters
-        gpu_config = getattr(self.profile.parameters, 'gpu_config', None)
+        # Get GPU config from profile (separate from parameters now)
+        gpu_config = getattr(self.profile, 'gpu_config', None)
         if not gpu_config:
             return kwargs
         
@@ -135,9 +135,8 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
         
         # MoE CPU layers (for models that support it)
         if gpu_config.n_cpu_moe is not None and gpu_config.n_cpu_moe > 0:
-            # This might need to be handled differently depending on the model type
-            # Store for use in subclasses
             kwargs['n_cpu_moe'] = gpu_config.n_cpu_moe
+            self._logger.info(f"Setting MoE CPU layers: {gpu_config.n_cpu_moe}")
             
         self._logger.info(f"Applied GPU configuration: {kwargs}")
         return kwargs
@@ -317,22 +316,28 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
                         # Merge GPU configuration kwargs, letting GPU config override base settings
                         final_kwargs = {**base_kwargs, **gpu_kwargs}
                         
-                        # Remove any None values and llama-cpp-python unsupported kwargs
-                        supported_kwargs = {}
-                        unsupported_kwargs = {}
+                        # Remove any None values and prepare kwargs for ChatLlamaCpp
+                        clean_kwargs = {k: v for k, v in final_kwargs.items() if v is not None}
                         
-                        for key, value in final_kwargs.items():
-                            if value is not None:
-                                if key in ['n_cpu_moe']:  # Store for subclass handling
-                                    unsupported_kwargs[key] = value
+                        self._logger.info(f"Initializing ChatLlamaCpp with: {clean_kwargs}")
+                        
+                        # Try to initialize with all parameters, fall back if some are unsupported
+                        try:
+                            self.llm = ChatLlamaCpp(**clean_kwargs)
+                        except TypeError as e:
+                            if 'unexpected keyword argument' in str(e):
+                                # Extract the unsupported parameter from error message
+                                error_str = str(e)
+                                if 'n_cpu_moe' in error_str:
+                                    self._logger.warning("n_cpu_moe parameter not supported by current llama-cpp-python version, removing...")
+                                    clean_kwargs_fallback = {k: v for k, v in clean_kwargs.items() if k != 'n_cpu_moe'}
+                                    self.llm = ChatLlamaCpp(**clean_kwargs_fallback)
                                 else:
-                                    supported_kwargs[key] = value
-                        
-                        self._logger.info(f"Initializing ChatLlamaCpp with: {supported_kwargs}")
-                        if unsupported_kwargs:
-                            self._logger.info(f"Additional config for subclass handling: {unsupported_kwargs}")
-                        
-                        self.llm = ChatLlamaCpp(**supported_kwargs)
+                                    # Re-raise if it's a different unsupported parameter
+                                    raise
+                            else:
+                                # Re-raise if it's not a parameter issue
+                                raise
                         if tools:
                             self.llm = self.llm.bind_tools(tools)
                         self._logger.info(

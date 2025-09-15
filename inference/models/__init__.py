@@ -158,8 +158,8 @@ __all__ = [
     'ChatReq',
     'ChatResponse',
     'CircuitBreakerConfig',
-    'GPUConfig',
     'Config',
+    'GPUConfig',
     'Conversation',
     'ConversationCtx',
     'DatabaseConfig',
@@ -190,8 +190,8 @@ __all__ = [
     'MessageRole',
     'Model',
     'ModelDetails',
-    'GPUConfig',
     'ModelParameters',
+    'GPUConfig',
     'ModelProfile',
     'ModelProfileConfig',
     'ModelProfileImageSettings',
@@ -228,6 +228,7 @@ __all__ = [
     'ToolGenerationResult',
     'ToolNeeds',
     'User',
+    'GPUConfig',
     'UserConfig',
     'WebSearchConfig',
     'WebSearchProviders',
@@ -248,10 +249,10 @@ from .chat_response import (
 )
 from .circuit_breaker_config import (
     CircuitBreakerConfig,
-    GPUConfig,
 )
 from .config import (
     Config,
+    GPUConfig,
 )
 from .conversation import (
     Conversation,
@@ -344,10 +345,10 @@ from .model_details import (
     ModelDetails,
 )
 from .model_parameters import (
-    GPUConfig,
     ModelParameters,
 )
 from .model_profile import (
+    GPUConfig,
     ModelProfile,
 )
 from .model_profile_config import (
@@ -442,6 +443,7 @@ from .user import (
     User,
 )
 from .user_config import (
+    GPUConfig,
     UserConfig,
 )
 from .web_search_config import (

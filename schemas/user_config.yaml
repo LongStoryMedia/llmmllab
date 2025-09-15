@@ -22,6 +22,8 @@ properties:
     $ref: image_generation_config.yaml
   circuit_breaker:
     $ref: circuit_breaker_config.yaml
+  gpu_config:
+    $ref: gpu_config.yaml
   event_stream:
     $ref: event_stream_config.yaml
 required:
@@ -34,3 +36,4 @@ required:
   - refinement
   - image_generation
   - circuit_breaker
+  - gpu_config

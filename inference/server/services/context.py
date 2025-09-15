@@ -10,6 +10,7 @@ from datetime import datetime
 from fastapi import HTTPException, Request, status
 from pydantic import PrivateAttr
 
+from langchain_core.tools import BaseTool
 from runner import pipeline_factory, Embeddings
 
 from models import (
@@ -399,6 +400,75 @@ class ConversationContext(ConversationCtx):
             self.notes = []
         except Exception as e:
             self.logger.error(f"Error clearing notes: {e}")
+
+    def get_enriched_messages(
+        self, tools: Optional[List[BaseTool]] = None
+    ) -> List[Message]:
+        """
+        Get conversation messages with enriched system prompt including summaries, memory, and search context.
+        This method ensures that all conversation context (summaries, memory, search results) is included
+        in the system message that gets sent to the pipeline.
+        """
+        try:
+            # Get enhanced system prompt with all context
+            tool_info = ""
+            if tools:
+                tool_descriptions = []
+                for tool in tools:
+                    tool_descriptions.append(f"- {tool.name}: {tool.description}")
+                tool_info = "\n".join(tool_descriptions)
+
+            # Create enhanced system prompt using the conversation context
+            enhanced_system_prompt = self.create_system_prompt(
+                "You are a helpful assistant.",  # Use default since conversation doesn't have system_prompt
+                tool_info,
+            )
+
+            # Make a copy of messages to avoid modifying the original
+            enriched_messages = self.messages.copy()
+
+            # Check if we already have a system message as the first message
+            if enriched_messages and enriched_messages[0].role == MessageRole.SYSTEM:
+                # Update existing system message with enhanced prompt
+                enriched_messages[0] = Message(
+                    conversation_id=enriched_messages[0].conversation_id,
+                    role=MessageRole.SYSTEM,
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT, text=enhanced_system_prompt
+                        )
+                    ],
+                    id=enriched_messages[0].id,
+                    created_at=enriched_messages[0].created_at,
+                    tool_calls=enriched_messages[0].tool_calls,
+                    thinking=enriched_messages[0].thinking,
+                )
+            else:
+                # Insert new system message at the beginning
+                system_message = Message(
+                    conversation_id=self.conversation.id,
+                    role=MessageRole.SYSTEM,
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT, text=enhanced_system_prompt
+                        )
+                    ],
+                )
+                enriched_messages.insert(0, system_message)
+
+            self.logger.info(
+                f"Created enriched message list with {len(enriched_messages)} messages "
+                f"(system prompt includes summaries: {bool(self.user_config.summarization.enabled and hasattr(self.summary_context, 'full_summary') and getattr(self.summary_context, 'full_summary', None))}, "
+                f"memory: {bool(self.user_config.memory.enabled and hasattr(self.memory_context, 'memory') and getattr(self.memory_context, 'memory', None))}, "
+                f"search: {bool(self.user_config.web_search.enabled and hasattr(self.search_context, 'research_findings') and getattr(self.search_context, 'research_findings', None))})"
+            )
+
+            return enriched_messages
+
+        except Exception as e:
+            self.logger.error(f"Error creating enriched messages: {e}")
+            # Fallback to original messages if enrichment fails
+            return self.messages
 
     async def process_rag_operations(self, embeddings: List[List[float]]) -> None:
         """Process RAG operations concurrently with proper error handling."""
