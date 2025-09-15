@@ -74,8 +74,4 @@ properties:
     minimum: 2
     maximum: 20
     description: Number of repetitions before triggering tool generation detection
-  gpu_config:
-    $ref: "./gpu_config.yaml"
-    description: GPU configuration settings for memory management and device allocation
-    nullable: true
 additionalProperties: false

@@ -378,8 +378,13 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
         for attempt in range(max_retries):
             try:
                 # Use LOW priority for tool generation (used rarely, can be evicted)
+                # Let tool generation use the same circuit breaker config as other pipelines:
+                # 1. First try user's circuit breaker config from conversation context
+                # 2. Then engineering profile's circuit breaker config
+                # 3. Finally fall back to default circuit breaker config
+                user_circuit_breaker = conversation_ctx.user_config.circuit_breaker
                 with pipeline_factory.pipeline(
-                    engineering_profile, str, PipelinePriority.LOW
+                    engineering_profile, str, PipelinePriority.LOW, user_circuit_breaker
                 ) as pipe:
                     generation_prompt = f"""Create a custom tool/function for this user request:
 
@@ -437,7 +442,23 @@ Make the tool specific to the user's request but generalizable for similar tasks
                     # Create DynamicTool
                     try:
                         dynamic_tool = DynamicTool(**json_data)
-                        return ToolGenerationResult(success=True, tool=dynamic_tool)
+
+                        # Store the generated tool in the database
+                        try:
+                            stored_tool = await storage.get_service(
+                                storage.dynamic_tool
+                            ).create_tool(dynamic_tool)
+                            self.logger.info(
+                                f"Successfully stored dynamic tool: {stored_tool.name}"
+                            )
+                            return ToolGenerationResult(success=True, tool=stored_tool)
+                        except Exception as storage_error:
+                            self.logger.error(
+                                f"Failed to store dynamic tool: {storage_error}"
+                            )
+                            # Still return the tool even if storage fails
+                            return ToolGenerationResult(success=True, tool=dynamic_tool)
+
                     except ValidationError as e:
                         self.logger.error(f"Tool validation error: {e}")
                         self.logger.error(f"Invalid JSON data: {json_data}")
@@ -456,15 +477,24 @@ Make the tool specific to the user's request but generalizable for similar tasks
                         try:
                             if attempt == 0:
                                 # First retry: normal aggressive cleanup
-                                pipeline_factory.force_resource_cleanup(_target_free_memory_gb=1.0)
+                                pipeline_factory.force_resource_cleanup(
+                                    _target_free_memory_gb=1.0
+                                )
                             else:
                                 # Subsequent retries: nuclear cleanup
-                                self.logger.warning(f"Using nuclear cleanup for tool generation retry {attempt + 1}")
-                                pipeline_factory.force_memory_cleanup(nuclear_fallback=True)
+                                self.logger.warning(
+                                    f"Using nuclear cleanup for tool generation retry {attempt + 1}"
+                                )
+                                pipeline_factory.force_memory_cleanup(
+                                    nuclear_fallback=True
+                                )
                         except Exception as cleanup_e:
-                            self.logger.warning(f"Memory cleanup failed during retry: {cleanup_e}")
-                        
+                            self.logger.warning(
+                                f"Memory cleanup failed during retry: {cleanup_e}"
+                            )
+
                         import gc
+
                         gc.collect()
                         continue
                     raise ValueError(
@@ -654,8 +684,13 @@ class ModernToolManager:
             # Clean up memory - use nuclear cleanup for tool generation timeouts
             # as they indicate severe memory pressure
             try:
-                if hasattr(self, '_tool_timeout_occurred') and self._tool_timeout_occurred:
-                    self.logger.warning("Using nuclear cleanup due to tool generation timeout")
+                if (
+                    hasattr(self, "_tool_timeout_occurred")
+                    and self._tool_timeout_occurred
+                ):
+                    self.logger.warning(
+                        "Using nuclear cleanup due to tool generation timeout"
+                    )
                     hardware_manager.nuclear_clear_memory(kill_processes=False)
                 else:
                     hardware_manager.clear_memory(aggressive=True)

@@ -11,7 +11,8 @@ SELECT
   updated_at,
   model_version,
   type,
-  circuit_breaker
+  circuit_breaker,
+  gpu_config
 FROM
   model_profiles
 WHERE

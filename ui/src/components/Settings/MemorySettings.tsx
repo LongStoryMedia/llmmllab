@@ -1,10 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Box, TextField, Typography, Button, Switch, FormControlLabel, Slider, Alert } from '@mui/material';
+import { Box, TextField, Typography, Button, Switch, FormControlLabel, Slider, Alert, Divider, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
+import MemoryIcon from '@mui/icons-material/Memory';
 import { useConfigContext } from '../../context/ConfigContext';
+import { useAuth } from '../../auth';
 import { MemoryConfig } from '../../types/MemoryConfig';
+import { clearMemory, nuclearClearMemory } from '../../api/resources';
 
 const RetrievalSettings = () => {
   const { config, updatePartialConfig, isLoading } = useConfigContext();
+  const { user, isAdmin } = useAuth();
   const [localConfig, setLocalConfig] = useState<MemoryConfig>({
     enabled: true,
     limit: 5,
@@ -13,7 +18,10 @@ const RetrievalSettings = () => {
     similarity_threshold: 0.7,
     always_retrieve: false
   });
-  const [saveStatus, setSaveStatus] = useState<{success?: boolean; message: string} | null>(null);
+  const [saveStatus, setSaveStatus] = useState<{ success?: boolean; message: string } | null>(null);
+  const [memoryCleanupStatus, setMemoryCleanupStatus] = useState<{ success?: boolean; message: string } | null>(null);
+  const [isCleaningMemory, setIsCleaningMemory] = useState(false);
+  const [showNuclearDialog, setShowNuclearDialog] = useState(false);
 
   useEffect(() => {
     // When user config loads, update local state
@@ -63,6 +71,55 @@ const RetrievalSettings = () => {
     });
   };
 
+  const handleBasicMemoryCleanup = async () => {
+    if (!user?.access_token) {
+      return;
+    }
+
+    setIsCleaningMemory(true);
+    setMemoryCleanupStatus(null);
+
+    try {
+      const result = await clearMemory(user.access_token, { aggressive: true });
+      setMemoryCleanupStatus({
+        success: true,
+        message: `Memory cleared successfully: ${result.detail}`
+      });
+    } catch (error) {
+      setMemoryCleanupStatus({
+        success: false,
+        message: `Failed to clear memory: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    } finally {
+      setIsCleaningMemory(false);
+    }
+  };
+
+  const handleNuclearMemoryCleanup = async () => {
+    if (!user?.access_token) {
+      return;
+    }
+
+    setIsCleaningMemory(true);
+    setMemoryCleanupStatus(null);
+    setShowNuclearDialog(false);
+
+    try {
+      const result = await nuclearClearMemory(user.access_token, undefined, true);
+      setMemoryCleanupStatus({
+        success: true,
+        message: `Nuclear memory cleanup completed: ${result.detail}`
+      });
+    } catch (error) {
+      setMemoryCleanupStatus({
+        success: false,
+        message: `Nuclear cleanup failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    } finally {
+      setIsCleaningMemory(false);
+    }
+  };
+
   const handleSave = async () => {
     setSaveStatus(null);
     try {
@@ -75,9 +132,9 @@ const RetrievalSettings = () => {
         similarity_threshold: localConfig.similarity_threshold,
         always_retrieve: localConfig.always_retrieve
       };
-      
+
       const success = await updatePartialConfig('memory', snakeCaseConfig);
-      
+
       if (success) {
         setSaveStatus({
           success: true,
@@ -107,44 +164,44 @@ const RetrievalSettings = () => {
       <Typography variant="h6" gutterBottom>
         Memory Retrieval Settings
       </Typography>
-      
+
       {saveStatus && (
-        <Alert 
-          severity={saveStatus.success ? "success" : "error"} 
+        <Alert
+          severity={saveStatus.success ? "success" : "error"}
           sx={{ mb: 2 }}
           onClose={() => setSaveStatus(null)}
         >
           {saveStatus.message}
         </Alert>
       )}
-      
+
       <FormControlLabel
         control={
-          <Switch 
-            checked={localConfig.enabled} 
-            onChange={handleToggleEnabled} 
+          <Switch
+            checked={localConfig.enabled}
+            onChange={handleToggleEnabled}
           />
         }
         label="Enable Memory Retrieval"
         sx={{ mb: 2, display: 'block' }}
       />
-      
+
       {localConfig.enabled && (
         <>
           <TextField
             label="Retrieval Limit"
             type="number"
             value={localConfig.limit}
-            onChange={(e) => setLocalConfig({...localConfig, limit: parseInt(e.target.value) || 5})}
+            onChange={(e) => setLocalConfig({ ...localConfig, limit: parseInt(e.target.value) || 5 })}
             fullWidth
             margin="normal"
             helperText="Maximum number of memory items to retrieve"
           />
           <FormControlLabel
             control={
-              <Switch 
-                checked={localConfig.always_retrieve} 
-                onChange={handleToggleAlwaysRetrieve} 
+              <Switch
+                checked={localConfig.always_retrieve}
+                onChange={handleToggleAlwaysRetrieve}
               />
             }
             label="Always Attempt Memory Retrieval"
@@ -152,9 +209,9 @@ const RetrievalSettings = () => {
           />
           <FormControlLabel
             control={
-              <Switch 
-                checked={localConfig.enable_cross_conversation} 
-                onChange={handleToggleCrossConversation} 
+              <Switch
+                checked={localConfig.enable_cross_conversation}
+                onChange={handleToggleCrossConversation}
               />
             }
             label="Enable Cross-Conversation Memory Retrieval"
@@ -162,9 +219,9 @@ const RetrievalSettings = () => {
           />
           <FormControlLabel
             control={
-              <Switch 
-                checked={localConfig.enable_cross_user} 
-                onChange={handleToggleCrossUser} 
+              <Switch
+                checked={localConfig.enable_cross_user}
+                onChange={handleToggleCrossUser}
               />
             }
             label="Enable Cross-User Memory Retrieval"
@@ -192,15 +249,103 @@ const RetrievalSettings = () => {
           )}
         </>
       )}
-      <Button 
-        variant="contained" 
-        color="primary" 
-        sx={{ mt: 2 }} 
+
+      {/* Admin Memory Cleanup Section */}
+      {isAdmin && (
+        <>
+          <Divider sx={{ mt: 4, mb: 3 }} />
+          <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>
+            <MemoryIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+            Memory Management (Admin Only)
+          </Typography>
+
+          {memoryCleanupStatus && (
+            <Alert
+              severity={memoryCleanupStatus.success ? "success" : "error"}
+              sx={{ mb: 2 }}
+              onClose={() => setMemoryCleanupStatus(null)}
+            >
+              {memoryCleanupStatus.message}
+            </Alert>
+          )}
+
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+            <Button
+              variant="outlined"
+              color="warning"
+              onClick={handleBasicMemoryCleanup}
+              disabled={isCleaningMemory}
+              startIcon={<DeleteIcon />}
+              sx={{ minWidth: '200px' }}
+            >
+              {isCleaningMemory ? 'Cleaning...' : 'Clear Memory Cache'}
+            </Button>
+
+            <Button
+              variant="outlined"
+              color="error"
+              onClick={() => setShowNuclearDialog(true)}
+              disabled={isCleaningMemory}
+              startIcon={<DeleteIcon />}
+              sx={{ minWidth: '200px' }}
+            >
+              Nuclear Memory Cleanup
+            </Button>
+          </Box>
+
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <strong>Clear Memory Cache:</strong> Releases GPU memory and unloads cached models.<br />
+            <strong>Nuclear Cleanup:</strong> Force-kills all processes and performs aggressive memory cleanup. Use with caution!
+          </Typography>
+        </>
+      )}
+
+      <Button
+        variant="contained"
+        color="primary"
+        sx={{ mt: 2 }}
         onClick={handleSave}
         disabled={isLoading}
       >
         Save Memory Settings
       </Button>
+
+      {/* Nuclear Cleanup Confirmation Dialog */}
+      <Dialog
+        open={showNuclearDialog}
+        onClose={() => setShowNuclearDialog(false)}
+        aria-labelledby="nuclear-cleanup-dialog-title"
+        aria-describedby="nuclear-cleanup-dialog-description"
+      >
+        <DialogTitle id="nuclear-cleanup-dialog-title">
+          ⚠️ Nuclear Memory Cleanup
+        </DialogTitle>
+        <DialogContent>
+          <Typography id="nuclear-cleanup-dialog-description" sx={{ mb: 2 }}>
+            This will forcefully terminate all running processes and perform aggressive memory cleanup.
+          </Typography>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            <strong>Warning:</strong> This action may interrupt running tasks and cause data loss.
+            Only use this if normal memory cleanup fails.
+          </Alert>
+          <Typography variant="body2" color="text.secondary">
+            Are you sure you want to proceed with nuclear memory cleanup?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowNuclearDialog(false)} color="primary">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleNuclearMemoryCleanup}
+            color="error"
+            variant="contained"
+            disabled={isCleaningMemory}
+          >
+            {isCleaningMemory ? 'Cleaning...' : 'Proceed'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

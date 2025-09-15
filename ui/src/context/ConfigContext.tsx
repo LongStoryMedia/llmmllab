@@ -8,9 +8,11 @@ import { ImageGenerationConfig } from '../types/ImageGenerationConfig';
 import { ModelProfileConfig } from '../types/ModelProfileConfig';
 import { PreferencesConfig } from '../types/PreferencesConfig';
 import { MemoryConfig } from '../types/MemoryConfig';
+import { CircuitBreakerConfig } from '../types/CircuitBreakerConfig';
+import { GPUConfig } from '../types/GpuConfig';
 
 
-export type ConfigSection = SummarizationConfig | RefinementConfig | WebSearchConfig | ImageGenerationConfig | ModelProfileConfig | PreferencesConfig |MemoryConfig;
+export type ConfigSection = SummarizationConfig | RefinementConfig | WebSearchConfig | ImageGenerationConfig | ModelProfileConfig | PreferencesConfig | MemoryConfig | CircuitBreakerConfig | GPUConfig;
 interface ConfigContextType {
   config: UserConfig | null;
   isLoading: boolean;
@@ -35,10 +37,10 @@ export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
 export const useConfigContext = (): ConfigContextType => {
   const context = useContext(ConfigContext);
-  
+
   if (!context) {
     throw new Error('useConfigContext must be used within a ConfigProvider');
   }
-  
+
   return context;
 };

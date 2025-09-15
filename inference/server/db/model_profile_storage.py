@@ -68,6 +68,23 @@ class ModelProfileStorage:
                         )
                         profile_data["circuit_breaker"] = None
 
+                # Parse gpu_config if stored as JSON string
+                if isinstance(profile_data.get("gpu_config"), str):
+                    try:
+                        from models.gpu_config import GPUConfig
+
+                        gpu_config_data = json.loads(
+                            profile_data["gpu_config"]
+                        )
+                        profile_data["gpu_config"] = GPUConfig(
+                            **gpu_config_data
+                        )
+                    except (json.JSONDecodeError, TypeError, ValueError) as e:
+                        logger.error(
+                            f"Failed to parse gpu_config JSON for profile {profile_id}: {e}"
+                        )
+                        profile_data["gpu_config"] = None
+
                 return ModelProfile(**profile_data)
             except Exception as e:
                 logger.error(f"Error creating ModelProfile from database: {e}")
@@ -135,6 +152,23 @@ class ModelProfileStorage:
                             )
                             profile_data["circuit_breaker"] = None
 
+                    # Parse gpu_config if stored as JSON string
+                    if isinstance(profile_data.get("gpu_config"), str):
+                        try:
+                            from models.gpu_config import GPUConfig
+
+                            gpu_config_data = json.loads(
+                                profile_data["gpu_config"]
+                            )
+                            profile_data["gpu_config"] = GPUConfig(
+                                **gpu_config_data
+                            )
+                        except (json.JSONDecodeError, TypeError, ValueError) as e:
+                            logger.error(
+                                f"Failed to parse gpu_config JSON for profile: {e}"
+                            )
+                            profile_data["gpu_config"] = None
+
                     profiles.append(ModelProfile(**profile_data))
                 except Exception as e:
                     logger.error(f"Error creating ModelProfile from database: {e}")
@@ -168,6 +202,13 @@ class ModelProfileStorage:
         else:
             circuit_breaker_json = None
 
+        # Serialize GPU config
+        if profile.gpu_config:
+            gpu_config_dict = profile.gpu_config.model_dump()
+            gpu_config_json = serialize_to_json(gpu_config_dict)
+        else:
+            gpu_config_json = None
+
         async with self.typed_pool.acquire() as conn:
             await conn.execute(
                 self.get_query("modelprofile.create_profile"),
@@ -181,6 +222,7 @@ class ModelProfileStorage:
                 profile.model_version,
                 profile.type,
                 circuit_breaker_json,
+                gpu_config_json,
             )
 
             # Update the profile with current timestamps (which are set by the database)
@@ -212,6 +254,13 @@ class ModelProfileStorage:
         else:
             circuit_breaker_json = None
 
+        # Serialize GPU config
+        if profile.gpu_config:
+            gpu_config_dict = profile.gpu_config.model_dump()
+            gpu_config_json = serialize_to_json(gpu_config_dict)
+        else:
+            gpu_config_json = None
+
         async with self.typed_pool.acquire() as conn:
             await conn.execute(
                 self.get_query("modelprofile.update_profile"),
@@ -224,6 +273,7 @@ class ModelProfileStorage:
                 profile.model_version,
                 profile.type,
                 circuit_breaker_json,
+                gpu_config_json,
                 profile.user_id,
             )
 

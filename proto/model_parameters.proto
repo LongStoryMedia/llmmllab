@@ -7,8 +7,6 @@ package proto;
 
 option go_package = "maistro/proto";
 
-import "gpu_config.proto";
-
 // Parameters for configuring a language model
 message ModelParameters {
   // Size of the context window
@@ -39,6 +37,4 @@ message ModelParameters {
   int32 n_parts = 13;
   // Batch size for processing inputs
   int32 batch_size = 14;
-  // GPU configuration settings for memory management and device allocation
-  GPUConfig gpu_config = 15;
 }

@@ -1,9 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Box, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Paper, IconButton, Grid, FormControl, InputLabel, Select, MenuItem, Chip, FormControlLabel, Checkbox } from '@mui/material';
+import {
+  Box, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
+  TextField, Paper, IconButton, Grid, FormControl, InputLabel, Select, MenuItem,
+  Chip, FormControlLabel, Checkbox, Switch, Slider, Accordion, AccordionSummary,
+  AccordionDetails, Alert
+} from '@mui/material';
+import {
+  Delete as DeleteIcon, Edit as EditIcon, Add as AddIcon,
+  ExpandMore as ExpandMoreIcon, Memory as MemoryIcon,
+  Warning as WarningIcon, Settings as SettingsIcon
+} from '@mui/icons-material';
 import { listModelProfiles, createModelProfile, updateModelProfile, deleteModelProfile } from '../api/model';
-import DeleteIcon from '@mui/icons-material/Delete';
-import EditIcon from '@mui/icons-material/Edit';
 import { ModelProfile } from '../types/ModelProfile';
+import { GPUConfig } from '../types/GpuConfig';
 import { useAuth } from '../auth';
 import ModelSelector from '../components/ModelSelector/ModelSelector';
 import { getToken } from '../api';
@@ -256,253 +265,714 @@ const ModelProfilesPage = () => {
           />
 
           {/* Circuit Breaker Configuration Section */}
-          <Typography variant="h6" sx={{ mt: 3, mb: 2 }}>
-            Circuit Breaker Configuration (Optional)
-            {editingProfile?.circuit_breaker && (
-              <Chip
-                label="Custom Settings Active"
-                color="primary"
-                size="small"
-                sx={{ ml: 2 }}
-              />
-            )}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Configure custom circuit breaker overrides for this profile. Only set values you want to override from global settings.
-            {!editingProfile?.circuit_breaker && " Check 'Override Settings' to add custom configuration."}
-          </Typography>
+          <Accordion sx={{ mt: 2 }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <SettingsIcon sx={{ mr: 1 }} />
+                <Typography variant="h6">
+                  Circuit Breaker Configuration (Optional)
+                </Typography>
+                {editingProfile?.circuit_breaker && (
+                  <Chip
+                    label="Custom Settings Active"
+                    color="primary"
+                    size="small"
+                    sx={{ ml: 2 }}
+                  />
+                )}
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Configure timeout protection, retry behavior, and quality monitoring overrides for this specific model profile.
+              </Typography>
 
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={!!editingProfile?.circuit_breaker}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  if (e.target.checked && !editingProfile?.circuit_breaker) {
-                    // Create an empty circuit breaker config when enabling overrides
-                    setEditingProfile({
-                      ...editingProfile,
-                      circuit_breaker: {}
-                    });
-                  } else if (!e.target.checked) {
-                    // Remove circuit breaker config when disabling overrides
-                    setEditingProfile({
-                      ...editingProfile,
-                      circuit_breaker: undefined
-                    });
-                  }
-                }}
-              />
-            }
-            label="Override Global Circuit Breaker Settings"
-          />
-
-          <TextField
-            label="Base Timeout (seconds)"
-            value={editingProfile?.circuit_breaker?.base_timeout ?? ''}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-              const currentConfig = editingProfile?.circuit_breaker;
-              if (currentConfig !== undefined) {
-                const value = e.target.value === '' ? undefined : Number(e.target.value);
-                setEditingProfile({
-                  ...editingProfile,
-                  circuit_breaker: {
-                    ...currentConfig,
-                    base_timeout: value
-                  }
-                });
-              }
-            }}
-            fullWidth margin="normal"
-            type="number"
-            inputProps={{ min: 1, max: 600 }}
-            helperText="Override base timeout for this profile (1-600 seconds, empty = use global)"
-            disabled={!editingProfile?.circuit_breaker}
-            placeholder="Use global setting"
-          />
-
-          <TextField
-            label="Deep Research Timeout (seconds)"
-            value={editingProfile?.circuit_breaker?.deep_research_timeout ?? ''}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-              const currentConfig = editingProfile?.circuit_breaker;
-              if (currentConfig !== undefined) {
-                const value = e.target.value === '' ? undefined : Number(e.target.value);
-                setEditingProfile({
-                  ...editingProfile,
-                  circuit_breaker: {
-                    ...currentConfig,
-                    deep_research_timeout: value
-                  }
-                });
-              }
-            }}
-            fullWidth margin="normal"
-            type="number"
-            inputProps={{ min: 1, max: 1200 }}
-            helperText="Override deep research timeout (1-1200 seconds, empty = use global)"
-            disabled={!editingProfile?.circuit_breaker}
-            placeholder="Use global setting"
-          />
-
-          <TextField
-            label="Max Retries"
-            value={editingProfile?.circuit_breaker?.max_retries ?? ''}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-              const currentConfig = editingProfile?.circuit_breaker;
-              if (currentConfig !== undefined) {
-                const value = e.target.value === '' ? undefined : Number(e.target.value);
-                setEditingProfile({
-                  ...editingProfile,
-                  circuit_breaker: {
-                    ...currentConfig,
-                    max_retries: value
-                  }
-                });
-              }
-            }}
-            fullWidth margin="normal"
-            type="number"
-            inputProps={{ min: 0, max: 10 }}
-            helperText="Override maximum retry attempts (0-10, empty = use global)"
-            disabled={!editingProfile?.circuit_breaker}
-            placeholder="Use global setting"
-          />
-
-          <TextField
-            label="Cooldown Period (seconds)"
-            value={editingProfile?.circuit_breaker?.cooldown_period ?? ''}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-              const currentConfig = editingProfile?.circuit_breaker;
-              if (currentConfig !== undefined) {
-                const value = e.target.value === '' ? undefined : Number(e.target.value);
-                setEditingProfile({
-                  ...editingProfile,
-                  circuit_breaker: {
-                    ...currentConfig,
-                    cooldown_period: value
-                  }
-                });
-              }
-            }}
-            fullWidth margin="normal"
-            type="number"
-            inputProps={{ min: 0, max: 300 }}
-            helperText="Override cooldown period (0-300 seconds, empty = use global)"
-            disabled={!editingProfile?.circuit_breaker}
-            placeholder="Use global setting"
-          />
-
-          <FormControl fullWidth margin="normal" disabled={!editingProfile?.circuit_breaker}>
-            <InputLabel>Perplexity Guard</InputLabel>
-            <Select
-              value={
-                editingProfile?.circuit_breaker?.enable_perplexity_guard === undefined
-                  ? 'global'
-                  : editingProfile?.circuit_breaker?.enable_perplexity_guard
-                    ? 'enabled'
-                    : 'disabled'
-              }
-              onChange={(e) => {
-                const currentConfig = editingProfile?.circuit_breaker;
-                if (currentConfig !== undefined) {
-                  let newValue: boolean | undefined;
-                  if (e.target.value === 'global') {
-                    newValue = undefined;
-                  } else if (e.target.value === 'enabled') {
-                    newValue = true;
-                  } else {
-                    newValue = false;
-                  }
-
-                  setEditingProfile({
-                    ...editingProfile,
-                    circuit_breaker: {
-                      ...currentConfig,
-                      enable_perplexity_guard: newValue
-                    }
-                  });
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={!!editingProfile?.circuit_breaker}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setEditingProfile({
+                          ...editingProfile,
+                          circuit_breaker: {}
+                        });
+                      } else {
+                        const { circuit_breaker, ...restProfile } = editingProfile!;
+                        setEditingProfile(restProfile);
+                      }
+                    }}
+                  />
                 }
-              }}
-            >
-              <MenuItem value="global">Use Global Setting</MenuItem>
-              <MenuItem value="enabled">Enable Perplexity Guard</MenuItem>
-              <MenuItem value="disabled">Disable Perplexity Guard</MenuItem>
-            </Select>
-          </FormControl>
+                label="Override Global Circuit Breaker Settings"
+              />
 
-          <TextField
-            label="Perplexity Window"
-            value={editingProfile?.circuit_breaker?.perplexity_window ?? ''}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-              const currentConfig = editingProfile?.circuit_breaker;
-              if (currentConfig !== undefined) {
-                const value = e.target.value === '' ? undefined : Number(e.target.value);
-                setEditingProfile({
-                  ...editingProfile,
-                  circuit_breaker: {
-                    ...currentConfig,
-                    perplexity_window: value
+              {editingProfile?.circuit_breaker && (
+                <>
+                  {/* Timeout Settings */}
+                  <Typography variant="subtitle1" sx={{ mt: 2, mb: 1, fontWeight: 'bold' }}>
+                    Timeout Settings
+                  </Typography>
+
+                  <TextField
+                    label="Base Timeout (seconds)"
+                    type="number"
+                    value={editingProfile?.circuit_breaker?.base_timeout ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.circuit_breaker;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          circuit_breaker: {
+                            ...currentConfig,
+                            base_timeout: value
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 1, max: 600, step: 1 }}
+                    helperText="Base timeout for model operations (1-600 seconds)"
+                  />
+
+                  <TextField
+                    label="Deep Research Timeout (seconds)"
+                    type="number"
+                    value={editingProfile?.circuit_breaker?.deep_research_timeout ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.circuit_breaker;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          circuit_breaker: {
+                            ...currentConfig,
+                            deep_research_timeout: value
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 1, max: 1200, step: 1 }}
+                    helperText="Extended timeout for research tasks (1-1200 seconds)"
+                  />
+
+                  {/* Retry Settings */}
+                  <Typography variant="subtitle1" sx={{ mt: 3, mb: 1, fontWeight: 'bold' }}>
+                    Retry Settings
+                  </Typography>
+
+                  <TextField
+                    label="Max Retries"
+                    type="number"
+                    value={editingProfile?.circuit_breaker?.max_retries ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.circuit_breaker;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          circuit_breaker: {
+                            ...currentConfig,
+                            max_retries: value
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 0, max: 10, step: 1 }}
+                    helperText="Maximum number of retries before giving up (0-10)"
+                  />
+
+                  <TextField
+                    label="Cooldown Period (seconds)"
+                    type="number"
+                    value={editingProfile?.circuit_breaker?.cooldown_period ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.circuit_breaker;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          circuit_breaker: {
+                            ...currentConfig,
+                            cooldown_period: value
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 0, max: 300, step: 1 }}
+                    helperText="Time before allowing retry after failure (0-300 seconds)"
+                  />
+
+                  {/* Quality Monitoring */}
+                  <Typography variant="subtitle1" sx={{ mt: 3, mb: 1, fontWeight: 'bold' }}>
+                    Quality Monitoring
+                  </Typography>
+
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={editingProfile?.circuit_breaker?.enable_perplexity_guard ?? true}
+                        onChange={(e) => {
+                          const currentConfig = editingProfile?.circuit_breaker;
+                          if (currentConfig !== undefined) {
+                            setEditingProfile({
+                              ...editingProfile,
+                              circuit_breaker: {
+                                ...currentConfig,
+                                enable_perplexity_guard: e.target.checked
+                              }
+                            });
+                          }
+                        }}
+                      />
+                    }
+                    label="Enable Perplexity Guard"
+                    sx={{ mb: 1, display: 'block' }}
+                  />
+
+                  <TextField
+                    label="Perplexity Window"
+                    type="number"
+                    value={editingProfile?.circuit_breaker?.perplexity_window ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.circuit_breaker;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          circuit_breaker: {
+                            ...currentConfig,
+                            perplexity_window: value
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 10, max: 200, step: 1 }}
+                    helperText="Number of tokens for perplexity calculation (10-200)"
+                  />
+
+                  <TextField
+                    label="Perplexity Threshold"
+                    type="number"
+                    value={editingProfile?.circuit_breaker?.perplexity_threshold ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.circuit_breaker;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          circuit_breaker: {
+                            ...currentConfig,
+                            perplexity_threshold: value
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 1, max: 50, step: 0.1 }}
+                    helperText="Perplexity threshold for quality concerns (1-50)"
+                  />
+
+                  <TextField
+                    label="Average Log Probability Floor"
+                    type="number"
+                    value={editingProfile?.circuit_breaker?.avg_logprob_floor ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.circuit_breaker;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          circuit_breaker: {
+                            ...currentConfig,
+                            avg_logprob_floor: value
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: -20, max: 0, step: 0.1 }}
+                    helperText="Minimum average log probability threshold (-20 to 0)"
+                  />
+
+                  {/* Repetition Detection */}
+                  <Typography variant="subtitle1" sx={{ mt: 3, mb: 1, fontWeight: 'bold' }}>
+                    Repetition Detection
+                  </Typography>
+
+                  <TextField
+                    label="Repetition N-gram Size"
+                    type="number"
+                    value={editingProfile?.circuit_breaker?.repetition_ngram ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.circuit_breaker;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          circuit_breaker: {
+                            ...currentConfig,
+                            repetition_ngram: value
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 2, max: 20, step: 1 }}
+                    helperText="N-gram size for repetition detection (2-20)"
+                  />
+
+                  <TextField
+                    label="Repetition Threshold"
+                    type="number"
+                    value={editingProfile?.circuit_breaker?.repetition_threshold ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.circuit_breaker;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          circuit_breaker: {
+                            ...currentConfig,
+                            repetition_threshold: value
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 2, max: 20, step: 1 }}
+                    helperText="Number of repetitions before triggering detection (2-20)"
+                  />
+
+                  <TextField
+                    label="Tool Generation Repetition N-gram"
+                    type="number"
+                    value={editingProfile?.circuit_breaker?.tool_gen_repetition_ngram ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.circuit_breaker;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          circuit_breaker: {
+                            ...currentConfig,
+                            tool_gen_repetition_ngram: value
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 2, max: 20, step: 1 }}
+                    helperText="N-gram size for tool generation repetition detection (2-20)"
+                  />
+
+                  <TextField
+                    label="Tool Generation Repetition Threshold"
+                    type="number"
+                    value={editingProfile?.circuit_breaker?.tool_gen_repetition_threshold ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.circuit_breaker;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          circuit_breaker: {
+                            ...currentConfig,
+                            tool_gen_repetition_threshold: value
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 2, max: 20, step: 1 }}
+                    helperText="Repetitions before triggering tool generation detection (2-20)"
+                  />
+
+                  {/* Advanced Settings */}
+                  <Typography variant="subtitle1" sx={{ mt: 3, mb: 1, fontWeight: 'bold' }}>
+                    Advanced Settings
+                  </Typography>
+
+                  <TextField
+                    label="Min Tokens for Evaluation"
+                    type="number"
+                    value={editingProfile?.circuit_breaker?.min_tokens_for_eval ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.circuit_breaker;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          circuit_breaker: {
+                            ...currentConfig,
+                            min_tokens_for_eval: value
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 5, max: 500, step: 1 }}
+                    helperText="Minimum tokens before starting quality evaluation (5-500)"
+                  />
+
+                  <TextField
+                    label="Perplexity Log Interval (tokens)"
+                    type="number"
+                    value={editingProfile?.circuit_breaker?.perplexity_log_interval_tokens ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.circuit_breaker;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          circuit_breaker: {
+                            ...currentConfig,
+                            perplexity_log_interval_tokens: value
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 5, max: 100, step: 1 }}
+                    helperText="Interval for logging perplexity metrics (5-100 tokens)"
+                  />
+
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={editingProfile?.circuit_breaker?.log_repetition_events ?? true}
+                        onChange={(e) => {
+                          const currentConfig = editingProfile?.circuit_breaker;
+                          if (currentConfig !== undefined) {
+                            setEditingProfile({
+                              ...editingProfile,
+                              circuit_breaker: {
+                                ...currentConfig,
+                                log_repetition_events: e.target.checked
+                              }
+                            });
+                          }
+                        }}
+                      />
+                    }
+                    label="Log Repetition Detection Events"
+                    sx={{ mt: 1, display: 'block' }}
+                  />
+                </>
+              )}
+            </AccordionDetails>
+          </Accordion>
+
+          {/* GPU Configuration Section */}
+          <Accordion sx={{ mt: 2 }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <MemoryIcon sx={{ mr: 1 }} />
+                <Typography variant="h6">
+                  GPU Configuration (Optional)
+                </Typography>
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <WarningIcon sx={{ mr: 1 }} />
+                  <Typography variant="body2">
+                    GPU configuration only applies to local models (llama.cpp, etc.). Remote API models ignore these settings.
+                  </Typography>
+                </Box>
+              </Alert>
+
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={editingProfile?.gpu_config !== undefined}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setEditingProfile({
+                          ...editingProfile,
+                          gpu_config: {
+                            no_kv_offload: false,
+                            main_gpu: -1,
+                            tensor_split: [],
+                            n_cpu_moe: 0,
+                            split_mode: 'none',
+                            offload_kqv: true
+                          }
+                        });
+                      } else {
+                        const { gpu_config, ...restProfile } = editingProfile!;
+                        setEditingProfile(restProfile);
+                      }
+                    }}
+                  />
+                }
+                label="Override Global GPU Settings"
+              />
+
+              {editingProfile?.gpu_config && (
+                <>
+                  {/* Memory Management */}
+                  <Typography variant="subtitle1" sx={{ mt: 2, mb: 1, fontWeight: 'bold' }}>
+                    Memory Management
+                  </Typography>
+
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={editingProfile?.gpu_config?.no_kv_offload ?? false}
+                        onChange={(e) => {
+                          const gpuConfig = editingProfile?.gpu_config;
+                          if (gpuConfig) {
+                            setEditingProfile({
+                              ...editingProfile,
+                              gpu_config: {
+                                ...gpuConfig,
+                                no_kv_offload: e.target.checked
+                              }
+                            });
+                          }
+                        }}
+                      />
+                    }
+                    label="Force KV Cache to CPU (saves VRAM)"
+                    sx={{ mb: 1, display: 'block' }}
+                  />
+
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={editingProfile?.gpu_config?.offload_kqv ?? true}
+                        onChange={(e) => {
+                          const gpuConfig = editingProfile?.gpu_config;
+                          if (gpuConfig) {
+                            setEditingProfile({
+                              ...editingProfile,
+                              gpu_config: {
+                                ...gpuConfig,
+                                offload_kqv: e.target.checked
+                              }
+                            });
+                          }
+                        }}
+                      />
+                    }
+                    label="Offload Key/Query/Value tensors to GPU"
+                    sx={{ mb: 2, display: 'block' }}
+                  />
+
+                  <TextField
+                    label="CPU MoE Layers"
+                    type="number"
+                    value={editingProfile?.gpu_config?.n_cpu_moe ?? ''}
+                    onChange={(e) => {
+                      const gpuConfig = editingProfile?.gpu_config;
+                      if (gpuConfig) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          gpu_config: {
+                            ...gpuConfig,
+                            n_cpu_moe: value
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    helperText="Number of MoE (Mixture of Experts) layers to keep on CPU (GPT-OSS models only)"
+                    inputProps={{ min: 0 }}
+                  />
+
+                  {/* Device Selection */}
+                  <Typography variant="subtitle1" sx={{ mt: 3, mb: 1, fontWeight: 'bold' }}>
+                    Device Selection
+                  </Typography>
+
+                  <TextField
+                    label="Main GPU Device ID"
+                    value={editingProfile?.gpu_config?.main_gpu_device_id ?? ''}
+                    onChange={(e) => {
+                      const gpuConfig = editingProfile?.gpu_config;
+                      if (gpuConfig) {
+                        const value = e.target.value === '' ? undefined : e.target.value;
+                        setEditingProfile({
+                          ...editingProfile,
+                          gpu_config: {
+                            ...gpuConfig,
+                            main_gpu_device_id: value
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    helperText="GPU device ID/name (e.g., 'NVIDIA GeForce RTX 4090', empty = auto-select)"
+                  />
+
+                  <TextField
+                    label="Main GPU Index"
+                    type="number"
+                    value={editingProfile?.gpu_config?.main_gpu ?? ''}
+                    onChange={(e) => {
+                      const gpuConfig = editingProfile?.gpu_config;
+                      if (gpuConfig) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          gpu_config: {
+                            ...gpuConfig,
+                            main_gpu: value
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    helperText="GPU device index (-1 for auto-selection, overridden by device ID above)"
+                    inputProps={{ min: -1 }}
+                  />
+
+                  <FormControl fullWidth margin="normal">
+                    <InputLabel>Model Split Mode</InputLabel>
+                    <Select
+                      value={editingProfile?.gpu_config?.split_mode || 'none'}
+                      onChange={(e) => {
+                        const gpuConfig = editingProfile?.gpu_config;
+                        if (gpuConfig) {
+                          setEditingProfile({
+                            ...editingProfile,
+                            gpu_config: {
+                              ...gpuConfig,
+                              split_mode: e.target.value as GPUConfig['split_mode']
+                            }
+                          });
+                        }
+                      }}
+                      label="Model Split Mode"
+                    >
+                      <MenuItem value="none">None - Single device</MenuItem>
+                      <MenuItem value="layer">Layer - Split by layers</MenuItem>
+                      <MenuItem value="row">Row - Split by tensor rows</MenuItem>
+                    </Select>
+                  </FormControl>
+
+                  {/* Tensor Split Configuration */}
+                  <Typography variant="subtitle1" sx={{ mt: 3, mb: 1, fontWeight: 'bold' }}>
+                    Tensor Split Configuration
+                    <Button
+                      onClick={() => {
+                        const gpuConfig = editingProfile?.gpu_config;
+                        if (gpuConfig) {
+                          const newTensorSplit = [...(gpuConfig.tensor_split || []), 0.5];
+                          setEditingProfile({
+                            ...editingProfile,
+                            gpu_config: {
+                              ...gpuConfig,
+                              tensor_split: newTensorSplit
+                            }
+                          });
+                        }
+                      }}
+                      startIcon={<AddIcon />}
+                      size="small"
+                      sx={{ ml: 2 }}
+                    >
+                      Add Device
+                    </Button>
+                  </Typography>
+
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Distribute model computation across multiple GPUs. Values must sum to 1.0.
+                  </Typography>
+
+                  {editingProfile?.gpu_config?.tensor_split &&
+                    editingProfile.gpu_config.tensor_split.length > 0 &&
+                    (
+                      <>
+                        <Box sx={{ mb: 2 }}>
+                          {(() => {
+                            const tensorSplit = editingProfile?.gpu_config?.tensor_split || [];
+                            const sum = tensorSplit.reduce((acc, val) => acc + val, 0);
+                            const isValid = Math.abs(sum - 1.0) < 0.01;
+                            return (
+                              <Typography variant="body2" color={isValid ? 'success.main' : 'error.main'}>
+                                Current sum: {sum.toFixed(3)} {isValid ? '✓' : '(must equal 1.0)'}
+                              </Typography>
+                            );
+                          })()}
+                        </Box>
+
+                        {editingProfile.gpu_config.tensor_split.map((split, index) => (
+                          <Box key={index} sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                            <Typography sx={{ minWidth: 80 }}>
+                              Device {index}:
+                            </Typography>
+                            <Slider
+                              value={split}
+                              onChange={(_, value) => {
+                                const gpuConfig = editingProfile?.gpu_config;
+                                if (gpuConfig && gpuConfig.tensor_split) {
+                                  const newTensorSplit = [...gpuConfig.tensor_split];
+                                  newTensorSplit[index] = value as number;
+                                  setEditingProfile({
+                                    ...editingProfile,
+                                    gpu_config: {
+                                      ...gpuConfig,
+                                      tensor_split: newTensorSplit
+                                    }
+                                  });
+                                }
+                              }}
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              sx={{ mx: 2, flex: 1 }}
+                              valueLabelDisplay="auto"
+                              valueLabelFormat={(value) => value.toFixed(2)}
+                            />
+                            <Typography sx={{ minWidth: 60, textAlign: 'center' }}>
+                              {split.toFixed(2)}
+                            </Typography>
+                            <IconButton
+                              onClick={() => {
+                                const gpuConfig = editingProfile?.gpu_config;
+                                if (gpuConfig && gpuConfig.tensor_split) {
+                                  const newTensorSplit = [...gpuConfig.tensor_split];
+                                  newTensorSplit.splice(index, 1);
+                                  setEditingProfile({
+                                    ...editingProfile,
+                                    gpu_config: {
+                                      ...gpuConfig,
+                                      tensor_split: newTensorSplit
+                                    }
+                                  });
+                                }
+                              }}
+                              size="small"
+                              color="error"
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </Box>
+                        ))}
+                      </>
+                    )
                   }
-                });
-              }
-            }}
-            fullWidth margin="normal"
-            type="number"
-            inputProps={{ min: 10, max: 200 }}
-            helperText="Override perplexity window (10-200 tokens, empty = use global)"
-            disabled={!editingProfile?.circuit_breaker}
-            placeholder="Use global setting"
-          />
 
-          <TextField
-            label="Perplexity Threshold"
-            value={editingProfile?.circuit_breaker?.perplexity_threshold ?? ''}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-              const currentConfig = editingProfile?.circuit_breaker;
-              if (currentConfig !== undefined) {
-                const value = e.target.value === '' ? undefined : Number(e.target.value);
-                setEditingProfile({
-                  ...editingProfile,
-                  circuit_breaker: {
-                    ...currentConfig,
-                    perplexity_threshold: value
-                  }
-                });
-              }
-            }}
-            fullWidth margin="normal"
-            type="number"
-            inputProps={{ min: 1, max: 50, step: 0.1 }}
-            helperText="Override perplexity threshold (1-50, empty = use global)"
-            disabled={!editingProfile?.circuit_breaker}
-            placeholder="Use global setting"
-          />
-
-          <TextField
-            label="Average Log Probability Floor"
-            value={editingProfile?.circuit_breaker?.avg_logprob_floor ?? ''}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-              const currentConfig = editingProfile?.circuit_breaker;
-              if (currentConfig !== undefined) {
-                const value = e.target.value === '' ? undefined : Number(e.target.value);
-                setEditingProfile({
-                  ...editingProfile,
-                  circuit_breaker: {
-                    ...currentConfig,
-                    avg_logprob_floor: value
-                  }
-                });
-              }
-            }}
-            fullWidth margin="normal"
-            type="number"
-            inputProps={{ min: -20, max: 0, step: 0.1 }}
-            helperText="Override log probability floor (-20 to 0, empty = use global)"
-            disabled={!editingProfile?.circuit_breaker}
-            placeholder="Use global setting"
-          />
-
-          {editingProfile?.circuit_breaker && (
+                  {(!editingProfile?.gpu_config?.tensor_split ||
+                    editingProfile.gpu_config.tensor_split.length === 0) &&
+                    (
+                      <Typography variant="body2" color="text.secondary">
+                        No tensor split configured. Model will run on a single device.
+                      </Typography>
+                    )}
+                </>
+              )}
+            </AccordionDetails>
+          </Accordion>          {editingProfile?.circuit_breaker && (
             <Button
               variant="outlined"
               color="secondary"

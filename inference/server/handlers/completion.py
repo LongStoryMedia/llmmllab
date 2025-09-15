@@ -241,20 +241,22 @@ class CompletionHandler:
                     ) as pipeline:
                         rc.add("pipeline", pipeline)
 
-                        # 4) Stream execution
+                        # 4) Stream execution - use enriched messages with summaries
+                        enriched_messages = conversation_ctx.get_enriched_messages(tools)
                         logger.info(
-                            f"Starting pipeline execution with {len(conversation_ctx.messages)} messages and {len(tools)} tools"
+                            f"Starting pipeline execution with {len(enriched_messages)} messages and {len(tools)} tools"
                         )
 
                         # Ensure we have at least the current user message
-                        messages_to_process = conversation_ctx.messages
+                        messages_to_process = enriched_messages
                         if (
                             not messages_to_process
                             and conversation_ctx.current_user_message
                         ):
-                            messages_to_process = [
-                                conversation_ctx.current_user_message
-                            ]
+                            # If no enriched messages but we have current user message, create minimal list
+                            messages_to_process = conversation_ctx.get_enriched_messages(tools)
+                            if not messages_to_process:
+                                messages_to_process = [conversation_ctx.current_user_message]
 
                         if not messages_to_process:
                             logger.error("No messages to process")

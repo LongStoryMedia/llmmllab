@@ -31,6 +31,8 @@ properties:
     $ref: image_generation_config.yaml
   circuit_breaker:
     $ref: circuit_breaker_config.yaml
+  gpu_config:
+    $ref: gpu_config.yaml
   log_level:
     type: string
     description: Log level
@@ -52,6 +54,7 @@ required:
   - refinement
   - image_generation
   - circuit_breaker
+  - gpu_config
   - log_level
   - rabbitmq
   - internal_config
