@@ -22,9 +22,10 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
+import gpu_config_pb2 as gpu__config__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16model_parameters.proto\x12\x05proto\"\x8c\x02\n\x0fModelParameters\x12\x0f\n\x07num_ctx\x18\x01 \x01(\x05\x12\x15\n\rrepeat_last_n\x18\x02 \x01(\x05\x12\x16\n\x0erepeat_penalty\x18\x03 \x01(\x01\x12\x13\n\x0btemperature\x18\x04 \x01(\x01\x12\x0c\n\x04seed\x18\x05 \x01(\x05\x12\x0c\n\x04stop\x18\x06 \x03(\t\x12\x13\n\x0bnum_predict\x18\x07 \x01(\x05\x12\r\n\x05top_k\x18\x08 \x01(\x05\x12\r\n\x05top_p\x18\t \x01(\x01\x12\r\n\x05min_p\x18\n \x01(\x01\x12\r\n\x05think\x18\x0b \x01(\x08\x12\x12\n\nmax_tokens\x18\x0c \x01(\x05\x12\x0f\n\x07n_parts\x18\r \x01(\x05\x12\x12\n\nbatch_size\x18\x0e \x01(\x05\x42\x0fZ\rmaistro/protob\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16model_parameters.proto\x12\x05proto\x1a\x10gpu_config.proto\"\xb2\x02\n\x0fModelParameters\x12\x0f\n\x07num_ctx\x18\x01 \x01(\x05\x12\x15\n\rrepeat_last_n\x18\x02 \x01(\x05\x12\x16\n\x0erepeat_penalty\x18\x03 \x01(\x01\x12\x13\n\x0btemperature\x18\x04 \x01(\x01\x12\x0c\n\x04seed\x18\x05 \x01(\x05\x12\x0c\n\x04stop\x18\x06 \x03(\t\x12\x13\n\x0bnum_predict\x18\x07 \x01(\x05\x12\r\n\x05top_k\x18\x08 \x01(\x05\x12\r\n\x05top_p\x18\t \x01(\x01\x12\r\n\x05min_p\x18\n \x01(\x01\x12\r\n\x05think\x18\x0b \x01(\x08\x12\x12\n\nmax_tokens\x18\x0c \x01(\x05\x12\x0f\n\x07n_parts\x18\r \x01(\x05\x12\x12\n\nbatch_size\x18\x0e \x01(\x05\x12$\n\ngpu_config\x18\x0f \x01(\x0b\x32\x10.proto.GPUConfigB\x0fZ\rmaistro/protob\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,6 +33,6 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'model_parameters_pb2', _glo
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z\rmaistro/proto'
-  _globals['_MODELPARAMETERS']._serialized_start=34
-  _globals['_MODELPARAMETERS']._serialized_end=302
+  _globals['_MODELPARAMETERS']._serialized_start=52
+  _globals['_MODELPARAMETERS']._serialized_end=358
 # @@protoc_insertion_point(module_scope)

@@ -314,3 +314,94 @@ async def health_check():
         raise HTTPException(
             status_code=500, detail=f"Error checking GPU health: {str(e)}"
         )
+
+
+class DeviceInfo(BaseModel):
+    index: int
+    name: str
+    uuid: str
+    id: str
+
+
+class DeviceMappingsResponse(BaseModel):
+    devices: Dict[str, DeviceInfo]
+
+
+class DeviceResolutionRequest(BaseModel):
+    device_name_or_index: str
+
+
+class DeviceResolutionResponse(BaseModel):
+    resolved_index: int
+    device_name: str
+
+
+@router.get("/devices", response_model=DeviceMappingsResponse)
+async def get_device_mappings():
+    """
+    Get a mapping of device indices to their user-friendly names and metadata.
+    
+    Returns:
+        Dict mapping device index (str) to device info containing:
+        - index: Device index (int)
+        - name: User-friendly device name (str)
+        - uuid: Device UUID (str)
+        - id: Device ID (str)
+    """
+    try:
+        device_mappings = hardware_manager.get_device_mappings()
+        
+        # Convert to proper response format
+        devices = {}
+        for device_id, device_info in device_mappings.items():
+            devices[device_id] = DeviceInfo(
+                index=int(device_info["index"]),
+                name=str(device_info["name"]),
+                uuid=str(device_info["uuid"]),
+                id=str(device_info["id"])
+            )
+        
+        return DeviceMappingsResponse(devices=devices)
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error getting device mappings: {str(e)}"
+        )
+
+
+@router.post("/devices/resolve", response_model=DeviceResolutionResponse)
+async def resolve_device_name(request: DeviceResolutionRequest):
+    """
+    Resolve a device name or friendly identifier to its numerical index.
+    
+    Args:
+        request: Contains device_name_or_index - can be a device name 
+                (e.g., "NVIDIA RTX 4090"), index (e.g., "0", "1"), or "cpu"
+    
+    Returns:
+        Resolved device index and name
+    """
+    try:
+        resolved_index = hardware_manager.resolve_device_name_to_index(
+            request.device_name_or_index
+        )
+        
+        # Get the actual device name for the resolved index
+        device_mappings = hardware_manager.get_device_mappings()
+        device_name = "Unknown Device"
+        
+        # Find the device name for the resolved index
+        for device_info in device_mappings.values():
+            if int(device_info["index"]) == resolved_index:
+                device_name = str(device_info["name"])
+                break
+        
+        return DeviceResolutionResponse(
+            resolved_index=resolved_index,
+            device_name=str(device_name)
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error resolving device name: {str(e)}"
+        )

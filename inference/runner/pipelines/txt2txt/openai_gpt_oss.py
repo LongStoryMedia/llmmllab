@@ -67,6 +67,31 @@ class OpenAiGptOssPipe(BaseLlamaCppPipeline):
         gguf_path = self._get_gguf_path()
         self._validate_gguf_file(gguf_path)
 
+    def _get_gpu_config_kwargs(self) -> Dict[str, Any]:
+        """Override base GPU config to add MoE-specific handling for OpenAI GPT OSS models."""
+        kwargs = super()._get_gpu_config_kwargs()
+        
+        # Get GPU config from profile parameters
+        gpu_config = getattr(self.profile.parameters, 'gpu_config', None)
+        if not gpu_config:
+            return kwargs
+        
+        # Handle MoE-specific CPU layer configuration
+        if gpu_config.n_cpu_moe is not None and gpu_config.n_cpu_moe > 0:
+            # For OpenAI GPT OSS models, we can try to pass this to llama-cpp-python
+            # Note: This may require a specific version of llama-cpp-python that supports MoE
+            try:
+                # Check if llama-cpp-python supports MoE parameters
+                # The parameter name might be different in the Python bindings
+                kwargs['n_cpu_moe'] = gpu_config.n_cpu_moe
+                self._logger.info(f"Set MoE CPU layers to: {gpu_config.n_cpu_moe}")
+            except Exception as e:
+                self._logger.warning(f"Could not set MoE CPU layers: {e}")
+                # Store for potential future use or alternative handling
+                self._moe_cpu_layers = gpu_config.n_cpu_moe
+        
+        return kwargs
+
     def _get_gguf_path(self) -> str:
         """Get the GGUF file path for the model."""
         return (

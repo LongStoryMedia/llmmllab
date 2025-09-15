@@ -47,3 +47,7 @@ properties:
   batch_size:
     type: integer
     description: Batch size for processing inputs
+  gpu_config:
+    $ref: "./gpu_config.yaml"
+    description: GPU configuration settings for memory management and device allocation
+    nullable: true
