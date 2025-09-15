@@ -7,6 +7,7 @@ try:
     from . import available_tool
     from . import chat_req
     from . import chat_response
+    from . import circuit_breaker_config
     from . import config
     from . import conversation
     from . import conversation_ctx
@@ -83,6 +84,7 @@ __all__ = [
     'available_tool',
     'chat_req',
     'chat_response',
+    'circuit_breaker_config',
     'config',
     'conversation',
     'conversation_ctx',
@@ -153,6 +155,7 @@ __all__ = [
     'AvailableTool',
     'ChatReq',
     'ChatResponse',
+    'CircuitBreakerConfig',
     'Config',
     'Conversation',
     'ConversationCtx',
@@ -237,6 +240,9 @@ from .chat_req import (
 )
 from .chat_response import (
     ChatResponse,
+)
+from .circuit_breaker_config import (
+    CircuitBreakerConfig,
 )
 from .config import (
     Config,

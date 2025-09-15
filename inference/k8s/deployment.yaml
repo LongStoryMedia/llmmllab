@@ -225,10 +225,12 @@ spec:
               value: "/opt/venv/runner"
             - name: BASE_VENV
               value: "/opt/venv/base"
-            - name: CMAKE_ARGS
-              value: "-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_PATH=/llama.cpp/build/bin"
-            - name: LLAMA_CPP_LIB_PATH
-              value: "/llama.cpp/build/bin"
+            # - name: CMAKE_ARGS
+            #   value: "-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_PATH=/llama.cpp/build/bin"
+            # - name: LLAMA_CPP_LIB_PATH
+            #   value: "/llama.cpp/build/bin"
+            - name: LD_LIBRARY_PATH
+              value: "/usr/local/lib:/usr/local/cuda/lib64:/opt/venv/runner/lib/python3.12/site-packages/llama_cpp/lib:/opt/venv/server/lib/python3.12/site-packages/llama_cpp/lib:/opt/venv/evaluation/lib/python3.12/site-packages/llama_cpp/lib"
 
             # CUDA and Memory Optimization Configuration
             # Comprehensive CUDA graphs disabling for stability

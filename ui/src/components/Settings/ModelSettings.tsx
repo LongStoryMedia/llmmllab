@@ -23,19 +23,21 @@ const TASKS: { key: keyof ModelProfileConfig; label: string; }[] = [
   { key: 'embedding_profile_id', label: 'Embeddings' },
   { key: 'formatting_profile_id', label: 'Formatting' },
   { key: 'image_generation_prompt_profile_id', label: 'Image Generation Prompt' },
-  { key: 'image_generation_profile_id', label: 'Image Generation' }
+  { key: 'image_generation_profile_id', label: 'Image Generation' },
+  { key: 'engineering_profile_id', label: 'Engineering' },
+  { key: 'reranking_profile_id', label: 'Reranking' }
 ];
 
 const ModelSettings = () => {
   const { config, isLoading } = useConfigContext();
-  const [saveStatus, setSaveStatus] = useState<{success?: boolean; message: string} | null>(null);
+  const [saveStatus, setSaveStatus] = useState<{ success?: boolean; message: string } | null>(null);
   const auth = useAuth();
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
     setSaveStatus(null);
     setIsSaving(true);
-    
+
     try {
       if (!config) {
         setSaveStatus({
@@ -46,7 +48,7 @@ const ModelSettings = () => {
       }
 
       const success = await updateConfig(getToken(auth.user), config)
-      
+
       if (success) {
         setSaveStatus({
           success: true,
@@ -77,28 +79,28 @@ const ModelSettings = () => {
       <Typography variant="h6" gutterBottom>
         Model Settings
       </Typography>
-      
+
       {saveStatus && (
-        <Alert 
-          severity={saveStatus.success ? "success" : "error"} 
+        <Alert
+          severity={saveStatus.success ? "success" : "error"}
           sx={{ mb: 2 }}
           onClose={() => setSaveStatus(null)}
         >
           {saveStatus.message}
         </Alert>
       )}
-      
+
       <Box sx={{ mt: 4 }}>
         <Typography variant="h6">Assign Profiles to Tasks</Typography>
         <Grid container spacing={2} sx={{ p: 2 }}>
           {TASKS.map(task => (<ModelProfileSelector key={task.key} task={task} />))}
         </Grid>
       </Box>
-      
-      <Button 
-        variant="contained" 
-        color="primary" 
-        sx={{ mt: 2 }} 
+
+      <Button
+        variant="contained"
+        color="primary"
+        sx={{ mt: 2 }}
         onClick={handleSave}
         disabled={isSaving}
       >

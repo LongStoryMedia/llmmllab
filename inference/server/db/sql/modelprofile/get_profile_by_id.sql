@@ -10,7 +10,8 @@ SELECT
   created_at,
   updated_at,
   model_version,
-  type
+  type,
+  circuit_breaker
 FROM
   model_profiles
 WHERE

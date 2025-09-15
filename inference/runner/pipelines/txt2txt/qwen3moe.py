@@ -49,19 +49,25 @@ class QwenLangGraphPipe(BaseLlamaCppPipeline):
         model: Model,
         profile: ModelProfile,
         expected_return_type: Optional[type] = None,
+        circuit_config: Optional[CircuitBreakerConfig] = None,
     ):
-        # Configure circuit breaker with MUCH longer timeouts for research/testing
-        circuit_config = CircuitBreakerConfig(
-            base_timeout=300.0,  # 5 minutes base timeout
-            deep_research_timeout=900.0,  # 15 minutes for complex research
-            max_retries=3,
-            cooldown_period=60.0,
-        )
+        # Create logger early so we can use it
+        self._logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
+        # Log the received circuit config for debugging
+        if circuit_config is not None:
+            self._logger.info(
+                f"QwenLangGraphPipe: Received circuit_config with perplexity_guard={circuit_config.enable_perplexity_guard}"
+            )
+        else:
+            self._logger.info(
+                "QwenLangGraphPipe: No circuit_config provided, will use defaults from BaseLangGraphPipeline"
+            )
+
+        # Let the parent class handle circuit breaker configuration and defaults
         super().__init__(model, profile, expected_return_type, circuit_config)
         self.model = model
         self.profile = profile
-        self._logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
         # Initialize context manager with max possible context
         context_tokens = 1048576 if "30b" in self.model.name.lower() else 131072

@@ -27,7 +27,7 @@ from ..protos import (
     message_content_type_pb2,
     model_parameters_pb2,
 )
-from runner.pipelines.factory import PipelineFactory
+from runner.pipeline_factory import PipelineFactory
 
 from typing import List
 

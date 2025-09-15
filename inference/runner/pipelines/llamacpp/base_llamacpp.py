@@ -181,9 +181,22 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
             if len(gpu_layer_candidates) == 1:  # Only -1 in the list
                 gpu_layer_candidates = [min_gpu_layers]
 
-            # Fixed feature settings (always collect logits for all tokens so logprobs works)
-            logits_all = True  # user requirement: always True (higher memory usage)
-            logprobs = 1  # minimal diagnostics, no progressive reduction
+            # Conditional feature settings based on perplexity guard
+            # Only enable logits collection and logprobs if perplexity monitoring is enabled
+            perplexity_enabled = self.circuit_config.enable_perplexity_guard or False
+            logits_all = perplexity_enabled  # Only collect logits if perplexity monitoring is needed
+            logprobs = (
+                1 if perplexity_enabled else 0
+            )  # Only compute logprobs if needed for perplexity
+
+            if perplexity_enabled:
+                self._logger.info(
+                    "Perplexity guard enabled - loading with logits_all=True, logprobs=1"
+                )
+            else:
+                self._logger.info(
+                    "Perplexity guard disabled - optimizing memory usage with logits_all=False, logprobs=0"
+                )
 
             early_reduce_ctx = False
             for n_batch in batch_candidates:

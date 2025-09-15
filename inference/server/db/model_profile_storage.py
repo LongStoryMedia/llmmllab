@@ -51,6 +51,23 @@ class ModelProfileStorage:
                             f"Failed to parse parameters JSON for profile {profile_id}: {e}"
                         )
 
+                # Parse circuit_breaker if stored as JSON string
+                if isinstance(profile_data.get("circuit_breaker"), str):
+                    try:
+                        from models.circuit_breaker_config import CircuitBreakerConfig
+
+                        circuit_breaker_data = json.loads(
+                            profile_data["circuit_breaker"]
+                        )
+                        profile_data["circuit_breaker"] = CircuitBreakerConfig(
+                            **circuit_breaker_data
+                        )
+                    except (json.JSONDecodeError, TypeError, ValueError) as e:
+                        logger.error(
+                            f"Failed to parse circuit_breaker JSON for profile {profile_id}: {e}"
+                        )
+                        profile_data["circuit_breaker"] = None
+
                 return ModelProfile(**profile_data)
             except Exception as e:
                 logger.error(f"Error creating ModelProfile from database: {e}")
@@ -99,6 +116,25 @@ class ModelProfileStorage:
                             )
                             continue
 
+                    # Parse circuit_breaker if stored as JSON string
+                    if isinstance(profile_data.get("circuit_breaker"), str):
+                        try:
+                            from models.circuit_breaker_config import (
+                                CircuitBreakerConfig,
+                            )
+
+                            circuit_breaker_data = json.loads(
+                                profile_data["circuit_breaker"]
+                            )
+                            profile_data["circuit_breaker"] = CircuitBreakerConfig(
+                                **circuit_breaker_data
+                            )
+                        except (json.JSONDecodeError, TypeError, ValueError) as e:
+                            logger.error(
+                                f"Failed to parse circuit_breaker JSON for profile: {e}"
+                            )
+                            profile_data["circuit_breaker"] = None
+
                     profiles.append(ModelProfile(**profile_data))
                 except Exception as e:
                     logger.error(f"Error creating ModelProfile from database: {e}")
@@ -125,6 +161,13 @@ class ModelProfileStorage:
         else:
             params_json = "{}"
 
+        # Serialize circuit_breaker to JSON if provided
+        if profile.circuit_breaker:
+            circuit_breaker_dict = profile.circuit_breaker.model_dump()
+            circuit_breaker_json = serialize_to_json(circuit_breaker_dict)
+        else:
+            circuit_breaker_json = None
+
         async with self.typed_pool.acquire() as conn:
             await conn.execute(
                 self.get_query("modelprofile.create_profile"),
@@ -137,6 +180,7 @@ class ModelProfileStorage:
                 profile.system_prompt,
                 profile.model_version,
                 profile.type,
+                circuit_breaker_json,
             )
 
             # Update the profile with current timestamps (which are set by the database)
@@ -161,6 +205,13 @@ class ModelProfileStorage:
         else:
             params_json = "{}"
 
+        # Serialize circuit_breaker to JSON if provided
+        if profile.circuit_breaker:
+            circuit_breaker_dict = profile.circuit_breaker.model_dump()
+            circuit_breaker_json = serialize_to_json(circuit_breaker_dict)
+        else:
+            circuit_breaker_json = None
+
         async with self.typed_pool.acquire() as conn:
             await conn.execute(
                 self.get_query("modelprofile.update_profile"),
@@ -172,6 +223,7 @@ class ModelProfileStorage:
                 profile.system_prompt,
                 profile.model_version,
                 profile.type,
+                circuit_breaker_json,
                 profile.user_id,
             )
 

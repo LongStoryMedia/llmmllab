@@ -13,6 +13,7 @@ from models.refinement_config import RefinementConfig
 from models.web_search_config import WebSearchConfig
 from models.image_generation_config import ImageGenerationConfig
 from models.model_profile_config import ModelProfileConfig
+from models.circuit_breaker_config import CircuitBreakerConfig
 from models.user_config import UserConfig, WebSearchProviders
 
 from models.default_model_profiles import DEFAULT_MODEL_PROFILE_CONFIG
@@ -79,6 +80,25 @@ DEFAULT_IMAGE_GENERATION_CONFIG = ImageGenerationConfig(
     negative_prompt="blurry, distorted, low quality, pixelated",
 )
 
+# Default circuit breaker configuration
+DEFAULT_CIRCUIT_BREAKER_CONFIG = CircuitBreakerConfig(
+    base_timeout=60.0,
+    deep_research_timeout=120.0,
+    max_retries=2,
+    cooldown_period=30.0,
+    enable_perplexity_guard=True,
+    perplexity_window=40,
+    perplexity_threshold=10.0,
+    avg_logprob_floor=-6.0,
+    repetition_ngram=6,
+    repetition_threshold=6,
+    min_tokens_for_eval=20,
+    perplexity_log_interval_tokens=20,
+    log_repetition_events=True,
+    tool_gen_repetition_ngram=4,
+    tool_gen_repetition_threshold=3,
+)
+
 
 # Function to create a default user config
 def create_default_user_config(user_id: str) -> UserConfig:
@@ -92,4 +112,5 @@ def create_default_user_config(user_id: str) -> UserConfig:
         web_search=DEFAULT_WEB_SEARCH_CONFIG,
         image_generation=DEFAULT_IMAGE_GENERATION_CONFIG,
         model_profiles=DEFAULT_MODEL_PROFILE_CONFIG,
+        circuit_breaker=DEFAULT_CIRCUIT_BREAKER_CONFIG,
     )

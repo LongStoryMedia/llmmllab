@@ -18,7 +18,7 @@ from typing import Dict, Any
 import logging
 
 # Import the required modules directly
-from runner.pipelines.factory import pipeline_factory
+from runner import pipeline_factory
 from models import MessageContent, Message, MessageRole, default_model_profiles
 from models import MessageContentType
 

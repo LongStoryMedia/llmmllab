@@ -11,7 +11,6 @@ from typing import AsyncGenerator, List, cast, Optional, Dict, Any, TypeVar, Uni
 import torch
 from transformers import AutoTokenizer
 from langchain_community.chat_models.llamacpp import ChatLlamaCpp
-from langchain_core.callbacks import CallbackManager, StreamingStdOutCallbackHandler
 from langchain_core.prompts import ChatPromptTemplate
 
 from langgraph.graph import StateGraph, START, END
@@ -26,10 +25,13 @@ from models import (
     Message,
     ChatResponse,
     ModelProfile,
+    CircuitBreakerConfig,
 )
 from utils.message import extract_message_text
 from utils.response import create_streaming_chunk, create_error_response
-from ..llamacpp.base_llamacpp import BaseLlamaCppCore
+from ..base_langgraph import CircuitBreakerConfig
+from ..llamacpp.base_llamacpp import BaseLlamaCppPipeline
+from .context_manager import ContextManager
 
 # Define generic return type for text pipelines
 T = TypeVar("T", bound=Union[str, ChatResponse])
@@ -42,7 +44,7 @@ LlamaChatSummarizationTextPipe = "LlamaChatSummPipe[str]"
 logger = logging.getLogger(__name__)
 
 
-class LlamaChatSummPipe(BaseLlamaCppCore):
+class LlamaChatSummPipe(BaseLlamaCppPipeline):
     """
     Optimized pipeline for Llama-Chat-Summary-3.2-3B model with enhanced performance.
 
@@ -63,16 +65,16 @@ class LlamaChatSummPipe(BaseLlamaCppCore):
     allowed_return_types = (str, ChatResponse)
 
     def __init__(
-        self, model: Model, profile: ModelProfile, return_type: type = ChatResponse
+        self,
+        model: Model,
+        profile: ModelProfile,
+        return_type: type = ChatResponse,
+        circuit_config: Optional[CircuitBreakerConfig] = None,
     ):
         """Initialize optimized LlamaChatSummPipe instance."""
-        # Enforce expected return type (str or ChatResponse) and use small model size for summarization
-        super().__init__(
-            model,
-            profile,
-            expected_return_type=return_type,
-            model_size_category="small",
-        )
+        # Initialize with small model size category for summarization
+        # Circuit breaker config fallback is handled by BaseLangGraphPipeline
+        super().__init__(model, profile, return_type, circuit_config, "small")
         self._return_type = return_type
 
         # Initialize performance tracking
@@ -94,13 +96,11 @@ class LlamaChatSummPipe(BaseLlamaCppCore):
             f"Initializing optimized LlamaChatSummPipe for model: {model.id}"
         )
 
-        # Get and validate GGUF file
-        gguf_path = self._get_gguf_path()
-        self._validate_gguf_file(gguf_path)
-
-        # Initialize components with optimizations
-        self._initialize_tokenizer()
-        self._initialize_llama_cpp_langchain(gguf_path)
+        # Initialize context manager with dynamic context for summarization
+        context_tokens = (
+            self.profile.parameters.num_ctx or 8192
+        )  # Context size for summarization
+        self.context_manager = ContextManager(max_context_tokens=context_tokens)
 
     def _get_gguf_path(self) -> str:
         """Get the GGUF file path with fallback logic."""
@@ -110,109 +110,34 @@ class LlamaChatSummPipe(BaseLlamaCppCore):
             else self.model.model
         )
 
-    def _validate_gguf_file(self, gguf_path: str) -> None:
-        """Enhanced GGUF file validation."""
-        if not os.path.exists(gguf_path):
-            raise FileNotFoundError(f"GGUF file not found: {gguf_path}")
+    async def _create_system_prompt(
+        self, tools: Optional[List[BaseTool]] = None
+    ) -> str:
+        """Create system prompt for Llama-Chat-Summary."""
+        base_prompt = (
+            self.profile.system_prompt
+            or """You are an expert summarization assistant. Create concise, accurate summaries that capture the main points and key information from the provided text.
 
-        file_size = os.path.getsize(gguf_path)
-        if file_size < 1_000_000:  # Less than 1MB is suspicious
-            raise ValueError(
-                f"GGUF file is too small ({file_size} bytes), likely a placeholder: {gguf_path}"
-            )
+SUMMARIZATION GUIDELINES:
+- Focus on the most important points and key information
+- Maintain the original meaning and context
+- Use clear, direct language
+- Avoid unnecessary repetition
+- Preserve critical details while removing redundancy
 
-        # Test file readability
-        try:
-            with open(gguf_path, "rb") as f:
-                f.read(8)  # Read first 8 bytes
-        except Exception as e:
-            raise IOError(f"Cannot read GGUF file {gguf_path}: {e}") from e
-
-        self.logger.info(
-            f"Using GGUF file: {gguf_path} (size: {file_size/1_000_000:.2f} MB)"
+Create a well-structured summary that helps the reader understand the essential content."""
         )
 
-    def _initialize_tokenizer(self) -> None:
-        """Initialize tokenizer with error handling for Llama model."""
-        try:
-            # For Llama Chat Summary, try to load tokenizer from parent model if available
-            if (
-                self.model.details
-                and hasattr(self.model.details, "parent_model")
-                and self.model.details.parent_model
-            ):
-                self.tokenizer = AutoTokenizer.from_pretrained(
-                    self.model.details.parent_model,
-                    use_fast=True,
-                )
-                self.logger.info(
-                    "Llama tokenizer loaded successfully from parent model"
-                )
-            else:
-                # Fallback to meta-llama/Llama-2-7b-chat-hf for Llama-based models
-                self.tokenizer = AutoTokenizer.from_pretrained(
-                    "meta-llama/Llama-2-7b-chat-hf",
-                    use_fast=True,
-                )
-                self.logger.info("Llama tokenizer loaded successfully from fallback")
-        except Exception as e:
-            self.logger.warning(
-                f"Tokenizer initialization failed, will use GGUF-based tokenization: {e}"
-            )
-            self.tokenizer = None
+        # Add tool information if available
+        if tools:
+            tool_descriptions = []
+            for tool in tools:
+                tool_descriptions.append(f"- {tool.name}: {tool.description}")
 
-    def _initialize_llama_cpp_langchain(self, gguf_path: str) -> None:
-        """Initialize LLM with Llama-Chat-Summary-specific optimizations."""
-        try:
-            # Llama-Chat-Summary-3.2-3B optimized settings
-            self.llm = ChatLlamaCpp(
-                model_path=gguf_path,
-                n_gpu_layers=-1,  # Offload all layers to GPU
-                n_batch=512,
-                n_ctx=self.profile.parameters.num_ctx
-                or 8192,  # Llama context (increased from BART)
-                f16_kv=True,
-                callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
-                verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "debug",
-                n_parts=-1,
-                seed=self.profile.parameters.seed or -1,
-                logits_all=True,  # enforced: needed for logprobs
-                vocab_only=False,
-                use_mlock=False,
-                n_threads=self._get_optimal_threads(),
-                suffix="",
-                logprobs=0,
-                # Llama-specific generation parameters optimized for summarization
-                temperature=self.profile.parameters.temperature
-                or 0.1,  # Very low temperature to reduce repetition
-                max_tokens=self.profile.parameters.num_predict
-                or 512,  # Reduced from 1024 to prevent verbose output
-                top_p=self.profile.parameters.top_p or 0.85,  # Reduced from 0.9
-                top_k=self.profile.parameters.top_k or 30,  # Reduced from 50
-                repeat_penalty=self.profile.parameters.repeat_penalty
-                or 1.15,  # Increased from 1.05
-                streaming=True,
-                # Llama-specific stop tokens optimized for summarization
-                stop=self.profile.parameters.stop
-                or self._get_summarization_stop_tokens(),
-            )
+            tool_info = "\n".join(tool_descriptions)
+            base_prompt += f"\n\nAvailable tools:\n{tool_info}\n\nUse tools when appropriate to enhance the summary."
 
-            self.logger.info("Llama Chat Summary model loaded successfully")
-
-        except Exception as e:
-            self.logger.error(f"Failed to initialize Llama LLM: {e}")
-            raise
-
-    def _get_optimal_threads(self) -> int:
-        """Get optimal thread count for Llama model."""
-        try:
-            cpu_count = multiprocessing.cpu_count()
-            # Llama models are efficient with moderate threading
-            optimal_threads = min(max(cpu_count // 2, 4), 8)
-            self.logger.debug(f"Using {optimal_threads} threads for Llama")
-            return optimal_threads
-        except Exception:
-            return 4  # Conservative default for Llama
+        return base_prompt
 
     def _get_summarization_stop_tokens(self) -> List[str]:
         """Get stop tokens optimized for Llama summarization."""
@@ -491,6 +416,17 @@ Summary: [/INST]"""
     async def _direct_summarization_simple(self, text: str) -> str:
         """Simple direct summarization optimized for Llama-Chat-Summary."""
         try:
+            # Initialize LLM if not done yet
+            if self.llm is None:
+                gguf_path = self._get_gguf_path()
+                await self._initialize_llm(gguf_path)
+
+            # Ensure LLM is properly initialized after the initialization call
+            if self.llm is None:
+                raise RuntimeError(
+                    "Failed to initialize LLM - llm is still None after initialization"
+                )
+
             # Preprocess text
             cleaned_text = self._preprocess_text(text)
             summary_length = self._calculate_optimal_summary_length(cleaned_text)
@@ -640,6 +576,17 @@ Summary: """
     ) -> AsyncGenerator[ChatResponse, None]:
         """Direct summarization without agents."""
         try:
+            # Initialize LLM if not done yet
+            if self.llm is None:
+                gguf_path = self._get_gguf_path()
+                await self._initialize_llm(gguf_path)
+
+            # Ensure LLM is properly initialized after the initialization call
+            if self.llm is None:
+                raise RuntimeError(
+                    "Failed to initialize LLM - llm is still None after initialization"
+                )
+
             # Create optimized prompt
             summary_prompt = self._create_optimized_summary_prompt(text)
 
@@ -722,6 +669,17 @@ Summary: """
             style: Summary style ("brief", "balanced", "detailed")
         """
         try:
+            # Initialize LLM if not done yet
+            if self.llm is None:
+                gguf_path = self._get_gguf_path()
+                await self._initialize_llm(gguf_path)
+
+            # Ensure LLM is properly initialized after the initialization call
+            if self.llm is None:
+                raise RuntimeError(
+                    "Failed to initialize LLM - llm is still None after initialization"
+                )
+
             # Adjust prompt based on style
             style_prompts = {
                 "brief": "Provide a very concise summary focusing only on the most essential points.",
@@ -818,7 +776,3 @@ Summary: """
 
         except Exception as e:
             logger.error(f"Error cleaning up LlamaChatSummPipe: {e}")
-
-    def _create_system_prompt(self) -> str:
-        """Stub implementation - summarization pipeline doesn't use traditional system prompts."""
-        return ""

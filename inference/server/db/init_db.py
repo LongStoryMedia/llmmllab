@@ -56,6 +56,7 @@ async def initialize_database(connection_pool: Any) -> bool:
                     [
                         ("modelprofile.create_model_profiles_table", []),
                         ("modelprofile.create_model_profiles_index", []),
+                        ("modelprofile.add_circuit_breaker_column", []),
                     ],
                 ),
                 # Step 3: Create conversation tables

@@ -24,7 +24,9 @@ from models import (
     ModelProfile,
     ChatResponse,
     ModelProvider,
+    CircuitBreakerConfig,
 )
+from models.default_configs import DEFAULT_CIRCUIT_BREAKER_CONFIG
 from .pipelines.base import BasePipelineCore, PipeReturn
 
 from .pipelines.llamacpp.base_llamacpp import BaseLlamaCppPipeline
@@ -308,6 +310,7 @@ class PipelineFactory:
         profile: ModelProfile,
         expected_type: Type[T],
         priority: PipelinePriority = PipelinePriority.NORMAL,
+        user_circuit_breaker: Optional[CircuitBreakerConfig] = None,
     ) -> BasePipelineCore[T]:
         model_id = profile.model_name
         model = self._get_model_by_id(model_id)
@@ -326,7 +329,9 @@ class PipelineFactory:
                 required_estimate = self._estimate_pipeline_memory_requirements(m)
                 self._acquire_load_slot(required_estimate, model_id)
                 try:
-                    return self.create_pipeline(m, p, expected_type=e)
+                    return self.create_pipeline(
+                        m, p, expected_type=e, user_circuit_breaker=user_circuit_breaker
+                    )
                 finally:
                     self._release_load_slot(model_id)
 
@@ -347,7 +352,12 @@ class PipelineFactory:
             return cast(BasePipelineCore[T], pipeline)
 
         # Remote / API providers -> create transient each call, no caching
-        pipeline = self.create_pipeline(model, profile, expected_type=expected_type)
+        pipeline = self.create_pipeline(
+            model,
+            profile,
+            expected_type=expected_type,
+            user_circuit_breaker=user_circuit_breaker,
+        )
         if not pipeline:
             raise RuntimeError(
                 f"Failed to create pipeline for remote model {getattr(model, 'name', model_id)}."
@@ -390,8 +400,9 @@ class PipelineFactory:
         profile: ModelProfile,
         t: Type[T],
         priority: PipelinePriority = PipelinePriority.NORMAL,
+        user_circuit_breaker: Optional[CircuitBreakerConfig] = None,
     ):
-        pipeline = self.get_pipeline(profile, t, priority)
+        pipeline = self.get_pipeline(profile, t, priority, user_circuit_breaker)
         is_local = False
         try:
             provider = getattr(pipeline.model, "provider", None)  # type: ignore[attr-defined]
@@ -551,7 +562,9 @@ class PipelineFactory:
         try:
             if nuclear_fallback:
                 # Use nuclear clearing when aggressive has repeatedly failed
-                self.logger.warning("Using nuclear memory cleanup due to critical memory issues")
+                self.logger.warning(
+                    "Using nuclear memory cleanup due to critical memory issues"
+                )
                 hardware_manager.nuclear_clear_memory(kill_processes=False)
                 self.logger.info("Nuclear memory cleanup completed")
             else:
@@ -561,15 +574,21 @@ class PipelineFactory:
             self.logger.warning(f"Hardware memory cleanup failed: {e}")
             # If aggressive cleanup failed due to memory issues, try nuclear as fallback
             error_str = str(e).lower()
-            if not nuclear_fallback and ("out of memory" in error_str or 
-                                       "failed to allocate" in error_str or 
-                                       "cuda error" in error_str):
-                self.logger.warning("Escalating to nuclear cleanup due to memory errors")
+            if not nuclear_fallback and (
+                "out of memory" in error_str
+                or "failed to allocate" in error_str
+                or "cuda error" in error_str
+            ):
+                self.logger.warning(
+                    "Escalating to nuclear cleanup due to memory errors"
+                )
                 try:
                     hardware_manager.nuclear_clear_memory(kill_processes=False)
                     self.logger.info("Nuclear fallback cleanup completed")
                 except Exception as nuclear_e:
-                    self.logger.error(f"Nuclear fallback cleanup also failed: {nuclear_e}")
+                    self.logger.error(
+                        f"Nuclear fallback cleanup also failed: {nuclear_e}"
+                    )
 
         # Give GPU memory a moment to settle after cleanup
         if evicted > 0:
@@ -598,24 +617,129 @@ class PipelineFactory:
             return None
         return self._available_models[model_id]
 
+    def _merge_circuit_breaker_configs(
+        self,
+        base_config: CircuitBreakerConfig,
+        override_config: Optional[CircuitBreakerConfig],
+    ) -> CircuitBreakerConfig:
+        """
+        Merge two circuit breaker configurations, with override_config taking precedence
+        for any non-None values.
+
+        Args:
+            base_config: The base configuration (typically defaults or user global)
+            override_config: The override configuration (typically profile-specific)
+
+        Returns:
+            Merged CircuitBreakerConfig
+        """
+        if not override_config:
+            return base_config
+
+        # Create merged config by taking base values and overriding with non-None values from override
+        merged_data = {}
+
+        # Get all field names from the base config using model_dump()
+        for field_name in base_config.model_dump().keys():
+            base_value = getattr(base_config, field_name)
+            override_value = getattr(override_config, field_name, None)
+
+            # Use override value if it's not None, otherwise use base value
+            merged_data[field_name] = (
+                override_value if override_value is not None else base_value
+            )
+
+        return CircuitBreakerConfig(**merged_data)
+
+    def _build_circuit_breaker_config(
+        self,
+        profile: ModelProfile,
+        user_circuit_breaker: Optional[CircuitBreakerConfig] = None,
+    ) -> CircuitBreakerConfig:
+        """
+        Build the final circuit breaker configuration by merging in priority order:
+        1. Default config (baseline)
+        2. Global/user config (user preferences)
+        3. Profile-specific config (model-specific overrides)
+
+        Args:
+            profile: The model profile that may contain circuit breaker overrides
+            user_circuit_breaker: User's global circuit breaker configuration
+
+        Returns:
+            Final merged CircuitBreakerConfig
+        """
+        # Start with defaults
+        final_config = DEFAULT_CIRCUIT_BREAKER_CONFIG
+        self.logger.info(
+            f"Building circuit breaker config - starting with defaults: perplexity_guard={final_config.enable_perplexity_guard}"
+        )
+
+        # Apply user global config if provided
+        if user_circuit_breaker:
+            self.logger.info(
+                f"Applying user config with perplexity_guard={user_circuit_breaker.enable_perplexity_guard}"
+            )
+            final_config = self._merge_circuit_breaker_configs(
+                final_config, user_circuit_breaker
+            )
+            self.logger.info(
+                f"After user merge: perplexity_guard={final_config.enable_perplexity_guard}"
+            )
+        else:
+            self.logger.info("No user circuit breaker config provided")
+
+        # Apply profile-specific overrides if present
+        if profile and profile.circuit_breaker:
+            self.logger.info(
+                f"Applying profile config with perplexity_guard={profile.circuit_breaker.enable_perplexity_guard}"
+            )
+            final_config = self._merge_circuit_breaker_configs(
+                final_config, profile.circuit_breaker
+            )
+            self.logger.info(
+                f"After profile merge: perplexity_guard={final_config.enable_perplexity_guard}"
+            )
+        else:
+            self.logger.info("No profile circuit breaker config found")
+
+        self.logger.info(
+            f"Built circuit breaker config for {profile.model_name if profile else 'no profile'}: "
+            f"perplexity_guard={final_config.enable_perplexity_guard}, "
+            f"base_timeout={final_config.base_timeout}"
+        )
+
+        return final_config
+
     def create_pipeline(
         self,
         model: Model,
         profile: ModelProfile,
         expected_type: Optional[Type[PipeReturn]] = None,
+        user_circuit_breaker: Optional[CircuitBreakerConfig] = None,
     ) -> Optional[BasePipelineCore]:
         try:
             self.logger.info(f"Creating pipeline for {model.name} (task: {model.task})")
+
+            # Build the final circuit breaker configuration by merging defaults, user config, and profile overrides
+            circuit_config = self._build_circuit_breaker_config(
+                profile, user_circuit_breaker
+            )
+
             if model.task.endswith("TextToText"):
-                return self._create_text_pipeline(model, profile, expected_type)
+                return self._create_text_pipeline(
+                    model, profile, expected_type, circuit_config
+                )
             if model.task == "TextToEmbeddings":
-                return self._create_embedding_pipeline(model, profile)
+                return self._create_embedding_pipeline(model, profile, circuit_config)
             if model.task == "TextToRanking":
-                return self._create_reranking_pipeline(model, profile)
+                return self._create_reranking_pipeline(model, profile, circuit_config)
             if model.task == "TextToImage":
-                return self._create_image_pipeline(model, profile)
+                return self._create_image_pipeline(model, profile, circuit_config)
             if model.task == "ImageToImage":
-                return self._create_image_to_image_pipeline(model, profile)
+                return self._create_image_to_image_pipeline(
+                    model, profile, circuit_config
+                )
             self.logger.error(f"Unsupported task type: {model.task}")
             return None
         except Exception as e:
@@ -640,6 +764,7 @@ class PipelineFactory:
         model: Model,
         profile: ModelProfile,
         expected_type: Optional[Type[PipeReturn]] = None,
+        circuit_config: Optional[CircuitBreakerConfig] = None,
     ) -> Optional[BasePipelineCore]:
         self.logger.info(
             f"Creating text pipeline for model: {model.name}, pipeline: {model.pipeline}"
@@ -654,12 +779,15 @@ class PipelineFactory:
             try:
                 # Try with expected_return_type first (preferred)
                 pipeline = QwenLangGraphPipe(
-                    model, profile, expected_return_type=expected_type
+                    model,
+                    profile,
+                    expected_return_type=expected_type,
+                    circuit_config=circuit_config,
                 )
             except TypeError as e:
                 if "unexpected keyword argument" in str(e):
                     self.logger.warning(
-                        f"QwenLangGraphPipe doesn't accept expected_return_type, falling back: {e}"
+                        f"QwenLangGraphPipe doesn't accept expected_return_type or circuit_config, falling back: {e}"
                     )
                     # Fallback for older signature
                     pipeline = QwenLangGraphPipe(model, profile)
@@ -678,18 +806,29 @@ class PipelineFactory:
             from .pipelines.txt2txt.llamachatsum import LlamaChatSummPipe
 
             return LlamaChatSummPipe(
-                model, profile, return_type=expected_type or ChatResponse
+                model,
+                profile,
+                return_type=expected_type or ChatResponse,
+                circuit_config=circuit_config,
             )
 
         if model.pipeline == "OpenAiGptOssPipe":
             from .pipelines.txt2txt.openai_gpt_oss import OpenAiGptOssPipe
 
-            return OpenAiGptOssPipe(model, profile, expected_return_type=expected_type)
+            return OpenAiGptOssPipe(
+                model,
+                profile,
+                expected_return_type=expected_type,
+                circuit_config=circuit_config,
+            )
 
         return None
 
     def _create_embedding_pipeline(
-        self, model: Model, profile: ModelProfile
+        self,
+        model: Model,
+        profile: ModelProfile,
+        circuit_config: Optional[CircuitBreakerConfig] = None,
     ) -> Optional[BasePipelineCore]:
         if model.pipeline == "NomicEmbedTextPipe":
             try:
@@ -710,7 +849,10 @@ class PipelineFactory:
         return None
 
     def _create_reranking_pipeline(
-        self, model: Model, _profile: ModelProfile
+        self,
+        model: Model,
+        _profile: ModelProfile,
+        circuit_config: Optional[CircuitBreakerConfig] = None,
     ) -> Optional[BasePipelineCore]:
         """Create reranking pipeline (currently unavailable)."""
         if model.pipeline == "Qwen3RerankerPipe":
@@ -722,7 +864,10 @@ class PipelineFactory:
         return None
 
     def _create_image_pipeline(
-        self, model: Model, profile: ModelProfile
+        self,
+        model: Model,
+        profile: ModelProfile,
+        circuit_config: Optional[CircuitBreakerConfig] = None,
     ) -> Optional[BasePipelineCore]:
         if model.pipeline == "FluxPipeline":
             try:
@@ -735,7 +880,10 @@ class PipelineFactory:
         return None
 
     def _create_image_to_image_pipeline(
-        self, model: Model, profile: ModelProfile
+        self,
+        model: Model,
+        profile: ModelProfile,
+        circuit_config: Optional[CircuitBreakerConfig] = None,
     ) -> Optional[BasePipelineCore]:
         if model.pipeline == "FluxKontextPipeline":
             try:

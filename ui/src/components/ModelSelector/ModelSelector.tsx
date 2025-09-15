@@ -13,7 +13,7 @@ const ModelSelector: React.FC<ModelCardProps> = ({ onSelect, name }) => {
   const { models, isLoading } = useChat();
 
   return (
-    isLoading ? 
+    isLoading ?
       <ControlLoader text='Loading models...' /> :
       <Box sx={{ mb: 2, p: 2 }}>
         <Typography variant="h6" gutterBottom>
@@ -29,7 +29,7 @@ const ModelSelector: React.FC<ModelCardProps> = ({ onSelect, name }) => {
             label="Model"
           >
             {models && models?.map((model) => (
-              <MenuItem key={model.name} value={model.name}>
+              <MenuItem key={model.name} value={model.id}>
                 {model.name}
               </MenuItem>
             ))}

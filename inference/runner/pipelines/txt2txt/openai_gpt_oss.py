@@ -49,15 +49,9 @@ class OpenAiGptOssPipe(BaseLlamaCppPipeline):
         model: Model,
         profile: ModelProfile,
         expected_return_type: Optional[type] = None,
+        circuit_config: Optional[CircuitBreakerConfig] = None,
     ):
-        # Configure circuit breaker with appropriate timeouts for 20B model
-        circuit_config = CircuitBreakerConfig(
-            base_timeout=90.0,  # Increased for 20B model
-            deep_research_timeout=240.0,  # 4 minutes for complex research
-            max_retries=2,
-            cooldown_period=60.0,
-        )
-
+        # Circuit breaker config fallback is handled by BaseLangGraphPipeline
         super().__init__(model, profile, expected_return_type, circuit_config, "medium")
         self.model = model
         self.profile = profile
@@ -278,9 +272,9 @@ Answer questions thoroughly and helpfully."""
 
             is_deep_research = self._should_use_extended_timeout(original_messages)
             timeout_seconds = (
-                min(self.circuit_config.deep_research_timeout, 180.0)
+                min(self.circuit_config.deep_research_timeout or 180.0, 180.0)
                 if is_deep_research
-                else min(self.circuit_config.base_timeout, 90.0)
+                else min(self.circuit_config.base_timeout or 90.0, 90.0)
             )
 
             # Execute with timeout protection

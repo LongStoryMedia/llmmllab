@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Box, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Paper, IconButton, Grid } from '@mui/material';
+import { Box, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Paper, IconButton, Grid, FormControl, InputLabel, Select, MenuItem, Chip, FormControlLabel, Checkbox } from '@mui/material';
 import { listModelProfiles, createModelProfile, updateModelProfile, deleteModelProfile } from '../api/model';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
@@ -8,6 +8,31 @@ import { useAuth } from '../auth';
 import ModelSelector from '../components/ModelSelector/ModelSelector';
 import { getToken } from '../api';
 import { ModelProfileType } from '../types/ModelProfileType';
+
+const getModelProfileTypeName = (type: ModelProfileType): string => {
+  switch (type) {
+    case ModelProfileType.Primary: return 'Primary';
+    case ModelProfileType.PrimarySummary: return 'Primary Summary';
+    case ModelProfileType.MasterSummary: return 'Master Summary';
+    case ModelProfileType.BriefSummary: return 'Brief Summary';
+    case ModelProfileType.KeyPoints: return 'Key Points';
+    case ModelProfileType.SelfCritique: return 'Self Critique';
+    case ModelProfileType.Improvement: return 'Improvement';
+    case ModelProfileType.MemoryRetrieval: return 'Memory Retrieval';
+    case ModelProfileType.Analysis: return 'Analysis';
+    case ModelProfileType.ResearchTask: return 'Research Task';
+    case ModelProfileType.ResearchPlan: return 'Research Plan';
+    case ModelProfileType.ResearchConsolidation: return 'Research Consolidation';
+    case ModelProfileType.ResearchAnalysis: return 'Research Analysis';
+    case ModelProfileType.Embedding: return 'Embedding';
+    case ModelProfileType.Formatting: return 'Formatting';
+    case ModelProfileType.ImageGenerationPrompt: return 'Image Generation Prompt';
+    case ModelProfileType.Engineering: return 'Engineering';
+    case ModelProfileType.Reranking: return 'Reranking';
+    case ModelProfileType.ImageGeneration: return 'Image Generation';
+    default: return 'Unknown';
+  }
+};
 
 const emptyProfile: ModelProfile = {
   id: '',
@@ -73,7 +98,7 @@ const ModelProfilesPage = () => {
     <Box sx={{ p: 2 }}>
       <Typography variant="h5" gutterBottom>Model Profiles</Typography>
       <Button variant="contained" onClick={() => {
-        setEditingProfile(emptyProfile); setDialogOpen(true); 
+        setEditingProfile(emptyProfile); setDialogOpen(true);
       }}>Add Profile</Button>
       <Grid container spacing={2} sx={{ mt: 2, display: 'flex', flexDirection: 'column' }}>
         {profiles && profiles.map(profile => (
@@ -82,12 +107,18 @@ const ModelProfilesPage = () => {
               <Box>
                 <Typography variant="subtitle1">{profile.name}</Typography>
                 <Typography variant="body2">{profile.description}</Typography>
+                <Chip
+                  label={getModelProfileTypeName(profile.type)}
+                  size="small"
+                  variant="outlined"
+                  sx={{ mt: 1 }}
+                />
               </Box>
               <Box>
                 <IconButton onClick={() => {
-                  setEditingProfile(profile); setDialogOpen(true); 
+                  setEditingProfile(profile); setDialogOpen(true);
                 }}><EditIcon /></IconButton>
-                <IconButton onClick={() => handleDeleteProfile(profile.id)}><DeleteIcon /></IconButton>
+                <IconButton onClick={() => profile.id && handleDeleteProfile(profile.id)}><DeleteIcon /></IconButton>
               </Box>
             </Paper>
           </Grid>
@@ -108,7 +139,21 @@ const ModelProfilesPage = () => {
             onChange={e => setEditingProfile({ ...editingProfile, description: e.target.value })}
             fullWidth margin="normal"
           />
-          <ModelSelector 
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Profile Type</InputLabel>
+            <Select
+              value={editingProfile?.type ?? ModelProfileType.Primary}
+              onChange={e => setEditingProfile({ ...editingProfile, type: e.target.value as ModelProfileType })}
+              label="Profile Type"
+            >
+              {Object.values(ModelProfileType).filter(v => typeof v === 'number').map((type) => (
+                <MenuItem key={type} value={type as ModelProfileType}>
+                  {getModelProfileTypeName(type as ModelProfileType)}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <ModelSelector
             onSelect={e => setEditingProfile({ ...editingProfile, model_name: e.target.value })}
             name={editingProfile?.model_name || ''}
           />
@@ -178,6 +223,14 @@ const ModelProfilesPage = () => {
             helperText="Maximum number of tokens to predict when generating text. (Default: -1, infinite generation)"
           />
           <TextField
+            label="Batch Size"
+            value={editingProfile?.parameters?.batch_size || ''}
+            onChange={e => setEditingProfile({ ...editingProfile, parameters: { ...editingProfile.parameters, batch_size: Number(e.target.value) } })}
+            fullWidth margin="normal"
+            type="number"
+            helperText="Batch size for processing inputs. Higher values may improve throughput but use more memory. (Default: depends on model)"
+          />
+          <TextField
             label="Top K"
             value={editingProfile?.parameters?.top_k || ''}
             onChange={e => setEditingProfile({ ...editingProfile, parameters: { ...editingProfile.parameters, top_k: Number(e.target.value) } })}
@@ -195,12 +248,270 @@ const ModelProfilesPage = () => {
           />
           <TextField
             label="Minimum Probability"
-            value={editingProfile?.parameters?.min_p || ''}   
+            value={editingProfile?.parameters?.min_p || ''}
             onChange={e => setEditingProfile({ ...editingProfile, parameters: { ...editingProfile.parameters, min_p: Number(e.target.value) } })}
             fullWidth margin="normal"
             type="number"
             helperText="Alternative to the top_p, and aims to ensure a balance of quality and variety. The parameter p represents the minimum probability for a token to be considered, relative to the probability of the most likely token. For example, with p=0.05 and the most likely token having a probability of 0.9, logits with a value less than 0.045 are filtered out. (Default: 0.0)"
           />
+
+          {/* Circuit Breaker Configuration Section */}
+          <Typography variant="h6" sx={{ mt: 3, mb: 2 }}>
+            Circuit Breaker Configuration (Optional)
+            {editingProfile?.circuit_breaker && (
+              <Chip
+                label="Custom Settings Active"
+                color="primary"
+                size="small"
+                sx={{ ml: 2 }}
+              />
+            )}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Configure custom circuit breaker overrides for this profile. Only set values you want to override from global settings.
+            {!editingProfile?.circuit_breaker && " Check 'Override Settings' to add custom configuration."}
+          </Typography>
+
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={!!editingProfile?.circuit_breaker}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  if (e.target.checked && !editingProfile?.circuit_breaker) {
+                    // Create an empty circuit breaker config when enabling overrides
+                    setEditingProfile({
+                      ...editingProfile,
+                      circuit_breaker: {}
+                    });
+                  } else if (!e.target.checked) {
+                    // Remove circuit breaker config when disabling overrides
+                    setEditingProfile({
+                      ...editingProfile,
+                      circuit_breaker: undefined
+                    });
+                  }
+                }}
+              />
+            }
+            label="Override Global Circuit Breaker Settings"
+          />
+
+          <TextField
+            label="Base Timeout (seconds)"
+            value={editingProfile?.circuit_breaker?.base_timeout ?? ''}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              const currentConfig = editingProfile?.circuit_breaker;
+              if (currentConfig !== undefined) {
+                const value = e.target.value === '' ? undefined : Number(e.target.value);
+                setEditingProfile({
+                  ...editingProfile,
+                  circuit_breaker: {
+                    ...currentConfig,
+                    base_timeout: value
+                  }
+                });
+              }
+            }}
+            fullWidth margin="normal"
+            type="number"
+            inputProps={{ min: 1, max: 600 }}
+            helperText="Override base timeout for this profile (1-600 seconds, empty = use global)"
+            disabled={!editingProfile?.circuit_breaker}
+            placeholder="Use global setting"
+          />
+
+          <TextField
+            label="Deep Research Timeout (seconds)"
+            value={editingProfile?.circuit_breaker?.deep_research_timeout ?? ''}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              const currentConfig = editingProfile?.circuit_breaker;
+              if (currentConfig !== undefined) {
+                const value = e.target.value === '' ? undefined : Number(e.target.value);
+                setEditingProfile({
+                  ...editingProfile,
+                  circuit_breaker: {
+                    ...currentConfig,
+                    deep_research_timeout: value
+                  }
+                });
+              }
+            }}
+            fullWidth margin="normal"
+            type="number"
+            inputProps={{ min: 1, max: 1200 }}
+            helperText="Override deep research timeout (1-1200 seconds, empty = use global)"
+            disabled={!editingProfile?.circuit_breaker}
+            placeholder="Use global setting"
+          />
+
+          <TextField
+            label="Max Retries"
+            value={editingProfile?.circuit_breaker?.max_retries ?? ''}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              const currentConfig = editingProfile?.circuit_breaker;
+              if (currentConfig !== undefined) {
+                const value = e.target.value === '' ? undefined : Number(e.target.value);
+                setEditingProfile({
+                  ...editingProfile,
+                  circuit_breaker: {
+                    ...currentConfig,
+                    max_retries: value
+                  }
+                });
+              }
+            }}
+            fullWidth margin="normal"
+            type="number"
+            inputProps={{ min: 0, max: 10 }}
+            helperText="Override maximum retry attempts (0-10, empty = use global)"
+            disabled={!editingProfile?.circuit_breaker}
+            placeholder="Use global setting"
+          />
+
+          <TextField
+            label="Cooldown Period (seconds)"
+            value={editingProfile?.circuit_breaker?.cooldown_period ?? ''}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              const currentConfig = editingProfile?.circuit_breaker;
+              if (currentConfig !== undefined) {
+                const value = e.target.value === '' ? undefined : Number(e.target.value);
+                setEditingProfile({
+                  ...editingProfile,
+                  circuit_breaker: {
+                    ...currentConfig,
+                    cooldown_period: value
+                  }
+                });
+              }
+            }}
+            fullWidth margin="normal"
+            type="number"
+            inputProps={{ min: 0, max: 300 }}
+            helperText="Override cooldown period (0-300 seconds, empty = use global)"
+            disabled={!editingProfile?.circuit_breaker}
+            placeholder="Use global setting"
+          />
+
+          <FormControl fullWidth margin="normal" disabled={!editingProfile?.circuit_breaker}>
+            <InputLabel>Perplexity Guard</InputLabel>
+            <Select
+              value={
+                editingProfile?.circuit_breaker?.enable_perplexity_guard === undefined
+                  ? 'global'
+                  : editingProfile?.circuit_breaker?.enable_perplexity_guard
+                    ? 'enabled'
+                    : 'disabled'
+              }
+              onChange={(e) => {
+                const currentConfig = editingProfile?.circuit_breaker;
+                if (currentConfig !== undefined) {
+                  let newValue: boolean | undefined;
+                  if (e.target.value === 'global') {
+                    newValue = undefined;
+                  } else if (e.target.value === 'enabled') {
+                    newValue = true;
+                  } else {
+                    newValue = false;
+                  }
+
+                  setEditingProfile({
+                    ...editingProfile,
+                    circuit_breaker: {
+                      ...currentConfig,
+                      enable_perplexity_guard: newValue
+                    }
+                  });
+                }
+              }}
+            >
+              <MenuItem value="global">Use Global Setting</MenuItem>
+              <MenuItem value="enabled">Enable Perplexity Guard</MenuItem>
+              <MenuItem value="disabled">Disable Perplexity Guard</MenuItem>
+            </Select>
+          </FormControl>
+
+          <TextField
+            label="Perplexity Window"
+            value={editingProfile?.circuit_breaker?.perplexity_window ?? ''}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              const currentConfig = editingProfile?.circuit_breaker;
+              if (currentConfig !== undefined) {
+                const value = e.target.value === '' ? undefined : Number(e.target.value);
+                setEditingProfile({
+                  ...editingProfile,
+                  circuit_breaker: {
+                    ...currentConfig,
+                    perplexity_window: value
+                  }
+                });
+              }
+            }}
+            fullWidth margin="normal"
+            type="number"
+            inputProps={{ min: 10, max: 200 }}
+            helperText="Override perplexity window (10-200 tokens, empty = use global)"
+            disabled={!editingProfile?.circuit_breaker}
+            placeholder="Use global setting"
+          />
+
+          <TextField
+            label="Perplexity Threshold"
+            value={editingProfile?.circuit_breaker?.perplexity_threshold ?? ''}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              const currentConfig = editingProfile?.circuit_breaker;
+              if (currentConfig !== undefined) {
+                const value = e.target.value === '' ? undefined : Number(e.target.value);
+                setEditingProfile({
+                  ...editingProfile,
+                  circuit_breaker: {
+                    ...currentConfig,
+                    perplexity_threshold: value
+                  }
+                });
+              }
+            }}
+            fullWidth margin="normal"
+            type="number"
+            inputProps={{ min: 1, max: 50, step: 0.1 }}
+            helperText="Override perplexity threshold (1-50, empty = use global)"
+            disabled={!editingProfile?.circuit_breaker}
+            placeholder="Use global setting"
+          />
+
+          <TextField
+            label="Average Log Probability Floor"
+            value={editingProfile?.circuit_breaker?.avg_logprob_floor ?? ''}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              const currentConfig = editingProfile?.circuit_breaker;
+              if (currentConfig !== undefined) {
+                const value = e.target.value === '' ? undefined : Number(e.target.value);
+                setEditingProfile({
+                  ...editingProfile,
+                  circuit_breaker: {
+                    ...currentConfig,
+                    avg_logprob_floor: value
+                  }
+                });
+              }
+            }}
+            fullWidth margin="normal"
+            type="number"
+            inputProps={{ min: -20, max: 0, step: 0.1 }}
+            helperText="Override log probability floor (-20 to 0, empty = use global)"
+            disabled={!editingProfile?.circuit_breaker}
+            placeholder="Use global setting"
+          />
+
+          {editingProfile?.circuit_breaker && (
+            <Button
+              variant="outlined"
+              color="secondary"
+              sx={{ mt: 2 }}
+              onClick={() => setEditingProfile({ ...editingProfile, circuit_breaker: undefined })}
+            >
+              Clear Circuit Breaker Config (Use Global Settings)
+            </Button>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)}>Cancel</Button>

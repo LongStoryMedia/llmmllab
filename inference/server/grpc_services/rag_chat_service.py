@@ -16,7 +16,7 @@ from models import (
 )
 from ..config import logger
 from ..services import LangChainRAGService
-from runner.pipelines.factory import PipelineFactory
+from runner.pipeline_factory import PipelineFactory
 
 
 class RAGChatService:

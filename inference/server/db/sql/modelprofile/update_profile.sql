@@ -9,7 +9,8 @@ SET
   system_prompt = $6,
   model_version = $7,
   type = $8,
+  circuit_breaker = $9,
   updated_at = NOW()
 WHERE
   id = $1
-  AND user_id = $9
+  AND user_id = $10

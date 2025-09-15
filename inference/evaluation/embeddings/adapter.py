@@ -10,7 +10,7 @@ from typing import List, Optional, Union
 
 from numpy import cov
 
-from runner.pipelines.factory import pipeline_factory
+from runner.pipeline_factory import pipeline_factory
 from models import Message, MessageContent, MessageContentType, ChatReq
 from models.message_role import MessageRole
 
