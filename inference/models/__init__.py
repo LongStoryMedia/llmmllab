@@ -17,6 +17,7 @@ try:
     from . import dev_stats
     from . import dynamic_tool
     from . import event_stream_config
+    from . import gpu_config
     from . import image_generation_config
     from . import image_generation_request
     from . import image_generation_response
@@ -94,6 +95,7 @@ __all__ = [
     'dev_stats',
     'dynamic_tool',
     'event_stream_config',
+    'gpu_config',
     'image_generation_config',
     'image_generation_request',
     'image_generation_response',
@@ -156,6 +158,7 @@ __all__ = [
     'ChatReq',
     'ChatResponse',
     'CircuitBreakerConfig',
+    'GPUConfig',
     'Config',
     'Conversation',
     'ConversationCtx',
@@ -163,6 +166,7 @@ __all__ = [
     'DevStats',
     'DynamicTool',
     'EventStreamConfig',
+    'GPUConfig',
     'ImageGenerationConfig',
     'ImageGenerateRequest',
     'ImageGenerateResponse',
@@ -186,6 +190,7 @@ __all__ = [
     'MessageRole',
     'Model',
     'ModelDetails',
+    'GPUConfig',
     'ModelParameters',
     'ModelProfile',
     'ModelProfileConfig',
@@ -243,6 +248,7 @@ from .chat_response import (
 )
 from .circuit_breaker_config import (
     CircuitBreakerConfig,
+    GPUConfig,
 )
 from .config import (
     Config,
@@ -264,6 +270,9 @@ from .dynamic_tool import (
 )
 from .event_stream_config import (
     EventStreamConfig,
+)
+from .gpu_config import (
+    GPUConfig,
 )
 from .image_generation_config import (
     ImageGenerationConfig,
@@ -335,6 +344,7 @@ from .model_details import (
     ModelDetails,
 )
 from .model_parameters import (
+    GPUConfig,
     ModelParameters,
 )
 from .model_profile import (
