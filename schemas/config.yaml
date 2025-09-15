@@ -29,6 +29,8 @@ properties:
     $ref: refinement_config.yaml
   image_generation:
     $ref: image_generation_config.yaml
+  circuit_breaker:
+    $ref: circuit_breaker_config.yaml
   log_level:
     type: string
     description: Log level
@@ -49,6 +51,7 @@ required:
   - model_profiles
   - refinement
   - image_generation
+  - circuit_breaker
   - log_level
   - rabbitmq
   - internal_config

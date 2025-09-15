@@ -28,21 +28,23 @@ ENV CUDA_HOME=/usr/local/cuda \
 # Create symlink for CUDA driver stub (needed for linking during build)
 RUN ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
 
-# Build llama.cpp with compatible version
-RUN cd / && git clone https://github.com/ggerganov/llama.cpp.git && \
-    cd llama.cpp && \
-    # Use a more recent version with better gpt-oss support
-    git checkout tags/b6451 && \
-    git checkout -b llmmll
-
-WORKDIR /llama.cpp
-RUN if ! grep -q "gpt-oss" ./src/llama-arch.cpp; then exit 1; fi
-
-RUN cmake -B build \
-    -DGGML_CUDA=ON \
-    -DCMAKE_CUDA_ARCHITECTURES="75;86" \
-    -DCMAKE_BUILD_TYPE=Release && \
-    cmake --build build --config Release -j$(nproc)
+# Build llama.cpp with compatible version (commented out - let llama-cpp-python build its own)
+# RUN cd / && git clone https://github.com/ggerganov/llama.cpp.git && \
+#     cd llama.cpp && \
+#     # Use a more recent version with better gpt-oss support
+#     # git checkout ab14019 && \
+# 
+#     git checkout tags/b6451 && \
+#     git checkout -b llmmll
+# 
+# WORKDIR /llama.cpp
+# RUN if ! grep -q "gpt-oss" ./src/llama-arch.cpp; then exit 1; fi
+# 
+# RUN cmake -B build \
+#     -DGGML_CUDA=ON \
+#     -DCMAKE_CUDA_ARCHITECTURES="75;86" \
+#     -DCMAKE_BUILD_TYPE=Release && \
+#     cmake --build build --config Release -j$(nproc)
 
 # Create shared pip cache and install packages that need compilation
 RUN mkdir -p /opt/pip-cache /opt/wheels
@@ -53,10 +55,11 @@ RUN python3 -m venv /tmp/build_venv && \
     pip install --upgrade pip setuptools wheel && \
     pip wheel --wheel-dir /opt/wheels torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cu128 
 
-RUN CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_PATH=/llama.cpp/build/bin" \
-    LLAMA_CPP_LIB_PATH=/llama.cpp/build/bin \
+# RUN CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_PATH=/llama.cpp/build/bin" \
+#     LLAMA_CPP_LIB_PATH=/llama.cpp/build/bin \
+#     pip wheel --wheel-dir /opt/wheels llama-cpp-python==0.3.16 -vvv
+RUN CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86" \
     pip wheel --wheel-dir /opt/wheels llama-cpp-python==0.3.16 -vvv
-
 # Runtime stage - minimal CUDA runtime
 # FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
 
@@ -69,10 +72,8 @@ ENV PYTHONUNBUFFERED=1 \
     EVALUATION_VENV="/opt/venv/evaluation" \
     SERVER_VENV="/opt/venv/server" \
     RUNNER_VENV="/opt/venv/runner" \
-    # llama.cpp runtime library locations (ensure dependent libs load)
-    LLAMA_CPP_LIB_PATH="/llama.cpp/build/bin" \
-    LLAMA_CPP_LIB="/llama.cpp/build/bin/libllama.so" \
-    LD_LIBRARY_PATH="/llama.cpp/build/bin:/usr/local/cuda/lib64" \
+    # Let llama-cpp-python manage its own library paths, only set essential system paths
+    LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/lib:/usr/local/cuda/lib64" \
     DEBIAN_FRONTEND=noninteractive \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility,video \
@@ -122,11 +123,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # COPY --from=builder /tmp/llama.cpp /llama.cpp
 # COPY --from=builder /opt/wheels /opt/wheels
 
-# Ensure llama.cpp shared libs are discoverable by dynamic linker (POSIX sh compatible)
-RUN for f in /llama.cpp/build/bin/libggml*.so /llama.cpp/build/bin/libllama.so; do \
-    if [ ! -f "$f" ]; then echo "Missing expected library $f" >&2; exit 1; fi; \
-    ln -sf "$f" /usr/local/lib/; \
-    done; ldconfig || true
+# llama-cpp-python will manage its own llama.cpp libraries, no manual linking needed
 
 # Set working directory and copy application code
 WORKDIR /app
@@ -153,6 +150,8 @@ RUN for venv in ${RUNNER_VENV} ${SERVER_VENV} ${EVALUATION_VENV}; do \
     . ${EVALUATION_VENV}/bin/activate && \
     pip install --no-cache-dir -e /app/evaluation && \
     deactivate
+
+# Let llama-cpp-python handle its own library management
 
 # Install Ollama
 RUN curl -fsSL https://ollama.com/install.sh | sh

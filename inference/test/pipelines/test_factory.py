@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from runner.pipelines.factory import PipelineCacheEntry
+from runner.pipeline_factory import PipelineCacheEntry
 from models.model import Model
 from runner.pipelines.base_pipeline import BasePipeline
 

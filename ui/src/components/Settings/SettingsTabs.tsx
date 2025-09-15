@@ -9,6 +9,7 @@ import WebSearchSettings from './WebSearchSettings';
 import SecuritySettings from './SecuritySettings';
 import RefinementSettings from './RefinementSettings';
 import ImageGenerationSettings from './ImageGenerationSettings';
+import CircuitBreakerSettings from './CircuitBreakerSettings';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -43,9 +44,9 @@ function a11yProps(index: number) {
   };
 }
 
-const tabRoutes = ["profile", "models", "summarization", "retrieval", "websearch", "security", "refinement", "image-generation"];
+const tabRoutes = ["profile", "models", "summarization", "retrieval", "websearch", "security", "refinement", "image-generation", "circuit-breaker"];
 
-const SettingsTabs = ({onTabChange, currentTab}: {onTabChange: (tab: string) => void, currentTab: string}) => {
+const SettingsTabs = ({ onTabChange, currentTab }: { onTabChange: (tab: string) => void, currentTab: string }) => {
   const theme = useTheme();
   const [tabValue, setTabValue] = useState(tabRoutes.indexOf(currentTab));
   const { isLoading, error, fetchConfig } = useConfig();
@@ -54,7 +55,7 @@ const SettingsTabs = ({onTabChange, currentTab}: {onTabChange: (tab: string) => 
     setTabValue(newValue);
     onTabChange(tabRoutes[newValue]);
   };
-  
+
   return (
     <Grid container spacing={3} sx={{ padding: theme.spacing(2.5) }}>
       <Grid size={12}>
@@ -62,11 +63,11 @@ const SettingsTabs = ({onTabChange, currentTab}: {onTabChange: (tab: string) => 
           Settings
         </Typography>
       </Grid>
-      
+
       {error && (
         <Grid size={12}>
-          <Alert 
-            severity="error" 
+          <Alert
+            severity="error"
             action={
               <Button color="inherit" size="small" onClick={fetchConfig}>
                 Retry
@@ -77,7 +78,7 @@ const SettingsTabs = ({onTabChange, currentTab}: {onTabChange: (tab: string) => 
           </Alert>
         </Grid>
       )}
-      
+
       <Grid size={12}>
         {isLoading ? (
           <Paper sx={{ padding: 3, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -103,8 +104,9 @@ const SettingsTabs = ({onTabChange, currentTab}: {onTabChange: (tab: string) => 
               <Tab label="Security" {...a11yProps(5)} />
               <Tab label="Refinement" {...a11yProps(6)} />
               <Tab label="Image Generation" {...a11yProps(7)} />
+              <Tab label="Circuit Breaker" {...a11yProps(8)} />
             </Tabs>
-            
+
             <Box sx={{ p: 2 }}>
               <TabPanel value={tabValue} index={0}>
                 <ProfileSettings />
@@ -129,6 +131,9 @@ const SettingsTabs = ({onTabChange, currentTab}: {onTabChange: (tab: string) => 
               </TabPanel>
               <TabPanel value={tabValue} index={7}>
                 <ImageGenerationSettings />
+              </TabPanel>
+              <TabPanel value={tabValue} index={8}>
+                <CircuitBreakerSettings />
               </TabPanel>
             </Box>
           </Paper>

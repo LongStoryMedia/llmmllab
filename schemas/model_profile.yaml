@@ -45,6 +45,9 @@ properties:
   think:
     type: boolean
     description: Whether to use think mode for the model profile
+  circuit_breaker:
+    $ref: circuit_breaker_config.yaml
+    description: Optional circuit breaker configuration that overrides global settings
 required:
   - user_id
   - name

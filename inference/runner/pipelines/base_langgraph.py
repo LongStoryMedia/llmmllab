@@ -31,7 +31,9 @@ from models import (
     ChatResponse,
     ModelProfile,
     Model,
+    CircuitBreakerConfig,
 )
+from models.default_configs import DEFAULT_CIRCUIT_BREAKER_CONFIG
 from utils.langgraph import LangGraphState, build_langgraph_state, build_lc_messages
 from utils.message import to_lc_message
 from utils.langgraph import coerce_to_langchain_message_dict
@@ -40,76 +42,47 @@ from runner.pipelines.base import BasePipelineCore, PipeType
 T = TypeVar("T")
 
 
-class CircuitBreakerConfig:
-    """Configuration for circuit breaker and timeout protection."""
+def apply_circuit_breaker_env_overrides(
+    config: CircuitBreakerConfig,
+) -> CircuitBreakerConfig:
+    """Apply environment variable overrides to CircuitBreakerConfig."""
+    import os
 
-    def __init__(
-        self,
-        base_timeout: float = 60.0,  # Base timeout in seconds
-        deep_research_timeout: float = 120.0,  # Extended timeout for deep research
-        max_retries: int = 2,
-        cooldown_period: float = 30.0,  # Time before allowing retry after failure
-        # Adaptive generation / perplexity guard settings
-        enable_perplexity_guard: bool = True,
-        perplexity_window: int = 40,
-        perplexity_threshold: float = 10.0,
-        avg_logprob_floor: float = -6.0,
-        repetition_ngram: int = 6,
-        repetition_threshold: int = 6,
-        min_tokens_for_eval: Optional[int] = None,
-        # Logging / telemetry for adaptive generation
-        perplexity_log_interval_tokens: int = 20,
-        log_repetition_events: bool = True,
-    ):
-        self.base_timeout = base_timeout
-        self.deep_research_timeout = deep_research_timeout
-        self.max_retries = max_retries
-        self.cooldown_period = cooldown_period
-        # Perplexity guard config
-        self.enable_perplexity_guard = enable_perplexity_guard
-        self.perplexity_window = perplexity_window
-        self.perplexity_threshold = perplexity_threshold
-        self.avg_logprob_floor = avg_logprob_floor
-        # Allow overrides via environment variables for rapid tuning
-        import os as _os  # local import to avoid global dependency at module import
+    # Create a dict with current config values
+    config_dict = config.model_dump()
 
-        env_ngram = _os.getenv("REPETITION_NGRAM")
-        env_thresh = _os.getenv("REPETITION_THRESHOLD")
-        try:
-            if env_ngram is not None:
-                repetition_ngram = max(2, int(env_ngram))
-        except Exception:
-            pass
-        try:
-            if env_thresh is not None:
-                repetition_threshold = max(2, int(env_thresh))
-        except Exception:
-            pass
-        self.repetition_ngram = repetition_ngram
-        self.repetition_threshold = repetition_threshold
-        self.min_tokens_for_eval = (
-            min_tokens_for_eval
-            if min_tokens_for_eval is not None
-            else max(10, perplexity_window // 2)
-        )
-        self.perplexity_log_interval_tokens = max(5, perplexity_log_interval_tokens)
-        self.log_repetition_events = log_repetition_events
+    # Apply environment variable overrides
+    env_ngram = os.getenv("REPETITION_NGRAM")
+    env_thresh = os.getenv("REPETITION_THRESHOLD")
+    env_tool_ngram = os.getenv("TOOL_GEN_REPETITION_NGRAM")
+    env_tool_thresh = os.getenv("TOOL_GEN_REPETITION_THRESHOLD")
 
-        # Tool generation guard settings (more aggressive)
-        self.tool_gen_repetition_ngram = 4  # Reduced from 6 for faster detection
-        self.tool_gen_repetition_threshold = 3  # Reduced from 4 for faster detection
-        env_tool_ngram = _os.getenv("TOOL_GEN_REPETITION_NGRAM")
-        env_tool_thresh = _os.getenv("TOOL_GEN_REPETITION_THRESHOLD")
-        try:
-            if env_tool_ngram is not None:
-                self.tool_gen_repetition_ngram = max(5, int(env_tool_ngram))
-        except Exception:
-            pass
-        try:
-            if env_tool_thresh is not None:
-                self.tool_gen_repetition_threshold = max(3, int(env_tool_thresh))
-        except Exception:
-            pass
+    try:
+        if env_ngram is not None:
+            config_dict["repetition_ngram"] = max(2, int(env_ngram))
+    except Exception:
+        pass
+
+    try:
+        if env_thresh is not None:
+            config_dict["repetition_threshold"] = max(2, int(env_thresh))
+    except Exception:
+        pass
+
+    try:
+        if env_tool_ngram is not None:
+            config_dict["tool_gen_repetition_ngram"] = max(2, int(env_tool_ngram))
+    except Exception:
+        pass
+
+    try:
+        if env_tool_thresh is not None:
+            config_dict["tool_gen_repetition_threshold"] = max(2, int(env_tool_thresh))
+    except Exception:
+        pass
+
+    # Return new config instance with overrides applied
+    return CircuitBreakerConfig(**config_dict)
 
 
 class ModelState:
@@ -136,7 +109,11 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         circuit_config: Optional[CircuitBreakerConfig] = None,
     ):
         super().__init__(model, profile, expected_return_type)
-        self.circuit_config = circuit_config or CircuitBreakerConfig()
+
+        # Use the provided circuit config or fallback to default
+        # Server should handle all merging logic (defaults → global → user → profile)
+        base_circuit_config = circuit_config or DEFAULT_CIRCUIT_BREAKER_CONFIG
+        self.circuit_config = apply_circuit_breaker_env_overrides(base_circuit_config)
         self.model_state = ModelState()
         self.memory = MemorySaver()
         self.graph_cache: Dict[int, CompiledStateGraph] = {}
@@ -199,8 +176,8 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
     def _get_timeout_for_request(self, messages: List[Message]) -> float:
         """Get appropriate timeout based on request complexity."""
         if self._should_use_extended_timeout(messages):
-            return self.circuit_config.deep_research_timeout
-        return self.circuit_config.base_timeout
+            return self.circuit_config.deep_research_timeout or 120.0
+        return self.circuit_config.base_timeout or 60.0
 
     async def _check_model_health(self) -> bool:
         """Check if model is in a healthy state for processing."""
@@ -212,7 +189,8 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
             time_since_corruption = (
                 datetime.now() - self.model_state.corruption_time
             ).total_seconds()
-            if time_since_corruption >= self.circuit_config.cooldown_period:
+            cooldown_period = self.circuit_config.cooldown_period or 30.0
+            if time_since_corruption >= cooldown_period:
                 self._logger.info("Cooldown period elapsed, attempting model reset")
                 return await self._reset_model()
 
@@ -501,10 +479,10 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
 
                 # Periodic perplexity logging (non-guard informational)
                 tokens_seen += 1 if token_text else 0
+                log_interval = cfg.perplexity_log_interval_tokens or 20
                 if (
                     cfg.enable_perplexity_guard
-                    and tokens_seen - last_logged_tokens
-                    >= cfg.perplexity_log_interval_tokens
+                    and tokens_seen - last_logged_tokens >= log_interval
                 ):
                     avg_logprob_tmp = (
                         sum(token_logprobs_window) / len(token_logprobs_window)
@@ -522,6 +500,7 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
                     last_logged_tokens = tokens_seen
 
                 # Perplexity (rolling) evaluation
+                min_eval_tokens = cfg.min_tokens_for_eval or 20
                 if (
                     cfg.enable_perplexity_guard
                     and len(token_logprobs_window) >= min_eval_tokens
@@ -530,9 +509,11 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
                         token_logprobs_window
                     )
                     rolling_perplexity = math.exp(-avg_logprob)
+                    perplexity_threshold = cfg.perplexity_threshold or 10.0
+                    logprob_floor = cfg.avg_logprob_floor or -6.0
                     if (
-                        rolling_perplexity > cfg.perplexity_threshold
-                        or avg_logprob < cfg.avg_logprob_floor
+                        rolling_perplexity > perplexity_threshold
+                        or avg_logprob < logprob_floor
                     ):
                         self._logger.info(
                             "Perplexity guard: perplexity=%.2f avg_logprob=%.2f (threshold=%.2f)",

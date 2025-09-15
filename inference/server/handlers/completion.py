@@ -233,8 +233,11 @@ class CompletionHandler:
                     # Use HIGH priority for main chat completion pipelines
                     from runner.pipeline_factory import PipelinePriority
 
+                    # Get user's circuit breaker config from conversation context
+                    user_circuit_breaker = conversation_ctx.user_config.circuit_breaker
+
                     with pipeline_factory.pipeline(
-                        mp, ChatResponse, PipelinePriority.HIGH
+                        mp, ChatResponse, PipelinePriority.HIGH, user_circuit_breaker
                     ) as pipeline:
                         rc.add("pipeline", pipeline)
 
