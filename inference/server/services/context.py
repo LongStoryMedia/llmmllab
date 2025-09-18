@@ -377,7 +377,12 @@ class ConversationContext(ConversationCtx):
             # Use the pipeline in a context manager with NORMAL priority (used occasionally)
             from runner.pipeline_factory import PipelinePriority
 
-            with pipeline_factory.pipeline(mp, str, PipelinePriority.NORMAL) as pipe:
+            with pipeline_factory.pipeline(
+                mp,
+                str,
+                PipelinePriority.NORMAL,
+                self.user_config.circuit_breaker,
+            ) as pipe:
                 result = await pipe.process_messages([*self.messages, format_message])
 
             if isinstance(result, str):
@@ -463,6 +468,9 @@ class ConversationContext(ConversationCtx):
                 f"search: {bool(self.user_config.web_search.enabled and hasattr(self.search_context, 'research_findings') and getattr(self.search_context, 'research_findings', None))})"
             )
 
+            self.logger.info(
+                f"{'\n'.join([msg.model_dump_json() for msg in enriched_messages])}"
+            )
             return enriched_messages
 
         except Exception as e:

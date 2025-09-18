@@ -14,7 +14,8 @@ from .web_search_config import WebSearchConfig
 from .image_generation_config import ImageGenerationConfig
 from .circuit_breaker_config import CircuitBreakerConfig
 from .gpu_config import GPUConfig
-from .user_config import UserConfig, WebSearchProviders
+from .user_config import UserConfig
+from .web_search_providers import WebSearchProviders
 
 from .default_model_profiles import DEFAULT_MODEL_PROFILE_CONFIG
 
@@ -90,6 +91,7 @@ DEFAULT_CIRCUIT_BREAKER_CONFIG = CircuitBreakerConfig(
     perplexity_window=40,
     perplexity_threshold=10.0,
     avg_logprob_floor=-6.0,
+    enable_repetition_detection=False,  # Disabled by default to reduce false positives
     repetition_ngram=6,
     repetition_threshold=6,
     min_tokens_for_eval=20,

@@ -11,8 +11,7 @@ properties:
     minimum: 0
     description: "Sequence number in the stream"
   chunk_type:
-    type: string
-    enum: ["text", "tool_call", "tool_result", "thinking", "error", "metadata"]
+    $ref: "message_content_type.yaml"
     description: "Type of chunk content"
   content:
     type: string

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import logging
+from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -75,69 +76,80 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
         self._logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self._model_size_category = model_size_category
 
+    @abstractmethod
+    def _get_gguf_path(self) -> str:
+        """Get the path to the GGUF model file. Must be implemented by subclasses."""
+        ...
+
+    @abstractmethod
+    async def _create_system_prompt(
+        self, tools: Optional[List[BaseTool]] = None
+    ) -> str:
+        """Create system prompt for the model. Must be implemented by subclasses."""
+        ...
+
     def _get_gpu_config_kwargs(self) -> Dict[str, Any]:
         """Extract GPU configuration from model parameters and convert to llama-cpp-python kwargs.
-        
+
         Returns:
             Dict of kwargs to pass to ChatLlamaCpp for GPU configuration
         """
         kwargs = {}
-        
+
         # Get GPU config from profile (separate from parameters now)
-        gpu_config = getattr(self.profile, 'gpu_config', None)
+        gpu_config = getattr(self.profile, "gpu_config", None)
         if not gpu_config:
             return kwargs
-        
+
         # Import hardware manager for device name resolution
         from utils.hardware_manager import hardware_manager
-        
+
         # Main GPU device selection
         if gpu_config.main_gpu is not None and gpu_config.main_gpu >= 0:
-            kwargs['main_gpu'] = gpu_config.main_gpu
+            kwargs["main_gpu"] = gpu_config.main_gpu
         elif gpu_config.main_gpu_device_id:
             # Resolve device name to index
             resolved_index = hardware_manager.resolve_device_name_to_index(
                 gpu_config.main_gpu_device_id
             )
             if resolved_index >= 0:
-                kwargs['main_gpu'] = resolved_index
-        
+                kwargs["main_gpu"] = resolved_index
+
         # Tensor split configuration
         if gpu_config.tensor_split:
             if gpu_config.tensor_split_devices:
                 # Map device names to indices and create proper tensor split
                 device_indices = []
                 for device_name in gpu_config.tensor_split_devices:
-                    device_idx = hardware_manager.resolve_device_name_to_index(device_name)
+                    device_idx = hardware_manager.resolve_device_name_to_index(
+                        device_name
+                    )
                     device_indices.append(device_idx)
-                
+
                 # Create tensor split array aligned with device indices
                 # Note: llama-cpp-python expects tensor_split as list of floats for each GPU
                 max_gpu = max(device_indices) if device_indices else 0
                 tensor_split_array = [0.0] * (max_gpu + 1)
-                
-                for i, (device_idx, split_value) in enumerate(zip(device_indices, gpu_config.tensor_split)):
+
+                for device_idx, split_value in zip(
+                    device_indices, gpu_config.tensor_split
+                ):
                     if device_idx >= 0:  # Skip CPU
                         tensor_split_array[device_idx] = split_value
-                
-                kwargs['tensor_split'] = tensor_split_array
+
+                kwargs["tensor_split"] = tensor_split_array
             else:
                 # Use tensor split directly if no device mapping specified
-                kwargs['tensor_split'] = gpu_config.tensor_split
-        
+                kwargs["tensor_split"] = gpu_config.tensor_split
+
         # KV cache offloading
         if gpu_config.no_kv_offload is not None:
             # ChatLlamaCpp may use different parameter names for this
             # Check the actual implementation for correct parameter name
-            kwargs['offload_kqv'] = not gpu_config.no_kv_offload
+            kwargs["offload_kqv"] = not gpu_config.no_kv_offload
         elif gpu_config.offload_kqv is not None:
-            kwargs['offload_kqv'] = gpu_config.offload_kqv
-        
-        # MoE CPU layers (for models that support it)
-        if gpu_config.n_cpu_moe is not None and gpu_config.n_cpu_moe > 0:
-            kwargs['n_cpu_moe'] = gpu_config.n_cpu_moe
-            self._logger.info(f"Setting MoE CPU layers: {gpu_config.n_cpu_moe}")
-            
+            kwargs["offload_kqv"] = gpu_config.offload_kqv
+
         self._logger.info(f"Applied GPU configuration: {kwargs}")
         return kwargs
 
@@ -163,6 +175,19 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
             class _DummyLLM(BaseChatModel):  # pragma: no cover - dev convenience
                 def bind_tools(self, *_, **__):  # type: ignore[override]
                     return self
+
+                def _stream(self, *_, **__):  # type: ignore[override]
+                    """Required by BaseChatModel interface."""
+                    sample = ["Dummy", " response", " for", " dev/test", "."]
+                    for tok in sample:
+                        yield AIMessage(
+                            content=tok,
+                            response_metadata={
+                                "logprobs": {
+                                    "content": [{"token": tok, "logprob": -1.0}]
+                                }
+                            },
+                        )
 
                 async def astream(self, *_, **__):  # type: ignore[override]
                     sample = ["Dummy", " response", " for", " dev/test", "."]
@@ -288,49 +313,67 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
                     try:
                         # Get GPU configuration kwargs
                         gpu_kwargs = self._get_gpu_config_kwargs()
-                        
+
                         # Base kwargs for ChatLlamaCpp
                         base_kwargs = {
-                            'model_path': gguf_path,
-                            'f16_kv': True,
-                            'n_parts': -1,
-                            'n_gpu_layers': n_gpu_layers,
-                            'n_ctx': n_ctx,
-                            'n_batch': n_batch,
-                            'use_mmap': True,
-                            'use_mlock': False,
-                            'seed': self.profile.parameters.seed or -1,
-                            'temperature': self.profile.parameters.temperature or 0.7,
-                            'max_tokens': self.profile.parameters.max_tokens or 4096,
-                            'top_p': self.profile.parameters.top_p or 0.8,
-                            'top_k': self.profile.parameters.top_k or 20,
-                            'repeat_penalty': self.profile.parameters.repeat_penalty or 1.05,
-                            'stop': self.profile.parameters.stop or ["<|im_end|>", "<|endoftext|>", "<|end|>"],
-                            'streaming': True,
-                            'verbose': False,
-                            'logprobs': logprobs,
-                            'logits_all': logits_all,
-                            'callback_manager': CallbackManager([StreamingStdOutCallbackHandler()])
+                            "model_path": gguf_path,
+                            "f16_kv": True,
+                            "n_parts": -1,
+                            "n_gpu_layers": n_gpu_layers,
+                            "n_ctx": n_ctx,
+                            "n_batch": n_batch,
+                            "use_mmap": True,
+                            "use_mlock": False,
+                            "seed": self.profile.parameters.seed or -1,
+                            "temperature": self.profile.parameters.temperature or 0.7,
+                            "max_tokens": self.profile.parameters.max_tokens or 4096,
+                            "top_p": self.profile.parameters.top_p or 0.8,
+                            "top_k": self.profile.parameters.top_k or 20,
+                            "repeat_penalty": self.profile.parameters.repeat_penalty
+                            or 1.05,
+                            "stop": self.profile.parameters.stop
+                            or ["<|im_end|>", "<|endoftext|>", "<|end|>"],
+                            "streaming": True,
+                            "verbose": False,
+                            "logprobs": logprobs,
+                            "logits_all": logits_all,
+                            "n_cpu_moe": self.profile.parameters.n_cpu_moe or 0,
+                            "flash_attention": getattr(
+                                self.profile.parameters, "flash_attention", True
+                            ),
+                            "callback_manager": CallbackManager(
+                                [StreamingStdOutCallbackHandler()]
+                            ),
                         }
-                        
+
                         # Merge GPU configuration kwargs, letting GPU config override base settings
                         final_kwargs = {**base_kwargs, **gpu_kwargs}
-                        
+
                         # Remove any None values and prepare kwargs for ChatLlamaCpp
-                        clean_kwargs = {k: v for k, v in final_kwargs.items() if v is not None}
-                        
-                        self._logger.info(f"Initializing ChatLlamaCpp with: {clean_kwargs}")
-                        
+                        clean_kwargs = {
+                            k: v for k, v in final_kwargs.items() if v is not None
+                        }
+
+                        self._logger.info(
+                            f"Initializing ChatLlamaCpp with: {clean_kwargs}"
+                        )
+
                         # Try to initialize with all parameters, fall back if some are unsupported
                         try:
                             self.llm = ChatLlamaCpp(**clean_kwargs)
                         except TypeError as e:
-                            if 'unexpected keyword argument' in str(e):
+                            if "unexpected keyword argument" in str(e):
                                 # Extract the unsupported parameter from error message
                                 error_str = str(e)
-                                if 'n_cpu_moe' in error_str:
-                                    self._logger.warning("n_cpu_moe parameter not supported by current llama-cpp-python version, removing...")
-                                    clean_kwargs_fallback = {k: v for k, v in clean_kwargs.items() if k != 'n_cpu_moe'}
+                                if "n_cpu_moe" in error_str:
+                                    self._logger.warning(
+                                        "n_cpu_moe parameter not supported by current llama-cpp-python version, removing..."
+                                    )
+                                    clean_kwargs_fallback = {
+                                        k: v
+                                        for k, v in clean_kwargs.items()
+                                        if k != "n_cpu_moe"
+                                    }
                                     self.llm = ChatLlamaCpp(**clean_kwargs_fallback)
                                 else:
                                     # Re-raise if it's a different unsupported parameter

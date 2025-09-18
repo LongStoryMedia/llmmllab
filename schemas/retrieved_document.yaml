@@ -7,8 +7,7 @@ properties:
     type: string
     description: "Unique identifier for the document"
   source:
-    type: string
-    enum: ["memory", "web_search", "vector_store", "file_upload"]
+    $ref: "document_source.yaml"
     description: "Source of the document"
   content:
     type: string

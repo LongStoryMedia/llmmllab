@@ -2,11 +2,9 @@
 Optimized summarization pipeline for Llama-Chat-Summary-3.2-3B model with performance enhancements.
 """
 
-import os
 import datetime
 import logging
 import hashlib
-import multiprocessing
 from typing import AsyncGenerator, List, cast, Optional, Dict, Any, TypeVar, Union
 import torch
 from transformers import AutoTokenizer
@@ -242,9 +240,12 @@ Summary: [/INST]"""
             return 0.5  # Neutral score on error
 
     async def process_messages(
-        self, messages: List[Message], session_id: Optional[str] = None, tools: Optional[List[BaseTool]] = None, is_tool_generation: bool = False  # type: ignore
+        self,
+        messages: List[Message],
+        tools: Optional[List[BaseTool]] = None,
+        is_tool_generation: bool = False,
     ) -> Union[str, ChatResponse]:
-        """Process messages and return appropriate response type."""
+        """Process messages and return concatenated content."""
 
         try:
             # Extract and preprocess text
@@ -378,7 +379,7 @@ Summary: [/INST]"""
         return await self.process_messages([message])
 
     def create_graph(
-        self, tools: Optional[List[BaseTool]] = None
+        self, _tools: Optional[List[BaseTool]] = None
     ) -> CompiledStateGraph:
         """Create a simple LangGraph for BART summarization."""
         from models import LangGraphState

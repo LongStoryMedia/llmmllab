@@ -3,20 +3,26 @@
 
 # Import all model modules
 try:
+    from . import analysis_depth
     from . import auth_config
     from . import available_tool
     from . import chat_req
     from . import chat_response
     from . import circuit_breaker_config
+    from . import complexity_estimate
+    from . import complexity_level
     from . import config
     from . import conversation
     from . import conversation_ctx
     from . import database_config
+    from . import deduplication_result
     from . import default_configs
     from . import default_model_profiles
     from . import dev_stats
+    from . import document_source
     from . import dynamic_tool
     from . import event_stream_config
+    from . import execution_state
     from . import gpu_config
     from . import image_generation_config
     from . import image_generation_request
@@ -26,6 +32,7 @@ try:
     from . import inference_service
     from . import inference_service_config
     from . import intent
+    from . import intent_analysis
     from . import internal_config
     from . import lang_chain_message
     from . import lang_graph_node_state
@@ -50,6 +57,7 @@ try:
     from . import model_task
     from . import pagination
     from . import pipeline_error
+    from . import pipeline_execution_context
     from . import pipeline_execution_state
     from . import pipeline_metrics
     from . import preferences_config
@@ -57,6 +65,7 @@ try:
     from . import redis_config
     from . import refinement_config
     from . import requests
+    from . import required_capability
     from . import resource_usage
     from . import retrieved_document
     from . import search_result
@@ -71,6 +80,7 @@ try:
     from . import tool_execution_result
     from . import tool_generation_result
     from . import tool_needs
+    from . import tool_similarity
     from . import user
     from . import user_config
     from . import web_search_config
@@ -81,20 +91,26 @@ except ImportError as e:
 
 # Define what gets imported with 'from models import *'
 __all__ = [
+    'analysis_depth',
     'auth_config',
     'available_tool',
     'chat_req',
     'chat_response',
     'circuit_breaker_config',
+    'complexity_estimate',
+    'complexity_level',
     'config',
     'conversation',
     'conversation_ctx',
     'database_config',
+    'deduplication_result',
     'default_configs',
     'default_model_profiles',
     'dev_stats',
+    'document_source',
     'dynamic_tool',
     'event_stream_config',
+    'execution_state',
     'gpu_config',
     'image_generation_config',
     'image_generation_request',
@@ -104,6 +120,7 @@ __all__ = [
     'inference_service',
     'inference_service_config',
     'intent',
+    'intent_analysis',
     'internal_config',
     'lang_chain_message',
     'lang_graph_node_state',
@@ -128,6 +145,7 @@ __all__ = [
     'model_task',
     'pagination',
     'pipeline_error',
+    'pipeline_execution_context',
     'pipeline_execution_state',
     'pipeline_metrics',
     'preferences_config',
@@ -135,6 +153,7 @@ __all__ = [
     'redis_config',
     'refinement_config',
     'requests',
+    'required_capability',
     'resource_usage',
     'retrieved_document',
     'search_result',
@@ -149,23 +168,30 @@ __all__ = [
     'tool_execution_result',
     'tool_generation_result',
     'tool_needs',
+    'tool_similarity',
     'user',
     'user_config',
     'web_search_config',
     'web_search_providers',
+    'AnalysisDepth',
     'AuthConfig',
     'AvailableTool',
     'ChatReq',
     'ChatResponse',
     'CircuitBreakerConfig',
+    'ComplexityEstimate',
+    'ComplexityLevel',
     'Config',
     'GPUConfig',
     'Conversation',
     'ConversationCtx',
     'DatabaseConfig',
+    'DeduplicationResult',
     'DevStats',
+    'DocumentSource',
     'DynamicTool',
     'EventStreamConfig',
+    'ExecutionState',
     'GPUConfig',
     'ImageGenerationConfig',
     'ImageGenerateRequest',
@@ -175,6 +201,7 @@ __all__ = [
     'InferenceService',
     'InferenceServiceConfig',
     'Intent',
+    'IntentAnalysis',
     'InternalConfig',
     'LangChainMessage',
     'LangGraphNodeState',
@@ -199,6 +226,7 @@ __all__ = [
     'ModelTask',
     'PaginationSchema',
     'PipelineError',
+    'PipelineExecutionContext',
     'PipelineExecutionState',
     'PipelineMetrics',
     'PreferencesConfig',
@@ -211,6 +239,7 @@ __all__ = [
     'ModelRequest',
     'ModelsListResponse',
     'PromptRequest',
+    'RequiredCapability',
     'ResourceUsage',
     'ChunkInfo',
     'Metadata',
@@ -227,6 +256,7 @@ __all__ = [
     'ToolExecutionResult',
     'ToolGenerationResult',
     'ToolNeeds',
+    'ToolSimilarity',
     'User',
     'GPUConfig',
     'UserConfig',
@@ -235,6 +265,9 @@ __all__ = [
 ]
 
 # Re-export all model classes for easy importing and IDE autocompletion
+from .analysis_depth import (
+    AnalysisDepth,
+)
 from .auth_config import (
     AuthConfig,
 )
@@ -250,6 +283,12 @@ from .chat_response import (
 from .circuit_breaker_config import (
     CircuitBreakerConfig,
 )
+from .complexity_estimate import (
+    ComplexityEstimate,
+)
+from .complexity_level import (
+    ComplexityLevel,
+)
 from .config import (
     Config,
     GPUConfig,
@@ -263,14 +302,23 @@ from .conversation_ctx import (
 from .database_config import (
     DatabaseConfig,
 )
+from .deduplication_result import (
+    DeduplicationResult,
+)
 from .dev_stats import (
     DevStats,
+)
+from .document_source import (
+    DocumentSource,
 )
 from .dynamic_tool import (
     DynamicTool,
 )
 from .event_stream_config import (
     EventStreamConfig,
+)
+from .execution_state import (
+    ExecutionState,
 )
 from .gpu_config import (
     GPUConfig,
@@ -298,6 +346,9 @@ from .inference_service_config import (
 )
 from .intent import (
     Intent,
+)
+from .intent_analysis import (
+    IntentAnalysis,
 )
 from .internal_config import (
     InternalConfig,
@@ -369,6 +420,9 @@ from .pagination import (
 from .pipeline_error import (
     PipelineError,
 )
+from .pipeline_execution_context import (
+    PipelineExecutionContext,
+)
 from .pipeline_execution_state import (
     PipelineExecutionState,
 )
@@ -394,6 +448,9 @@ from .requests import (
     ModelRequest,
     ModelsListResponse,
     PromptRequest,
+)
+from .required_capability import (
+    RequiredCapability,
 )
 from .resource_usage import (
     ResourceUsage,
@@ -438,6 +495,9 @@ from .tool_generation_result import (
 )
 from .tool_needs import (
     ToolNeeds,
+)
+from .tool_similarity import (
+    ToolSimilarity,
 )
 from .user import (
     User,

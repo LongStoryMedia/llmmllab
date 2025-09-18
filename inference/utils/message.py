@@ -2,7 +2,7 @@
 Message utility functions for validating and formatting Message objects.
 """
 
-from typing import List
+from typing import List, Union
 
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
 
@@ -10,6 +10,7 @@ from models.message import Message
 from models.message_role import MessageRole
 from models.message_content_type import MessageContentType
 from models.message_content import MessageContent
+from models.lang_chain_message import LangChainMessage
 from server.config import logger
 
 
@@ -85,29 +86,62 @@ def to_lc_message(message: Message) -> BaseMessage:
         return HumanMessage(content=text_content)
 
 
-def from_lc_message(lc_message: BaseMessage) -> Message:
-    """Convert a LangChain message to a Message object."""
-    if isinstance(lc_message, AIMessage):
+def from_lc_message(lc_message: Union[BaseMessage, LangChainMessage]) -> Message:
+    """Convert a LangChain message or LangChainMessage to a Message object."""
+
+    # Handle generated LangChainMessage objects (from schemas)
+    if isinstance(lc_message, LangChainMessage):
+        # Use the type field to determine the role
+        message_type = lc_message.type.lower() if lc_message.type else ""
+
+        if message_type in ("ai", "assistant"):
+            role = MessageRole.ASSISTANT
+        elif message_type in ("human", "user"):
+            role = MessageRole.USER
+        elif message_type == "system":
+            role = MessageRole.SYSTEM
+        else:
+            logger.warning(
+                f"Unknown LangChainMessage type: {lc_message.type}, defaulting to USER"
+            )
+            role = MessageRole.USER
+
+        # Extract content - LangChainMessage.content can be string or list
+        if isinstance(lc_message.content, str):
+            text_content = lc_message.content
+        elif isinstance(lc_message.content, list):
+            # Join list items or convert them to string
+            text_content = str(lc_message.content)
+        else:
+            # Handle other types by converting to string
+            text_content = str(lc_message.content) if lc_message.content else ""
+
+    # Handle LangChain core BaseMessage objects
+    elif isinstance(lc_message, AIMessage):
         role = MessageRole.ASSISTANT
+        text_content = str(lc_message.content) if lc_message.content else ""
     elif isinstance(lc_message, HumanMessage):
         role = MessageRole.USER
+        text_content = str(lc_message.content) if lc_message.content else ""
     elif isinstance(lc_message, SystemMessage):
         role = MessageRole.SYSTEM
+        text_content = str(lc_message.content) if lc_message.content else ""
     else:
         logger.warning(
             f"Unknown LangChain message type: {type(lc_message)}, defaulting to USER"
         )
         role = MessageRole.USER
 
-    # Convert content to string regardless of type
-    if isinstance(lc_message.content, str):
-        text_content = lc_message.content
-    elif isinstance(lc_message.content, list):
-        # Join list items or convert them to string
-        text_content = str(lc_message.content)
-    else:
-        # Handle other types by converting to string
-        text_content = str(lc_message.content) if lc_message.content else ""
+        # Extract content for unknown types
+        if hasattr(lc_message, "content"):
+            if isinstance(lc_message.content, str):
+                text_content = lc_message.content
+            elif isinstance(lc_message.content, list):
+                text_content = str(lc_message.content)
+            else:
+                text_content = str(lc_message.content) if lc_message.content else ""
+        else:
+            text_content = str(lc_message)
 
     return Message(
         role=role,

@@ -13,8 +13,7 @@ properties:
     description: "ID of the conversation context"
     minimum: 1
   analysis_depth:
-    type: string
-    enum: ["basic", "detailed", "comprehensive"]
+    $ref: "analysis_depth.yaml"
     default: "detailed"
     description: "Depth of analysis to perform"
 required: ["user_message", "conversation_id"]

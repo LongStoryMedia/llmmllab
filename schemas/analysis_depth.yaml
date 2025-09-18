@@ -1,0 +1,8 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: AnalysisDepth
+type: string
+enum:
+  - basic
+  - detailed
+  - comprehensive
+description: Level of depth for analysis operations

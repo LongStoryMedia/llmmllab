@@ -174,7 +174,6 @@ class DynamicToolStorage:
         async with self.typed_pool.acquire() as conn:
             row = await conn.fetchrow(
                 self.get_query("tool.create_tool"),
-                tool.id,
                 tool.user_id,
                 tool.name,
                 tool.description,
@@ -184,9 +183,10 @@ class DynamicToolStorage:
                 params_json,
             )
 
-            # Update the tool with current timestamps (which are set by the database)
+            # Update the tool with the generated ID and timestamps
             if row:
                 tool_data = dict(row)
+                tool.id = tool_data.get("id")  # Set the auto-generated ID
                 tool.created_at = tool_data.get("created_at")
                 tool.updated_at = tool_data.get("updated_at")
 

@@ -1,6 +1,7 @@
 # Multi-stage build to minimize final image size
 # Build stage - includes full CUDA toolkit for compilation
 FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04 
+# FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -58,8 +59,11 @@ RUN python3 -m venv /tmp/build_venv && \
 # RUN CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_PATH=/llama.cpp/build/bin" \
 #     LLAMA_CPP_LIB_PATH=/llama.cpp/build/bin \
 #     pip wheel --wheel-dir /opt/wheels llama-cpp-python==0.3.16 -vvv
-RUN CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86" \
-    pip wheel --wheel-dir /opt/wheels llama-cpp-python==0.3.16 -vvv
+# RUN CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86" \
+# pip wheel --wheel-dir /opt/wheels llama-cpp-python==0.3.16 -vvv
+
+RUN CMAKE_ARGS="-DGGML_CUDA=ON -DCMAsKE_CUDA_ARCHITECTURES=75;86" \
+    pip wheel --wheel-dir /opt/wheelss git+https://github.com/LongStoryMedia/llama-cpp-python.git@feature/b6482 -vvv
 # Runtime stage - minimal CUDA runtime
 # FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
 

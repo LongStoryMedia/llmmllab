@@ -30,11 +30,6 @@ properties:
       type: string
     description: Device IDs/names corresponding to tensor_split fractions
     nullable: true
-  n_cpu_moe:
-    type: integer
-    minimum: 0
-    description: Number of MoE layers to keep on CPU (gpt-oss models only)
-    default: 0
   split_mode:
     type: string
     enum: ["none", "layer", "row"]

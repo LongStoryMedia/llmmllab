@@ -37,4 +37,19 @@ message ModelParameters {
   int32 n_parts = 13;
   // Batch size for processing inputs
   int32 batch_size = 14;
+  // Number of MoE (Mixture of Experts) layers to keep on CPU for memory optimization
+  int32 n_cpu_moe = 15;
+  // Reasoning effort level for chain-of-thought processing
+  enum ReasoningEffortEnum {
+    REASONINGEFFORTENUM_UNSPECIFIED = 0;
+    LOW = 1;
+    MEDIUM = 2;
+    HIGH = 3;
+  }
+  
+
+  // Reasoning effort level for chain-of-thought processing
+  ReasoningEffortEnum reasoning_effort = 16;
+  // Enable flash attention optimization for memory efficiency
+  bool flash_attention = 17;
 }

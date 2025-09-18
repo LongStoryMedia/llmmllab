@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1amessage_content_type.proto\x12\x05proto*\xa2\x01\n\x12MessageContentType\x12\"\n\x1eMESSAGECONTENTTYPE_UNSPECIFIED\x10\x00\x12\x08\n\x04TEXT\x10\x01\x12\t\n\x05IMAGE\x10\x02\x12\r\n\tTOOL_CALL\x10\x03\x12\x14\n\x10IMAGE_GENERATION\x10\x04\x12\t\n\x05\x41UDIO\x10\x05\x12\t\n\x05VIDEO\x10\x06\x12\x0e\n\nIMAGE_EDIT\x10\x07\x12\x08\n\x04\x46ILE\x10\x08\x42\x0fZ\rmaistro/protob\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1amessage_content_type.proto\x12\x05proto*\xe2\x01\n\x12MessageContentType\x12\"\n\x1eMESSAGECONTENTTYPE_UNSPECIFIED\x10\x00\x12\x08\n\x04TEXT\x10\x01\x12\t\n\x05IMAGE\x10\x02\x12\r\n\tTOOL_CALL\x10\x03\x12\x0f\n\x0bTOOL_RESULT\x10\x04\x12\x14\n\x10IMAGE_GENERATION\x10\x05\x12\t\n\x05\x41UDIO\x10\x06\x12\t\n\x05VIDEO\x10\x07\x12\x0e\n\nIMAGE_EDIT\x10\x08\x12\x08\n\x04\x46ILE\x10\t\x12\x0c\n\x08THINKING\x10\n\x12\x11\n\rERROR_CONTENT\x10\x0b\x12\x0c\n\x08METADATA\x10\x0c\x42\x0fZ\rmaistro/protob\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,5 +33,5 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z\rmaistro/proto'
   _globals['_MESSAGECONTENTTYPE']._serialized_start=38
-  _globals['_MESSAGECONTENTTYPE']._serialized_end=200
+  _globals['_MESSAGECONTENTTYPE']._serialized_end=264
 # @@protoc_insertion_point(module_scope)

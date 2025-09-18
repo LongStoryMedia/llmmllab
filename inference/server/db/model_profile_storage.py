@@ -54,14 +54,11 @@ class ModelProfileStorage:
                 # Parse circuit_breaker if stored as JSON string
                 if isinstance(profile_data.get("circuit_breaker"), str):
                     try:
-                        from models.circuit_breaker_config import CircuitBreakerConfig
-
                         circuit_breaker_data = json.loads(
                             profile_data["circuit_breaker"]
                         )
-                        profile_data["circuit_breaker"] = CircuitBreakerConfig(
-                            **circuit_breaker_data
-                        )
+                        # Keep as dictionary - let Pydantic deserialize it
+                        profile_data["circuit_breaker"] = circuit_breaker_data
                     except (json.JSONDecodeError, TypeError, ValueError) as e:
                         logger.error(
                             f"Failed to parse circuit_breaker JSON for profile {profile_id}: {e}"
@@ -71,14 +68,9 @@ class ModelProfileStorage:
                 # Parse gpu_config if stored as JSON string
                 if isinstance(profile_data.get("gpu_config"), str):
                     try:
-                        from models.gpu_config import GPUConfig
-
-                        gpu_config_data = json.loads(
-                            profile_data["gpu_config"]
-                        )
-                        profile_data["gpu_config"] = GPUConfig(
-                            **gpu_config_data
-                        )
+                        gpu_config_data = json.loads(profile_data["gpu_config"])
+                        # Keep as dictionary - let Pydantic deserialize it
+                        profile_data["gpu_config"] = gpu_config_data
                     except (json.JSONDecodeError, TypeError, ValueError) as e:
                         logger.error(
                             f"Failed to parse gpu_config JSON for profile {profile_id}: {e}"
@@ -136,16 +128,11 @@ class ModelProfileStorage:
                     # Parse circuit_breaker if stored as JSON string
                     if isinstance(profile_data.get("circuit_breaker"), str):
                         try:
-                            from models.circuit_breaker_config import (
-                                CircuitBreakerConfig,
-                            )
-
                             circuit_breaker_data = json.loads(
                                 profile_data["circuit_breaker"]
                             )
-                            profile_data["circuit_breaker"] = CircuitBreakerConfig(
-                                **circuit_breaker_data
-                            )
+                            # Keep as dictionary - let Pydantic deserialize it
+                            profile_data["circuit_breaker"] = circuit_breaker_data
                         except (json.JSONDecodeError, TypeError, ValueError) as e:
                             logger.error(
                                 f"Failed to parse circuit_breaker JSON for profile: {e}"
@@ -155,14 +142,9 @@ class ModelProfileStorage:
                     # Parse gpu_config if stored as JSON string
                     if isinstance(profile_data.get("gpu_config"), str):
                         try:
-                            from models.gpu_config import GPUConfig
-
-                            gpu_config_data = json.loads(
-                                profile_data["gpu_config"]
-                            )
-                            profile_data["gpu_config"] = GPUConfig(
-                                **gpu_config_data
-                            )
+                            gpu_config_data = json.loads(profile_data["gpu_config"])
+                            # Keep as dictionary - let Pydantic deserialize it
+                            profile_data["gpu_config"] = gpu_config_data
                         except (json.JSONDecodeError, TypeError, ValueError) as e:
                             logger.error(
                                 f"Failed to parse gpu_config JSON for profile: {e}"
