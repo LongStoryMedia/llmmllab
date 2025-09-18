@@ -1,0 +1,33 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: DeduplicationResult
+description: "Result of tool deduplication analysis"
+properties:
+  is_duplicate:
+    type: boolean
+    description: "Whether the proposed tool is a duplicate"
+  existing_tool:
+    $ref: "dynamic_tool.yaml"
+    description: "Existing similar tool, if found"
+  similarity_score:
+    type: number
+    minimum: 0.0
+    maximum: 1.0
+    description: "Similarity score with existing tool (0-1)"
+  recommendation:
+    type: string
+    description: "Recommendation for handling the duplication"
+    maxLength: 500
+  should_create_new:
+    type: boolean
+    description: "Whether a new tool should be created"
+  merge_suggestion:
+    type: string
+    description: "Optional suggestion for merging functionality"
+    maxLength: 500
+required:
+  - is_duplicate
+  - similarity_score
+  - recommendation
+  - should_create_new
+additionalProperties: false

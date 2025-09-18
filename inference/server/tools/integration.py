@@ -12,7 +12,7 @@ from typing import List, AsyncGenerator, Union, Optional, Dict, Any, cast
 from langchain_core.tools import BaseTool
 from pydantic import ValidationError
 
-from runner import pipeline_factory, Embeddings
+from runner import pipeline_factory
 from runner.pipeline_factory import PipelinePriority
 from utils.hardware_manager import hardware_manager
 from server.tools.dynamic_tool import DynamicToolRunner
@@ -29,6 +29,9 @@ from models import (
     ToolGenerationResult,
 )
 from .rag_tools import WebSearchTool, MemoryRetrievalTool, SummarizationTool
+from .smart_analysis import SmartIntentAnalyzer, ComplexityLevel
+from .deduplication import AdvancedToolDeduplicator
+from runner.pipeline_lifecycle import managed_pipeline_execution
 
 logger = logging.getLogger(__name__)
 
@@ -193,16 +196,18 @@ class StandardToolProvider:
 
 
 class DynamicToolGenerator:
-    """Handles dynamic tool generation with proper error handling."""
+    """Handles dynamic tool generation with proper error handling and smart analysis."""
 
     def __init__(self):
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.smart_analyzer = SmartIntentAnalyzer()
+        self.deduplicator = AdvancedToolDeduplicator()
 
     async def analyze_tool_need(
         self, user_message_text: str, conversation_ctx: ConversationContext
     ) -> ToolAnalysisResponse:
         """
-        Analyze if a dynamic tool is needed for the user request.
+        Analyze if a dynamic tool is needed for the user request using smart analysis.
 
         Args:
             user_message_text: The user's message text
@@ -211,6 +216,35 @@ class DynamicToolGenerator:
         Returns:
             ToolAnalysisResult with analysis details
         """
+        # First use smart intent analysis to assess complexity and reduce false positives
+        intent_analysis = self.smart_analyzer.analyze_intent(user_message_text)
+
+        self.logger.info(
+            f"Smart analysis - Complexity: {intent_analysis.complexity_level}, Score: {intent_analysis.reusability_potential}"
+        )
+
+        # If complexity is TRIVIAL, block tool generation
+        if intent_analysis.complexity_level == "TRIVIAL":
+            return ToolAnalysisResponse(
+                needs_dynamic_tool=False,
+                description="Request is too simple for dynamic tool creation",
+                confidence_score=0.9,
+                reasoning=f"Smart analysis detected trivial complexity: {intent_analysis.primary_intent}",
+            )
+
+        # If complexity is low and reusability is poor, be conservative
+        if (
+            intent_analysis.complexity_level == "SIMPLE"
+            and intent_analysis.reusability_potential < 0.6
+        ):
+            return ToolAnalysisResponse(
+                needs_dynamic_tool=False,
+                description="Request has low complexity and reusability potential",
+                confidence_score=0.8,
+                reasoning=f"Smart analysis: {intent_analysis.primary_intent}",
+            )
+
+        # Use traditional analysis for higher complexity requests
         mp = await storage.get_service(storage.model_profile).get_model_profile_by_id(
             conversation_ctx.user_config.model_profiles.analysis_profile_id,
             conversation_ctx.user_config.user_id,
@@ -220,14 +254,19 @@ class DynamicToolGenerator:
             raise ValueError("Analysis model profile not found")
 
         # Use NORMAL priority for tool analysis (used occasionally)
-
         with pipeline_factory.pipeline(mp, str, PipelinePriority.NORMAL) as pipeline:
 
             analysis_prompt = f"""
-You are a tool analysis assistant. If you are enable to answer a question with sufficient confidence using what you already know, respond negatively.
+You are a tool analysis assistant with context from smart analysis showing {intent_analysis.complexity_level} complexity.
 Analyze this user request and determine if it requires creating a custom tool/function:
 
 User request: {user_message_text}
+
+Smart analysis indicates:
+- Complexity: {intent_analysis.complexity_level}
+- Domain specificity: {intent_analysis.domain_specificity:.2f}
+- Capabilities needed: {', '.join(intent_analysis.required_capabilities)}
+- Reusability score: {intent_analysis.reusability_potential:.2f}
 
 Consider if the request:
 1. Involves complex calculations or data processing that can't be done with basic math
@@ -261,10 +300,7 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
                 )
 
             response_text = response.strip()
-            # Gating rules:
-            # - Hard block if response is exactly 'NO' (any case) or starts with 'NO\n'
-            # - Block if response is very short (<= 5 words) or contains obvious negations
-            # - Allow only when there's a substantive description
+            # Enhanced gating rules using smart analysis insights
             normalized = response_text.lower()
             is_negative = (
                 normalized == "no"
@@ -275,7 +311,11 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
                 or "not needed" in normalized
                 or "no tool" in normalized
             )
+
+            # Apply stricter gating for lower complexity requests
             needs_tool = (not is_negative) and (len(response_text.split()) >= 6)
+            if intent_analysis.complexity_level == "SIMPLE":
+                needs_tool = needs_tool and intent_analysis.reusability_potential > 0.7
 
             return ToolAnalysisResponse(
                 needs_dynamic_tool=needs_tool,
@@ -283,7 +323,7 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
                     response_text.strip() if needs_tool else "No dynamic tool needed"
                 ),
                 confidence_score=0.8 if needs_tool else 0.2,
-                reasoning=f"Analysis pipeline response: {response_text[:100]}...",
+                reasoning=f"Smart analysis: {intent_analysis.primary_intent}. Analysis pipeline: {response_text[:100]}...",
             )
 
     async def generate_tool(
@@ -293,7 +333,7 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
         conversation_ctx: ConversationContext,
     ) -> ToolGenerationResult:
         """
-        Generate a dynamic tool based on the analysis.
+        Generate a dynamic tool based on the analysis with advanced deduplication.
 
         Args:
             description: Tool description from analysis
@@ -304,54 +344,47 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
             ToolGenerationResult with success status and tool
         """
         try:
-            # Search for existing tools first
-            embedding_profile = await storage.get_service(
-                storage.model_profile
-            ).get_model_profile_by_id(
-                conversation_ctx.user_config.model_profiles.embedding_profile_id,
-                conversation_ctx.user_config.user_id,
+            # Create a proposed tool for deduplication check
+            proposed_tool = DynamicTool(
+                user_id=conversation_ctx.user_config.user_id,
+                name=f"tool_for_{description[:30].replace(' ', '_')}",
+                description=description,
+                code="# Placeholder - will be generated if no duplicates found",
+                function_name="placeholder_function",
+                parameters={},
             )
 
-            if not embedding_profile:
-                raise ValueError("Embedding profile not found")
-
-            # Create message for embedding
-            desc_message = Message(
-                role=MessageRole.USER,
-                content=[
-                    MessageContent(type=MessageContentType.TEXT, text=description)
-                ],
+            # Check for duplicates using advanced deduplication
+            dedup_result = await self.deduplicator.check_for_duplicates(
+                proposed_tool, conversation_ctx
             )
 
-            # Use HIGH priority for embeddings (used frequently)
-            # (Removed duplicate import of PipelinePriority)
+            self.logger.info(
+                f"Deduplication result: duplicate={dedup_result.is_duplicate}, score={dedup_result.similarity_score:.2f}"
+            )
 
-            with pipeline_factory.pipeline(
-                embedding_profile, Embeddings, PipelinePriority.HIGH
-            ) as pipe:
-                embedding_result = await pipe.process_messages([desc_message])
-                embedding_vector: List[float] = []
-                if (
-                    isinstance(embedding_result, list)
-                    and embedding_result
-                    and isinstance(embedding_result[0], list)
-                ):
-                    embedding_vector = embedding_result[0]
-
-                # Search for existing tools
-                existing_tools, _ = await storage.get_service(
-                    storage.dynamic_tool
-                ).search_tools_by_embedding(embedding_vector)
-
-                if existing_tools:
-                    self.logger.info(f"Found {len(existing_tools)} existing tools")
-                    # Return the first matching tool
-                    return ToolGenerationResult(success=True, tool=existing_tools[0])
-
-                # Generate new tool
-                return await self._generate_new_tool(
-                    description, user_message_text, conversation_ctx
+            if dedup_result.is_duplicate and dedup_result.existing_tool:
+                self.logger.info(
+                    f"Found duplicate tool: {dedup_result.existing_tool.name} - {dedup_result.recommendation}"
                 )
+                return ToolGenerationResult(
+                    success=True, tool=dedup_result.existing_tool
+                )
+
+            if not dedup_result.should_create_new:
+                self.logger.info(
+                    f"Deduplication recommends against creation: {dedup_result.recommendation}"
+                )
+                return ToolGenerationResult(
+                    success=False,
+                    error_message=f"Tool creation not recommended: {dedup_result.recommendation}",
+                )
+
+            # Generate new tool if no duplicates found
+            self.logger.info("No duplicates found, generating new tool")
+            return await self._generate_new_tool(
+                description, user_message_text, conversation_ctx
+            )
 
         except Exception as e:
             self.logger.error(f"Error generating tool: {e}", exc_info=True)
@@ -441,6 +474,9 @@ Make the tool specific to the user's request but generalizable for similar tasks
 
                     # Create DynamicTool
                     try:
+                        # Add user_id from conversation context to the JSON data
+                        json_data["user_id"] = conversation_ctx.user_config.user_id
+
                         dynamic_tool = DynamicTool(**json_data)
 
                         # Store the generated tool in the database

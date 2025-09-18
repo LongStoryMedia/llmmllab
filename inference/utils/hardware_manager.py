@@ -89,9 +89,9 @@ class EnhancedHardwareManager:
                     try:
                         gpu_name = torch.cuda.get_device_name(i)
                         self.logger.info(f"  GPU {i}: {gpu_name} (after reset)")
-                    except:
+                    except Exception as reset_error:
                         self.logger.error(
-                            f"Still unable to get GPU {i} name after reset"
+                            f"Still unable to get GPU {i} name after reset: {reset_error}"
                         )
 
             # Select first device as default
@@ -139,7 +139,7 @@ class EnhancedHardwareManager:
         try:
             # Use nvidia-ml-py for more detailed process information
             processes = []
-            for i, gpu in enumerate(nvsmi.get_gpus()):
+            for i, _ in enumerate(nvsmi.get_gpus()):
                 if i == device_idx:
                     try:
                         # Get process information using nvidia-smi command
@@ -150,7 +150,7 @@ class EnhancedHardwareManager:
                             "--format=csv,noheader,nounits",
                         ]
                         result = subprocess.run(
-                            cmd, capture_output=True, text=True, timeout=10
+                            cmd, capture_output=True, text=True, timeout=10, check=False
                         )
 
                         if result.returncode == 0:
@@ -266,6 +266,7 @@ class EnhancedHardwareManager:
                 capture_output=True,
                 text=True,
                 timeout=30,
+                check=False,
             )
 
             if result.returncode == 0:
@@ -450,6 +451,7 @@ class EnhancedHardwareManager:
                     capture_output=True,
                     text=True,
                     timeout=10,
+                    check=False,
                 )
                 if result.returncode == 0:
                     self.logger.info(
@@ -883,7 +885,7 @@ class EnhancedHardwareManager:
     def get_device_mappings(self) -> Dict[str, Dict[str, Union[int, str]]]:
         """
         Get a mapping of device indices to their user-friendly names and metadata.
-        
+
         Returns:
             Dict mapping device index (str) to device info containing:
             - index: Device index (int)
@@ -892,21 +894,14 @@ class EnhancedHardwareManager:
             - id: Device ID (str)
         """
         if not self.has_gpu:
-            return {
-                "cpu": {
-                    "index": -1,
-                    "name": "CPU",
-                    "uuid": "",
-                    "id": "cpu"
-                }
-            }
-        
+            return {"cpu": {"index": -1, "name": "CPU", "uuid": "", "id": "cpu"}}
+
         device_mappings = {}
-        
+
         try:
             # Get current memory stats which includes device names
             stats = self.update_all_memory_stats()
-            
+
             # Map each GPU index to its name and metadata
             for i in range(self.gpu_count):
                 device_id = str(i)
@@ -914,9 +909,11 @@ class EnhancedHardwareManager:
                     device_stats = stats[device_id]
                     device_mappings[device_id] = {
                         "index": i,
-                        "name": str(device_stats.name) if device_stats.name else f"GPU {i}",
+                        "name": (
+                            str(device_stats.name) if device_stats.name else f"GPU {i}"
+                        ),
                         "uuid": str(device_stats.uuid) if device_stats.uuid else "",
-                        "id": str(device_stats.id) if device_stats.id else device_id
+                        "id": str(device_stats.id) if device_stats.id else device_id,
                     }
                 else:
                     # Fallback if stats not available
@@ -924,22 +921,22 @@ class EnhancedHardwareManager:
                         gpu_name = torch.cuda.get_device_name(i)
                     except Exception:
                         gpu_name = f"GPU {i}"
-                    
+
                     device_mappings[device_id] = {
                         "index": i,
                         "name": str(gpu_name),
                         "uuid": "",
-                        "id": device_id
+                        "id": device_id,
                     }
-            
+
             # Add CPU option
             device_mappings["cpu"] = {
                 "index": -1,
                 "name": "CPU",
                 "uuid": "",
-                "id": "cpu"
+                "id": "cpu",
             }
-            
+
         except Exception as e:
             self.logger.error(f"Error getting device mappings: {e}")
             # Fallback to basic mapping
@@ -948,51 +945,55 @@ class EnhancedHardwareManager:
                     "index": i,
                     "name": f"GPU {i}",
                     "uuid": "",
-                    "id": str(i)
+                    "id": str(i),
                 }
             device_mappings["cpu"] = {
                 "index": -1,
-                "name": "CPU", 
+                "name": "CPU",
                 "uuid": "",
-                "id": "cpu"
+                "id": "cpu",
             }
-        
+
         return device_mappings
 
-    def resolve_device_name_to_index(self, device_name_or_index: Union[str, int]) -> int:
+    def resolve_device_name_to_index(
+        self, device_name_or_index: Union[str, int]
+    ) -> int:
         """
         Resolve a device name or friendly identifier to its numerical index.
-        
+
         Args:
-            device_name_or_index: Device name (e.g., "NVIDIA RTX 4090"), 
+            device_name_or_index: Device name (e.g., "NVIDIA RTX 4090"),
                                   index (e.g., 0, 1), or "cpu"
-        
+
         Returns:
             int: Device index (-1 for CPU, 0+ for GPUs)
         """
         if isinstance(device_name_or_index, int):
             return device_name_or_index
-        
+
         if device_name_or_index.lower() == "cpu":
             return -1
-            
+
         # Try to parse as integer index
         try:
             return int(device_name_or_index)
         except ValueError:
             pass
-        
+
         # Search by device name
         device_mappings = self.get_device_mappings()
-        for device_id, device_info in device_mappings.items():
+        for _, device_info in device_mappings.items():
             device_name = device_info["name"]
             device_index = device_info["index"]
             if isinstance(device_name, str) and isinstance(device_index, int):
                 if device_name.lower() == device_name_or_index.lower():
                     return device_index
-        
+
         # If not found, default to 0 or -1
-        self.logger.warning(f"Device '{device_name_or_index}' not found, defaulting to GPU 0")
+        self.logger.warning(
+            f"Device '{device_name_or_index}' not found, defaulting to GPU 0"
+        )
         return 0 if self.has_gpu else -1
 
 

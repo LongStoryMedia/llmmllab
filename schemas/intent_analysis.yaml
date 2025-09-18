@@ -1,0 +1,46 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: IntentAnalysis
+description: "Detailed analysis of user intent for smart tool generation"
+properties:
+  primary_intent:
+    type: string
+    description: "Primary intent identified from the user message"
+    maxLength: 200
+  complexity_level:
+    $ref: "complexity_level.yaml"
+    description: "Assessed complexity level of the request"
+  required_capabilities:
+    type: array
+    items:
+      $ref: "required_capability.yaml"
+    description: "Set of capabilities required to fulfill the request"
+  computational_requirements:
+    type: array
+    items:
+      type: string
+    description: "List of computational requirements identified"
+  domain_specificity:
+    type: number
+    minimum: 0.0
+    maximum: 1.0
+    description: "Domain specificity score (0-1, higher = more domain-specific)"
+  reusability_potential:
+    type: number
+    minimum: 0.0
+    maximum: 1.0
+    description: "Reusability potential score (0-1, higher = more reusable)"
+  confidence:
+    type: number
+    minimum: 0.0
+    maximum: 1.0
+    description: "Confidence in the analysis (0-1)"
+required:
+  - primary_intent
+  - complexity_level
+  - required_capabilities
+  - computational_requirements
+  - domain_specificity
+  - reusability_potential
+  - confidence
+additionalProperties: false

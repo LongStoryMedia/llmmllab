@@ -34,9 +34,13 @@ from models import (
     CircuitBreakerConfig,
 )
 from models.default_configs import DEFAULT_CIRCUIT_BREAKER_CONFIG
-from utils.langgraph import LangGraphState, build_langgraph_state, build_lc_messages
+from utils.langgraph import (
+    LangGraphState,
+    build_langgraph_state,
+    build_lc_messages,
+    coerce_to_langchain_message_dict,
+)
 from utils.message import to_lc_message
-from utils.langgraph import coerce_to_langchain_message_dict
 from runner.pipelines.base import BasePipelineCore, PipeType
 
 T = TypeVar("T")
@@ -52,10 +56,22 @@ def apply_circuit_breaker_env_overrides(
     config_dict = config.model_dump()
 
     # Apply environment variable overrides
+    env_enable = os.getenv("ENABLE_REPETITION_DETECTION")
     env_ngram = os.getenv("REPETITION_NGRAM")
     env_thresh = os.getenv("REPETITION_THRESHOLD")
     env_tool_ngram = os.getenv("TOOL_GEN_REPETITION_NGRAM")
     env_tool_thresh = os.getenv("TOOL_GEN_REPETITION_THRESHOLD")
+
+    try:
+        if env_enable is not None:
+            config_dict["enable_repetition_detection"] = env_enable.lower() in (
+                "true",
+                "1",
+                "yes",
+                "on",
+            )
+    except Exception:
+        pass
 
     try:
         if env_ngram is not None:
@@ -119,6 +135,23 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         self.graph_cache: Dict[int, CompiledStateGraph] = {}
         self._llm_lock = asyncio.Lock()
         self._logger = logging.getLogger(self.__class__.__name__)
+        self._logger.setLevel(logging.DEBUG)
+
+        # Debug logging for pipeline instantiation
+        self._logger.debug(
+            f"Pipeline instantiated: model={model.model}, \n"
+            f"model: model={model.model_dump_json()}, \n"
+            f"profile: profile={profile.model_dump_json()}, \n"
+            f"model_id={getattr(model, 'id', 'unknown')}, \n"
+            f"model_name={getattr(model, 'name', 'unknown')}, \n"
+            f"provider={getattr(model, 'provider', 'unknown')}, \n"
+            f"task={getattr(model, 'task', 'unknown')}, \n"
+            f"profile_model_name={profile.model_name}, \n"
+            f"expected_return_type={expected_return_type}, \n"
+            f"circuit_config={circuit_config}, \n"
+            f"profile_parameters={profile.parameters.model_dump_json()}, \n"
+            f"profile_system_prompt_length={len(profile.system_prompt) if profile.system_prompt else 0}\n"
+        )
 
         # Abstract attributes that subclasses must implement
         self.llm: Optional[
@@ -251,8 +284,24 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
             return False, ""
 
         # 1. Skip repetition detection in structured content
-        if self._is_structured_content(full_response[-500:]):  # Check last 500 chars
+        # For code generation, check the entire response for structured patterns
+        if is_tool_generation:
+            # When generating tools/code, be more lenient about structured content
+            if self._is_code_generation(full_response):
+                return False, "code_generation_exemption"
+
+        # Check broader context for structured content, not just the end
+        check_length = min(800, len(full_response))  # Check up to 800 chars
+        if self._is_structured_content(
+            full_response[-check_length:]
+        ):  # Check last portion
             return False, "structured_content_exemption"
+
+        # Also check the beginning for dictionary assignments or similar patterns
+        if len(full_response) > 200:
+            beginning_check = full_response[:200]
+            if re.search(r"[\w_]+\s*=\s*\{", beginning_check):
+                return False, "structured_content_at_start"
 
         # 2. Check for actual problematic repetition patterns
         if self._detect_token_loops(full_response[-200:]):  # Check last 200 chars
@@ -271,12 +320,79 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
 
         return False, ""
 
+    def _is_code_generation(self, text: str) -> bool:
+        """
+        Check if we're generating code content.
+        Look for patterns that suggest code generation.
+        """
+        # Look for common code patterns
+        code_patterns = [
+            r"def\s+\w+\s*\(",  # Function definitions
+            r"class\s+\w+\s*[\(:]",  # Class definitions
+            r"import\s+\w+",  # Import statements
+            r"from\s+\w+\s+import",  # From imports
+            r"[\w_]+\s*=\s*\{",  # Dictionary assignments
+            r"[\w_]+\s*=\s*\[",  # List assignments
+            r"```\w*\n",  # Code blocks
+            r"if\s+__name__\s*==",  # Main check
+            r"try:\s*\n",  # Try blocks
+            r"except\s+\w+",  # Exception handling
+            r"return\s+[\w\{\[]",  # Return statements with objects
+        ]
+
+        # Check if any code pattern is present
+        for pattern in code_patterns:
+            if re.search(pattern, text, re.MULTILINE):
+                return True
+
+        # Also check for multiple dictionary/function patterns which is common in code gen
+        dict_count = len(re.findall(r"[\w_]+\s*=\s*\{", text))
+        if dict_count >= 2:  # Multiple dictionary assignments suggest code generation
+            return True
+
+        return False
+
     def _is_structured_content(self, text: str) -> bool:
         """Check if the text contains structured content that naturally has repetition."""
-        text_lower = text.lower()
 
         # JSON patterns - use regex to detect any key-value pairs
         if '"' in text and re.search(r'"\w+"\s*:\s*[^,}]+', text):
+            return True
+
+        # Python dictionary patterns (both quoted and unquoted keys)
+        if re.search(r"\w+\s*:\s*[^,}]+", text) and any(
+            char in text for char in ["{", "}", ":"]
+        ):
+            return True
+
+        # Dictionary assignment patterns - be more aggressive about detecting these
+        # This catches patterns like "party_plan = {", "config = {", etc.
+        if re.search(r"[\w_]+\s*=\s*\{", text):
+            return True
+
+        # Multiple dictionary assignments in sequence (very common in code generation)
+        dict_assignments = re.findall(r"[\w_]+\s*=\s*\{", text)
+        if len(dict_assignments) >= 2:
+            return True
+
+        # Class/function definitions with dictionaries
+        if re.search(r"(def|class)\s+\w+.*:\s*\{", text, re.MULTILINE):
+            return True
+
+        # Multi-line dictionary patterns (common in generated code)
+        if (
+            "{" in text
+            and text.count("\n") > 2
+            and re.search(r'["\']?\w+["\']?\s*:\s*[^,}]+', text)
+        ):
+            return True
+
+        # Python class method patterns with similar structure
+        if re.search(r"def\s+\w+\(self.*?\):", text) and "{" in text:
+            return True
+
+        # Function/method calls with dictionaries as parameters
+        if re.search(r"\w+\([^)]*\{[^}]*\}[^)]*\)", text):
             return True
 
         # Table patterns (markdown)
@@ -308,7 +424,7 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         for seq_len in range(4, min(8, len(words) // 3)):
             for start in range(len(words) - seq_len * 3):
                 sequence = words[start : start + seq_len]
-                sequence_str = " ".join(sequence)
+                # Check if this sequence repeats at least 3 times
 
                 # Count how many times this exact sequence appears consecutively
                 consecutive_count = 1
@@ -340,7 +456,7 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
             from collections import Counter
 
             key_counts = Counter(json_like_patterns)
-            for key, count in key_counts.items():
+            for count in key_counts.values():
                 if count > 3:  # Same key appearing more than 3 times is suspicious
                     return True
 
@@ -380,10 +496,51 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
 
         return False
 
-    def _detect_semantic_repetition(self, text: str, window_size: int = 50) -> bool:
+    def _detect_semantic_repetition(self, text: str, _window_size: int = 50) -> bool:
         """Legacy method - now delegates to smart detection."""
         is_repetitive, _ = self._detect_repetition_smart(text, is_tool_generation=False)
         return is_repetitive
+
+    def _detect_emergency_repetition(self, text: str) -> bool:
+        """
+        Emergency detection for extreme repetition patterns that should always be caught.
+        This is a lightweight check for obvious repetition even when main detection is disabled.
+        """
+        if len(text) < 500:  # Increased from 200 to 500
+            return False
+
+        # Check last 500 characters for extreme repetition (increased from 300)
+        check_text = text[-500:].lower()
+
+        # Look for very simple repetitive patterns
+        words = check_text.split()
+        if len(words) < 15:  # Increased from 10 to 15
+            return False
+
+        # Check for same word or phrase repeated many times
+        word_counts = {}
+        for word in words:
+            if len(word) > 2:  # Skip very short words
+                word_counts[word] = word_counts.get(word, 0) + 1
+
+        # If any single word appears more than 12 times in last 500 chars, it's extreme repetition
+        # Increased from 8 to 12 times
+        max_count = max(word_counts.values()) if word_counts else 0
+        if max_count > 12:
+            return True
+
+        # Check for repeated phrases like "the system: the system:"
+        text_parts = check_text.replace("\n", " ").split()
+        for i in range(len(text_parts) - 4):
+            phrase = " ".join(text_parts[i : i + 2])  # 2-word phrases
+            if len(phrase) > 5:  # Skip very short phrases
+                # Count occurrences of this phrase in the remaining text
+                remaining_text = " ".join(text_parts[i:])
+                count = remaining_text.count(phrase)
+                if count > 8:  # Increased from 5 to 8 - same 2-word phrase 8+ times
+                    return True
+
+        return False
 
     async def _stream_with_adaptive_controls(
         self, messages: List[Any], is_tool_generation: bool = False
@@ -402,7 +559,7 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         # Log tool generation configuration
         if is_tool_generation:
             self._logger.info(
-                f"Tool generation mode enabled. Using smart repetition detection."
+                "Tool generation mode enabled. Using smart repetition detection."
             )
 
         token_logprobs_window: deque[float] = deque(maxlen=cfg.perplexity_window)
@@ -414,11 +571,13 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         min_eval_tokens = cfg.min_tokens_for_eval
 
         try:
-            async for chunk in self.llm.astream(
-                messages,
-                logprobs=True,  # Request logprobs if supported
-                top_logprobs=1,
-            ):
+            # Only request logprobs if perplexity guard is enabled and model supports it
+            stream_kwargs = {}
+            if cfg.enable_perplexity_guard:
+                stream_kwargs["logprobs"] = True
+                stream_kwargs["top_logprobs"] = 1
+
+            async for chunk in self.llm.astream(messages, **stream_kwargs):
                 # Content accumulation
                 token_text = ""
                 if hasattr(chunk, "content") and chunk.content:
@@ -457,7 +616,9 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
 
                 # Smart repetition detection - periodically check for issues
                 if (
-                    tokens_seen > 50 and tokens_seen % 25 == 0
+                    cfg.enable_repetition_detection  # Check if repetition detection is enabled
+                    and tokens_seen > 50
+                    and tokens_seen % 25 == 0
                 ):  # Check every 25 tokens after 50
                     is_repetitive, reason = self._detect_repetition_smart(
                         full_response, is_tool_generation
@@ -475,6 +636,18 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
                             full_response += "\n[Paused: JSON generation issue detected. Regenerating response.]"
                         else:
                             full_response += "\n[Paused: repetitive content detected. Providing concise response.]"
+                        return AIMessage(content=full_response)
+
+                # Emergency repetition detection - catches extreme cases even when main detection is disabled
+                elif (
+                    tokens_seen > 100 and tokens_seen % 50 == 0
+                ):  # Check every 50 tokens after 100
+                    if self._detect_emergency_repetition(full_response):
+                        self._logger.warning(
+                            "Emergency repetition guard triggered at %d tokens",
+                            tokens_seen,
+                        )
+                        full_response += "\n[Error: Extreme repetitive output detected. Stopping generation.]"
                         return AIMessage(content=full_response)
 
                 # Periodic perplexity logging (non-guard informational)
@@ -542,6 +715,23 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         is_tool_generation: bool = False,
     ) -> Any:
         """Process messages with circuit breaker protection."""
+
+        # Debug logging for method arguments
+        self._logger.debug(
+            f"process_messages called with: \n"
+            f"num_messages={len(messages)}, \n"
+            f"has_tools={tools is not None}, \n"
+            f"num_tools={len(tools) if tools else 0}, \n"
+            f"is_tool_generation={is_tool_generation}, \n"
+            f"message={'\n'.join([msg.model_dump_json() for msg in messages])}, \n"
+            f"tools={'\n'.join([tool.model_dump_json() for tool in tools]) if tools else 'None'}, \n"
+            # f"messages={[{'role': msg.role, 'content_length': len(str(msg.content)) if msg.content else 0, 'content_preview': str(msg.content)[:100] if msg.content else ''} for msg in messages]}\n"
+        )
+
+        if tools:
+            self._logger.debug(
+                f"Tools provided: {[{'name': tool.name, 'description': tool.description[:100]} for tool in tools]}"
+            )
 
         # Check model health first
         if not await self._check_model_health():

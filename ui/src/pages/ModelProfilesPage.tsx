@@ -53,7 +53,8 @@ const emptyProfile: ModelProfile = {
   system_prompt: '',
   created_at: new Date(),
   updated_at: new Date(),
-  type: ModelProfileType.Primary
+  type: ModelProfileType.Primary,
+  think: false
 };
 
 const ModelProfilesPage = () => {
@@ -116,12 +117,23 @@ const ModelProfilesPage = () => {
               <Box>
                 <Typography variant="subtitle1">{profile.name}</Typography>
                 <Typography variant="body2">{profile.description}</Typography>
-                <Chip
-                  label={getModelProfileTypeName(profile.type)}
-                  size="small"
-                  variant="outlined"
-                  sx={{ mt: 1 }}
-                />
+                <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                  <Chip
+                    label={getModelProfileTypeName(profile.type)}
+                    size="small"
+                    variant="outlined"
+                    sx={{ mt: 1 }}
+                  />
+                  {profile.think && (
+                    <Chip
+                      label="Think Mode"
+                      size="small"
+                      color="primary"
+                      variant="outlined"
+                      sx={{ mt: 1 }}
+                    />
+                  )}
+                </Box>
               </Box>
               <Box>
                 <IconButton onClick={() => {
@@ -174,6 +186,25 @@ const ModelProfilesPage = () => {
             multiline
             minRows={2}
           />
+
+          {/* Think Mode */}
+          <FormControlLabel
+            control={
+              <Switch
+                checked={editingProfile?.think ?? false}
+                onChange={(e) => setEditingProfile({
+                  ...editingProfile,
+                  think: e.target.checked
+                })}
+              />
+            }
+            label="Enable Think Mode"
+            sx={{ mb: 1, display: 'block' }}
+          />
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, mt: -1 }}>
+            When enabled, the model will show its internal reasoning process and thoughts before providing the final answer.
+          </Typography>
+
           <TextField
             label="Number of Context"
             value={editingProfile?.parameters?.num_ctx || ''}

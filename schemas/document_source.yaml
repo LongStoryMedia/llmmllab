@@ -1,0 +1,9 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: DocumentSource
+type: string
+enum:
+  - memory
+  - web_search
+  - vector_store
+  - file_upload
+description: Source type for retrieved documents

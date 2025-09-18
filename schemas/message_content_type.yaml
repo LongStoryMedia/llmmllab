@@ -1,13 +1,17 @@
 $schema: http://json-schema.org/draft-07/schema#
 title: MessageContentType
-description: Type of content in a message
+description: Type of content in a message or streaming chunk
 type: string
 enum:
   - text
   - image
   - tool_call
+  - tool_result
   - image_generation
   - audio
   - video
   - image_edit
   - file
+  - thinking
+  - error_content
+  - metadata

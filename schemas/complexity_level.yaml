@@ -1,0 +1,10 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ComplexityLevel
+type: string
+enum:
+  - TRIVIAL
+  - SIMPLE
+  - MODERATE
+  - COMPLEX
+  - SPECIALIZED
+description: Complexity level assessment for requests and operations

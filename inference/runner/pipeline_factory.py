@@ -769,7 +769,7 @@ class PipelineFactory:
         self.logger.info(
             f"Creating text pipeline for model: {model.name}, pipeline: {model.pipeline}"
         )
-        if model.pipeline in ("Qwen30A3BQ4KMPipe", "Qwen30A3BCoderQ4KMPipe"):
+        if model.pipeline == "Qwen3Pipe":
             self.logger.info(
                 f"Creating Qwen pipeline, prefer_langgraph={self.prefer_langgraph}"
             )
@@ -828,7 +828,7 @@ class PipelineFactory:
         self,
         model: Model,
         profile: ModelProfile,
-        circuit_config: Optional[CircuitBreakerConfig] = None,
+        _circuit_config: Optional[CircuitBreakerConfig] = None,
     ) -> Optional[BasePipelineCore]:
         if model.pipeline == "NomicEmbedTextPipe":
             try:
@@ -852,7 +852,7 @@ class PipelineFactory:
         self,
         model: Model,
         _profile: ModelProfile,
-        circuit_config: Optional[CircuitBreakerConfig] = None,
+        _circuit_config: Optional[CircuitBreakerConfig] = None,
     ) -> Optional[BasePipelineCore]:
         """Create reranking pipeline (currently unavailable)."""
         if model.pipeline == "Qwen3RerankerPipe":
@@ -867,7 +867,7 @@ class PipelineFactory:
         self,
         model: Model,
         profile: ModelProfile,
-        circuit_config: Optional[CircuitBreakerConfig] = None,
+        _circuit_config: Optional[CircuitBreakerConfig] = None,
     ) -> Optional[BasePipelineCore]:
         if model.pipeline == "FluxPipeline":
             try:
@@ -883,7 +883,7 @@ class PipelineFactory:
         self,
         model: Model,
         profile: ModelProfile,
-        circuit_config: Optional[CircuitBreakerConfig] = None,
+        _circuit_config: Optional[CircuitBreakerConfig] = None,
     ) -> Optional[BasePipelineCore]:
         if model.pipeline == "FluxKontextPipeline":
             try:

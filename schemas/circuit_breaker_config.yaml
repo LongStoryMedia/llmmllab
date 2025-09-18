@@ -26,6 +26,9 @@ properties:
   enable_perplexity_guard:
     type: boolean
     description: Enable or disable perplexity-based quality monitoring
+  enable_repetition_detection:
+    type: boolean
+    description: Enable or disable repetition detection entirely
   perplexity_window:
     type: integer
     minimum: 10

@@ -19,8 +19,6 @@ message GPUConfig {
   repeated double tensor_split = 4;
   // Device IDs/names corresponding to tensor_split fractions
   repeated string tensor_split_devices = 5;
-  // Number of MoE layers to keep on CPU (gpt-oss models only)
-  int32 n_cpu_moe = 6;
   // How to split model across devices
   enum SplitModeEnum {
     SPLITMODEENUM_UNSPECIFIED = 0;
@@ -31,7 +29,7 @@ message GPUConfig {
   
 
   // How to split model across devices
-  SplitModeEnum split_mode = 7;
+  SplitModeEnum split_mode = 6;
   // Offload key/query/value tensors to GPU (opposite of no_kv_offload)
-  bool offload_kqv = 8;
+  bool offload_kqv = 7;
 }

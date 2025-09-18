@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10gpu_config.proto\x12\x05proto\"\xae\x02\n\tGPUConfig\x12\x15\n\rno_kv_offload\x18\x01 \x01(\x08\x12\x10\n\x08main_gpu\x18\x02 \x01(\x05\x12\x1a\n\x12main_gpu_device_id\x18\x03 \x01(\t\x12\x14\n\x0ctensor_split\x18\x04 \x03(\x01\x12\x1c\n\x14tensor_split_devices\x18\x05 \x03(\t\x12\x11\n\tn_cpu_moe\x18\x06 \x01(\x05\x12\x32\n\nsplit_mode\x18\x07 \x01(\x0e\x32\x1e.proto.GPUConfig.SplitModeEnum\x12\x13\n\x0boffload_kqv\x18\x08 \x01(\x08\"L\n\rSplitModeEnum\x12\x1d\n\x19SPLITMODEENUM_UNSPECIFIED\x10\x00\x12\x08\n\x04NONE\x10\x01\x12\t\n\x05LAYER\x10\x02\x12\x07\n\x03ROW\x10\x03\x42\x0fZ\rmaistro/protob\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10gpu_config.proto\x12\x05proto\"\x9b\x02\n\tGPUConfig\x12\x15\n\rno_kv_offload\x18\x01 \x01(\x08\x12\x10\n\x08main_gpu\x18\x02 \x01(\x05\x12\x1a\n\x12main_gpu_device_id\x18\x03 \x01(\t\x12\x14\n\x0ctensor_split\x18\x04 \x03(\x01\x12\x1c\n\x14tensor_split_devices\x18\x05 \x03(\t\x12\x32\n\nsplit_mode\x18\x06 \x01(\x0e\x32\x1e.proto.GPUConfig.SplitModeEnum\x12\x13\n\x0boffload_kqv\x18\x07 \x01(\x08\"L\n\rSplitModeEnum\x12\x1d\n\x19SPLITMODEENUM_UNSPECIFIED\x10\x00\x12\x08\n\x04NONE\x10\x01\x12\t\n\x05LAYER\x10\x02\x12\x07\n\x03ROW\x10\x03\x42\x0fZ\rmaistro/protob\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,7 +33,7 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z\rmaistro/proto'
   _globals['_GPUCONFIG']._serialized_start=28
-  _globals['_GPUCONFIG']._serialized_end=330
-  _globals['_GPUCONFIG_SPLITMODEENUM']._serialized_start=254
-  _globals['_GPUCONFIG_SPLITMODEENUM']._serialized_end=330
+  _globals['_GPUCONFIG']._serialized_end=311
+  _globals['_GPUCONFIG_SPLITMODEENUM']._serialized_start=235
+  _globals['_GPUCONFIG_SPLITMODEENUM']._serialized_end=311
 # @@protoc_insertion_point(module_scope)
