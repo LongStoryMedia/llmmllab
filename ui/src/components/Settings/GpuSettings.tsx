@@ -43,7 +43,6 @@ const GpuSettings = () => {
     main_gpu: -1,
     tensor_split: [],
     tensor_split_devices: [],
-    n_cpu_moe: 0,
     split_mode: 'none',
     offload_kqv: true
   });
@@ -292,17 +291,6 @@ const GpuSettings = () => {
               label="Offload Key/Query/Value tensors to GPU"
               sx={{ mb: 2, display: 'block' }}
             />
-
-            <TextField
-              label="CPU MoE Layers"
-              type="number"
-              value={localConfig.n_cpu_moe || 0}
-              onChange={(e) => handleChange('n_cpu_moe', parseInt(e.target.value) || 0)}
-              fullWidth
-              margin="normal"
-              helperText="Number of MoE (Mixture of Experts) layers to keep on CPU (MoE models only)"
-              inputProps={{ min: 0 }}
-            />
           </Paper>
         </Grid>
 
@@ -484,7 +472,6 @@ const GpuSettings = () => {
             main_gpu: -1,
             tensor_split: [],
             tensor_split_devices: [],
-            n_cpu_moe: 0,
             split_mode: 'none',
             offload_kqv: true
           })}

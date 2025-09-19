@@ -9,9 +9,11 @@ const WebSearchSettings = () => {
     enabled: false,
     auto_detect: true,
     max_results: 3,
-    include_results: true
+    include_results: true,
+    search_providers: [],
+    max_urls_deep: 3
   });
-  const [saveStatus, setSaveStatus] = useState<{success?: boolean; message: string} | null>(null);
+  const [saveStatus, setSaveStatus] = useState<{ success?: boolean; message: string } | null>(null);
 
   useEffect(() => {
     // When user config loads, update local state
@@ -20,7 +22,9 @@ const WebSearchSettings = () => {
         enabled: config.web_search.enabled ?? false,
         auto_detect: config.web_search.auto_detect ?? true,
         max_results: config.web_search.max_results ?? 3,
-        include_results: config.web_search.include_results ?? true
+        include_results: config.web_search.include_results ?? true,
+        search_providers: config.web_search.search_providers ?? [],
+        max_urls_deep: config.web_search.max_urls_deep ?? 3
       });
     }
   }, [config]);
@@ -57,7 +61,7 @@ const WebSearchSettings = () => {
     setSaveStatus(null);
     try {
       const success = await updatePartialConfig('web_search', localConfig);
-      
+
       if (success) {
         setSaveStatus({
           success: true,
@@ -87,52 +91,52 @@ const WebSearchSettings = () => {
       <Typography variant="h6" gutterBottom>
         Web Search Settings
       </Typography>
-      
+
       {saveStatus && (
-        <Alert 
-          severity={saveStatus.success ? "success" : "error"} 
+        <Alert
+          severity={saveStatus.success ? "success" : "error"}
           sx={{ mb: 2 }}
           onClose={() => setSaveStatus(null)}
         >
           {saveStatus.message}
         </Alert>
       )}
-      
+
       <FormControlLabel
         control={
-          <Switch 
-            checked={localConfig.enabled} 
-            onChange={handleToggleEnabled} 
+          <Switch
+            checked={localConfig.enabled}
+            onChange={handleToggleEnabled}
           />
         }
         label="Enable Web Search"
         sx={{ mb: 2, display: 'block' }}
       />
-      
+
       {localConfig.enabled && (
         <>
           <FormControlLabel
             control={
-              <Switch 
-                checked={localConfig.auto_detect} 
-                onChange={handleToggleAutoDetect} 
+              <Switch
+                checked={localConfig.auto_detect}
+                onChange={handleToggleAutoDetect}
               />
             }
             label="Auto-detect when to search"
             sx={{ mb: 2, display: 'block' }}
           />
-          
+
           <FormControlLabel
             control={
-              <Switch 
-                checked={localConfig.include_results} 
-                onChange={handleToggleIncludeResults} 
+              <Switch
+                checked={localConfig.include_results}
+                onChange={handleToggleIncludeResults}
               />
             }
             label="Include search results in responses"
             sx={{ mb: 2, display: 'block' }}
           />
-          
+
           <Typography id="max-results-slider" gutterBottom>
             Maximum search results: {localConfig.max_results}
           </Typography>
@@ -149,10 +153,10 @@ const WebSearchSettings = () => {
           />
         </>
       )}
-      
-      <Button 
-        variant="contained" 
-        color="primary" 
+
+      <Button
+        variant="contained"
+        color="primary"
         onClick={handleSave}
       >
         Save Web Search Settings

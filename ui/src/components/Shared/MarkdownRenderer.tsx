@@ -25,7 +25,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ children, sanitizeF
       remarkPlugins={[remarkGfm, remarkMath]}
       rehypePlugins={[rehypeKatex]}
       components={{
-        code({node, className, children, ...props}) {
+        code({ node, className, children, ...props }) {
           const match = /language-(\w+)/.exec(className || '');
           const codeString = String(children).replace(/\n$/, '');
           if (className) {
@@ -48,7 +48,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ children, sanitizeF
             <Typography
               component="span"
               sx={{
-                fontFamily:'monospace',
+                fontFamily: 'monospace',
                 backgroundColor: theme.palette.background.paper,
                 px: theme.spacing(0.5),
                 py: theme.spacing(0.25),
@@ -59,11 +59,11 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ children, sanitizeF
             >{codeString}</Typography>
           );
         },
-        a({node, children, href, ...props}) {
+        a({ node, children, href, ...props }) {
           return (
-            <Link 
-              href={href} 
-              target="_blank" 
+            <Link
+              href={href}
+              target="_blank"
               rel="noopener noreferrer"
               color="primary"
               underline="hover"
@@ -73,7 +73,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ children, sanitizeF
             </Link>
           );
         },
-        table({node, children, ...props}) {
+        table({ node, children, ...props }) {
           return (
             <Box sx={{ overflowX: 'auto', my: theme.spacing(2) }}>
               <Table size="small" {...props}>
@@ -82,35 +82,35 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ children, sanitizeF
             </Box>
           );
         },
-        thead({node, children, ...props}) {
+        thead({ node, children, ...props }) {
           return <TableHead {...props}>{children}</TableHead>;
         },
-        tbody({node, children, ...props}) {
+        tbody({ node, children, ...props }) {
           return <TableBody {...props}>{children}</TableBody>;
         },
-        tr({node, children, ...props}) {
+        tr({ node, children, ...props }) {
           return <TableRow {...props}>{children}</TableRow>;
         },
-        th({node, children, ...props}) {
+        th({ node, children, ...props }) {
           // @ts-expect-error ts(2322)
           return <TableCell component="th" sx={{ fontWeight: 'bold' }} {...props}>{children}</TableCell>;
         },
-        td({node, children, ...props}) {
+        td({ node, children, ...props }) {
           // @ts-expect-error ts(2322)
           return <TableCell {...props}>{children}</TableCell>;
         },
-        blockquote({node, children, ...props}) {
+        blockquote({ node, children, ...props }) {
           return (
-            <Box 
+            <Box
               component="blockquote"
-              sx={{ 
+              sx={{
                 borderLeft: `${theme.spacing(0.5)} solid`,
                 borderColor: theme.palette.grey[400],
                 pl: theme.spacing(2),
                 py: theme.spacing(0.5),
                 my: theme.spacing(1),
                 bgcolor: theme.palette.grey[100],
-                borderRadius: theme.shape.borderRadius / 4
+                borderRadius: (theme.shape.borderRadius as number) / 4
               }}
               {...props}
             >
@@ -118,17 +118,17 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ children, sanitizeF
             </Box>
           );
         },
-        img({node, alt, src, ...props}) {
+        img({ node, alt, src, ...props }) {
           return (
             <Box sx={{ textAlign: 'center', my: theme.spacing(2) }}>
-              <img 
-                src={src} 
-                alt={alt} 
-                style={{ 
-                  maxWidth: '100%', 
-                  borderRadius: theme.shape.borderRadius 
-                }} 
-                {...props} 
+              <img
+                src={src}
+                alt={alt}
+                style={{
+                  maxWidth: '100%',
+                  borderRadius: theme.shape.borderRadius
+                }}
+                {...props}
               />
             </Box>
           );

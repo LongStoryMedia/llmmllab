@@ -23,6 +23,8 @@ from server.services.web_extraction_service import WebExtractionService
 from server.config import logger
 
 from runner import pipeline_factory, Embeddings
+from runner.pipelines.run import run_pipeline, embed_pipeline
+from utils.message import extract_message_text
 
 
 class SearchContext:
@@ -155,17 +157,7 @@ class SearchContext:
 
         try:
             # Extract raw text first
-            raw_text = ""
-            try:
-                parts = []
-                for c in message.content or []:
-                    if getattr(c, "type", None) == MessageContentType.TEXT:
-                        txt = getattr(c, "text", None)
-                        if isinstance(txt, str) and txt.strip():
-                            parts.append(txt.strip())
-                raw_text = " ".join(parts).strip()
-            except Exception:
-                raw_text = ""
+            raw_text = extract_message_text(message)
 
             # If text is short, use heuristic extraction directly
             if len(raw_text) < 100:
@@ -177,33 +169,25 @@ class SearchContext:
                 return formatted_query
 
             # For longer text, use LLM formatting with the improved prompt
-            mp = await storage.get_service(
-                storage.model_profile
-            ).get_model_profile_by_id(
-                self.user_config.model_profiles.formatting_profile_id,
-                self.user_config.user_id,
-            )
-            assert mp is not None, "Unable to retrieve model profile"
-
-            # Create a message with the formatting prompt
-            format_message = Message(
-                role=MessageRole.USER,
-                content=[
-                    MessageContent(
-                        type=MessageContentType.TEXT,
-                        text=self.SEARCH_FORMAT_PROMPT.format(
-                            query=raw_text[:200]
-                        ),  # Limit input length
-                    )
-                ],
-            )
+            assert (
+                mp := await storage.get_service(
+                    storage.model_profile
+                ).get_model_profile_by_id(
+                    self.user_config.model_profiles.formatting_profile_id,
+                    self.user_config.user_id,
+                )
+            ), "Unable to retrieve model profile"
 
             # Use NORMAL priority for search query formatting (used occasionally)
             from runner.pipeline_factory import PipelinePriority
 
             with pipeline_factory.pipeline(mp, str, PipelinePriority.NORMAL) as pipe:
-                # Use LLM to format the query
-                formatted_query = await pipe.process_messages([format_message])
+                # Use run_pipeline for internal LLM call
+                response = await run_pipeline(raw_text[:200], pipe)
+                # Extract text from ChatResponse
+                formatted_query = (
+                    extract_message_text(response.message) if response.message else ""
+                )
                 # Clean up the response and limit length
                 formatted_query = formatted_query.strip()[:50]  # Hard limit
                 logger.info(f"Formatted search query: {formatted_query}")
@@ -378,17 +362,7 @@ class SearchContext:
             with pipeline_factory.pipeline(
                 emb_mp, Embeddings, PipelinePriority.HIGH
             ) as pipe:
-                embeddings = await pipe.process_messages(
-                    [
-                        Message(
-                            role=MessageRole.USER,
-                            content=[
-                                MessageContent(type=MessageContentType.TEXT, text=t)
-                            ],
-                        )
-                        for t in texts
-                    ],
-                )
+                embeddings = await embed_pipeline(list(texts), pipe)
 
                 # Extract query and content embeddings
                 query_embedding = embeddings[0]

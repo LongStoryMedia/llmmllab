@@ -4,9 +4,9 @@ Fixes critical issues with the current streaming architecture.
 """
 
 import hashlib
-import logging
 import uuid
-from typing import Any, Dict, Optional, List, AsyncIterator, cast
+import logging
+from typing import Any, Dict, Optional, List, AsyncIterator, cast, Union
 from datetime import datetime
 
 from langchain_core.callbacks import BaseCallbackHandler
@@ -34,6 +34,64 @@ from utils.response import create_streaming_chunk
 # from utils.serialization import serialize_to_json  # unused
 
 from .base import BasePipelineCore
+
+
+# Type aliases for better readability
+MessageInput = Union[str, Message, List[Union[str, Message]], List[Message], List[str]]
+
+
+def _normalize_message_input(
+    input_data: MessageInput, role: MessageRole = MessageRole.USER
+) -> List[Message]:
+    """
+    Normalize various input types to a List[Message].
+
+    Args:
+        input_data: Can be str, Message, List[str | Message]
+
+    Returns:
+        List[Message]: Normalized message list
+    """
+    if isinstance(input_data, str):
+        # Single string -> single Message
+        return [
+            Message(
+                role=role,
+                content=[MessageContent(type=MessageContentType.TEXT, text=input_data)],
+            )
+        ]
+    elif isinstance(input_data, Message):
+        # Single Message -> list with one Message
+        return [input_data]
+    elif isinstance(input_data, list):
+        if not input_data:
+            return []
+
+        # Coerce each item in the list to a Message object
+        messages = []
+        for item in input_data:
+            if isinstance(item, str):
+                messages.append(
+                    Message(
+                        role=role,
+                        content=[
+                            MessageContent(type=MessageContentType.TEXT, text=item)
+                        ],
+                    )
+                )
+            elif isinstance(item, Message):
+                messages.append(item)
+            else:
+                # Convert other types to string, then to Message
+                messages.append(
+                    Message(
+                        role=role,
+                        content=[
+                            MessageContent(type=MessageContentType.TEXT, text=str(item))
+                        ],
+                    )
+                )
+        return messages
 
 
 class StreamingCallbackHandler(BaseCallbackHandler):
@@ -102,10 +160,14 @@ class EventStreamProcessor:
         self.repetition_count = 0
         self._last_hashes: List[int] = []
         self.logger = logging.getLogger(__name__)
-        
+
         # Pre-compute event type sets for faster lookup
-        self._start_events = frozenset(["on_chat_model_start", "on_llm_start", "on_agent_start"])
-        self._stream_events = frozenset(["on_chat_model_stream", "on_llm_stream", "on_agent_stream"])
+        self._start_events = frozenset(
+            ["on_chat_model_start", "on_llm_start", "on_agent_start"]
+        )
+        self._stream_events = frozenset(
+            ["on_chat_model_stream", "on_llm_stream", "on_agent_stream"]
+        )
         self._end_events = frozenset(["on_chat_model_end", "on_llm_end"])
 
     def _update_buffer(self, new_content: str) -> str:
@@ -306,18 +368,22 @@ class EventStreamProcessor:
 
 
 async def stream_pipeline(
-    messages: List[Message],
+    messages: MessageInput,
     pipeline: BasePipelineCore,
     tools: Optional[List[BaseTool]] = None,
 ) -> AsyncIterator[ChatResponse]:
     """
     Execute the LangGraph workflow for chat completion with enhanced error handling.
+    Accepts flexible input: str, Message, List[str], or List[Message].
     """
     logger = logging.getLogger(__name__)
 
     try:
+        # Normalize input to List[Message]
+        normalized_messages = _normalize_message_input(messages)
+
         # Validate inputs
-        if not messages:
+        if not normalized_messages:
             yield create_streaming_chunk("No messages provided", done=True)
             return
 
@@ -338,7 +404,7 @@ async def stream_pipeline(
 
         # Convert messages to LangChain format
         lc_messages: List[BaseMessage] = []
-        for msg in messages:
+        for msg in normalized_messages:
             try:
                 lc_msg = to_lc_message(msg)
                 lc_messages.append(lc_msg)
@@ -361,8 +427,8 @@ async def stream_pipeline(
             return
 
         # Generate thread ID
-        latest_message = messages[-1]
-        thread_content = f"{latest_message.conversation_id}-{len(messages)}"
+        latest_message = normalized_messages[-1]
+        thread_content = f"{latest_message.conversation_id}-{len(normalized_messages)}"
         thread_id = hashlib.md5(thread_content.encode()).hexdigest()[:16]
 
         # Create config
@@ -422,12 +488,13 @@ async def stream_pipeline(
 
 
 async def run_pipeline(
-    messages: List[Message],
+    messages: MessageInput,
     pipeline: BasePipelineCore,
     tools: Optional[List[BaseTool]] = None,
 ) -> ChatResponse:
     """
     Get a complete response from the pipeline by aggregating streaming chunks.
+    Accepts flexible input: str, Message, List[str], or List[Message].
     """
     logger = logging.getLogger(__name__)
 
@@ -468,6 +535,144 @@ async def run_pipeline(
                     MessageContent(
                         type=MessageContentType.TEXT,
                         text=f"Error processing request: {str(e)}",
+                    )
+                ],
+            ),
+            created_at=datetime.now(),
+            finish_reason="error",
+        )
+
+
+async def embed_pipeline(
+    messages: MessageInput,
+    pipeline: BasePipelineCore,
+) -> List[List[float]]:
+    """
+    Get embeddings from the pipeline for the given messages.
+    This provides a normalized interface for embedding operations.
+    Accepts flexible input: str, Message, List[str], or List[Message].
+    """
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Normalize input to List[Message]
+        normalized_messages = _normalize_message_input(messages)
+
+        # Validate inputs
+        if not normalized_messages:
+            logger.warning("No messages provided to embed_pipeline")
+            return []
+
+        # Validate that this is an embedding pipeline
+        try:
+            if hasattr(
+                pipeline, "allows_return_type"
+            ) and not pipeline.allows_return_type(list):
+                logger.error("Pipeline does not support embedding return type")
+                return []
+        except Exception as e:
+            logger.warning(f"Could not validate pipeline type for embeddings: {e}")
+
+        # Process messages through the embedding pipeline
+        result = await pipeline.process_messages(normalized_messages)
+
+        # Validate result format
+        if isinstance(result, list) and all(isinstance(item, list) for item in result):
+            return result
+        else:
+            logger.warning(f"Unexpected embedding result type: {type(result)}")
+            return []
+
+    except Exception as e:
+        logger.error(f"Error in embed_pipeline: {e}")
+        return []
+
+
+# Type for pipeline chain steps
+PipelineStep = tuple[BasePipelineCore, Optional[str]]
+
+
+async def chain_pipelines(
+    initial_input: MessageInput,
+    pipeline_steps: List[PipelineStep],
+    tools: Optional[List[BaseTool]] = None,
+) -> ChatResponse:
+    """
+    Chain multiple pipeline calls where the output of one becomes input to the next.
+
+    Args:
+        initial_input: Starting input (str, Message, List[str], or List[Message])
+        pipeline_steps: List of (pipeline, optional_prompt) tuples
+        tools: Optional tools for pipelines that support them
+
+    Returns:
+        ChatResponse: Final result from the last pipeline
+
+    Example:
+        # Chain: user input -> generate -> summarize -> format
+        result = await chain_pipelines(
+            "What is machine learning?",
+            [
+                (generation_pipeline, None),  # Generate initial response
+                (summary_pipeline, "Summarize this in 2 sentences:"),  # Summarize
+                (format_pipeline, "Format as a bullet list:")  # Format
+            ]
+        )
+    """
+    logger = logging.getLogger(__name__)
+
+    try:
+        if not pipeline_steps:
+            raise ValueError("No pipeline steps provided")
+
+        current_input: MessageInput = initial_input
+
+        for i, (pipeline, prompt) in enumerate(pipeline_steps):
+            logger.debug(f"Executing pipeline step {i+1}/{len(pipeline_steps)}")
+
+            # Run the pipeline
+            result = await run_pipeline(current_input, pipeline, tools)
+
+            # Prepare input for next step
+            if i < len(pipeline_steps) - 1:  # Not the last step
+                # Extract text from result and optionally combine with prompt
+                result_text = ""
+                if result.message:
+                    result_text = extract_message_text(result.message)
+
+                # For next step, use the result text, optionally with next step's prompt
+                next_pipeline, next_prompt = pipeline_steps[i + 1]
+                if next_prompt:
+                    current_input = f"{next_prompt}\n\n{result_text}"
+                else:
+                    current_input = result_text
+            else:
+                # Last step - return the final result
+                return result
+
+        # This shouldn't be reached, but just in case
+        return ChatResponse(
+            done=True,
+            message=Message(
+                role=MessageRole.ASSISTANT,
+                content=[
+                    MessageContent(type=MessageContentType.TEXT, text="Chain completed")
+                ],
+            ),
+            created_at=datetime.now(),
+            finish_reason="stop",
+        )
+
+    except Exception as e:
+        logger.error(f"Error in chain_pipelines: {e}")
+        return ChatResponse(
+            done=True,
+            message=Message(
+                role=MessageRole.ASSISTANT,
+                content=[
+                    MessageContent(
+                        type=MessageContentType.TEXT,
+                        text=f"Error in pipeline chain: {str(e)}",
                     )
                 ],
             ),

@@ -29,7 +29,7 @@ from utils.message import extract_message_text
 from utils.response import create_streaming_chunk, create_error_response
 from ..base_langgraph import CircuitBreakerConfig
 from ..llamacpp.base_llamacpp import BaseLlamaCppPipeline
-from .context_manager import ContextManager
+from ..context_manager import ContextManager
 
 # Define generic return type for text pipelines
 T = TypeVar("T", bound=Union[str, ChatResponse])

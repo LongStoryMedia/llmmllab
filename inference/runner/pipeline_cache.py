@@ -10,20 +10,11 @@ import logging
 import threading
 import time
 import weakref
-from enum import IntEnum
 from typing import Any, Callable, Dict, List, Optional, Type, cast
 
-from models import Model, ModelProfile, ModelProvider
+from models import Model, ModelProfile, ModelProvider, PipelinePriority
 from .pipelines.base import BasePipelineCore, PipeReturn
 from utils.hardware_manager import hardware_manager
-
-
-class PipelinePriority(IntEnum):
-    LOW = 1
-    MEDIUM = 5
-    NORMAL = 5
-    HIGH = 10
-    CRITICAL = 20
 
 
 class _PipelineCacheEntry:
@@ -47,7 +38,11 @@ class _PipelineCacheEntry:
 
     def eviction_score(self, now: float) -> float:
         age_penalty = (now - self.last_accessed) / 3600.0
-        score = float(self.priority) - age_penalty + min(self.access_count / 10.0, 2.0)
+        score = (
+            float(self.priority.value)
+            - age_penalty
+            + min(self.access_count / 10.0, 2.0)
+        )
         return score
 
 
@@ -93,7 +88,7 @@ class LocalPipelineCacheManager:
             elif entry:
                 self._cache.pop(model_id, None)
 
-        required = self._estimate_memory(model)
+        required = self.estimate_memory(model)
         if not self._ensure_memory(required, exclude=model_id):
             raise RuntimeError(
                 f"Insufficient memory for local model {model.name}: need {required/1e9:.2f}GB"
@@ -183,7 +178,7 @@ class LocalPipelineCacheManager:
         return count
 
     # ---- Internals ----
-    def _estimate_memory(self, model: Model) -> float:
+    def estimate_memory(self, model: Model) -> float:
         base = 512 * 1024 * 1024
         model_size = 0
         details = getattr(model, "details", None)
@@ -256,7 +251,7 @@ class LocalPipelineCacheManager:
                 if e.is_alive() and mid != exclude
             ]
         candidates.sort(key=lambda x: (x[2], x[1].priority, x[1].last_accessed))
-        for mid, entry, score in candidates:
+        for mid, _, score in candidates:
             with self._lock:
                 removed = self._cache.pop(mid, None)
             if removed and removed.pipeline:

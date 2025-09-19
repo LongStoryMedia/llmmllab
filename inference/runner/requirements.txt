@@ -13,7 +13,6 @@ diffusers==0.35.1
 safetensors==0.6.2
 bitsandbytes==0.47.0  # For quantization
 sentencepiece==0.2.1  # For tokenization
-protobuf==6.32.1  # For communication with gRPC server
 ninja==1.13.0  # For building C++ extensions
 packaging==25.0
 tiktoken==0.11.0

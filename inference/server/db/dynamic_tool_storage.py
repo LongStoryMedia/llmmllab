@@ -331,12 +331,15 @@ class DynamicToolStorage:
         Returns:
             Tuple containing list of tools and pagination metadata
         """
+        # Format embedding for PostgreSQL vector extension
+        vector_str = MemoryStorage.format_embedding_for_pgvector(query_embedding)
+        
         async with self.typed_pool.acquire() as conn:
             # Get total count for pagination
             count_row = await conn.fetchrow(
                 self.get_query("tool.count_user_tools_by_embedding"),
                 user_id,
-                query_embedding,
+                vector_str,
                 similarity_threshold,
             )
             total_count = count_row["total_count"] if count_row else 0
@@ -345,7 +348,7 @@ class DynamicToolStorage:
             rows = await conn.fetch(
                 self.get_query("tool.search_user_tools_by_embedding"),
                 user_id,
-                query_embedding,
+                vector_str,
                 similarity_threshold,
                 limit,
                 offset,

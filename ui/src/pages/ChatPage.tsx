@@ -15,7 +15,7 @@ const ChatPage = memo(() => {
   const lastScrollTime = useRef<number>(0);
   const [currentMessage, setCurrentMessage] = useState<Message>({
     role: 'assistant' as const,
-    content: response,
+    content: response ? [{ type: 'text', text: response }] : [],
     id: (messages[messages.length - 1]?.id ?? 0) + 1,
     conversation_id: conversationId ? parseInt(conversationId, 10) : currentConversation?.id || 0
   });
@@ -45,35 +45,35 @@ const ChatPage = memo(() => {
         }
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, currentConversation]);
-  
+
   // Track user scroll position
   useEffect(() => {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
-  
+
   // Scroll to bottom whenever messages change or streaming occurs - with priority timing
   useLayoutEffect(() => {
     if (!shouldScrollToBottom.current) {
       return;
     }
-    
+
     const scrollToBottom = () => {
       if (containerRef.current) {
         window.scrollTo(0, containerRef.current.scrollHeight);
       }
     };
-    
+
     // Immediate scroll
     scrollToBottom();
-    
+
     // Additional scroll after a short delay to ensure content is rendered
     const timeoutId = setTimeout(() => {
       scrollToBottom();
     }, 250);
-    
+
     return () => clearTimeout(timeoutId);
   }, [messages, response, isTyping]);
 
@@ -81,39 +81,39 @@ const ChatPage = memo(() => {
     // const handler = setTimeout(() => {
     setCurrentMessage(prev => ({
       ...prev,
-      content: response
+      content: response ? [{ type: 'text', text: response }] : []
     }));
     //   }, 250); // Delay in milliseconds
 
-  //   return () => clearTimeout(handler);
+    //   return () => clearTimeout(handler);
   }, [response]);
 
   return (
-    <Box 
-      sx={{ 
-        display: 'flex', 
-        flexDirection: 'column', 
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
         height: '100%'
-      }} 
+      }}
     >
       <ChatContainer>
         {/* Display all existing messages */}
         {messages.map((msg, index) => (
-          <ChatBubble 
-            key={`msg-${index}`} 
-            message={msg} 
+          <ChatBubble
+            key={`msg-${index}`}
+            message={msg}
           />
         ))}
-          
+
         {/* Only display in-progress response if it's not already in messages */}
         {(isTyping || isLoading || response) && (
-          <ChatBubble 
+          <ChatBubble
             key="streaming-response"
-            message={currentMessage} 
+            message={currentMessage}
           />
         )}
 
-        <ChatInput/>
+        <ChatInput />
       </ChatContainer>
     </Box>
   );

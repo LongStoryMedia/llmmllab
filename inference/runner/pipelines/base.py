@@ -170,6 +170,22 @@ class BasePipelineCore(ABC, Generic[PipeType]):
     ) -> PipeType:
         """Process messages and return appropriate response type."""
 
+    # ---- Unified public entrypoints ----
+    async def run_pipeline(
+        self,
+        messages: List[Message],
+        tools: Optional[List[BaseTool]] = None,
+        is_tool_generation: bool = False,
+    ) -> PipeType:
+        """Unified non-streaming entrypoint (preferred over direct process_messages).
+
+        This wrapper exists so higher layers can depend on a stable API while
+        individual pipeline subclasses may evolve their internal implementation.
+        """
+        return await self.process_messages(
+            messages, tools=tools, is_tool_generation=is_tool_generation
+        )
+
     async def prompt(self, text: str | List[str]) -> PipeType:
         """Process a single message and return appropriate response type"""
         if isinstance(text, list):

@@ -31,7 +31,7 @@ from utils.langgraph import (
 )
 from ..base_langgraph import CircuitBreakerConfig
 from ..llamacpp.base_llamacpp import BaseLlamaCppPipeline
-from .context_manager import ContextManager
+from ..context_manager import ContextManager
 
 ReturnType = Union[str, ChatResponse]
 

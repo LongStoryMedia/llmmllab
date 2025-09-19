@@ -3,7 +3,6 @@ import { Box, useTheme, Drawer, Backdrop } from '@mui/material';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import GalleryFAB from '../Shared/GalleryFAB';
-import StatusToast from '../Shared/StatusToast';
 import StageProgressBars from '../Shared/StageProgressBars';
 import { useBackgroundContext } from '../../context/BackgroundContext';
 
@@ -34,7 +33,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <Box p={theme.spacing(2)} overflow="auto" flexGrow={1}>
         {children}
       </Box>
-      
+
       {/* Image Gallery Floating Action Button */}
       <GalleryFAB />
 

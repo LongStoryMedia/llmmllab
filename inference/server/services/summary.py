@@ -18,6 +18,7 @@ from server.db import storage
 from server.config import logger
 
 from runner import pipeline_factory
+from runner.pipelines.run import run_pipeline
 from utils.message import extract_message_text
 
 
@@ -177,14 +178,10 @@ class SummaryContext:
             assert mp
 
             with pipeline_factory.pipeline(mp, str) as pipe:
-                # Run the pipeline to get summary - use get method which is synchronous
-                summary_text = await pipe.process_messages(messages)
-            # Coerce ChatResponse to text if pipeline returned ChatResponse
-            if isinstance(summary_text, ChatResponse):
+                # Use run_pipeline for internal summarization call
+                response = await run_pipeline(messages, pipe)
                 summary_text = (
-                    extract_message_text(summary_text.message)
-                    if summary_text.message
-                    else ""
+                    extract_message_text(response.message) if response.message else ""
                 )
             if summary_text:
                 # Get source message IDs for tracking
@@ -280,35 +277,23 @@ class SummaryContext:
         # Sort by creation time
         level_summaries.sort(key=lambda s: self._aware(s.created_at))
 
-        msgs = [
-            Message(
-                role=MessageRole.SYSTEM,
-                content=[
-                    MessageContent(
-                        type=MessageContentType.TEXT, text=s.content, url=None
-                    )
-                ],
-            )
-            for s in level_summaries
-        ]
-
         try:
-            profile = await storage.get_service(
-                storage.model_profile
-            ).get_model_profile_by_id(
-                self.user_config.model_profiles.summarization_profile_id, self.user_id
-            )
-            assert profile, "Failed to retrieve model profile"
+            assert (
+                profile := await storage.get_service(
+                    storage.model_profile
+                ).get_model_profile_by_id(
+                    self.user_config.model_profiles.summarization_profile_id,
+                    self.user_id,
+                )
+            ), "Failed to retrieve model profile"
             # Get summarization pipeline from factory
             with pipeline_factory.pipeline(profile, str) as pipe:
-                summary_text = await pipe.process_messages(msgs)
-
-                if isinstance(summary_text, ChatResponse):
-                    summary_text = (
-                        extract_message_text(summary_text.message)
-                        if summary_text.message
-                        else ""
-                    )
+                response = await run_pipeline(
+                    [s.content for s in level_summaries], pipe
+                )
+                summary_text = (
+                    extract_message_text(response.message) if response.message else ""
+                )
 
                 if summary_text:
                     # Get source summary IDs for tracking
@@ -420,37 +405,24 @@ class SummaryContext:
             summaries_to_consolidate.sort(key=lambda s: self._aware(s.created_at))
 
         try:
-            profile = await storage.get_service(
-                storage.model_profile
-            ).get_model_profile_by_id(
-                self.user_config.model_profiles.summarization_profile_id, self.user_id
-            )
-            assert profile, "Failed to retrieve model profile"
-            # Convert each summary to a Message object
-            summary_messages = []
-            for summary in summaries_to_consolidate:
-                summary_message = Message(
-                    role=MessageRole.USER,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=summary.content,
-                            url=None,
-                        )
-                    ],
+            assert (
+                profile := await storage.get_service(
+                    storage.model_profile
+                ).get_model_profile_by_id(
+                    self.user_config.model_profiles.summarization_profile_id,
+                    self.user_id,
                 )
-                summary_messages.append(summary_message)
+            ), "Failed to retrieve model profile"
 
             # Get summarization pipeline from factory
             with pipeline_factory.pipeline(profile, str) as pipe:
                 # Run the pipeline to get summary
-                summary_text = await pipe.process_messages(summary_messages)
-                if isinstance(summary_text, ChatResponse):
-                    summary_text = (
-                        extract_message_text(summary_text.message)
-                        if summary_text.message
-                        else ""
-                    )
+                response = await run_pipeline(
+                    [s.content for s in summaries_to_consolidate], pipe
+                )
+                summary_text = (
+                    extract_message_text(response.message) if response.message else ""
+                )
                 if summary_text:
                     # Get source summary IDs for tracking
                     source_ids = [s.id for s in summaries_to_consolidate]

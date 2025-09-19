@@ -49,12 +49,13 @@ const emptyProfile: ModelProfile = {
   name: '',
   description: '',
   model_name: '',
-  parameters: {},
+  parameters: {
+    think: false
+  },
   system_prompt: '',
   created_at: new Date(),
   updated_at: new Date(),
-  type: ModelProfileType.Primary,
-  think: false
+  type: ModelProfileType.Primary
 };
 
 const ModelProfilesPage = () => {
@@ -124,7 +125,7 @@ const ModelProfilesPage = () => {
                     variant="outlined"
                     sx={{ mt: 1 }}
                   />
-                  {profile.think && (
+                  {profile.parameters?.think && (
                     <Chip
                       label="Think Mode"
                       size="small"
@@ -137,7 +138,15 @@ const ModelProfilesPage = () => {
               </Box>
               <Box>
                 <IconButton onClick={() => {
-                  setEditingProfile(profile); setDialogOpen(true);
+                  // Ensure think field is properly set when editing
+                  setEditingProfile({
+                    ...profile,
+                    parameters: {
+                      ...profile.parameters,
+                      think: profile.parameters?.think ?? false
+                    }
+                  });
+                  setDialogOpen(true);
                 }}><EditIcon /></IconButton>
                 <IconButton onClick={() => profile.id && handleDeleteProfile(profile.id)}><DeleteIcon /></IconButton>
               </Box>
@@ -191,10 +200,13 @@ const ModelProfilesPage = () => {
           <FormControlLabel
             control={
               <Switch
-                checked={editingProfile?.think ?? false}
+                checked={editingProfile?.parameters?.think ?? false}
                 onChange={(e) => setEditingProfile({
                   ...editingProfile,
-                  think: e.target.checked
+                  parameters: {
+                    ...editingProfile?.parameters,
+                    think: e.target.checked
+                  }
                 })}
               />
             }
@@ -261,6 +273,14 @@ const ModelProfilesPage = () => {
             fullWidth margin="normal"
             type="number"
             helperText="Maximum number of tokens to predict when generating text. (Default: -1, infinite generation)"
+          />
+          <TextField
+            label="Max Tokens"
+            value={editingProfile?.parameters?.max_tokens || ''}
+            onChange={e => setEditingProfile({ ...editingProfile, parameters: { ...editingProfile.parameters, max_tokens: Number(e.target.value) } })}
+            fullWidth margin="normal"
+            type="number"
+            helperText="Maximum number of tokens to generate in a single response. This is a hard limit that stops generation."
           />
           <TextField
             label="Batch Size"
@@ -731,7 +751,6 @@ const ModelProfilesPage = () => {
                             no_kv_offload: false,
                             main_gpu: -1,
                             tensor_split: [],
-                            n_cpu_moe: 0,
                             split_mode: 'none',
                             offload_kqv: true
                           }
@@ -773,50 +792,6 @@ const ModelProfilesPage = () => {
                     }
                     label="Force KV Cache to CPU (saves VRAM)"
                     sx={{ mb: 1, display: 'block' }}
-                  />
-
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={editingProfile?.gpu_config?.offload_kqv ?? true}
-                        onChange={(e) => {
-                          const gpuConfig = editingProfile?.gpu_config;
-                          if (gpuConfig) {
-                            setEditingProfile({
-                              ...editingProfile,
-                              gpu_config: {
-                                ...gpuConfig,
-                                offload_kqv: e.target.checked
-                              }
-                            });
-                          }
-                        }}
-                      />
-                    }
-                    label="Offload Key/Query/Value tensors to GPU"
-                    sx={{ mb: 2, display: 'block' }}
-                  />
-
-                  <TextField
-                    label="CPU MoE Layers"
-                    type="number"
-                    value={editingProfile?.gpu_config?.n_cpu_moe ?? ''}
-                    onChange={(e) => {
-                      const gpuConfig = editingProfile?.gpu_config;
-                      if (gpuConfig) {
-                        const value = e.target.value === '' ? undefined : Number(e.target.value);
-                        setEditingProfile({
-                          ...editingProfile,
-                          gpu_config: {
-                            ...gpuConfig,
-                            n_cpu_moe: value
-                          }
-                        });
-                      }
-                    }}
-                    fullWidth margin="normal"
-                    helperText="Number of MoE (Mixture of Experts) layers to keep on CPU (GPT-OSS models only)"
-                    inputProps={{ min: 0 }}
                   />
 
                   {/* Device Selection */}

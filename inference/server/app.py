@@ -8,13 +8,10 @@ and text generation with OpenAI-compatible endpoints. The server integrates mult
 - Model management (loading, unloading, listing)
 - LoRA adapter management
 - Resource monitoring and management
-- RabbitMQ integration for asynchronous processing
-- gRPC service for additional communication
 
 Environment Variables:
 - HF_TOKEN: Hugging Face token for model access
 - VLLM_MODEL: Model to use for vLLM service (default: "microsoft/DialoGPT-medium")
-- RABBITMQ_PASSWORD: Password for RabbitMQ authentication
 - PYTORCH_CUDA_ALLOC_CONF: Configured to "expandable_segments:True" to avoid memory fragmentation
 
 Main Components:
@@ -62,9 +59,6 @@ from server.auth import AuthMiddleware
 from server.config import API_VERSION
 from server.db.maintenance import maintenance_service
 from server.services.cleanup_service import cleanup_service
-from server.services.rabbitmq_consumer import (
-    rabbitmq_consumer,
-)  # Import RabbitMQ consumer
 from utils.hardware_manager import hardware_manager  # Import hardware manager
 
 # Create required directories if they don't exist
@@ -94,7 +88,6 @@ async def lifespan(_: FastAPI):
     print("Initializing services...")
     hardware_manager.clear_memory()
     cleanup_service.start()
-    grpc_process = None
 
     # Auth middleware is already initialized and stored in app.state
     print("Auth middleware already initialized and stored in app.state")
@@ -222,48 +215,8 @@ async def lifespan(_: FastAPI):
         ]
         for var in db_vars:
             print(f"  {var}: {'✓' if os.environ.get(var) else '✗'}")
-
-    # # Initialize vLLM service for OpenAI compatibility
-    # print("Initializing vLLM service...")
-    # try:
-    #     # Get model name from environment or use default
-    #     # vllm_model = os.environ.get("VLLM_MODEL", "microsoft/DialoGPT-medium")
-    #     # await initialize_vllm_service(vllm_model)
-    #     print(f"vLLM service initialized with model: {vllm_model}")
-    # except Exception as e:
-    #     print(f"Warning: Failed to initialize vLLM service: {e}")
-    #     print("OpenAI-compatible endpoints may not be available")
-
-    # Initialize and start RabbitMQ consumer
-    from server.config import (
-        RABBITMQ_ENABLED,
-        RABBITMQ_PASSWORD,
-    )
-
-    if not RABBITMQ_ENABLED:
-        print("RabbitMQ integration disabled via configuration")
-    else:
-        print("Starting RabbitMQ consumer...")
-        try:
-            if not RABBITMQ_PASSWORD:
-                print("Warning: RABBITMQ_PASSWORD not set")
-
-            # Start the RabbitMQ consumer
-            rabbitmq_consumer.password = RABBITMQ_PASSWORD
-            rabbitmq_consumer.start()
-            print("RabbitMQ consumer started successfully!")
-        except (ConnectionError, OSError, ValueError) as e:
-            print(f"Error starting RabbitMQ consumer: {e}")
-            print("RabbitMQ integration will not be available")
-
-    # Start the gRPC server in a subprocess for live reload support
-    print("Starting gRPC server subprocess...")
-    # grpc_process = subprocess.Popen(
-    #     [
-    #         sys.executable,
-    #         os.path.join(os.path.dirname(__file__), "run_grpc_server.py"),
-    #         "--port",
-    #         str(INFERENCE_SERVICES_PORT),
+    print("Services initialization completed successfully!")
+    yield
     #     ]
     # )
     # print(f"gRPC server started with PID {grpc_process.pid}")
@@ -300,23 +253,6 @@ async def lifespan(_: FastAPI):
         except (RuntimeError, ValueError) as e:
             print(f"Error stopping vLLM service: {e}")
 
-        # Stop RabbitMQ consumer
-        try:
-            rabbitmq_consumer.stop()
-        except (AttributeError, ConnectionError) as e:
-            print(f"Error stopping RabbitMQ consumer: {e}")
-
-        # Terminate the gRPC server subprocess if running
-        try:
-            if grpc_process is not None and grpc_process.poll() is None:
-                print(f"Terminating gRPC server subprocess (PID {grpc_process.pid})...")
-                grpc_process.terminate()
-                # grpc_process.wait(timeout=5)
-                grpc_process.kill()
-                print("gRPC server subprocess terminated.")
-        except (ProcessLookupError, OSError) as e:
-            print(f"Error terminating gRPC server subprocess: {e}")
-
         cleanup_service.shutdown()
         hardware_manager.clear_memory(aggressive=True)
 
@@ -330,14 +266,6 @@ from server.config import AUTH_JWKS_URI
 
 print(f"Pre-initializing auth middleware with JWKS URI: {AUTH_JWKS_URI}")
 global_auth_middleware = AuthMiddleware(AUTH_JWKS_URI)
-
-# Import model patches before initializing the app
-try:
-    from models.message_patch import logger as patch_logger
-
-    patch_logger.info("Successfully imported model patches")
-except Exception as e:
-    print(f"Failed to import model patches: {e}")
 
 # Initialize the FastAPI application with the lifespan context manager
 app = FastAPI(
@@ -356,47 +284,6 @@ app.state.auth_middleware = global_auth_middleware
 from server.middleware.message_validation import MessageValidationMiddleware
 
 app.add_middleware(MessageValidationMiddleware)
-
-# Force database initialization synchronously at startup
-# This ensures the database is ready even if the lifespan doesn't run properly
-# print("Forcing database initialization at startup...")
-# try:
-#     import asyncio
-#     from server.db import storage
-#     from server.db.init_db import initialize_database
-#     from server.config import DB_CONNECTION_STRING, logger
-
-#     # Run in a new event loop to ensure it completes before serving requests
-#     loop = asyncio.new_event_loop()
-
-#     async def force_init_db():
-#         logger.info("Force initializing database...")
-#         if not storage.initialized:
-#             try:
-#                 await storage.initialize(DB_CONNECTION_STRING)
-#                 if storage.initialized and storage.pool:
-#                     logger.info(
-#                         "Database connection established, initializing schema..."
-#                     )
-#                     await initialize_database(storage.pool)
-
-#                     # Ensure default model profiles exist
-#                     logger.info("Initializing default model profiles...")
-#                     try:
-#                         await storage.model_profile.ensure_default_profiles_exist()
-#                         logger.info("Default model profiles initialized successfully")
-#                     except Exception as e:
-#                         logger.error(
-#                             f"Error initializing default model profiles: {str(e)}"
-#                         )
-#             except Exception as e:
-#                 logger.error(f"Error in force database initialization: {str(e)}")
-
-#     loop.run_until_complete(force_init_db())
-#     loop.close()
-#     print("Database initialization complete")
-# except Exception as e:
-#     print(f"Failed to force initialize database: {str(e)}")
 
 
 @app.middleware("http")
