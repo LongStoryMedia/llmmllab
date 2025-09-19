@@ -15,6 +15,7 @@ from models import DynamicTool, ToolSimilarity, DeduplicationResult
 from server.db import storage
 from runner import pipeline_factory, Embeddings
 from runner.pipeline_factory import PipelinePriority
+from runner.pipelines.run import embed_pipeline
 
 
 class AdvancedToolDeduplicator:
@@ -152,19 +153,13 @@ class AdvancedToolDeduplicator:
             raise ValueError("Embedding profile not found")
 
         # Create message for embedding
-        from models import Message, MessageRole, MessageContent, MessageContentType
-
         embedding_text = f"Tool: {tool.name}\nDescription: {tool.description}\nParameters: {tool.parameters}"
-        message = Message(
-            role=MessageRole.USER,
-            content=[MessageContent(type=MessageContentType.TEXT, text=embedding_text)],
-        )
 
         # Get embedding
         with pipeline_factory.pipeline(
             embedding_profile, Embeddings, PipelinePriority.HIGH
         ) as pipe:
-            embedding_result = await pipe.process_messages([message])
+            embedding_result = await embed_pipeline(embedding_text, pipe)
 
             if (
                 isinstance(embedding_result, list)

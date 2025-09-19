@@ -2,6 +2,16 @@
 Base pipeline class with shared timeout protection, circuit breaker, and context management.
 """
 
+import os
+import re
+import logging
+import math
+from typing import Any, Dict, List, Optional, TypeVar, AsyncIterator
+import asyncio
+from collections import deque
+from abc import ABC, abstractmethod
+from datetime import datetime
+
 import asyncio
 import hashlib
 import uuid
@@ -504,52 +514,74 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
     def _detect_emergency_repetition(self, text: str) -> bool:
         """
         Emergency detection for extreme repetition patterns that should always be caught.
-        This is a lightweight check for obvious repetition even when main detection is disabled.
+        This is a very conservative check for only the most obvious repetition cases.
         """
-        if len(text) < 500:  # Increased from 200 to 500
+        if len(text) < 1000:  # Increased from 500 to 1000 - need more text to be sure
             return False
 
-        # Check last 500 characters for extreme repetition (increased from 300)
-        check_text = text[-500:].lower()
+        # Debug logging to help troubleshoot false positives
+        self._logger.debug(f"Emergency repetition check on {len(text)} chars")
+
+        # Check last 800 characters for extreme repetition (increased from 500)
+        check_text = text[-800:].lower()
 
         # Look for very simple repetitive patterns
         words = check_text.split()
-        if len(words) < 15:  # Increased from 10 to 15
+        if len(words) < 30:  # Increased from 15 to 30 - need more words to be confident
             return False
 
-        # Check for same word or phrase repeated many times
+        # Only check for extreme word repetition (much higher threshold)
         word_counts = {}
         for word in words:
-            if len(word) > 2:  # Skip very short words
+            if len(word) > 3:  # Increased from 2 to 3 - skip short common words
                 word_counts[word] = word_counts.get(word, 0) + 1
 
-        # If any single word appears more than 12 times in last 500 chars, it's extreme repetition
-        # Increased from 8 to 12 times
+        # If any single word appears more than 20 times in last 800 chars, it's extreme repetition
+        # Increased from 12 to 20 times - much more conservative
         max_count = max(word_counts.values()) if word_counts else 0
-        if max_count > 12:
+        if max_count > 20:
+            # Find which word is repeating
+            repeat_word = max(word_counts, key=lambda word: word_counts[word])
+            self._logger.debug(
+                f"Emergency repetition: word '{repeat_word}' appears {max_count} times"
+            )
             return True
 
-        # Check for repeated phrases like "the system: the system:"
+        # Check for extremely repeated phrases (be much more conservative)
         text_parts = check_text.replace("\n", " ").split()
-        for i in range(len(text_parts) - 4):
-            phrase = " ".join(text_parts[i : i + 2])  # 2-word phrases
-            if len(phrase) > 5:  # Skip very short phrases
+        for i in range(len(text_parts) - 6):  # Increased minimum phrase length
+            phrase = " ".join(text_parts[i : i + 3])  # 3-word phrases instead of 2
+            if len(phrase) > 10:  # Increased minimum phrase length from 5 to 10
                 # Count occurrences of this phrase in the remaining text
                 remaining_text = " ".join(text_parts[i:])
                 count = remaining_text.count(phrase)
-                if count > 8:  # Increased from 5 to 8 - same 2-word phrase 8+ times
+                if count > 15:  # Increased from 8 to 15 - same 3-word phrase 15+ times
+                    self._logger.debug(
+                        f"Emergency repetition: phrase '{phrase}' appears {count} times"
+                    )
                     return True
+
+        # Check for extremely obvious patterns like "the the the the the"
+        consecutive_repeats = 0
+        for i in range(len(words) - 1):
+            if words[i] == words[i + 1] and len(words[i]) > 2:
+                consecutive_repeats += 1
+                if consecutive_repeats > 8:  # 8+ consecutive identical words
+                    self._logger.debug(
+                        f"Emergency repetition: consecutive word '{words[i]}' repeated {consecutive_repeats + 1} times"
+                    )
+                    return True
+            else:
+                consecutive_repeats = 0
 
         return False
 
     async def _stream_with_adaptive_controls(
         self, messages: List[Any], is_tool_generation: bool = False
     ) -> AIMessage:
-        """Stream generation with repetition + (optional) perplexity monitoring.
-
-        Expects underlying self.llm to support .astream returning chunks whose
-        response_metadata may include a "logprobs" dict (OpenAI / llama.cpp w/ logprobs=1).
-        Falls back gracefully if logprobs absent.
+        """
+        Stream response with adaptive controls, circuit breaker, and repetition detection.
+        Returns an AIMessage with the complete response content.
         """
         if self.llm is None:
             raise RuntimeError("LLM not initialized before streaming")
@@ -566,9 +598,6 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         full_response = ""
         tokens_seen = 0
         last_logged_tokens = 0
-
-        # Pre-calculate evaluation thresholds
-        min_eval_tokens = cfg.min_tokens_for_eval
 
         try:
             # Only request logprobs if perplexity guard is enabled and model supports it
@@ -616,10 +645,10 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
 
                 # Smart repetition detection - periodically check for issues
                 if (
-                    cfg.enable_repetition_detection  # Check if repetition detection is enabled
+                    cfg.enable_repetition_detection
                     and tokens_seen > 50
                     and tokens_seen % 25 == 0
-                ):  # Check every 25 tokens after 50
+                ):
                     is_repetitive, reason = self._detect_repetition_smart(
                         full_response, is_tool_generation
                     )
@@ -638,19 +667,18 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
                             full_response += "\n[Paused: repetitive content detected. Providing concise response.]"
                         return AIMessage(content=full_response)
 
-                # Emergency repetition detection - catches extreme cases even when main detection is disabled
-                elif (
-                    tokens_seen > 100 and tokens_seen % 50 == 0
-                ):  # Check every 50 tokens after 100
+                # Emergency repetition detection
+                elif tokens_seen > 500 and tokens_seen % 200 == 0:
                     if self._detect_emergency_repetition(full_response):
                         self._logger.warning(
-                            "Emergency repetition guard triggered at %d tokens",
+                            "Emergency repetition guard triggered at %d tokens. Last 200 chars: %s",
                             tokens_seen,
+                            repr(full_response[-200:]),
                         )
                         full_response += "\n[Error: Extreme repetitive output detected. Stopping generation.]"
                         return AIMessage(content=full_response)
 
-                # Periodic perplexity logging (non-guard informational)
+                # Periodic perplexity logging
                 tokens_seen += 1 if token_text else 0
                 log_interval = cfg.perplexity_log_interval_tokens or 20
                 if (
@@ -672,7 +700,7 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
                     )
                     last_logged_tokens = tokens_seen
 
-                # Perplexity (rolling) evaluation
+                # Perplexity evaluation
                 min_eval_tokens = cfg.min_tokens_for_eval or 20
                 if (
                     cfg.enable_perplexity_guard
@@ -698,12 +726,16 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
                         return AIMessage(content=full_response)
 
             return AIMessage(content=full_response)
-        except Exception as e:  # pragma: no cover
+        except Exception as e:
             self._logger.error(f"Adaptive streaming error: {e}")
             # Fallback: attempt non-streaming call if available
             if hasattr(self.llm, "ainvoke"):
                 try:
-                    return await self.llm.ainvoke(messages)  # type: ignore[attr-defined]
+                    result = await self.llm.ainvoke(messages)
+                    if isinstance(result, AIMessage):
+                        return result
+                    else:
+                        return AIMessage(content=str(result))
                 except Exception as inner:
                     return AIMessage(content=f"Error generating response: {inner}")
             return AIMessage(content=f"Error generating response: {e}")

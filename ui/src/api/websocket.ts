@@ -1,6 +1,6 @@
 import { userManager } from '../auth';
 import config from '../config';
-import { ChatRequest } from "../types/ChatRequest";
+import { ChatReq } from "../types/ChatRequest";
 import { MessageTypeValues } from '../types/MessageType';
 import { SocketConnectionType, SocketConnectionTypeValues } from '../types/SocketConnectionType';
 import { SocketMessage } from '../types/SocketMessage';
@@ -13,7 +13,7 @@ type ConnectionRegistry = {
 const connectionRegistry: ConnectionRegistry = {
   [SocketConnectionTypeValues.CHAT]: undefined,
   [SocketConnectionTypeValues.IMAGE]: undefined,
-  [SocketConnectionTypeValues.STATUS]: undefined  
+  [SocketConnectionTypeValues.STATUS]: undefined
 };
 
 export class ChatWebSocketClient {
@@ -29,8 +29,8 @@ export class ChatWebSocketClient {
   private apiVersion: string;
 
   constructor(
-    connectionType: SocketConnectionType, 
-    handler: (response: SocketMessage) => void, 
+    connectionType: SocketConnectionType,
+    handler: (response: SocketMessage) => void,
     path: string = "",
     apiVersion?: string
   ) {
@@ -42,18 +42,18 @@ export class ChatWebSocketClient {
 
   public connect(authToken: string): Promise<void> {
     return Promise.resolve();
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+    if (this.ws && (this.ws?.readyState === WebSocket.OPEN || this.ws?.readyState === WebSocket.CONNECTING)) {
       console.warn('WebSocket is already connected or connecting');
       return Promise.resolve();
     }
 
     const existingConnection = connectionRegistry[this.connectionType];
 
-    if (existingConnection && existingConnection !== this) {  
+    if (existingConnection && existingConnection !== this) {
       console.warn(`WebSocket connection for type ${this.connectionType} already exists. Reusing existing connection.`);
-      this.ws = existingConnection.ws;
-      this.onRes = existingConnection.onRes;
-      this.sessionId = existingConnection.sessionId;
+      this.ws = existingConnection?.ws ?? null;
+      this.onRes = existingConnection?.onRes ?? (() => { });
+      this.sessionId = existingConnection?.sessionId ?? null;
       if (!this.isConnected()) {
         // console.warn(`Reusing existing connection, but it is not connected. Attempting to reconnect.`);
         // this.autoReconnect = true; // Ensure auto-reconnect is enabled
@@ -78,10 +78,10 @@ export class ChatWebSocketClient {
         this.ws.onopen = () => {
           console.log('WebSocket connection established');
           this.reconnectAttempts = 0;
-          
+
           // Start heartbeat after successful connection
           this.startHeartbeat();
-          
+
           resolve();
         };
 
@@ -124,16 +124,29 @@ export class ChatWebSocketClient {
     }
   }
 
-  public sendMessage(request: ChatRequest): boolean {
+  public sendMessage(request: ChatReq): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       console.error('WebSocket is not connected');
       return false;
     }
 
+    // Extract text content from the first message
+    let textContent = '';
+    if (request.messages.length > 0) {
+      const firstMessage = request.messages[0];
+      if (firstMessage.content && firstMessage.content.length > 0) {
+        // Find the first text content
+        const textContentItem = firstMessage.content.find(c => c.type === 'text');
+        if (textContentItem && textContentItem.text) {
+          textContent = textContentItem.text;
+        }
+      }
+    }
+
     const command: SocketMessage = {
       id: uuidv4(),
       type: MessageTypeValues.INFO,
-      content: request.content,
+      content: textContent,
       conversation_id: request.conversation_id!,
       state: SocketStageTypeValues.INITIALIZING,
       session_id: this.sessionId ?? '',
@@ -204,18 +217,19 @@ export class ChatWebSocketClient {
 
   private lastPongTime: number = Date.now();
   private heartbeatInterval: number | null = null;
-  
+
   private handleMessage(event: MessageEvent): void {
     try {
-      const response = JSON.parse(event.data) as SocketMessage;
-      
-      // Handle heartbeats separately
-      if (response.type === 'heartbeat' || response.type === 'pong') {
-        console.log(`Received ${response.type} from server`);
+      // Handle heartbeats separately - check raw message type
+      const rawMessage = JSON.parse(event.data);
+      if (rawMessage.type === 'heartbeat' || rawMessage.type === 'pong') {
+        console.log(`Received ${rawMessage.type} from server`);
         this.lastPongTime = Date.now();
         return;
       }
-      
+
+      const response = rawMessage as SocketMessage;
+
       this.onRes(response);
     } catch (error) {
       console.error('Error parsing WebSocket message:', error);
@@ -226,7 +240,7 @@ export class ChatWebSocketClient {
     if (this.heartbeatInterval !== null) {
       window.clearInterval(this.heartbeatInterval);
     }
-    
+
     // Send ping every 25 seconds (server expects heartbeat every 30)
     this.heartbeatInterval = window.setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -236,7 +250,7 @@ export class ChatWebSocketClient {
           timestamp: new Date()
         };
         this.ws.send(JSON.stringify(pingMessage));
-        
+
         // Check if we haven't received a pong in too long (45 seconds)
         const now = Date.now();
         if (now - this.lastPongTime > 45000) {
@@ -250,7 +264,7 @@ export class ChatWebSocketClient {
   private handleClose(event: CloseEvent): void {
     console.log('WebSocket connection closed', event);
     this.ws = null;
-    
+
     // Clear heartbeat interval
     if (this.heartbeatInterval !== null) {
       window.clearInterval(this.heartbeatInterval);
@@ -263,7 +277,7 @@ export class ChatWebSocketClient {
       connectionRegistry[this.connectionType] = undefined;
       return;
     }
-    
+
     // Check if this client is still the registered one for this connection type
     if (connectionRegistry[this.connectionType] !== this) {
       console.log('This client is no longer the registered client. Skipping reconnect.');

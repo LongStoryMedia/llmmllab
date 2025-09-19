@@ -12,12 +12,14 @@ from pydantic import PrivateAttr
 
 from langchain_core.tools import BaseTool
 from runner import pipeline_factory, Embeddings
+from runner.pipelines.run import run_pipeline, embed_pipeline
 
 from models import (
     Message,
     MessageContent,
     MessageContentType,
     MessageRole,
+    ModelProfile,
     UserConfig,
     Conversation,
     ConversationCtx,
@@ -331,12 +333,11 @@ class ConversationContext(ConversationCtx):
             # Get embedding pipeline with HIGH priority (used frequently)
             from runner.pipeline_factory import PipelinePriority
 
-            embedding_pipeline = pipeline_factory.get_pipeline(
+            with pipeline_factory.pipeline(
                 mp, Embeddings, PipelinePriority.HIGH
-            )
-
-            # Process message through pipeline
-            result = await embedding_pipeline.process_messages([message])
+            ) as embedding_pipeline:
+                # Process message through normalized embedding interface
+                result = await embed_pipeline([message], embedding_pipeline)
 
             if isinstance(result, list) and all(
                 isinstance(item, list) for item in result
@@ -367,12 +368,6 @@ class ConversationContext(ConversationCtx):
             title_prompt = (
                 "Create a short, descriptive title (max 5 words) for this conversation."
             )
-            format_message = Message(
-                role=MessageRole.USER,
-                content=[
-                    MessageContent(type=MessageContentType.TEXT, text=title_prompt)
-                ],
-            )
 
             # Use the pipeline in a context manager with NORMAL priority (used occasionally)
             from runner.pipeline_factory import PipelinePriority
@@ -383,9 +378,12 @@ class ConversationContext(ConversationCtx):
                 PipelinePriority.NORMAL,
                 self.user_config.circuit_breaker,
             ) as pipe:
-                result = await pipe.process_messages([*self.messages, format_message])
+                response = await run_pipeline([*self.messages, title_prompt], pipe)
+                result = (
+                    extract_message_text(response.message) if response.message else ""
+                )
 
-            if isinstance(result, str):
+            if isinstance(result, str) and result.strip():
                 title = result.strip()
                 self.conversation.title = title
                 await storage.get_service(
@@ -407,7 +405,7 @@ class ConversationContext(ConversationCtx):
             self.logger.error(f"Error clearing notes: {e}")
 
     def get_enriched_messages(
-        self, tools: Optional[List[BaseTool]] = None
+        self, mp: Optional[ModelProfile], tools: Optional[List[BaseTool]] = None
     ) -> List[Message]:
         """
         Get conversation messages with enriched system prompt including summaries, memory, and search context.
@@ -425,7 +423,7 @@ class ConversationContext(ConversationCtx):
 
             # Create enhanced system prompt using the conversation context
             enhanced_system_prompt = self.create_system_prompt(
-                "You are a helpful assistant.",  # Use default since conversation doesn't have system_prompt
+                mp.system_prompt if mp else "You are a helpful assistant.",
                 tool_info,
             )
 

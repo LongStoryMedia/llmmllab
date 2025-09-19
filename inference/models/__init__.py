@@ -21,8 +21,12 @@ try:
     from . import dev_stats
     from . import document_source
     from . import dynamic_tool
+    from . import embedding_req
+    from . import embedding_response
     from . import event_stream_config
     from . import execution_state
+    from . import generate_req
+    from . import generate_response
     from . import gpu_config
     from . import image_generation_config
     from . import image_generation_request
@@ -47,31 +51,44 @@ try:
     from . import message_content_type
     from . import message_patch
     from . import message_role
+    from . import message_type
     from . import model
     from . import model_details
     from . import model_parameters
     from . import model_profile
     from . import model_profile_config
     from . import model_profile_image_settings
+    from . import model_profile_type
     from . import model_provider
     from . import model_task
     from . import pagination
-    from . import pipeline_error
     from . import pipeline_execution_context
     from . import pipeline_execution_state
     from . import pipeline_metrics
+    from . import pipeline_priority
+    from . import pipeline_state
     from . import preferences_config
     from . import rabbitmq_config
     from . import redis_config
     from . import refinement_config
     from . import requests
     from . import required_capability
+    from . import research_plan
+    from . import research_question
+    from . import research_question_result
+    from . import research_subtask
+    from . import research_task
     from . import resource_usage
     from . import retrieved_document
     from . import search_result
     from . import search_result_content
     from . import search_topic_synthesis
     from . import server_config
+    from . import socket_connection_type
+    from . import socket_message
+    from . import socket_session
+    from . import socket_stage_type
+    from . import socket_status_update
     from . import streaming_chunk
     from . import summarization_config
     from . import summary
@@ -85,183 +102,218 @@ try:
     from . import user_config
     from . import web_search_config
     from . import web_search_providers
+    from . import web_socket_connection
 except ImportError as e:
     import sys
+
     print(f"Warning: Some model modules could not be imported: {e}", file=sys.stderr)
 
 # Define what gets imported with 'from models import *'
 __all__ = [
-    'analysis_depth',
-    'auth_config',
-    'available_tool',
-    'chat_req',
-    'chat_response',
-    'circuit_breaker_config',
-    'complexity_estimate',
-    'complexity_level',
-    'config',
-    'conversation',
-    'conversation_ctx',
-    'database_config',
-    'deduplication_result',
-    'default_configs',
-    'default_model_profiles',
-    'dev_stats',
-    'document_source',
-    'dynamic_tool',
-    'event_stream_config',
-    'execution_state',
-    'gpu_config',
-    'image_generation_config',
-    'image_generation_request',
-    'image_generation_response',
-    'image_metadata',
-    'inference_queue_message',
-    'inference_service',
-    'inference_service_config',
-    'intent',
-    'intent_analysis',
-    'internal_config',
-    'lang_chain_message',
-    'lang_graph_node_state',
-    'lang_graph_state',
-    'lora_weight',
-    'memory',
-    'memory_config',
-    'memory_fragment',
-    'memory_source',
-    'message',
-    'message_content',
-    'message_content_type',
-    'message_patch',
-    'message_role',
-    'model',
-    'model_details',
-    'model_parameters',
-    'model_profile',
-    'model_profile_config',
-    'model_profile_image_settings',
-    'model_provider',
-    'model_task',
-    'pagination',
-    'pipeline_error',
-    'pipeline_execution_context',
-    'pipeline_execution_state',
-    'pipeline_metrics',
-    'preferences_config',
-    'rabbitmq_config',
-    'redis_config',
-    'refinement_config',
-    'requests',
-    'required_capability',
-    'resource_usage',
-    'retrieved_document',
-    'search_result',
-    'search_result_content',
-    'search_topic_synthesis',
-    'server_config',
-    'streaming_chunk',
-    'summarization_config',
-    'summary',
-    'tool_analysis_request',
-    'tool_analysis_response',
-    'tool_execution_result',
-    'tool_generation_result',
-    'tool_needs',
-    'tool_similarity',
-    'user',
-    'user_config',
-    'web_search_config',
-    'web_search_providers',
-    'AnalysisDepth',
-    'AuthConfig',
-    'AvailableTool',
-    'ChatReq',
-    'ChatResponse',
-    'CircuitBreakerConfig',
-    'ComplexityEstimate',
-    'ComplexityLevel',
-    'Config',
-    'GPUConfig',
-    'Conversation',
-    'ConversationCtx',
-    'DatabaseConfig',
-    'DeduplicationResult',
-    'DevStats',
-    'DocumentSource',
-    'DynamicTool',
-    'EventStreamConfig',
-    'ExecutionState',
-    'GPUConfig',
-    'ImageGenerationConfig',
-    'ImageGenerateRequest',
-    'ImageGenerateResponse',
-    'ImageMetadata',
-    'InferenceQueueMessage',
-    'InferenceService',
-    'InferenceServiceConfig',
-    'Intent',
-    'IntentAnalysis',
-    'InternalConfig',
-    'LangChainMessage',
-    'LangGraphNodeState',
-    'LangGraphState',
-    'LoraWeight',
-    'Memory',
-    'MemoryConfig',
-    'MemoryFragment',
-    'MemorySource',
-    'Message',
-    'MessageContent',
-    'MessageContentType',
-    'MessageRole',
-    'Model',
-    'ModelDetails',
-    'ModelParameters',
-    'GPUConfig',
-    'ModelProfile',
-    'ModelProfileConfig',
-    'ModelProfileImageSettings',
-    'ModelProvider',
-    'ModelTask',
-    'PaginationSchema',
-    'PipelineError',
-    'PipelineExecutionContext',
-    'PipelineExecutionState',
-    'PipelineMetrics',
-    'PreferencesConfig',
-    'RabbitmqConfig',
-    'RedisConfig',
-    'RefinementConfig',
-    'LoraListResponse',
-    'LoraWeightRequest',
-    'Malloc',
-    'ModelRequest',
-    'ModelsListResponse',
-    'PromptRequest',
-    'RequiredCapability',
-    'ResourceUsage',
-    'ChunkInfo',
-    'Metadata',
-    'RetrievedDocument',
-    'SearchResult',
-    'SearchResultContent',
-    'SearchTopicSynthesis',
-    'ServerConfig',
-    'StreamingChunk',
-    'SummarizationConfig',
-    'Summary',
-    'ToolAnalysisRequest',
-    'ToolAnalysisResponse',
-    'ToolExecutionResult',
-    'ToolGenerationResult',
-    'ToolNeeds',
-    'ToolSimilarity',
-    'User',
-    'GPUConfig',
-    'UserConfig',
-    'WebSearchConfig',
-    'WebSearchProviders',
+    "analysis_depth",
+    "auth_config",
+    "available_tool",
+    "chat_req",
+    "chat_response",
+    "circuit_breaker_config",
+    "complexity_estimate",
+    "complexity_level",
+    "config",
+    "conversation",
+    "conversation_ctx",
+    "database_config",
+    "deduplication_result",
+    "default_configs",
+    "default_model_profiles",
+    "dev_stats",
+    "document_source",
+    "dynamic_tool",
+    "embedding_req",
+    "embedding_response",
+    "event_stream_config",
+    "execution_state",
+    "generate_req",
+    "generate_response",
+    "gpu_config",
+    "image_generation_config",
+    "image_generation_request",
+    "image_generation_response",
+    "image_metadata",
+    "inference_queue_message",
+    "inference_service",
+    "inference_service_config",
+    "intent",
+    "intent_analysis",
+    "internal_config",
+    "lang_chain_message",
+    "lang_graph_node_state",
+    "lang_graph_state",
+    "lora_weight",
+    "memory",
+    "memory_config",
+    "memory_fragment",
+    "memory_source",
+    "message",
+    "message_content",
+    "message_content_type",
+    "message_patch",
+    "message_role",
+    "message_type",
+    "model",
+    "model_details",
+    "model_parameters",
+    "model_profile",
+    "model_profile_config",
+    "model_profile_image_settings",
+    "model_profile_type",
+    "model_provider",
+    "model_task",
+    "pagination",
+    "pipeline_execution_context",
+    "pipeline_execution_state",
+    "pipeline_metrics",
+    "pipeline_priority",
+    "pipeline_state",
+    "preferences_config",
+    "rabbitmq_config",
+    "redis_config",
+    "refinement_config",
+    "requests",
+    "required_capability",
+    "research_plan",
+    "research_question",
+    "research_question_result",
+    "research_subtask",
+    "research_task",
+    "resource_usage",
+    "retrieved_document",
+    "search_result",
+    "search_result_content",
+    "search_topic_synthesis",
+    "server_config",
+    "socket_connection_type",
+    "socket_message",
+    "socket_session",
+    "socket_stage_type",
+    "socket_status_update",
+    "streaming_chunk",
+    "summarization_config",
+    "summary",
+    "tool_analysis_request",
+    "tool_analysis_response",
+    "tool_execution_result",
+    "tool_generation_result",
+    "tool_needs",
+    "tool_similarity",
+    "user",
+    "user_config",
+    "web_search_config",
+    "web_search_providers",
+    "web_socket_connection",
+    "AnalysisDepth",
+    "AuthConfig",
+    "AvailableTool",
+    "ChatReq",
+    "ChatResponse",
+    "CircuitBreakerConfig",
+    "ComplexityEstimate",
+    "ComplexityLevel",
+    "Config",
+    "Conversation",
+    "ConversationCtx",
+    "DatabaseConfig",
+    "DeduplicationResult",
+    "DevStats",
+    "DocumentSource",
+    "DynamicTool",
+    "EmbeddingReq",
+    "EmbeddingResponse",
+    "EventStreamConfig",
+    "ExecutionState",
+    "GenerateReq",
+    "GenerateResponse",
+    "GPUConfig",
+    "ImageGenerationConfig",
+    "ImageGenerateRequest",
+    "ImageGenerateResponse",
+    "ImageMetadata",
+    "InferenceQueueMessage",
+    "InferenceService",
+    "InferenceServiceConfig",
+    "Intent",
+    "IntentAnalysis",
+    "InternalConfig",
+    "LangChainMessage",
+    "LangGraphNodeState",
+    "LangGraphState",
+    "LoraWeight",
+    "Memory",
+    "MemoryConfig",
+    "MemoryFragment",
+    "MemorySource",
+    "Message",
+    "MessageContent",
+    "MessageContentType",
+    "MessageRole",
+    "MessageType",
+    "Model",
+    "ModelDetails",
+    "ModelParameters",
+    "ModelProfile",
+    "ModelProfileConfig",
+    "ModelProfileImageSettings",
+    "ModelProfileType",
+    "ModelProvider",
+    "ModelTask",
+    "PaginationSchema",
+    "PipelineExecutionContext",
+    "PipelineExecutionState",
+    "PipelineMetrics",
+    "PipelinePriority",
+    "PipelineState",
+    "PreferencesConfig",
+    "RabbitmqConfig",
+    "RedisConfig",
+    "RefinementConfig",
+    "LoraListResponse",
+    "LoraWeightRequest",
+    "Malloc",
+    "ModelRequest",
+    "ModelsListResponse",
+    "PromptRequest",
+    "RequiredCapability",
+    "ResearchPlan",
+    "ResearchQuestion",
+    "ResearchQuestionResult",
+    "ResearchSubtask",
+    "ResearchTask",
+    "ResourceUsage",
+    "ChunkInfo",
+    "Metadata",
+    "RetrievedDocument",
+    "SearchResult",
+    "SearchResultContent",
+    "SearchTopicSynthesis",
+    "ServerConfig",
+    "SocketConnectionType",
+    "SocketMessage",
+    "SocketSession",
+    "SocketStageType",
+    "SocketStatusUpdate",
+    "StreamingChunk",
+    "SummarizationConfig",
+    "Summary",
+    "ToolAnalysisRequest",
+    "ToolAnalysisResponse",
+    "ToolExecutionResult",
+    "ToolGenerationResult",
+    "ToolNeeds",
+    "ToolSimilarity",
+    "User",
+    "UserConfig",
+    "WebSearchConfig",
+    "WebSearchProviders",
+    "WebSocketConnection",
 ]
 
 # Re-export all model classes for easy importing and IDE autocompletion
@@ -291,7 +343,6 @@ from .complexity_level import (
 )
 from .config import (
     Config,
-    GPUConfig,
 )
 from .conversation import (
     Conversation,
@@ -314,11 +365,23 @@ from .document_source import (
 from .dynamic_tool import (
     DynamicTool,
 )
+from .embedding_req import (
+    EmbeddingReq,
+)
+from .embedding_response import (
+    EmbeddingResponse,
+)
 from .event_stream_config import (
     EventStreamConfig,
 )
 from .execution_state import (
     ExecutionState,
+)
+from .generate_req import (
+    GenerateReq,
+)
+from .generate_response import (
+    GenerateResponse,
 )
 from .gpu_config import (
     GPUConfig,
@@ -389,6 +452,9 @@ from .message_content_type import (
 from .message_role import (
     MessageRole,
 )
+from .message_type import (
+    MessageType,
+)
 from .model import (
     Model,
 )
@@ -399,7 +465,6 @@ from .model_parameters import (
     ModelParameters,
 )
 from .model_profile import (
-    GPUConfig,
     ModelProfile,
 )
 from .model_profile_config import (
@@ -407,6 +472,9 @@ from .model_profile_config import (
 )
 from .model_profile_image_settings import (
     ModelProfileImageSettings,
+)
+from .model_profile_type import (
+    ModelProfileType,
 )
 from .model_provider import (
     ModelProvider,
@@ -417,9 +485,6 @@ from .model_task import (
 from .pagination import (
     PaginationSchema,
 )
-from .pipeline_error import (
-    PipelineError,
-)
 from .pipeline_execution_context import (
     PipelineExecutionContext,
 )
@@ -428,6 +493,12 @@ from .pipeline_execution_state import (
 )
 from .pipeline_metrics import (
     PipelineMetrics,
+)
+from .pipeline_priority import (
+    PipelinePriority,
+)
+from .pipeline_state import (
+    PipelineState,
 )
 from .preferences_config import (
     PreferencesConfig,
@@ -452,6 +523,21 @@ from .requests import (
 from .required_capability import (
     RequiredCapability,
 )
+from .research_plan import (
+    ResearchPlan,
+)
+from .research_question import (
+    ResearchQuestion,
+)
+from .research_question_result import (
+    ResearchQuestionResult,
+)
+from .research_subtask import (
+    ResearchSubtask,
+)
+from .research_task import (
+    ResearchTask,
+)
 from .resource_usage import (
     ResourceUsage,
 )
@@ -471,6 +557,21 @@ from .search_topic_synthesis import (
 )
 from .server_config import (
     ServerConfig,
+)
+from .socket_connection_type import (
+    SocketConnectionType,
+)
+from .socket_message import (
+    SocketMessage,
+)
+from .socket_session import (
+    SocketSession,
+)
+from .socket_stage_type import (
+    SocketStageType,
+)
+from .socket_status_update import (
+    SocketStatusUpdate,
 )
 from .streaming_chunk import (
     StreamingChunk,
@@ -503,7 +604,6 @@ from .user import (
     User,
 )
 from .user_config import (
-    GPUConfig,
     UserConfig,
 )
 from .web_search_config import (
@@ -511,4 +611,7 @@ from .web_search_config import (
 )
 from .web_search_providers import (
     WebSearchProviders,
+)
+from .web_socket_connection import (
+    WebSocketConnection,
 )

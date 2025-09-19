@@ -7,10 +7,10 @@ import uuid
 from datetime import datetime
 from typing import Dict, Optional, List
 
-from models.model_profile import ModelProfile
-from models.model_parameters import ModelParameters
-from models.model_profile_config import ModelProfileConfig
-from models.model_profile_image_settings import ModelProfileImageSettings
+from .model_profile import ModelProfile
+from .model_parameters import ModelParameters
+from .model_profile_config import ModelProfileConfig
+from .model_profile_image_settings import ModelProfileImageSettings
 
 # Define profile types as constants (similar to the Go implementation)
 MODEL_PROFILE_TYPE_PRIMARY = 1

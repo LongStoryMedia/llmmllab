@@ -4,37 +4,19 @@ Enhanced pipeline lifecycle management with robust cleanup and resource tracking
 
 import asyncio
 import logging
-import signal
 import threading
-import time
 import weakref
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional, Set, Tuple, Callable
-from enum import Enum
+from typing import Any, Dict, List, Optional, Callable
 import traceback
 
-from regex import E
-
 from models import (
-    ModelProfile,
-    CircuitBreakerConfig,
     PipelineExecutionContext,
     ResourceUsage,
     ExecutionState,
 )
 from runner.pipelines.base import BasePipelineCore
 from utils.hardware_manager import hardware_manager
-
-
-class PipelineState(Enum):
-    """Pipeline lifecycle states."""
-
-    INITIALIZING = "initializing"
-    RUNNING = "running"
-    COMPLETING = "completing"
-    TERMINATED = "terminated"
-    FAILED = "failed"
-    CLEANUP = "cleanup"
 
 
 class EnhancedPipelineLogger:

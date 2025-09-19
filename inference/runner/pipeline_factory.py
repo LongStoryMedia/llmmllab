@@ -10,12 +10,8 @@ import time
 import threading
 from typing import Any, Dict, List, Optional, Type, cast, TypeVar
 from contextlib import contextmanager
-from enum import IntEnum
 
-from .pipeline_cache import (
-    LocalPipelineCacheManager,
-    PipelinePriority as LocalCachePriority,
-)
+from .pipeline_cache import LocalPipelineCacheManager
 
 from models import (
     Model,
@@ -25,6 +21,7 @@ from models import (
     ChatResponse,
     ModelProvider,
     CircuitBreakerConfig,
+    PipelinePriority,
 )
 from models.default_configs import DEFAULT_CIRCUIT_BREAKER_CONFIG
 from .pipelines.base import BasePipelineCore, PipeReturn
@@ -33,37 +30,28 @@ from .pipelines.llamacpp.base_llamacpp import BaseLlamaCppPipeline
 from utils.hardware_manager import hardware_manager
 
 
-class PipelinePriority(IntEnum):
-    """Pipeline priority levels for cache eviction."""
-
-    LOW = 1  # Tool generation, etc. (evict first)
-    MEDIUM = 5  # Standard pipelines
-    NORMAL = 5  # Standard pipelines
-    HIGH = 10  # Critical pipelines (main chat models)
-    CRITICAL = 20  # For primary/main models that should rarely be evicted
-
-
 T = TypeVar("T", bound=PipeReturn)
 
 
 class PipelineFactory:
     """
-    Factory that:
-    - Loads model metadata from /app/.models.json
-    - Creates appropriate pipeline implementation per model.task/pipeline
-    - Caches pipelines with weakrefs and cleans them up after inactivity
+    Factory for creating pipelines.
+
+    Handles:
+    - Pipeline creation and coordination
+    - Resource allocation coordination
+    - Delegating cache management to LocalPipelineCacheManager
     """
 
-    _available_models: Dict[str, Model] = {}
-    _cache_timeout = 300  # seconds
-    _cleanup_lock = threading.RLock()
-
-    def __init__(self):
-        """Initialize production-ready pipeline factory with lifecycle management."""
+    def __init__(self, models_map: Dict[str, Model]):
+        self.models: Dict[str, Model] = models_map or {}
         self.logger = logging.getLogger(__name__)
 
-        # Available models (populate from config)
+        # Initialize attributes that were removed but are still used
         self._available_models: Dict[str, Model] = {}
+        self.prefer_langgraph = False  # Default value for langgraph preference
+        self._active_loads = 0  # Track active loading operations
+        self._active_local_uses = 0  # Track active local pipeline uses
 
         # Use our new local pipeline cache
         self.local_cache = LocalPipelineCacheManager()
@@ -71,17 +59,18 @@ class PipelineFactory:
         # Coordination for memory-constrained loading
         self._coord_lock = threading.Lock()
         self._coord_cond = threading.Condition(self._coord_lock)
-        self._active_loads = 0  # Number of concurrent pipeline loads
-        self._active_local_uses = 0  # Number of active local pipeline uses
+
+        # Track models currently being loaded to prevent duplicate loading
         self._loading_models: Dict[str, threading.Event] = (
             {}
-        )  # Track which models are currently loading
+        )  # model_id -> Event to wait for loading completion
 
-        # Load configurations
-        self.prefer_langgraph = True  # default - can be controlled
+        # Load available models
         self._load_available_models()
 
-    # Legacy cleanup thread no longer needed (handled in LocalPipelineCacheManager)
+        self.logger.info("PipelineFactory initialized with LocalPipelineCacheManager")
+
+    # Background cleanup is handled entirely in LocalPipelineCacheManager
 
     # ---------- Model loading ----------
 
@@ -191,120 +180,6 @@ class PipelineFactory:
 
     # ---------- Public API ----------
 
-    def _estimate_pipeline_memory_requirements(self, model: Model) -> float:
-        """
-        Estimate memory requirements for a pipeline based on model characteristics.
-        Returns estimated bytes required.
-
-        Uses parameter-based calculation as primary method, with size as fallback validation.
-        """
-        base_memory = 512 * 1024 * 1024  # 512MB base overhead
-        model_size_bytes = 0
-
-        # Primary: Calculate from parameter size (most reliable)
-        if (
-            hasattr(model, "details")
-            and model.details
-            and hasattr(model.details, "parameter_size")
-        ):
-            param_size = model.details.parameter_size
-            if param_size:
-                try:
-                    # Parse parameter size (e.g., "30B", "20B", "3B", "475M")
-                    param_str = param_size.upper().strip()
-
-                    if param_str.endswith("B"):
-                        params = float(param_str[:-1]) * 1_000_000_000
-                    elif param_str.endswith("M"):
-                        params = float(param_str[:-1]) * 1_000_000
-                    elif param_str.endswith("K"):
-                        params = float(param_str[:-1]) * 1_000
-                    else:
-                        # Assume it's in billions if no suffix and > 1
-                        num_val = float(param_str)
-                        params = (
-                            num_val * 1_000_000_000
-                            if num_val > 1
-                            else num_val * 1_000_000
-                        )
-
-                    # Estimate bytes per parameter based on quantization
-                    quantization = getattr(
-                        model.details, "quantization_level", "q4"
-                    ).lower()
-                    if "q4" in quantization or "iq4" in quantization:
-                        bytes_per_param = 0.5  # 4-bit
-                    elif "q5" in quantization:
-                        bytes_per_param = 0.625  # 5-bit
-                    elif "q8" in quantization:
-                        bytes_per_param = 1.0  # 8-bit
-                    elif any(x in quantization for x in ["fp16", "bf16", "f16"]):
-                        bytes_per_param = 2.0  # 16-bit
-                    else:
-                        bytes_per_param = 4.0  # fp32 default
-
-                    model_size_bytes = int(params * bytes_per_param)
-
-                    self.logger.debug(
-                        f"Parameter-based size for {model.name}: {param_size} = {params:,.0f} params "
-                        f"* {bytes_per_param} bytes/param = {model_size_bytes/1e9:.2f}GB"
-                    )
-
-                except (ValueError, AttributeError) as e:
-                    self.logger.warning(
-                        f"Could not parse parameter size '{param_size}': {e}"
-                    )
-
-        # Fallback: Use model.size if parameter calculation failed and size seems reasonable
-        if model_size_bytes == 0 and hasattr(model, "size") and model.size:
-            # Use model.size as fallback, but validate it's reasonable
-            if model.size < 100 * 1024 * 1024 * 1024:  # Less than 100GB
-                model_size_bytes = model.size
-                self.logger.debug(f"Using model.size: {model_size_bytes/1e9:.2f}GB")
-            else:
-                self.logger.warning(
-                    f"Model size {model.size/1e9:.2f}GB seems unreasonable, using task-based estimate"
-                )
-
-        # Last resort: Task-based defaults (more conservative)
-        if model_size_bytes == 0:
-            task = getattr(model, "task", "TextToText")
-            if task == "TextToEmbeddings":
-                model_size_bytes = 1 * 1024 * 1024 * 1024  # 1GB
-            elif task in ["TextToText", "VisionTextToText"]:
-                model_size_bytes = 4 * 1024 * 1024 * 1024  # 4GB (reduced from 8GB)
-            elif task in ["TextToImage", "ImageToImage"]:
-                model_size_bytes = 8 * 1024 * 1024 * 1024  # 8GB (reduced from 12GB)
-            else:
-                model_size_bytes = 2 * 1024 * 1024 * 1024  # 2GB (reduced from 4GB)
-
-            self.logger.debug(
-                f"Using task-based default for {task}: {model_size_bytes/1e9:.2f}GB"
-            )
-
-        # Conservative context memory estimation
-        context_memory = 0
-        task = getattr(model, "task", "")
-        if task in ["TextToText", "VisionTextToText"]:
-            # Context memory scales with model size but caps at 2GB
-            context_memory = min(model_size_bytes * 0.1, 2 * 1024 * 1024 * 1024)
-
-        total_estimated = base_memory + model_size_bytes + context_memory
-        # Add safety margin for local providers due to KV cache fragmentation / extra overhead
-        provider = getattr(model, "provider", "") or ""
-        if provider in {ModelProvider.LLAMA_CPP, ModelProvider.STABLE_DIFFUSION_CPP}:
-            total_estimated *= 1.10
-
-        self.logger.info(
-            f"Memory estimate for {model.name}: "
-            f"Model: {model_size_bytes/1e9:.2f}GB + "
-            f"Context: {context_memory/1e9:.2f}GB + "
-            f"Base: {base_memory/1e6:.0f}MB = "
-            f"Total: {total_estimated/1e9:.2f}GB"
-        )
-
-        return total_estimated
-
     def get_pipeline(
         self,
         profile: ModelProfile,
@@ -326,7 +201,7 @@ class PipelineFactory:
             def create_with_coordination(
                 m: Model, p: ModelProfile, e: Optional[Type[PipeReturn]]
             ) -> Optional[BasePipelineCore]:
-                required_estimate = self._estimate_pipeline_memory_requirements(m)
+                required_estimate = self.local_cache.estimate_memory(m)
                 self._acquire_load_slot(required_estimate, model_id)
                 try:
                     return self.create_pipeline(
@@ -339,7 +214,7 @@ class PipelineFactory:
                 model,
                 profile,
                 expected_type,
-                LocalCachePriority(priority.value),  # map enum values
+                priority,  # use shared PipelinePriority directly
                 create_with_coordination,
             )
             try:
@@ -378,7 +253,7 @@ class PipelineFactory:
         return {
             "local_cache": local_stats,
             "available_models": len(self._available_models),
-            "cache_timeout": self._cache_timeout,
+            "cache_size": len(self.local_cache._cache),
             "memory_stats": {
                 device_id: {
                     "total_mb": stats.mem_total,
@@ -529,9 +404,7 @@ class PipelineFactory:
 
     def set_pipeline_priority(self, model_id: str, priority: PipelinePriority) -> bool:
         # Map external priority enum to local cache priority and delegate
-        success = self.local_cache.set_priority(
-            model_id, LocalCachePriority(priority.value)
-        )
+        success = self.local_cache.set_priority(model_id, priority)
         if success:
             self.logger.info(
                 f"Updated pipeline priority for {model_id} -> {priority.name}"
@@ -899,4 +772,4 @@ class PipelineFactory:
 
 
 # Create global factory instance
-pipeline_factory = PipelineFactory()
+pipeline_factory = PipelineFactory({})

@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 # Set up logging
 log_level = os.environ.get("LOG_LEVEL", "info").lower()
@@ -182,27 +182,7 @@ os.environ.setdefault("PYTORCH_NO_CUDA_MEMORY_CACHING", "1")
 # os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF",
 #                       "expandable_segments:True")
 
-# RabbitMQ configuration
-RABBITMQ_ENABLED = os.environ.get("RABBITMQ_ENABLED", "true").lower() == "true"
-RABBITMQ_HOST = os.environ.get(
-    "RABBITMQ_HOST", "rabbitmq-0.rabbitmq.rabbitmq.svc.cluster.local"
-)
-RABBITMQ_PORT = int(os.environ.get("RABBITMQ_PORT", "5672"))
-RABBITMQ_USER = os.environ.get("RABBITMQ_USER", "lsm")
-RABBITMQ_PASSWORD = os.environ.get("RABBITMQ_PASSWORD", "")
-RABBITMQ_VHOST = os.environ.get("RABBITMQ_VHOST", "/")
-
-
-# gRPC server configuration
-GRPC_PORT = int(os.environ.get("GRPC_PORT", "50051"))
-GRPC_MAX_WORKERS = int(os.environ.get("GRPC_MAX_WORKERS", "10"))
-GRPC_MAX_MESSAGE_SIZE = int(
-    os.environ.get("GRPC_MAX_MESSAGE_SIZE", "104857600")
-)  # 100MB
-GRPC_MAX_CONCURRENT_RPCS = int(os.environ.get("GRPC_MAX_CONCURRENT_RPCS", "100"))
-GRPC_ENABLE_REFLECTION = (
-    os.environ.get("GRPC_ENABLE_REFLECTION", "true").lower() == "true"
-)
+# Inference service configuration
 
 # Internal security configuration
 INTERNAL_API_KEY = os.environ.get(
@@ -211,17 +191,6 @@ INTERNAL_API_KEY = os.environ.get(
 INTERNAL_ALLOWED_IPS = os.environ.get(
     "INTERNAL_ALLOWED_IPS", "192.168.0.0/24,10.43.0.0/16"
 )
-
-# gRPC authentication
-GRPC_REQUIRE_API_KEY = os.environ.get("GRPC_REQUIRE_API_KEY", "false").lower() == "true"
-GRPC_API_KEY = os.environ.get(
-    "GRPC_API_KEY", INTERNAL_API_KEY
-)  # API key for authentication
-
-# TLS/SSL configuration
-GRPC_USE_TLS = os.environ.get("GRPC_USE_TLS", "false").lower() == "true"
-GRPC_CERT_FILE = os.environ.get("GRPC_CERT_FILE", "/etc/inference/certs/server.crt")
-GRPC_KEY_FILE = os.environ.get("GRPC_KEY_FILE", "/etc/inference/certs/server.key")
 
 # vLLM configuration for OpenAI compatibility
 VLLM_MODEL = os.environ.get("VLLM_MODEL", "microsoft/DialoGPT-medium")
@@ -275,22 +244,6 @@ VLLM_MODEL_PRESETS = {
         "gpu_memory_utilization": 0.9,
     },
 }
-
-
-def get_grpc_config() -> Dict[str, Any]:
-    """Get the gRPC server configuration."""
-    return {
-        "port": GRPC_PORT,
-        "max_workers": GRPC_MAX_WORKERS,
-        "max_message_size": GRPC_MAX_MESSAGE_SIZE,
-        "max_concurrent_rpcs": GRPC_MAX_CONCURRENT_RPCS,
-        "enable_reflection": GRPC_ENABLE_REFLECTION,
-        "require_api_key": GRPC_REQUIRE_API_KEY,
-        "api_key": GRPC_API_KEY,
-        "use_tls": GRPC_USE_TLS,
-        "cert_file": GRPC_CERT_FILE,
-        "key_file": GRPC_KEY_FILE,
-    }
 
 
 def get_vllm_config(preset: str) -> Dict[str, Any]:

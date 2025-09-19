@@ -44,7 +44,7 @@ from utils.langgraph import (
 from utils.message import from_lc_message
 from ..base_langgraph import CircuitBreakerConfig
 from ..llamacpp.base_llamacpp import BaseLlamaCppPipeline
-from .context_manager import ContextManager
+from ..context_manager import ContextManager
 
 
 class OpenAiGptOssPipe(BaseLlamaCppPipeline):

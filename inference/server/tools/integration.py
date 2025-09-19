@@ -14,16 +14,13 @@ from pydantic import ValidationError
 
 from runner import pipeline_factory
 from runner.pipeline_factory import PipelinePriority
+from runner.pipelines.run import run_pipeline
 from utils.hardware_manager import hardware_manager
 from server.tools.dynamic_tool import DynamicToolRunner
 from server.db import storage
 from server.services.context import ConversationContext
 from utils.message import extract_message_text
 from models import (
-    Message,
-    MessageRole,
-    MessageContent,
-    MessageContentType,
     DynamicTool,
     ToolAnalysisResponse,
     ToolGenerationResult,
@@ -289,8 +286,12 @@ Examples that DON'T need dynamic tools:
 Respond with only "NO" if existing tools are sufficient.
 If a dynamic tool is needed, describe its purpose and functionality in less than 50 words.
 """
-
-            response = await pipeline.prompt(analysis_prompt)
+            chat_response = await run_pipeline(analysis_prompt, pipeline)
+            response = (
+                extract_message_text(chat_response.message)
+                if chat_response.message
+                else ""
+            )
 
             # Enforce string return type for analysis pipeline
             if not isinstance(response, str):
@@ -443,22 +444,14 @@ Format your response as valid JSON matching this schema:
 Make the tool specific to the user's request but generalizable for similar tasks."""
 
                     # Add timeout to prevent tool generation from blocking
-                    tool_response = await asyncio.wait_for(
-                        pipe.process_messages(
-                            [
-                                Message(
-                                    role=MessageRole.USER,
-                                    content=[
-                                        MessageContent(
-                                            type=MessageContentType.TEXT,
-                                            text=generation_prompt,
-                                        )
-                                    ],
-                                )
-                            ],
-                            is_tool_generation=True,  # Deterministic flag for tool generation
-                        ),
+                    response = await asyncio.wait_for(
+                        run_pipeline(generation_prompt, pipe),
                         timeout=300.0,  # 5 minute timeout for tool generation (increased for complex tools)
+                    )
+                    tool_response = (
+                        extract_message_text(response.message)
+                        if response.message
+                        else ""
                     )
 
                     if not tool_response:

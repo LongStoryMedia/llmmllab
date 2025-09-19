@@ -12,19 +12,17 @@ LLM ML Lab is a multi-modal language model platform with microservice architectu
 ## Key Development Workflows
 
 ### Environment Setup
+
+
+
 ```bash
-# Setup all inference environments (evaluation, server, runner)
-./inference/setup_environments.sh
-
-# Run commands in specific environments (local development)
-./inference/run_with_env.sh server python -m uvicorn app:app --port 8000
-./inference/run_with_env.sh runner python -c "import torch; print(torch.cuda.is_available())"
-
 # Kubernetes pod commands (production/staging)
 POD_NAME=$(k get pods -n ollama -o jsonpath='{.items[0].metadata.name}')
 k exec -it -n ollama $POD_NAME -- /app/v.sh server python -m uvicorn app:app --port 8000
 k exec -it -n ollama $POD_NAME -- /app/v.sh runner python -c "import torch; print(torch.cuda.is_available())"
 ```
+you may invoke simple code locally using python directly if you have the right environment activated, but
+you must sync code to the remote Kubernetes cluster to run services:
 
 ### Build & Deploy (Kubernetes)
 ```bash

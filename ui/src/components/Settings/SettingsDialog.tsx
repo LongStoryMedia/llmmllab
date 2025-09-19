@@ -9,7 +9,7 @@ const SettingsDialog = () => {
   return (
     <>
       <Typography>{`Settings for ${activeTab}`}</Typography>
-      <SettingsTabs onTabChange={tab => setActiveTab(tab)} />
+      <SettingsTabs onTabChange={tab => setActiveTab(tab)} currentTab={activeTab} />
     </>
   );
 };
