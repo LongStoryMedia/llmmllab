@@ -17,6 +17,7 @@ export interface ChatContextType {
   selectedModel: string;
   models: Model[];
   isPaused: boolean;
+  currentObserverMessages: string[];
   
   // Actions
   sendMessage: ReturnType<typeof useChatOperations>['sendMessage'];
@@ -31,6 +32,7 @@ export interface ChatContextType {
   pauseRequest: ReturnType<typeof useChatOperations>['pauseRequest'];
   cancelRequest: ReturnType<typeof useChatOperations>['cancelRequest'];
   resumeRequest: ReturnType<typeof useChatOperations>['resumeRequest'];
+  setCurrentObserverMessages: ReturnType<typeof useChatState>[1]['setCurrentObserverMessages'];
 }
 
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(({ children }) => {
@@ -71,6 +73,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(
     selectedModel: state.selectedModel,
     models: state.models,
     isPaused: state.isPaused,
+    currentObserverMessages: state.currentObserverMessages,
     
     // Actions
     sendMessage: operations.sendMessage,
@@ -84,7 +87,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(
     fetchModels: operations.fetchModels,
     pauseRequest: operations.pauseRequest,
     cancelRequest: operations.cancelRequest,
-    resumeRequest: operations.resumeRequest
+    resumeRequest: operations.resumeRequest,
+    setCurrentObserverMessages: actions.setCurrentObserverMessages
   };
 
   return <ChatContext.Provider value={contextValue}>{children}</ChatContext.Provider>;

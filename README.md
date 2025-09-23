@@ -49,6 +49,17 @@ Each component has its own detailed README with specific instructions:
 - [Context Extension Architecture](docs/context_extension.md) - LLM context window extension system
 - [Dynamic Tool Generation](inference/server/tools/README.md) - Tool generation for model execution
 
+## Pipeline Documentation
+
+The inference runner module includes comprehensive pipeline support for all model types. For developers building custom pipelines or working with existing ones:
+
+- [**Pipeline Documentation Overview**](docs/PIPELINE_DOCUMENTATION_OVERVIEW.md) - Complete guide to all available pipeline documentation
+- [**Pipeline Implementation Guide**](docs/PIPELINE_IMPLEMENTATION_GUIDE.md) - Comprehensive step-by-step guide for implementing custom pipelines
+- [**Pipeline API Reference**](docs/PIPELINE_API_REFERENCE.md) - Complete API documentation for all pipeline interfaces
+- [**Runner Architecture Overhaul**](docs/RUNNER_ARCHITECTURE_OVERHAUL.md) - Recent improvements including streaming architecture and pipeline-specific processing
+
+The pipeline system supports all major AI workflows including text generation, embeddings, image generation, and multimodal interactions with advanced features like circuit breakers, memory optimization, and real-time streaming.
+
 ## Getting Started
 
 ### Prerequisites

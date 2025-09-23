@@ -166,7 +166,10 @@ class BasePipelineCore(ABC, Generic[PipeType]):
 
     @abstractmethod
     async def process_messages(
-        self, messages: List[Message], tools: Optional[List[BaseTool]] = None, is_tool_generation: bool = False
+        self,
+        messages: List[Message],
+        tools: Optional[List[BaseTool]] = None,
+        is_tool_generation: bool = False,
     ) -> PipeType:
         """Process messages and return appropriate response type."""
 
@@ -231,34 +234,92 @@ class BasePipelineCore(ABC, Generic[PipeType]):
     def _cleanup_resources(self) -> None:
         """Subclass-specific cleanup. Override as needed."""
 
+    # def get_common_args(self):
+    #     """Get common arguments for the pipeline."""
+    #     # Calculate optimal context size
+    #     size_map = {
+    #         "0.5b": 32768,
+    #         "1.5b": 32768,
+    #         "3b": 32768,
+    #         "7b": 32768,
+    #         "14b": 65536,
+    #         "30b": 131072,
+    #         "72b": 131072,
+    #     }
+    #     model_name = self.model.name.lower()
+    #     context_size = next(
+    #         (size for key, size in size_map.items() if key in model_name), 32768
+    #     )
+    # return context_size
+
     def get_common_args(self):
-        """Get common arguments for the pipeline."""
-        # Calculate optimal context size
-        size_map = {
-            "0.5b": 32768,
-            "1.5b": 32768,
-            "3b": 32768,
-            "7b": 32768,
-            "14b": 65536,
-            "30b": 131072,
-            "72b": 131072,
-        }
-        model_name = self.model.name.lower()
-        context_size = next(
-            (size for key, size in size_map.items() if key in model_name), 32768
-        )
+        """Return common arguments for this pipeline."""
         return {
-            "n_ctx": self.profile.parameters.num_ctx or context_size,
-            "seed": self.profile.parameters.seed or -1,
-            "temperature": self.profile.parameters.temperature or 0.7,
-            "max_tokens": self.profile.parameters.max_tokens or 4096,
-            "top_p": self.profile.parameters.top_p or 0.8,
-            "top_k": self.profile.parameters.top_k or 20,
-            "repeat_penalty": self.profile.parameters.repeat_penalty or 1.05,
-            "stop": self.profile.parameters.stop
-            or ["<|im_end|>", "<|endoftext|>", "<|end|>"],
-            "callback_manager": CallbackManager([StreamingStdOutCallbackHandler()]),
+            "model": self.model.model_dump() if self.model else None,
+            "profile": self.profile.model_dump() if self.profile else None,
         }
+
+    # ---- Token-level post-processing hooks ----
+    def process_streaming_token(self, content: str) -> Optional["ChatResponse"]:
+        """
+        Process a single streaming token and return appropriately formatted ChatResponse.
+
+        This method should be overridden by pipelines that need custom token-level processing.
+        For example:
+        - GPT-OSS pipeline can track harmony channels and route to thinking/content fields
+        - Qwen3MoE pipeline can track <think> tags and route accordingly
+
+        Args:
+            content: The raw token/content from the LLM
+
+        Returns:
+            ChatResponse with content routed to appropriate fields, or None to suppress
+        """
+        # Default implementation: route all content to message content
+        # if not content.strip():
+        #     return None
+
+        message = Message(
+            role=MessageRole.ASSISTANT,
+            content=[MessageContent(type=MessageContentType.TEXT, text=content)],
+        )
+
+        return ChatResponse(done=False, message=message, created_at=datetime.now())
+
+    def reset_streaming_state(self) -> None:
+        """
+        Reset any internal state used for streaming token processing.
+        Called at the start of each streaming session.
+
+        Pipelines should override this to reset their token processing state.
+        """
+        pass
+
+    def finalize_streaming(self) -> Optional["ChatResponse"]:
+        """
+        Called when streaming is complete to allow final processing.
+
+        Returns:
+            Optional final ChatResponse with any remaining content or metadata
+        """
+        return None
+
+    def _create_streaming_response(self, content: str) -> ChatResponse:
+        """Create a streaming response with content."""
+        message = Message(
+            role=MessageRole.ASSISTANT,
+            content=[MessageContent(type=MessageContentType.TEXT, text=content)],
+        )
+        return ChatResponse(message=message, done=False)
+
+    def _create_thinking_response(self, thinking_content: str) -> ChatResponse:
+        """Create a response with thinking content."""
+        message = Message(
+            role=MessageRole.ASSISTANT,
+            thinking=thinking_content,
+            content=[],  # Empty content for thinking-only response
+        )
+        return ChatResponse(message=message, done=False)
 
 
 class ChatPipeline(BasePipelineCore, LangGraphCapable):
@@ -283,7 +344,10 @@ class ChatPipeline(BasePipelineCore, LangGraphCapable):
         """Initialize the underlying LLM. Must be implemented by subclasses."""
 
     async def process_messages(
-        self, messages: List[Message], tools: Optional[List[BaseTool]] = None, is_tool_generation: bool = False
+        self,
+        messages: List[Message],
+        tools: Optional[List[BaseTool]] = None,
+        is_tool_generation: bool = False,
     ) -> ChatResponse:
         """Process messages and return ChatResponse."""
         # Default implementation - subclasses can override
@@ -433,7 +497,10 @@ class EmbeddingPipeline(BasePipelineCore):
 
     @abstractmethod
     async def process_messages(
-        self, messages: List[Message], tools: Optional[List[BaseTool]] = None, is_tool_generation: bool = False
+        self,
+        messages: List[Message],
+        tools: Optional[List[BaseTool]] = None,
+        is_tool_generation: bool = False,
     ) -> List[List[float]]:
         """Process messages and return embeddings."""
         # To be implemented by subclasses
@@ -459,7 +526,10 @@ class TextPipeline(BasePipelineCore):
 
     @abstractmethod
     async def process_messages(
-        self, messages: List[Message], tools: Optional[List[BaseTool]] = None, is_tool_generation: bool = False
+        self,
+        messages: List[Message],
+        tools: Optional[List[BaseTool]] = None,
+        is_tool_generation: bool = False,
     ) -> str:
         """Process messages and return text."""
         # To be implemented by subclasses

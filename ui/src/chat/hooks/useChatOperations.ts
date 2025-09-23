@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { ChatState, ChatActions } from './useChatState';
 import { useAuth } from '../../auth';
-import { chat, getManyConversations, getMessages, removeConversation, startConversation, getModels, getToken, getUserConversations, getLllabUsers, pause, cancel, resume } from '../../api';
+import { chat, getManyConversations, getMessages, removeConversation, startConversation, getModels, getToken, getUserConversations, getLllabUsers, pause, cancel, resume, ChatChunk } from '../../api';
 import { Conversation } from '../../types/Conversation';
 import { useNavigate } from 'react-router-dom';
 import { Message } from '../../types/Message';
@@ -200,11 +200,33 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
         role: 'user'
       });
 
+      // Clear any existing observer messages
+      actions.setCurrentObserverMessages([]);
+
       // Fallback to HTTP API if WebSocket method fails
       abortController.current = new AbortController();
       for await (const chunk of chat(getToken(auth.user), message, abortController.current.signal)) {
-        // Use functional update to ensure we're always working with the latest state
-        actions.setResponse(r => r + chunk);
+        // Handle ChatChunk structure with content, thinking, channels, and observer_messages
+        if (typeof chunk === 'string') {
+          // Legacy string response - just append to response
+          actions.setResponse(r => r + chunk);
+        } else {
+          // ChatChunk object with structured data
+          const chatChunk = chunk as ChatChunk;
+          
+          // Append content to response
+          if (chatChunk.content) {
+            actions.setResponse(r => r + chatChunk.content);
+          }
+          
+          // Handle observer messages - set them for floating notification display
+          if (chatChunk.observer_messages && chatChunk.observer_messages.length > 0) {
+            actions.setCurrentObserverMessages(chatChunk.observer_messages);
+          }
+          
+          // Note: thinking and channels are handled in the UI components
+          // via the parseResponse utility which checks the response object
+        }
       }
 
     } catch (err: unknown) {

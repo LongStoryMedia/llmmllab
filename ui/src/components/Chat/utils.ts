@@ -20,7 +20,16 @@ export const sanitizeForLaTeX = (text: string): string => {
   );
 };
 
-export const parseResponse = (content: string, inProgress: boolean) => {
+export const parseResponse = (content: string, inProgress: boolean, thinking?: string) => {
+  // If we have extracted thinking content from the backend, use that
+  if (thinking) {
+    return {
+      think: thinking,
+      rest: content || ''
+    };
+  }
+  
+  // Fallback to legacy parsing for backwards compatibility
   const startIdx = content.indexOf('<think>');
   const endIdx = content.indexOf('</think>', startIdx);
   if (startIdx === -1 || (endIdx === -1 && !inProgress)) {
