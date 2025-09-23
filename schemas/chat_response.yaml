@@ -49,9 +49,6 @@ properties:
   eval_duration:
     type: number
     description: Time taken for token evaluation in milliseconds
-  thinking:
-    type: string
-    description: Extracted reasoning/thinking content from the model response
   channels:
     type: object
     description: Additional structured channels extracted from the response (tool calls, status, etc.)

@@ -5,6 +5,9 @@
 LLM ML Lab is a multi-modal language model platform with microservice architecture:
 
 - **inference/**: Python services (evaluation, server, runner) with isolated virtual environments
+     - **evaluation/**: Model benchmarking and fine-tuning tools
+     - **server/**: FastAPI REST + gRPC services for model interaction (calls runner for execution)
+     - **runner/**: Model execution pipelines with dynamic tool integration
 - **ui/**: React TypeScript frontend with Material UI Joy
 - **proto/**: Protocol buffer definitions for gRPC APIs
 - **schemas/**: YAML schema definitions for type safety across services
@@ -21,28 +24,15 @@ POD_NAME=$(k get pods -n ollama -o jsonpath='{.items[0].metadata.name}')
 k exec -it -n ollama $POD_NAME -- /app/v.sh server python -m uvicorn app:app --port 8000
 k exec -it -n ollama $POD_NAME -- /app/v.sh runner python -c "import torch; print(torch.cuda.is_available())"
 ```
-you may invoke simple code locally using python directly if you have the right environment activated, but
-you must sync code to the remote Kubernetes cluster to run services:
 
-### Build & Deploy (Kubernetes)
-```bash
-# Development cycle - sync code to cluster and watch logs
-make inference-dev  # Syncs code via rsync and tails logs
+inference does not generally run locally due to hardware needs. use `inferece/sync-code.sh` to sync code to remote cluster.
+the ui is fully local and connects to remote inference services.
 
-# Manual code sync to Kubernetes pod
-./inference/sync-code.sh  # Or just ./sync-code.sh from inference/ directory
-
-# Full deployment pipeline
-make deploy  # Builds Docker images and deploys to K8s cluster
-```
 
 ### Code Generation
 ```bash
-# Generate Python models from YAML schemas
+# Generate Python and Typescript models from YAML schemas
 ./regenerate_models.sh
-
-# Generate protobuf code for multiple languages
-python protogen.py --languages python,go --proto_dir proto
 ```
 
 ## Critical Patterns
@@ -53,32 +43,18 @@ The inference service uses **three isolated Python environments**:
 - `server/`: FastAPI REST + gRPC services 
 - `runner/`: Model execution pipelines
 
-Always use `run_with_env.sh` wrapper when working with inference code locally, or `/app/v.sh {service}` when executing commands in Kubernetes pods.
+Always use `/app/v.sh {service}` when executing commands in Kubernetes pods.
 
 ### Schema-Driven Development
 YAML schemas in `schemas/` define the data contracts. When modifying APIs:
 1. Update relevant YAML schema first
 2. Run `./regenerate_models.sh` to generate Python models
-3. Update protobuf definitions in `proto/` if needed
-4. Regenerate protobuf code with `protogen.py`
 
 ### Memory Management
 The platform implements sophisticated memory optimization:
 - Models loaded on-demand and unloaded after use
 - GPU memory tracking and automatic resource management
 - Multiple memory optimization strategies based on available VRAM
-
-### WebSocket Communication
-Real-time features use WebSocket connections defined in `schemas/web_socket_connection.yaml`:
-- Chat streaming (token-by-token responses)
-- Image generation status updates
-- System status and error notifications
-
-### RabbitMQ Integration
-Asynchronous processing through message queues:
-- Task queuing for compute-intensive operations
-- Load balancing across worker instances
-- Priority processing and failure recovery
 
 ## Service Communication
 
@@ -103,7 +79,6 @@ make start  # Parallel: inference-dev + UI dev server
 
 ## File Conventions
 
-- **Inference modules**: Follow pattern `inference/{service}/app.py` as entry points
 - **API endpoints**: REST in `server/`, gRPC services use protobuf contracts
 - **Configuration**: Centralized in `schemas/config.yaml` with component-specific refs
 - **Kubernetes**: Deployments in `{service}/k8s/` with `apply.sh` automation

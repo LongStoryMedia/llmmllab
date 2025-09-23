@@ -56,7 +56,7 @@ export async function* chat(accessToken: string, message: Message, abortSignal?:
           }
         }
       }
-      console.log('chunk:', chatResponse);
+      // console.log('chunk:', chatResponse);
 
       // Yield structured chunk with all ChatResponse fields
       yield {

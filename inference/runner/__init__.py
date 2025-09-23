@@ -9,6 +9,15 @@ from .pipeline_factory import (
     PipeReturn,
 )
 
-from .pipelines.base import Embeddings
+from .pipelines.base import Embeddings, EmbeddingPipeline
+from .pipelines.run import run_pipeline, stream_pipeline, embed_pipeline
 
-__all__ = ["pipeline_factory", "PipeReturn", "Embeddings"]
+__all__ = [
+    "pipeline_factory",
+    "PipeReturn",
+    "Embeddings",
+    "run_pipeline",
+    "stream_pipeline",
+    "embed_pipeline",
+    "EmbeddingPipeline",
+]

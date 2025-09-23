@@ -5,6 +5,7 @@ Based on the QwenLangGraphPipe with optimizations for the OpenAI GPT OSS 20B mod
 
 import os
 import logging
+import re
 from typing import List, Optional, Dict, Any
 
 # Avoid importing torch at module import time (can hang on GPU init in some envs)
@@ -566,24 +567,6 @@ Use tools when appropriate to provide accurate, up-to-date information."""
                             return True
         return False
 
-    async def prompt(self, text: str | List[str]) -> str | ChatResponse:
-        """Process a single message and return appropriate response type."""
-        if isinstance(text, list):
-            text = " ".join(text)
-
-        # Create a simple user message
-        message = Message(
-            role=MessageRole.USER,
-            content=[
-                MessageContent(
-                    type=MessageContentType.TEXT,
-                    text=text,
-                )
-            ],
-        )
-
-        return await self.process_messages([message])
-
     def create_graph(
         self, tools: Optional[List[BaseTool]] = None
     ) -> CompiledStateGraph:
@@ -610,6 +593,56 @@ Use tools when appropriate to provide accurate, up-to-date information."""
         compiled_graph = workflow.compile(checkpointer=self.memory)
         self.graph_cache[tool_signature] = compiled_graph
         return compiled_graph
+
+    def _parse_harmony_tool_calls(self, content: str) -> List[Dict[str, Any]]:
+        """Parse harmony format tool calls and convert to LangChain format."""
+        import json
+        import re
+        
+        tool_calls = []
+        
+        # Look for commentary channel with tool calls
+        commentary_pattern = r'<\|channel\|>commentary\s+to=functions\s+<\|constrain\|>json<\|message\|>(.+?)(?=<\|end\|>|$)'
+        matches = re.findall(commentary_pattern, content, re.DOTALL | re.IGNORECASE)
+        
+        for match in matches:
+            try:
+                # Clean up the JSON string
+                json_str = match.strip()
+                tool_call_data = json.loads(json_str)
+                
+                if "name" in tool_call_data and "arguments" in tool_call_data:
+                    # Convert to LangChain tool call format
+                    tool_call = {
+                        "name": tool_call_data["name"],
+                        "args": tool_call_data["arguments"],
+                        "id": f"call_{len(tool_calls)}",  # Generate a simple ID
+                        "type": "tool_call"
+                    }
+                    tool_calls.append(tool_call)
+                    self._logger.debug(f"Parsed harmony tool call: {tool_call}")
+                    
+            except (json.JSONDecodeError, KeyError) as e:
+                self._logger.warning(f"Failed to parse harmony tool call: {e}")
+                continue
+        
+        return tool_calls
+
+    def _extract_final_content(self, content: str) -> str:
+        """Extract content from final channel or return the content as-is."""
+        # Look for final channel content
+        final_pattern = r'<\|channel\|>final<\|message\|>(.+?)(?=<\|end\|>|$)'
+        final_match = re.search(final_pattern, content, re.DOTALL | re.IGNORECASE)
+        
+        if final_match:
+            return final_match.group(1).strip()
+        
+        # If no final channel, return content as-is (but filter out commentary/analysis channels)
+        # Remove commentary and analysis channels
+        content = re.sub(r'<\|channel\|>commentary.*?(?=<\|channel\||$)', '', content, flags=re.DOTALL | re.IGNORECASE)
+        content = re.sub(r'<\|channel\|>analysis.*?(?=<\|channel\||$)', '', content, flags=re.DOTALL | re.IGNORECASE)
+        
+        return content.strip()
 
     async def _agent_node(self, state: LangGraphState, config=None) -> Dict[str, Any]:
         """Harmony-format agent node with timeout + iteration safeguards."""
@@ -658,17 +691,28 @@ Use tools when appropriate to provide accurate, up-to-date information."""
                 timeout=timeout_seconds,
             )
 
-            preview = (
-                str(response.content)[:80]
-                if hasattr(response, "content")
-                else str(response)[:80]
-            )
+            # Parse harmony tool calls and convert to LangChain format
+            content = str(response.content) if hasattr(response, "content") else str(response)
+            tool_calls = self._parse_harmony_tool_calls(content)
+            final_content = self._extract_final_content(content)
+
+            # Create properly formatted AI message with tool calls
+            if tool_calls:
+                formatted_response = AIMessage(
+                    content=final_content,
+                    tool_calls=tool_calls
+                )
+                self._logger.info(f"Converted {len(tool_calls)} harmony tool calls to LangChain format")
+            else:
+                formatted_response = AIMessage(content=final_content)
+
+            preview = final_content[:80] if final_content else "No content"
             self._logger.info(
-                f"GPT OSS harmony response len={len(str(response.content)) if hasattr(response,'content') else 'n/a'} preview={preview}"
+                f"GPT OSS harmony response len={len(final_content)} preview={preview}"
             )
 
             return {
-                "messages": [coerce_to_langchain_message_dict(response)],
+                "messages": [coerce_to_langchain_message_dict(formatted_response)],
                 "current_iteration": state.current_iteration + 1,
             }
 

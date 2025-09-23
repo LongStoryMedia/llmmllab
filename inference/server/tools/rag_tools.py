@@ -64,26 +64,42 @@ class WebSearchTool(BaseTool):
     def __init__(self, conversation_ctx: ConversationContext):
         super().__init__(conversation_ctx=conversation_ctx)
 
-    async def _arun(self, *args, **kwargs) -> str:
+    async def _arun(self, query: str, **kwargs) -> str:
         """Async implementation for web search"""
         try:
-            tool_input = args[0] if args else kwargs.get("tool_input")
-            query: Message = tool_input if isinstance(tool_input, Message) else None  # type: ignore
-            # Perform search
-            results = await self.conversation_ctx.search_context.search(
-                query, getattr(self.conversation_ctx.conversation, "id", 0)
+            # Create a Message object from the query
+            from models import MessageRole, MessageContent, MessageContentType
+            
+            message = Message(
+                role=MessageRole.USER,
+                content=[MessageContent(type=MessageContentType.TEXT, text=query)],
+                conversation_id=getattr(self.conversation_ctx.conversation, "id", 0)
             )
-
-            if results:
-                return f"Web search results: {json.dumps(results)}"
-            return "No relevant web results found"
+            
+            # Use the existing search context to perform web search
+            search_results = await self.conversation_ctx.search_context.search(
+                message, getattr(self.conversation_ctx.conversation, "id", 0)
+            )
+            
+            if search_results:
+                # Format the search synthesis results
+                formatted_results = []
+                for result in search_results[:3]:  # Limit to top 3 results
+                    formatted_results.append(
+                        f"URLs: {', '.join(result.urls[:3])}\n"
+                        f"Topics: {', '.join(result.topics)}\n" 
+                        f"Synthesis: {result.synthesis[:300]}..."
+                    )
+                return "Web search results:\n\n" + "\n\n".join(formatted_results)
+            else:
+                return f"No web search results found for: {query}"
         except Exception as e:
             logger.error(f"Web search error: {e}")
             return f"Web search failed: {str(e)}"
 
-    def _run(self, *args, **kwargs) -> str:
+    def _run(self, query: str, **kwargs) -> str:
         """Sync fallback"""
-        return asyncio.run(self._arun(*args, **kwargs))
+        return asyncio.run(self._arun(query, **kwargs))
 
 
 class SummarizationTool(BaseTool):

@@ -3,7 +3,7 @@ Web search functionality for RAG system.
 """
 
 import asyncio
-from typing import List
+from typing import List, cast
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
@@ -22,8 +22,13 @@ from server.services.search_providers import SearchProviderFactory
 from server.services.web_extraction_service import WebExtractionService
 from server.config import logger
 
-from runner import pipeline_factory, Embeddings
-from runner.pipelines.run import run_pipeline, embed_pipeline
+from runner import (
+    pipeline_factory,
+    Embeddings,
+    EmbeddingPipeline,
+    run_pipeline,
+    embed_pipeline,
+)
 from utils.message import extract_message_text
 
 
@@ -182,14 +187,18 @@ class SearchContext:
             from runner.pipeline_factory import PipelinePriority
 
             with pipeline_factory.pipeline(mp, str, PipelinePriority.NORMAL) as pipe:
-                # Use run_pipeline for internal LLM call
-                response = await run_pipeline(raw_text[:200], pipe)
+                # Use the SEARCH_FORMAT_PROMPT template to format the query properly
+                prompt_text = self.SEARCH_FORMAT_PROMPT.format(query=raw_text[:200])
+                response = await run_pipeline(prompt_text, pipe)
                 # Extract text from ChatResponse
                 formatted_query = (
                     extract_message_text(response.message) if response.message else ""
                 )
-                # Clean up the response and limit length
-                formatted_query = formatted_query.strip()[:50]  # Hard limit
+                # Clean up the response and limit length - remove any explanations
+                formatted_query = formatted_query.strip().split("\n")[
+                    0
+                ]  # Take first line only
+                formatted_query = formatted_query[:50]  # Hard limit
                 logger.info(f"Formatted search query: {formatted_query}")
                 self._formatted_query = formatted_query
                 return formatted_query
@@ -362,7 +371,9 @@ class SearchContext:
             with pipeline_factory.pipeline(
                 emb_mp, Embeddings, PipelinePriority.HIGH
             ) as pipe:
-                embeddings = await embed_pipeline(list(texts), pipe)
+                embeddings = await embed_pipeline(
+                    list(texts), cast(EmbeddingPipeline, pipe)
+                )
 
                 # Extract query and content embeddings
                 query_embedding = embeddings[0]

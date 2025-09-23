@@ -7,7 +7,7 @@ import logging
 
 # Export all components needed for integration
 from .dynamic_tool import DynamicToolRunner
-from .generator import DynamicToolGenerator
+from .integration import DynamicToolGenerator
 
 # Configure logging
 logger = logging.getLogger(__name__)

@@ -12,7 +12,7 @@ import os
 import json
 import tempfile
 import uuid
-from typing import List, Set, Dict, Optional
+from typing import List, Set, Dict, Optional, cast
 from urllib.parse import urlparse
 from datetime import datetime
 
@@ -41,8 +41,16 @@ from models import (
     MemorySource,
 )
 
+from utils.message import extract_message_text
+
 from server.db import storage
-from runner import pipeline_factory, Embeddings
+from runner import (
+    pipeline_factory,
+    Embeddings,
+    run_pipeline,
+    embed_pipeline,
+    EmbeddingPipeline,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -357,9 +365,11 @@ class WebExtractionService:
                 ), "Unable to retrieve summarization model profile"
 
                 with pipeline_factory.pipeline(summarization_mp, str) as pipe:
-                    synthesis_text = await pipe.prompt(messages)
-                assert synthesis_text
-                synthesis.synthesis = synthesis_text
+                    res = await run_pipeline(messages, pipe)
+                assert res
+                synthesis.synthesis = (
+                    extract_message_text(res.message) if res.message else ""
+                )
 
                 synthesis_id = await storage.get_service(storage.search).create(
                     synthesis
@@ -377,7 +387,9 @@ class WebExtractionService:
 
                 # Use base pipeline to create embeddings
                 with pipeline_factory.pipeline(embedding_mp, Embeddings) as pipe:
-                    embeddings = await pipe.prompt(synthesis.synthesis)
+                    embeddings = await embed_pipeline(
+                        synthesis.synthesis, cast(EmbeddingPipeline, pipe)
+                    )
                 if not embeddings:
                     logger.warning("No embeddings returned, using default.")
                     embeddings = [

@@ -24,7 +24,7 @@ from models import (
     PipelinePriority,
 )
 from models.default_configs import DEFAULT_CIRCUIT_BREAKER_CONFIG
-from .pipelines.base import BasePipelineCore, PipeReturn
+from .pipelines.base import BasePipelineCore, PipeReturn, EmbeddingPipeline
 
 from .pipelines.llamacpp.base_llamacpp import BaseLlamaCppPipeline
 from utils.hardware_manager import hardware_manager
@@ -186,7 +186,7 @@ class PipelineFactory:
         expected_type: Type[T],
         priority: PipelinePriority = PipelinePriority.NORMAL,
         user_circuit_breaker: Optional[CircuitBreakerConfig] = None,
-    ) -> BasePipelineCore[T]:
+    ) -> BasePipelineCore[T] | EmbeddingPipeline:
         model_id = profile.model_name
         model = self._get_model_by_id(model_id)
         if not model:

@@ -16,6 +16,7 @@ from langchain_core.tools import BaseTool
 from models import (
     Model,
     Message,
+    MessageRole,
     ModelProfile,
 )
 from ..llamacpp.base_llamacpp import BaseLlamaCppCore
@@ -83,9 +84,13 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
         # Embedding pipelines don't use tools or tool generation flags
         _ = tools, is_tool_generation  # Acknowledge unused parameters
 
-        # Extract and process texts with prefixes
+        # Extract and process texts with prefixes, filtering out system messages
         texts: List[str] = []
         for message in messages:
+            # Skip system messages for embeddings
+            if message.role == MessageRole.SYSTEM:
+                continue
+                
             text = extract_message_text(message)
             if text:
                 texts.append(self._add_task_prefix(text))

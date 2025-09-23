@@ -87,7 +87,7 @@ DEFAULT_CIRCUIT_BREAKER_CONFIG = CircuitBreakerConfig(
     deep_research_timeout=120.0,
     max_retries=2,
     cooldown_period=30.0,
-    enable_perplexity_guard=True,
+    enable_perplexity_guard=False,  # Disabled by default to prevent cutting off web search formatting
     perplexity_window=40,
     perplexity_threshold=10.0,
     avg_logprob_floor=-6.0,
@@ -108,7 +108,6 @@ DEFAULT_GPU_CONFIG = GPUConfig(
     main_gpu_device_id=None,
     tensor_split=None,
     tensor_split_devices=None,
-    n_cpu_moe=0,
     split_mode="layer",
     offload_kqv=True,
 )
