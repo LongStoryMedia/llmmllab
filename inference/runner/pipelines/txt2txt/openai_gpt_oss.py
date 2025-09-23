@@ -41,6 +41,7 @@ from models import (
 from utils.langgraph import (
     LangGraphState,
     coerce_to_langchain_message_dict,
+    build_lc_messages,
 )
 from utils.message import from_lc_message
 from ..base_langgraph import CircuitBreakerConfig
@@ -83,6 +84,9 @@ class OpenAiGptOssPipe(BaseLlamaCppPipeline):
 
         # Initialize harmony channel state
         self._reset_harmony_state()
+
+        # Store current tools for agent node access
+        self._current_tools: Optional[List[BaseTool]] = None
 
         # Default reasoning effort (may be overridden later)
         self._reasoning_effort = getattr(
@@ -453,16 +457,38 @@ Use tools when appropriate to provide accurate, up-to-date information."""
 
         return validation_result
 
-    def _format_with_harmony(self, messages: List[Message]) -> str:
-        """Format messages using harmony encoding for proper GPT OSS format with enhanced validation."""
+    def _format_with_harmony(
+        self, messages: List[Message], tools: Optional[List[BaseTool]] = None
+    ) -> str:
+        """Format messages using harmony encoding for proper GPT OSS format with custom system prompt."""
         try:
             # Load the harmony encoding
             enc = load_harmony_encoding(HarmonyEncodingName.HARMONY_GPT_OSS)
 
+            # Create custom system prompt with harmony format and tool information
+            system_prompt = self._create_system_prompt(tools)
+
             # Convert messages to harmony format
             harmony_messages = self._convert_to_harmony_messages(messages)
 
-            # Validate harmony format requirements before processing
+            # Replace or insert system message with our custom prompt
+            system_content = SystemContent.new()  # Create empty system content first
+            custom_system_message = HarmonyMessage.from_role_and_content(
+                HarmonyRole.SYSTEM, system_content
+            )
+
+            # Find and replace existing system message, or insert at beginning
+            found_system = False
+            for i, msg in enumerate(harmony_messages):
+                if hasattr(msg, "role") and msg.role == HarmonyRole.SYSTEM:
+                    harmony_messages[i] = custom_system_message
+                    found_system = True
+                    break
+
+            if not found_system:
+                harmony_messages.insert(0, custom_system_message)
+
+            # Validate harmony format requirements
             last_message_content = ""
             if messages and messages[-1].content:
                 for content in messages[-1].content:
@@ -484,10 +510,24 @@ Use tools when appropriate to provide accurate, up-to-date information."""
                 convo, HarmonyRole.ASSISTANT
             )
 
-            # Convert tokens to string (decode)
+            # Convert tokens to string (decode) and inject our system prompt
             formatted_result = enc.decode(tokens)
 
-            self._logger.debug("Successfully formatted messages with harmony encoding")
+            # Manual injection of system prompt at the beginning of the formatted result
+            # This ensures our system prompt is used instead of the default
+            if formatted_result.startswith("<|start|>system<|message|>"):
+                # Replace everything between system tags with our prompt
+                import re
+
+                pattern = r"(<\|start\|>system<\|message\|>).*?(<\|start\|>)"
+                replacement = f"\\1{system_prompt}\\2"
+                formatted_result = re.sub(
+                    pattern, replacement, formatted_result, flags=re.DOTALL
+                )
+
+            self._logger.debug(
+                "Successfully formatted messages with harmony encoding and custom system prompt"
+            )
             return formatted_result
 
         except Exception as e:
@@ -576,6 +616,9 @@ Use tools when appropriate to provide accurate, up-to-date information."""
         if tool_signature in self.graph_cache:
             return self.graph_cache[tool_signature]
 
+        # Store tools for later access in agent node
+        self._current_tools = tools
+
         # LLM will be initialized lazily in agent node
         workflow = StateGraph(LangGraphState)
         workflow.add_node("agent", self._agent_node)
@@ -598,54 +641,64 @@ Use tools when appropriate to provide accurate, up-to-date information."""
         """Parse harmony format tool calls and convert to LangChain format."""
         import json
         import re
-        
+
         tool_calls = []
-        
+
         # Look for commentary channel with tool calls
-        commentary_pattern = r'<\|channel\|>commentary\s+to=functions\s+<\|constrain\|>json<\|message\|>(.+?)(?=<\|end\|>|$)'
+        commentary_pattern = r"<\|channel\|>commentary\s+to=functions\s+<\|constrain\|>json<\|message\|>(.+?)(?=<\|end\|>|$)"
         matches = re.findall(commentary_pattern, content, re.DOTALL | re.IGNORECASE)
-        
+
         for match in matches:
             try:
                 # Clean up the JSON string
                 json_str = match.strip()
                 tool_call_data = json.loads(json_str)
-                
+
                 if "name" in tool_call_data and "arguments" in tool_call_data:
                     # Convert to LangChain tool call format
                     tool_call = {
                         "name": tool_call_data["name"],
                         "args": tool_call_data["arguments"],
                         "id": f"call_{len(tool_calls)}",  # Generate a simple ID
-                        "type": "tool_call"
+                        "type": "tool_call",
                     }
                     tool_calls.append(tool_call)
                     self._logger.debug(f"Parsed harmony tool call: {tool_call}")
-                    
+
             except (json.JSONDecodeError, KeyError) as e:
                 self._logger.warning(f"Failed to parse harmony tool call: {e}")
                 continue
-        
+
         return tool_calls
 
     def _extract_final_content(self, content: str) -> str:
         """Extract content from final channel or return the content as-is."""
         # Look for final channel content
-        final_pattern = r'<\|channel\|>final<\|message\|>(.+?)(?=<\|end\|>|$)'
+        final_pattern = r"<\|channel\|>final<\|message\|>(.+?)(?=<\|end\|>|$)"
         final_match = re.search(final_pattern, content, re.DOTALL | re.IGNORECASE)
-        
+
         if final_match:
             return final_match.group(1).strip()
-        
+
         # If no final channel, return content as-is (but filter out commentary/analysis channels)
         # Remove commentary and analysis channels
-        content = re.sub(r'<\|channel\|>commentary.*?(?=<\|channel\||$)', '', content, flags=re.DOTALL | re.IGNORECASE)
-        content = re.sub(r'<\|channel\|>analysis.*?(?=<\|channel\||$)', '', content, flags=re.DOTALL | re.IGNORECASE)
-        
+        content = re.sub(
+            r"<\|channel\|>commentary.*?(?=<\|channel\||$)",
+            "",
+            content,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        content = re.sub(
+            r"<\|channel\|>analysis.*?(?=<\|channel\||$)",
+            "",
+            content,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+
         return content.strip()
 
     async def _agent_node(self, state: LangGraphState, config=None) -> Dict[str, Any]:
-        """Harmony-format agent node with timeout + iteration safeguards."""
+        """LangGraph agent node with hybrid approach - harmony formatting but standard tool calling."""
         _ = config
 
         # Iteration guard
@@ -664,12 +717,12 @@ Use tools when appropriate to provide accurate, up-to-date information."""
                 if self.llm is None:  # safety
                     raise RuntimeError("LLM failed to initialize")
 
-            # Convert LangGraph state messages -> internal messages (for harmony)
+            # Convert LangGraph state messages -> internal messages
             internal_messages: List[Message] = []
             for lc_msg in state.messages:
-                internal_messages.append(from_lc_message(lc_msg))  # type: ignore
+                internal_messages.append(from_lc_message(lc_msg))
 
-            # Determine dynamic timeout (reuse earlier heuristic)
+            # Determine dynamic timeout
             is_deep = self._should_use_extended_timeout(internal_messages)
             timeout_seconds = (
                 min(self.circuit_config.deep_research_timeout or 180.0, 180.0)
@@ -677,8 +730,13 @@ Use tools when appropriate to provide accurate, up-to-date information."""
                 else min(self.circuit_config.base_timeout or 90.0, 90.0)
             )
 
-            # Harmony formatting
-            formatted_prompt = self._format_with_harmony(internal_messages)
+            # Get current tools for this request
+            current_tools = self._get_current_tools()
+
+            # Format with harmony including tools info in system prompt
+            formatted_prompt = self._format_with_harmony(
+                internal_messages, current_tools
+            )
             self._logger.debug(
                 f"Harmony formatted prompt preview: {formatted_prompt[:200]}..."
             )
@@ -691,24 +749,45 @@ Use tools when appropriate to provide accurate, up-to-date information."""
                 timeout=timeout_seconds,
             )
 
-            # Parse harmony tool calls and convert to LangChain format
-            content = str(response.content) if hasattr(response, "content") else str(response)
-            tool_calls = self._parse_harmony_tool_calls(content)
-            final_content = self._extract_final_content(content)
+            # Try to get tool calls from response using hasattr for safety
+            tool_calls = None
+            response_content = (
+                str(response.content) if hasattr(response, "content") else str(response)
+            )
 
-            # Create properly formatted AI message with tool calls
-            if tool_calls:
-                formatted_response = AIMessage(
-                    content=final_content,
-                    tool_calls=tool_calls
+            if hasattr(response, "tool_calls") and getattr(
+                response, "tool_calls", None
+            ):
+                # Standard LangChain tool calls
+                tool_calls = getattr(response, "tool_calls")
+                self._logger.info(
+                    f"LLM returned {len(tool_calls)} standard LangChain tool calls"
                 )
-                self._logger.info(f"Converted {len(tool_calls)} harmony tool calls to LangChain format")
+                formatted_response = AIMessage(
+                    content=response_content, tool_calls=tool_calls
+                )
             else:
-                formatted_response = AIMessage(content=final_content)
+                # Try to parse harmony format tool calls as fallback
+                parsed_tool_calls = self._parse_harmony_tool_calls(response_content)
+                final_content = self._extract_final_content(response_content)
 
-            preview = final_content[:80] if final_content else "No content"
+                if parsed_tool_calls:
+                    formatted_response = AIMessage(
+                        content=final_content, tool_calls=parsed_tool_calls
+                    )
+                    self._logger.info(
+                        f"Converted {len(parsed_tool_calls)} harmony tool calls to LangChain format"
+                    )
+                else:
+                    formatted_response = AIMessage(content=final_content)
+
+            preview = (
+                formatted_response.content[:80]
+                if formatted_response.content
+                else "No content"
+            )
             self._logger.info(
-                f"GPT OSS harmony response len={len(final_content)} preview={preview}"
+                f"GPT OSS response len={len(str(formatted_response.content))} preview={preview}"
             )
 
             return {
@@ -717,19 +796,23 @@ Use tools when appropriate to provide accurate, up-to-date information."""
             }
 
         except asyncio.TimeoutError:
-            warn = f"Request timed out after {timeout_seconds:.1f}s (harmony processing exceeded limit)."
+            warn = f"Request timed out after {timeout_seconds:.1f}s (processing exceeded limit)."
             self._logger.warning(warn)
             return {
                 "messages": [coerce_to_langchain_message_dict(AIMessage(content=warn))],
                 "current_iteration": state.current_iteration + 1,
             }
         except Exception as e:
-            err = f"Error in GPT OSS harmony agent node: {e}"
+            err = f"Error in GPT OSS agent node: {e}"
             self._logger.error(err, exc_info=True)
             return {
                 "messages": [coerce_to_langchain_message_dict(AIMessage(content=err))],
                 "current_iteration": state.current_iteration + 1,
             }
+
+    def _get_current_tools(self) -> Optional[List[BaseTool]]:
+        """Get the current tools stored during graph creation."""
+        return self._current_tools
 
     async def _invoke_with_harmony_format(self, formatted_prompt: str) -> AIMessage:
         """Invoke the model with harmony-formatted prompt."""
