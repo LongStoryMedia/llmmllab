@@ -17,6 +17,7 @@ export interface ChatState {
   selectedModel: string;
   models: Model[];
   isPaused: boolean;
+  currentObserverMessages: string[];
 }
 
 export interface ChatActions {
@@ -34,6 +35,7 @@ export interface ChatActions {
   removeConversationFromList: (id: number) => void;
   setModels: (models: Model[]) => void;
   setIsPaused: (paused: boolean) => void;
+  setCurrentObserverMessages: React.Dispatch<React.SetStateAction<string[]>>;
 }
 
 export const useChatState = (): [ChatState, ChatActions] => {
@@ -48,6 +50,7 @@ export const useChatState = (): [ChatState, ChatActions] => {
     return localStorage.getItem('selectedModel') || '';
   });
   const [models, setModelsState] = useState<Model[]>([]);
+  const [currentObserverMessages, setCurrentObserverMessages] = useState<string[]>([]);
   const { user } = useAuth(); // Assuming useAuth is a custom hook to get user info
   const currentUserId = useMemo(() => user?.profile?.preferred_username ?? '', [user]);
   const [isPaused, setIsPaused] = useState<boolean>(false);
@@ -127,7 +130,8 @@ export const useChatState = (): [ChatState, ChatActions] => {
     response,
     selectedModel,
     models,
-    isPaused
+    isPaused,
+    currentObserverMessages
   };
 
   const actions: ChatActions = {
@@ -144,7 +148,8 @@ export const useChatState = (): [ChatState, ChatActions] => {
     updateConversationInList,
     removeConversationFromList,
     setModels,
-    setIsPaused
+    setIsPaused,
+    setCurrentObserverMessages
   };
 
   return [state, actions];

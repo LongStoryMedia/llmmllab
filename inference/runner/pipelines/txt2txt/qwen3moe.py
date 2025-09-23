@@ -1,6 +1,12 @@
-"""Qwen3 A3B MoE pipeline leveraging shared adaptive streaming (perplexity & repetition guards)."""
+"""
+Qwen3 A3B MoE pipeline - Simplified for deterministic <think> tag processing.
+
+This pipeline leverages the Qwen3 model's native tokenizer support for <think>...</think> tags
+(tokens 151667 and 151668) to provide clean separation between reasoning and response content.
+"""
 
 import os
+import re
 import logging
 from typing import List, Optional, Union, Dict, Any, Type
 
@@ -38,7 +44,17 @@ ReturnType = Union[str, ChatResponse]
 
 class QwenLangGraphPipe(BaseLlamaCppPipeline):
     """
-    Qwen3 A3B MoE pipeline with enhanced timeout protection and circuit breaker functionality.
+    Qwen3 A3B MoE pipeline with deterministic <think> tag processing.
+
+    This pipeline is optimized for the Qwen3 model's native think tokens:
+    - Token 151667: <think>
+    - Token 151668: </think>
+
+    Features:
+    - Real-time streaming with think content separation
+    - Thinking field population during streaming
+    - Clean response content without think tags
+    - Circuit breaker protection for safety
     """
 
     # Override allowed return types to include Type for compatibility with typing system
@@ -73,6 +89,9 @@ class QwenLangGraphPipe(BaseLlamaCppPipeline):
         context_tokens = 1048576 if "30b" in self.model.name.lower() else 131072
         self.context_manager = ContextManager(max_context_tokens=context_tokens)
 
+        # Initialize think tag state
+        self._reset_think_state()
+
         # Validate GGUF file
         gguf_path = self._get_gguf_path()
         self._validate_gguf_file(gguf_path)
@@ -105,6 +124,61 @@ class QwenLangGraphPipe(BaseLlamaCppPipeline):
         if not os.access(gguf_path, os.R_OK):
             raise PermissionError(f"Cannot read GGUF file: {gguf_path}")
 
+    def _reset_think_state(self) -> None:
+        """Reset think tag tracking state."""
+        self.think_content: str = ""
+        self.in_think_tag: bool = False
+        self.buffer: str = ""
+
+    def reset_streaming_state(self) -> None:
+        """Reset streaming state (overrides base method)."""
+        super().reset_streaming_state()
+        self._reset_think_state()
+
+    def process_streaming_token(self, content: str) -> Optional[ChatResponse]:
+        """Process streaming token with <think> tag detection (overrides base method)."""
+        self.buffer += content
+
+        # Check for opening think tag
+        if "<think>" in content and not self.in_think_tag:
+            self.in_think_tag = True
+            return None
+
+        # Check for closing think tag
+        elif "</think>" in content and self.in_think_tag:
+            self.in_think_tag = False
+            return None
+
+        # If we're inside think tags, accumulate in think_content but don't return
+        if self.in_think_tag:
+            return self._create_thinking_response(content)
+
+        # Normal content outside think tags
+        return self._create_streaming_response(content)
+
+    def finalize_streaming(self) -> Optional[ChatResponse]:
+        """Finalize streaming and return any remaining content (overrides base method)."""
+        # Create final message with thinking content and any remaining buffer
+        thinking = self.think_content if self.think_content else None
+        content = []
+
+        if self.buffer and not self.in_think_tag:
+            content = [
+                MessageContent(type=MessageContentType.TEXT, text=self.buffer.strip())
+            ]
+
+        # Reset state
+        self._reset_think_state()
+
+        # Return message with thinking field if we have thinking content
+        if thinking or content:
+            message = Message(
+                role=MessageRole.ASSISTANT, thinking=thinking, content=content
+            )
+            return ChatResponse(message=message, done=True)
+
+        return None
+
     # llama.cpp initialization inherited from BaseLlamaCppPipeline
 
     # Perplexity / repetition guard logic now inherited from BaseLangGraphPipeline
@@ -112,24 +186,17 @@ class QwenLangGraphPipe(BaseLlamaCppPipeline):
     async def _create_system_prompt(
         self, tools: Optional[List[BaseTool]] = None
     ) -> str:
-        """Create optimized system prompt with anti-loop instructions."""
+        """Create system prompt for Qwen3 thinking model."""
         base_prompt = (
             self.profile.system_prompt
-            or """You are a helpful AI assistant. When thinking through problems:
+            or """You are a helpful AI assistant. Think through problems step by step using <think>...</think> tags.
 
-CRITICAL THINKING GUIDELINES:
-- Keep your reasoning concise and focused (max 2-3 short paragraphs)
-- Avoid repeating the same logic or analysis multiple times
-- If you find yourself restating similar points, STOP and provide your answer
-- Do not elaborate on the same concept repeatedly
-- Make your thinking efficient and direct
+Your thinking process will be captured separately from your response. Use the thinking space to:
+- Analyze the problem
+- Consider different approaches  
+- Work through the logic
 
-RESPONSE STRUCTURE:
-1. Brief analysis (if needed)
-2. Direct, clear answer
-3. Move on immediately
-
-Avoid circular reasoning, excessive elaboration, or repetitive explanations. Be decisive and concise."""
+Then provide your clear, direct answer outside the thinking tags."""
         )
 
         # Add tool information if available
@@ -139,47 +206,89 @@ Avoid circular reasoning, excessive elaboration, or repetitive explanations. Be 
                 tool_descriptions.append(f"- {tool.name}: {tool.description}")
 
             tool_info = "\n".join(tool_descriptions)
-            base_prompt += f"\n\nAvailable tools:\n{tool_info}\n\nUse tools when appropriate, but keep explanations brief."
+            base_prompt += (
+                f"\n\nAvailable tools:\n{tool_info}\n\nUse tools when appropriate."
+            )
 
         return base_prompt
+
+    def extract_channels(self, response_text: str) -> Dict[str, Any]:
+        """
+        Qwen3-specific channel extraction for deterministic <think> tags only.
+        """
+        result = {
+            "thinking": None,
+            "tool_calls": None,
+            "status": None,
+            "cleaned_response": response_text,
+            "channels": {},
+        }
+
+        cleaned_text = response_text
+
+        # Extract thinking content from <think>...</think> tags
+        import re
+
+        think_pattern = r"<think>(.*?)</think>"
+        think_matches = re.findall(think_pattern, cleaned_text, re.DOTALL)
+
+        if think_matches:
+            # Combine all thinking content
+            result["thinking"] = "\n\n".join(match.strip() for match in think_matches)
+            # Remove think tags from cleaned response
+            cleaned_text = re.sub(think_pattern, "", cleaned_text, flags=re.DOTALL)
+
+        # Extract tool calls from <tool_call>...</tool_call> tags (if present)
+        tool_pattern = r"<tool_call>\s*(.*?)\s*</tool_call>"
+        tool_matches = re.findall(tool_pattern, cleaned_text, re.DOTALL)
+
+        if tool_matches:
+            tool_calls = []
+            for match in tool_matches:
+                try:
+                    import json
+
+                    tool_call = json.loads(match.strip())
+                    tool_calls.append(tool_call)
+                except:
+                    # Store as raw text if JSON parsing fails
+                    tool_calls.append({"raw": match.strip()})
+
+            if tool_calls:
+                result["tool_calls"] = tool_calls
+                # Remove tool call tags from cleaned response
+                cleaned_text = re.sub(tool_pattern, "", cleaned_text, flags=re.DOTALL)
+
+        # Clean up extra whitespace
+        result["cleaned_response"] = re.sub(
+            r"\n\s*\n\s*\n", "\n\n", cleaned_text
+        ).strip()
+
+        return result
 
     def _should_use_extended_timeout(self, messages: List[Message]) -> bool:
         """
         Determine if this request should use extended timeout.
-        Enhanced detection for Qwen-specific patterns.
+        Simple heuristic based on message length and complexity indicators.
         """
-        # Keywords that indicate complex processing
-        extended_keywords = [
-            "research",
-            "web search",
-            "analyze",
-            "investigate",
-            "detailed analysis",
-            "comprehensive",
-            "deep dive",
-            "arduino",
-            "code",
-            "BOM",
-            "bill of materials",
-            "surprise party",
-            "scrolling newsfeed",
-            "programming",
-            "step by step",
-            "explain",
-            "tutorial",
-            "guide",
-        ]
-
+        # Check for long messages or complex keywords
         for message in messages:
             if message.content:
                 for content in message.content:
                     if content.type == MessageContentType.TEXT and content.text:
-                        text_lower = content.text.lower()
-                        # Check for multiple keywords or long text
-                        keyword_count = sum(
-                            1 for keyword in extended_keywords if keyword in text_lower
-                        )
-                        if keyword_count >= 2 or len(content.text) > 200:
+                        text = content.text.lower()
+                        # Long messages likely need more time
+                        if len(content.text) > 500:
+                            return True
+                        # Complex task indicators
+                        complex_keywords = [
+                            "analyze",
+                            "research",
+                            "detailed",
+                            "comprehensive",
+                            "step by step",
+                        ]
+                        if any(keyword in text for keyword in complex_keywords):
                             return True
         return False
 

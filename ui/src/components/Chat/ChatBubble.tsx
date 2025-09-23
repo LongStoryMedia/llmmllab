@@ -30,7 +30,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
   }).join('\n\n') ?? '';
 
 
-  const { think, rest } = parseResponse(content, isTyping);
+  const { think, rest } = parseResponse(content, isTyping, message.thinking);
   const isUser = message.role === 'user';
 
   return (

@@ -80,6 +80,9 @@ class OpenAiGptOssPipe(BaseLlamaCppPipeline):
         # Initialize context manager
         self.context_manager = ContextManager(max_context_tokens=context_tokens)
 
+        # Initialize harmony channel state
+        self._reset_harmony_state()
+
         # Default reasoning effort (may be overridden later)
         self._reasoning_effort = getattr(
             self.profile.parameters, "reasoning_effort", "medium"
@@ -115,6 +118,80 @@ class OpenAiGptOssPipe(BaseLlamaCppPipeline):
 
         if not os.access(gguf_path, os.R_OK):
             raise PermissionError(f"Cannot read GGUF file: {gguf_path}")
+
+    def _reset_harmony_state(self) -> None:
+        """Reset harmony channel tracking state."""
+        self.harmony_buffer: str = ""
+        self.current_channel: str = "final"  # Default to final channel
+        self.in_analysis_channel: bool = False
+        self.analysis_complete: bool = False
+        self.detected_channels: set = set()
+
+    def reset_streaming_state(self) -> None:
+        """Reset streaming state (overrides base method)."""
+        super().reset_streaming_state()
+        self._reset_harmony_state()
+
+    def process_streaming_token(self, content: str) -> Optional[ChatResponse]:
+        """Process streaming token with harmony channel detection (overrides base method)."""
+        self.harmony_buffer += content
+        analysis_marker = "<|channel|>analysis<|message|>"
+        end_marker = "<|end|>"
+
+        # Detect harmony channel markers
+        if (
+            analysis_marker in self.harmony_buffer
+            and not self.analysis_complete
+            and not self.in_analysis_channel
+        ):
+            self.in_analysis_channel = True
+            self.current_channel = "analysis"
+            self.detected_channels.add("analysis")
+            # Remove the analysis marker from what we return
+            return None
+
+        if end_marker in content and self.in_analysis_channel:
+            self.in_analysis_channel = False
+            self.analysis_complete = True
+            self.current_channel = "final"
+            # Remove the closing analysis marker
+            return None
+
+        if self.in_analysis_channel:
+            return self._create_thinking_response(content)
+        if self.current_channel == "final":
+            return self._create_streaming_response(content)
+
+        return None
+
+    def finalize_streaming(self) -> Optional[ChatResponse]:
+        """Finalize streaming and return any remaining content (overrides base method)."""
+        if self.harmony_buffer:
+            if self.current_channel == "analysis" or self.in_analysis_channel:
+                # Return thinking content
+                message = Message(
+                    role=MessageRole.ASSISTANT,
+                    thinking=self.harmony_buffer,
+                    content=[],
+                )
+                self._reset_harmony_state()
+                return ChatResponse(message=message, done=True)
+            else:
+                # Return regular content
+                message = Message(
+                    role=MessageRole.ASSISTANT,
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT,
+                            text=self.harmony_buffer,
+                        )
+                    ],
+                )
+                self._reset_harmony_state()
+                return ChatResponse(message=message, done=True)
+
+        self._reset_harmony_state()
+        return None
 
     def _get_optimal_gpt_oss_parameters(self) -> Dict[str, Any]:
         """Get optimal parameters for GPT OSS models based on research and documentation.
@@ -622,18 +699,17 @@ Use tools when appropriate to provide accurate, up-to-date information."""
             # Use standard invoke method with harmony-formatted prompt
             response = await self.llm.ainvoke([HumanMessage(content=formatted_prompt)])
 
-            # Ensure we return an AIMessage
+            # Return response directly - real-time harmony filtering handles cleanup
             if isinstance(response, AIMessage):
                 return response
             else:
                 # Convert BaseMessage to AIMessage if needed
-                return AIMessage(
-                    content=(
-                        str(response.content)
-                        if hasattr(response, "content")
-                        else str(response)
-                    )
+                content = (
+                    str(response.content)
+                    if hasattr(response, "content")
+                    else str(response)
                 )
+                return AIMessage(content=content)
 
         except Exception as e:
             self._logger.error(f"Failed to invoke model with harmony format: {e}")

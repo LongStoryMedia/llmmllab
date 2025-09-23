@@ -187,6 +187,154 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         """Create system prompt with anti-loop instructions. Must be implemented by subclasses."""
         raise NotImplementedError("Subclass must implement _create_system_prompt")
 
+    # ---- Channel Extraction Methods ----
+
+    def extract_channels(self, response_text: str) -> Dict[str, Any]:
+        """
+        Extract various channels (thinking, tool calls, etc.) from response text.
+        Pipeline subclasses can override this for model-specific parsing.
+        
+        Returns:
+            Dict with channel data:
+            {
+                'thinking': str | None,  # Extracted reasoning/thinking content
+                'tool_calls': List | None,  # Structured tool calls
+                'status': str | None,  # Status/debug information
+                'cleaned_response': str,  # Response with channel content removed
+                'channels': Dict[str, Any]  # Additional model-specific channels
+            }
+        """
+        return self._extract_default_channels(response_text)
+    
+    def _extract_default_channels(self, response_text: str) -> Dict[str, Any]:
+        """
+        Default channel extraction with common patterns.
+        Provides fallback for models without specific extraction logic.
+        """
+        result = {
+            'thinking': None,
+            'tool_calls': None,
+            'status': None,
+            'cleaned_response': response_text,
+            'channels': {}
+        }
+        
+        cleaned_text = response_text
+        
+        # Extract thinking content using multiple common patterns
+        thinking_patterns = [
+            # Standard think tags
+            (r'<think>(.*?)</think>', 'standard_think'),
+            (r'<thinking>(.*?)</thinking>', 'thinking'),
+            
+            # Markdown-style reasoning
+            (r'\*\*Thinking:\*\*(.*?)(?=\n\n|\*\*\w+:\*\*|$)', 'markdown_thinking'),
+            (r'\*\*Reasoning:\*\*(.*?)(?=\n\n|\*\*\w+:\*\*|$)', 'markdown_reasoning'),
+            
+            # Bracket-style reasoning
+            (r'\[REASONING\](.*?)\[/REASONING\]', 'bracket_reasoning'),
+            (r'\[THINKING\](.*?)\[/THINKING\]', 'bracket_thinking'),
+            
+            # Chain of thought patterns
+            (r'Let me think about this step by step:(.*?)(?=\n\n|Now,|Based on)', 'step_by_step'),
+        ]
+        
+        thinking_content = []
+        for pattern, pattern_type in thinking_patterns:
+            matches = re.findall(pattern, cleaned_text, re.DOTALL | re.IGNORECASE)
+            for match in matches:
+                thinking_content.append(match.strip())
+                # Remove from cleaned response
+                cleaned_text = re.sub(pattern, '', cleaned_text, flags=re.DOTALL | re.IGNORECASE)
+        
+        if thinking_content:
+            result['thinking'] = '\n\n'.join(thinking_content)
+            result['cleaned_response'] = cleaned_text.strip()
+        
+        # Extract tool calls (basic JSON detection)
+        tool_call_patterns = [
+            r'```json\s*(\{[^`]*"name"\s*:[^`]*\})\s*```',
+            r'```tool_call\s*(\{[^`]*\})\s*```',
+            r'<tool_call>(.*?)</tool_call>',
+        ]
+        
+        tool_calls = []
+        for pattern in tool_call_patterns:
+            matches = re.findall(pattern, cleaned_text, re.DOTALL | re.IGNORECASE)
+            for match in matches:
+                try:
+                    import json
+                    tool_call = json.loads(match.strip())
+                    tool_calls.append(tool_call)
+                    # Remove from cleaned response
+                    cleaned_text = re.sub(pattern, '', cleaned_text, flags=re.DOTALL | re.IGNORECASE)
+                except:
+                    pass
+        
+        if tool_calls:
+            result['tool_calls'] = tool_calls
+            result['cleaned_response'] = cleaned_text.strip()
+        
+        # Extract status/debug information
+        status_patterns = [
+            (r'<status>(.*?)</status>', 'status'),
+            (r'<debug>(.*?)</debug>', 'debug'),
+            (r'\[STATUS\](.*?)\[/STATUS\]', 'status_bracket'),
+        ]
+        
+        status_content = []
+        for pattern, pattern_type in status_patterns:
+            matches = re.findall(pattern, cleaned_text, re.DOTALL | re.IGNORECASE)
+            for match in matches:
+                status_content.append(match.strip())
+                # Remove from cleaned response
+                cleaned_text = re.sub(pattern, '', cleaned_text, flags=re.DOTALL | re.IGNORECASE)
+        
+        if status_content:
+            result['status'] = '\n'.join(status_content)
+            result['cleaned_response'] = cleaned_text.strip()
+        
+        # Clean up extra whitespace
+        result['cleaned_response'] = re.sub(r'\n\s*\n\s*\n', '\n\n', result['cleaned_response']).strip()
+        
+        return result
+
+    def create_chat_response_with_channels(
+        self, 
+        response_text: str, 
+        message_role: MessageRole = MessageRole.ASSISTANT,
+        conversation_id: Optional[int] = None,
+        is_done: bool = True
+    ) -> 'ChatResponse':
+        """
+        Create a ChatResponse with channel extraction applied.
+        This replaces direct ChatResponse construction in pipelines.
+        """
+        # Extract channels
+        channels_data = self.extract_channels(response_text)
+        
+        # Create message content with cleaned response
+        content = [MessageContent(
+            type=MessageContentType.TEXT,
+            text=channels_data['cleaned_response']
+        )]
+        
+        # Create message
+        message = Message(
+            role=message_role,
+            content=content,
+            conversation_id=conversation_id
+        )
+        
+        # Create ChatResponse with channel data
+        return ChatResponse(
+            done=is_done,
+            message=message,
+            thinking=channels_data.get('thinking_content'),
+            channels=channels_data.get('channels'),
+            observer_messages=channels_data.get('observer_messages')
+        )
+
     def _should_use_extended_timeout(self, messages: List[Message]) -> bool:
         """
         Determine if this request should use extended timeout.
@@ -1130,19 +1278,12 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
                 self.validate_return_value(response_text)
                 return response_text
             else:
-                chat = ChatResponse(
-                    done=True,
-                    message=Message(
-                        role=MessageRole.ASSISTANT,
-                        content=[
-                            MessageContent(
-                                type=MessageContentType.TEXT,
-                                text=response_text,
-                            )
-                        ],
-                    ),
-                    created_at=datetime.now(),
-                    finish_reason="stop",
+                # Use channel extraction to create ChatResponse with thinking content
+                chat = self.create_chat_response_with_channels(
+                    response_text,
+                    message_role=MessageRole.ASSISTANT,
+                    conversation_id=None,
+                    is_done=True
                 )
                 self.validate_return_value(chat)
                 return chat

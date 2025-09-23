@@ -537,11 +537,115 @@ Make the tool specific to the user's request but generalizable for similar tasks
             error_message="Tool generation retries exhausted without success",
         )
 
+    def _repair_malformed_json(self, json_str: str) -> str:
+        """Repair common malformations in JSON strings with comprehensive edge case handling."""
+        if not json_str.strip():
+            return json_str
+
+        # Pre-processing: Remove JSON comments and normalize whitespace
+        json_str = self._preprocess_json_response(json_str)
+
+        # Strategy 1: Handle single quotes to double quotes
+        json_str = re.sub(r"'([^']*)':", r'"\1":', json_str)  # Property names
+        json_str = re.sub(r":\s*'([^']*)'", r':"\1"', json_str)  # String values
+
+        # Strategy 2: Fix property names with spaces (must come before other property fixes)
+        json_str = re.sub(
+            r"([{,\s])([a-zA-Z][a-zA-Z0-9\s]+[a-zA-Z0-9])\s*:", r'\1"\2":', json_str
+        )
+
+        # Strategy 3: Fix unquoted property names (including those with underscores/numbers)
+        json_str = re.sub(
+            r"([{,\[\s])\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:", r'\1"\2":', json_str
+        )
+
+        # Strategy 4: Handle arrays without commas (must be specific to avoid over-matching)
+        # Fix unquoted array elements first
+        json_str = re.sub(
+            r"\[\s*([a-zA-Z_]\w*)\s+([a-zA-Z_]\w*)", r'["\1","\2"', json_str
+        )
+        json_str = re.sub(
+            r"([a-zA-Z_]\w*)\s+([a-zA-Z_]\w*)\s*\]", r'"\1","\2"]', json_str
+        )
+        json_str = re.sub(
+            r"([a-zA-Z_]\w*)\s+([a-zA-Z_]\w*)", r'"\1","\2"', json_str
+        )  # Middle elements
+
+        # Strategy 5: Fix unquoted string values (not numbers/booleans/null)
+        json_str = re.sub(
+            r":\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*([,}\]])", r':"\1"\2', json_str
+        )
+
+        # Strategy 6: Handle concatenated identifiers after values
+        json_str = re.sub(
+            r'([,\d"])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*([,}])',
+            r'\1,"auto_key_\2":null\3',
+            json_str,
+        )
+
+        # Strategy 7: Handle scientific notation properly (prevent splitting 1.23e10)
+        json_str = re.sub(r"(\d+\.?\d*)[,\s]+([eE][+-]?\d+)", r"\1\2", json_str)
+
+        # Strategy 8: Handle malformed arrays - add missing commas for remaining cases
+        json_str = re.sub(r'(\w|"|])\s+(["\w\[\{])', r"\1,\2", json_str)
+
+        # Strategy 9: Fix boolean/null variants (case insensitive)
+        json_str = re.sub(r':\s*"?(True|TRUE)\s*"?([,}\]])', r":true\2", json_str)
+        json_str = re.sub(r':\s*"?(False|FALSE)\s*"?([,}\]])', r":false\2", json_str)
+        json_str = re.sub(
+            r':\s*"?(None|NULL|nil|undefined)\s*"?([,}\]])', r":null\2", json_str
+        )
+
+        # Strategy 10: Restore properly quoted numbers (including scientific notation)
+        json_str = re.sub(r':\s*"(-?\d+\.?\d*(?:[eE][+-]?\d+)?)"', r":\1", json_str)
+        json_str = re.sub(r':\s*"(true|false|null)"', r":\1", json_str)
+
+        # Strategy 11: Clean up malformed structures
+        json_str = re.sub(r",\s*([}\]])", r"\1", json_str)  # Trailing commas
+        json_str = re.sub(r"([{\[])\s*,", r"\1", json_str)  # Leading commas
+        json_str = re.sub(r",,+", ",", json_str)  # Duplicate commas
+
+        return json_str.strip()
+
+    def _preprocess_json_response(self, response: str) -> str:
+        """Preprocess JSON response to handle comments and normalize format."""
+        # Remove single-line comments
+        response = re.sub(r"//.*?$", "", response, flags=re.MULTILINE)
+
+        # Remove multi-line comments
+        response = re.sub(r"/\*.*?\*/", "", response, flags=re.DOTALL)
+
+        # Normalize whitespace while preserving string content
+        lines = []
+        in_string = False
+        escape_next = False
+
+        for line in response.split("\n"):
+            if not in_string:
+                # Outside strings, normalize whitespace
+                line = " ".join(line.split())
+            lines.append(line)
+
+            # Track string state for next line
+            for char in line:
+                if escape_next:
+                    escape_next = False
+                    continue
+                if char == "\\":
+                    escape_next = True
+                elif char == '"' and not escape_next:
+                    in_string = not in_string
+
+        return " ".join(lines)
+
     def _extract_json_from_response(self, response: str) -> Optional[Dict[str, Any]]:
-        """Extract JSON from LLM response with multiple fallback strategies."""
+        """Extract JSON from LLM response with comprehensive fallback strategies."""
         if not response or not response.strip():
             self.logger.error("Empty response received")
             return None
+
+        # Preprocess to handle edge cases
+        response = self._preprocess_response_for_extraction(response)
 
         try:
             # Strategy 1: Direct parse
@@ -550,18 +654,39 @@ Make the tool specific to the user's request but generalizable for similar tasks
             pass
 
         try:
-            # Strategy 2: Extract from code blocks
-            json_match = re.search(
-                r"```(?:json)?\s*(\{.*?\})\s*```", response, re.DOTALL | re.IGNORECASE
-            )
-            if json_match:
-                return cast(Dict[str, Any], json.loads(json_match.group(1)))
+            # Strategy 2: Extract from code blocks (with better regex)
+            patterns = [
+                r"```(?:json|JSON)?\s*(\{.*?\})\s*```",  # Standard code blocks
+                r"```\s*(\{.*?\})\s*```",  # Code blocks without language
+                r"`(\{.*?\})`",  # Inline code
+            ]
+
+            for pattern in patterns:
+                json_match = re.search(pattern, response, re.DOTALL | re.IGNORECASE)
+                if json_match:
+                    json_str = self._repair_malformed_json(json_match.group(1))
+                    return cast(Dict[str, Any], json.loads(json_str))
         except json.JSONDecodeError:
             pass
 
         try:
-            # Strategy 3: Find first complete JSON object with better regex
-            # Look for balanced braces more carefully
+            # Strategy 3: Extract multiple JSON objects and return the first valid one
+            json_objects = self._extract_all_json_candidates(response)
+
+            for json_candidate in json_objects:
+                try:
+                    repaired = self._repair_malformed_json(json_candidate)
+                    result = json.loads(repaired)
+                    # Validate it's a dictionary (not array or primitive)
+                    if isinstance(result, dict):
+                        return cast(Dict[str, Any], result)
+                except json.JSONDecodeError:
+                    continue
+        except Exception:
+            pass
+
+        try:
+            # Strategy 4: Find first complete JSON object with enhanced brace matching
             start_idx = response.find("{")
             if start_idx != -1:
                 brace_count = 0
@@ -593,34 +718,32 @@ Make the tool specific to the user's request but generalizable for similar tasks
 
                 if brace_count == 0:  # Found complete JSON
                     json_str = response[start_idx:end_idx]
-                    # Clean up common issues
-                    json_str = re.sub(r",\s*}", "}", json_str)
-                    json_str = re.sub(r",\s*]", "]", json_str)
-                    return cast(Dict[str, Any], json.loads(json_str))
+                    repaired = self._repair_malformed_json(json_str)
+                    return cast(Dict[str, Any], json.loads(repaired))
         except (json.JSONDecodeError, ValueError):
             pass
 
         try:
-            # Strategy 4: Try to repair truncated JSON by completing it
+            # Strategy 5: Try to repair truncated JSON by completing it
             start_idx = response.find("{")
             if start_idx != -1:
-                # Take everything from the first brace to the end
                 json_candidate = response[start_idx:]
 
                 # Try to complete incomplete JSON structures
                 if json_candidate.count("{") > json_candidate.count("}"):
-                    # Add missing closing braces
                     missing_braces = json_candidate.count("{") - json_candidate.count(
                         "}"
                     )
                     json_candidate += "}" * missing_braces
 
-                # Remove trailing commas and incomplete entries
-                json_candidate = re.sub(r",\s*}", "}", json_candidate)
-                json_candidate = re.sub(r",\s*]", "]", json_candidate)
+                if json_candidate.count("[") > json_candidate.count("]"):
+                    missing_brackets = json_candidate.count("[") - json_candidate.count(
+                        "]"
+                    )
+                    json_candidate += "]" * missing_brackets
 
-                # Try to parse the repaired JSON
-                return cast(Dict[str, Any], json.loads(json_candidate))
+                repaired = self._repair_malformed_json(json_candidate)
+                return cast(Dict[str, Any], json.loads(repaired))
         except (json.JSONDecodeError, ValueError):
             pass
 
@@ -628,6 +751,78 @@ Make the tool specific to the user's request but generalizable for similar tasks
             f"Could not extract valid JSON from response: {response[:500]}..."
         )
         return None
+
+    def _preprocess_response_for_extraction(self, response: str) -> str:
+        """Preprocess response to improve JSON extraction chances."""
+        # Remove common LLM response prefixes/suffixes
+        prefixes_to_remove = [
+            r"^.*?(?=\{)",  # Remove everything before first {
+            r"Here'?s?\s+the\s+JSON:?\s*",
+            r"The\s+JSON\s+(?:response|output)\s+is:?\s*",
+            r"```json\s*",
+            r"```\s*",
+        ]
+
+        for prefix in prefixes_to_remove:
+            response = re.sub(prefix, "", response, flags=re.IGNORECASE | re.MULTILINE)
+
+        # Remove common suffixes after JSON
+        suffixes_to_remove = [
+            r"\}\s*```.*$",  # Remove closing code block
+            r"\}\s*\.?\s*$",  # Clean ending
+        ]
+
+        for suffix in suffixes_to_remove:
+            response = re.sub(suffix, "}", response, flags=re.IGNORECASE | re.MULTILINE)
+
+        return response.strip()
+
+    def _extract_all_json_candidates(self, response: str) -> List[str]:
+        """Extract all potential JSON objects from response."""
+        candidates = []
+
+        # Find all potential JSON objects by brace matching
+        i = 0
+        while i < len(response):
+            if response[i] == "{":
+                brace_count = 0
+                in_string = False
+                escape_next = False
+                start_idx = i
+
+                for j, char in enumerate(response[i:], i):
+                    if escape_next:
+                        escape_next = False
+                        continue
+
+                    if char == "\\":
+                        escape_next = True
+                        continue
+
+                    if char == '"' and not escape_next:
+                        in_string = not in_string
+                        continue
+
+                    if not in_string:
+                        if char == "{":
+                            brace_count += 1
+                        elif char == "}":
+                            brace_count -= 1
+                            if brace_count == 0:
+                                candidates.append(response[start_idx : j + 1])
+                                i = j + 1
+                                break
+                else:
+                    # Reached end without closing, try to complete
+                    incomplete = response[start_idx:]
+                    if incomplete.count("{") > incomplete.count("}"):
+                        missing = incomplete.count("{") - incomplete.count("}")
+                        candidates.append(incomplete + "}" * missing)
+                    break
+            else:
+                i += 1
+
+        return candidates
 
 
 class ModernToolManager:

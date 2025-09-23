@@ -333,7 +333,7 @@ class DynamicToolStorage:
         """
         # Format embedding for PostgreSQL vector extension
         vector_str = MemoryStorage.format_embedding_for_pgvector(query_embedding)
-        
+
         async with self.typed_pool.acquire() as conn:
             # Get total count for pagination
             count_row = await conn.fetchrow(

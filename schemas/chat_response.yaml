@@ -49,6 +49,18 @@ properties:
   eval_duration:
     type: number
     description: Time taken for token evaluation in milliseconds
+  thinking:
+    type: string
+    description: Extracted reasoning/thinking content from the model response
+  channels:
+    type: object
+    description: Additional structured channels extracted from the response (tool calls, status, etc.)
+    additionalProperties: true
+  observer_messages:
+    type: array
+    description: OBSERVER role messages that should be displayed as temporary floating notifications
+    items:
+      type: string
 required:
   - done
 definitions:

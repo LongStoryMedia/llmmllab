@@ -3,12 +3,13 @@ import { memo, useEffect, useRef, useLayoutEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import ChatContainer from '../components/Chat/ChatContainer';
 import ChatBubble from '../components/Chat/ChatBubble';
+import FloatingNotifications from '../components/Chat/FloatingNotifications';
 import { useChat } from '../chat';
 import { Message } from '../types/Message';
 import ChatInput from '../components/Chat/ChatInput';
 
 const ChatPage = memo(() => {
-  const { messages, response, isTyping, isLoading, currentConversation, selectConversation } = useChat();
+  const { messages, response, isTyping, isLoading, currentConversation, selectConversation, currentObserverMessages } = useChat();
   const { conversationId } = useParams();
   const containerRef = useRef<HTMLBodyElement>(document.body as HTMLBodyElement);
   const shouldScrollToBottom = useRef<boolean>(true);
@@ -93,7 +94,8 @@ const ChatPage = memo(() => {
       sx={{
         display: 'flex',
         flexDirection: 'column',
-        height: '100%'
+        height: '100%',
+        position: 'relative'
       }}
     >
       <ChatContainer>
@@ -115,6 +117,9 @@ const ChatPage = memo(() => {
 
         <ChatInput />
       </ChatContainer>
+
+      {/* Floating notifications for observer messages */}
+      <FloatingNotifications messages={currentObserverMessages} />
     </Box>
   );
 });

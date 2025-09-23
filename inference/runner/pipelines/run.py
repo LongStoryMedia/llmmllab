@@ -6,8 +6,9 @@ Fixes critical issues with the current streaming architecture.
 import hashlib
 import uuid
 import logging
+import re
 from typing import Any, Dict, Optional, List, AsyncIterator, cast, Union
-from datetime import datetime
+from datetime import datetime, timezone
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.runnables.schema import StandardStreamEvent
@@ -148,10 +149,13 @@ class StreamingCallbackHandler(BaseCallbackHandler):
 
 
 class EventStreamProcessor:
-    """Stream processor with configurable repetition controls and dedup."""
+    """Stream processor with configurable repetition controls and pipeline-specific post-processing."""
 
     def __init__(
-        self, thinking_phase: bool = True, config: Optional[EventStreamConfig] = None
+        self,
+        thinking_phase: bool = True,
+        config: Optional[EventStreamConfig] = None,
+        pipeline: Optional["BasePipelineCore"] = None,
     ):
         self.config = config or EventStreamConfig(thinking_phase_initial=thinking_phase)
         self.thinking_phase = self.config.thinking_phase_initial
@@ -160,6 +164,7 @@ class EventStreamProcessor:
         self.repetition_count = 0
         self._last_hashes: List[int] = []
         self.logger = logging.getLogger(__name__)
+        self.pipeline = pipeline
 
         # Pre-compute event type sets for faster lookup
         self._start_events = frozenset(
@@ -169,6 +174,18 @@ class EventStreamProcessor:
             ["on_chat_model_stream", "on_llm_stream", "on_agent_stream"]
         )
         self._end_events = frozenset(["on_chat_model_end", "on_llm_end"])
+
+    def set_pipeline(self, pipeline: Optional["BasePipelineCore"]) -> None:
+        """Set the pipeline for post-processing and reset its streaming state."""
+        self.pipeline = pipeline
+        if self.pipeline and hasattr(self.pipeline, "reset_streaming_state"):
+            self.pipeline.reset_streaming_state()
+
+    def finalize_pipeline_streaming(self) -> Optional[ChatResponse]:
+        """Call the pipeline's finalize_streaming method if available."""
+        if self.pipeline and hasattr(self.pipeline, "finalize_streaming"):
+            return self.pipeline.finalize_streaming()
+        return None
 
     def _update_buffer(self, new_content: str) -> str:
         self._buffer = (self._buffer + new_content)[
@@ -261,7 +278,7 @@ class EventStreamProcessor:
             return create_streaming_chunk(f"[Error processing event: {str(e)[:50]}...]")
 
     def _process_stream_chunk(self, evt: StandardStreamEvent) -> Optional[ChatResponse]:
-        """Process streaming content chunks."""
+        """Process streaming content chunks using pipeline-specific post-processing."""
         try:
             data = evt.get("data", {})
             chunk = data.get("chunk") if isinstance(data, dict) else None
@@ -279,8 +296,8 @@ class EventStreamProcessor:
                 return create_streaming_chunk("\n\n[Content limit reached]", done=True)
 
             # Drop exact duplicates to reduce flicker
-            if self._dedup(content):
-                return None
+            # if self._dedup(content):
+            #     return None
 
             # Check for repetitive patterns
             if self._is_repetitive(content):
@@ -290,7 +307,12 @@ class EventStreamProcessor:
                         "\n\n[Stopping repetitive output]", done=True
                     )
 
-            return create_streaming_chunk(content)
+            # Use pipeline-specific post-processing if available
+            if self.pipeline and hasattr(self.pipeline, "process_streaming_token"):
+                return self.pipeline.process_streaming_token(content)
+            else:
+                # Fallback to simple streaming chunk
+                return create_streaming_chunk(content)
 
         except Exception as e:
             self.logger.error(f"Error processing stream chunk: {e}")
@@ -448,7 +470,13 @@ async def stream_pipeline(
         initial_state = build_langgraph_state(lc_messages, user_input)
 
         # Initialize processor
-        processor = EventStreamProcessor(thinking_phase=True)
+        processor = EventStreamProcessor(thinking_phase=True, pipeline=pipeline)
+        # Pipeline-specific streaming with individual post-processing
+        pipeline_type = type(pipeline).__name__
+        logger.info(f"Using pipeline-specific streaming for {pipeline_type}")
+
+        # Reset pipeline streaming state
+        processor.set_pipeline(pipeline)
 
         # Stream execution
         try:
@@ -478,6 +506,11 @@ async def stream_pipeline(
         except Exception as e:
             logger.error(f"Error during streaming execution: {e}")
             yield create_streaming_chunk(f"Streaming error: {str(e)}", done=True)
+
+        # Call pipeline finalization before final completion
+        final_response = processor.finalize_pipeline_streaming()
+        if final_response:
+            yield final_response
 
         # Final completion
         yield create_streaming_chunk("", done=True)
@@ -521,7 +554,7 @@ async def run_pipeline(
                     )
                 ],
             ),
-            created_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
             finish_reason="stop",
         )
 
@@ -538,7 +571,7 @@ async def run_pipeline(
                     )
                 ],
             ),
-            created_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
             finish_reason="error",
         )
 
@@ -659,7 +692,7 @@ async def chain_pipelines(
                     MessageContent(type=MessageContentType.TEXT, text="Chain completed")
                 ],
             ),
-            created_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
             finish_reason="stop",
         )
 
@@ -676,6 +709,6 @@ async def chain_pipelines(
                     )
                 ],
             ),
-            created_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
             finish_reason="error",
         )

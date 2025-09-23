@@ -1,9 +1,17 @@
 import { Message } from "../types/Message";
+import { ChatResponse } from "../types/ChatResponse";
 import { MessageRoleValues } from "../types/MessageRole";
-import { MessageContentTypeValues } from "../types/MessageContentType";
 import { gen, getHeaders, req } from "./base";
 
-export async function* chat(accessToken: string, message: Message, abortSignal?: AbortSignal): AsyncGenerator<string> {
+export interface ChatChunk {
+  content: string;
+  thinking?: string;
+  channels?: Record<string, unknown>;
+  observer_messages?: string[];
+  done: boolean;
+}
+
+export async function* chat(accessToken: string, message: Message, abortSignal?: AbortSignal): AsyncGenerator<ChatChunk> {
   console.log('Sending message to chat API:', message);
 
   try {
@@ -16,52 +24,50 @@ export async function* chat(accessToken: string, message: Message, abortSignal?:
     });
 
     for await (const chunk of generator) {
-      // Check if the message and content are properly structured
-      if (chunk.message?.content && Array.isArray(chunk.message.content) && chunk.message.content.length > 0) {
-        // Filter out OBSERVER role messages (status messages) from main content stream
-        if (chunk.message.role === MessageRoleValues.OBSERVER) {
-          // Log status messages but don't yield them as main content
-          console.log('[STATUS]', chunk.message.content[0].text);
-          // TODO: Emit to status channel/event system
-          continue;
-        }
+      const chatResponse = chunk as ChatResponse;
 
-        // Ensure text exists before yielding it
-        yield chunk.message.content[0].text ?? '';
-      } else if (chunk.message) {
+      // Extract text content
+      let textContent = '';
+      if (chatResponse.message?.content && Array.isArray(chatResponse.message.content) && chatResponse.message.content.length > 0) {
+        // Filter out OBSERVER role messages (status messages) from main content stream
+        if (chatResponse.message.role === MessageRoleValues.OBSERVER) {
+          // Log status messages but don't yield them as main content
+          console.log('[STATUS]', chatResponse.message.content[0].text);
+          // Skip OBSERVER messages from text content
+          textContent = '';
+        } else {
+          // Extract normal content
+          textContent = chatResponse.message.content[0].text ?? '';
+        }
+      } else if (chatResponse.message) {
         // Handle case where content might not be properly formatted
-        console.warn('Received improperly formatted message content:', chunk.message);
+        console.warn('Received improperly formatted message content:', chatResponse.message);
 
         // If content exists but isn't an array, try to convert it
-        if (chunk.message.content && !Array.isArray(chunk.message.content)) {
-          const textContent = String(chunk.message.content);
+        if (chatResponse.message.content && !Array.isArray(chatResponse.message.content)) {
+          const content = String(chatResponse.message.content);
 
-          // Don't yield observer messages as main content
-          if (chunk.message.role !== MessageRoleValues.OBSERVER) {
-            yield textContent;
+          // Don't include observer messages as main content
+          if (chatResponse.message.role !== MessageRoleValues.OBSERVER) {
+            textContent = content;
           } else {
-            console.log('[STATUS]', textContent);
-          }
-
-          // Fix the message content structure for downstream code
-          chunk.message.content = [{
-            type: MessageContentTypeValues.TEXT,
-            text: textContent
-          }];
-        } else {
-          // Default empty string if we can't extract content (and not observer)
-          if (chunk.message.role !== MessageRoleValues.OBSERVER) {
-            yield '';
+            console.log('[STATUS]', content);
+            textContent = '';
           }
         }
       }
+      console.log('chunk:', chatResponse);
 
-      // Ensure the message has conversation_id
-      if (chunk.message && !chunk.message.conversation_id) {
-        chunk.message.conversation_id = message.conversation_id;
-      }
+      // Yield structured chunk with all ChatResponse fields
+      yield {
+        content: textContent,
+        thinking: chatResponse.thinking,
+        channels: chatResponse.channels,
+        observer_messages: chatResponse.observer_messages,
+        done: chatResponse.done || false
+      };
 
-      if (chunk.done) {
+      if (chatResponse.done) {
         break;
       }
     }
