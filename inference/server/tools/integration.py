@@ -425,6 +425,8 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
 User request: {user_message_text}
 Tool description: {description}
 
+You must respond with a valid JSON object that defines a new tool. Do not use any channel formatting or prefixes.
+
 Generate a tool definition with:
 1. A clear, descriptive name (snake_case, no spaces)
 2. A detailed description of what it does
@@ -438,10 +440,25 @@ Requirements:
 - Handle edge cases
 - Return meaningful results
 
-Format your response as valid JSON matching this schema:
+Format your response as ONLY a valid JSON object matching this exact schema:
 {DynamicTool.model_json_schema()}
 
-Make the tool specific to the user's request but generalizable for similar tasks."""
+Example response format:
+{{
+  "user_id": 1,
+  "name": "example_tool",
+  "description": "This tool does something useful",
+  "code": "def example_tool(param1):\\n    return str(param1)",
+  "function_name": "example_tool",
+  "parameters": {{
+    "param1": {{
+      "type": "string",
+      "description": "The input parameter"
+    }}
+  }}
+}}
+
+Respond with ONLY the JSON object, no other text or formatting."""
 
                     # Add timeout to prevent tool generation from blocking
                     response = await asyncio.wait_for(
@@ -754,6 +771,21 @@ Make the tool specific to the user's request but generalizable for similar tasks
 
     def _preprocess_response_for_extraction(self, response: str) -> str:
         """Preprocess response to improve JSON extraction chances."""
+        # Remove harmony channel formatting if present
+        import re
+        
+        # Look for final channel content first
+        final_pattern = r'<\|channel\|>final<\|message\|>(.+?)(?=<\|end\|>|$)'
+        final_match = re.search(final_pattern, response, re.DOTALL | re.IGNORECASE)
+        
+        if final_match:
+            response = final_match.group(1).strip()
+        
+        # Remove other channel content
+        response = re.sub(r'<\|channel\|>.*?<\|message\|>', '', response, flags=re.DOTALL | re.IGNORECASE)
+        response = re.sub(r'<\|end\|>.*?<\|start\|>', '', response, flags=re.DOTALL | re.IGNORECASE)
+        response = re.sub(r'<\|.*?\|>', '', response, flags=re.DOTALL | re.IGNORECASE)
+        
         # Remove common LLM response prefixes/suffixes
         prefixes_to_remove = [
             r"^.*?(?=\{)",  # Remove everything before first {

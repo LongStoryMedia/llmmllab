@@ -61,33 +61,3 @@ def create_error_response(error_message: str) -> ChatResponse:
 def create_error_chunk(error_message: str) -> ChatResponse:
     """Create an error chunk as a ChatResponse."""
     return create_error_response(error_message)
-
-
-def create_streaming_chunk_with_thinking(
-    text: Optional[str] = None, 
-    thinking: Optional[str] = None, 
-    done: bool = False, 
-    role: MessageRole = MessageRole.ASSISTANT
-) -> ChatResponse:
-    """Create streaming chunk with separate thinking and content routing for harmony channels."""
-    message = None
-    
-    # Only create message if we have content or thinking, or if not done
-    if text or thinking or not done:
-        content_list = []
-        if text:
-            content_list.append(MessageContent(type=MessageContentType.TEXT, text=text))
-        
-        message = Message(
-            role=role,
-            content=content_list,
-            thinking=thinking,  # Route analysis channel content here
-        )
-
-    return ChatResponse(
-        done=done,
-        message=message,
-        thinking=thinking,  # Also set at response level for compatibility
-        created_at=datetime.datetime.now(datetime.timezone.utc),
-        finish_reason="stop" if done else None,
-    )

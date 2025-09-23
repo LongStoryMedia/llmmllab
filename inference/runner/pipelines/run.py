@@ -34,7 +34,7 @@ from utils.response import create_streaming_chunk
 
 # from utils.serialization import serialize_to_json  # unused
 
-from .base import BasePipelineCore
+from .base import BasePipelineCore, EmbeddingPipeline
 
 
 # Type aliases for better readability
@@ -578,7 +578,7 @@ async def run_pipeline(
 
 async def embed_pipeline(
     messages: MessageInput,
-    pipeline: BasePipelineCore,
+    pipeline: EmbeddingPipeline,
 ) -> List[List[float]]:
     """
     Get embeddings from the pipeline for the given messages.

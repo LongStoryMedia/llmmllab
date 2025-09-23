@@ -164,60 +164,6 @@ class BasePipelineCore(ABC, Generic[PipeType]):
     ) -> CompiledStateGraph[LangGraphState, None, LangGraphState, LangGraphState]:
         """Create LangGraph workflow. Must be implemented by subclasses."""
 
-    @abstractmethod
-    async def process_messages(
-        self,
-        messages: List[Message],
-        tools: Optional[List[BaseTool]] = None,
-        is_tool_generation: bool = False,
-    ) -> PipeType:
-        """Process messages and return appropriate response type."""
-
-    # ---- Unified public entrypoints ----
-    async def run_pipeline(
-        self,
-        messages: List[Message],
-        tools: Optional[List[BaseTool]] = None,
-        is_tool_generation: bool = False,
-    ) -> PipeType:
-        """Unified non-streaming entrypoint (preferred over direct process_messages).
-
-        This wrapper exists so higher layers can depend on a stable API while
-        individual pipeline subclasses may evolve their internal implementation.
-        """
-        return await self.process_messages(
-            messages, tools=tools, is_tool_generation=is_tool_generation
-        )
-
-    async def prompt(self, text: str | List[str]) -> PipeType:
-        """Process a single message and return appropriate response type"""
-        if isinstance(text, list):
-            messages = [
-                Message(
-                    role=MessageRole.USER,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=msg,
-                        )
-                    ],
-                )
-                for msg in text
-            ]
-        else:
-            messages = [
-                Message(
-                    role=MessageRole.USER,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=text,
-                        )
-                    ],
-                )
-            ]
-        return await self.process_messages(messages)
-
     def cleanup(self) -> None:
         """Clean up pipeline resources."""
         try:
@@ -342,55 +288,6 @@ class ChatPipeline(BasePipelineCore, LangGraphCapable):
     @abstractmethod
     def _initialize_llm(self) -> BaseChatModel:
         """Initialize the underlying LLM. Must be implemented by subclasses."""
-
-    async def process_messages(
-        self,
-        messages: List[Message],
-        tools: Optional[List[BaseTool]] = None,
-        is_tool_generation: bool = False,
-    ) -> ChatResponse:
-        """Process messages and return ChatResponse."""
-        # Default implementation - subclasses can override
-
-        if not self.llm:
-            self.llm = self._initialize_llm()
-
-        # Convert to LangChain messages
-        lc_messages = [to_lc_message(msg) for msg in messages]
-
-        try:
-            response = await self.llm.ainvoke(lc_messages)
-            response_text = ""
-            if response.content:
-                if isinstance(response.content, str):
-                    response_text = response.content
-                elif isinstance(response.content, list):
-                    for content in response.content:
-                        if isinstance(content, str):
-                            response_text += content + " "
-                        elif isinstance(content, dict) and "text" in content:
-                            response_text += content["text"] + " "
-
-            result = ChatResponse(
-                done=True,
-                message=Message(
-                    role=MessageRole.ASSISTANT,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=response_text,
-                        )
-                    ],
-                ),
-                created_at=datetime.now(),
-                finish_reason="stop",
-            )
-            # Enforce expected return type contract
-            self.validate_return_value(result)
-            return result
-        except Exception as e:
-            self.logger.error(f"Error processing messages: {e}")
-            raise
 
     def create_graph(
         self, tools: Optional[List[BaseTool]] = None
@@ -523,17 +420,6 @@ class TextPipeline(BasePipelineCore):
 
     def __init__(self, model: Model, profile: ModelProfile):
         super().__init__(model, profile, expected_return_type=str)
-
-    @abstractmethod
-    async def process_messages(
-        self,
-        messages: List[Message],
-        tools: Optional[List[BaseTool]] = None,
-        is_tool_generation: bool = False,
-    ) -> str:
-        """Process messages and return text."""
-        # To be implemented by subclasses
-        raise NotImplementedError("Text pipelines must implement process_messages")
 
     @abstractmethod
     def create_graph(

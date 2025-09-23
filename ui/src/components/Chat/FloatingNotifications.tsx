@@ -21,7 +21,7 @@ const FloatingNotification: React.FC<FloatingNotificationProps> = ({
         setVisible(false);
         setTimeout(() => onClose?.(), 300); // Wait for fade out animation
       }, duration);
-      
+
       return () => clearTimeout(timer);
     }
   }, [duration, onClose]);

@@ -212,60 +212,6 @@ Then provide your clear, direct answer outside the thinking tags."""
 
         return base_prompt
 
-    def extract_channels(self, response_text: str) -> Dict[str, Any]:
-        """
-        Qwen3-specific channel extraction for deterministic <think> tags only.
-        """
-        result = {
-            "thinking": None,
-            "tool_calls": None,
-            "status": None,
-            "cleaned_response": response_text,
-            "channels": {},
-        }
-
-        cleaned_text = response_text
-
-        # Extract thinking content from <think>...</think> tags
-        import re
-
-        think_pattern = r"<think>(.*?)</think>"
-        think_matches = re.findall(think_pattern, cleaned_text, re.DOTALL)
-
-        if think_matches:
-            # Combine all thinking content
-            result["thinking"] = "\n\n".join(match.strip() for match in think_matches)
-            # Remove think tags from cleaned response
-            cleaned_text = re.sub(think_pattern, "", cleaned_text, flags=re.DOTALL)
-
-        # Extract tool calls from <tool_call>...</tool_call> tags (if present)
-        tool_pattern = r"<tool_call>\s*(.*?)\s*</tool_call>"
-        tool_matches = re.findall(tool_pattern, cleaned_text, re.DOTALL)
-
-        if tool_matches:
-            tool_calls = []
-            for match in tool_matches:
-                try:
-                    import json
-
-                    tool_call = json.loads(match.strip())
-                    tool_calls.append(tool_call)
-                except:
-                    # Store as raw text if JSON parsing fails
-                    tool_calls.append({"raw": match.strip()})
-
-            if tool_calls:
-                result["tool_calls"] = tool_calls
-                # Remove tool call tags from cleaned response
-                cleaned_text = re.sub(tool_pattern, "", cleaned_text, flags=re.DOTALL)
-
-        # Clean up extra whitespace
-        result["cleaned_response"] = re.sub(
-            r"\n\s*\n\s*\n", "\n\n", cleaned_text
-        ).strip()
-
-        return result
-
     def _should_use_extended_timeout(self, messages: List[Message]) -> bool:
         """
         Determine if this request should use extended timeout.
@@ -291,24 +237,6 @@ Then provide your clear, direct answer outside the thinking tags."""
                         if any(keyword in text for keyword in complex_keywords):
                             return True
         return False
-
-    async def prompt(self, text: str | List[str]) -> ReturnType:
-        """Process a single message and return appropriate response type."""
-        if isinstance(text, list):
-            text = " ".join(text)
-
-        # Create a simple user message
-        message = Message(
-            role=MessageRole.USER,
-            content=[
-                MessageContent(
-                    type=MessageContentType.TEXT,
-                    text=text,
-                )
-            ],
-        )
-
-        return await self.process_messages([message])
 
     def create_graph(
         self, tools: Optional[List[BaseTool]] = None
