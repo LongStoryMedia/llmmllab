@@ -4,9 +4,8 @@ This directory contains unit tests for the pipeline factory and individual pipel
 
 ## Test Files
 
-- `test_pipeline_factory.py` - Tests for the `PipelineFactory` class
-- `test_pipelines.py` - Tests for the individual pipeline implementations (SD3Pipe, SDXLPipe, FluxPipe)
 - `test_helpers.py` - Tests for the helper functions
+- Other test files for current pipeline implementations
 
 ## Running the Tests
 

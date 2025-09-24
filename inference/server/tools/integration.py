@@ -773,19 +773,26 @@ Respond with ONLY the JSON object, no other text or formatting."""
         """Preprocess response to improve JSON extraction chances."""
         # Remove harmony channel formatting if present
         import re
-        
+
         # Look for final channel content first
-        final_pattern = r'<\|channel\|>final<\|message\|>(.+?)(?=<\|end\|>|$)'
+        final_pattern = r"<\|channel\|>final<\|message\|>(.+?)(?=<\|end\|>|$)"
         final_match = re.search(final_pattern, response, re.DOTALL | re.IGNORECASE)
-        
+
         if final_match:
             response = final_match.group(1).strip()
-        
+
         # Remove other channel content
-        response = re.sub(r'<\|channel\|>.*?<\|message\|>', '', response, flags=re.DOTALL | re.IGNORECASE)
-        response = re.sub(r'<\|end\|>.*?<\|start\|>', '', response, flags=re.DOTALL | re.IGNORECASE)
-        response = re.sub(r'<\|.*?\|>', '', response, flags=re.DOTALL | re.IGNORECASE)
-        
+        response = re.sub(
+            r"<\|channel\|>.*?<\|message\|>",
+            "",
+            response,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        response = re.sub(
+            r"<\|end\|>.*?<\|start\|>", "", response, flags=re.DOTALL | re.IGNORECASE
+        )
+        response = re.sub(r"<\|.*?\|>", "", response, flags=re.DOTALL | re.IGNORECASE)
+
         # Remove common LLM response prefixes/suffixes
         prefixes_to_remove = [
             r"^.*?(?=\{)",  # Remove everything before first {

@@ -69,25 +69,25 @@ class WebSearchTool(BaseTool):
         try:
             # Create a Message object from the query
             from models import MessageRole, MessageContent, MessageContentType
-            
+
             message = Message(
                 role=MessageRole.USER,
                 content=[MessageContent(type=MessageContentType.TEXT, text=query)],
-                conversation_id=getattr(self.conversation_ctx.conversation, "id", 0)
+                conversation_id=getattr(self.conversation_ctx.conversation, "id", 0),
             )
-            
+
             # Use the existing search context to perform web search
             search_results = await self.conversation_ctx.search_context.search(
                 message, getattr(self.conversation_ctx.conversation, "id", 0)
             )
-            
+
             if search_results:
                 # Format the search synthesis results
                 formatted_results = []
                 for result in search_results[:3]:  # Limit to top 3 results
                     formatted_results.append(
                         f"URLs: {', '.join(result.urls[:3])}\n"
-                        f"Topics: {', '.join(result.topics)}\n" 
+                        f"Topics: {', '.join(result.topics)}\n"
                         f"Synthesis: {result.synthesis[:300]}..."
                     )
                 return "Web search results:\n\n" + "\n\n".join(formatted_results)

@@ -1,0 +1,22 @@
+{
+    "messages": [
+        {
+            "role": "user",
+            "content": "Can you search the web for current news about artificial intelligence developments?"
+        }
+    ],
+    "pipeline_config": {
+        "model": "openai_gpt_oss",
+        "pipeline": "txt2txt"
+    },
+    "model_config": {
+        "temperature": 0.1,
+        "max_tokens": 2000
+    },
+    "context_config": {
+        "enable_rag": false
+    },
+    "tools": [
+        "web_search"
+    ]
+}

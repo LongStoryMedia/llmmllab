@@ -35,13 +35,7 @@ python -m runner --model stable_diffusion --prompt "An image of a cat" --output 
 
 ### Downloading and Processing Models
 
-```bash
-# Download a model from Hugging Face
-python -m scripts.download --model meta-llama/Llama-2-7b-chat-hf --output ./models
-
-# Download and quantize a model
-python -m scripts.download_and_quantize --model meta-llama/Llama-2-7b-chat-hf --bits 4
-```
+Note: Model download and processing scripts have been removed. Use standard Hugging Face tools for model management.
 
 ## Project Structure
 
@@ -50,7 +44,6 @@ python -m scripts.download_and_quantize --model meta-llama/Llama-2-7b-chat-hf --
   - `txt2img/`: Text-to-image generation pipelines
   - `img2img/`: Image-to-image generation pipelines
   - `imgtxt2txt/`: Multimodal pipelines
-- `scripts/`: Utility scripts for model management
 - `config/`: Configuration files for models
 
 ## Configuration

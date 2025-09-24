@@ -187,6 +187,73 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
         """Create system prompt with anti-loop instructions. Must be implemented by subclasses."""
         raise NotImplementedError("Subclass must implement _create_system_prompt")
 
+    # ---- Tool Calling Helper Methods ----
+    def _create_tool_description(self, tools: Optional[List[BaseTool]]) -> str:
+        """Create standardized tool descriptions for system prompts."""
+        if not tools:
+            return ""
+        
+        tool_descriptions = []
+        for tool in tools:
+            tool_descriptions.append(f"- {tool.name}: {tool.description}")
+        
+        return f"""
+
+Available tools:
+{chr(10).join(tool_descriptions)}
+
+Use these tools when they can help provide more accurate or comprehensive responses."""
+    
+    def _create_standard_agent_node(self, use_harmony_format: bool = False):
+        """Create a standard agent node following LangGraph best practices.
+        
+        This can be used by subclasses to implement consistent agent behavior
+        with proper tool calling integration.
+        
+        Args:
+            use_harmony_format: If True, enables special formatting for harmony-compatible models
+        """
+        async def agent_node(state: LangGraphState, config=None) -> Dict[str, Any]:
+            _ = config
+
+            # Iteration guard
+            if state.current_iteration >= state.max_iterations:
+                msg = f"Maximum iterations ({state.max_iterations}) reached. Stopping to prevent infinite loops."
+                return {
+                    "messages": [coerce_to_langchain_message_dict(AIMessage(content=msg))],
+                    "current_iteration": state.current_iteration + 1,
+                }
+
+            try:
+                # Initialize LLM if not done yet
+                if self.llm is None:
+                    gguf_path = self._get_gguf_path()
+                    await self._initialize_llm(gguf_path)
+
+                # Build messages for LLM using standard LangChain format
+                messages = build_lc_messages(state.messages)
+
+                # Use base class streaming with timeout and safety controls
+                response = await self._stream_with_adaptive_controls(
+                    messages, 
+                    is_tool_generation=False
+                )
+
+                return {
+                    "messages": [coerce_to_langchain_message_dict(response)],
+                    "current_iteration": state.current_iteration + 1,
+                }
+
+            except Exception as e:
+                error_msg = f"Error in agent node: {str(e)}"
+                self._logger.error(error_msg, exc_info=True)
+                return {
+                    "messages": [coerce_to_langchain_message_dict(AIMessage(content=error_msg))],
+                    "current_iteration": state.current_iteration + 1,
+                }
+        
+        return agent_node
+
     # ---- Channel Extraction Methods ----
     def _should_use_extended_timeout(self, messages: List[Message]) -> bool:
         """
