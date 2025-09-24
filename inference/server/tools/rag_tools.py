@@ -92,7 +92,14 @@ class WebSearchTool(BaseTool):
                     )
                 return "Web search results:\n\n" + "\n\n".join(formatted_results)
             else:
-                return f"No web search results found for: {query}"
+                # If synthesis failed, create basic results from search context
+                logger.warning(f"No synthesis results for query: {query}, trying basic search results")
+                
+                # Reset search results and try a simple approach
+                self.conversation_ctx.search_context.search_results = []
+                
+                # Return a message indicating search was attempted
+                return f"Web search was performed for '{query}' but detailed results are not available. Search providers returned results but content extraction failed. Please try a more specific search query."
         except Exception as e:
             logger.error(f"Web search error: {e}")
             return f"Web search failed: {str(e)}"

@@ -4,7 +4,7 @@ Message utility functions for validating and formatting Message objects.
 
 from typing import List, Union
 
-from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from models.message import Message
 from models.message_role import MessageRole
@@ -100,6 +100,9 @@ def from_lc_message(lc_message: Union[BaseMessage, LangChainMessage]) -> Message
             role = MessageRole.USER
         elif message_type == "system":
             role = MessageRole.SYSTEM
+        elif message_type == "tool":
+            # Tool messages are treated as system messages to preserve context
+            role = MessageRole.SYSTEM
         else:
             logger.warning(
                 f"Unknown LangChainMessage type: {lc_message.type}, defaulting to USER"
@@ -124,6 +127,10 @@ def from_lc_message(lc_message: Union[BaseMessage, LangChainMessage]) -> Message
         role = MessageRole.USER
         text_content = str(lc_message.content) if lc_message.content else ""
     elif isinstance(lc_message, SystemMessage):
+        role = MessageRole.SYSTEM
+        text_content = str(lc_message.content) if lc_message.content else ""
+    elif isinstance(lc_message, ToolMessage):
+        # Tool messages are treated as system messages to preserve tool output context
         role = MessageRole.SYSTEM
         text_content = str(lc_message.content) if lc_message.content else ""
     else:
