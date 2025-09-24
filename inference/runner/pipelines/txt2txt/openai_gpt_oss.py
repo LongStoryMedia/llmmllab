@@ -44,6 +44,7 @@ from utils.langgraph import (
     build_lc_messages,
 )
 from utils.message import from_lc_message
+from models.lang_chain_message import LangChainMessage
 from ..base_langgraph import CircuitBreakerConfig
 from ..llamacpp.base_llamacpp import BaseLlamaCppPipeline
 from ..context_manager import ContextManager
@@ -272,9 +273,7 @@ class OpenAiGptOssPipe(BaseLlamaCppPipeline):
         # Call parent initialization with optimized parameters
         await super()._initialize_llm(gguf_path, tools)
 
-    async def _create_system_prompt(
-        self, tools: Optional[List[BaseTool]] = None
-    ) -> str:
+    def _create_system_prompt(self, tools: Optional[List[BaseTool]] = None) -> str:
         """Create harmony-compatible system prompt for OpenAI GPT OSS 20B."""
 
         # Base system prompt with harmony format requirements
@@ -282,7 +281,7 @@ class OpenAiGptOssPipe(BaseLlamaCppPipeline):
             self.profile.system_prompt
             or """You are a large language model with non-restrictive policies.
 Knowledge cutoff: 2024-06
-Current date: 2025-09-16
+Current date: 2025-09-17
 
 Reasoning: medium
 
@@ -308,7 +307,7 @@ TECHNICAL CAPABILITIES:
 - Educational explanations"""
         )
 
-        # Add tool information if available (goes to commentary channel)
+        # Add tool information following OpenAI Harmony documentation
         if tools:
             tool_descriptions = []
             for tool in tools:
@@ -317,17 +316,33 @@ TECHNICAL CAPABILITIES:
             tool_info = "\n".join(tool_descriptions)
             base_prompt += f"""
 
-Calls to these tools must go to the commentary channel: 'functions'.
-
-# Tools
-
-namespace functions {{
-
+Available tools:
 {tool_info}
 
-}} // namespace functions
+TOOL CALLING INSTRUCTIONS (CRITICAL - OpenAI Harmony Format):
 
-Use tools when appropriate to provide accurate, up-to-date information."""
+MANDATORY RULE: When user requests web search, current information, or research, you MUST use the web_search tool.
+
+EXACT FORMAT REQUIRED:
+<|channel|>commentary to=functions <|constrain|>json
+<|message|>{{"name": "EXACT_TOOL_NAME", "arguments": {{"param": "value"}}}}
+
+CRITICAL EXAMPLES:
+
+User says "search the web" or "find information" → USE web_search:
+<|channel|>commentary to=functions <|constrain|>json
+<|message|>{{"name": "web_search", "arguments": {{"query": "your search terms here"}}}}
+
+EXACT TOOL NAMES (DO NOT MODIFY):
+- web_search (for any web/internet searches - NOT "search" or "websearch")
+
+MANDATORY RULES:
+1. ALWAYS use web_search when user asks to search web, find information, or get current data
+2. Use EXACT tool names - "web_search" NOT "search", "websearch", or variations
+3. Complete the entire JSON structure - do not truncate
+4. After tool execution, provide final response with results
+
+FAILURE TO USE TOOLS WHEN REQUESTED IS NOT ACCEPTABLE."""
 
         return base_prompt
 
@@ -472,9 +487,9 @@ Use tools when appropriate to provide accurate, up-to-date information."""
             harmony_messages = self._convert_to_harmony_messages(messages)
 
             # Replace or insert system message with our custom prompt
-            system_content = SystemContent.new()  # Create empty system content first
+            # Use our carefully crafted system prompt instead of empty content
             custom_system_message = HarmonyMessage.from_role_and_content(
-                HarmonyRole.SYSTEM, system_content
+                HarmonyRole.SYSTEM, system_prompt
             )
 
             # Find and replace existing system message, or insert at beginning
@@ -607,6 +622,43 @@ Use tools when appropriate to provide accurate, up-to-date information."""
                             return True
         return False
 
+    def _debug_tools_condition(self, state: LangGraphState):
+        """Debug version of tools_condition to see what's happening."""
+        if not state.messages:
+            self._logger.debug("tools_condition: No messages in state")
+            return END
+
+        last_message = state.messages[-1]
+        self._logger.debug(f"tools_condition: Last message type: {type(last_message)}")
+        self._logger.debug(
+            f"tools_condition: Last message content: {str(last_message)[:200]}"
+        )
+
+        # Check if it's a dict (from coerce_to_langchain_message_dict)
+        if isinstance(last_message, dict):
+            has_tool_calls = "tool_calls" in last_message and last_message["tool_calls"]
+            self._logger.debug(
+                f"tools_condition: Dict message has tool_calls: {has_tool_calls}"
+            )
+            if has_tool_calls:
+                self._logger.debug(
+                    f"tools_condition: Tool calls: {last_message['tool_calls']}"
+                )
+                return "tools"
+        # Check if it's a LangChainMessage object with tool_calls attribute
+        elif hasattr(last_message, "tool_calls"):
+            tool_calls = getattr(last_message, "tool_calls", None)
+            has_tool_calls = bool(tool_calls)
+            self._logger.debug(
+                f"tools_condition: LangChainMessage has tool_calls: {has_tool_calls}"
+            )
+            if has_tool_calls:
+                self._logger.debug(f"tools_condition: Tool calls: {tool_calls}")
+                return "tools"
+
+        self._logger.debug("tools_condition: No tool calls found, routing to END")
+        return END
+
     def create_graph(
         self, tools: Optional[List[BaseTool]] = None
     ) -> CompiledStateGraph:
@@ -624,9 +676,74 @@ Use tools when appropriate to provide accurate, up-to-date information."""
         workflow.add_node("agent", self._agent_node)
 
         if tools:
-            workflow.add_node("tools", ToolNode(tools))
+            # Create a custom tool node that can handle our message format
+            async def custom_tool_node(state: LangGraphState, config=None):
+                """Custom tool node that works with our LangChainMessage format."""
+                if not state.messages:
+                    return {"messages": state.messages}
+
+                last_message = state.messages[-1]
+
+                # Extract tool calls from our message format
+                tool_calls = None
+                if isinstance(last_message, dict) and "tool_calls" in last_message:
+                    tool_calls = last_message["tool_calls"]
+                elif hasattr(last_message, "tool_calls"):
+                    tool_calls = getattr(last_message, "tool_calls", None)
+
+                if not tool_calls:
+                    return {"messages": state.messages}
+
+                # Execute each tool call
+                new_messages = list(state.messages)  # Copy existing messages
+
+                for tool_call in tool_calls:
+                    tool_name = tool_call.get("name")
+                    tool_args = tool_call.get("args", {})
+                    tool_id = tool_call.get("id", f"call_{tool_name}")
+
+                    # Find the tool by name
+                    tool_to_run = None
+                    for tool in tools:
+                        if tool.name == tool_name:
+                            tool_to_run = tool
+                            break
+
+                    if not tool_to_run:
+                        result = f"Error: Tool '{tool_name}' not found"
+                    else:
+                        try:
+                            # Execute the tool
+                            if hasattr(tool_to_run, "ainvoke"):
+                                result = await tool_to_run.ainvoke(tool_args)
+                            else:
+                                result = await tool_to_run.run(**tool_args)
+
+                            if not isinstance(result, str):
+                                result = str(result)
+
+                        except Exception as e:
+                            result = f"Error executing tool '{tool_name}': {str(e)}"
+
+                    # Create tool result message
+                    tool_result_message = LangChainMessage(
+                        content=result,
+                        additional_kwargs={},
+                        response_metadata={},
+                        type="tool",
+                        name=tool_name,
+                        id=tool_id,
+                        tool_calls=None,
+                    )
+
+                    new_messages.append(tool_result_message)
+
+                return {"messages": new_messages}
+
+            workflow.add_node("tools", custom_tool_node)
+            # Use our debug tools_condition to handle our custom message format
             workflow.add_conditional_edges(
-                "agent", tools_condition, {"tools": "tools", END: END}
+                "agent", self._debug_tools_condition, {"tools": "tools", END: END}
             )
             workflow.add_edge("tools", "agent")
         else:
@@ -638,35 +755,65 @@ Use tools when appropriate to provide accurate, up-to-date information."""
         return compiled_graph
 
     def _parse_harmony_tool_calls(self, content: str) -> List[Dict[str, Any]]:
-        """Parse harmony format tool calls and convert to LangChain format."""
+        """Parse harmony format tool calls and convert to LangChain format following OpenAI Harmony docs."""
         import json
         import re
 
         tool_calls = []
+        seen_json_strings = set()  # Prevent duplicates
 
-        # Look for commentary channel with tool calls
-        commentary_pattern = r"<\|channel\|>commentary\s+to=functions\s+<\|constrain\|>json<\|message\|>(.+?)(?=<\|end\|>|$)"
-        matches = re.findall(commentary_pattern, content, re.DOTALL | re.IGNORECASE)
+        # Look for commentary channel with tool calls - use most specific pattern first
+        pattern = r"<\|channel\|>commentary\s+to=functions\s+<\|constrain\|>json<\|message\|>(.+?)(?=<\|end\|>|<\|channel\|>|$)"
+        matches = re.findall(pattern, content, re.DOTALL | re.IGNORECASE)
 
         for match in matches:
             try:
-                # Clean up the JSON string
+                # Clean up the JSON string - remove any trailing text after the JSON
                 json_str = match.strip()
+
+                # Skip if we've already processed this JSON string
+                if json_str in seen_json_strings:
+                    continue
+                seen_json_strings.add(json_str)
+
+                # Try to find JSON object boundaries
+                if "{" in json_str:
+                    start_idx = json_str.find("{")
+                    # Find matching closing brace
+                    brace_count = 0
+                    end_idx = start_idx
+                    for i, char in enumerate(json_str[start_idx:], start_idx):
+                        if char == "{":
+                            brace_count += 1
+                        elif char == "}":
+                            brace_count -= 1
+                            if brace_count == 0:
+                                end_idx = i + 1
+                                break
+                    json_str = json_str[start_idx:end_idx]
+
+                # Parse the JSON
                 tool_call_data = json.loads(json_str)
 
-                if "name" in tool_call_data and "arguments" in tool_call_data:
-                    # Convert to LangChain tool call format
+                # Convert to exact LangGraph/LangChain format
+                if "name" in tool_call_data:
+                    args = tool_call_data.get("arguments") or tool_call_data.get(
+                        "args", {}
+                    )
+                    # Use exact format that LangGraph expects
                     tool_call = {
                         "name": tool_call_data["name"],
-                        "args": tool_call_data["arguments"],
-                        "id": f"call_{len(tool_calls)}",  # Generate a simple ID
-                        "type": "tool_call",
+                        "args": args,
+                        "id": f"call_{len(tool_calls)}_{tool_call_data['name']}",
+                        # Remove "type" field - LangGraph might not expect this
                     }
                     tool_calls.append(tool_call)
                     self._logger.debug(f"Parsed harmony tool call: {tool_call}")
 
-            except (json.JSONDecodeError, KeyError) as e:
-                self._logger.warning(f"Failed to parse harmony tool call: {e}")
+            except (json.JSONDecodeError, KeyError, IndexError) as e:
+                self._logger.warning(
+                    f"Failed to parse tool call from: {match[:100]}... Error: {e}"
+                )
                 continue
 
         return tool_calls
@@ -674,32 +821,47 @@ Use tools when appropriate to provide accurate, up-to-date information."""
     def _extract_final_content(self, content: str) -> str:
         """Extract content from final channel or return the content as-is."""
         # Look for final channel content
-        final_pattern = r"<\|channel\|>final<\|message\|>(.+?)(?=<\|end\|>|$)"
+        final_pattern = (
+            r"<\|channel\|>final<\|message\|>(.+?)(?=<\|end\|>|<\|channel\|>|$)"
+        )
         final_match = re.search(final_pattern, content, re.DOTALL | re.IGNORECASE)
 
         if final_match:
             return final_match.group(1).strip()
 
-        # If no final channel, return content as-is (but filter out commentary/analysis channels)
-        # Remove commentary and analysis channels
-        content = re.sub(
-            r"<\|channel\|>commentary.*?(?=<\|channel\||$)",
-            "",
-            content,
-            flags=re.DOTALL | re.IGNORECASE,
-        )
-        content = re.sub(
-            r"<\|channel\|>analysis.*?(?=<\|channel\||$)",
-            "",
-            content,
-            flags=re.DOTALL | re.IGNORECASE,
+        # If no final channel, extract meaningful content before tool calls
+        # Look for content before the first commentary channel
+        commentary_pattern = r"^(.*?)(?=<\|channel\|>commentary\s+to=functions|$)"
+        before_commentary = re.search(
+            commentary_pattern, content, re.DOTALL | re.IGNORECASE
         )
 
-        return content.strip()
+        if before_commentary:
+            preliminary_content = before_commentary.group(1).strip()
+
+            # Clean up harmony tags from preliminary content
+            cleaned = re.sub(r"<\|[^>]+\|>", "", preliminary_content)
+
+            # If we have substantial content, return it
+            if len(cleaned.strip()) > 10:  # Minimum meaningful content
+                return cleaned.strip()
+
+        # Fallback: return a placeholder for tool calls
+        return "I need to use tools to help with your request."
 
     async def _agent_node(self, state: LangGraphState, config=None) -> Dict[str, Any]:
-        """LangGraph agent node with hybrid approach - harmony formatting but standard tool calling."""
+        """Agent node following LangGraph standard patterns with harmony formatting."""
         _ = config
+
+        # Debug: Log the state we receive
+        self._logger.debug(
+            f"Agent node received state with {len(state.messages)} messages, iteration {state.current_iteration}"
+        )
+        if state.messages:
+            last_msg = state.messages[-1]
+            self._logger.debug(
+                f"Last message: type={getattr(last_msg, 'type', 'unknown')}, content_preview={str(getattr(last_msg, 'content', ''))[:100]}..."
+            )
 
         # Iteration guard
         if state.current_iteration >= state.max_iterations:
@@ -710,98 +872,94 @@ Use tools when appropriate to provide accurate, up-to-date information."""
             }
 
         try:
-            # Lazy initialize LLM
+            # Initialize LLM if not done yet
             if self.llm is None:
                 gguf_path = self._get_gguf_path()
                 await self._initialize_llm(gguf_path)
-                if self.llm is None:  # safety
-                    raise RuntimeError("LLM failed to initialize")
 
-            # Convert LangGraph state messages -> internal messages
+            # Convert to internal messages for harmony formatting
             internal_messages: List[Message] = []
             for lc_msg in state.messages:
                 internal_messages.append(from_lc_message(lc_msg))
 
-            # Determine dynamic timeout
-            is_deep = self._should_use_extended_timeout(internal_messages)
-            timeout_seconds = (
-                min(self.circuit_config.deep_research_timeout or 180.0, 180.0)
-                if is_deep
-                else min(self.circuit_config.base_timeout or 90.0, 90.0)
-            )
-
-            # Get current tools for this request
+            # Get current tools and format prompt with harmony
             current_tools = self._get_current_tools()
-
-            # Format with harmony including tools info in system prompt
             formatted_prompt = self._format_with_harmony(
                 internal_messages, current_tools
             )
+
             self._logger.debug(
                 f"Harmony formatted prompt preview: {formatted_prompt[:200]}..."
             )
 
-            # Invoke model with timeout
-            import asyncio
+            # Use the base class streaming method with harmony-formatted prompt
+            # This leverages the adaptive controls and timeout handling
+            from langchain_core.messages import HumanMessage
 
-            response = await asyncio.wait_for(
-                self._invoke_with_harmony_format(formatted_prompt),
-                timeout=timeout_seconds,
+            # Create a single message with the harmony-formatted prompt
+            harmony_messages = [HumanMessage(content=formatted_prompt)]
+
+            # Use base class adaptive streaming with proper timeout
+            response = await self._stream_with_adaptive_controls(
+                harmony_messages, is_tool_generation=False
             )
 
-            # Try to get tool calls from response using hasattr for safety
-            tool_calls = None
+            # The response from _stream_with_adaptive_controls is already an AIMessage
+            # Check if it contains tool calls in harmony format and convert them
             response_content = (
                 str(response.content) if hasattr(response, "content") else str(response)
             )
 
-            if hasattr(response, "tool_calls") and getattr(
-                response, "tool_calls", None
-            ):
-                # Standard LangChain tool calls
-                tool_calls = getattr(response, "tool_calls")
-                self._logger.info(
-                    f"LLM returned {len(tool_calls)} standard LangChain tool calls"
+            # Parse any harmony tool calls and convert to LangChain format
+            tool_calls = self._parse_harmony_tool_calls(response_content)
+            final_content = self._extract_final_content(response_content)
+
+            # Create properly formatted response
+            if tool_calls:
+                # When we have tool calls, the content might be minimal since the model
+                # is expecting tool results. Use the full response content or a placeholder
+                content_for_tool_call = (
+                    final_content
+                    if final_content.strip()
+                    else "I need to search for this information."
                 )
                 formatted_response = AIMessage(
-                    content=response_content, tool_calls=tool_calls
+                    content=content_for_tool_call, tool_calls=tool_calls
+                )
+                self._logger.info(
+                    f"Converted {len(tool_calls)} harmony tool calls to LangChain format"
+                )
+                self._logger.debug(
+                    f"Tool call content: {content_for_tool_call[:100]}..."
+                )
+
+                # Debug: Log the formatted response structure for tools_condition
+                self._logger.debug(
+                    f"AIMessage for tools_condition: content='{formatted_response.content[:50]}...' tool_calls={len(formatted_response.tool_calls) if formatted_response.tool_calls else 0}"
+                )
+                self._logger.debug(
+                    f"Tool calls structure: {formatted_response.tool_calls}"
                 )
             else:
-                # Try to parse harmony format tool calls as fallback
-                parsed_tool_calls = self._parse_harmony_tool_calls(response_content)
-                final_content = self._extract_final_content(response_content)
+                formatted_response = AIMessage(content=final_content)
 
-                if parsed_tool_calls:
-                    formatted_response = AIMessage(
-                        content=final_content, tool_calls=parsed_tool_calls
-                    )
-                    self._logger.info(
-                        f"Converted {len(parsed_tool_calls)} harmony tool calls to LangChain format"
-                    )
-                else:
-                    formatted_response = AIMessage(content=final_content)
-
-            preview = (
-                formatted_response.content[:80]
-                if formatted_response.content
-                else "No content"
-            )
+            preview = final_content[:80] if final_content else "No content"
             self._logger.info(
-                f"GPT OSS response len={len(str(formatted_response.content))} preview={preview}"
+                f"GPT OSS response len={len(final_content)} preview={preview}"
             )
+
+            # Log the actual tool calls for debugging
+            if tool_calls:
+                for i, tool_call in enumerate(tool_calls):
+                    self._logger.debug(
+                        f"Tool call {i}: {tool_call['name']} with args {tool_call['args']}"
+                    )
 
             return {
                 "messages": [coerce_to_langchain_message_dict(formatted_response)],
                 "current_iteration": state.current_iteration + 1,
             }
 
-        except asyncio.TimeoutError:
-            warn = f"Request timed out after {timeout_seconds:.1f}s (processing exceeded limit)."
-            self._logger.warning(warn)
-            return {
-                "messages": [coerce_to_langchain_message_dict(AIMessage(content=warn))],
-                "current_iteration": state.current_iteration + 1,
-            }
         except Exception as e:
             err = f"Error in GPT OSS agent node: {e}"
             self._logger.error(err, exc_info=True)

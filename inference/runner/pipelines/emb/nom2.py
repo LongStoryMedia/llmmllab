@@ -90,7 +90,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
             # Skip system messages for embeddings
             if message.role == MessageRole.SYSTEM:
                 continue
-                
+
             text = extract_message_text(message)
             if text:
                 texts.append(self._add_task_prefix(text))

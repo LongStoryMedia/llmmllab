@@ -1,0 +1,13 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "search the web for the latest news on artificial intelligence breakthroughs in 2024"
+    }
+  ],
+  "role": "user",
+  "model_name": "DavidAU/OpenAi-GPT-oss-20b-abliterated-uncensored",
+  "enable_tools": true,
+  "profile": "web_search_only",
+  "conversation_id": 1
+}

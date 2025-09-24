@@ -366,6 +366,12 @@ async def get_current_user(request: Request) -> TokenValidationResult:
 # Utility functions for getting auth data from request
 def get_user_id(request: Request) -> Optional[str]:
     """Get user ID from request state"""
+    # If auth is disabled, return a default test user ID
+    import os
+
+    if os.environ.get("DISABLE_AUTH", "").lower() == "true":
+        return "test-user-auth-disabled"
+
     if hasattr(request.state, "auth"):
         return request.state.auth.get(ContextKey.USER_ID)
     return None
@@ -373,6 +379,16 @@ def get_user_id(request: Request) -> Optional[str]:
 
 def get_user_claims(request: Request) -> Optional[Dict[str, Any]]:
     """Get user claims from request state"""
+    # If auth is disabled, return default test claims
+    import os
+
+    if os.environ.get("DISABLE_AUTH", "").lower() == "true":
+        return {
+            "sub": "test-user-auth-disabled",
+            "email": "test@example.com",
+            "name": "Test User (Auth Disabled)",
+        }
+
     if hasattr(request.state, "auth"):
         return request.state.auth.get(ContextKey.TOKEN_CLAIMS)
     return None

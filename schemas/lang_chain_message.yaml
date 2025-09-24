@@ -31,6 +31,23 @@ properties:
   id:
     type: "string"
     description: "An optional unique identifier for the message."
+  tool_calls:
+    type: array
+    items:
+      type: object
+      description: "A tool call associated with the message."
+      properties:
+        name:
+          type: string
+          description: "The name of the tool being called."
+        args:
+          type: object
+          description: "The arguments for the tool call."
+        id:
+          type: string
+          description: "An optional unique identifier for the tool call."
+        additionalProperties: true
+    description: "Tool calls associated with the message."
 additionalProperties: true
 required:
   - content

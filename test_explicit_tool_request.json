@@ -1,0 +1,10 @@
+{
+    "role": "user",
+    "content": [
+        {
+            "type": "text",
+            "text": "I need you to search the web right now for information about recent AI breakthroughs in 2024. This is urgent and I need current information that you must get from the internet. Please use the web_search tool to find this information."
+        }
+    ],
+    "conversation_id": 999999999
+}

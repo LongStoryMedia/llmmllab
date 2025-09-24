@@ -1,0 +1,10 @@
+{
+    "role": "user",
+    "content": [
+        {
+            "type": "text",
+            "text": "Use the web_search tool to find information about recent AI developments in 2024. The exact tool name is web_search. Please call it now."
+        }
+    ],
+    "conversation_id": 88888888
+}

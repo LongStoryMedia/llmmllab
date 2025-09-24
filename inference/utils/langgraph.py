@@ -33,7 +33,7 @@ def _coerce_to_langchain_message_dict(item: Any) -> Dict[str, Any]:
 
     # Duck-typing for LangChain BaseMessage-like objects
     if hasattr(item, "content"):
-        return {
+        result = {
             "content": getattr(item, "content", ""),
             "additional_kwargs": getattr(item, "additional_kwargs", {}) or {},
             "response_metadata": getattr(item, "response_metadata", {}) or {},
@@ -41,6 +41,12 @@ def _coerce_to_langchain_message_dict(item: Any) -> Dict[str, Any]:
             "name": getattr(item, "name", None),
             "id": getattr(item, "id", None),
         }
+
+        # Preserve tool_calls if present (important for LangGraph tool routing)
+        if hasattr(item, "tool_calls") and getattr(item, "tool_calls", None):
+            result["tool_calls"] = getattr(item, "tool_calls")
+
+        return result
 
     # Fallback: stringify
     return {
@@ -70,8 +76,14 @@ def coerce_to_lc_message(item: Any) -> Any:
     if isinstance(item, dict):
         content = item.get("content", "")
         mtype = (item.get("type") or item.get("role") or "").lower()
+        tool_calls = item.get("tool_calls", None)
+
         if mtype in ("ai", "assistant") and LCAIMessage is not None:
-            return LCAIMessage(content=content)
+            # Preserve tool_calls for AI messages
+            if tool_calls:
+                return LCAIMessage(content=content, tool_calls=tool_calls)
+            else:
+                return LCAIMessage(content=content)
         if mtype in ("human", "user") and LCHumanMessage is not None:
             return LCHumanMessage(content=content)
         if mtype == "system" and LCSystemMessage is not None:

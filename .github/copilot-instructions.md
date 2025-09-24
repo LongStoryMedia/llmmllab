@@ -6,11 +6,10 @@ LLM ML Lab is a multi-modal language model platform with microservice architectu
 
 - **inference/**: Python services (evaluation, server, runner) with isolated virtual environments
      - **evaluation/**: Model benchmarking and fine-tuning tools
-     - **server/**: FastAPI REST + gRPC services for model interaction (calls runner for execution)
+     - **server/**: FastAPI REST services for model interaction (calls runner for execution)
      - **runner/**: Model execution pipelines with dynamic tool integration
 - **ui/**: React TypeScript frontend with Material UI Joy
-- **proto/**: Protocol buffer definitions for gRPC APIs
-- **schemas/**: YAML schema definitions for type safety across services
+- **schemas/**: YAML schema definitions for type safety across services (generates code via `./regenerate_models.sh`)
 
 ## Key Development Workflows
 
@@ -25,14 +24,18 @@ k exec -it -n ollama $POD_NAME -- /app/v.sh server python -m uvicorn app:app --p
 k exec -it -n ollama $POD_NAME -- /app/v.sh runner python -c "import torch; print(torch.cuda.is_available())"
 ```
 
-inference does not generally run locally due to hardware needs. use `inferece/sync-code.sh` to sync code to remote cluster.
+inference does not generally run locally due to hardware needs. use `inference/sync-code.sh` to sync code to remote cluster.
 the ui is fully local and connects to remote inference services.
 
 
 ### Code Generation
 ```bash
-# Generate Python and Typescript models from YAML schemas
+# Generate Python and TypeScript models from YAML schemas
 ./regenerate_models.sh
+
+# Language-specific generation
+./regenerate_models.sh python     # Generate only Python models
+./regenerate_models.sh typescript # Generate only TypeScript models
 ```
 
 ## Critical Patterns
@@ -40,7 +43,7 @@ the ui is fully local and connects to remote inference services.
 ### Multi-Environment Architecture
 The inference service uses **three isolated Python environments**:
 - `evaluation/`: Benchmarking and fine-tuning (separate deps from serving)
-- `server/`: FastAPI REST + gRPC services 
+- `server/`: FastAPI REST services 
 - `runner/`: Model execution pipelines
 
 Always use `/app/v.sh {service}` when executing commands in Kubernetes pods.
@@ -48,7 +51,8 @@ Always use `/app/v.sh {service}` when executing commands in Kubernetes pods.
 ### Schema-Driven Development
 YAML schemas in `schemas/` define the data contracts. When modifying APIs:
 1. Update relevant YAML schema first
-2. Run `./regenerate_models.sh` to generate Python models
+2. Run `./regenerate_models.sh` to generate Python models and TypeScript types
+3. Generated files: `inference/models/*.py`, `ui/src/types/*.ts`
 
 ### Memory Management
 The platform implements sophisticated memory optimization:
@@ -59,9 +63,9 @@ The platform implements sophisticated memory optimization:
 ## Service Communication
 
 ```
-UI (React) ←→ REST API (FastAPI) ←→ gRPC (Internal) ←→ Model Runner
-     ↓                ↓                    ↓
-WebSocket        RabbitMQ           GPU Resources
+UI (React) ←→ REST API (FastAPI) ←→ Model Runner
+                        ↓
+                 GPU Resources
 ```
 
 ## Development Commands
@@ -79,7 +83,7 @@ make start  # Parallel: inference-dev + UI dev server
 
 ## File Conventions
 
-- **API endpoints**: REST in `server/`, gRPC services use protobuf contracts
+- **API endpoints**: REST in `server/`
 - **Configuration**: Centralized in `schemas/config.yaml` with component-specific refs
 - **Kubernetes**: Deployments in `{service}/k8s/` with `apply.sh` automation
 - **Container startup**: `inference/startup.sh` orchestrates multi-service containers

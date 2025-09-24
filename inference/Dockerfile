@@ -63,7 +63,7 @@ RUN python3 -m venv /tmp/build_venv && \
 # pip wheel --wheel-dir /opt/wheels llama-cpp-python==0.3.16 -vvv
 
 RUN CMAKE_ARGS="-DGGML_CUDA=ON -DCMAsKE_CUDA_ARCHITECTURES=75;86" \
-    pip wheel --wheel-dir /opt/wheelss git+https://github.com/LongStoryMedia/llama-cpp-python.git@feature/b6482 -vvv
+    pip wheel --wheel-dir /opt/wheels git+https://github.com/LongStoryMedia/llama-cpp-python.git@feature/b6482 -vvv
 # Runtime stage - minimal CUDA runtime
 # FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
 
