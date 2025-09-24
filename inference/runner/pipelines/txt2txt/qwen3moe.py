@@ -137,6 +137,8 @@ class QwenLangGraphPipe(BaseLlamaCppPipeline):
 
     def process_streaming_token(self, content: str) -> Optional[ChatResponse]:
         """Process streaming token with <think> tag detection (overrides base method)."""
+        if content is None:
+            return None
         self.buffer += content
 
         # Check for opening think tag
@@ -156,28 +158,62 @@ class QwenLangGraphPipe(BaseLlamaCppPipeline):
         # Normal content outside think tags
         return self._create_streaming_response(content)
 
+    def _create_thinking_response(self, content: str) -> Optional[ChatResponse]:
+        """Create a response for thinking content."""
+        try:
+            # Accumulate thinking content
+            self.think_content += content
+            # Don't return anything for thinking - it will be added to the final message
+            return None
+        except Exception as e:
+            self._logger.error(f"Error creating thinking response: {e}")
+            return None
+
+    def _create_streaming_response(self, content: str) -> Optional[ChatResponse]:
+        """Create a streaming response for regular content."""
+        try:
+            if not content:
+                return None
+            
+            message_content = [
+                MessageContent(type=MessageContentType.TEXT, text=content)
+            ]
+            message = Message(
+                role=MessageRole.ASSISTANT,
+                content=message_content,
+                thinking=None  # Thinking will be added in finalize_streaming
+            )
+            return ChatResponse(message=message, done=False)
+        except Exception as e:
+            self._logger.error(f"Error creating streaming response: {e}")
+            return None
+
     def finalize_streaming(self) -> Optional[ChatResponse]:
         """Finalize streaming and return any remaining content (overrides base method)."""
-        # Create final message with thinking content and any remaining buffer
-        thinking = self.think_content if self.think_content else None
-        content = []
+        try:
+            # Create final message with thinking content and any remaining buffer
+            thinking = self.think_content if self.think_content else None
+            content = []
 
-        if self.buffer and not self.in_think_tag:
-            content = [
-                MessageContent(type=MessageContentType.TEXT, text=self.buffer.strip())
-            ]
+            if self.buffer and not self.in_think_tag:
+                content = [
+                    MessageContent(type=MessageContentType.TEXT, text=self.buffer.strip())
+                ]
 
-        # Reset state
-        self._reset_think_state()
+            # Reset state
+            self._reset_think_state()
 
-        # Return message with thinking field if we have thinking content
-        if thinking or content:
-            message = Message(
-                role=MessageRole.ASSISTANT, thinking=thinking, content=content
-            )
-            return ChatResponse(message=message, done=True)
+            # Return message with thinking field if we have thinking content
+            if thinking or content:
+                message = Message(
+                    role=MessageRole.ASSISTANT, thinking=thinking, content=content
+                )
+                return ChatResponse(message=message, done=True)
 
-        return None
+            return None
+        except Exception as e:
+            self._logger.error(f"Error in finalize_streaming: {e}", exc_info=True)
+            return None
 
     # llama.cpp initialization inherited from BaseLlamaCppPipeline
 
@@ -186,7 +222,7 @@ class QwenLangGraphPipe(BaseLlamaCppPipeline):
     async def _create_system_prompt(
         self, tools: Optional[List[BaseTool]] = None
     ) -> str:
-        """Create system prompt for Qwen3 thinking model."""
+        """Create system prompt for Qwen3 thinking model with tool calling support."""
         base_prompt = (
             self.profile.system_prompt
             or """You are a helpful AI assistant. Think through problems step by step using <think>...</think> tags.
@@ -199,18 +235,136 @@ Your thinking process will be captured separately from your response. Use the th
 Then provide your clear, direct answer outside the thinking tags."""
         )
 
-        # Add tool information if available
+        # Add tool information if available with function calling format
         if tools:
             tool_descriptions = []
             for tool in tools:
-                tool_descriptions.append(f"- {tool.name}: {tool.description}")
+                # Provide specific argument info for known tools
+                tool_args = "query (string)"  # default
+                if tool.name == "web_search":
+                    tool_args = "query (string), limit (integer, optional)"
+                elif tool.name == "memory_retrieval":
+                    tool_args = "tool_input (list of embeddings)"
+                elif tool.name == "summarization":
+                    tool_args = "tool_input (list of messages)"
+                
+                tool_descriptions.append(f"- **{tool.name}**: {tool.description}\n  Arguments: {tool_args}")
 
             tool_info = "\n".join(tool_descriptions)
-            base_prompt += (
-                f"\n\nAvailable tools:\n{tool_info}\n\nUse tools when appropriate."
-            )
+            base_prompt += f"""
+
+## Available Tools:
+{tool_info}
+
+## How to Use Tools:
+When you need to use a tool (like for web searches, calculations, or retrieving information), format your response with a JSON code block:
+
+```json
+{{
+    "tool_calls": [
+        {{
+            "name": "tool_name",
+            "arguments": {{
+                "param1": "value1",
+                "param2": "value2"
+            }}
+        }}
+    ]
+}}
+```
+
+**IMPORTANT**: 
+- Always use tools when you need current information or to perform searches
+- Don't make up links or information - use web_search to find real URLs
+- The JSON format must be exact - use "arguments" not "args"
+- You can make multiple tool calls in the same response by adding more objects to the array
+
+Example web search:
+```json
+{{
+    "tool_calls": [
+        {{
+            "name": "web_search",
+            "arguments": {{
+                "query": "NEMA 17 stepper motor",
+                "limit": 5
+            }}
+        }}
+    ]
+}}
+```"""
 
         return base_prompt
+
+    def _parse_qwen_tool_calls(self, content: str) -> List[Dict[str, Any]]:
+        """Parse Qwen-style JSON tool calls from the generated content."""
+        import json
+        import re
+
+        tool_calls = []
+        
+        # Look for JSON code blocks containing tool_calls
+        json_pattern = r'```json\s*(\{.*?\})\s*```'
+        matches = re.findall(json_pattern, content, re.DOTALL | re.IGNORECASE)
+        
+        for match in matches:
+            try:
+                data = json.loads(match.strip())
+                if "tool_calls" in data:
+                    for i, tool_call in enumerate(data["tool_calls"]):
+                        if "name" in tool_call:
+                            # Convert to LangGraph format
+                            formatted_call = {
+                                "name": tool_call["name"],
+                                "args": tool_call.get("arguments", {}),
+                                "id": f"call_{i}_{tool_call['name']}",
+                                "type": "tool_call"
+                            }
+                            tool_calls.append(formatted_call)
+                            self._logger.debug(f"Parsed Qwen tool call: {formatted_call}")
+            except (json.JSONDecodeError, KeyError) as e:
+                self._logger.warning(f"Failed to parse Qwen tool call from: {match[:100]}... Error: {e}")
+                continue
+                
+        # Also look for function call patterns outside of JSON blocks
+        if not tool_calls:
+            # Look for standalone function calls in the format {"name": "...", "arguments": {...}}
+            func_pattern = r'\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{[^}]*\})\s*\}'
+            func_matches = re.findall(func_pattern, content)
+            
+            for i, (name, args_str) in enumerate(func_matches):
+                try:
+                    args = json.loads(args_str)
+                    formatted_call = {
+                        "name": name,
+                        "args": args,
+                        "id": f"call_{i}_{name}",
+                        "type": "tool_call"
+                    }
+                    tool_calls.append(formatted_call)
+                    self._logger.debug(f"Parsed Qwen function call: {formatted_call}")
+                except json.JSONDecodeError as e:
+                    self._logger.warning(f"Failed to parse function arguments: {args_str}. Error: {e}")
+                    continue
+        
+        return tool_calls
+
+    def _clean_tool_calls_from_content(self, content: str) -> str:
+        """Remove tool call JSON blocks from the content to get clean user-facing text."""
+        import re
+        
+        # Remove JSON code blocks that contain tool_calls
+        json_pattern = r'```json\s*\{.*?"tool_calls".*?\}\s*```'
+        content = re.sub(json_pattern, '', content, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Remove standalone function call patterns
+        func_pattern = r'\{\s*"name"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*\{[^}]*\}\s*\}'
+        content = re.sub(func_pattern, '', content)
+        
+        # Clean up extra whitespace
+        content = re.sub(r'\n\s*\n\s*\n', '\n\n', content)
+        
+        return content.strip()
 
     def _should_use_extended_timeout(self, messages: List[Message]) -> bool:
         """
@@ -272,7 +426,7 @@ Then provide your clear, direct answer outside the thinking tags."""
         return compiled_graph
 
     async def _agent_node(self, state: LangGraphState, config=None) -> Dict[str, Any]:
-        """Agent node with enhanced timeout protection and circuit breaker."""
+        """Agent node with enhanced timeout protection, circuit breaker, and tool calling support."""
         _ = config  # Acknowledge unused parameter
 
         # Check iteration limits
@@ -297,8 +451,30 @@ Then provide your clear, direct answer outside the thinking tags."""
             # Stream with shared adaptive controls
             response = await self._stream_with_adaptive_controls(messages)
 
+            # Extract content for tool call parsing
+            response_content = (
+                str(response.content) if hasattr(response, "content") else str(response)
+            )
+
+            # Parse tool calls from Qwen's JSON format
+            tool_calls = self._parse_qwen_tool_calls(response_content)
+
+            # Create final response with tool calls if found
+            if tool_calls:
+                # Remove tool call JSON from the visible content
+                clean_content = self._clean_tool_calls_from_content(response_content)
+                formatted_response = AIMessage(
+                    content=clean_content if clean_content.strip() else "Let me search for that information.",
+                    tool_calls=tool_calls
+                )
+                self._logger.info(f"Qwen parsed {len(tool_calls)} tool calls")
+                for i, tool_call in enumerate(tool_calls):
+                    self._logger.debug(f"Tool call {i}: {tool_call['name']} with args {tool_call['args']}")
+            else:
+                formatted_response = response
+
             return {
-                "messages": [coerce_to_langchain_message_dict(response)],
+                "messages": [coerce_to_langchain_message_dict(formatted_response)],
                 "current_iteration": state.current_iteration + 1,
             }
 
