@@ -238,6 +238,12 @@ class OpenAiGptOssPipe(BaseLlamaCppPipeline):
             # This is used in system prompt formatting rather than llama.cpp parameters
             self._reasoning_effort = reasoning_effort
             self._logger.info(f"GPT OSS reasoning effort level: {reasoning_effort}")
+        
+        # CRITICAL: Fix stop sequences for harmony format
+        # The harmony format requires <|end|> markers to transition between channels
+        # Default stop sequences include <|end|> which prevents proper harmony format generation
+        optimal_params["stop"] = ["<|im_end|>", "<|endoftext|>"]  # Removed <|end|>
+        self._logger.info("GPT OSS: Configured stop sequences for harmony format compatibility")
 
         self._logger.info(f"Applied GPT OSS optimal parameters: {optimal_params}")
         return optimal_params
@@ -265,9 +271,11 @@ class OpenAiGptOssPipe(BaseLlamaCppPipeline):
             self.profile.parameters.min_p = optimal_params["min_p"]
         if optimal_params.get("repeat_penalty") is not None:
             self.profile.parameters.repeat_penalty = optimal_params["repeat_penalty"]
+        if optimal_params.get("stop") is not None:
+            self.profile.parameters.stop = optimal_params["stop"]
 
         self._logger.info(
-            "GPT OSS pipeline applying optimal parameters for initialization"
+            "GPT OSS pipeline applying optimal parameters for harmony format compatibility"
         )
 
         # Call parent initialization with optimized parameters
@@ -622,42 +630,7 @@ FAILURE TO USE TOOLS WHEN REQUESTED IS NOT ACCEPTABLE."""
                             return True
         return False
 
-    def _debug_tools_condition(self, state: LangGraphState):
-        """Debug version of tools_condition to see what's happening."""
-        if not state.messages:
-            self._logger.debug("tools_condition: No messages in state")
-            return END
 
-        last_message = state.messages[-1]
-        self._logger.debug(f"tools_condition: Last message type: {type(last_message)}")
-        self._logger.debug(
-            f"tools_condition: Last message content: {str(last_message)[:200]}"
-        )
-
-        # Check if it's a dict (from coerce_to_langchain_message_dict)
-        if isinstance(last_message, dict):
-            has_tool_calls = "tool_calls" in last_message and last_message["tool_calls"]
-            self._logger.debug(
-                f"tools_condition: Dict message has tool_calls: {has_tool_calls}"
-            )
-            if has_tool_calls:
-                self._logger.debug(
-                    f"tools_condition: Tool calls: {last_message['tool_calls']}"
-                )
-                return "tools"
-        # Check if it's a LangChainMessage object with tool_calls attribute
-        elif hasattr(last_message, "tool_calls"):
-            tool_calls = getattr(last_message, "tool_calls", None)
-            has_tool_calls = bool(tool_calls)
-            self._logger.debug(
-                f"tools_condition: LangChainMessage has tool_calls: {has_tool_calls}"
-            )
-            if has_tool_calls:
-                self._logger.debug(f"tools_condition: Tool calls: {tool_calls}")
-                return "tools"
-
-        self._logger.debug("tools_condition: No tool calls found, routing to END")
-        return END
 
     def create_graph(
         self, tools: Optional[List[BaseTool]] = None
@@ -676,74 +649,71 @@ FAILURE TO USE TOOLS WHEN REQUESTED IS NOT ACCEPTABLE."""
         workflow.add_node("agent", self._agent_node)
 
         if tools:
-            # Create a custom tool node that can handle our message format
-            async def custom_tool_node(state: LangGraphState, config=None):
-                """Custom tool node that works with our LangChainMessage format."""
+            # Create a wrapper around ToolNode to handle our LangChainMessage format
+            tool_node = ToolNode(tools)
+            
+            async def tool_node_wrapper(state: LangGraphState, config=None):
+                """Wrapper around ToolNode to handle LangChainMessage conversion."""
                 if not state.messages:
                     return {"messages": state.messages}
 
                 last_message = state.messages[-1]
-
-                # Extract tool calls from our message format
-                tool_calls = None
-                if isinstance(last_message, dict) and "tool_calls" in last_message:
-                    tool_calls = last_message["tool_calls"]
-                elif hasattr(last_message, "tool_calls"):
-                    tool_calls = getattr(last_message, "tool_calls", None)
-
-                if not tool_calls:
-                    return {"messages": state.messages}
-
-                # Execute each tool call
-                new_messages = list(state.messages)  # Copy existing messages
-
-                for tool_call in tool_calls:
-                    tool_name = tool_call.get("name")
-                    tool_args = tool_call.get("args", {})
-                    tool_id = tool_call.get("id", f"call_{tool_name}")
-
-                    # Find the tool by name
-                    tool_to_run = None
-                    for tool in tools:
-                        if tool.name == tool_name:
-                            tool_to_run = tool
-                            break
-
-                    if not tool_to_run:
-                        result = f"Error: Tool '{tool_name}' not found"
-                    else:
-                        try:
-                            # Execute the tool
-                            if hasattr(tool_to_run, "ainvoke"):
-                                result = await tool_to_run.ainvoke(tool_args)
-                            else:
-                                result = await tool_to_run.run(**tool_args)
-
-                            if not isinstance(result, str):
-                                result = str(result)
-
-                        except Exception as e:
-                            result = f"Error executing tool '{tool_name}': {str(e)}"
-
-                    # Create tool result message
-                    tool_result_message = LangChainMessage(
-                        content=result,
-                        additional_kwargs={},
-                        response_metadata={},
-                        type="tool",
-                        name=tool_name,
-                        id=tool_id,
-                        tool_calls=None,
+                
+                # Convert LangChainMessage to AIMessage for ToolNode
+                if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+                    # Create an AIMessage from our LangChainMessage
+                    ai_message = AIMessage(
+                        content=last_message.content,
+                        tool_calls=last_message.tool_calls
                     )
+                    
+                    # Create a temporary state with AIMessage for ToolNode
+                    temp_state = {
+                        "messages": state.messages[:-1] + [ai_message]
+                    }
+                    
+                    # Execute tools using standard ToolNode
+                    result = await tool_node.ainvoke(temp_state, config)
+                    
+                    # Convert ToolMessage results back to LangChainMessage format
+                    converted_messages = []
+                    for msg in result["messages"]:
+                        if hasattr(msg, '__class__') and msg.__class__.__name__ == "ToolMessage":
+                            # Convert ToolMessage to LangChainMessage
+                            tool_msg = LangChainMessage(
+                                content=msg.content,
+                                type="tool",
+                                name=getattr(msg, 'name', None),
+                                id=getattr(msg, 'tool_call_id', None),
+                                tool_calls=None
+                            )
+                            converted_messages.append(tool_msg)
+                        else:
+                            # Keep other message types as-is or convert as needed
+                            converted_messages.append(msg)
+                    
+                    return {"messages": state.messages + converted_messages}
+                
+                return {"messages": state.messages}
 
-                    new_messages.append(tool_result_message)
-
-                return {"messages": new_messages}
-
-            workflow.add_node("tools", custom_tool_node)
-            # Use our debug tools_condition to handle our custom message format
+            workflow.add_node("tools", tool_node_wrapper)
+            
+            # Use standard tools_condition but check our LangChainMessage format
+            def custom_tools_condition(state: LangGraphState):
+                """Check for tool calls in our LangChainMessage format."""
+                if not state.messages:
+                    return END
+                
+                last_message = state.messages[-1]
+                if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+                    self._logger.debug(f"tools_condition: Found {len(last_message.tool_calls)} tool calls")
+                    return "tools"
+                
+                self._logger.debug("tools_condition: No tool calls found, routing to END")
+                return END
+            
             workflow.add_conditional_edges(
-                "agent", self._debug_tools_condition, {"tools": "tools", END: END}
+                "agent", custom_tools_condition, {"tools": "tools", END: END}
             )
             workflow.add_edge("tools", "agent")
         else:
@@ -762,17 +732,45 @@ FAILURE TO USE TOOLS WHEN REQUESTED IS NOT ACCEPTABLE."""
         tool_calls = []
         seen_json_strings = set()  # Prevent duplicates
 
-        # Look for commentary channel with tool calls - use most specific pattern first
-        pattern = r"<\|channel\|>commentary\s+to=functions\s+<\|constrain\|>json<\|message\|>(.+?)(?=<\|end\|>|<\|channel\|>|$)"
-        matches = re.findall(pattern, content, re.DOTALL | re.IGNORECASE)
+        # Look for commentary channel with tool calls - multiple patterns for robustness:
+        patterns = [
+            # Standard format: <|channel|>commentary to=functions <|constrain|>json<|message|>
+            r"<\|channel\|>commentary\s+to=functions\s+<\|constrain\|>json<\|message\|>(.+?)(?=<\|end\|>|<\|channel\|>|$)",
+            # Format with newline: <|channel|>commentary to=functions <|constrain|>json\n<|message|>
+            r"<\|channel\|>commentary\s+to=functions\s+<\|constrain\|>json\s*\n\s*<\|message\|>(.+?)(?=<\|end\|>|<\|channel\|>|$)",
+            # Flexible format: handle optional <|message|> tag
+            r"<\|channel\|>commentary\s+to=functions\s+<\|constrain\|>json\s*(?:<\|message\|>)?\s*(\{[^}]*\})"
+        ]
+        
+        matches = []
+        for pattern in patterns:
+            pattern_matches = re.findall(pattern, content, re.DOTALL | re.IGNORECASE)
+            matches.extend(pattern_matches)
+            if pattern_matches:
+                self._logger.debug(f"Pattern matched {len(pattern_matches)} tool calls: {pattern}")
+        
+        # Also try a simple JSON extraction as fallback
+        if not matches:
+            # Look for any JSON objects that might be tool calls
+            json_pattern = r'\{[^{}]*"name"\s*:\s*"[^"]+"\s*,[^{}]*"arguments"\s*:\s*\{[^{}]*\}[^{}]*\}'
+            json_matches = re.findall(json_pattern, content, re.DOTALL)
+            if json_matches:
+                self._logger.debug(f"Fallback JSON pattern found {len(json_matches)} potential tool calls")
+                matches.extend(json_matches)
 
-        for match in matches:
+        # Debug: Log what we're trying to parse
+        self._logger.debug(f"Looking for harmony tool calls in content (first 500 chars): {content[:500]}")
+        self._logger.debug(f"Found {len(matches)} potential tool call matches")
+
+        for i, match in enumerate(matches):
             try:
                 # Clean up the JSON string - remove any trailing text after the JSON
                 json_str = match.strip()
+                self._logger.debug(f"Processing match {i}: {json_str[:200]}...")
 
                 # Skip if we've already processed this JSON string
                 if json_str in seen_json_strings:
+                    self._logger.debug(f"Skipping duplicate JSON string")
                     continue
                 seen_json_strings.add(json_str)
 
@@ -782,33 +780,37 @@ FAILURE TO USE TOOLS WHEN REQUESTED IS NOT ACCEPTABLE."""
                     # Find matching closing brace
                     brace_count = 0
                     end_idx = start_idx
-                    for i, char in enumerate(json_str[start_idx:], start_idx):
+                    for j, char in enumerate(json_str[start_idx:], start_idx):
                         if char == "{":
                             brace_count += 1
                         elif char == "}":
                             brace_count -= 1
                             if brace_count == 0:
-                                end_idx = i + 1
+                                end_idx = j + 1
                                 break
                     json_str = json_str[start_idx:end_idx]
+                    self._logger.debug(f"Extracted JSON: {json_str}")
 
                 # Parse the JSON
                 tool_call_data = json.loads(json_str)
+                self._logger.debug(f"Parsed tool call data: {tool_call_data}")
 
                 # Convert to exact LangGraph/LangChain format
                 if "name" in tool_call_data:
                     args = tool_call_data.get("arguments") or tool_call_data.get(
                         "args", {}
                     )
-                    # Use exact format that LangGraph expects
+                    # Use exact format that LangGraph ToolNode expects
                     tool_call = {
                         "name": tool_call_data["name"],
                         "args": args,
                         "id": f"call_{len(tool_calls)}_{tool_call_data['name']}",
-                        # Remove "type" field - LangGraph might not expect this
+                        "type": "tool_call"  # Required by LangGraph ToolNode
                     }
                     tool_calls.append(tool_call)
-                    self._logger.debug(f"Parsed harmony tool call: {tool_call}")
+                    self._logger.debug(f"Successfully parsed harmony tool call: {tool_call}")
+                else:
+                    self._logger.warning(f"Tool call data missing 'name' field: {tool_call_data}")
 
             except (json.JSONDecodeError, KeyError, IndexError) as e:
                 self._logger.warning(
@@ -867,7 +869,13 @@ FAILURE TO USE TOOLS WHEN REQUESTED IS NOT ACCEPTABLE."""
         if state.current_iteration >= state.max_iterations:
             msg = f"Maximum iterations ({state.max_iterations}) reached. Stopping to prevent infinite loops."
             return {
-                "messages": [coerce_to_langchain_message_dict(AIMessage(content=msg))],
+                "messages": [LangChainMessage(
+                    content=msg,
+                    type="ai",
+                    tool_calls=None,
+                    additional_kwargs={},
+                    response_metadata={}
+                )],
                 "current_iteration": state.current_iteration + 1,
             }
 
@@ -914,7 +922,7 @@ FAILURE TO USE TOOLS WHEN REQUESTED IS NOT ACCEPTABLE."""
             tool_calls = self._parse_harmony_tool_calls(response_content)
             final_content = self._extract_final_content(response_content)
 
-            # Create properly formatted response
+            # Create properly formatted response as LangChainMessage
             if tool_calls:
                 # When we have tool calls, the content might be minimal since the model
                 # is expecting tool results. Use the full response content or a placeholder
@@ -923,8 +931,12 @@ FAILURE TO USE TOOLS WHEN REQUESTED IS NOT ACCEPTABLE."""
                     if final_content.strip()
                     else "I need to search for this information."
                 )
-                formatted_response = AIMessage(
-                    content=content_for_tool_call, tool_calls=tool_calls
+                formatted_response = LangChainMessage(
+                    content=content_for_tool_call, 
+                    tool_calls=tool_calls,
+                    type="ai",
+                    additional_kwargs={},
+                    response_metadata={}
                 )
                 self._logger.info(
                     f"Converted {len(tool_calls)} harmony tool calls to LangChain format"
@@ -935,13 +947,19 @@ FAILURE TO USE TOOLS WHEN REQUESTED IS NOT ACCEPTABLE."""
 
                 # Debug: Log the formatted response structure for tools_condition
                 self._logger.debug(
-                    f"AIMessage for tools_condition: content='{formatted_response.content[:50]}...' tool_calls={len(formatted_response.tool_calls) if formatted_response.tool_calls else 0}"
+                    f"LangChainMessage for tools_condition: content='{formatted_response.content[:50]}...' tool_calls={len(formatted_response.tool_calls) if formatted_response.tool_calls else 0}"
                 )
                 self._logger.debug(
                     f"Tool calls structure: {formatted_response.tool_calls}"
                 )
             else:
-                formatted_response = AIMessage(content=final_content)
+                formatted_response = LangChainMessage(
+                    content=final_content,
+                    type="ai",
+                    tool_calls=None,
+                    additional_kwargs={},
+                    response_metadata={}
+                )
 
             preview = final_content[:80] if final_content else "No content"
             self._logger.info(
@@ -955,16 +973,24 @@ FAILURE TO USE TOOLS WHEN REQUESTED IS NOT ACCEPTABLE."""
                         f"Tool call {i}: {tool_call['name']} with args {tool_call['args']}"
                     )
 
+            # Return the LangChainMessage directly
             return {
-                "messages": [coerce_to_langchain_message_dict(formatted_response)],
+                "messages": [formatted_response],
                 "current_iteration": state.current_iteration + 1,
             }
 
         except Exception as e:
             err = f"Error in GPT OSS agent node: {e}"
             self._logger.error(err, exc_info=True)
+            # Return LangChainMessage for consistency
             return {
-                "messages": [coerce_to_langchain_message_dict(AIMessage(content=err))],
+                "messages": [LangChainMessage(
+                    content=err,
+                    type="ai", 
+                    tool_calls=None,
+                    additional_kwargs={},
+                    response_metadata={}
+                )],
                 "current_iteration": state.current_iteration + 1,
             }
 

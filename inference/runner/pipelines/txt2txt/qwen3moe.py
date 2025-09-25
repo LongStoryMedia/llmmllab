@@ -139,6 +139,11 @@ class QwenLangGraphPipe(BaseLlamaCppPipeline):
         """Process streaming token with <think> tag detection (overrides base method)."""
         if content is None:
             return None
+        
+        # Ensure buffer is initialized
+        if not hasattr(self, 'buffer') or self.buffer is None:
+            self.buffer = ""
+            
         self.buffer += content
 
         # Check for opening think tag
@@ -162,7 +167,10 @@ class QwenLangGraphPipe(BaseLlamaCppPipeline):
         """Create a response for thinking content."""
         try:
             # Accumulate thinking content
-            self.think_content += content
+            if content is not None:
+                if not hasattr(self, 'think_content') or self.think_content is None:
+                    self.think_content = ""
+                self.think_content += content
             # Don't return anything for thinking - it will be added to the final message
             return None
         except Exception as e:
@@ -273,26 +281,70 @@ When you need to use a tool (like for web searches, calculations, or retrieving 
 }}
 ```
 
-**IMPORTANT**: 
-- Always use tools when you need current information or to perform searches
-- Don't make up links or information - use web_search to find real URLs
-- The JSON format must be exact - use "arguments" not "args"
-- You can make multiple tool calls in the same response by adding more objects to the array
+## CRITICAL TOOL USAGE RULES:
 
-Example web search:
+1. **ALWAYS use tools for current information, web searches, or when you don't have specific knowledge**
+2. **Format tool calls EXACTLY as shown below - no variations allowed**
+3. **Use "arguments" not "args" in the JSON**
+4. **Put the JSON in a code block with ```json```**
+
+## EXACT FORMAT REQUIRED:
+When you need to use a tool, respond with ONLY this format:
+
+```json
+{{
+    "tool_calls": [
+        {{
+            "name": "web_search", 
+            "arguments": {{
+                "query": "your search query here"
+            }}
+        }}
+    ]
+}}
+```
+
+## MORE EXAMPLES:
+
+For web search:
 ```json
 {{
     "tool_calls": [
         {{
             "name": "web_search",
             "arguments": {{
-                "query": "NEMA 17 stepper motor",
+                "query": "latest AI breakthroughs 2025",
                 "limit": 5
             }}
         }}
     ]
 }}
-```"""
+```
+
+For memory retrieval:
+```json
+{{
+    "tool_calls": [
+        {{
+            "name": "memory_retrieval",
+            "arguments": {{
+                "tool_input": []
+            }}
+        }}
+    ]
+}}
+```
+
+**DO NOT:**
+- Write explanatory text before or after the JSON
+- Use any format other than the exact JSON structure shown
+- Say you cannot use tools - you CAN and MUST use them when needed
+- Make up information when you should search for it
+
+**DO:**
+- Use web_search for any current information, links, or recent developments
+- Follow the exact JSON format every time
+- Put JSON in ```json code blocks"""
 
         return base_prompt
 
