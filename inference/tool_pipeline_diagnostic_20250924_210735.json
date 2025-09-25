@@ -1,0 +1,166 @@
+{
+  "timestamp": "2025-09-25T02:07:35.011172",
+  "diagnostic_version": "1.0",
+  "summary": {
+    "embedding_pipeline": {
+      "total_tests": 7,
+      "successful": 7,
+      "status": "\u2705 IMPROVED"
+    },
+    "web_extraction": {
+      "total_tests": 5,
+      "successful": 4,
+      "status": "\u2705 IMPROVED"
+    },
+    "fallback_mechanisms": {
+      "total_scenarios": 4,
+      "handled": 4,
+      "status": "\u2705 ROBUST"
+    },
+    "result_processing": {
+      "total_tests": 4,
+      "successful": 4,
+      "status": "\u2705 WORKING"
+    }
+  },
+  "detailed_results": {
+    "embedding_tests": {
+      "test_1": {
+        "text": "AI breakthroughs 2024",
+        "success": true,
+        "result_length": 49,
+        "error": null
+      },
+      "test_2": {
+        "text": "What are the latest artificial intelligence breakthroughs in 2024?",
+        "success": true,
+        "result_length": 58,
+        "error": null
+      },
+      "test_3": {
+        "text": "Complex multimodal foundation models with transformer architectures and attention mechanisms",
+        "success": true,
+        "result_length": 58,
+        "error": null
+      },
+      "test_4": {
+        "text": "Short text",
+        "success": true,
+        "result_length": 38,
+        "error": null
+      },
+      "test_5": {
+        "text": "",
+        "success": true,
+        "result_length": 28,
+        "error": null
+      },
+      "test_6": {
+        "text": "Unicode test: \u4f60\u597d\u4e16\u754c \ud83c\udf0d \u00e9mojis and sp\u00ebcial chars",
+        "success": true,
+        "result_length": 58,
+        "error": null
+      },
+      "test_7": {
+        "text": "Very long text that exceeds typical limits and contains lots of technical jargon about machine learning, deep neural networks, natural language processing, computer vision, reinforcement learning, and other advanced topics in artificial intelligence researchVery long text that exceeds typical limits and contains lots of technical jargon about machine learning, deep neural networks, natural language processing, computer vision, reinforcement learning, and other advanced topics in artificial intelligence researchVery long text that exceeds typical limits and contains lots of technical jargon about machine learning, deep neural networks, natural language processing, computer vision, reinforcement learning, and other advanced topics in artificial intelligence researchVery long text that exceeds typical limits and contains lots of technical jargon about machine learning, deep neural networks, natural language processing, computer vision, reinforcement learning, and other advanced topics in artificial intelligence researchVery long text that exceeds typical limits and contains lots of technical jargon about machine learning, deep neural networks, natural language processing, computer vision, reinforcement learning, and other advanced topics in artificial intelligence research",
+        "success": true,
+        "result_length": 58,
+        "error": null
+      }
+    },
+    "web_extraction_tests": {
+      "url_1": {
+        "url": "https://httpbin.org/delay/1",
+        "success": true,
+        "status_code": 200,
+        "content_length": 360,
+        "duration": 1.287164,
+        "error": null
+      },
+      "url_2": {
+        "url": "https://httpbin.org/delay/10",
+        "success": true,
+        "status_code": 200,
+        "content_length": 361,
+        "duration": 10.495182,
+        "error": null
+      },
+      "url_3": {
+        "url": "https://httpbin.org/status/404",
+        "success": true,
+        "status_code": 404,
+        "content_length": 0,
+        "duration": 0.21694,
+        "error": null
+      },
+      "url_4": {
+        "url": "https://www.example.com",
+        "success": true,
+        "status_code": 200,
+        "content_length": 1256,
+        "duration": 0.206212,
+        "error": null
+      },
+      "url_5": {
+        "url": "https://nonexistent-domain-12345.com",
+        "success": false,
+        "status_code": null,
+        "content_length": 0,
+        "duration": 0.051789,
+        "error": "Cannot connect to host nonexistent-domain-12345.com:443 ssl:default [nodename nor servname provided, or not known]"
+      }
+    },
+    "fallback_tests": {
+      "embeddings_fail": {
+        "fallback_type": "heuristic_ranking",
+        "success": true,
+        "message": "Embeddings failed, used keyword-based ranking"
+      },
+      "web_extraction_timeout": {
+        "fallback_type": "basic_content",
+        "success": true,
+        "message": "Web extraction timed out, used search provider content"
+      },
+      "empty_search_results": {
+        "fallback_type": "contextual_guidance",
+        "success": true,
+        "message": "No search results, provided contextual guidance"
+      },
+      "normal_operation": {
+        "fallback_type": "none",
+        "success": true,
+        "message": "Normal operation completed"
+      }
+    },
+    "processing_tests": {
+      "result_1": {
+        "formatted_content": "Web search results:\n\nDetailed analysis of AI breakthroughs...",
+        "has_urls": true,
+        "length": 40,
+        "success": true
+      },
+      "result_2": {
+        "formatted_content": "Web search results:\n\nBasic search results due to timeout...",
+        "has_urls": true,
+        "length": 38,
+        "success": true
+      },
+      "result_3": {
+        "formatted_content": "Search synthesis temporarily unavailable...",
+        "has_urls": false,
+        "length": 0,
+        "success": true,
+        "used_fallback": true
+      },
+      "result_4": {
+        "formatted_content": "Web search results:\n\nContextual guidance provided...",
+        "has_urls": false,
+        "length": 31,
+        "success": true
+      }
+    }
+  },
+  "recommendations": [
+    "\u2728 All systems operating within expected parameters"
+  ]
+}

@@ -49,6 +49,10 @@ async def get_users(request: Request):
             # Add the uid field (required by the User model)
             # Using id as the uid since they appear to represent the same data
             user_copy["uid"] = user.get("id", "")
+            
+            # Handle NULL username - provide default value or use id
+            if user_copy.get("username") is None:
+                user_copy["username"] = user_copy.get("id", "unknown_user")
 
             transformed_users.append(user_copy)
 

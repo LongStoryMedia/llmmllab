@@ -214,7 +214,19 @@ class CacheStorage:
     # ========== Message Cache Operations ==========
     def get_message_from_cache(self, message_id: int) -> Optional[Message]:
         """Get a message from cache by ID."""
-        return self._get_from_cache(self.MESSAGE_KEY_PREFIX, message_id, Message)
+        message = self._get_from_cache(self.MESSAGE_KEY_PREFIX, message_id, Message)
+        if message:
+            # Ensure content is always a proper list of MessageContent objects
+            from models.message_content import MessageContent
+            from models.message_content_type import MessageContentType
+            from utils.message import ensure_message_content_list
+            try:
+                message = ensure_message_content_list(message)
+            except Exception as e:
+                logger.warning(f"Failed to validate message {message_id} content from cache: {e}")
+                # Fallback to safe content
+                message.content = [MessageContent(type=MessageContentType.TEXT, text="", url=None)]
+        return message
 
     def cache_message(self, message: Message):
         """Cache a message."""

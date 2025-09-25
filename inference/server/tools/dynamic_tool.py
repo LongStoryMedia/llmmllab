@@ -132,3 +132,11 @@ class DynamicToolRunner(BaseTool):
         except Exception as e:
             logger.error(f"Error executing dynamic tool: {e}")
             return f"Execution failed: {str(e)}"
+
+    async def execute(self, input_data: Optional[dict] = None, **kwargs) -> str:
+        """Public execute method for testing compatibility"""
+        if input_data is None:
+            input_data = {}
+        # Merge input_data with kwargs
+        merged_params = {**input_data, **kwargs}
+        return self._run(**merged_params)

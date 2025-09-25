@@ -103,6 +103,10 @@ class BraveSearchProviderWrapper(StandardSearchProvider):
                 if not url:
                     continue
 
+                if url.endswith("robots.txt"):
+                    logger.debug(f"Skipping robots.txt URL: {url}")
+                    continue
+
                 results.append(
                     self._create_search_result(
                         url=url, title=title or "", content=content or ""
@@ -113,7 +117,9 @@ class BraveSearchProviderWrapper(StandardSearchProvider):
             logger.error(error)
             # Log additional context for debugging
             if "422" in str(e):
-                logger.error(f"Brave search HTTP 422 error - likely rate limited or invalid query: {query}")
+                logger.error(
+                    f"Brave search HTTP 422 error - likely rate limited or invalid query: {query}"
+                )
             elif "401" in str(e):
                 logger.error("Brave search authentication failed - check API key")
             elif "403" in str(e):
@@ -136,39 +142,37 @@ class DuckDuckGoSearchProviderWrapper(StandardSearchProvider):
     def _parse_ddg_text_response(self, response: str) -> list[dict[str, str]]:
         """Parse DuckDuckGo text response into structured format."""
         entries = []
-        
+
         # DuckDuckGo returns text like: "Title - Description URL"
         # Split by lines and parse each result
-        lines = response.strip().split('\n')
-        
+        lines = response.strip().split("\n")
+
         for line in lines:
             line = line.strip()
             if not line:
                 continue
-                
+
             # Try to extract title, snippet, and URL from the text
             # Format is usually: "Title - Description"
-            if ' - ' in line:
-                parts = line.split(' - ', 1)
+            if " - " in line:
+                parts = line.split(" - ", 1)
                 title = parts[0].strip()
                 snippet = parts[1].strip() if len(parts) > 1 else ""
-                
+
                 # Generate a search URL since DDG doesn't provide direct links
                 url = f"https://duckduckgo.com/?q={title.replace(' ', '+')}"
-                
-                entries.append({
-                    "title": title,
-                    "snippet": snippet,
-                    "link": url
-                })
+
+                entries.append({"title": title, "snippet": snippet, "link": url})
             else:
                 # Fallback: treat the whole line as title
-                entries.append({
-                    "title": line,
-                    "snippet": "",
-                    "link": f"https://duckduckgo.com/?q={line.replace(' ', '+')}"
-                })
-        
+                entries.append(
+                    {
+                        "title": line,
+                        "snippet": "",
+                        "link": f"https://duckduckgo.com/?q={line.replace(' ', '+')}",
+                    }
+                )
+
         return entries
 
     def _ensure_wrapper(self) -> None:
@@ -226,6 +230,10 @@ class DuckDuckGoSearchProviderWrapper(StandardSearchProvider):
                 content = e.get("snippet")
                 if not url:
                     continue
+
+                if url.endswith("robots.txt"):
+                    logger.debug(f"Skipping robots.txt URL: {url}")
+                    continue
                 results.append(
                     self._create_search_result(
                         url=url, title=title or "", content=content or ""
@@ -236,9 +244,13 @@ class DuckDuckGoSearchProviderWrapper(StandardSearchProvider):
             logger.error(error)
             # Log additional context for debugging
             if "JSONDecodeError" in str(e) or "malformed JSON" in str(e):
-                logger.error(f"DuckDuckGo returned non-JSON response for query: {query}")
+                logger.error(
+                    f"DuckDuckGo returned non-JSON response for query: {query}"
+                )
             elif "DNS" in str(e) or "Name or service not known" in str(e):
-                logger.error("DuckDuckGo DNS resolution failed - network connectivity issue")
+                logger.error(
+                    "DuckDuckGo DNS resolution failed - network connectivity issue"
+                )
 
         return SearchResult(
             is_from_url_in_user_query=False, query=query, contents=results, error=error
@@ -281,6 +293,10 @@ class SearxSearchProviderWrapper(StandardSearchProvider):
                 # Try to extract URL
                 url_match = re.search(r"URL:\s+(https?://\S+)", section)
                 url = url_match.group(1) if url_match else "No URL"
+
+                if url.endswith("robots.txt"):
+                    logger.debug(f"Skipping robots.txt URL: {url}")
+                    continue
 
                 # Use first line as title
                 lines = section.strip().split("\n")
@@ -424,6 +440,10 @@ class GoogleSearchProviderWrapper(StandardSearchProvider):
                 content = e.get("snippet")
 
                 if not url:
+                    continue
+
+                if url.endswith("robots.txt"):
+                    logger.debug(f"Skipping robots.txt URL: {url}")
                     continue
 
                 results.append(

@@ -194,10 +194,34 @@ class SearchContext:
                 formatted_query = (
                     extract_message_text(response.message) if response.message else ""
                 )
+                
+                # Aggressively clean up analysis model contamination
+                contamination_patterns = [
+                    "🤔 Analyzing request...",
+                    "Looking at this request...",
+                    "Let me analyze...",
+                    "I need to analyze...",
+                ]
+                
+                # Remove contamination patterns
+                for pattern in contamination_patterns:
+                    if pattern in formatted_query:
+                        # Find position after the pattern and extract clean query
+                        parts = formatted_query.split(pattern, 1)
+                        if len(parts) > 1:
+                            formatted_query = parts[1].strip()
+                        break
+                
                 # Clean up the response and limit length - remove any explanations
                 formatted_query = formatted_query.strip().split("\n")[
                     0
                 ]  # Take first line only
+                
+                # Remove any remaining non-keyword text
+                if ":" in formatted_query:
+                    # Handle cases like "Query: quantum computing"
+                    formatted_query = formatted_query.split(":", 1)[1].strip()
+                
                 formatted_query = formatted_query[:50]  # Hard limit
                 logger.info(f"Formatted search query: {formatted_query}")
                 self._formatted_query = formatted_query
