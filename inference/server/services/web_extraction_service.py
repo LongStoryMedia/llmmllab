@@ -177,19 +177,33 @@ class WebExtractionService:
         self.user_config = user_config
         self.visited_urls: Set[str] = set()
         self.crawler_settings = get_project_settings()
-        # Configure Scrapy settings with more generous timeouts for reliability
+        # Configure Scrapy settings for robust web extraction
+        # CRITICAL: Disable robots.txt obedience for comprehensive web extraction
         self.crawler_settings.update(
             {
-                "USER_AGENT": "Mozilla/5.0 (compatible; LLMWebExtractor/1.0; +https://example.com/bot)",
-                "ROBOTSTXT_OBEY": True,
-                "CONCURRENT_REQUESTS": 1,  # Single request to avoid overload
-                "DOWNLOAD_TIMEOUT": 15,  # More generous timeout
+                "USER_AGENT": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "ROBOTSTXT_OBEY": False,  # IGNORE robots.txt for comprehensive extraction
+                "CONCURRENT_REQUESTS": 4,  # More concurrent requests for efficiency
+                "DOWNLOAD_TIMEOUT": 45,  # Longer timeout for better success rate
                 "LOG_LEVEL": "ERROR",
                 "TELNETCONSOLE_ENABLED": False,
-                "RETRY_TIMES": 1,  # Allow one retry
-                "CLOSESPIDER_TIMEOUT": 30,  # More generous overall timeout
-                "ROBOTSTXT_TIMEOUT": 10,  # Dedicated robots.txt timeout
-                "DNS_TIMEOUT": 10,  # DNS resolution timeout
+                "RETRY_TIMES": 3,  # More retries for better success rate
+                "CLOSESPIDER_TIMEOUT": 120,  # Much longer overall timeout
+                "DNS_TIMEOUT": 30,  # Longer DNS timeout
+                "DOWNLOAD_DELAY": 0.5,  # Faster delay between requests
+                "AUTOTHROTTLE_ENABLED": True,  # Enable auto-throttling
+                "AUTOTHROTTLE_START_DELAY": 0.5,
+                "AUTOTHROTTLE_MAX_DELAY": 2,
+                "AUTOTHROTTLE_TARGET_CONCURRENCY": 2,
+                # Additional headers to appear more browser-like
+                "DEFAULT_REQUEST_HEADERS": {
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5",
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "DNT": "1",
+                    "Connection": "keep-alive",
+                    "Upgrade-Insecure-Requests": "1",
+                },
             }
         )
 
@@ -208,6 +222,10 @@ class WebExtractionService:
         Returns:
             List of content items collected by the spider
         """
+
+        if url.endswith("robots.txt"):
+            logger.warning(f"Skipping robots.txt URL: {url}")
+            return []
         # Create a unique ID for this crawl job
         crawl_id = str(uuid.uuid4())
 
@@ -239,8 +257,13 @@ class WebExtractionService:
         self.crawler_settings.update(
             {
                 "FEEDS": {output_file: {"format": "json", "overwrite": True}},
-                "CLOSESPIDER_TIMEOUT": 30,  # More generous timeout
+                "CLOSESPIDER_TIMEOUT": 90,  # Much longer timeout for content extraction
+                "DOWNLOAD_TIMEOUT": 60,  # Longer download timeout
+                "DNS_TIMEOUT": 30,  # Longer DNS timeout
                 "DEPTH_LIMIT": min(max_depth, 1),  # Keep depth limited for focus
+                "RETRY_TIMES": 3,  # More retries
+                "DOWNLOAD_DELAY": 0.5,  # Reduced delay for faster extraction
+                "CONCURRENT_REQUESTS": 4,  # More concurrent requests
             }
         )
 
@@ -312,6 +335,9 @@ class WebExtractionService:
         Returns:
             A SearchTopicSynthesis object containing the synthesized information
         """
+        if url.endswith("robots.txt"):
+            logger.warning(f"Skipping robots.txt URL: {url}")
+            return None
         # Step 1: Create SearchTopicSynthesis object and list of messages
         synthesis = SearchTopicSynthesis(
             urls=[],

@@ -347,7 +347,7 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
         try:
             # Create a proposed tool for deduplication check
             proposed_tool = DynamicTool(
-                user_id=conversation_ctx.user_config.user_id,
+                user_id=conversation_ctx.conversation.user_id,
                 name=f"tool_for_{description[:30].replace(' ', '_')}",
                 description=description,
                 code="# Placeholder - will be generated if no duplicates found",
@@ -485,7 +485,7 @@ Respond with ONLY the JSON object, no other text or formatting."""
                     # Create DynamicTool
                     try:
                         # Add user_id from conversation context to the JSON data
-                        json_data["user_id"] = conversation_ctx.user_config.user_id
+                        json_data["user_id"] = conversation_ctx.conversation.user_id
 
                         dynamic_tool = DynamicTool(**json_data)
 
@@ -661,13 +661,129 @@ Respond with ONLY the JSON object, no other text or formatting."""
             self.logger.error("Empty response received")
             return None
 
-        # Preprocess to handle edge cases
-        response = self._preprocess_response_for_extraction(response)
+        # Clean up common response artifacts first
+        cleaned_response = response.strip()
+        
+        # Aggressive prefix removal - handle analysis model contamination
+        prefixes_to_remove = [
+            "🤔 Analyzing request...",
+            "Looking at this request...",
+            "Let me create a tool for this...",
+            "Here's the tool definition:",
+            "```json",
+            "```",
+        ]
+        
+        # Multiple passes of prefix removal for complex contamination
+        for pass_num in range(3):  # Up to 3 passes to handle nested contamination
+            original_length = len(cleaned_response)
+            
+            # Remove exact prefixes
+            for prefix in prefixes_to_remove:
+                if cleaned_response.startswith(prefix):
+                    cleaned_response = cleaned_response[len(prefix):].strip()
+            
+            # Remove lines containing prefixes
+            lines = cleaned_response.split('\n')
+            filtered_lines = []
+            skip_until_json = False
+            
+            for line in lines:
+                # If we hit a line with analysis text, start looking for JSON
+                if any(prefix in line for prefix in prefixes_to_remove):
+                    skip_until_json = True
+                    continue
+                    
+                # If skipping, look for start of JSON
+                if skip_until_json:
+                    if line.strip().startswith('{') or line.strip().startswith('['):
+                        skip_until_json = False
+                        filtered_lines.append(line)
+                    continue
+                
+                filtered_lines.append(line)
+            
+            if filtered_lines:
+                cleaned_response = '\n'.join(filtered_lines).strip()
+            
+            # Break early if no changes
+            if len(cleaned_response) == original_length:
+                break
+                
+        # Log cleaned response for debugging
+        self.logger.debug(f"After {pass_num + 1} cleaning passes, response length: {len(cleaned_response)}")
+        self.logger.debug(f"Cleaned response preview: {cleaned_response[:300]}...")
+        
+        # Remove common suffixes
+        suffixes_to_remove = ["```", "```json"]
+        for suffix in suffixes_to_remove:
+            if cleaned_response.endswith(suffix):
+                cleaned_response = cleaned_response[:-len(suffix)].strip()
+
+        self.logger.debug(f"Cleaned response for JSON extraction: {cleaned_response[:200]}...")
 
         try:
-            # Strategy 1: Direct parse
-            return cast(Dict[str, Any], json.loads(response.strip()))
-        except json.JSONDecodeError:
+            # Strategy 1: Direct parse after cleanup
+            parsed = json.loads(cleaned_response)
+            if isinstance(parsed, dict):
+                self.logger.debug("Successfully parsed JSON with direct method")
+                return cast(Dict[str, Any], parsed)
+        except json.JSONDecodeError as e:
+            self.logger.debug(f"Direct JSON parse failed: {e}")
+            self.logger.debug(f"Failed JSON content (first 200 chars): {cleaned_response[:200]}")
+            pass
+
+        try:
+            # Strategy 1b: Look for first JSON object after any remaining text
+            first_brace = cleaned_response.find('{')
+            if first_brace >= 0:
+                json_part = cleaned_response[first_brace:].strip()
+                parsed = json.loads(json_part)
+                if isinstance(parsed, dict):
+                    self.logger.debug("Successfully parsed JSON from first brace method")
+                    return cast(Dict[str, Any], parsed)
+        except json.JSONDecodeError as e:
+            self.logger.debug(f"JSON parse from first brace failed: {e}")
+            pass
+            
+        try:
+            # Strategy 1c: Enhanced brace matching with proper JSON object extraction
+            start_idx = cleaned_response.find('{')
+            if start_idx >= 0:
+                brace_count = 0
+                in_string = False
+                escape_next = False
+                
+                for i in range(start_idx, len(cleaned_response)):
+                    char = cleaned_response[i]
+                    
+                    if escape_next:
+                        escape_next = False
+                        continue
+                        
+                    if char == '\\' and in_string:
+                        escape_next = True
+                        continue
+                        
+                    if char == '"' and not escape_next:
+                        in_string = not in_string
+                        continue
+                        
+                    if not in_string:
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                # Found complete JSON object
+                                json_candidate = cleaned_response[start_idx:i+1]
+                                parsed = json.loads(json_candidate)
+                                if isinstance(parsed, dict):
+                                    self.logger.debug("Successfully parsed JSON with enhanced brace matching")
+                                    return cast(Dict[str, Any], parsed)
+                                break
+        except json.JSONDecodeError as e:
+            self.logger.debug(f"Enhanced brace matching JSON parse failed: {e}")
             pass
 
         try:

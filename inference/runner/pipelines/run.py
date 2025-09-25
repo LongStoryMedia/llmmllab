@@ -250,7 +250,8 @@ class EventStreamProcessor:
                 if self.thinking_phase:
                     self.thinking_phase = False
                     return create_streaming_chunk(
-                        "🤔 Analyzing request...\n\n",
+                        # "🤔 Analyzing request...\n\n",
+                        "",
                         done=False,
                         role=MessageRole.OBSERVER,
                     )
@@ -283,11 +284,46 @@ class EventStreamProcessor:
             data = evt.get("data", {})
             chunk = data.get("chunk") if isinstance(data, dict) else None
 
-            if not chunk or not hasattr(chunk, "content"):
+            if not chunk:
                 return None
 
-            content = getattr(chunk, "content", "")
-            if not content:
+            # Extract content from various chunk formats
+            content = ""
+
+            # Try to extract content from different chunk formats
+            if hasattr(chunk, "message") and chunk.message:
+                # ChatResponse with Message object
+                message = chunk.message
+                if hasattr(message, "content") and message.content:
+                    if isinstance(message.content, list) and len(message.content) > 0:
+                        # Message.content is a list of MessageContent objects
+                        first_content = message.content[0]
+                        if hasattr(first_content, "text") and first_content.text:
+                            content = str(first_content.text)
+                    elif isinstance(message.content, str):
+                        content = message.content
+                elif hasattr(message, "thinking") and message.thinking:
+                    # Extract thinking content for analysis channel
+                    content = str(message.thinking)
+            elif hasattr(chunk, "content"):
+                # Direct content attribute
+                if isinstance(chunk.content, list) and len(chunk.content) > 0:
+                    first_item = chunk.content[0]
+                    if hasattr(first_item, "text"):
+                        content = str(first_item.text)
+                    else:
+                        content = str(first_item)
+                elif isinstance(chunk.content, str):
+                    content = chunk.content
+            elif hasattr(chunk, "thinking") and chunk.thinking:
+                # Thinking content
+                content = str(chunk.thinking)
+            elif hasattr(chunk, "text"):
+                # Direct text attribute
+                content = str(chunk.text)
+
+            # If still no content, skip this chunk
+            if not content or not content.strip():
                 return None
 
             # Check content length limit

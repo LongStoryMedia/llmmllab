@@ -80,6 +80,9 @@ make start  # Parallel: inference-dev + UI dev server
 # Sync code to remote cluster during development
 ./inference/sync-code.sh -w  # Watch mode with auto-sync
 ```
+avoid commands that I need to manually approve. 
+avoid overly complex or long commands as they often fail due to timeouts. Instead, write a script and call that.
+always try `inference/sync-code.sh` when syncing code (it will almost always work the second time if it doesn't the first)
 
 ## File Conventions
 
@@ -97,3 +100,20 @@ The platform includes a sophisticated context extension system (see `docs/contex
 - Hierarchical summarization for context compression
 
 When working with chat/completion features, consider how changes affect context window management.
+
+## Database Access
+The platform uses PostgreSQL for persistent storage. 
+Access the database from within the psql Kubernetes pod:
+
+```bash
+k exec -it psql-0 -n psql -- psql -h localhost -U lsm -d llmmll -v "ON_ERROR_STOP=1" -c "<SQL_COMMAND>"
+```  
+
+## SQL files
+SQL schema and migration files are in `inference/server/db/sql/`.
+The code interfaces are in `inference/server/db/`. 
+
+---
+DO NOT USE LONG OR COMPLEX COMMANDS. USE SCRIPTS INSTEAD.
+ALWAYS SYNC CODE WITH `inference/sync-code.sh` INSTEAD OF MANUAL RSYNC/CP COMMANDS.
+EVERY CHANGE SHOULD HAVE A GIT COMMIT.

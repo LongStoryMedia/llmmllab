@@ -57,11 +57,11 @@ DEFAULT_WEB_SEARCH_CONFIG = WebSearchConfig(
     max_results=5,
     include_results=True,
     search_providers=[
-        WebSearchProviders.GOOGLE,
-        WebSearchProviders.BRAVE,
-        WebSearchProviders.SERPER,
-        # WebSearchProviders.SEARX,
-        WebSearchProviders.DDG,
+        # WebSearchProviders.GOOGLE,
+        # WebSearchProviders.BRAVE,
+        # WebSearchProviders.SERPER,
+        WebSearchProviders.SEARX,
+        # WebSearchProviders.DDG,
     ],
     max_urls_deep=3,
 )
