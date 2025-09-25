@@ -4,15 +4,20 @@ Enhanced conversation context manager with proper async handling and resource ma
 
 import asyncio
 import logging
-from typing import List, Optional, Tuple, Any, Dict
+from typing import List, Optional, Tuple, Any, Dict, cast
 from contextlib import asynccontextmanager
 from datetime import datetime
 from fastapi import HTTPException, Request, status
 from pydantic import PrivateAttr
 
 from langchain_core.tools import BaseTool
-from runner import pipeline_factory, Embeddings
-from runner.pipelines.run import run_pipeline, embed_pipeline
+from runner import (
+    pipeline_factory,
+    Embeddings,
+    EmbeddingPipeline,
+    run_pipeline,
+    embed_pipeline,
+)
 
 from models import (
     Message,
@@ -337,7 +342,9 @@ class ConversationContext(ConversationCtx):
                 mp, Embeddings, PipelinePriority.HIGH
             ) as embedding_pipeline:
                 # Process message through normalized embedding interface
-                result = await embed_pipeline([message], embedding_pipeline)
+                result = await embed_pipeline(
+                    [message], cast(EmbeddingPipeline, embedding_pipeline)
+                )
 
             if isinstance(result, list) and all(
                 isinstance(item, list) for item in result
@@ -492,15 +499,15 @@ class ConversationContext(ConversationCtx):
             tasks.append(self.summary_context.summarize(self.messages))
 
             # Add conditional tasks based on intent
-            if self.intent.memory:
-                tasks.append(self.memory_context.retrieve_memories(embeddings))
+            # if self.intent.memory:
+            tasks.append(self.memory_context.retrieve_memories(embeddings))
 
-            if self.intent.web_search:
-                tasks.append(
-                    self.search_context.search(
-                        self.current_user_message, self.conversation.id
-                    )
-                )
+            # if self.intent.web_search:
+            #     tasks.append(
+            #         self.search_context.search(
+            #             self.current_user_message, self.conversation.id
+            #         )
+            #     )
 
             # Execute all tasks concurrently
             if tasks:

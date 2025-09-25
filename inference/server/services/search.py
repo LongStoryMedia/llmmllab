@@ -352,32 +352,64 @@ class SearchContext:
             # Replace contents with deduplicated list
             contents = unique_contents
 
-            # Create embeddings for query and contents
-            texts = [formatted_query] + [
-                f"{c.title or ''}\n{c.content or ''}" for c in contents
-            ]
+            # Try embeddings-based ranking first, fall back to heuristic ranking if it fails
+            try:
+                # Create embeddings for query and contents
+                texts = [formatted_query] + [
+                    f"{c.title or ''}\n{c.content or ''}" for c in contents
+                ]
 
-            emb_mp = await storage.get_service(
-                storage.model_profile
-            ).get_model_profile_by_id(
-                self.user_config.model_profiles.embedding_profile_id,
-                self.user_config.user_id,
-            )
-            assert emb_mp is not None, "Embedding model profile not found"
-
-            # Get embeddings from any embedding model with HIGH priority (used frequently)
-            from runner.pipeline_factory import PipelinePriority
-
-            with pipeline_factory.pipeline(
-                emb_mp, Embeddings, PipelinePriority.HIGH
-            ) as pipe:
-                embeddings = await embed_pipeline(
-                    list(texts), cast(EmbeddingPipeline, pipe)
+                emb_mp = await storage.get_service(
+                    storage.model_profile
+                ).get_model_profile_by_id(
+                    self.user_config.model_profiles.embedding_profile_id,
+                    self.user_config.user_id,
                 )
+                assert emb_mp is not None, "Embedding model profile not found"
 
-                # Extract query and content embeddings
-                query_embedding = embeddings[0]
-                content_embeddings = embeddings[1:]
+                # Get embeddings from any embedding model with HIGH priority (used frequently)
+                from runner.pipeline_factory import PipelinePriority
+
+                with pipeline_factory.pipeline(
+                    emb_mp, Embeddings, PipelinePriority.HIGH
+                ) as pipe:
+                    embeddings = await embed_pipeline(
+                        list(texts), cast(EmbeddingPipeline, pipe)
+                    )
+
+                    # Validate embeddings
+                    if not embeddings or len(embeddings) != len(texts):
+                        logger.warning("Embeddings failed validation, falling back to heuristic ranking")
+                        raise ValueError("Invalid embeddings returned")
+
+                    # Extract query and content embeddings
+                    query_embedding = embeddings[0]
+                    content_embeddings = embeddings[1:]
+                    
+                    embedding_success = True
+                    logger.info("Successfully generated embeddings for content ranking")
+                    
+            except Exception as e:
+                logger.warning(f"Embeddings failed: {e}. Using heuristic ranking.")
+                embedding_success = False
+                # Fallback: heuristic ranking based on query keywords
+                query_words = set(formatted_query.lower().split())
+                
+                def heuristic_score(content):
+                    text = f"{content.title or ''} {content.content or ''}".lower()
+                    # Score based on keyword matches and content length
+                    keyword_matches = sum(1 for word in query_words if word in text)
+                    content_quality = min(len(text) / 1000, 1.0)  # Favor longer content up to 1000 chars
+                    return keyword_matches + content_quality
+                
+                # Score and sort contents heuristically
+                scored_contents = [(content, heuristic_score(content)) for content in contents]
+                scored_contents.sort(key=lambda x: x[1], reverse=True)
+                contents = [content for content, _ in scored_contents]
+                logger.info(f"Heuristic ranking selected {len(contents)} results")
+
+            # If embeddings worked, do similarity-based ranking
+            if embedding_success:
 
                 def calc_similarity(emb1, emb2):
                     np_emb1 = np.array(emb1).reshape(1, -1)
@@ -418,25 +450,30 @@ class SearchContext:
 
                 # Get re-ranked contents
                 contents = [contents[idx] for idx in selected_indices]
+                logger.info(f"Embedding-based ranking selected {len(contents)} results")
 
-                # Limit to max results
-                contents = contents[: self.user_config.web_search.max_results]
+            # Limit to max results (works for both embedding and heuristic ranking)
+            contents = contents[: self.user_config.web_search.max_results]
 
-                # Determine how many URLs to process (limit depth to reduce loops)
-                urls_to_process = min(len(contents), 2)
-                for i in range(urls_to_process):
-                    result = contents[i]
-                    logger.info(f"Performing deep crawling for URL: {result.url}")
-                    # Create synthesis for this URL
-                    synthesis = (
-                        await self.web_extraction_service.extract_content_from_url(
+            # Process URLs with improved error handling and fallbacks
+            urls_to_process = min(len(contents), 2)
+            for i in range(urls_to_process):
+                result = contents[i]
+                logger.info(f"Processing URL {i+1}/{urls_to_process}: {result.url}")
+                
+                try:
+                    # Attempt full web extraction synthesis with timeout
+                    synthesis = await asyncio.wait_for(
+                        self.web_extraction_service.extract_content_from_url(
                             result.url,
                             formatted_query,
                             conversation_id,
                             topics,
-                        )
+                        ),
+                        timeout=45.0  # 45 second timeout per URL
                     )
-                    if synthesis:
+                    
+                    if synthesis and synthesis.synthesis:
                         # Add the synthesis to our collection
                         self.search_results.append(synthesis)
                         self.research_findings += (
@@ -444,8 +481,69 @@ class SearchContext:
                             f"{result.url if result.url else 'unknown'}\n"
                             f"{synthesis.synthesis}\n\n"
                         )
+                    else:
+                        logger.warning(f"Empty synthesis for URL: {result.url}")
+                        # Create basic synthesis from search result if web extraction fails
+                        from datetime import datetime
+                        basic_synthesis = SearchTopicSynthesis(
+                            urls=[result.url],
+                            topics=topics,
+                            synthesis=f"Based on search result from {result.url}:\n\n{result.title or 'No title'}\n\n{(result.content or '')[:500]}...",
+                            created_at=datetime.utcnow(),
+                            conversation_id=conversation_id
+                        )
+                        self.search_results.append(basic_synthesis)
+                        
+                except asyncio.TimeoutError:
+                    logger.warning(f"Web extraction timeout for URL: {result.url}")
+                    # Create a basic synthesis from the search result content
+                    from datetime import datetime
+                    basic_synthesis = SearchTopicSynthesis(
+                        urls=[result.url],
+                        topics=topics,
+                        synthesis=f"Search result from {result.url} (extraction timed out):\n\n{result.title or 'No title'}\n\n{(result.content or '')[:400]}...",
+                        created_at=datetime.utcnow(),
+                        conversation_id=conversation_id
+                    )
+                    self.search_results.append(basic_synthesis)
+                    self.research_findings += (
+                        f"{result.title if result.title else 'No Title'}\n"
+                        f"{result.url if result.url else 'unknown'}\n"
+                        f"{basic_synthesis.synthesis}\n\n"
+                    )
+                    
+                except Exception as e:
+                    logger.error(f"Web extraction failed for URL {result.url}: {e}")
+                    # Still provide basic content from search result
+                    from datetime import datetime
+                    basic_synthesis = SearchTopicSynthesis(
+                        urls=[result.url],
+                        topics=topics,
+                        synthesis=f"Search result from {result.url}:\n{result.title or 'No title'}\n{(result.content or '')[:300]}...",
+                        created_at=datetime.utcnow(),
+                        conversation_id=conversation_id
+                    )
+                    self.search_results.append(basic_synthesis)
 
-                return self.search_results
+            # Ensure we always return some results if we got search content
+            if not self.search_results and contents:
+                logger.info("Creating fallback synthesis from search provider results")
+                # Create a basic synthesis from the top search results
+                from datetime import datetime
+                fallback_synthesis = SearchTopicSynthesis(
+                    urls=[c.url for c in contents[:3]],
+                    topics=topics,
+                    synthesis=f"Search results for '{formatted_query}':\n\n" + 
+                             "\n\n".join([
+                                 f"• {c.title or 'No title'}\n  {(c.content or '')[:200]}..."
+                                 for c in contents[:3]
+                             ]),
+                    created_at=datetime.utcnow(),
+                    conversation_id=conversation_id
+                )
+                self.search_results.append(fallback_synthesis)
+
+            return self.search_results
 
         except Exception as e:
             logger.error(f"Error in search: {str(e)}")

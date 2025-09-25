@@ -2,6 +2,7 @@
 Enhanced Nomic Embed Text v2 pipeline with token counting and text splitting.
 """
 
+import asyncio
 import datetime
 import logging
 import os
@@ -50,12 +51,20 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
             expected_return_type=list,
             model_size_category="small",
         )
+        self.logger.setLevel(logging.DEBUG)
 
         self.logger.info("Initializing NomicEmbedTextPipe")
 
         # Nomic-specific parameters
         self.max_context_tokens = 512
         self.embedding_dim = 768
+        
+        # Embedding batch configuration to handle llama_decode errors
+        self.max_batch_size = int(os.getenv("EMBEDDING_BATCH_SIZE", "8"))
+        self.max_retries = int(os.getenv("EMBEDDING_MAX_RETRIES", "3"))
+        self.enable_batching = os.getenv("EMBEDDING_ENABLE_BATCHING", "true").lower() == "true"
+        
+        self.logger.debug(f"Embedding config: batch_size={self.max_batch_size}, retries={self.max_retries}, batching={self.enable_batching}")
 
         # Validate model definition
         if not (model.details and model.model):
@@ -414,7 +423,7 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
     async def _generate_embeddings_with_splitting(
         self, texts: List[str], aggregation_method: str = "mean"
     ) -> List[List[float]]:
-        """Generate embeddings with automatic text splitting and aggregation."""
+        """Generate embeddings with automatic text splitting, batching, and robust error handling."""
         if not texts:
             return []
 
@@ -429,11 +438,11 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
                 f"Processing {len(processed_chunks)} chunks from {len(texts)} original texts"
             )
 
-            # Generate embeddings for all chunks using LangChain
-            chunk_embeddings = await self.llm.aembed_documents(processed_chunks)
+            # Generate embeddings with batching and retries to handle llama_decode failures
+            chunk_embeddings = await self._generate_embeddings_with_batching(processed_chunks)
 
             if not chunk_embeddings:
-                self.logger.warning("No embeddings returned from model")
+                self.logger.warning("No embeddings returned from model, using fallback")
                 return [[0.0] * self.embedding_dim for _ in texts]
 
             # Validate embedding dimensions
@@ -452,6 +461,134 @@ class NomicEmbedTextPipe(BaseLlamaCppCore):
         except Exception as e:
             self.logger.error(f"Error generating embeddings with splitting: {e}")
             return [[0.0] * self.embedding_dim for _ in texts]
+
+    async def _generate_embeddings_with_batching(
+        self, chunks: List[str], max_batch_size: Optional[int] = None, max_retries: Optional[int] = None
+    ) -> List[List[float]]:
+        """
+        Generate embeddings with batching and retry logic to handle llama_decode failures.
+        
+        The 'llama_decode returned -1' error often occurs when processing too many chunks
+        at once, causing memory issues in llama.cpp. This method processes chunks in
+        smaller batches with retries and exponential backoff.
+        """
+        if not chunks:
+            return []
+
+        # Use instance config if not provided
+        batch_size = max_batch_size if max_batch_size is not None else self.max_batch_size
+        retries = max_retries if max_retries is not None else self.max_retries
+
+        # Skip batching if disabled or only one chunk
+        if not self.enable_batching or len(chunks) == 1:
+            self.logger.debug("Processing without batching")
+            try:
+                return await self.llm.aembed_documents(chunks)
+            except Exception as e:
+                self.logger.error(f"Direct embedding failed: {e}")
+                return [[0.0] * self.embedding_dim for _ in chunks]
+
+        all_embeddings = []
+        
+        # Process chunks in batches to avoid overwhelming llama.cpp
+        for batch_start in range(0, len(chunks), batch_size):
+            batch_end = min(batch_start + batch_size, len(chunks))
+            batch = chunks[batch_start:batch_end]
+            
+            self.logger.debug(f"Processing batch {batch_start//batch_size + 1}/{(len(chunks)-1)//batch_size + 1}: {len(batch)} chunks")
+            
+            # Retry logic for this batch
+            batch_embeddings = None
+            for attempt in range(retries):
+                try:
+                    # Add small delay between attempts to let model recover
+                    if attempt > 0:
+                        await asyncio.sleep(0.5 * (2 ** attempt))  # Exponential backoff
+                        self.logger.warning(f"Retrying batch (attempt {attempt + 1}/{retries})")
+                    
+                    # Process this batch
+                    batch_embeddings = await self.llm.aembed_documents(batch)
+                    
+                    if batch_embeddings and len(batch_embeddings) == len(batch):
+                        self.logger.debug(f"Successfully processed batch with {len(batch)} chunks")
+                        break
+                    else:
+                        raise ValueError(f"Incomplete batch result: got {len(batch_embeddings) if batch_embeddings else 0}, expected {len(batch)}")
+                
+                except Exception as e:
+                    error_msg = str(e).lower()
+                    if "llama_decode returned -1" in error_msg:
+                        self.logger.warning(f"llama_decode error on attempt {attempt + 1}: {e}")
+                        
+                        # Try to reduce batch size on decode errors
+                        if attempt == retries // 2 and len(batch) > 1:
+                            self.logger.info("Reducing batch size due to persistent decode errors")
+                            # Split this batch in half and retry each part
+                            try:
+                                mid = len(batch) // 2
+                                first_half = await self._generate_embeddings_with_batching(
+                                    batch[:mid], max_batch_size=max(1, batch_size // 2), max_retries=2
+                                )
+                                second_half = await self._generate_embeddings_with_batching(
+                                    batch[mid:], max_batch_size=max(1, batch_size // 2), max_retries=2  
+                                )
+                                batch_embeddings = first_half + second_half
+                                if batch_embeddings and len(batch_embeddings) == len(batch):
+                                    break
+                            except Exception as split_e:
+                                self.logger.warning(f"Split batch processing failed: {split_e}")
+                    else:
+                        self.logger.warning(f"Embedding error on attempt {attempt + 1}: {e}")
+                    
+                    # If this was the last attempt, we'll handle it below
+                    if attempt == retries - 1:
+                        self.logger.error(f"Failed to process batch after {retries} attempts: {e}")
+            
+            # Handle failed batch
+            if not batch_embeddings or len(batch_embeddings) != len(batch):
+                self.logger.error(f"Batch processing failed completely, using zero embeddings for {len(batch)} chunks")
+                batch_embeddings = [[0.0] * self.embedding_dim for _ in batch]
+            
+            all_embeddings.extend(batch_embeddings)
+            
+            # Add small delay between batches to prevent overwhelming the model
+            if batch_end < len(chunks):
+                await asyncio.sleep(0.1)
+        
+        self.logger.info(f"Generated {len(all_embeddings)} embeddings from {len(chunks)} chunks")
+        return all_embeddings
+
+    def _reset_model_state(self) -> None:
+        """
+        Reset the model state to recover from llama_decode errors.
+        
+        This can help when the model gets into an inconsistent state that causes
+        persistent decode failures.
+        """
+        try:
+            if hasattr(self.llm, '_client') and getattr(self.llm, '_client', None):
+                # Reset llama.cpp model context if available
+                self.logger.debug("Attempting to reset llama.cpp model context")
+                # Note: This may not be directly available in LangChain wrapper
+                # but serves as a placeholder for potential future reset capabilities
+            
+            # Force garbage collection to free up memory
+            import gc
+            gc.collect()
+            
+            # If CUDA is available, clear cache
+            global torch
+            if torch is None:
+                import torch as torch_module
+                torch = torch_module
+            
+            if torch and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                self.logger.debug("Cleared CUDA cache")
+                
+        except Exception as e:
+            self.logger.warning(f"Error during model state reset: {e}")
 
     async def embed_texts(
         self,
