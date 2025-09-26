@@ -39,9 +39,6 @@ from models import (
     MessageContentType,
 )
 
-from utils.message import to_lc_message
-
-
 Embeddings = List[List[float]]
 PipeReturn = Union[str, Embeddings, ChatResponse]
 

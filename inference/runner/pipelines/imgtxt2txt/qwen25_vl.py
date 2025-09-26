@@ -117,16 +117,17 @@ class Qwen25VLPipeline(BaseLangGraphPipeline):
         """Get GGUF file path."""
         return (
             self.model.details.gguf_file
-            if self.model.details.gguf_file
+            if self.model.details and self.model.details.gguf_file
             else self.model.model
         )
 
-    def _initialize_llama_cpp_direct(self) -> None:
-        """Initialize the Llama model with multimodal support."""
+    async def _initialize_llm(
+        self, gguf_path: str, tools: Optional[List[BaseTool]] = None
+    ) -> None:
+        """Initialize the LLM for multimodal processing."""
         if self.llm is not None:
             return
 
-        gguf_path = self._get_gguf_path()
         mmproj_path = "/models/qwen2.5-vl-32b-instruct/mmproj-Qwen_Qwen2.5-VL-32B-Instruct-bf16.gguf"
 
         # Validate file paths
@@ -139,10 +140,7 @@ class Qwen25VLPipeline(BaseLangGraphPipeline):
         self._logger.info(f"Loading mmproj from: {mmproj_path}")
 
         # Get circuit breaker configuration for perplexity guard
-        enable_perplexity = self.circuit_config.enable_perplexity_guard
-        if enable_perplexity is None:
-            enable_perplexity = True  # Default to enabled if not specified
-
+        enable_perplexity = self.circuit_config.enable_perplexity_guard if self.circuit_config else True
         logits_all = enable_perplexity
         logprobs = 1 if enable_perplexity else 0
 
@@ -151,32 +149,28 @@ class Qwen25VLPipeline(BaseLangGraphPipeline):
         )
 
         try:
-            chat_handler = Qwen25VLChatHandler(clip_model_path=mmproj_path)
+            # Initialize Llama model with multimodal support
             self.llm = Llama(
                 model_path=gguf_path,
-                chat_handler=chat_handler,
-                n_gpu_layers=-1,
-                n_threads=4,
-                verbose=True,
-                logits_all=logits_all,  # Respect circuit breaker configuration
-                logprobs=logprobs,  # Respect circuit breaker configuration
-                embedding=False,
-                n_ctx=96000,
-                type_k=1,
-                type_v=1,
-                n_batch=256,
-                n_ubatch=128,
-                flash_attn=True,
-                tensor_split=[0.5, 0.25, 0.25],
+                mmproj=mmproj_path,
+                chat_handler=Qwen25VLChatHandler(clip_model_path=mmproj_path),
+                n_ctx=self.profile.parameters.get("num_ctx", 8192),
+                n_gpu_layers=-1,  # Offload all layers to GPU
+                n_batch=self.profile.parameters.get("batch_size", 512),
+                seed=self.profile.parameters.get("seed", -1),
+                logits_all=logits_all,
                 f16_kv=True,
-                use_mlock=False,
                 use_mmap=True,
-                numa=True,
+                use_mlock=False,
+                verbose=False,
             )
-            self._logger.info("Successfully loaded Qwen 2.5 VL model")
+            self._logger.info("Qwen 2.5 VL model loaded successfully")
+
         except Exception as e:
-            self._logger.error(f"Failed to load model: {e}")
-            raise RuntimeError(f"Failed to load Qwen2.5-VL model: {e}") from e
+            self._logger.error(f"Failed to load Qwen 2.5 VL model: {e}")
+            raise
+
+
 
     def _format_messages(self, messages: List[Message]) -> List[Dict[str, Any]]:
         """Convert internal messages to OpenAI format."""
@@ -202,39 +196,31 @@ class Qwen25VLPipeline(BaseLangGraphPipeline):
 
     def _parse_qwen_tool_calls(self, content: str) -> List[Dict[str, Any]]:
         """Parse Qwen function calls from generated content - supports multiple formats."""
-        import json
-        import re
 
         tool_calls = []
         
-        # Pattern 1a: Look for proper Qwen function call format (arguments as string)
-        function_call_pattern_str = r'"function_call":\s*\{\s*"name":\s*"([^"]+)",\s*"arguments":\s*"([^"]+)"\s*\}'
-        function_matches_str = re.findall(function_call_pattern_str, content, re.DOTALL)
+        # Pattern 1: Look for proper Qwen function call format - extract full JSON object first
+        # This handles both string and object arguments correctly
+        function_call_json_pattern = r'\{"function_call":\s*(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})\}'
+        function_json_matches = re.findall(function_call_json_pattern, content, re.DOTALL)
         
-        for i, (name, args_str) in enumerate(function_matches_str):
+        for i, func_json in enumerate(function_json_matches):
             try:
-                # Parse the arguments JSON string
-                args = json.loads(args_str)
-                formatted_call = {
-                    "name": name,
-                    "args": args,
-                    "id": f"call_{i}_{name}",
-                    "type": "tool_call"
-                }
-                tool_calls.append(formatted_call)
-                self._logger.debug(f"Parsed Qwen function_call (string args): {formatted_call}")
-            except (json.JSONDecodeError, KeyError) as e:
-                self._logger.warning(f"Failed to parse function_call arguments '{args_str}': {e}")
-                continue
-        
-        # Pattern 1b: Look for proper Qwen function call format (arguments as object)
-        if not tool_calls:
-            function_call_pattern_obj = r'"function_call":\s*\{\s*"name":\s*"([^"]+)",\s*"arguments":\s*(\{[^}]+\})\s*\}'
-            function_matches_obj = re.findall(function_call_pattern_obj, content, re.DOTALL)
-            
-            for i, (name, args_str) in enumerate(function_matches_obj):
-                try:
-                    args = json.loads(args_str)
+                # Parse the function call object
+                func_obj = json.loads(func_json)
+                name = func_obj.get('name')
+                args_data = func_obj.get('arguments', '{}')
+                
+                if name:
+                    # If arguments is a string, parse it as JSON
+                    if isinstance(args_data, str):
+                        try:
+                            args = json.loads(args_data)
+                        except json.JSONDecodeError:
+                            args = {"raw": args_data}
+                    else:
+                        args = args_data
+                    
                     formatted_call = {
                         "name": name,
                         "args": args,
@@ -242,10 +228,10 @@ class Qwen25VLPipeline(BaseLangGraphPipeline):
                         "type": "tool_call"
                     }
                     tool_calls.append(formatted_call)
-                    self._logger.debug(f"Parsed Qwen function_call (object args): {formatted_call}")
-                except (json.JSONDecodeError, KeyError) as e:
-                    self._logger.warning(f"Failed to parse function_call arguments '{args_str}': {e}")
-                    continue
+                    self._logger.debug(f"Parsed Qwen function_call: {formatted_call}")
+            except (json.JSONDecodeError, KeyError) as e:
+                self._logger.warning(f"Failed to parse function_call JSON '{func_json[:100]}...': {e}")
+                continue
 
         # Pattern 2: Look for mixed function_call tags (what we see in logs)
         if not tool_calls:
@@ -281,10 +267,9 @@ class Qwen25VLPipeline(BaseLangGraphPipeline):
 
     def _clean_tool_calls_from_content(self, content: str) -> str:
         """Remove tool call patterns from content to get clean user-facing text."""
-        import re
         
-        # Remove function_call JSON patterns (proper Qwen format)
-        func_call_pattern = r'"function_call":\s*\{\s*"name":\s*"[^"]+",\s*"arguments":\s*"[^"]+"\s*\}'
+        # Remove function_call JSON patterns (proper Qwen format) - updated pattern
+        func_call_pattern = r'\{"function_call":\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}\}'
         content = re.sub(func_call_pattern, '', content, flags=re.DOTALL)
         
         # Remove mixed function_call tags
@@ -361,9 +346,7 @@ Always explain what you're doing before calling a tool and provide a clear respo
             }
 
         try:
-            # Initialize LLM if not done yet
-            if self.llm is None:
-                self._initialize_llama_cpp_direct()
+            # LLM initialization is handled by parent class through graph creation
 
             # Convert LangChain messages to our Message format for processing
             our_messages = []
