@@ -183,18 +183,20 @@ class WebExtractionService:
             {
                 "USER_AGENT": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "ROBOTSTXT_OBEY": False,  # IGNORE robots.txt for comprehensive extraction
-                "CONCURRENT_REQUESTS": 4,  # More concurrent requests for efficiency
-                "DOWNLOAD_TIMEOUT": 45,  # Longer timeout for better success rate
+                "CONCURRENT_REQUESTS": 2,  # Reduced for stability
+                "DOWNLOAD_TIMEOUT": 180,  # Much longer timeout (3 minutes)
                 "LOG_LEVEL": "ERROR",
                 "TELNETCONSOLE_ENABLED": False,
-                "RETRY_TIMES": 3,  # More retries for better success rate
-                "CLOSESPIDER_TIMEOUT": 120,  # Much longer overall timeout
-                "DNS_TIMEOUT": 30,  # Longer DNS timeout
-                "DOWNLOAD_DELAY": 0.5,  # Faster delay between requests
+                "RETRY_TIMES": 5,  # More retries for better success rate
+                "CLOSESPIDER_TIMEOUT": 300,  # 5 minute overall timeout
+                "DNS_TIMEOUT": 60,  # Longer DNS timeout (1 minute)
+                "DOWNLOAD_DELAY": 1.0,  # Slower delay to avoid rate limiting
                 "AUTOTHROTTLE_ENABLED": True,  # Enable auto-throttling
-                "AUTOTHROTTLE_START_DELAY": 0.5,
-                "AUTOTHROTTLE_MAX_DELAY": 2,
-                "AUTOTHROTTLE_TARGET_CONCURRENCY": 2,
+                "AUTOTHROTTLE_START_DELAY": 1.0,
+                "AUTOTHROTTLE_MAX_DELAY": 5,
+                "AUTOTHROTTLE_TARGET_CONCURRENCY": 1.5,
+                "REDIRECT_ENABLED": True,  # Enable redirects
+                "COOKIES_ENABLED": True,  # Enable cookies
                 # Additional headers to appear more browser-like
                 "DEFAULT_REQUEST_HEADERS": {
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -203,6 +205,8 @@ class WebExtractionService:
                     "DNT": "1",
                     "Connection": "keep-alive",
                     "Upgrade-Insecure-Requests": "1",
+                    "Cache-Control": "no-cache",
+                    "Pragma": "no-cache",
                 },
             }
         )
@@ -257,13 +261,14 @@ class WebExtractionService:
         self.crawler_settings.update(
             {
                 "FEEDS": {output_file: {"format": "json", "overwrite": True}},
-                "CLOSESPIDER_TIMEOUT": 90,  # Much longer timeout for content extraction
-                "DOWNLOAD_TIMEOUT": 60,  # Longer download timeout
-                "DNS_TIMEOUT": 30,  # Longer DNS timeout
+                "CLOSESPIDER_TIMEOUT": 240,  # 4 minute timeout for content extraction
+                "DOWNLOAD_TIMEOUT": 120,  # 2 minute download timeout
+                "DNS_TIMEOUT": 60,  # 1 minute DNS timeout
                 "DEPTH_LIMIT": min(max_depth, 1),  # Keep depth limited for focus
-                "RETRY_TIMES": 3,  # More retries
-                "DOWNLOAD_DELAY": 0.5,  # Reduced delay for faster extraction
-                "CONCURRENT_REQUESTS": 4,  # More concurrent requests
+                "RETRY_TIMES": 5,  # More retries
+                "DOWNLOAD_DELAY": 1.5,  # Slower delay to avoid blocking
+                "CONCURRENT_REQUESTS": 1,  # Single request to avoid blocking
+                "RANDOMIZE_DOWNLOAD_DELAY": True,  # Randomize delays
             }
         )
 

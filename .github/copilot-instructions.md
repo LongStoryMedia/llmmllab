@@ -113,7 +113,23 @@ k exec -it psql-0 -n psql -- psql -h localhost -U lsm -d llmmll -v "ON_ERROR_STO
 SQL schema and migration files are in `inference/server/db/sql/`.
 The code interfaces are in `inference/server/db/`. 
 
+## Web Scraping
+Web scraping is handled by Scrapy in `inference/server/services/web_extraction_service.py`.
+these are the settings available: https://docs.scrapy.org/en/latest/topics/settings.html
+and main docs: https://docs.scrapy.org/en/latest/
+
 ---
 DO NOT USE LONG OR COMPLEX COMMANDS. USE SCRIPTS INSTEAD.
 ALWAYS SYNC CODE WITH `inference/sync-code.sh` INSTEAD OF MANUAL RSYNC/CP COMMANDS.
 EVERY CHANGE SHOULD HAVE A GIT COMMIT.
+
+NESTED COMMANDS SUCH AS
+```bash
+POD_NAME=$(kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}') && kubectl exec -it -n ollama $POD_NAME -- /app/v.sh server python test_real_end_to_end_pipeline.py qwen3-30b-a3b-q4-k-m
+```
+ARE TOO COMPLEX FOR AUTO-APPROVAL. USE SOMETHING LIKE:
+```bash
+kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}'
+# remember the pod name printed
+kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh server python test_real_end_to_end_pipeline.py qwen3-30b-a3b-q4-k-m
+```
