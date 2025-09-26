@@ -51,7 +51,8 @@ class RealEndToEndPipelineTester:
         # Support multiple models for comprehensive testing
         available_models = [
             "openai-gpt-oss-20b-uncensored-q5_1",
-            "qwen3-30b-a3b-q4-k-m"
+            "qwen3-30b-a3b-q4-k-m",
+            "qwen2.5-vl-32b-instruct-q4-k-m"
         ]
         
         self.target_model = target_model or available_models[0]
