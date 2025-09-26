@@ -66,7 +66,13 @@ class RealEndToEndPipelineTester:
         """Initialize the file for capturing LLM-generated text."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         model_safe = self.target_model.replace("/", "_").replace("-", "_")
-        self.llm_output_file = f"llm_output_{model_safe}_{timestamp}.txt"
+        
+        # Ensure debug/out directory exists
+        import os
+        output_dir = "debug/out"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        self.llm_output_file = f"{output_dir}/llm_output_{model_safe}_{timestamp}.txt"
         
         # Create the file with header
         try:
@@ -500,8 +506,34 @@ RESPONSE GUIDELINES:
             from models.message_role import MessageRole
             from models.message_content import MessageContent, MessageContentType
 
-            # Create a message that explicitly requests web search for 2024 information
-            query_text = """I need current information about quantum computing breakthroughs published in 2024.
+            # Check if this is Qwen2.5VL to test vision capabilities
+            is_qwen25vl = "qwen2.5-vl" in self.target_model.lower() or "qwen25vl" in self.target_model.lower()
+            
+            # Create content list starting with text
+            content_list = []
+            
+            if is_qwen25vl:
+                # For Qwen2.5VL, test vision + tool calling capabilities
+                query_text = """I need current information about quantum computing breakthroughs published in 2024.
+
+MANDATORY: You must use the web_search tool to find real, current information about quantum computing developments in 2024, then synthesize the results into a comprehensive response.
+
+This is a vision-language model test - if you can process images, acknowledge this capability in your response.
+
+Use the web_search tool and provide a detailed summary of the findings."""
+                
+                content_list.append(MessageContent(type=MessageContentType.TEXT, text=query_text))
+                
+                # Add a simple test image (base64 encoded 1x1 pixel PNG for testing vision capability)
+                test_image_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
+                content_list.append(MessageContent(
+                    type=MessageContentType.IMAGE, 
+                    image_url=f"data:image/png;base64,{test_image_b64}"
+                ))
+                logger.info("   🖼️  Added test image content for Qwen2.5VL vision testing")
+            else:
+                # For other models, use standard text-only message
+                query_text = """I need current information about quantum computing breakthroughs published in 2024.
 
 MANDATORY: You must use the web_search tool to find real, current information about quantum computing developments in 2024, then synthesize the results into a comprehensive response.
 
@@ -511,12 +543,14 @@ Use this EXACT format for the tool call:
 </tool_call>
 
 After the tool executes, provide a detailed summary of the findings."""
+                
+                content_list.append(MessageContent(type=MessageContentType.TEXT, text=query_text))
 
             user_message = Message(
                 id=None,  # Will be set by database
                 conversation_id=self.test_conversation_id,
                 role=MessageRole.USER,
-                content=[MessageContent(type=MessageContentType.TEXT, text=query_text)],
+                content=content_list,
                 created_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
             )
@@ -735,7 +769,7 @@ After the tool executes, provide a detailed summary of the findings."""
                         logger.warning("   ❌ TOOL CALL INCOMPLETE: OpenAI GPT OSS requirements not met")
                         
                 elif is_qwen_pipeline:
-                    # Qwen3 uses <tool_call> XML tags (official format)
+                    # Qwen supports multiple formats: XML tags, legacy JSON, and raw JSON
                     has_tool_call_tags = "<tool_call>" in full_response and "</tool_call>" in full_response
                     has_name_field = '"name"' in full_response
                     has_arguments_field = '"arguments"' in full_response
@@ -744,17 +778,23 @@ After the tool executes, provide a detailed summary of the findings."""
                     # Check for legacy format as fallback
                     has_legacy_json = "```json" in full_response and '"tool_calls"' in full_response
                     
+                    # Check for raw JSON format (used by Qwen2.5VL)
+                    import re
+                    raw_json_pattern = r'^\s*\{\s*"name":\s*"[^"]+"\s*,\s*"arguments":\s*\{.*\}\s*\}\s*$'
+                    has_raw_json = bool(re.search(raw_json_pattern, full_response.strip(), re.MULTILINE | re.DOTALL))
+                    
                     logger.info(
-                        f"   📋 Qwen3 Tool format check - XML tags: {has_tool_call_tags}, Legacy JSON: {has_legacy_json}"
+                        f"   📋 Qwen Tool format check - XML tags: {has_tool_call_tags}, Legacy JSON: {has_legacy_json}, Raw JSON: {has_raw_json}"
                     )
                     logger.info(
                         f"   🛠️  Tool check - Name: {has_name_field}, Arguments: {has_arguments_field}, Web search: {has_web_search}"
                     )
                     
-                    # Validate Qwen3 XML format (preferred) or legacy JSON format
-                    if not (has_tool_call_tags or has_legacy_json):
+                    # Validate any supported Qwen format
+                    has_valid_format = has_tool_call_tags or has_legacy_json or has_raw_json
+                    if not has_valid_format:
                         logger.warning(
-                            "   ⚠️  TOOL FORMAT VIOLATION: Missing required <tool_call> XML tags or legacy JSON format for Qwen3"
+                            "   ⚠️  TOOL FORMAT VIOLATION: Missing required format (XML tags, legacy JSON, or raw JSON) for Qwen"
                         )
                     if not has_name_field and not has_web_search:
                         logger.warning(
@@ -780,18 +820,18 @@ After the tool executes, provide a detailed summary of the findings."""
                     
                     logger.info(f"   🔧 Tool execution check - Results found: {has_tool_results}, Streaming errors: {has_streaming_error}")
 
-                    # Success check for Qwen3 (prefer XML format)
-                    if has_name_field and has_web_search and (has_tool_call_tags or has_legacy_json) and has_tool_results and not has_streaming_error:
-                        format_type = "XML" if has_tool_call_tags else "Legacy JSON"
+                    # Success check for Qwen (supports XML, legacy JSON, and raw JSON formats)
+                    if has_name_field and has_web_search and has_valid_format and has_tool_results and not has_streaming_error:
+                        format_type = "XML" if has_tool_call_tags else ("Legacy JSON" if has_legacy_json else "Raw JSON")
                         logger.info(
-                            f"   🎉 TOOL CALL SUCCESS: Proper Qwen3 {format_type} format and tool execution completed!"
+                            f"   🎉 TOOL CALL SUCCESS: Proper Qwen {format_type} format and tool execution completed!"
                         )
                     else:
                         failure_reasons = []
                         if not has_name_field or not has_web_search:
                             failure_reasons.append("missing tool call format")
-                        if not (has_tool_call_tags or has_legacy_json):
-                            failure_reasons.append("missing XML/JSON structure")
+                        if not has_valid_format:
+                            failure_reasons.append("missing XML/JSON/Raw structure")
                         if not has_tool_results:
                             failure_reasons.append("NO TOOL EXECUTION RESULTS")
                         if has_streaming_error:
@@ -1408,6 +1448,7 @@ After the tool executes, provide a detailed summary of the findings."""
             commentary_usage = False
             search_results_synthesized = False
             comprehensive_response = False
+            vision_capabilities_acknowledged = False
 
             if assistant_content:
                 content_lower = assistant_content.lower()
@@ -1426,6 +1467,17 @@ After the tool executes, provide a detailed summary of the findings."""
 
                 # Commentary channel usage
                 commentary_usage = "commentary" in content_lower
+
+                # Vision capabilities check (for Qwen2.5VL)
+                is_qwen25vl = "qwen2.5-vl" in self.target_model.lower() or "qwen25vl" in self.target_model.lower()
+                if is_qwen25vl:
+                    vision_capabilities_acknowledged = any(
+                        pattern in content_lower
+                        for pattern in [
+                            "vision", "image", "visual", "process images", 
+                            "vision-language", "multimodal", "see the image"
+                        ]
+                    )
 
                 # Search result synthesis indicators
                 search_results_synthesized = any(
@@ -1459,7 +1511,12 @@ After the tool executes, provide a detailed summary of the findings."""
                 if search_results_synthesized:
                     response_quality_score += 25
                 if comprehensive_response:
-                    response_quality_score += 50
+                    response_quality_score += 35
+                # For Qwen2.5VL, add points for vision capability acknowledgment
+                if is_qwen25vl and vision_capabilities_acknowledged:
+                    response_quality_score += 15
+                elif not is_qwen25vl:
+                    response_quality_score += 15  # Full points for non-vision models
 
                 logger.info(f"   🔍 Assistant content length: {len(assistant_content)}")
                 logger.info(f"   🔍 Tool usage indicators: {tool_usage_found}")
@@ -1467,6 +1524,8 @@ After the tool executes, provide a detailed summary of the findings."""
                     f"   🔍 Search results synthesized: {search_results_synthesized}"
                 )
                 logger.info(f"   🔍 Comprehensive response: {comprehensive_response}")
+                if is_qwen25vl:
+                    logger.info(f"   🖼️  Vision capabilities acknowledged: {vision_capabilities_acknowledged}")
                 logger.info(
                     f"   📊 Response quality score: {response_quality_score}/100"
                 )
@@ -1510,6 +1569,7 @@ After the tool executes, provide a detailed summary of the findings."""
                 "tool_usage_found": tool_usage_found,
                 "search_results_synthesized": search_results_synthesized,
                 "comprehensive_response": comprehensive_response,
+                "vision_capabilities_acknowledged": vision_capabilities_acknowledged,
                 "search_storage_validated": search_storage_validated,
                 "assistant_responses": len(assistant_messages),
                 "user_messages": len(user_messages),
@@ -1838,7 +1898,13 @@ After the tool executes, provide a detailed summary of the findings."""
 
         # Save detailed results to file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_file = f"real_pipeline_test_{timestamp}.json"
+        
+        # Ensure debug/out directory exists
+        import os
+        output_dir = "debug/out"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        results_file = f"{output_dir}/real_pipeline_test_{timestamp}.json"
 
         try:
             with open(results_file, "w") as f:

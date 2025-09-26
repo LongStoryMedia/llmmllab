@@ -1,0 +1,4 @@
+# Debug output files - generated during test runs
+*.json
+*.txt
+*.log
