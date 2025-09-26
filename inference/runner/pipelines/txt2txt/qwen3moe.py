@@ -287,111 +287,159 @@ Then provide your clear, direct answer outside the thinking tags."""
                 import json
                 tool_descriptions.append(json.dumps(tool_signature, indent=2))
 
-            tools_json = "\n".join(tool_descriptions)
-            base_prompt += f"""
+            # Format tools for Qwen native function calling (Hermes-style)
+            formatted_tools = []
+            for tool in tools:
+                formatted_tool = {
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": {
+                            "type": "object",
+                            "properties": {},
+                            "required": []
+                        }
+                    }
+                }
+                
+                # Add specific parameter definitions for known tools
+                if tool.name == "web_search":
+                    formatted_tool["function"]["parameters"]["properties"] = {
+                        "query": {"type": "string", "description": "The search query"},
+                        "limit": {"type": "integer", "description": "Maximum number of results", "default": 5}
+                    }
+                    formatted_tool["function"]["parameters"]["required"] = ["query"]
+                elif tool.name == "memory_retrieval":
+                    formatted_tool["function"]["parameters"]["properties"] = {
+                        "tool_input": {"type": "array", "description": "List of embeddings for retrieval"}
+                    }
+                    formatted_tool["function"]["parameters"]["required"] = ["tool_input"]
+                elif tool.name == "summarization":
+                    formatted_tool["function"]["parameters"]["properties"] = {
+                        "tool_input": {"type": "array", "description": "List of messages to summarize"}
+                    }
+                    formatted_tool["function"]["parameters"]["required"] = ["tool_input"]
+                else:
+                    # Generic parameter for unknown tools including dynamic ones
+                    if hasattr(tool, 'args_schema') and tool.args_schema:
+                        # Use the tool's actual schema if available
+                        schema = tool.args_schema
+                        if hasattr(schema, 'schema'):
+                            schema_dict = schema.schema()
+                            formatted_tool["function"]["parameters"] = schema_dict
+                        else:
+                            # Fallback to generic query parameter
+                            formatted_tool["function"]["parameters"]["properties"] = {
+                                "query": {"type": "string", "description": "Input for the tool"}
+                            }
+                            formatted_tool["function"]["parameters"]["required"] = ["query"]
+                    else:
+                        # Fallback to generic query parameter
+                        formatted_tool["function"]["parameters"]["properties"] = {
+                            "query": {"type": "string", "description": "Input for the tool"}
+                        }
+                        formatted_tool["function"]["parameters"]["required"] = ["query"]
+                
+                formatted_tools.append(formatted_tool)
 
-# Tools
-
-You may call one or more functions to assist with the user query.
-
-You are provided with function signatures within <tools></tools> XML tags:
-<tools>
-{tools_json}
-</tools>
-
-For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
-<tool_call>
-{{"name": <function-name>, "arguments": <args-json-object>}}
-</tool_call>
-
-## CRITICAL TOOL USAGE RULES:
-
-1. **ALWAYS use tools for current information, web searches, or when you don't have specific knowledge**
-2. **Format tool calls EXACTLY as shown below - use <tool_call> tags**
-3. **Use "arguments" not "args" in the JSON**
-4. **Do NOT use ```json code blocks - use <tool_call> tags only**
-
-## EXACT FORMAT REQUIRED:
-When you need to use a tool, use this format:
-
-<tool_call>
-{{"name": "web_search", "arguments": {{"query": "your search query here"}}}}
-</tool_call>
-
-## MORE EXAMPLES:
-
-For web search:
-<tool_call>
-{{"name": "web_search", "arguments": {{"query": "latest AI breakthroughs 2025", "limit": 5}}}}
-</tool_call>
-
-For memory retrieval:
-<tool_call>
-{{"name": "memory_retrieval", "arguments": {{"tool_input": []}}}}
-</tool_call>
-
-**DO NOT:**
-- Write explanatory text before or after the <tool_call> tags
-- Use ```json code blocks for tool calls
-- Use any format other than <tool_call> XML tags
-- Say you cannot use tools - you CAN and MUST use them when needed
-- Make up information when you should search for it
-
-**DO:**
-- Use web_search for any current information, links, or recent developments
-- Follow the exact <tool_call> format every time
-- Put JSON inside <tool_call></tool_call> tags"""
+            # Store tools for template processing
+            self._available_tools = formatted_tools
 
         return base_prompt
 
     def _parse_qwen_tool_calls(self, content: str) -> List[Dict[str, Any]]:
-        """Parse Qwen3 native <tool_call> XML tags from the generated content."""
+        """Parse Qwen function calls from generated content - supports multiple formats."""
         import json
         import re
 
         tool_calls = []
         
-        # Look for <tool_call> XML tags (official Qwen3 format)
-        tool_call_pattern = r'<tool_call>\s*(\{.*?\})\s*</tool_call>'
-        matches = re.findall(tool_call_pattern, content, re.DOTALL | re.IGNORECASE)
+        # Pattern 1: Look for proper Qwen function call format (native template output)
+        # The model should output JSON with function_call structure when using proper templates
+        function_call_pattern = r'"function_call":\s*\{\s*"name":\s*"([^"]+)",\s*"arguments":\s*"([^"]+)"\s*\}'
+        function_matches = re.findall(function_call_pattern, content, re.DOTALL)
         
-        for i, match in enumerate(matches):
+        for i, (name, args_str) in enumerate(function_matches):
             try:
-                # Parse the JSON content inside the tool_call tag
-                tool_data = json.loads(match.strip())
-                
-                if "name" in tool_data:
-                    # Convert to LangGraph format
-                    formatted_call = {
-                        "name": tool_data["name"],
-                        "args": tool_data.get("arguments", {}),
-                        "id": f"call_{i}_{tool_data['name']}",
-                        "type": "tool_call"
-                    }
-                    tool_calls.append(formatted_call)
-                    self._logger.debug(f"Parsed Qwen3 tool call: {formatted_call}")
-                else:
-                    self._logger.warning(f"Tool call missing 'name' field: {match[:100]}...")
-                    
+                # Parse the arguments JSON string
+                args = json.loads(args_str)
+                formatted_call = {
+                    "name": name,
+                    "args": args,
+                    "id": f"call_{i}_{name}",
+                    "type": "tool_call"
+                }
+                tool_calls.append(formatted_call)
+                self._logger.debug(f"Parsed Qwen function_call: {formatted_call}")
             except (json.JSONDecodeError, KeyError) as e:
-                self._logger.warning(f"Failed to parse Qwen3 tool call from: {match[:100]}... Error: {e}")
+                self._logger.warning(f"Failed to parse function_call arguments '{args_str}': {e}")
                 continue
-                
-        # Fallback: look for legacy JSON block format (for backwards compatibility)
+        
+        # Pattern 2: Look for <tool_call> XML tags (custom format - for backwards compatibility)
         if not tool_calls:
-            self._logger.debug("No <tool_call> tags found, checking for legacy JSON blocks...")
+            tool_call_pattern = r'<tool_call>\s*(\{.*?\})\s*</tool_call>'
+            matches = re.findall(tool_call_pattern, content, re.DOTALL | re.IGNORECASE)
             
-            # Look for JSON code blocks containing tool_calls (legacy format)
+            for i, match in enumerate(matches):
+                try:
+                    # Parse the JSON content - don't strip here to preserve formatting
+                    tool_data = json.loads(match)
+                    
+                    if "name" in tool_data:
+                        formatted_call = {
+                            "name": tool_data["name"],
+                            "args": tool_data.get("arguments", {}),
+                            "id": f"call_{i}_{tool_data['name']}",
+                            "type": "tool_call"
+                        }
+                        tool_calls.append(formatted_call)
+                        self._logger.debug(f"Parsed XML tool call: {formatted_call}")
+                    else:
+                        self._logger.warning(f"Tool call missing 'name' field: {match[:100]}...")
+                        
+                except (json.JSONDecodeError, KeyError) as e:
+                    self._logger.warning(f"Failed to parse XML tool call from: {match[:100]}... Error: {e}")
+                    continue
+        
+        # Pattern 3: Look for mixed function_call tags (what we see in the logs)
+        if not tool_calls:
+            mixed_pattern = r'<function_call>\s*(\{.*?\})\s*</(?:function_call|FunctionCall)>'
+            mixed_matches = re.findall(mixed_pattern, content, re.DOTALL | re.IGNORECASE)
+            
+            for i, match in enumerate(mixed_matches):
+                try:
+                    tool_data = json.loads(match)
+                    
+                    if "name" in tool_data:
+                        formatted_call = {
+                            "name": tool_data["name"],
+                            "args": tool_data.get("arguments", {}),
+                            "id": f"call_{i}_{tool_data['name']}",
+                            "type": "tool_call"
+                        }
+                        tool_calls.append(formatted_call)
+                        self._logger.debug(f"Parsed mixed function_call: {formatted_call}")
+                    else:
+                        self._logger.warning(f"Mixed function call missing 'name' field: {match[:100]}...")
+                        
+                except (json.JSONDecodeError, KeyError) as e:
+                    self._logger.warning(f"Failed to parse mixed function call from: {match[:100]}... Error: {e}")
+                    continue
+                    
+        # Pattern 4: Legacy JSON blocks (final fallback)
+        if not tool_calls:
+            self._logger.debug("No function calls found, checking for legacy JSON blocks...")
+            
             json_pattern = r'```json\s*(\{.*?\})\s*```'
             json_matches = re.findall(json_pattern, content, re.DOTALL | re.IGNORECASE)
             
             for match in json_matches:
                 try:
-                    data = json.loads(match.strip())
+                    data = json.loads(match)
                     if "tool_calls" in data:
                         for i, tool_call in enumerate(data["tool_calls"]):
                             if "name" in tool_call:
-                                # Convert to LangGraph format
                                 formatted_call = {
                                     "name": tool_call["name"],
                                     "args": tool_call.get("arguments", {}),
@@ -401,20 +449,33 @@ For memory retrieval:
                                 tool_calls.append(formatted_call)
                                 self._logger.debug(f"Parsed legacy tool call: {formatted_call}")
                 except (json.JSONDecodeError, KeyError) as e:
-                    self._logger.warning(f"Failed to parse legacy tool call from: {match[:100]}... Error: {e}")
+                    self._logger.warning(f"Failed to parse legacy tool call: {e}")
                     continue
-        
+
+        if tool_calls:
+            self._logger.info(f"Successfully parsed {len(tool_calls)} tool calls from content")
+        else:
+            self._logger.warning("No tool calls found in content")
+            
         return tool_calls
 
     def _clean_tool_calls_from_content(self, content: str) -> str:
-        """Remove tool call XML tags from the content to get clean user-facing text."""
+        """Remove tool call patterns from content to get clean user-facing text."""
         import re
         
-        # Remove <tool_call> XML tags (official Qwen3 format)
+        # Remove function_call JSON patterns (proper Qwen format)
+        func_call_pattern = r'"function_call":\s*\{\s*"name":\s*"[^"]+",\s*"arguments":\s*"[^"]+"\s*\}'
+        content = re.sub(func_call_pattern, '', content, flags=re.DOTALL)
+        
+        # Remove <tool_call> XML tags (custom format)
         tool_call_pattern = r'<tool_call>\s*\{.*?\}\s*</tool_call>'
         content = re.sub(tool_call_pattern, '', content, flags=re.DOTALL | re.IGNORECASE)
         
-        # Remove legacy JSON code blocks that contain tool_calls (for backwards compatibility)
+        # Remove mixed function_call tags (what we see in logs)
+        mixed_pattern = r'<function_call>\s*\{.*?\}\s*</(?:function_call|FunctionCall)>'
+        content = re.sub(mixed_pattern, '', content, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Remove legacy JSON code blocks that contain tool_calls
         json_pattern = r'```json\s*\{.*?"tool_calls".*?\}\s*```'
         content = re.sub(json_pattern, '', content, flags=re.DOTALL | re.IGNORECASE)
         
