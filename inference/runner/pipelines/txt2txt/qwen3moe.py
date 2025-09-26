@@ -34,7 +34,9 @@ from utils.langgraph import (
     LangGraphState,
     build_lc_messages,
     coerce_to_langchain_message_dict,
+    coerce_to_lc_message,
 )
+from models.lang_chain_message import LangChainMessage
 from ..base_langgraph import CircuitBreakerConfig
 from ..llamacpp.base_llamacpp import BaseLlamaCppPipeline
 from ..context_manager import ContextManager
@@ -473,24 +475,105 @@ For memory retrieval:
             # Create ToolNode with enhanced debugging
             tool_node = ToolNode(tools)
             
-            # Wrap ToolNode to add debugging
+            # Wrap ToolNode to add debugging and handle LangChainMessage conversion
             def debug_tool_node(state: LangGraphState):
                 """Debug wrapper for ToolNode execution."""
-                self._logger.debug(f"QwenMoE debug_tool_node: state type: {type(state)}")
-                self._logger.debug(f"QwenMoE debug_tool_node: state.messages length: {len(state.messages) if hasattr(state, 'messages') and state.messages else 'NO MESSAGES'}")
-                
-                if hasattr(state, 'messages') and state.messages:
-                    last_message = state.messages[-1]
-                    self._logger.debug(f"QwenMoE debug_tool_node: last_message type: {type(last_message)}")
-                    if hasattr(last_message, 'tool_calls'):
-                        self._logger.debug(f"QwenMoE debug_tool_node: tool_calls: {last_message.tool_calls}")
-                
                 try:
-                    result = tool_node.invoke(state)
-                    self._logger.debug(f"QwenMoE debug_tool_node: ToolNode result type: {type(result)}")
+                    self._logger.error(f"QwenMoE debug_tool_node: ENTRY - state type: {type(state)}")
+                    self._logger.error(f"QwenMoE debug_tool_node: ENTRY - state.messages length: {len(state.messages) if hasattr(state, 'messages') and state.messages else 'NO MESSAGES'}")
+                    
+                    if hasattr(state, 'messages') and state.messages:
+                        last_message = state.messages[-1]
+                        self._logger.error(f"QwenMoE debug_tool_node: ENTRY - last_message type: {type(last_message)}")
+                        if isinstance(last_message, dict):
+                            self._logger.error(f"QwenMoE debug_tool_node: ENTRY - dict message keys: {list(last_message.keys())}")
+                            if 'tool_calls' in last_message:
+                                self._logger.error(f"QwenMoE debug_tool_node: ENTRY - dict tool_calls: {last_message['tool_calls']}")
+                    
+                    # Convert dict messages to LangChain BaseMessages for ToolNode
+                    converted_messages = []
+                    for i, msg in enumerate(state.messages):
+                        self._logger.error(f"QwenMoE debug_tool_node: Converting message {i}: type={type(msg)}")
+                        if hasattr(msg, 'type'):
+                            self._logger.error(f"QwenMoE debug_tool_node: Message {i} has type field: {msg.type}")
+                        if hasattr(msg, 'tool_calls'):
+                            self._logger.error(f"QwenMoE debug_tool_node: Message {i} has tool_calls field: {msg.tool_calls}")
+                        converted_msg = coerce_to_lc_message(msg)
+                        self._logger.error(f"QwenMoE debug_tool_node: Converted message {i} to: type={type(converted_msg)}")
+                        if hasattr(converted_msg, 'tool_calls') and converted_msg.tool_calls:
+                            self._logger.error(f"QwenMoE debug_tool_node: Message {i} has tool_calls: {len(converted_msg.tool_calls)}")
+                        converted_messages.append(converted_msg)
+                    
+                    converted_state = state.copy()
+                    converted_state.messages = converted_messages
+                    
+                    self._logger.error(f"QwenMoE debug_tool_node: BEFORE TOOLNODE - last message type: {type(converted_state.messages[-1])}")
+                    
+                    result = tool_node.invoke(converted_state)
+                    self._logger.error(f"QwenMoE debug_tool_node: SUCCESS - ToolNode executed")
+                    self._logger.error(f"QwenMoE debug_tool_node: Result type: {type(result)}")
+                    
+                    # Check what's in the result
+                    if isinstance(result, dict):
+                        self._logger.error(f"QwenMoE debug_tool_node: Result dict keys: {list(result.keys())}")
+                        if 'messages' in result:
+                            self._logger.error(f"QwenMoE debug_tool_node: Result has messages: {len(result['messages'])} messages")
+                            for i, msg in enumerate(result['messages']):
+                                self._logger.error(f"QwenMoE debug_tool_node: Result message {i} type: {type(msg)}")
+                    elif hasattr(result, 'messages'):
+                        self._logger.error(f"QwenMoE debug_tool_node: Result has messages attr: {len(result.messages)} messages")
+                        for i, msg in enumerate(result.messages):
+                            self._logger.error(f"QwenMoE debug_tool_node: Result message {i} type: {type(msg)}")
+                    else:
+                        self._logger.error(f"QwenMoE debug_tool_node: Result has no messages")
+                    
+                    # Convert ToolMessage results back to dicts for state consistency
+                    if isinstance(result, dict) and 'messages' in result and result['messages']:
+                        self._logger.error(f"QwenMoE debug_tool_node: Converting {len(result['messages'])} result messages")
+                        converted_messages = []
+                        for i, msg in enumerate(result['messages']):
+                            self._logger.error(f"QwenMoE debug_tool_node: Converting result message {i} type: {type(msg)}")
+                            converted_msg = coerce_to_langchain_message_dict(msg)
+                            self._logger.error(f"QwenMoE debug_tool_node: Converted result message {i} to: {type(converted_msg)}")
+                            converted_messages.append(converted_msg)
+                        
+                        # Create a completely new result with all messages converted
+                        new_result = {
+                            'messages': state.messages + converted_messages,  # Original messages + new tool messages
+                        }
+                        # Copy other attributes from result if any
+                        for key, value in result.items():
+                            if key != 'messages':
+                                new_result[key] = value
+                        
+                        self._logger.error(f"QwenMoE debug_tool_node: Final new_result messages types: {[type(m) for m in new_result['messages']]}")
+                        self._logger.error(f"QwenMoE debug_tool_node: Final new_result messages length: {len(new_result['messages'])}")
+                        return new_result
+                    elif hasattr(result, 'messages'):
+                        messages_attr = getattr(result, 'messages', None)
+                        if messages_attr:
+                            self._logger.error(f"QwenMoE debug_tool_node: Converting {len(messages_attr)} result messages (attr)")
+                            converted_messages = []
+                            for i, msg in enumerate(messages_attr):
+                                self._logger.error(f"QwenMoE debug_tool_node: Converting result message {i} type: {type(msg)}")
+                                converted_msg = coerce_to_langchain_message_dict(msg)
+                                self._logger.error(f"QwenMoE debug_tool_node: Converted result message {i} to: {type(converted_msg)}")
+                                converted_messages.append(converted_msg)
+                            
+                            # Create new state with combined messages
+                            new_state = state.copy()
+                            new_state.messages = state.messages + converted_messages
+                            self._logger.error(f"QwenMoE debug_tool_node: Final new_state messages types: {[type(m) for m in new_state.messages]}")
+                            self._logger.error(f"QwenMoE debug_tool_node: Final new_state messages length: {len(new_state.messages)}")
+                            return new_state
+                        
                     return result
+                    
                 except Exception as e:
-                    self._logger.error(f"QwenMoE debug_tool_node: ToolNode execution failed: {e}")
+                    self._logger.error(f"QwenMoE debug_tool_node: FAILED - {e}")
+                    # Let's also log the stack trace
+                    import traceback
+                    self._logger.error(f"QwenMoE debug_tool_node: TRACEBACK - {traceback.format_exc()}")
                     raise
             
             workflow.add_node("tools", debug_tool_node)
@@ -544,10 +627,14 @@ For memory retrieval:
         # Check iteration limits
         if state.current_iteration >= state.max_iterations:
             timeout_error = f"Maximum iterations ({state.max_iterations}) reached. Stopping to prevent infinite loops."
+            lang_chain_message = LangChainMessage(
+                content=timeout_error,
+                type="ai",
+                additional_kwargs={},
+                response_metadata={},
+            )
             return {
-                "messages": [
-                    coerce_to_langchain_message_dict(AIMessage(content=timeout_error))
-                ],
+                "messages": [lang_chain_message],
                 "current_iteration": state.current_iteration + 1,
             }
 
@@ -608,18 +695,50 @@ For memory retrieval:
             else:
                 formatted_response = response
 
+            # Return LangChainMessage directly for LangGraphState compatibility
+            if isinstance(formatted_response, AIMessage):
+                # Convert AIMessage to LangChainMessage format for LangGraph
+                lang_chain_message = LangChainMessage(
+                    content=str(formatted_response.content) if formatted_response.content else "",
+                    type="ai",
+                    tool_calls=getattr(formatted_response, 'tool_calls', None),
+                    additional_kwargs=getattr(formatted_response, 'additional_kwargs', {}),
+                    response_metadata=getattr(formatted_response, 'response_metadata', {}),
+                )
+            else:
+                # Handle other response types
+                lang_chain_message = LangChainMessage(
+                    content=str(formatted_response),
+                    type="ai",
+                    additional_kwargs={},
+                    response_metadata={},
+                )
+            
+            self._logger.error(f"QwenMoE _agent_node: RETURNING AI message with tool_calls: {lang_chain_message.tool_calls}")
+            self._logger.error(f"QwenMoE _agent_node: Message type: {lang_chain_message.type}")
+            self._logger.error(f"QwenMoE _agent_node: Current state has {len(state.messages)} messages")
+            
+            # Explicitly append to existing messages to ensure proper state accumulation
+            all_messages = list(state.messages) + [lang_chain_message]
+            self._logger.error(f"QwenMoE _agent_node: Will return {len(all_messages)} total messages")
+            
             return {
-                "messages": [coerce_to_langchain_message_dict(formatted_response)],
+                "messages": all_messages,
                 "current_iteration": state.current_iteration + 1,
             }
 
         except Exception as e:
             error_msg = f"Error in agent node: {str(e)}"
             self._logger.error(error_msg)
+            # Return LangChainMessage directly for LangGraphState compatibility
+            lang_chain_message = LangChainMessage(
+                content=error_msg,
+                type="ai",
+                additional_kwargs={},
+                response_metadata={},
+            )
             return {
-                "messages": [
-                    coerce_to_langchain_message_dict(AIMessage(content=error_msg))
-                ],
+                "messages": [lang_chain_message],
                 "current_iteration": state.current_iteration + 1,
             }
 

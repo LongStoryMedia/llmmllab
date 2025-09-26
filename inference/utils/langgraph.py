@@ -15,12 +15,14 @@ try:
         AIMessage as LCAIMessage,
         HumanMessage as LCHumanMessage,
         SystemMessage as LCSystemMessage,
+        ToolMessage as LCToolMessage,
     )
 except Exception:  # pragma: no cover
     LCBaseMessage = object  # type: ignore
     LCAIMessage = None  # type: ignore
     LCHumanMessage = None  # type: ignore
     LCSystemMessage = None  # type: ignore
+    LCToolMessage = None  # type: ignore
 
 
 def _coerce_to_langchain_message_dict(item: Any) -> Dict[str, Any]:
@@ -30,6 +32,18 @@ def _coerce_to_langchain_message_dict(item: Any) -> Dict[str, Any]:
     # If it's already a dict, assume it's compliant
     if isinstance(item, dict):
         return item
+
+    # Special handling for ToolMessage
+    if LCToolMessage and isinstance(item, LCToolMessage):
+        return {
+            "content": getattr(item, "content", ""),
+            "additional_kwargs": getattr(item, "additional_kwargs", {}) or {},
+            "response_metadata": getattr(item, "response_metadata", {}) or {},
+            "type": "tool",
+            "name": getattr(item, "name", None),
+            "id": getattr(item, "id", None),
+            "tool_call_id": getattr(item, "tool_call_id", None),
+        }
 
     # Duck-typing for LangChain BaseMessage-like objects
     if hasattr(item, "content"):
@@ -45,6 +59,10 @@ def _coerce_to_langchain_message_dict(item: Any) -> Dict[str, Any]:
         # Preserve tool_calls if present (important for LangGraph tool routing)
         if hasattr(item, "tool_calls") and getattr(item, "tool_calls", None):
             result["tool_calls"] = getattr(item, "tool_calls")
+        
+        # Preserve tool_call_id for ToolMessage-like objects
+        if hasattr(item, "tool_call_id"):
+            result["tool_call_id"] = getattr(item, "tool_call_id", None)
 
         return result
 
@@ -72,31 +90,48 @@ def coerce_to_lc_message(item: Any) -> Any:
     if isinstance(item, LCBaseMessage):
         return item
 
-    # Expect dict-like
+    # Handle pydantic models or dict-like objects
+    content = ""
+    mtype = ""
+    tool_calls = None
+    
     if isinstance(item, dict):
         content = item.get("content", "")
         mtype = (item.get("type") or item.get("role") or "").lower()
         tool_calls = item.get("tool_calls", None)
-
-        if mtype in ("ai", "assistant") and LCAIMessage is not None:
-            # Preserve tool_calls for AI messages
-            if tool_calls:
-                return LCAIMessage(content=content, tool_calls=tool_calls)
-            else:
-                return LCAIMessage(content=content)
-        if mtype in ("human", "user") and LCHumanMessage is not None:
-            return LCHumanMessage(content=content)
-        if mtype == "system" and LCSystemMessage is not None:
-            return LCSystemMessage(content=content)
-        # Default fallback
+    elif hasattr(item, "content") and hasattr(item, "type"):
+        # Pydantic model or similar with attributes
+        content = getattr(item, "content", "")
+        mtype = (getattr(item, "type", "") or "").lower()
+        tool_calls = getattr(item, "tool_calls", None)
+    else:
+        # Fallback: string to HumanMessage
         if LCHumanMessage is not None:
-            return LCHumanMessage(content=content)
-        return item  # last resort
+            return LCHumanMessage(content=str(item))
+        return item
 
-    # Fallback: string to HumanMessage
+    if mtype in ("ai", "assistant") and LCAIMessage is not None:
+        # Preserve tool_calls for AI messages
+        if tool_calls:
+            return LCAIMessage(content=content, tool_calls=tool_calls)
+        else:
+            return LCAIMessage(content=content)
+    if mtype in ("human", "user") and LCHumanMessage is not None:
+        return LCHumanMessage(content=content)
+    if mtype == "system" and LCSystemMessage is not None:
+        return LCSystemMessage(content=content)
+    if mtype == "tool" and LCToolMessage is not None:
+        # Handle ToolMessage with tool_call_id
+        tool_call_id = None
+        if isinstance(item, dict):
+            tool_call_id = item.get("tool_call_id", None)
+        elif hasattr(item, "tool_call_id"):
+            tool_call_id = getattr(item, "tool_call_id", None)
+        return LCToolMessage(content=content, tool_call_id=tool_call_id or "unknown")
+    # Default fallback
     if LCHumanMessage is not None:
-        return LCHumanMessage(content=str(item))
-    return item
+        return LCHumanMessage(content=content)
+    return item  # last resort
 
 
 def build_lc_messages(messages: Iterable[Any]) -> list:
