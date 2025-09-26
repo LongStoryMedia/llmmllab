@@ -133,3 +133,5 @@ kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}'
 # remember the pod name printed
 kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh server python test_real_end_to_end_pipeline.py qwen3-30b-a3b-q4-k-m
 ```
+
+DO NOT ADD DOCUMENTATION FOR FIXES. ONLY DOCUMENT FULLY IMPLEMENTED FEATURES, AND ALWAYS IN THE `docs/` FOLDER. ALWAYS LINK TO THE DOCS FROM THE README IF IT'S IMPORTANT.

@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 class RealEndToEndPipelineTester:
     """Real end-to-end pipeline test using actual infrastructure."""
 
-    def __init__(self, target_model: str = None):
+    def __init__(self, target_model: str = None, capture_llm_output: bool = True, print_output: bool = False):
         """Initialize real pipeline tester."""
         self.test_user_id = f"test_real_user_{uuid.uuid4().hex[:8]}"
         self.test_model_profile_id = uuid.uuid4()
@@ -41,6 +41,12 @@ class RealEndToEndPipelineTester:
         self.test_message_id = None
         self.created_entities = []  # Track for cleanup
         self.storage = None  # Will be initialized with infrastructure
+        
+        # LLM output capture configuration
+        self.capture_llm_output = capture_llm_output
+        self.print_output = print_output
+        self.llm_output_file = None
+        self.llm_responses = []  # Store all LLM responses for analysis
         
         # Support multiple models for comprehensive testing
         available_models = [
@@ -50,6 +56,121 @@ class RealEndToEndPipelineTester:
         
         self.target_model = target_model or available_models[0]
         self.available_models = available_models
+        
+        # Initialize LLM output file if capture is enabled
+        if self.capture_llm_output:
+            self._initialize_llm_output_file()
+
+    def _initialize_llm_output_file(self):
+        """Initialize the file for capturing LLM-generated text."""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        model_safe = self.target_model.replace("/", "_").replace("-", "_")
+        self.llm_output_file = f"llm_output_{model_safe}_{timestamp}.txt"
+        
+        # Create the file with header
+        try:
+            with open(self.llm_output_file, 'w', encoding='utf-8') as f:
+                f.write(f"LLM Output Capture - Real End-to-End Pipeline Test\n")
+                f.write(f"{'='*60}\n")
+                f.write(f"Model: {self.target_model}\n")
+                f.write(f"Test User: {self.test_user_id}\n")
+                f.write(f"Timestamp: {datetime.now(timezone.utc).isoformat()}\n")
+                f.write(f"{'='*60}\n\n")
+            logger.info(f"📝 LLM output will be captured to: {self.llm_output_file}")
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to initialize LLM output file: {e}")
+            self.capture_llm_output = False
+
+    def _write_llm_response(self, phase: str, response_text: str, metadata: Dict[str, Any] = None):
+        """Write LLM response to file with phase information."""
+        if not self.capture_llm_output or not self.llm_output_file:
+            return
+            
+        try:
+            with open(self.llm_output_file, 'a', encoding='utf-8') as f:
+                f.write(f"\n{'-'*50}\n")
+                f.write(f"PHASE: {phase}\n")
+                f.write(f"TIME: {datetime.now(timezone.utc).isoformat()}\n")
+                if metadata:
+                    f.write(f"METADATA: {json.dumps(metadata, indent=2)}\n")
+                f.write(f"{'-'*50}\n")
+                f.write(f"{response_text}\n")
+                f.write(f"\n{'='*50}\n")
+                
+            # Also store in memory for analysis
+            self.llm_responses.append({
+                'phase': phase,
+                'response': response_text,
+                'metadata': metadata or {},
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            })
+            
+            logger.info(f"📝 Captured LLM response for {phase} ({len(response_text)} chars)")
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to write LLM response to file: {e}")
+
+    def _finalize_llm_output(self):
+        """Finalize the LLM output file with summary statistics."""
+        if not self.capture_llm_output or not self.llm_output_file:
+            return
+            
+        try:
+            total_chars = sum(len(resp['response']) for resp in self.llm_responses)
+            total_responses = len(self.llm_responses)
+            
+            with open(self.llm_output_file, 'a', encoding='utf-8') as f:
+                f.write(f"\n\n{'='*60}\n")
+                f.write(f"TEST SUMMARY\n")
+                f.write(f"{'='*60}\n")
+                f.write(f"Total LLM Responses Captured: {total_responses}\n")
+                f.write(f"Total Characters Generated: {total_chars:,}\n")
+                f.write(f"Average Response Length: {total_chars // max(total_responses, 1):,} chars\n")
+                f.write(f"Test Completed: {datetime.now(timezone.utc).isoformat()}\n")
+                f.write(f"{'='*60}\n")
+                
+                if total_responses > 0:
+                    f.write(f"\nRESPONSE BREAKDOWN BY PHASE:\n")
+                    f.write(f"{'-'*40}\n")
+                    for resp in self.llm_responses:
+                        f.write(f"{resp['phase']:.<30} {len(resp['response']):>8,} chars\n")
+                    f.write(f"{'-'*40}\n")
+            
+            logger.info(f"📝 Finalized LLM output file: {self.llm_output_file}")
+            logger.info(f"📊 Captured {total_responses} responses totaling {total_chars:,} characters")
+            
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to finalize LLM output file: {e}")
+
+    def _print_llm_output_summary(self):
+        """Print a summary of captured LLM output and optionally the full content."""
+        if not self.capture_llm_output or not self.llm_output_file:
+            return
+            
+        total_chars = sum(len(resp['response']) for resp in self.llm_responses)
+        total_responses = len(self.llm_responses)
+        
+        print(f"\n{'='*60}")
+        print(f"LLM OUTPUT SUMMARY")
+        print(f"{'='*60}")
+        print(f"Output File: {self.llm_output_file}")
+        print(f"Total Responses: {total_responses}")
+        print(f"Total Characters: {total_chars:,}")
+        print(f"Average Length: {total_chars // max(total_responses, 1):,} chars")
+        print(f"{'='*60}")
+        
+        if self.print_output and total_responses > 0:
+            print(f"\nFULL LLM OUTPUT CONTENT:")
+            print(f"{'='*60}")
+            try:
+                with open(self.llm_output_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    print(content)
+            except Exception as e:
+                print(f"Error reading output file: {e}")
+            print(f"{'='*60}")
+        elif total_responses > 0:
+            print(f"\nTo view full content, set print_output=True or read: {self.llm_output_file}")
+            print(f"{'='*60}")
 
     def _get_model_specific_system_prompt(self) -> str:
         """Get model-specific system prompt with appropriate tool calling format."""
@@ -205,9 +326,15 @@ RESPONSE GUIDELINES:
             cleanup_result = await self.cleanup_real_data()
             test_results["results"]["cleanup"] = cleanup_result
             test_results["entities_cleaned"] = cleanup_result.get("cleaned_count", 0)
+            
+            # Finalize LLM output capture
+            self._finalize_llm_output()
 
         # Print comprehensive results
         await self.print_test_summary(test_results)
+        
+        # Print LLM output summary
+        self._print_llm_output_summary()
 
         return test_results
 
@@ -880,6 +1007,20 @@ After the tool executes, provide a detailed summary of the findings."""
                     f"   💾 Stored assistant response ID: {response_message_id}"
                 )
 
+            # Capture the full LLM response to file
+            if final_response:
+                pipeline_metadata = {
+                    "execution_time": execution_time,
+                    "response_chunks": len(response_chunks),
+                    "tool_calls_detected": tool_calls_detected,
+                    "commentary_channel_used": commentary_channel_used,
+                    "pipeline_type": type(pipeline).__name__,
+                    "response_content_length": len(final_response),
+                    "tools_available": len(tools),
+                    "model_name": model_profile.model_name if model_profile else "unknown"
+                }
+                self._write_llm_response("Pipeline Execution", final_response, pipeline_metadata)
+
             return {
                 "success": True,
                 "execution_time": execution_time,
@@ -968,6 +1109,19 @@ After the tool executes, provide a detailed summary of the findings."""
                             logger.info(f"   🛠️  Generated tool name: {tool.name}")
                             logger.info(f"   📝 Tool description: {tool.description}")
                             logger.info(f"   🔧 Tool function: {tool.function_name}")
+                            
+                            # Capture the generated tool code as LLM output
+                            tool_output = f"Generated Tool: {tool.name}\n"
+                            tool_output += f"Description: {tool.description}\n"
+                            tool_output += f"Function Name: {tool.function_name}\n\n"
+                            tool_output += f"Generated Code:\n{'-'*40}\n{tool.code}\n{'-'*40}"
+                            
+                            self._write_llm_response("Dynamic Tool Generation", tool_output, {
+                                "tool_name": tool.name,
+                                "function_name": tool.function_name,
+                                "code_length": len(tool.code),
+                                "request_prompt": test_prompt
+                            })
                             
                             # Test if tool can actually execute
                             try:
@@ -1697,10 +1851,30 @@ async def main():
     """Main test execution function with multi-model support and retry logic."""
     import sys
     
-    # Support command line model selection
+    # Support command line model selection and output options
     target_model = None
-    if len(sys.argv) > 1:
-        target_model = sys.argv[1]
+    capture_output = True
+    print_output = False
+    
+    # Parse command line arguments
+    for i, arg in enumerate(sys.argv[1:], 1):
+        if arg.startswith('--'):
+            if arg == '--no-capture':
+                capture_output = False
+            elif arg == '--print-output':
+                print_output = True
+            elif arg == '--help':
+                print("Usage: python test_real_end_to_end_pipeline.py [model_name] [options]")
+                print("Options:")
+                print("  --no-capture    Disable LLM output capture to file")
+                print("  --print-output  Print full LLM output content to console")
+                print("  --help          Show this help message")
+                print("\nAvailable models:")
+                print("  - openai-gpt-oss-20b-uncensored-q5_1")
+                print("  - qwen3-30b-a3b-q4-k-m")
+                return
+        elif not target_model and not arg.startswith('--'):
+            target_model = arg
         
     # Model configuration with fallbacks for memory issues
     model_configs = {
@@ -1715,7 +1889,11 @@ async def main():
     
     for model in models_to_test:
         logger.info(f"🧪 Testing with model: {model}")
-        tester = RealEndToEndPipelineTester(target_model=model)
+        tester = RealEndToEndPipelineTester(
+            target_model=model,
+            capture_llm_output=capture_output,
+            print_output=print_output
+        )
         
         # Retry logic for web scraping issues
         max_retries = 2
