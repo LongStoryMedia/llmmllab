@@ -207,7 +207,7 @@ class QwenLangGraphPipe(BaseLlamaCppPipeline):
 
             if self.buffer and not self.in_think_tag:
                 content = [
-                    MessageContent(type=MessageContentType.TEXT, text=self.buffer.strip())
+                    MessageContent(type=MessageContentType.TEXT, text=self.buffer)
                 ]
 
             # Reset state
@@ -355,12 +355,11 @@ Then provide your clear, direct answer outside the thinking tags."""
 
         tool_calls = []
         
-        # Pattern 1: Look for proper Qwen function call format (native template output)
-        # The model should output JSON with function_call structure when using proper templates
-        function_call_pattern = r'"function_call":\s*\{\s*"name":\s*"([^"]+)",\s*"arguments":\s*"([^"]+)"\s*\}'
-        function_matches = re.findall(function_call_pattern, content, re.DOTALL)
+        # Pattern 1a: Look for proper Qwen function call format (arguments as string)
+        function_call_pattern_str = r'"function_call":\s*\{\s*"name":\s*"([^"]+)",\s*"arguments":\s*"([^"]+)"\s*\}'
+        function_matches_str = re.findall(function_call_pattern_str, content, re.DOTALL)
         
-        for i, (name, args_str) in enumerate(function_matches):
+        for i, (name, args_str) in enumerate(function_matches_str):
             try:
                 # Parse the arguments JSON string
                 args = json.loads(args_str)
@@ -371,10 +370,30 @@ Then provide your clear, direct answer outside the thinking tags."""
                     "type": "tool_call"
                 }
                 tool_calls.append(formatted_call)
-                self._logger.debug(f"Parsed Qwen function_call: {formatted_call}")
+                self._logger.debug(f"Parsed Qwen function_call (string args): {formatted_call}")
             except (json.JSONDecodeError, KeyError) as e:
                 self._logger.warning(f"Failed to parse function_call arguments '{args_str}': {e}")
                 continue
+        
+        # Pattern 1b: Look for proper Qwen function call format (arguments as object)
+        if not tool_calls:
+            function_call_pattern_obj = r'"function_call":\s*\{\s*"name":\s*"([^"]+)",\s*"arguments":\s*(\{[^}]+\})\s*\}'
+            function_matches_obj = re.findall(function_call_pattern_obj, content, re.DOTALL)
+            
+            for i, (name, args_str) in enumerate(function_matches_obj):
+                try:
+                    args = json.loads(args_str)
+                    formatted_call = {
+                        "name": name,
+                        "args": args,
+                        "id": f"call_{i}_{name}",
+                        "type": "tool_call"
+                    }
+                    tool_calls.append(formatted_call)
+                    self._logger.debug(f"Parsed Qwen function_call (object args): {formatted_call}")
+                except (json.JSONDecodeError, KeyError) as e:
+                    self._logger.warning(f"Failed to parse function_call arguments '{args_str}': {e}")
+                    continue
         
         # Pattern 2: Look for <tool_call> XML tags (custom format - for backwards compatibility)
         if not tool_calls:
@@ -486,7 +505,7 @@ Then provide your clear, direct answer outside the thinking tags."""
         # Clean up extra whitespace
         content = re.sub(r'\n\s*\n\s*\n', '\n\n', content)
         
-        return content.strip()
+        return content
 
     def _should_use_extended_timeout(self, messages: List[Message]) -> bool:
         """
@@ -738,7 +757,7 @@ Then provide your clear, direct answer outside the thinking tags."""
                 # Remove tool call JSON from the visible content
                 clean_content = self._clean_tool_calls_from_content(response_content)
                 formatted_response = AIMessage(
-                    content=clean_content if clean_content.strip() else "Let me search for that information.",
+                    content=clean_content if clean_content else "Let me search for that information.",
                     tool_calls=tool_calls
                 )
                 self._logger.info(f"Qwen parsed {len(tool_calls)} tool calls")
