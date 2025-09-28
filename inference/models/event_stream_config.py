@@ -11,7 +11,7 @@ class EventStreamConfig(BaseModel):
     """Configuration schema for event stream processing"""
     thinking_phase_initial: bool = Field(default=True, description="Initial thinking phase flag")
     """Initial thinking phase flag"""
-    max_content_length: int = Field(default=50000, description="Maximum content length allowed", ge=0)
+    max_content_length: int = Field(default=500000, description="Maximum content length allowed", ge=0)
     """Maximum content length allowed"""
     repetition_buffer_chars: int = Field(default=400, description="Buffer size for repetition detection in characters", ge=0)
     """Buffer size for repetition detection in characters"""

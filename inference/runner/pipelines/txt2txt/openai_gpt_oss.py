@@ -134,12 +134,7 @@ class OpenAiGptOssPipe(BaseLlamaCppPipeline):
 
     def _reset_harmony_state(self) -> None:
         """Reset harmony channel tracking state."""
-        # Preserve harmony_buffer completely if it contains synthesis content (>1000 chars)
-        preserve_buffer = self.harmony_buffer and len(self.harmony_buffer) > 1000
-
-        if not preserve_buffer:
-            self.harmony_buffer: str = ""
-
+        self.harmony_buffer: str = ""
         self.current_channel: str = "final"  # Default to final channel
         self.in_analysis_channel: bool = False
         self.analysis_complete: bool = False
@@ -260,7 +255,7 @@ class OpenAiGptOssPipe(BaseLlamaCppPipeline):
     ) -> None:
         """Initialize llama.cpp model with GPT OSS-optimized parameters.
 
-        CRITICAL: This override prevents LangChain tool binding that causes the 
+        CRITICAL: This override prevents LangChain tool binding that causes the
         "'dict object' has no attribute 'description'" error. We handle tool calling
         manually through OpenAI Harmony format instead.
         """
@@ -282,9 +277,11 @@ class OpenAiGptOssPipe(BaseLlamaCppPipeline):
 
         # CRITICAL STOP TOKEN FIX: Remove <|end|> from stop sequences for harmony format
         # OpenAI Harmony format requires <|end|> as part of channel transitions, not as stop token
-        harmony_stop_tokens = ["<|im_end|>", "<|endoftext|>"]  # Remove "<|end|>" 
+        harmony_stop_tokens = ["<|return|>"]  # Remove "<|end|>"
         self.profile.parameters.stop = harmony_stop_tokens
-        self._logger.info(f"HARMONY FIX: Configured stop tokens for harmony format: {harmony_stop_tokens}")
+        self._logger.info(
+            f"HARMONY FIX: Configured stop tokens for harmony format: {harmony_stop_tokens}"
+        )
 
         self._logger.info(
             "GPT OSS pipeline applying optimal parameters for initialization"
@@ -293,11 +290,15 @@ class OpenAiGptOssPipe(BaseLlamaCppPipeline):
         # CRITICAL FIX: Call parent initialization WITHOUT tools to prevent binding
         # This prevents the LangChain internal "'dict object' has no attribute 'description'" error
         # We handle tool calling manually through OpenAI Harmony format
-        self._logger.info("BYPASS: Initializing LLM without LangChain tool binding to prevent conflicts")
+        self._logger.info(
+            "BYPASS: Initializing LLM without LangChain tool binding to prevent conflicts"
+        )
         await super()._initialize_llm(gguf_path, None)  # Pass None instead of tools
-        
+
         if tools:
-            self._logger.debug(f"Storing {len(tools)} tools for OpenAI Harmony format handling")
+            self._logger.debug(
+                f"Storing {len(tools)} tools for OpenAI Harmony format handling"
+            )
             # Tools are stored in self._current_tools and handled manually in system prompt and parsing
 
     def _create_system_prompt(self, tools: Optional[List[BaseTool]] = None) -> str:
@@ -345,8 +346,10 @@ TECHNICAL CAPABILITIES:
 
                 # Safety check for tool format - handle LangChain BaseTool objects
                 try:
-                    self._logger.info(f"Processing tool {i}: type={type(tool)}, dir={dir(tool)[:10]}")
-                    
+                    self._logger.info(
+                        f"Processing tool {i}: type={type(tool)}, dir={dir(tool)[:10]}"
+                    )
+
                     # Be extra careful - check type first, then attributes
                     if isinstance(tool, dict):
                         self._logger.info(f"Tool {i} is dict: {tool}")
@@ -355,32 +358,46 @@ TECHNICAL CAPABILITIES:
                         tool_descriptions.append(f"- {name}: {desc}")
                     else:
                         # Use completely defensive attribute access
-                        self._logger.info(f"Tool {i} is not dict, attempting attribute access")
+                        self._logger.info(
+                            f"Tool {i} is not dict, attempting attribute access"
+                        )
                         name = "Unknown"
                         desc = "Tool for specialized tasks"
-                        
+
                         # Safe name extraction
                         try:
                             name = getattr(tool, "name", "Unknown")
                             self._logger.info(f"Tool {i} name: {name}")
                         except Exception as name_e:
-                            self._logger.warning(f"Failed to get name for tool {i}: {name_e}")
-                            
+                            self._logger.warning(
+                                f"Failed to get name for tool {i}: {name_e}"
+                            )
+
                         # Safe description extraction - try multiple approaches
                         try:
                             if hasattr(tool, "description"):
-                                desc = str(getattr(tool, "description", "Tool for specialized tasks"))
+                                desc = str(
+                                    getattr(
+                                        tool,
+                                        "description",
+                                        "Tool for specialized tasks",
+                                    )
+                                )
                                 self._logger.info(f"Tool {i} description: {desc}")
                             else:
-                                self._logger.info(f"Tool {i} has no description attribute")
+                                self._logger.info(
+                                    f"Tool {i} has no description attribute"
+                                )
                         except Exception as desc_e:
-                            self._logger.warning(f"Failed to get description for tool {i}: {desc_e}")
-                            
+                            self._logger.warning(
+                                f"Failed to get description for tool {i}: {desc_e}"
+                            )
+
                         tool_descriptions.append(f"- {name}: {desc}")
-                        
+
                 except Exception as e:
                     self._logger.error(
-                        f"COMPLETE FAILURE processing tool {i} ({type(tool)}): {e}. Using fallback."
+                        f"FAILURE processing tool {i} ({type(tool)}): {e}. Using fallback."
                     )
                     tool_descriptions.append(f"- tool_{i}: Tool for specialized tasks")
                     continue
@@ -393,7 +410,7 @@ Available tools:
 
 TOOL CALLING INSTRUCTIONS (CRITICAL - OpenAI Harmony Format):
 
-MANDATORY RULE: When user requests web search, current information, or research, you MUST use the web_search tool.
+MANDATORY RULE: You must ensure you are using the exact tool names as provided above.
 
 REQUIRED WORKFLOW:
 1. First use <|channel|>analysis to think about what you need to do
@@ -413,16 +430,11 @@ COMPLETE EXAMPLE FOR WEB SEARCH:
 <|channel|>final<|message|>Based on my search results...
 
 CRITICAL: DO NOT skip the commentary channel. DO NOT explain what you will do - JUST DO IT.
-When you analyze and see you need web_search, immediately follow with the commentary channel.
-
-EXACT TOOL NAMES (DO NOT MODIFY):
-- web_search (for any web/internet searches - NOT "search" or "websearch")
-- memory_retrieval (for retrieving stored information)  
-- summarization (for summarizing content)
+When you analyze and see you need a tool, immediately follow with the commentary channel.
 
 MANDATORY RULES:
 1. ALWAYS use commentary channel immediately after analysis when tools are needed
-2. Use EXACT tool names - "web_search" NOT "search", "websearch", or variations
+2. Use EXACT tool names - (e.g. - "web_search" NOT "search", "websearch", or variations)
 3. Complete the entire JSON structure - do not truncate
 4. After tool execution, provide final response with results
 
@@ -838,13 +850,13 @@ FAILURE TO USE COMMENTARY CHANNEL FOR TOOLS IS COMPLETELY UNACCEPTABLE."""
             # Look for any JSON objects that might be tool calls anywhere in content
             fallback_patterns = [
                 # Standard tool call JSON structure
-                r'\{[^{}]*\"name\"\s*:\s*\"[^\"]+\"\s*,[^{}]*\"arguments\"\s*:\s*\{[^{}]*\}[^{}]*\}',
+                r"\{[^{}]*\"name\"\s*:\s*\"[^\"]+\"\s*,[^{}]*\"arguments\"\s*:\s*\{[^{}]*\}[^{}]*\}",
                 # More flexible JSON structure
-                r'\{[^{}]*\"name\"[^{}]*\"arguments\"[^{}]*\}',
+                r"\{[^{}]*\"name\"[^{}]*\"arguments\"[^{}]*\}",
                 # JSON with nested objects (handle simple nesting)
-                r'\{\s*\"name\"\s*:\s*\"[^\"]+\"\s*,\s*\"arguments\"\s*:\s*\{[^{}]*\}\s*\}',
+                r"\{\s*\"name\"\s*:\s*\"[^\"]+\"\s*,\s*\"arguments\"\s*:\s*\{[^{}]*\}\s*\}",
             ]
-            
+
             for j, fallback_pattern in enumerate(fallback_patterns):
                 fallback_matches = re.findall(fallback_pattern, content, re.DOTALL)
                 if fallback_matches:
@@ -1085,7 +1097,7 @@ FAILURE TO USE COMMENTARY CHANNEL FOR TOOLS IS COMPLETELY UNACCEPTABLE."""
 
     async def _invoke_with_harmony_format(self, formatted_prompt: str) -> AIMessage:
         """Invoke the model with harmony-formatted prompt.
-        
+
         CRITICAL: No tools are bound to self.llm, preventing LangChain internal processing
         conflicts with OpenAI Harmony format.
         """
@@ -1113,16 +1125,6 @@ FAILURE TO USE COMMENTARY CHANNEL FOR TOOLS IS COMPLETELY UNACCEPTABLE."""
                 return AIMessage(content=content)
 
         except Exception as e:
-            error_str = str(e)
-            self._logger.error(f"LLM invocation failed with: {type(e).__name__}: {error_str}")
-            
-            # Check if it's the dict.description error we're hunting (should not occur now)
-            if "'dict object' has no attribute 'description'" in error_str:
-                self._logger.error("UNEXPECTED: LangChain tool attribute error still occurring!")
-                self._logger.error("This should have been fixed by preventing tool binding.")
-                
-                # Return an error response indicating unexpected issue
-                return AIMessage(content="Unexpected LangChain tool processing error occurred despite fix. This needs investigation.")
-            else:
-                self._logger.error(f"Other LLM error: {e}")
-                return AIMessage(content=f"LLM Error: {str(e)}")
+            self._logger.error(f"Failed to invoke model with harmony format: {e}")
+            # Return error message as AIMessage
+            return AIMessage(content=f"Error: {str(e)}")

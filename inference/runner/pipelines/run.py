@@ -355,10 +355,35 @@ class EventStreamProcessor:
             return None
 
     def _process_tool_start(self, evt: StandardStreamEvent) -> Optional[ChatResponse]:
-        """Process tool start events."""
+        """Process tool start events with improved tool name detection."""
         try:
             data = evt.get("data", {})
-            tool_name = data.get("name", "unknown")
+            
+            # Try multiple ways to extract tool name from LangGraph events
+            tool_name = "unknown"
+            
+            # Method 1: Check event-level name field first (most common for LangGraph)
+            if "name" in evt:
+                tool_name = evt["name"]
+            # Method 2: Direct name field in data
+            elif "name" in data:
+                tool_name = data["name"]
+            # Method 3: Check if data has a 'tool' field with name
+            elif "tool" in data and isinstance(data["tool"], dict) and "name" in data["tool"]:
+                tool_name = data["tool"]["name"]
+            # Method 4: Check for nested structure
+            elif "input" in data and isinstance(data["input"], dict):
+                if "tool" in data["input"] and isinstance(data["input"]["tool"], str):
+                    tool_name = data["input"]["tool"]
+                elif "name" in data["input"]:
+                    tool_name = data["input"]["name"]
+            # Method 5: Check event metadata
+            elif "metadata" in evt and "name" in evt["metadata"]:
+                tool_name = evt["metadata"]["name"]
+            
+            # Log for debugging
+            self.logger.debug(f"Tool start event - extracted name: '{tool_name}', data keys: {list(data.keys())}")
+            
             tool_input = data.get("input", {})
 
             tool_txt = ""
@@ -387,13 +412,20 @@ class EventStreamProcessor:
             return create_streaming_chunk("\n\n🔧 **Using tool**\n")
 
     def _process_tool_end(self, evt: StandardStreamEvent) -> Optional[ChatResponse]:
-        """Process tool end events."""
+        """Process tool end events with configurable output length."""
         try:
             data = evt.get("data", {})
             tool_output = str(data.get("output", ""))
 
-            if len(tool_output) > 500:  # Limit output length
-                tool_output = tool_output[:500] + "..."
+            # Make truncation configurable with much higher limit for comprehensive output
+            max_output_length = getattr(self, 'max_tool_output_length', 10000)  # Default 10K chars for full web content
+            
+            if len(tool_output) > max_output_length:
+                # Show beginning and end for better context, but with more generous limits
+                quarter_length = (max_output_length - 40) // 4  # Show first 1/4 and last 1/4 
+                tool_output = (tool_output[:quarter_length * 3] + 
+                             "\n... (content truncated for length) ...\n" + 
+                             tool_output[-quarter_length:])
 
             return create_streaming_chunk(
                 f"✅ **Tool completed**\n{tool_output}\n\n",

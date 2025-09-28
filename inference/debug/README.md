@@ -38,9 +38,9 @@ These scripts focus on the most critical functionality:
 All scripts can be run directly with Python:
 
 ```bash
-python test_real_end_to_end_pipeline.py [model_name] [--options]
-python test_qwen_tool_calling.py
-python test_web_extraction_dedicated.py
+python -m debug.test_real_end_to_end_pipeline [model_name] [--options]
+python -m debug.test_qwen_tool_calling
+python -m debug.test_web_extraction_dedicated
 ```
 
 The main e2e test supports several command-line options for different testing modes and output control.

@@ -131,10 +131,11 @@ ARE TOO COMPLEX FOR AUTO-APPROVAL. USE SOMETHING LIKE:
 ```bash
 kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}'
 # remember the pod name printed
-kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh server python test_real_end_to_end_pipeline.py qwen3-30b-a3b-q4-k-m
+kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh server python -m debug.test_real_end_to_end_pipeline qwen3-30b-a3b-q4-k-m
 ```
 
 DO NOT ADD DOCUMENTATION FOR FIXES. ONLY DOCUMENT FULLY IMPLEMENTED FEATURES, AND ALWAYS IN THE `docs/` FOLDER. ALWAYS LINK TO THE DOCS FROM THE README IF IT'S IMPORTANT.
 
 MANUAL VERIFICATION TESTS MUST BE IN THE `inference/debug` FOLDER.
 UNIT TESTS MUST BE IN THE `inference/test` FOLDER.
+

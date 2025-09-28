@@ -70,7 +70,6 @@ rsync -avzru --delete \
     --exclude='*.pyc' \
     --exclude='llama.cpp/' \
     --exclude='benchmark_data/' \
-    --exclude='debug/out/' \
     --exclude='.pytest_cache/' \
     --exclude='.DS_Store' \
     "${SCRIPT_DIR}/" "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/"
@@ -101,39 +100,8 @@ if [ "$1" = "--watch" ] || [ "$1" = "-w" ]; then
             --exclude='.pytest_cache/' \
             --exclude='.DS_Store' \
             "${SCRIPT_DIR}/" "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/"
-        
-        # Also pull any new output files
-        rsync -avzru \
-            --include='*.json' \
-            --include='*.txt' \
-            --include='*.log' \
-            --exclude='*' \
-            "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/debug/out/" "${SCRIPT_DIR}/debug/out/" 2>/dev/null
-        
         echo "✅ Code synced at $(date)"
     done
-fi
-
-# Pull output files only (useful after running tests)
-if [ "$1" = "--pull-output" ] || [ "$1" = "-p" ]; then
-    echo "📋 Pulling only output files from server..."
-    
-    # Pull benchmark data
-    echo "📊 Pulling benchmark data..."
-    rsync -avzru \
-        "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/benchmark_data/" "${SCRIPT_DIR}/benchmark_data/"
-    
-    # Pull debug output files  
-    echo "🔍 Pulling debug output files..."
-    rsync -avzru \
-        --include='*.json' \
-        --include='*.txt' \
-        --include='*.log' \
-        --exclude='*' \
-        "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/debug/out/" "${SCRIPT_DIR}/debug/out/"
-    
-    echo "✅ Output files pulled successfully"
-    exit 0
 fi
 
 # Optionally restart the deployment

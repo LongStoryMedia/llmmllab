@@ -141,11 +141,11 @@ class QwenLangGraphPipe(BaseLlamaCppPipeline):
         """Process streaming token with <think> tag detection (overrides base method)."""
         if content is None:
             return None
-        
+
         # Ensure buffer is initialized
-        if not hasattr(self, 'buffer') or self.buffer is None:
+        if not hasattr(self, "buffer") or self.buffer is None:
             self.buffer = ""
-            
+
         self.buffer += content
 
         # Check for opening think tag
@@ -170,7 +170,7 @@ class QwenLangGraphPipe(BaseLlamaCppPipeline):
         try:
             # Accumulate thinking content
             if content is not None:
-                if not hasattr(self, 'think_content') or self.think_content is None:
+                if not hasattr(self, "think_content") or self.think_content is None:
                     self.think_content = ""
                 self.think_content += content
             # Don't return anything for thinking - it will be added to the final message
@@ -184,14 +184,14 @@ class QwenLangGraphPipe(BaseLlamaCppPipeline):
         try:
             if not content:
                 return None
-            
+
             message_content = [
                 MessageContent(type=MessageContentType.TEXT, text=content)
             ]
             message = Message(
                 role=MessageRole.ASSISTANT,
                 content=message_content,
-                thinking=None  # Thinking will be added in finalize_streaming
+                thinking=None,  # Thinking will be added in finalize_streaming
             )
             return ChatResponse(message=message, done=False)
         except Exception as e:
@@ -253,28 +253,34 @@ Then provide your clear, direct answer outside the thinking tags."""
                 tool_signature = {
                     "name": tool.name,
                     "description": tool.description,
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
+                    "parameters": {"type": "object", "properties": {}, "required": []},
                 }
-                
+
                 # Add specific parameter definitions for known tools
                 if tool.name == "web_search":
                     tool_signature["parameters"]["properties"] = {
                         "query": {"type": "string", "description": "The search query"},
-                        "limit": {"type": "integer", "description": "Maximum number of results", "default": 5}
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of results",
+                            "default": 5,
+                        },
                     }
                     tool_signature["parameters"]["required"] = ["query"]
                 elif tool.name == "memory_retrieval":
                     tool_signature["parameters"]["properties"] = {
-                        "tool_input": {"type": "array", "description": "List of embeddings for retrieval"}
+                        "tool_input": {
+                            "type": "array",
+                            "description": "List of embeddings for retrieval",
+                        }
                     }
                     tool_signature["parameters"]["required"] = ["tool_input"]
                 elif tool.name == "summarization":
                     tool_signature["parameters"]["properties"] = {
-                        "tool_input": {"type": "array", "description": "List of messages to summarize"}
+                        "tool_input": {
+                            "type": "array",
+                            "description": "List of messages to summarize",
+                        }
                     }
                     tool_signature["parameters"]["required"] = ["tool_input"]
                 else:
@@ -283,8 +289,9 @@ Then provide your clear, direct answer outside the thinking tags."""
                         "query": {"type": "string", "description": "Input for the tool"}
                     }
                     tool_signature["parameters"]["required"] = ["query"]
-                
+
                 import json
+
                 tool_descriptions.append(json.dumps(tool_signature, indent=2))
 
             # Format tools for Qwen native function calling (Hermes-style)
@@ -298,49 +305,71 @@ Then provide your clear, direct answer outside the thinking tags."""
                         "parameters": {
                             "type": "object",
                             "properties": {},
-                            "required": []
-                        }
-                    }
+                            "required": [],
+                        },
+                    },
                 }
-                
+
                 # Add specific parameter definitions for known tools
                 if tool.name == "web_search":
                     formatted_tool["function"]["parameters"]["properties"] = {
                         "query": {"type": "string", "description": "The search query"},
-                        "limit": {"type": "integer", "description": "Maximum number of results", "default": 5}
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of results",
+                            "default": 5,
+                        },
                     }
                     formatted_tool["function"]["parameters"]["required"] = ["query"]
                 elif tool.name == "memory_retrieval":
                     formatted_tool["function"]["parameters"]["properties"] = {
-                        "tool_input": {"type": "array", "description": "List of embeddings for retrieval"}
+                        "tool_input": {
+                            "type": "array",
+                            "description": "List of embeddings for retrieval",
+                        }
                     }
-                    formatted_tool["function"]["parameters"]["required"] = ["tool_input"]
+                    formatted_tool["function"]["parameters"]["required"] = [
+                        "tool_input"
+                    ]
                 elif tool.name == "summarization":
                     formatted_tool["function"]["parameters"]["properties"] = {
-                        "tool_input": {"type": "array", "description": "List of messages to summarize"}
+                        "tool_input": {
+                            "type": "array",
+                            "description": "List of messages to summarize",
+                        }
                     }
-                    formatted_tool["function"]["parameters"]["required"] = ["tool_input"]
+                    formatted_tool["function"]["parameters"]["required"] = [
+                        "tool_input"
+                    ]
                 else:
                     # Generic parameter for unknown tools including dynamic ones
-                    if hasattr(tool, 'args_schema') and tool.args_schema:
+                    if hasattr(tool, "args_schema") and tool.args_schema:
                         # Use the tool's actual schema if available
                         schema = tool.args_schema
-                        if hasattr(schema, 'schema'):
-                            schema_dict = schema.schema()
+                        if hasattr(schema, "model_json_schema"):
+                            schema_dict = schema.model_json_schema()  # type: ignore
                             formatted_tool["function"]["parameters"] = schema_dict
                         else:
                             # Fallback to generic query parameter
                             formatted_tool["function"]["parameters"]["properties"] = {
-                                "query": {"type": "string", "description": "Input for the tool"}
+                                "query": {
+                                    "type": "string",
+                                    "description": "Input for the tool",
+                                }
                             }
-                            formatted_tool["function"]["parameters"]["required"] = ["query"]
+                            formatted_tool["function"]["parameters"]["required"] = [
+                                "query"
+                            ]
                     else:
                         # Fallback to generic query parameter
                         formatted_tool["function"]["parameters"]["properties"] = {
-                            "query": {"type": "string", "description": "Input for the tool"}
+                            "query": {
+                                "type": "string",
+                                "description": "Input for the tool",
+                            }
                         }
                         formatted_tool["function"]["parameters"]["required"] = ["query"]
-                
+
                 formatted_tools.append(formatted_tool)
 
             # Store tools for template processing
@@ -354,11 +383,11 @@ Then provide your clear, direct answer outside the thinking tags."""
         import re
 
         tool_calls = []
-        
+
         # Pattern 1a: Look for proper Qwen function call format (arguments as string)
         function_call_pattern_str = r'"function_call":\s*\{\s*"name":\s*"([^"]+)",\s*"arguments":\s*"([^"]+)"\s*\}'
         function_matches_str = re.findall(function_call_pattern_str, content, re.DOTALL)
-        
+
         for i, (name, args_str) in enumerate(function_matches_str):
             try:
                 # Parse the arguments JSON string
@@ -367,19 +396,25 @@ Then provide your clear, direct answer outside the thinking tags."""
                     "name": name,
                     "args": args,
                     "id": f"call_{i}_{name}",
-                    "type": "tool_call"
+                    "type": "tool_call",
                 }
                 tool_calls.append(formatted_call)
-                self._logger.debug(f"Parsed Qwen function_call (string args): {formatted_call}")
+                self._logger.debug(
+                    f"Parsed Qwen function_call (string args): {formatted_call}"
+                )
             except (json.JSONDecodeError, KeyError) as e:
-                self._logger.warning(f"Failed to parse function_call arguments '{args_str}': {e}")
+                self._logger.warning(
+                    f"Failed to parse function_call arguments '{args_str}': {e}"
+                )
                 continue
-        
+
         # Pattern 1b: Look for proper Qwen function call format (arguments as object)
         if not tool_calls:
             function_call_pattern_obj = r'"function_call":\s*\{\s*"name":\s*"([^"]+)",\s*"arguments":\s*(\{[^}]+\})\s*\}'
-            function_matches_obj = re.findall(function_call_pattern_obj, content, re.DOTALL)
-            
+            function_matches_obj = re.findall(
+                function_call_pattern_obj, content, re.DOTALL
+            )
+
             for i, (name, args_str) in enumerate(function_matches_obj):
                 try:
                     args = json.loads(args_str)
@@ -387,72 +422,92 @@ Then provide your clear, direct answer outside the thinking tags."""
                         "name": name,
                         "args": args,
                         "id": f"call_{i}_{name}",
-                        "type": "tool_call"
+                        "type": "tool_call",
                     }
                     tool_calls.append(formatted_call)
-                    self._logger.debug(f"Parsed Qwen function_call (object args): {formatted_call}")
+                    self._logger.debug(
+                        f"Parsed Qwen function_call (object args): {formatted_call}"
+                    )
                 except (json.JSONDecodeError, KeyError) as e:
-                    self._logger.warning(f"Failed to parse function_call arguments '{args_str}': {e}")
+                    self._logger.warning(
+                        f"Failed to parse function_call arguments '{args_str}': {e}"
+                    )
                     continue
-        
+
         # Pattern 2: Look for <tool_call> XML tags (custom format - for backwards compatibility)
         if not tool_calls:
-            tool_call_pattern = r'<tool_call>\s*(\{.*?\})\s*</tool_call>'
+            tool_call_pattern = r"<tool_call>\s*(\{.*?\})\s*</tool_call>"
             matches = re.findall(tool_call_pattern, content, re.DOTALL | re.IGNORECASE)
-            
+
             for i, match in enumerate(matches):
                 try:
                     # Parse the JSON content - don't strip here to preserve formatting
                     tool_data = json.loads(match)
-                    
+
                     if "name" in tool_data:
                         formatted_call = {
                             "name": tool_data["name"],
                             "args": tool_data.get("arguments", {}),
                             "id": f"call_{i}_{tool_data['name']}",
-                            "type": "tool_call"
+                            "type": "tool_call",
                         }
                         tool_calls.append(formatted_call)
                         self._logger.debug(f"Parsed XML tool call: {formatted_call}")
                     else:
-                        self._logger.warning(f"Tool call missing 'name' field: {match[:100]}...")
-                        
+                        self._logger.warning(
+                            f"Tool call missing 'name' field: {match[:100]}..."
+                        )
+
                 except (json.JSONDecodeError, KeyError) as e:
-                    self._logger.warning(f"Failed to parse XML tool call from: {match[:100]}... Error: {e}")
+                    self._logger.warning(
+                        f"Failed to parse XML tool call from: {match[:100]}... Error: {e}"
+                    )
                     continue
-        
+
         # Pattern 3: Look for mixed function_call tags (what we see in the logs)
         if not tool_calls:
-            mixed_pattern = r'<function_call>\s*(\{.*?\})\s*</(?:function_call|FunctionCall)>'
-            mixed_matches = re.findall(mixed_pattern, content, re.DOTALL | re.IGNORECASE)
-            
+            mixed_pattern = (
+                r"<function_call>\s*(\{.*?\})\s*</(?:function_call|FunctionCall)>"
+            )
+            mixed_matches = re.findall(
+                mixed_pattern, content, re.DOTALL | re.IGNORECASE
+            )
+
             for i, match in enumerate(mixed_matches):
                 try:
                     tool_data = json.loads(match)
-                    
+
                     if "name" in tool_data:
                         formatted_call = {
                             "name": tool_data["name"],
                             "args": tool_data.get("arguments", {}),
                             "id": f"call_{i}_{tool_data['name']}",
-                            "type": "tool_call"
+                            "type": "tool_call",
                         }
                         tool_calls.append(formatted_call)
-                        self._logger.debug(f"Parsed mixed function_call: {formatted_call}")
+                        self._logger.debug(
+                            f"Parsed mixed function_call: {formatted_call}"
+                        )
                     else:
-                        self._logger.warning(f"Mixed function call missing 'name' field: {match[:100]}...")
-                        
+                        self._logger.warning(
+                            f"Mixed function call missing 'name' field: {match[:100]}..."
+                        )
+
                 except (json.JSONDecodeError, KeyError) as e:
-                    self._logger.warning(f"Failed to parse mixed function call from: {match[:100]}... Error: {e}")
+                    self._logger.warning(
+                        f"Failed to parse mixed function call from: {match[:100]}... Error: {e}"
+                    )
                     continue
-                    
+
         # Pattern 4: Legacy JSON blocks (final fallback)
         if not tool_calls:
-            self._logger.debug("No function calls found, checking for legacy JSON blocks...")
-            
-            json_pattern = r'```json\s*(\{.*?\})\s*```'
+            self._logger.debug(
+                "No function calls found, checking for legacy JSON blocks..."
+            )
+
+            json_pattern = r"```json\s*(\{.*?\})\s*```"
             json_matches = re.findall(json_pattern, content, re.DOTALL | re.IGNORECASE)
-            
+
             for match in json_matches:
                 try:
                     data = json.loads(match)
@@ -463,48 +518,58 @@ Then provide your clear, direct answer outside the thinking tags."""
                                     "name": tool_call["name"],
                                     "args": tool_call.get("arguments", {}),
                                     "id": f"call_{i}_{tool_call['name']}",
-                                    "type": "tool_call"
+                                    "type": "tool_call",
                                 }
                                 tool_calls.append(formatted_call)
-                                self._logger.debug(f"Parsed legacy tool call: {formatted_call}")
+                                self._logger.debug(
+                                    f"Parsed legacy tool call: {formatted_call}"
+                                )
                 except (json.JSONDecodeError, KeyError) as e:
                     self._logger.warning(f"Failed to parse legacy tool call: {e}")
                     continue
 
         if tool_calls:
-            self._logger.info(f"Successfully parsed {len(tool_calls)} tool calls from content")
+            self._logger.info(
+                f"Successfully parsed {len(tool_calls)} tool calls from content"
+            )
         else:
             self._logger.warning("No tool calls found in content")
-            
+
         return tool_calls
 
     def _clean_tool_calls_from_content(self, content: str) -> str:
         """Remove tool call patterns from content to get clean user-facing text."""
         import re
-        
+
         # Remove function_call JSON patterns (proper Qwen format)
-        func_call_pattern = r'"function_call":\s*\{\s*"name":\s*"[^"]+",\s*"arguments":\s*"[^"]+"\s*\}'
-        content = re.sub(func_call_pattern, '', content, flags=re.DOTALL)
-        
+        func_call_pattern = (
+            r'"function_call":\s*\{\s*"name":\s*"[^"]+",\s*"arguments":\s*"[^"]+"\s*\}'
+        )
+        content = re.sub(func_call_pattern, "", content, flags=re.DOTALL)
+
         # Remove <tool_call> XML tags (custom format)
-        tool_call_pattern = r'<tool_call>\s*\{.*?\}\s*</tool_call>'
-        content = re.sub(tool_call_pattern, '', content, flags=re.DOTALL | re.IGNORECASE)
-        
+        tool_call_pattern = r"<tool_call>\s*\{.*?\}\s*</tool_call>"
+        content = re.sub(
+            tool_call_pattern, "", content, flags=re.DOTALL | re.IGNORECASE
+        )
+
         # Remove mixed function_call tags (what we see in logs)
-        mixed_pattern = r'<function_call>\s*\{.*?\}\s*</(?:function_call|FunctionCall)>'
-        content = re.sub(mixed_pattern, '', content, flags=re.DOTALL | re.IGNORECASE)
-        
+        mixed_pattern = r"<function_call>\s*\{.*?\}\s*</(?:function_call|FunctionCall)>"
+        content = re.sub(mixed_pattern, "", content, flags=re.DOTALL | re.IGNORECASE)
+
         # Remove legacy JSON code blocks that contain tool_calls
         json_pattern = r'```json\s*\{.*?"tool_calls".*?\}\s*```'
-        content = re.sub(json_pattern, '', content, flags=re.DOTALL | re.IGNORECASE)
-        
+        content = re.sub(json_pattern, "", content, flags=re.DOTALL | re.IGNORECASE)
+
         # Remove standalone function call patterns
-        func_pattern = r'\{\s*"name"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*\{[^}]*\}\s*\}'
-        content = re.sub(func_pattern, '', content)
-        
+        func_pattern = (
+            r'\{\s*"name"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*\{[^}]*\}\s*\}'
+        )
+        content = re.sub(func_pattern, "", content)
+
         # Clean up extra whitespace
-        content = re.sub(r'\n\s*\n\s*\n', '\n\n', content)
-        
+        content = re.sub(r"\n\s*\n\s*\n", "\n\n", content)
+
         return content
 
     def _should_use_extended_timeout(self, messages: List[Message]) -> bool:
@@ -554,128 +619,213 @@ Then provide your clear, direct answer outside the thinking tags."""
         if tools:
             # Create ToolNode with enhanced debugging
             tool_node = ToolNode(tools)
-            
+
             # Wrap ToolNode to add debugging and handle LangChainMessage conversion
             def debug_tool_node(state: LangGraphState):
                 """Debug wrapper for ToolNode execution."""
                 try:
-                    self._logger.error(f"QwenMoE debug_tool_node: ENTRY - state type: {type(state)}")
-                    self._logger.error(f"QwenMoE debug_tool_node: ENTRY - state.messages length: {len(state.messages) if hasattr(state, 'messages') and state.messages else 'NO MESSAGES'}")
-                    
-                    if hasattr(state, 'messages') and state.messages:
+                    self._logger.error(
+                        f"QwenMoE debug_tool_node: ENTRY - state type: {type(state)}"
+                    )
+                    self._logger.error(
+                        f"QwenMoE debug_tool_node: ENTRY - state.messages length: {len(state.messages) if hasattr(state, 'messages') and state.messages else 'NO MESSAGES'}"
+                    )
+
+                    if hasattr(state, "messages") and state.messages:
                         last_message = state.messages[-1]
-                        self._logger.error(f"QwenMoE debug_tool_node: ENTRY - last_message type: {type(last_message)}")
+                        self._logger.error(
+                            f"QwenMoE debug_tool_node: ENTRY - last_message type: {type(last_message)}"
+                        )
                         if isinstance(last_message, dict):
-                            self._logger.error(f"QwenMoE debug_tool_node: ENTRY - dict message keys: {list(last_message.keys())}")
-                            if 'tool_calls' in last_message:
-                                self._logger.error(f"QwenMoE debug_tool_node: ENTRY - dict tool_calls: {last_message['tool_calls']}")
-                    
+                            self._logger.error(
+                                f"QwenMoE debug_tool_node: ENTRY - dict message keys: {list(last_message.keys())}"
+                            )
+                            if "tool_calls" in last_message:
+                                self._logger.error(
+                                    f"QwenMoE debug_tool_node: ENTRY - dict tool_calls: {last_message['tool_calls']}"
+                                )
+
                     # Convert dict messages to LangChain BaseMessages for ToolNode
                     converted_messages = []
                     for i, msg in enumerate(state.messages):
-                        self._logger.error(f"QwenMoE debug_tool_node: Converting message {i}: type={type(msg)}")
-                        if hasattr(msg, 'type'):
-                            self._logger.error(f"QwenMoE debug_tool_node: Message {i} has type field: {msg.type}")
-                        if hasattr(msg, 'tool_calls'):
-                            self._logger.error(f"QwenMoE debug_tool_node: Message {i} has tool_calls field: {msg.tool_calls}")
+                        self._logger.error(
+                            f"QwenMoE debug_tool_node: Converting message {i}: type={type(msg)}"
+                        )
+                        if hasattr(msg, "type"):
+                            self._logger.error(
+                                f"QwenMoE debug_tool_node: Message {i} has type field: {msg.type}"
+                            )
+                        if hasattr(msg, "tool_calls"):
+                            self._logger.error(
+                                f"QwenMoE debug_tool_node: Message {i} has tool_calls field: {msg.tool_calls}"
+                            )
                         converted_msg = coerce_to_lc_message(msg)
-                        self._logger.error(f"QwenMoE debug_tool_node: Converted message {i} to: type={type(converted_msg)}")
-                        if hasattr(converted_msg, 'tool_calls') and converted_msg.tool_calls:
-                            self._logger.error(f"QwenMoE debug_tool_node: Message {i} has tool_calls: {len(converted_msg.tool_calls)}")
+                        self._logger.error(
+                            f"QwenMoE debug_tool_node: Converted message {i} to: type={type(converted_msg)}"
+                        )
+                        if (
+                            hasattr(converted_msg, "tool_calls")
+                            and converted_msg.tool_calls
+                        ):
+                            self._logger.error(
+                                f"QwenMoE debug_tool_node: Message {i} has tool_calls: {len(converted_msg.tool_calls)}"
+                            )
                         converted_messages.append(converted_msg)
-                    
+
                     converted_state = state.copy()
                     converted_state.messages = converted_messages
-                    
-                    self._logger.error(f"QwenMoE debug_tool_node: BEFORE TOOLNODE - last message type: {type(converted_state.messages[-1])}")
-                    
+
+                    self._logger.error(
+                        f"QwenMoE debug_tool_node: BEFORE TOOLNODE - last message type: {type(converted_state.messages[-1])}"
+                    )
+
                     result = tool_node.invoke(converted_state)
-                    self._logger.error(f"QwenMoE debug_tool_node: SUCCESS - ToolNode executed")
-                    self._logger.error(f"QwenMoE debug_tool_node: Result type: {type(result)}")
-                    
+                    self._logger.error(
+                        f"QwenMoE debug_tool_node: SUCCESS - ToolNode executed"
+                    )
+                    self._logger.error(
+                        f"QwenMoE debug_tool_node: Result type: {type(result)}"
+                    )
+
                     # Check what's in the result
                     if isinstance(result, dict):
-                        self._logger.error(f"QwenMoE debug_tool_node: Result dict keys: {list(result.keys())}")
-                        if 'messages' in result:
-                            self._logger.error(f"QwenMoE debug_tool_node: Result has messages: {len(result['messages'])} messages")
-                            for i, msg in enumerate(result['messages']):
-                                self._logger.error(f"QwenMoE debug_tool_node: Result message {i} type: {type(msg)}")
-                    elif hasattr(result, 'messages'):
-                        self._logger.error(f"QwenMoE debug_tool_node: Result has messages attr: {len(result.messages)} messages")
+                        self._logger.error(
+                            f"QwenMoE debug_tool_node: Result dict keys: {list(result.keys())}"
+                        )
+                        if "messages" in result:
+                            self._logger.error(
+                                f"QwenMoE debug_tool_node: Result has messages: {len(result['messages'])} messages"
+                            )
+                            for i, msg in enumerate(result["messages"]):
+                                self._logger.error(
+                                    f"QwenMoE debug_tool_node: Result message {i} type: {type(msg)}"
+                                )
+                    elif hasattr(result, "messages"):
+                        self._logger.error(
+                            f"QwenMoE debug_tool_node: Result has messages attr: {len(result.messages)} messages"
+                        )
                         for i, msg in enumerate(result.messages):
-                            self._logger.error(f"QwenMoE debug_tool_node: Result message {i} type: {type(msg)}")
+                            self._logger.error(
+                                f"QwenMoE debug_tool_node: Result message {i} type: {type(msg)}"
+                            )
                     else:
-                        self._logger.error(f"QwenMoE debug_tool_node: Result has no messages")
-                    
+                        self._logger.error(
+                            f"QwenMoE debug_tool_node: Result has no messages"
+                        )
+
                     # Convert ToolMessage results back to dicts for state consistency
-                    if isinstance(result, dict) and 'messages' in result and result['messages']:
-                        self._logger.error(f"QwenMoE debug_tool_node: Converting {len(result['messages'])} result messages")
+                    if (
+                        isinstance(result, dict)
+                        and "messages" in result
+                        and result["messages"]
+                    ):
+                        self._logger.error(
+                            f"QwenMoE debug_tool_node: Converting {len(result['messages'])} result messages"
+                        )
                         converted_messages = []
-                        for i, msg in enumerate(result['messages']):
-                            self._logger.error(f"QwenMoE debug_tool_node: Converting result message {i} type: {type(msg)}")
+                        for i, msg in enumerate(result["messages"]):
+                            self._logger.error(
+                                f"QwenMoE debug_tool_node: Converting result message {i} type: {type(msg)}"
+                            )
                             converted_msg = coerce_to_langchain_message_dict(msg)
-                            self._logger.error(f"QwenMoE debug_tool_node: Converted result message {i} to: {type(converted_msg)}")
+                            self._logger.error(
+                                f"QwenMoE debug_tool_node: Converted result message {i} to: {type(converted_msg)}"
+                            )
                             converted_messages.append(converted_msg)
-                        
+
                         # Create a completely new result with all messages converted
                         new_result = {
-                            'messages': state.messages + converted_messages,  # Original messages + new tool messages
+                            "messages": state.messages
+                            + converted_messages,  # Original messages + new tool messages
                         }
                         # Copy other attributes from result if any
                         for key, value in result.items():
-                            if key != 'messages':
+                            if key != "messages":
                                 new_result[key] = value
-                        
-                        self._logger.error(f"QwenMoE debug_tool_node: Final new_result messages types: {[type(m) for m in new_result['messages']]}")
-                        self._logger.error(f"QwenMoE debug_tool_node: Final new_result messages length: {len(new_result['messages'])}")
+
+                        self._logger.error(
+                            f"QwenMoE debug_tool_node: Final new_result messages types: {[type(m) for m in new_result['messages']]}"
+                        )
+                        self._logger.error(
+                            f"QwenMoE debug_tool_node: Final new_result messages length: {len(new_result['messages'])}"
+                        )
                         return new_result
-                    elif hasattr(result, 'messages'):
-                        messages_attr = getattr(result, 'messages', None)
+                    elif hasattr(result, "messages"):
+                        messages_attr = getattr(result, "messages", None)
                         if messages_attr:
-                            self._logger.error(f"QwenMoE debug_tool_node: Converting {len(messages_attr)} result messages (attr)")
+                            self._logger.error(
+                                f"QwenMoE debug_tool_node: Converting {len(messages_attr)} result messages (attr)"
+                            )
                             converted_messages = []
                             for i, msg in enumerate(messages_attr):
-                                self._logger.error(f"QwenMoE debug_tool_node: Converting result message {i} type: {type(msg)}")
+                                self._logger.error(
+                                    f"QwenMoE debug_tool_node: Converting result message {i} type: {type(msg)}"
+                                )
                                 converted_msg = coerce_to_langchain_message_dict(msg)
-                                self._logger.error(f"QwenMoE debug_tool_node: Converted result message {i} to: {type(converted_msg)}")
+                                self._logger.error(
+                                    f"QwenMoE debug_tool_node: Converted result message {i} to: {type(converted_msg)}"
+                                )
                                 converted_messages.append(converted_msg)
-                            
+
                             # Create new state with combined messages
                             new_state = state.copy()
                             new_state.messages = state.messages + converted_messages
-                            self._logger.error(f"QwenMoE debug_tool_node: Final new_state messages types: {[type(m) for m in new_state.messages]}")
-                            self._logger.error(f"QwenMoE debug_tool_node: Final new_state messages length: {len(new_state.messages)}")
+                            self._logger.error(
+                                f"QwenMoE debug_tool_node: Final new_state messages types: {[type(m) for m in new_state.messages]}"
+                            )
+                            self._logger.error(
+                                f"QwenMoE debug_tool_node: Final new_state messages length: {len(new_state.messages)}"
+                            )
                             return new_state
-                        
+
                     return result
-                    
+
                 except Exception as e:
                     self._logger.error(f"QwenMoE debug_tool_node: FAILED - {e}")
                     # Let's also log the stack trace
                     import traceback
-                    self._logger.error(f"QwenMoE debug_tool_node: TRACEBACK - {traceback.format_exc()}")
+
+                    self._logger.error(
+                        f"QwenMoE debug_tool_node: TRACEBACK - {traceback.format_exc()}"
+                    )
                     raise
-            
+
             workflow.add_node("tools", debug_tool_node)
-            
+
             # Use custom tools_condition to handle our LangChainMessage format
             def custom_tools_condition(state: LangGraphState):
                 """Check for tool calls in our LangChainMessage format."""
-                self._logger.debug(f"QwenMoE tools_condition: state type: {type(state)}")
-                self._logger.debug(f"QwenMoE tools_condition: state has messages: {hasattr(state, 'messages')}")
-                
-                if not hasattr(state, 'messages') or not state.messages:
-                    self._logger.debug("QwenMoE tools_condition: No messages in state, routing to END")
+                self._logger.debug(
+                    f"QwenMoE tools_condition: state type: {type(state)}"
+                )
+                self._logger.debug(
+                    f"QwenMoE tools_condition: state has messages: {hasattr(state, 'messages')}"
+                )
+
+                if not hasattr(state, "messages") or not state.messages:
+                    self._logger.debug(
+                        "QwenMoE tools_condition: No messages in state, routing to END"
+                    )
                     return END
 
-                self._logger.debug(f"QwenMoE tools_condition: state.messages length: {len(state.messages)}")
+                self._logger.debug(
+                    f"QwenMoE tools_condition: state.messages length: {len(state.messages)}"
+                )
                 last_message = state.messages[-1]
-                self._logger.debug(f"QwenMoE tools_condition: last_message type: {type(last_message)}")
-                self._logger.debug(f"QwenMoE tools_condition: last_message has tool_calls: {hasattr(last_message, 'tool_calls')}")
-                
+                self._logger.debug(
+                    f"QwenMoE tools_condition: last_message type: {type(last_message)}"
+                )
+                self._logger.debug(
+                    f"QwenMoE tools_condition: last_message has tool_calls: {hasattr(last_message, 'tool_calls')}"
+                )
+
                 if hasattr(last_message, "tool_calls"):
-                    self._logger.debug(f"QwenMoE tools_condition: tool_calls value: {last_message.tool_calls}")
-                    self._logger.debug(f"QwenMoE tools_condition: tool_calls type: {type(last_message.tool_calls)}")
+                    self._logger.debug(
+                        f"QwenMoE tools_condition: tool_calls value: {last_message.tool_calls}"
+                    )
+                    self._logger.debug(
+                        f"QwenMoE tools_condition: tool_calls type: {type(last_message.tool_calls)}"
+                    )
                     if last_message.tool_calls:
                         self._logger.info(
                             f"QwenMoE tools_condition: Found {len(last_message.tool_calls)} tool calls - routing to tools"
@@ -686,7 +836,7 @@ Then provide your clear, direct answer outside the thinking tags."""
                     "QwenMoE tools_condition: No tool calls found, routing to END"
                 )
                 return END
-            
+
             workflow.add_conditional_edges(
                 "agent", custom_tools_condition, {"tools": "tools", END: END}
             )
@@ -730,16 +880,20 @@ Then provide your clear, direct answer outside the thinking tags."""
             # DEBUG: Log the actual messages being sent to the LLM
             self._logger.info(f"DEBUG: Sending {len(messages)} messages to LLM:")
             for i, msg in enumerate(messages):
-                if hasattr(msg, 'type'):
-                    msg_type = msg.type if msg.type else 'unknown'
-                elif hasattr(msg, '__class__'):
+                if hasattr(msg, "type"):
+                    msg_type = msg.type if msg.type else "unknown"
+                elif hasattr(msg, "__class__"):
                     msg_type = msg.__class__.__name__
                 else:
                     msg_type = str(type(msg))
-                
-                content = str(msg.content) if hasattr(msg, 'content') else str(msg)
-                content_preview = content[:200] + "..." if len(content) > 200 else content
-                self._logger.info(f"  Message {i}: Type={msg_type}, Content={content_preview}")
+
+                content = str(msg.content) if hasattr(msg, "content") else str(msg)
+                content_preview = (
+                    content[:200] + "..." if len(content) > 200 else content
+                )
+                self._logger.info(
+                    f"  Message {i}: Type={msg_type}, Content={content_preview}"
+                )
 
             # Stream with shared adaptive controls
             response = await self._stream_with_adaptive_controls(messages)
@@ -757,21 +911,35 @@ Then provide your clear, direct answer outside the thinking tags."""
                 # Remove tool call JSON from the visible content
                 clean_content = self._clean_tool_calls_from_content(response_content)
                 formatted_response = AIMessage(
-                    content=clean_content if clean_content else "Let me search for that information.",
-                    tool_calls=tool_calls
+                    content=(
+                        clean_content
+                        if clean_content
+                        else "Let me search for that information."
+                    ),
+                    tool_calls=tool_calls,
                 )
                 self._logger.info(f"Qwen parsed {len(tool_calls)} tool calls")
                 for i, tool_call in enumerate(tool_calls):
-                    self._logger.debug(f"Tool call {i}: {tool_call['name']} with args {tool_call['args']}")
-                    
+                    self._logger.debug(
+                        f"Tool call {i}: {tool_call['name']} with args {tool_call['args']}"
+                    )
+
                 # DEBUG: Log the formatted message structure
                 coerced_message = coerce_to_langchain_message_dict(formatted_response)
-                self._logger.info(f"DEBUG: Coerced message type: {coerced_message.get('type', 'unknown')}")
-                self._logger.info(f"DEBUG: Coerced message has tool_calls: {'tool_calls' in coerced_message}")
-                if 'tool_calls' in coerced_message:
-                    self._logger.info(f"DEBUG: Tool calls structure: {coerced_message['tool_calls']}")
+                self._logger.info(
+                    f"DEBUG: Coerced message type: {coerced_message.get('type', 'unknown')}"
+                )
+                self._logger.info(
+                    f"DEBUG: Coerced message has tool_calls: {'tool_calls' in coerced_message}"
+                )
+                if "tool_calls" in coerced_message:
+                    self._logger.info(
+                        f"DEBUG: Tool calls structure: {coerced_message['tool_calls']}"
+                    )
                 else:
-                    self._logger.error("DEBUG: CRITICAL - tool_calls lost during coercion!")
+                    self._logger.error(
+                        "DEBUG: CRITICAL - tool_calls lost during coercion!"
+                    )
             else:
                 formatted_response = response
 
@@ -779,11 +947,19 @@ Then provide your clear, direct answer outside the thinking tags."""
             if isinstance(formatted_response, AIMessage):
                 # Convert AIMessage to LangChainMessage format for LangGraph
                 lang_chain_message = LangChainMessage(
-                    content=str(formatted_response.content) if formatted_response.content else "",
+                    content=(
+                        str(formatted_response.content)
+                        if formatted_response.content
+                        else ""
+                    ),
                     type="ai",
-                    tool_calls=getattr(formatted_response, 'tool_calls', None),
-                    additional_kwargs=getattr(formatted_response, 'additional_kwargs', {}),
-                    response_metadata=getattr(formatted_response, 'response_metadata', {}),
+                    tool_calls=getattr(formatted_response, "tool_calls", None),
+                    additional_kwargs=getattr(
+                        formatted_response, "additional_kwargs", {}
+                    ),
+                    response_metadata=getattr(
+                        formatted_response, "response_metadata", {}
+                    ),
                 )
             else:
                 # Handle other response types
@@ -793,15 +969,23 @@ Then provide your clear, direct answer outside the thinking tags."""
                     additional_kwargs={},
                     response_metadata={},
                 )
-            
-            self._logger.error(f"QwenMoE _agent_node: RETURNING AI message with tool_calls: {lang_chain_message.tool_calls}")
-            self._logger.error(f"QwenMoE _agent_node: Message type: {lang_chain_message.type}")
-            self._logger.error(f"QwenMoE _agent_node: Current state has {len(state.messages)} messages")
-            
+
+            self._logger.info(
+                f"QwenMoE _agent_node: RETURNING AI message with tool_calls: {lang_chain_message.tool_calls}"
+            )
+            self._logger.info(
+                f"QwenMoE _agent_node: Message type: {lang_chain_message.type}"
+            )
+            self._logger.info(
+                f"QwenMoE _agent_node: Current state has {len(state.messages)} messages"
+            )
+
             # Explicitly append to existing messages to ensure proper state accumulation
             all_messages = list(state.messages) + [lang_chain_message]
-            self._logger.error(f"QwenMoE _agent_node: Will return {len(all_messages)} total messages")
-            
+            self._logger.info(
+                f"QwenMoE _agent_node: Will return {len(all_messages)} total messages"
+            )
+
             return {
                 "messages": all_messages,
                 "current_iteration": state.current_iteration + 1,
