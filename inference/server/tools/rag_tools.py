@@ -88,7 +88,7 @@ class WebSearchTool(BaseTool):
                     formatted_results.append(
                         f"URLs: {', '.join(result.urls[:3])}\n"
                         f"Topics: {', '.join(result.topics)}\n"
-                        f"Synthesis: {result.synthesis[:300]}..."
+                        f"Synthesis: {result.synthesis}"
                     )
                 return "Web search results:\n\n" + "\n\n".join(formatted_results)
             else:
@@ -99,7 +99,7 @@ class WebSearchTool(BaseTool):
                 basic_results = getattr(self.conversation_ctx.search_context, 'research_findings', '')
                 
                 if basic_results:
-                    return f"Web search results for '{query}':\n\n{basic_results[:1500]}..."
+                    return f"Web search results for '{query}':\n\n{basic_results}"
                 else:
                     # Provide contextually relevant fallback content based on query analysis
                     query_lower = query.lower()

@@ -55,11 +55,11 @@ spec:
             requests:
               memory: "24Gi"
               cpu: "16"
-              nvidia.com/gpu: "3"
+              nvidia.com/gpu: "1"
             limits:
               memory: "30Gi"
               cpu: "20"
-              nvidia.com/gpu: "3"
+              nvidia.com/gpu: "1"
           volumeMounts:
             - name: ollama-models-volume
               mountPath: /root/.ollama
@@ -275,6 +275,8 @@ spec:
             # Logging configuration for debugging
             - name: GGML_LOG_LEVEL
               value: "2"
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
 
             # Search API keys configuration
             - name: GOOGLE_SEARCH_API_KEY

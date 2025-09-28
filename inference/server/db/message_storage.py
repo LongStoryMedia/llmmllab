@@ -64,58 +64,7 @@ class MessageStorage:
             if not row:
                 return None
 
-            # Create message with empty content initially (content will be populated separately)
-            row_dict = dict(row)
-            row_dict["content"] = [MessageContent(type=MessageContentType.TEXT, text="", url=None)]
-            message = Message(**row_dict)
-
-            # Fetch the content for this message
-            try:
-                c_rows = await conn.fetch(
-                    self.get_query("message.get_content"), message_id
-                )
-
-                # Process content rows
-                if not c_rows:
-                    # Ensure there's at least one MessageContent with empty text
-                    message.content = [
-                        MessageContent(type=MessageContentType.TEXT, text="", url=None)
-                    ]
-                else:
-                    message_contents = []
-                    for c_row in c_rows:
-                        try:
-                            row_dict = dict(c_row)
-                            # Ensure content type is valid
-                            content_type = row_dict.get("type")
-                            if not content_type:
-                                content_type = MessageContentType.TEXT
-
-                            content = MessageContent(
-                                type=content_type,
-                                text=row_dict.get("text_content", ""),
-                                url=row_dict.get("url"),
-                            )
-                            message_contents.append(content)
-                        except Exception as inner_e:
-                            logger.warning(f"Failed to process content row: {inner_e}")
-
-                    if message_contents:
-                        message.content = message_contents
-                    else:
-                        # Fallback to at least one empty content
-                        message.content = [
-                            MessageContent(
-                                type=MessageContentType.TEXT, text="", url=None
-                            )
-                        ]
-            except Exception as e:
-                logger.warning(f"Failed to fetch content for message {message_id}: {e}")
-                # Ensure content is at least an empty list to meet validation requirements
-                message.content = [
-                    MessageContent(type=MessageContentType.TEXT, text="", url=None)
-                ]
-
+            message = Message(**dict(row))
             # Cache the result for future use
             try:
                 cache_storage.cache_message(message)
@@ -211,9 +160,13 @@ class MessageStorage:
                 if row:
                     conversation_id = row["conversation_id"]
                     # Delete the message
-                    await conn.execute(self.get_query("message.delete_message"), message_id)
+                    await conn.execute(
+                        self.get_query("message.delete_message"), message_id
+                    )
                 else:
-                    logger.warning(f"Message {message_id} not found and could not be deleted")
+                    logger.warning(
+                        f"Message {message_id} not found and could not be deleted"
+                    )
                     return
 
             # Invalidate message cache
@@ -222,9 +175,9 @@ class MessageStorage:
             # Invalidate conversation messages list cache
             if conversation_id:
                 cache_storage.invalidate_conversation_messages_cache(conversation_id)
-                
+
             logger.info(f"   🗑️  Deleted message: {message_id}")
-            
+
         except Exception as e:
             # If we can't delete the message due to validation errors, just log and continue
             # since we're in cleanup mode anyway
@@ -233,7 +186,9 @@ class MessageStorage:
             try:
                 cache_storage.invalidate_message_cache(message_id)
                 if conversation_id:
-                    cache_storage.invalidate_conversation_messages_cache(conversation_id)
+                    cache_storage.invalidate_conversation_messages_cache(
+                        conversation_id
+                    )
             except Exception:
                 pass
 

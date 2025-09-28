@@ -59,7 +59,7 @@ def _coerce_to_langchain_message_dict(item: Any) -> Dict[str, Any]:
         # Preserve tool_calls if present (important for LangGraph tool routing)
         if hasattr(item, "tool_calls") and getattr(item, "tool_calls", None):
             result["tool_calls"] = getattr(item, "tool_calls")
-        
+
         # Preserve tool_call_id for ToolMessage-like objects
         if hasattr(item, "tool_call_id"):
             result["tool_call_id"] = getattr(item, "tool_call_id", None)
@@ -94,7 +94,7 @@ def coerce_to_lc_message(item: Any) -> Any:
     content = ""
     mtype = ""
     tool_calls = None
-    
+
     if isinstance(item, dict):
         content = item.get("content", "")
         mtype = (item.get("type") or item.get("role") or "").lower()

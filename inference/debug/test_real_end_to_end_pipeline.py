@@ -33,7 +33,12 @@ logger = logging.getLogger(__name__)
 class RealEndToEndPipelineTester:
     """Real end-to-end pipeline test using actual infrastructure."""
 
-    def __init__(self, target_model: str = None, capture_llm_output: bool = True, print_output: bool = False):
+    def __init__(
+        self,
+        target_model: str = None,
+        capture_llm_output: bool = True,
+        print_output: bool = False,
+    ):
         """Initialize real pipeline tester."""
         self.test_user_id = f"test_real_user_{uuid.uuid4().hex[:8]}"
         self.test_model_profile_id = uuid.uuid4()
@@ -41,23 +46,23 @@ class RealEndToEndPipelineTester:
         self.test_message_id = None
         self.created_entities = []  # Track for cleanup
         self.storage = None  # Will be initialized with infrastructure
-        
+
         # LLM output capture configuration
         self.capture_llm_output = capture_llm_output
         self.print_output = print_output
         self.llm_output_file = None
         self.llm_responses = []  # Store all LLM responses for analysis
-        
+
         # Support multiple models for comprehensive testing
         available_models = [
             "openai-gpt-oss-20b-uncensored-q5_1",
             "qwen3-30b-a3b-q4-k-m",
-            "qwen2.5-vl-32b-instruct-q4-k-m"
+            "qwen2.5-vl-32b-instruct-q4-k-m",
         ]
-        
+
         self.target_model = target_model or available_models[0]
         self.available_models = available_models
-        
+
         # Initialize LLM output file if capture is enabled
         if self.capture_llm_output:
             self._initialize_llm_output_file()
@@ -66,17 +71,18 @@ class RealEndToEndPipelineTester:
         """Initialize the file for capturing LLM-generated text."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         model_safe = self.target_model.replace("/", "_").replace("-", "_")
-        
+
         # Ensure debug/out directory exists
         import os
+
         output_dir = "debug/out"
         os.makedirs(output_dir, exist_ok=True)
-        
+
         self.llm_output_file = f"{output_dir}/llm_output_{model_safe}_{timestamp}.txt"
-        
+
         # Create the file with header
         try:
-            with open(self.llm_output_file, 'w', encoding='utf-8') as f:
+            with open(self.llm_output_file, "w", encoding="utf-8") as f:
                 f.write(f"LLM Output Capture - Real End-to-End Pipeline Test\n")
                 f.write(f"{'='*60}\n")
                 f.write(f"Model: {self.target_model}\n")
@@ -88,13 +94,15 @@ class RealEndToEndPipelineTester:
             logger.warning(f"⚠️  Failed to initialize LLM output file: {e}")
             self.capture_llm_output = False
 
-    def _write_llm_response(self, phase: str, response_text: str, metadata: Dict[str, Any] = None):
+    def _write_llm_response(
+        self, phase: str, response_text: str, metadata: Dict[str, Any] = None
+    ):
         """Write LLM response to file with phase information."""
         if not self.capture_llm_output or not self.llm_output_file:
             return
-            
+
         try:
-            with open(self.llm_output_file, 'a', encoding='utf-8') as f:
+            with open(self.llm_output_file, "a", encoding="utf-8") as f:
                 f.write(f"\n{'-'*50}\n")
                 f.write(f"PHASE: {phase}\n")
                 f.write(f"TIME: {datetime.now(timezone.utc).isoformat()}\n")
@@ -103,16 +111,20 @@ class RealEndToEndPipelineTester:
                 f.write(f"{'-'*50}\n")
                 f.write(f"{response_text}\n")
                 f.write(f"\n{'='*50}\n")
-                
+
             # Also store in memory for analysis
-            self.llm_responses.append({
-                'phase': phase,
-                'response': response_text,
-                'metadata': metadata or {},
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            })
-            
-            logger.info(f"📝 Captured LLM response for {phase} ({len(response_text)} chars)")
+            self.llm_responses.append(
+                {
+                    "phase": phase,
+                    "response": response_text,
+                    "metadata": metadata or {},
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+
+            logger.info(
+                f"📝 Captured LLM response for {phase} ({len(response_text)} chars)"
+            )
         except Exception as e:
             logger.warning(f"⚠️  Failed to write LLM response to file: {e}")
 
@@ -120,31 +132,37 @@ class RealEndToEndPipelineTester:
         """Finalize the LLM output file with summary statistics."""
         if not self.capture_llm_output or not self.llm_output_file:
             return
-            
+
         try:
-            total_chars = sum(len(resp['response']) for resp in self.llm_responses)
+            total_chars = sum(len(resp["response"]) for resp in self.llm_responses)
             total_responses = len(self.llm_responses)
-            
-            with open(self.llm_output_file, 'a', encoding='utf-8') as f:
+
+            with open(self.llm_output_file, "a", encoding="utf-8") as f:
                 f.write(f"\n\n{'='*60}\n")
                 f.write(f"TEST SUMMARY\n")
                 f.write(f"{'='*60}\n")
                 f.write(f"Total LLM Responses Captured: {total_responses}\n")
                 f.write(f"Total Characters Generated: {total_chars:,}\n")
-                f.write(f"Average Response Length: {total_chars // max(total_responses, 1):,} chars\n")
+                f.write(
+                    f"Average Response Length: {total_chars // max(total_responses, 1):,} chars\n"
+                )
                 f.write(f"Test Completed: {datetime.now(timezone.utc).isoformat()}\n")
                 f.write(f"{'='*60}\n")
-                
+
                 if total_responses > 0:
                     f.write(f"\nRESPONSE BREAKDOWN BY PHASE:\n")
                     f.write(f"{'-'*40}\n")
                     for resp in self.llm_responses:
-                        f.write(f"{resp['phase']:.<30} {len(resp['response']):>8,} chars\n")
+                        f.write(
+                            f"{resp['phase']:.<30} {len(resp['response']):>8,} chars\n"
+                        )
                     f.write(f"{'-'*40}\n")
-            
+
             logger.info(f"📝 Finalized LLM output file: {self.llm_output_file}")
-            logger.info(f"📊 Captured {total_responses} responses totaling {total_chars:,} characters")
-            
+            logger.info(
+                f"📊 Captured {total_responses} responses totaling {total_chars:,} characters"
+            )
+
         except Exception as e:
             logger.warning(f"⚠️  Failed to finalize LLM output file: {e}")
 
@@ -152,10 +170,10 @@ class RealEndToEndPipelineTester:
         """Print a summary of captured LLM output and optionally the full content."""
         if not self.capture_llm_output or not self.llm_output_file:
             return
-            
-        total_chars = sum(len(resp['response']) for resp in self.llm_responses)
+
+        total_chars = sum(len(resp["response"]) for resp in self.llm_responses)
         total_responses = len(self.llm_responses)
-        
+
         print(f"\n{'='*60}")
         print(f"LLM OUTPUT SUMMARY")
         print(f"{'='*60}")
@@ -164,24 +182,26 @@ class RealEndToEndPipelineTester:
         print(f"Total Characters: {total_chars:,}")
         print(f"Average Length: {total_chars // max(total_responses, 1):,} chars")
         print(f"{'='*60}")
-        
+
         if self.print_output and total_responses > 0:
             print(f"\nFULL LLM OUTPUT CONTENT:")
             print(f"{'='*60}")
             try:
-                with open(self.llm_output_file, 'r', encoding='utf-8') as f:
+                with open(self.llm_output_file, "r", encoding="utf-8") as f:
                     content = f.read()
                     print(content)
             except Exception as e:
                 print(f"Error reading output file: {e}")
             print(f"{'='*60}")
         elif total_responses > 0:
-            print(f"\nTo view full content, set print_output=True or read: {self.llm_output_file}")
+            print(
+                f"\nTo view full content, set print_output=True or read: {self.llm_output_file}"
+            )
             print(f"{'='*60}")
 
     def _get_model_specific_system_prompt(self) -> str:
         """Get model-specific system prompt with appropriate tool calling format."""
-        
+
         base_info = """You are a large language model with non-restrictive policies.
 Knowledge cutoff: 2024-06
 Current date: 2025-09-17
@@ -209,7 +229,9 @@ TECHNICAL CAPABILITIES:
 
         # For QwenMoE models: Use Qwen3 native XML tool calling format
         if "qwen" in self.target_model.lower():
-            return base_info + """
+            return (
+                base_info
+                + """
 
 ## CRITICAL TOOL USAGE RULES FOR CURRENT INFORMATION:
 
@@ -225,10 +247,13 @@ When you need current information, use this format:
 </tool_call>
 
 **CRITICAL**: For ANY request about 2024, recent developments, current events, or latest information, you MUST use the web_search tool with the exact <tool_call> XML format above."""
-            
+            )
+
         # For OpenAI GPT OSS models: Use channel format
         else:
-            return base_info + """
+            return (
+                base_info
+                + """
 
 # Valid channels: analysis, commentary, final. Channel must be included for every message.
 # Use 'analysis' channel for chain-of-thought reasoning
@@ -239,6 +264,7 @@ RESPONSE GUIDELINES:
 - Always use the appropriate channel for your content
 - Show your reasoning in the analysis channel when helpful
 - Use commentary channel for tool calls and function descriptions"""
+            )
 
     async def run_full_test(self) -> Dict[str, Any]:
         """Run complete real end-to-end pipeline test."""
@@ -333,13 +359,13 @@ RESPONSE GUIDELINES:
             cleanup_result = await self.cleanup_real_data()
             test_results["results"]["cleanup"] = cleanup_result
             test_results["entities_cleaned"] = cleanup_result.get("cleaned_count", 0)
-            
+
             # Finalize LLM output capture
             self._finalize_llm_output()
 
         # Print comprehensive results
         await self.print_test_summary(test_results)
-        
+
         # Print LLM output summary
         self._print_llm_output_summary()
 
@@ -381,11 +407,15 @@ RESPONSE GUIDELINES:
                 # Try alternative models if primary not available
                 for alternative_model in self.available_models:
                     if alternative_model in pipeline_factory._available_models:
-                        logger.warning(f"   ⚠️  Primary model {self.target_model} not found, using {alternative_model}")
+                        logger.warning(
+                            f"   ⚠️  Primary model {self.target_model} not found, using {alternative_model}"
+                        )
                         self.target_model = alternative_model
                         break
                 else:
-                    raise Exception(f"No suitable model found. Available: {list(pipeline_factory._available_models.keys())}")
+                    raise Exception(
+                        f"No suitable model found. Available: {list(pipeline_factory._available_models.keys())}"
+                    )
 
             return {
                 "success": True,
@@ -415,7 +445,7 @@ RESPONSE GUIDELINES:
             # Create real model profile with enhanced system prompt for tool usage
             # Configure context size based on model
             num_ctx = 100000 if "qwen3" in self.target_model else 40960
-            
+
             model_profile = ModelProfile(
                 id=self.test_model_profile_id,
                 user_id=self.test_user_id,
@@ -471,7 +501,7 @@ RESPONSE GUIDELINES:
                     storage.get_query("user.ensure_user"), self.test_user_id
                 )
             logger.info(f"   ✅ Ensured user exists: {self.test_user_id}")
-            
+
             # Track user for cleanup
             self.created_entities.append(("user", self.test_user_id))
 
@@ -507,11 +537,14 @@ RESPONSE GUIDELINES:
             from models.message_content import MessageContent, MessageContentType
 
             # Check if this is Qwen2.5VL to test vision capabilities
-            is_qwen25vl = "qwen2.5-vl" in self.target_model.lower() or "qwen25vl" in self.target_model.lower()
-            
+            is_qwen25vl = (
+                "qwen2.5-vl" in self.target_model.lower()
+                or "qwen25vl" in self.target_model.lower()
+            )
+
             # Create content list starting with text
             content_list = []
-            
+
             if is_qwen25vl:
                 # For Qwen2.5VL, test vision + tool calling capabilities
                 query_text = """I need current information about quantum computing breakthroughs published in 2024.
@@ -521,16 +554,22 @@ MANDATORY: You must use the web_search tool to find real, current information ab
 This is a vision-language model test - if you can process images, acknowledge this capability in your response.
 
 Use the web_search tool and provide a detailed summary of the findings."""
-                
-                content_list.append(MessageContent(type=MessageContentType.TEXT, text=query_text))
-                
+
+                content_list.append(
+                    MessageContent(type=MessageContentType.TEXT, text=query_text)
+                )
+
                 # Add a simple test image (base64 encoded 1x1 pixel PNG for testing vision capability)
                 test_image_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
-                content_list.append(MessageContent(
-                    type=MessageContentType.IMAGE, 
-                    image_url=f"data:image/png;base64,{test_image_b64}"
-                ))
-                logger.info("   🖼️  Added test image content for Qwen2.5VL vision testing")
+                content_list.append(
+                    MessageContent(
+                        type=MessageContentType.IMAGE,
+                        image_url=f"data:image/png;base64,{test_image_b64}",
+                    )
+                )
+                logger.info(
+                    "   🖼️  Added test image content for Qwen2.5VL vision testing"
+                )
             else:
                 # For other models, use standard text-only message
                 query_text = """I need current information about quantum computing breakthroughs published in 2024.
@@ -543,8 +582,10 @@ Use this EXACT format for the tool call:
 </tool_call>
 
 After the tool executes, provide a detailed summary of the findings."""
-                
-                content_list.append(MessageContent(type=MessageContentType.TEXT, text=query_text))
+
+                content_list.append(
+                    MessageContent(type=MessageContentType.TEXT, text=query_text)
+                )
 
             user_message = Message(
                 id=None,  # Will be set by database
@@ -730,10 +771,18 @@ After the tool executes, provide a detailed summary of the findings."""
                 logger.info(f"   📄 Response length: {len(full_response)} characters")
 
                 # Determine pipeline type for appropriate validation
-                is_openai_gpt_oss = hasattr(pipeline, '__class__') and 'OpenAiGptOss' in pipeline.__class__.__name__
-                is_qwen_pipeline = hasattr(pipeline, '__class__') and 'Qwen' in pipeline.__class__.__name__
-                
-                logger.info(f"   🔍 Pipeline type: OpenAI_GPT_OSS={is_openai_gpt_oss}, Qwen={is_qwen_pipeline}")
+                is_openai_gpt_oss = (
+                    hasattr(pipeline, "__class__")
+                    and "OpenAiGptOss" in pipeline.__class__.__name__
+                )
+                is_qwen_pipeline = (
+                    hasattr(pipeline, "__class__")
+                    and "Qwen" in pipeline.__class__.__name__
+                )
+
+                logger.info(
+                    f"   🔍 Pipeline type: OpenAI_GPT_OSS={is_openai_gpt_oss}, Qwen={is_qwen_pipeline}"
+                )
 
                 # Check for tool call format based on pipeline type
                 if is_openai_gpt_oss:
@@ -742,14 +791,14 @@ After the tool executes, provide a detailed summary of the findings."""
                     has_json_constraint = "constrain|>json" in full_response
                     has_name_field = '"name"' in full_response
                     has_web_search = "web_search" in full_response.lower()
-                    
+
                     logger.info(
                         f"   📋 OpenAI GPT OSS Tool format check - Commentary: {has_commentary_func}, JSON: {has_json_constraint}"
                     )
                     logger.info(
                         f"   🛠️  Tool check - Name field: {has_name_field}, Web search: {has_web_search}"
                     )
-                    
+
                     # Validate OpenAI GPT OSS format
                     if not (has_commentary_func and has_json_constraint):
                         logger.warning(
@@ -766,32 +815,48 @@ After the tool executes, provide a detailed summary of the findings."""
                             "   🎉 TOOL CALL SUCCESS: Proper OpenAI GPT OSS format and tool usage detected!"
                         )
                     else:
-                        logger.warning("   ❌ TOOL CALL INCOMPLETE: OpenAI GPT OSS requirements not met")
-                        
+                        logger.warning(
+                            "   ❌ TOOL CALL INCOMPLETE: OpenAI GPT OSS requirements not met"
+                        )
+
                 elif is_qwen_pipeline:
                     # Qwen supports multiple formats: XML tags, legacy JSON, and raw JSON
-                    has_tool_call_tags = "<tool_call>" in full_response and "</tool_call>" in full_response
+                    has_tool_call_tags = (
+                        "<tool_call>" in full_response
+                        and "</tool_call>" in full_response
+                    )
                     has_name_field = '"name"' in full_response
                     has_arguments_field = '"arguments"' in full_response
                     has_web_search = "web_search" in full_response.lower()
-                    
+
                     # Check for legacy format as fallback
-                    has_legacy_json = "```json" in full_response and '"tool_calls"' in full_response
-                    
+                    has_legacy_json = (
+                        "```json" in full_response and '"tool_calls"' in full_response
+                    )
+
                     # Check for raw JSON format (used by Qwen2.5VL)
                     import re
+
                     raw_json_pattern = r'^\s*\{\s*"name":\s*"[^"]+"\s*,\s*"arguments":\s*\{.*\}\s*\}\s*$'
-                    has_raw_json = bool(re.search(raw_json_pattern, full_response.strip(), re.MULTILINE | re.DOTALL))
-                    
+                    has_raw_json = bool(
+                        re.search(
+                            raw_json_pattern,
+                            full_response.strip(),
+                            re.MULTILINE | re.DOTALL,
+                        )
+                    )
+
                     logger.info(
                         f"   📋 Qwen Tool format check - XML tags: {has_tool_call_tags}, Legacy JSON: {has_legacy_json}, Raw JSON: {has_raw_json}"
                     )
                     logger.info(
                         f"   🛠️  Tool check - Name: {has_name_field}, Arguments: {has_arguments_field}, Web search: {has_web_search}"
                     )
-                    
+
                     # Validate any supported Qwen format
-                    has_valid_format = has_tool_call_tags or has_legacy_json or has_raw_json
+                    has_valid_format = (
+                        has_tool_call_tags or has_legacy_json or has_raw_json
+                    )
                     if not has_valid_format:
                         logger.warning(
                             "   ⚠️  TOOL FORMAT VIOLATION: Missing required format (XML tags, legacy JSON, or raw JSON) for Qwen"
@@ -802,27 +867,51 @@ After the tool executes, provide a detailed summary of the findings."""
                         )
 
                     # Check for actual tool execution results (not just format)
-                    has_tool_results = any([
-                        "search results" in full_response.lower(),
-                        "found information" in full_response.lower(),
-                        "according to" in full_response.lower(),
-                        "based on the search" in full_response.lower(),
-                        "research shows" in full_response.lower(),
-                        "analysis reveals" in full_response.lower(),
-                        # Look for specific patterns that indicate tool execution actually happened
-                        "breakthrough" in full_response.lower() and "2024" in full_response,
-                        "quantum" in full_response.lower() and ("ibm" in full_response.lower() or "google" in full_response.lower()),
-                        len(full_response) > 1500 and "computing" in full_response.lower()  # Substantial response with content
-                    ])
-                    
+                    has_tool_results = any(
+                        [
+                            "search results" in full_response.lower(),
+                            "found information" in full_response.lower(),
+                            "according to" in full_response.lower(),
+                            "based on the search" in full_response.lower(),
+                            "research shows" in full_response.lower(),
+                            "analysis reveals" in full_response.lower(),
+                            # Look for specific patterns that indicate tool execution actually happened
+                            "breakthrough" in full_response.lower()
+                            and "2024" in full_response,
+                            "quantum" in full_response.lower()
+                            and (
+                                "ibm" in full_response.lower()
+                                or "google" in full_response.lower()
+                            ),
+                            len(full_response) > 1500
+                            and "computing"
+                            in full_response.lower(),  # Substantial response with content
+                        ]
+                    )
+
                     # Check for streaming errors that indicate tool execution failed
-                    has_streaming_error = "streaming error" in full_response.lower() or "no aimessage found" in full_response.lower()
-                    
-                    logger.info(f"   🔧 Tool execution check - Results found: {has_tool_results}, Streaming errors: {has_streaming_error}")
+                    has_streaming_error = (
+                        "streaming error" in full_response.lower()
+                        or "no aimessage found" in full_response.lower()
+                    )
+
+                    logger.info(
+                        f"   🔧 Tool execution check - Results found: {has_tool_results}, Streaming errors: {has_streaming_error}"
+                    )
 
                     # Success check for Qwen (supports XML, legacy JSON, and raw JSON formats)
-                    if has_name_field and has_web_search and has_valid_format and has_tool_results and not has_streaming_error:
-                        format_type = "XML" if has_tool_call_tags else ("Legacy JSON" if has_legacy_json else "Raw JSON")
+                    if (
+                        has_name_field
+                        and has_web_search
+                        and has_valid_format
+                        and has_tool_results
+                        and not has_streaming_error
+                    ):
+                        format_type = (
+                            "XML"
+                            if has_tool_call_tags
+                            else ("Legacy JSON" if has_legacy_json else "Raw JSON")
+                        )
                         logger.info(
                             f"   🎉 TOOL CALL SUCCESS: Proper Qwen {format_type} format and tool execution completed!"
                         )
@@ -836,27 +925,33 @@ After the tool executes, provide a detailed summary of the findings."""
                             failure_reasons.append("NO TOOL EXECUTION RESULTS")
                         if has_streaming_error:
                             failure_reasons.append("STREAMING ERROR DETECTED")
-                            
-                        logger.error(f"   ❌ TOOL CALL FAILED: {', '.join(failure_reasons)}")
+
+                        logger.error(
+                            f"   ❌ TOOL CALL FAILED: {', '.join(failure_reasons)}"
+                        )
                         if not has_tool_results or has_streaming_error:
-                            logger.error("   🚨 CRITICAL: Tool was called but never executed - LangGraph pipeline broken!")
+                            logger.error(
+                                "   🚨 CRITICAL: Tool was called but never executed - LangGraph pipeline broken!"
+                            )
                             return False  # This should fail the test
-                        
+
                 else:
                     # Generic validation for unknown pipeline types
                     has_name_field = '"name"' in full_response
                     has_web_search = "web_search" in full_response.lower()
-                    
+
                     logger.info(
                         f"   🛠️  Generic Tool check - Name field: {has_name_field}, Web search: {has_web_search}"
                     )
-                    
+
                     if has_name_field and has_web_search:
                         logger.info(
                             "   🎉 TOOL CALL SUCCESS: Generic tool usage detected!"
                         )
                     else:
-                        logger.warning("   ❌ TOOL CALL INCOMPLETE: Generic requirements not met")
+                        logger.warning(
+                            "   ❌ TOOL CALL INCOMPLETE: Generic requirements not met"
+                        )
 
                 # Log the actual response content for debugging
                 logger.info(
@@ -1058,9 +1153,13 @@ After the tool executes, provide a detailed summary of the findings."""
                     "pipeline_type": type(pipeline).__name__,
                     "response_content_length": len(final_response),
                     "tools_available": len(tools),
-                    "model_name": model_profile.model_name if model_profile else "unknown"
+                    "model_name": (
+                        model_profile.model_name if model_profile else "unknown"
+                    ),
                 }
-                self._write_llm_response("Pipeline Execution", final_response, pipeline_metadata)
+                self._write_llm_response(
+                    "Pipeline Execution", final_response, pipeline_metadata
+                )
 
             return {
                 "success": True,
@@ -1088,9 +1187,10 @@ After the tool executes, provide a detailed summary of the findings."""
 
             # Test dynamic tool generation
             tool_generator = DynamicToolGenerator()
-            
+
             # Create test conversation context
             from datetime import datetime
+
             test_conversation = Conversation(
                 id=self.test_conversation_id,
                 user_id=self.test_user_id,
@@ -1098,87 +1198,111 @@ After the tool executes, provide a detailed summary of the findings."""
                 created_at=datetime.now(),
                 updated_at=datetime.now(),
             )
-            
+
             # Create user config using default config creation
             from models.default_configs import create_default_user_config
-            
+
             user_config = create_default_user_config(self.test_user_id)
-            
+
             conversation_ctx = ConversationContext(
-                conversation_id=test_conversation.id,
-                user_config=user_config
+                conversation_id=test_conversation.id, user_config=user_config
             )
 
             # Test tool generation with a specific request
             test_prompt = "I need a tool that can calculate mathematical expressions and return formatted results"
-            
+
             logger.info("   🔧 Requesting dynamic tool generation...")
-            
+
             # Call the tool generation service - CRITICAL: Must actually work
             generated_tool_result = await tool_generator.generate_tool(
                 test_prompt, test_prompt, conversation_ctx
             )
-            
-            logger.info(f"   📊 Tool generation result type: {type(generated_tool_result)}")
-            
+
+            logger.info(
+                f"   📊 Tool generation result type: {type(generated_tool_result)}"
+            )
+
             # STRICT VALIDATION - Must have actual working tool generation
             tool_successfully_generated = False
             valid_tool_structure = False
             tool_can_execute = False
             tool_stored_in_db = False
-            
+
             if generated_tool_result:
                 logger.info(f"   🔍 Generated tool result: {generated_tool_result}")
-                
+
                 # Check if tool was properly generated and can be used
-                if hasattr(generated_tool_result, 'success') and generated_tool_result.success:
+                if (
+                    hasattr(generated_tool_result, "success")
+                    and generated_tool_result.success
+                ):
                     tool_successfully_generated = True
                     logger.info("   ✅ Tool generation marked as successful")
-                    
+
                     # Check if tool has proper structure
-                    if hasattr(generated_tool_result, 'tool') and generated_tool_result.tool:
+                    if (
+                        hasattr(generated_tool_result, "tool")
+                        and generated_tool_result.tool
+                    ):
                         tool = generated_tool_result.tool
-                        valid_tool_structure = all([
-                            hasattr(tool, 'name') and tool.name,
-                            hasattr(tool, 'description') and tool.description,
-                            hasattr(tool, 'function_name') and tool.function_name,
-                            hasattr(tool, 'code') and tool.code,
-                        ])
-                        logger.info(f"   📝 Tool structure validation: {valid_tool_structure}")
-                        
+                        valid_tool_structure = all(
+                            [
+                                hasattr(tool, "name") and tool.name,
+                                hasattr(tool, "description") and tool.description,
+                                hasattr(tool, "function_name") and tool.function_name,
+                                hasattr(tool, "code") and tool.code,
+                            ]
+                        )
+                        logger.info(
+                            f"   📝 Tool structure validation: {valid_tool_structure}"
+                        )
+
                         if valid_tool_structure:
                             logger.info(f"   🛠️  Generated tool name: {tool.name}")
                             logger.info(f"   📝 Tool description: {tool.description}")
                             logger.info(f"   🔧 Tool function: {tool.function_name}")
-                            
+
                             # Capture the generated tool code as LLM output
                             tool_output = f"Generated Tool: {tool.name}\n"
                             tool_output += f"Description: {tool.description}\n"
                             tool_output += f"Function Name: {tool.function_name}\n\n"
-                            tool_output += f"Generated Code:\n{'-'*40}\n{tool.code}\n{'-'*40}"
-                            
-                            self._write_llm_response("Dynamic Tool Generation", tool_output, {
-                                "tool_name": tool.name,
-                                "function_name": tool.function_name,
-                                "code_length": len(tool.code),
-                                "request_prompt": test_prompt
-                            })
-                            
+                            tool_output += (
+                                f"Generated Code:\n{'-'*40}\n{tool.code}\n{'-'*40}"
+                            )
+
+                            self._write_llm_response(
+                                "Dynamic Tool Generation",
+                                tool_output,
+                                {
+                                    "tool_name": tool.name,
+                                    "function_name": tool.function_name,
+                                    "code_length": len(tool.code),
+                                    "request_prompt": test_prompt,
+                                },
+                            )
+
                             # Test if tool can actually execute
                             try:
                                 # Create a dynamic tool runner and test execution
                                 from server.tools.dynamic_tool import DynamicToolRunner
-                                
+
                                 tool_runner = DynamicToolRunner(tool)
-                                test_result = await tool_runner.execute({})  # Basic execution test
+                                test_result = await tool_runner.execute(
+                                    {}
+                                )  # Basic execution test
                                 tool_can_execute = True
                                 logger.info(f"   🎯 Tool execution test: SUCCESS")
-                                
+
                             except Exception as exec_error:
-                                logger.error(f"   ❌ Tool execution test failed: {exec_error}")
-                        
+                                logger.error(
+                                    f"   ❌ Tool execution test failed: {exec_error}"
+                                )
+
                         # Check if tool was stored in database (if applicable)
-                        if hasattr(generated_tool_result, 'stored') and generated_tool_result.stored:
+                        if (
+                            hasattr(generated_tool_result, "stored")
+                            and generated_tool_result.stored
+                        ):
                             tool_stored_in_db = True
                             logger.info("   💾 Tool stored in database: YES")
                 else:
@@ -1188,13 +1312,15 @@ After the tool executes, provide a detailed summary of the findings."""
 
             # CRITICAL: All components must work for test to pass
             overall_success = (
-                tool_successfully_generated 
-                and valid_tool_structure 
+                tool_successfully_generated
+                and valid_tool_structure
                 and tool_can_execute
             )
-            
+
             if not overall_success:
-                logger.error("   🚨 DYNAMIC TOOL GENERATION TEST FAILED - CRITICAL FUNCTIONALITY MISSING")
+                logger.error(
+                    "   🚨 DYNAMIC TOOL GENERATION TEST FAILED - CRITICAL FUNCTIONALITY MISSING"
+                )
                 logger.error(f"      - Tool Generated: {tool_successfully_generated}")
                 logger.error(f"      - Valid Structure: {valid_tool_structure}")
                 logger.error(f"      - Can Execute: {tool_can_execute}")
@@ -1207,11 +1333,15 @@ After the tool executes, provide a detailed summary of the findings."""
                 "can_execute": tool_can_execute,
                 "stored_in_db": tool_stored_in_db,
                 "service_available": True,
-                "details": str(generated_tool_result) if generated_tool_result else "No result",
+                "details": (
+                    str(generated_tool_result) if generated_tool_result else "No result"
+                ),
             }
 
         except ImportError as e:
-            logger.error(f"   🚨 CRITICAL: Dynamic tool generation service not available: {str(e)}")
+            logger.error(
+                f"   🚨 CRITICAL: Dynamic tool generation service not available: {str(e)}"
+            )
             logger.error("   🚨 This is a REQUIRED component - TEST MUST FAIL")
             return {
                 "success": False,  # CRITICAL: Must fail if service unavailable
@@ -1221,41 +1351,49 @@ After the tool executes, provide a detailed summary of the findings."""
                 "error": f"Required service not available: {str(e)}",
             }
         except Exception as e:
-            logger.error(f"   🚨 CRITICAL: Dynamic tool generation test failed: {str(e)}")
+            logger.error(
+                f"   🚨 CRITICAL: Dynamic tool generation test failed: {str(e)}"
+            )
             return {"success": False, "error": str(e)}
 
     async def test_tool_deduplication(self) -> Dict[str, Any]:
         """Test tool deduplication functionality to prevent duplicate tool creation."""
         logger.info("🔍 Testing tool deduplication functionality...")
-        
+
         try:
             from server.tools.deduplication import AdvancedToolDeduplicator
             from models.dynamic_tool import DynamicTool
             from server.services.context import ConversationContext
-            
+
             # Create a simple mock user config for testing
             import uuid
+
             class MockUserConfig:
                 def __init__(self):
                     self.user_id = "test_dedup_user"
+
                     # Add model_profiles with embedding_profile_id
                     class MockModelProfiles:
                         def __init__(self):
-                            self.embedding_profile_id = uuid.UUID("00000000-0000-0000-0000-000000000014")  # System default UUID
+                            self.embedding_profile_id = uuid.UUID(
+                                "00000000-0000-0000-0000-000000000014"
+                            )  # System default UUID
+
                     self.model_profiles = MockModelProfiles()
-            
+
             # Initialize deduplicator
             deduplicator = AdvancedToolDeduplicator()
-            
+
             # Create conversation context
             conversation_ctx = ConversationContext(
-                conversation_id=self.test_conversation_id,
-                user_config=MockUserConfig()
+                conversation_id=self.test_conversation_id, user_config=MockUserConfig()
             )
-            
+
             # Test 1: Check for duplicates with similar tool request
-            similar_request = "A tool to calculate basic math operations and expressions"
-            
+            similar_request = (
+                "A tool to calculate basic math operations and expressions"
+            )
+
             # Create sample tool for deduplication test
             sample_tool = DynamicTool(
                 id=None,
@@ -1264,17 +1402,20 @@ After the tool executes, provide a detailed summary of the findings."""
                 description=similar_request,
                 code="def calculate(expr): return eval(expr)",
                 function_name="calculate",
-                parameters={"expr": {"type": "string", "description": "Mathematical expression"}}
+                parameters={
+                    "expr": {"type": "string", "description": "Mathematical expression"}
+                },
             )
-            
+
             # Check for existing similar tools
             dedup_result = await deduplicator.check_for_duplicates(
-                sample_tool, 
-                conversation_ctx
+                sample_tool, conversation_ctx
             )
-            
-            logger.info(f"   📊 Deduplication check result: duplicate={dedup_result.is_duplicate}, score={dedup_result.similarity_score:.2f}")
-            
+
+            logger.info(
+                f"   📊 Deduplication check result: duplicate={dedup_result.is_duplicate}, score={dedup_result.similarity_score:.2f}"
+            )
+
             # Test 2: Test with completely different tool description
             unique_request = "A specialized tool for quantum physics calculations and quantum state analysis"
             unique_tool = DynamicTool(
@@ -1283,20 +1424,23 @@ After the tool executes, provide a detailed summary of the findings."""
                 name="quantum_physics_tool",
                 description=unique_request,
                 code="def quantum_calc(): pass",
-                function_name="quantum_calc", 
-                parameters={}
+                function_name="quantum_calc",
+                parameters={},
             )
-            
+
             unique_result = await deduplicator.check_for_duplicates(
-                unique_tool,
-                conversation_ctx  
+                unique_tool, conversation_ctx
             )
-            
-            logger.info(f"   📊 Unique tool check result: duplicate={unique_result.is_duplicate}, score={unique_result.similarity_score:.2f}")
-            
+
+            logger.info(
+                f"   📊 Unique tool check result: duplicate={unique_result.is_duplicate}, score={unique_result.similarity_score:.2f}"
+            )
+
             # Test 3: Test the actual tool generation with deduplication
             # Try to generate a tool similar to one we just created (we generated a math_expression_calculator)
-            similar_math_request = "Create a calculator tool for evaluating mathematical expressions"
+            similar_math_request = (
+                "Create a calculator tool for evaluating mathematical expressions"
+            )
             similar_math_tool = DynamicTool(
                 id=None,
                 user_id=self.test_user_id,
@@ -1304,47 +1448,53 @@ After the tool executes, provide a detailed summary of the findings."""
                 description=similar_math_request,
                 code="def calculate_expression(expr): return eval(expr)",
                 function_name="calculate_expression",
-                parameters={"expr": {"type": "string", "description": "Expression to calculate"}}
+                parameters={
+                    "expr": {"type": "string", "description": "Expression to calculate"}
+                },
             )
-            
+
             # This should trigger deduplication if we have existing math tools
             similar_dedup = await deduplicator.check_for_duplicates(
-                similar_math_tool,
-                conversation_ctx
+                similar_math_tool, conversation_ctx
             )
-            
-            logger.info(f"   � Similar math tool dedup result: duplicate={similar_dedup.is_duplicate}, score={similar_dedup.similarity_score:.2f}")
-            
+
+            logger.info(
+                f"   � Similar math tool dedup result: duplicate={similar_dedup.is_duplicate}, score={similar_dedup.similarity_score:.2f}"
+            )
+
             # Validate deduplication system functionality
             deduplication_working = (
-                dedup_result is not None and 
-                unique_result is not None and 
-                similar_dedup is not None
+                dedup_result is not None
+                and unique_result is not None
+                and similar_dedup is not None
             )
-            
+
             # Check that the system can distinguish between similar and different tools
             distinguishes_tools = (
-                unique_result.similarity_score < similar_dedup.similarity_score or
-                not unique_result.is_duplicate
+                unique_result.similarity_score < similar_dedup.similarity_score
+                or not unique_result.is_duplicate
             )
-            
+
             logger.info(f"   � Deduplication working: {deduplication_working}")
             logger.info(f"   🔍 Distinguishes tools: {distinguishes_tools}")
-            
+
             overall_success = deduplication_working and distinguishes_tools
-            
+
             return {
                 "success": overall_success,
                 "deduplication_working": deduplication_working,
                 "distinguishes_tools": distinguishes_tools,
                 "similar_score": dedup_result.similarity_score if dedup_result else 0.0,
-                "unique_score": unique_result.similarity_score if unique_result else 0.0,
+                "unique_score": (
+                    unique_result.similarity_score if unique_result else 0.0
+                ),
                 "math_score": similar_dedup.similarity_score if similar_dedup else 0.0,
             }
-            
+
         except Exception as e:
             logger.error(f"   🚨 Tool deduplication test failed: {str(e)}")
             import traceback
+
             logger.error(f"   📋 Full traceback: {traceback.format_exc()}")
             return {"success": False, "error": str(e)}
 
@@ -1469,13 +1619,21 @@ After the tool executes, provide a detailed summary of the findings."""
                 commentary_usage = "commentary" in content_lower
 
                 # Vision capabilities check (for Qwen2.5VL)
-                is_qwen25vl = "qwen2.5-vl" in self.target_model.lower() or "qwen25vl" in self.target_model.lower()
+                is_qwen25vl = (
+                    "qwen2.5-vl" in self.target_model.lower()
+                    or "qwen25vl" in self.target_model.lower()
+                )
                 if is_qwen25vl:
                     vision_capabilities_acknowledged = any(
                         pattern in content_lower
                         for pattern in [
-                            "vision", "image", "visual", "process images", 
-                            "vision-language", "multimodal", "see the image"
+                            "vision",
+                            "image",
+                            "visual",
+                            "process images",
+                            "vision-language",
+                            "multimodal",
+                            "see the image",
                         ]
                     )
 
@@ -1525,7 +1683,9 @@ After the tool executes, provide a detailed summary of the findings."""
                 )
                 logger.info(f"   🔍 Comprehensive response: {comprehensive_response}")
                 if is_qwen25vl:
-                    logger.info(f"   🖼️  Vision capabilities acknowledged: {vision_capabilities_acknowledged}")
+                    logger.info(
+                        f"   🖼️  Vision capabilities acknowledged: {vision_capabilities_acknowledged}"
+                    )
                 logger.info(
                     f"   📊 Response quality score: {response_quality_score}/100"
                 )
@@ -1552,13 +1712,15 @@ After the tool executes, provide a detailed summary of the findings."""
                 and len(messages) >= 2  # User + Assistant messages
                 and tool_usage_found  # Must have tool execution
             )
-            
+
             # Web search validation is important but not critical for overall success
             # due to external web reliability issues
             overall_success = core_success
-            
+
             if not search_storage_validated:
-                logger.warning("   ⚠️  Web search validation failed, but core pipeline succeeded")
+                logger.warning(
+                    "   ⚠️  Web search validation failed, but core pipeline succeeded"
+                )
             else:
                 logger.info("   ✅ Full web search validation passed")
 
@@ -1595,9 +1757,11 @@ After the tool executes, provide a detailed summary of the findings."""
             assistant_messages = [
                 msg for msg in messages if msg.role.value == "assistant"
             ]
-            
+
             if not assistant_messages:
-                logger.error("   🚨 CRITICAL: No assistant messages found for search validation")
+                logger.error(
+                    "   🚨 CRITICAL: No assistant messages found for search validation"
+                )
                 return False
 
             # Extract all assistant content for analysis
@@ -1610,11 +1774,13 @@ After the tool executes, provide a detailed summary of the findings."""
                                 full_assistant_content += content_item.text
 
             if not full_assistant_content:
-                logger.error("   🚨 CRITICAL: No assistant content found for search validation")
+                logger.error(
+                    "   🚨 CRITICAL: No assistant content found for search validation"
+                )
                 return False
 
             content_lower = full_assistant_content.lower()
-            
+
             # STRICT VALIDATION CRITERIA for real web search functionality
             validation_criteria = {
                 "web_search_executed": False,
@@ -1625,10 +1791,16 @@ After the tool executes, provide a detailed summary of the findings."""
             }
 
             # 1. Check if web_search tool was actually called
-            if any(pattern in content_lower for pattern in [
-                "web_search", "search results", "found information", 
-                "according to search", "based on the search"
-            ]):
+            if any(
+                pattern in content_lower
+                for pattern in [
+                    "web_search",
+                    "search results",
+                    "found information",
+                    "according to search",
+                    "based on the search",
+                ]
+            ):
                 validation_criteria["web_search_executed"] = True
                 logger.info("   ✅ Web search tool execution detected")
             else:
@@ -1636,94 +1808,143 @@ After the tool executes, provide a detailed summary of the findings."""
 
             # 2. Check for actual content retrieval (not just empty results)
             actual_content_indicators = [
-                "quantum computing", "error correction", "algorithms", 
-                "breakthrough", "ibm", "google", "microsoft", "2024",
-                "announced", "developed", "research", "published"
+                "quantum computing",
+                "error correction",
+                "algorithms",
+                "breakthrough",
+                "ibm",
+                "google",
+                "microsoft",
+                "2024",
+                "announced",
+                "developed",
+                "research",
+                "published",
             ]
-            
-            content_matches = sum(1 for indicator in actual_content_indicators 
-                                if indicator in content_lower)
-            
+
+            content_matches = sum(
+                1
+                for indicator in actual_content_indicators
+                if indicator in content_lower
+            )
+
             if content_matches >= 3:  # Must have multiple real content indicators
                 validation_criteria["actual_content_retrieved"] = True
-                logger.info(f"   ✅ Real content detected: {content_matches} topic indicators found")
+                logger.info(
+                    f"   ✅ Real content detected: {content_matches} topic indicators found"
+                )
             else:
-                logger.error(f"   🚨 CRITICAL: Insufficient real content - only {content_matches} indicators found")
+                logger.error(
+                    f"   🚨 CRITICAL: Insufficient real content - only {content_matches} indicators found"
+                )
                 logger.error("   🚨 This suggests web crawler retrieved 0 pages/items")
 
             # 3. Check for content synthesis (including web search results integration)
             synthesis_patterns = [
-                "recent developments", "advances in", "new breakthrough",
-                "companies like", "including", "such as", "for example",
-                "web search results", "researchers in", "scientists at",
-                "breakthrough in", "quantum ai", "technology review",
-                "error correction", "quantum supremacy", "quantum processors"
+                "recent developments",
+                "advances in",
+                "new breakthrough",
+                "companies like",
+                "including",
+                "such as",
+                "for example",
+                "web search results",
+                "researchers in",
+                "scientists at",
+                "breakthrough in",
+                "quantum ai",
+                "technology review",
+                "error correction",
+                "quantum supremacy",
+                "quantum processors",
             ]
-            
-            synthesis_matches = sum(1 for pattern in synthesis_patterns 
-                                  if pattern in content_lower)
-            
+
+            synthesis_matches = sum(
+                1 for pattern in synthesis_patterns if pattern in content_lower
+            )
+
             # Also check if web search results were integrated into response
             web_results_integrated = (
-                "web search results" in content_lower or
-                "urls:" in content_lower or 
-                synthesis_matches >= 2 or
-                content_matches >= 5  # Strong content indicates synthesis occurred
+                "web search results" in content_lower
+                or "urls:" in content_lower
+                or synthesis_matches >= 2
+                or content_matches >= 5  # Strong content indicates synthesis occurred
             )
-            
+
             if web_results_integrated:
                 validation_criteria["content_synthesis"] = True
-                logger.info(f"   ✅ Content synthesis detected ({synthesis_matches} patterns, web_integrated: {web_results_integrated})")
+                logger.info(
+                    f"   ✅ Content synthesis detected ({synthesis_matches} patterns, web_integrated: {web_results_integrated})"
+                )
             else:
                 logger.error("   🚨 CRITICAL: No content synthesis detected")
 
             # 4. Check for substantive information (not just empty responses)
-            if (len(full_assistant_content) >= 500 and 
-                len([w for w in full_assistant_content.split() if len(w) > 3]) >= 50):
+            if (
+                len(full_assistant_content) >= 500
+                and len([w for w in full_assistant_content.split() if len(w) > 3]) >= 50
+            ):
                 validation_criteria["substantive_information"] = True
-                logger.info(f"   ✅ Substantive response: {len(full_assistant_content)} chars")
+                logger.info(
+                    f"   ✅ Substantive response: {len(full_assistant_content)} chars"
+                )
             else:
-                logger.error(f"   🚨 CRITICAL: Response too short/shallow: {len(full_assistant_content)} chars")
+                logger.error(
+                    f"   🚨 CRITICAL: Response too short/shallow: {len(full_assistant_content)} chars"
+                )
 
             # 5. Check for timeout/failure indicators (more lenient for real web scraping)
             failure_indicators = [
-                "failed to retrieve", "error retrieving", "no connection",
-                "empty synthesis", "completely failed"
+                "failed to retrieve",
+                "error retrieving",
+                "no connection",
+                "empty synthesis",
+                "completely failed",
             ]
-            
+
             # Allow timeouts if other content was retrieved
             has_meaningful_content = (
-                validation_criteria["actual_content_retrieved"] and 
-                validation_criteria["web_search_executed"]
+                validation_criteria["actual_content_retrieved"]
+                and validation_criteria["web_search_executed"]
             )
-            
-            timeout_detected = any(indicator in content_lower for indicator in failure_indicators)
-            
+
+            timeout_detected = any(
+                indicator in content_lower for indicator in failure_indicators
+            )
+
             if timeout_detected and not has_meaningful_content:
                 validation_criteria["no_timeout_failures"] = False
-                logger.warning("   ⚠️  Search timeout detected, but no meaningful content retrieved")
+                logger.warning(
+                    "   ⚠️  Search timeout detected, but no meaningful content retrieved"
+                )
             else:
                 validation_criteria["no_timeout_failures"] = True
                 if timeout_detected:
-                    logger.info("   ✅ Some timeouts detected but meaningful content was retrieved")
+                    logger.info(
+                        "   ✅ Some timeouts detected but meaningful content was retrieved"
+                    )
 
             # OVERALL VALIDATION - ALL CRITERIA MUST PASS
             all_criteria_passed = all(validation_criteria.values())
-            
+
             logger.info("   📊 Web Search Validation Results:")
             for criterion, passed in validation_criteria.items():
                 status = "✅ PASS" if passed else "❌ FAIL"
                 logger.info(f"      {criterion}: {status}")
-                
+
             if not all_criteria_passed:
                 failed_criteria = [k for k, v in validation_criteria.items() if not v]
                 logger.error(f"   🚨 CRITICAL WEB SEARCH FAILURES: {failed_criteria}")
-                logger.error("   🚨 Web search did not retrieve real content - TEST MUST FAIL")
-                
+                logger.error(
+                    "   🚨 Web search did not retrieve real content - TEST MUST FAIL"
+                )
+
                 # Log response for debugging
-                logger.error(f"   🚨 Response preview: {full_assistant_content[:800]}...")
+                logger.error(
+                    f"   🚨 Response preview: {full_assistant_content[:800]}..."
+                )
                 return False
-            
+
             logger.info("   🎉 All web search validation criteria PASSED")
             return True
 
@@ -1789,7 +2010,9 @@ After the tool executes, provide a detailed summary of the findings."""
                     elif entity_type == "user":
                         # Delete user directly via SQL
                         async with storage.pool.acquire() as conn:
-                            await conn.execute("DELETE FROM users WHERE id = $1", entity_id)
+                            await conn.execute(
+                                "DELETE FROM users WHERE id = $1", entity_id
+                            )
                         logger.info(f"   🗑️  Deleted user: {entity_id}")
 
                     cleaned_count += 1
@@ -1898,12 +2121,13 @@ After the tool executes, provide a detailed summary of the findings."""
 
         # Save detailed results to file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+
         # Ensure debug/out directory exists
         import os
+
         output_dir = "debug/out"
         os.makedirs(output_dir, exist_ok=True)
-        
+
         results_file = f"{output_dir}/real_pipeline_test_{timestamp}.json"
 
         try:
@@ -1917,21 +2141,23 @@ After the tool executes, provide a detailed summary of the findings."""
 async def main():
     """Main test execution function with multi-model support and retry logic."""
     import sys
-    
+
     # Support command line model selection and output options
     target_model = None
     capture_output = True
     print_output = False
-    
+
     # Parse command line arguments
     for i, arg in enumerate(sys.argv[1:], 1):
-        if arg.startswith('--'):
-            if arg == '--no-capture':
+        if arg.startswith("--"):
+            if arg == "--no-capture":
                 capture_output = False
-            elif arg == '--print-output':
+            elif arg == "--print-output":
                 print_output = True
-            elif arg == '--help':
-                print("Usage: python test_real_end_to_end_pipeline.py [model_name] [options]")
+            elif arg == "--help":
+                print(
+                    "Usage: python test_real_end_to_end_pipeline.py [model_name] [options]"
+                )
                 print("Options:")
                 print("  --no-capture    Disable LLM output capture to file")
                 print("  --print-output  Print full LLM output content to console")
@@ -1940,63 +2166,79 @@ async def main():
                 print("  - openai-gpt-oss-20b-uncensored-q5_1")
                 print("  - qwen3-30b-a3b-q4-k-m")
                 return
-        elif not target_model and not arg.startswith('--'):
+        elif not target_model and not arg.startswith("--"):
             target_model = arg
-        
+
     # Model configuration with fallbacks for memory issues
     model_configs = {
         "openai-gpt-oss-20b-uncensored-q5_1": ["openai-gpt-oss-20b-uncensored-q5_1"],
-        "qwen3-30b-a3b-q4-k-m": ["qwen3-30b-a3b-q4-k-m", "qwen3-coder-30b-a3b", "llama-3_2-3b-q8_0"]
+        "qwen3-30b-a3b-q4-k-m": [
+            "qwen3-30b-a3b-q4-k-m",
+            "qwen3-coder-30b-a3b",
+            "llama-3_2-3b-q8_0",
+        ],
     }
-    
+
     available_models = list(model_configs.keys())
-    
+
     # Test both models if no specific model requested
     models_to_test = [target_model] if target_model else available_models
-    
+
     for model in models_to_test:
         logger.info(f"🧪 Testing with model: {model}")
         tester = RealEndToEndPipelineTester(
             target_model=model,
             capture_llm_output=capture_output,
-            print_output=print_output
+            print_output=print_output,
         )
-        
+
         # Retry logic for web scraping issues
         max_retries = 2
         for attempt in range(max_retries):
             try:
                 results = await tester.run_full_test()
-                
+
                 if results["overall_success"]:
                     logger.info(f"🎉 Real end-to-end pipeline test PASSED for {model}")
                     if len(models_to_test) == 1:  # Single model test
                         exit(0)
                     break  # Success, move to next model
                 else:
-                    success_rate = results["components_passed"] / results["total_components"] * 100
-                    if success_rate >= 87.5:  # 7/8 components (allow 1 component failure)
-                        logger.warning(f"⚠️  Test passed with {success_rate:.1f}% success rate for {model}")
+                    success_rate = (
+                        results["components_passed"] / results["total_components"] * 100
+                    )
+                    if (
+                        success_rate >= 87.5
+                    ):  # 7/8 components (allow 1 component failure)
+                        logger.warning(
+                            f"⚠️  Test passed with {success_rate:.1f}% success rate for {model}"
+                        )
                         if len(models_to_test) == 1:
                             exit(0)
                         break
                     elif attempt < max_retries - 1:
-                        logger.warning(f"⚠️  Test attempt {attempt + 1} failed ({success_rate:.1f}%), retrying...")
+                        logger.warning(
+                            f"⚠️  Test attempt {attempt + 1} failed ({success_rate:.1f}%), retrying..."
+                        )
                         await asyncio.sleep(2)  # Brief delay before retry
                     else:
-                        logger.error(f"❌ Real end-to-end pipeline test FAILED for {model} after {max_retries} attempts")
+                        logger.error(
+                            f"❌ Real end-to-end pipeline test FAILED for {model} after {max_retries} attempts"
+                        )
                         if len(models_to_test) == 1:
                             exit(1)
-                        
+
             except Exception as e:
-                logger.error(f"💥 Test execution failed for {model} (attempt {attempt + 1}): {str(e)}")
+                logger.error(
+                    f"💥 Test execution failed for {model} (attempt {attempt + 1}): {str(e)}"
+                )
                 if attempt < max_retries - 1:
                     logger.info("   🔄 Retrying...")
                     await asyncio.sleep(2)
                 else:
                     if len(models_to_test) == 1:
                         exit(1)
-    
+
     logger.info("🏁 Multi-model testing completed")
 
 

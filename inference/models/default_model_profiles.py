@@ -125,11 +125,11 @@ DEFAULT_SUMMARIZATION_PROFILE = ModelProfile(
         repeat_penalty=1.15,  # Higher penalty to prevent repetition
         temperature=0.1,  # Very low temperature for focused summaries
         seed=0,
-        num_predict=512,  # Reduced max tokens
+        num_predict=4096,  # Increased max tokens for comprehensive synthesis
         top_k=30,  # Reduced for more focused output
         top_p=0.85,  # Reduced for less randomness
         min_p=0.05,
-        max_tokens=512,  # Explicit max tokens
+        max_tokens=4096,  # Increased max tokens for comprehensive synthesis
         n_parts=-1,
         stop=[
             "</s>",
