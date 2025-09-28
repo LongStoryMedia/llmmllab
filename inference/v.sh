@@ -19,11 +19,13 @@ usage() {
     echo "  runner     - Use runner virtual environment"
     echo "  server     - Use server virtual environment"
     echo "  evaluation - Use evaluation virtual environment"
+    echo "  composer   - Use composer virtual environment"
     echo ""
     echo -e "${YELLOW}Examples:${NC}"
     echo "  v runner 'python -m runner.main'"
     echo "  v server 'uvicorn server.main:app --host 0.0.0.0 --port 8000'"
     echo "  v evaluation 'python -m evaluation.benchmark'"
+    echo "  v composer 'uvicorn composer.app:app --host 0.0.0.0 --port 8001'"
     echo "  v runner --interactive  # Interactive shell"
     echo ""
     echo -e "${YELLOW}Cross-environment module access:${NC}"
@@ -50,6 +52,9 @@ case "$ENVIRONMENT" in
     "evaluation")
         VENV_PATH="/opt/venv/evaluation"
     ;;
+    "composer")
+        VENV_PATH="/opt/venv/composer"
+    ;;
     *)
         echo -e "${RED}Error: Invalid environment '$ENVIRONMENT'${NC}"
         usage
@@ -66,7 +71,7 @@ if [ ! -d "$VENV_PATH" ]; then
 fi
 
 # Set up environment variables for cross-module access
-export PYTHONPATH="/app/runner:/app/server:/app/evaluation:$PYTHONPATH"
+export PYTHONPATH="/app/runner:/app/server:/app/evaluation:/app/composer:$PYTHONPATH"
 
 echo -e "${GREEN}Activating $ENVIRONMENT environment...${NC}"
 echo -e "${BLUE}Virtual environment: $VENV_PATH${NC}"
@@ -86,6 +91,7 @@ if [ "$1" = "--interactive" ] || [ "$1" = "" ]; then
     echo "  from runner import ..."
     echo "  from server import ..."
     echo "  from evaluation import ..."
+    echo "  from composer import ..."
     echo ""
     echo -e "${YELLOW}Type 'exit' to leave the environment${NC}"
     echo ""

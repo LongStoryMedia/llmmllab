@@ -4,10 +4,11 @@
 
 LLM ML Lab is a multi-modal language model platform with microservice architecture:
 
-- **inference/**: Python services (evaluation, server, runner) with isolated virtual environments
+- **inference/**: Python services (evaluation, server, runner, composer) with isolated virtual environments
      - **evaluation/**: Model benchmarking and fine-tuning tools
      - **server/**: FastAPI REST services for model interaction (calls runner for execution)
      - **runner/**: Model execution pipelines with dynamic tool integration
+     - **composer/**: LangGraph-based workflow orchestration and agentic system runtime (NEW)
 - **ui/**: React TypeScript frontend with Material UI Joy
 - **schemas/**: YAML schema definitions for type safety across services (generates code via `./regenerate_models.sh`)
 
@@ -21,6 +22,7 @@ LLM ML Lab is a multi-modal language model platform with microservice architectu
 # Kubernetes pod commands (production/staging)
 POD_NAME=$(k get pods -n ollama -o jsonpath='{.items[0].metadata.name}')
 k exec -it -n ollama $POD_NAME -- /app/v.sh server python -m uvicorn app:app --port 8000
+k exec -it -n ollama $POD_NAME -- /app/v.sh composer python -m uvicorn app:app --port 8001
 k exec -it -n ollama $POD_NAME -- /app/v.sh runner python -c "import torch; print(torch.cuda.is_available())"
 ```
 
@@ -41,10 +43,11 @@ the ui is fully local and connects to remote inference services.
 ## Critical Patterns
 
 ### Multi-Environment Architecture
-The inference service uses **three isolated Python environments**:
+The inference service uses **four isolated Python environments**:
 - `evaluation/`: Benchmarking and fine-tuning (separate deps from serving)
 - `server/`: FastAPI REST services 
 - `runner/`: Model execution pipelines
+- `composer/`: LangGraph-based workflow orchestration and agentic system runtime
 
 Always use `/app/v.sh {service}` when executing commands in Kubernetes pods.
 

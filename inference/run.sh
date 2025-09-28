@@ -86,6 +86,22 @@ run_server() {
     fi
 }
 
+run_composer() {
+    log "INFO" "Starting Composer service..." "${BLUE}"
+    # Redirect stderr to stdout for all logs to be captured by Kubernetes
+    v "composer" python -m uvicorn app:app --host "${COMPOSER_HOST:-0.0.0.0}" --port "${COMPOSER_PORT:-8001}" --reload --timeout-graceful-shutdown 0 2>&1 | tee /var/log/composer_api.log &
+    COMPOSER_PID=$!
+    if [ $? -eq 0 ]; then
+        log "INFO" "Composer service started on port ${COMPOSER_PORT:-8001} with PID $COMPOSER_PID" "${GREEN}"
+        echo "composer:running:$COMPOSER_PID" >> $SERVICE_STATUS_FILE
+        # Wait for the Composer service to become available
+        wait_for_service "Composer" "localhost" "${COMPOSER_PORT:-8001}" 12 5
+    else
+        log "ERROR" "Failed to start Composer service" "${RED}"
+        echo "composer:failed:0" >> $SERVICE_STATUS_FILE
+    fi
+}
+
 # Start Ollama if not already running
 if curl --silent --output /dev/null "http://localhost:11434"; then
     log "INFO" "Ollama is already running and available. Skipping startup." "${GREEN}"
@@ -107,6 +123,15 @@ else
     log "WARNING" "app.py not found in /app/server directory" "${YELLOW}"
     ls -la /app/server
     echo "rest_api:missing:0" >> $SERVICE_STATUS_FILE
+fi
+
+# Start composer service if app.py exists
+if [ -f /app/composer/app.py ]; then
+    run_composer
+else
+    log "WARNING" "app.py not found in /app/composer directory" "${YELLOW}"
+    ls -la /app/composer
+    echo "composer:missing:0" >> $SERVICE_STATUS_FILE
 fi
 
 # Start gRPC server if grpc_server.py exists
@@ -151,6 +176,10 @@ monitor_services() {
                     if [ "$pid" -eq "$SERVER_PID" ]; then
                         log "INFO" "Restarting $service..." "${BLUE}"
                         run_server
+                    fi
+                    if [ "$pid" -eq "$COMPOSER_PID" ]; then
+                        log "INFO" "Restarting Composer service..." "${BLUE}"
+                        run_composer
                     fi
                     if [ "$pid" -eq "$OLLAMA_PID" ]; then
                         log "INFO" "Restarting Ollama service..." "${BLUE}"

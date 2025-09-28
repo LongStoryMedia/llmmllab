@@ -76,6 +76,7 @@ ENV PYTHONUNBUFFERED=1 \
     EVALUATION_VENV="/opt/venv/evaluation" \
     SERVER_VENV="/opt/venv/server" \
     RUNNER_VENV="/opt/venv/runner" \
+    COMPOSER_VENV="/opt/venv/composer" \
     # Let llama-cpp-python manage its own library paths, only set essential system paths
     LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/lib:/usr/local/cuda/lib64" \
     DEBIAN_FRONTEND=noninteractive \
@@ -94,6 +95,9 @@ ENV PYTHONUNBUFFERED=1 \
     LOG_LEVEL="debug" \
     # Server configuration
     PORT=8000 \
+    # Composer configuration
+    COMPOSER_PORT=8001 \
+    COMPOSER_HOST="0.0.0.0" \
     # Image generation configuration
     IMAGE_DIR="/root/images" \
     IMAGE_GENERATION_ENABLED="true" \
@@ -136,10 +140,11 @@ COPY . .
 # Create virtual environments
 RUN python3 -m venv ${RUNNER_VENV} && \
     python3 -m venv ${SERVER_VENV} && \
-    python3 -m venv ${EVALUATION_VENV}
+    python3 -m venv ${EVALUATION_VENV} && \
+    python3 -m venv ${COMPOSER_VENV}
 
 # Install dependencies in a single layer to reduce image layers
-RUN for venv in ${RUNNER_VENV} ${SERVER_VENV} ${EVALUATION_VENV}; do \
+RUN for venv in ${RUNNER_VENV} ${SERVER_VENV} ${EVALUATION_VENV} ${COMPOSER_VENV}; do \
     . $venv/bin/activate && \
     pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir --find-links /opt/wheels --no-index torch torchaudio torchvision llama-cpp-python && \
@@ -153,6 +158,9 @@ RUN for venv in ${RUNNER_VENV} ${SERVER_VENV} ${EVALUATION_VENV}; do \
     deactivate && \
     . ${EVALUATION_VENV}/bin/activate && \
     pip install --no-cache-dir -e /app/evaluation && \
+    deactivate && \
+    . ${COMPOSER_VENV}/bin/activate && \
+    pip install --no-cache-dir -e /app/composer && \
     deactivate
 
 # Let llama-cpp-python handle its own library management
@@ -179,7 +187,7 @@ RUN rm -rf /opt/wheels \
     && echo 'echo "Use: v <environment> <command>"' >> /root/.bashrc
 
 # Expose ports  
-EXPOSE 11434 8000 50051
+EXPOSE 11434 8000 8001 50051
 
 # Default command
 CMD ["/app/startup.sh"]
