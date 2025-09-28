@@ -27,6 +27,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clean synchronous extraction without Scrapy complexity
 - Reduced code complexity by ~200 lines while preserving functionality
 
+### Memory Management
+- GPU memory optimization with sophisticated tracking and automatic resource management
+- On-demand model loading and unloading strategies
+- Multiple memory optimization approaches based on available VRAM
+- Enhanced hardware manager with improved GPU detection and allocation
+
+### LangGraph Integration
+- Enhanced base LangGraph pipeline architecture for complex workflows
+- Improved state management and node coordination
+- Better context preservation between pipeline nodes
+- Robust error recovery mechanisms in graph-based pipelines
+
+### Tool Usage & Execution
+- Improved dynamic tool loading and execution capabilities
+- Enhanced security validation for dynamic tool execution
+- Better error handling and recovery in tool execution pipelines
+- Fixed integration issues between tools and model pipelines
+
 ### Infrastructure
 - PostgreSQL for persistent storage
 - GPU resources for model inference
