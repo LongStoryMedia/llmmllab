@@ -123,8 +123,7 @@ class ComposerLogger:
     ):
         """Log workflow cache operations."""
         self.logger.debug(
-            "Cache operation",
-            event="cache_operation",
+            f"Cache operation: {operation}",
             operation=operation,
             cache_key=cache_key,
             success=success,

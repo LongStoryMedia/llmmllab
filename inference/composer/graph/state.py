@@ -6,12 +6,22 @@ from typing import List, Dict, Any, Optional, Annotated
 from pydantic import BaseModel, Field
 import operator
 import sys
-sys.path.append('/Users/lons7862/workspace/llmmllab/inference')
+from pathlib import Path
+
+# Add inference directory to path 
+inference_path = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(inference_path))
+
+try:
+    from langgraph.graph import add_messages
+except ImportError:
+    # Fallback if LangGraph not available
+    def add_messages(x, y):
+        return x + y if isinstance(x, list) and isinstance(y, list) else y
 
 from models.lang_chain_message import LangChainMessage
 from models.intent_analysis import IntentAnalysis
 from models.available_tool import AvailableTool
-from langgraph.graph import add_messages
 
 
 class WorkflowState(BaseModel):
