@@ -22,7 +22,6 @@ from server.services.search_providers import SearchProviderFactory
 from server.services.web_extraction_service import WebExtractionService
 
 # Apply web extraction service improvements
-import server.services.web_extraction_patch  # noqa: F401
 from server.config import logger
 
 from runner import (

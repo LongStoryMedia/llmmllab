@@ -465,119 +465,663 @@ def build_research_workflow(config: ResearchConfig) -> StateGraph:
 
 ### 5.1 Mandatory Project File Structure
 
-A clean, structured file hierarchy is mandatory for managing complexity.
+A clean, structured file hierarchy is mandatory for managing complexity. Following inference service patterns:
 
 ```
 composer/
 ├── requirements.txt
-├── main.py                     # Primary startup/API configuration
-└── agent_runtime/
+├── pyproject.toml             # Python package configuration
+├── __init__.py
+├── app.py                     # FastAPI application entry point
+├── config.py                  # Environment-based configuration
+└── core/
     ├── __init__.py
-    ├── state.py                # Definition of GraphState (Pydantic models)
-    ├── graph_builder.py        # Logic to define nodes, edges, and compile the graph
-    ├── streaming_api.py        # Handles WebSocket/SSE connection and stream iterator
-    └── config.py               # Runtime configuration (LLM models, API keys)
+    ├── service.py             # Main ComposerService orchestrator
+    ├── errors.py              # Error definitions and handling
+    └── error_handler.py       # Circuit breaker and retry logic
 
-    ├── agents/
-    │   ├── intent_classifier.py # Intent Agent logic, outputs IntentSchema
-    │   └── tool_orchestrator.py # Dynamic Tool Agent (DTA) logic
+├── graph/
+│   ├── __init__.py
+│   ├── builder.py             # GraphBuilder for dynamic workflow construction
+│   ├── cache.py               # Workflow caching with TTL
+│   └── state.py               # GraphState Pydantic models with reducers
 
-    ├── rag/
-    │   ├── rag_router.py       # Conditional logic for shallow/deep routing
-    │   └── rag_nodes.py        # Shallow and Deep RAG execution nodes
+├── nodes/
+│   ├── __init__.py
+│   ├── standard.py            # PipelineNode, ToolExecutorNode, RAGNode
+│   ├── specialized.py         # TitleGenerationNode, DynamicToolGenerationNode
+│   ├── protected.py           # CircuitProtectedNode wrapper
+│   └── rag/
+│       ├── __init__.py
+│       ├── router.py          # Conditional shallow/deep routing
+│       └── executor.py        # RAG execution nodes
 
-    └── tools/
-        ├── standard/           # Collection of pre-defined, static tools
-        │   ├── jira_tool.py
-        │   └── finance_tool.py
-        └── dynamic_registry/   # Logic for interacting with the Tool Registry VDB
-            ├── registry_service.py # API interaction with VDB
-            └── serialization.py    # LCEL serialization/deserialization helpers
+├── tools/
+│   ├── __init__.py
+│   ├── registry.py            # ToolRegistry with semantic search
+│   ├── static/                # Pre-defined tools
+│   │   ├── __init__.py
+│   │   ├── search.py
+│   │   └── summarization.py
+│   └── dynamic/
+│       ├── __init__.py
+│       ├── generator.py       # LLM-based tool generation
+│       └── serializer.py      # LCEL serialization helpers
+
+├── workflows/
+│   ├── __init__.py
+│   ├── chat.py                # Standard chat workflow
+│   ├── research.py            # Research workflow with configurable depth
+│   └── multi_agent.py         # Multi-agent orchestration
+
+├── streaming/
+│   ├── __init__.py
+│   ├── processor.py           # Stream event processing
+│   └── api.py                 # WebSocket/SSE endpoints
+
+├── agents/
+│   ├── __init__.py
+│   ├── intent_classifier.py   # Intent analysis and classification
+│   └── tool_orchestrator.py   # Dynamic tool discovery and composition
+
+├── monitoring/
+│   ├── __init__.py
+│   ├── metrics.py             # Prometheus metrics
+│   └── logging.py             # Structured logging
+
+└── schemas/                   # Generated from YAML schemas
+    ├── __init__.py
+    └── ...                    # Auto-generated Pydantic models
 ```
 
-### 5.2 Detailed Checklist
+### 5.2 Detailed Migration Strategy
 
-**Phase 1: Foundation and State**
+#### Phase 1: Foundation Setup (Week 1-2)
 
-  - [ ] Update project dependencies to target LangChain and LangGraph V1 alpha releases.
-  - [ ] Create Composer directory and core `agent_runtime` modules as per the file structure.
-  - [ ] Implement the authoritative `GraphState` Pydantic model in `composer/agent_runtime/state.py` with correct LangGraph reducers.
-  - [ ] Extract and centralize tool logic from the server into `composer/tools/`.
-  - [ ] Set up logging, metrics, and monitoring frameworks.
-  - [ ] Establish the core LangGraph structure and configure durable execution by connecting the state persistence layer.
+**Environment and Dependencies:**
+  - [ ] Update `inference/requirements.txt` to LangChain/LangGraph V1 alpha
+  - [ ] Create `composer/` directory in `inference/` following service patterns
+  - [ ] Set up `composer/pyproject.toml` and `composer/requirements.txt`
+  - [ ] Configure `composer/config.py` with environment variable patterns
 
-**Phase 2: Intent and Adaptive RAG**
+**Core Structure:**
+  - [ ] Create composer directory structure as specified
+  - [ ] Implement `GraphState` Pydantic model with LangGraph reducers
+  - [ ] Set up basic `ComposerService` in `composer/core/service.py`
+  - [ ] Configure logging with structured format matching inference service
 
-  - [ ] Implement the `IntentClassifierAgent` node in `composer/agents/intent_classifier.py` to output the structured `IntentSchema`.
-  - [ ] Define the functionally distinct `execute_shallow_search` and `execute_deep_crawl_and_synthesize` nodes in `composer/rag/rag_nodes.py`.
-  - [ ] Implement the `Router_RAG` conditional edge logic in `composer/rag/rag_router.py` to direct flow based on the `rag_depth_config` state field.
+**Tool Migration:**
+  - [ ] Move `inference/server/tools/integration.py` → `composer/tools/static/`
+  - [ ] Move `inference/server/tools/dynamic_tool.py` → `composer/tools/dynamic/generator.py`
+  - [ ] Extract tool generation logic from server handlers
+  - [ ] Implement `ToolRegistry` with vector database for semantic search
 
-**Phase 3: Dynamic Tooling and Streaming**
+#### Phase 2: Core Node Implementation (Week 3-4)
 
-  - [ ] Setup the external Tool Registry VDB and the internal service logic in `composer/tools/dynamic_registry/`.
-  - [ ] Implement the Dynamic Tool Agent (DTA) node in `composer/agents/tool_orchestrator.py` for registry search, LCEL assembly, and tool creation.
-  - [ ] Implement streaming logic: Configure the primary chat node for `messages` mode and upstream nodes for `updates`/`custom` modes.
-  - [ ] Develop the Composer streaming endpoint in `composer/agent_runtime/streaming_api.py` to manage the stream iterator.
+**Basic Nodes:**
+  - [ ] Implement `PipelineNode` wrapping existing pipeline execution
+  - [ ] Create `ToolExecutorNode` using LangGraph's `ToolNode`
+  - [ ] Build `RAGNode` from `ConversationContext.process_rag_operations`
+  - [ ] Implement circuit breaker `CircuitProtectedNode` wrapper
 
-**Phase 4: Integration & Advanced Features**
+**Specialized Nodes:**
+  - [ ] Create `TitleGenerationNode` from server logic
+  - [ ] Build `IntentClassifierAgent` with structured output schema
+  - [ ] Implement `DynamicToolGenerationNode` with registry integration
 
-  - [ ] Update the HTTP completion handler to use `ComposerService.compose_workflow()` and consume the `astream_events` stream.
-  - [ ] Migrate any leftover orchestration (e.g., title generation) into dedicated nodes.
-  - [ ] Implement DynamicToolGenerationNode logic for intent-based tool creation with semantic search.
-  - [ ] Add circuit breaker protection around nodes.
-  - [ ] Implement multi-agent workflows using LangGraph `Command` objects to switch between agents.
-  - [ ] (Optional) Integrate `langchain-mcp-adapters` for standardized tool consumption.
+**Graph Builder:**
+  - [ ] Implement `GraphBuilder.build_chat_workflow()`
+  - [ ] Create workflow caching with TTL
+  - [ ] Add conditional routing for RAG depth selection
 
-**Phase 5: Testing and Documentation**
+#### Phase 3: Streaming and Advanced Features (Week 5-6)
 
-  - [ ] Write unit tests for all new nodes and registry logic (mock LLMs for intent and tool generation).
-  - [ ] Create integration tests: simulate a streaming chat flow and verify `on_chat_model_stream` events.
-  - [ ] Performance test the search workflow with different `search_depth` values to validate context trimming.
-  - [ ] Update documentation: explain new configuration fields, streaming behavior, and the tool generation process.
-  - [ ] Extensive unit/integration/performance testing; Documentation; Feature flag rollout.
+**Streaming Implementation:**
+  - [ ] Configure nodes for appropriate streaming modes
+  - [ ] Implement `StreamProcessor` for event routing
+  - [ ] Create WebSocket/SSE endpoints in `composer/streaming/api.py`
+  - [ ] Test selective streaming with token chunks and state updates
 
-**Phase 6: Production Deployment**
+**Advanced Workflows:**
+  - [ ] Implement research workflow with configurable depth
+  - [ ] Build multi-agent orchestration with `Command` primitives
+  - [ ] Add intent-driven tool selection and composition
+  - [ ] Implement semantic search for tool discovery
 
-  - [ ] Production deployment and monitoring.
-  - [ ] Archival of legacy components.
+#### Phase 4: Integration and Migration (Week 7-8)
 
-### 5.3 Final Integrity Check: Compliance with LangGraph V1 Concepts
+**Server Integration:**
+  - [ ] Update `inference/server/handlers/completion.py` to use ComposerService
+  - [ ] Replace manual orchestration in `ConversationContext`
+  - [ ] Migrate RAG operations from server to composer nodes
+  - [ ] Update streaming endpoints to consume composer events
+
+**Legacy Migration:**
+  - [ ] Feature flag existing vs. new workflow systems
+  - [ ] Gradual migration of conversation types to composer
+  - [ ] Deprecate old pipeline orchestration logic
+  - [ ] Remove manual tool generation from server
+
+#### Phase 5: Testing and Validation (Week 9-10)
+
+**Comprehensive Testing:**
+  - [ ] Unit tests for all nodes with mocked dependencies
+  - [ ] Integration tests for complete workflows
+  - [ ] Performance tests for caching and context management
+  - [ ] Streaming tests for event ordering and delivery
+  - [ ] Load tests for concurrent workflow execution
+
+**Documentation:**
+  - [ ] API documentation for composer service
+  - [ ] Configuration reference with environment variables
+  - [ ] Migration guide for existing functionality
+  - [ ] Troubleshooting guide for common issues
+
+#### Phase 6: Production Deployment (Week 11-12)
+
+**Deployment Preparation:**
+  - [ ] Production configuration with environment variables
+  - [ ] Monitoring dashboards for composer metrics
+  - [ ] Alerting rules for circuit breaker states
+  - [ ] Performance baselines and SLA definitions
+
+**Rollout Strategy:**
+  - [ ] Canary deployment with feature flags
+  - [ ] Gradual traffic migration (10% → 50% → 100%)
+  - [ ] Performance monitoring and rollback procedures
+  - [ ] Legacy system deprecation timeline
+  - [ ] Post-migration cleanup and optimization
+
+### 5.3 Testing Requirements
+
+#### 5.3.1 Unit Tests
+
+```python
+# tests/composer/test_nodes.py
+async def test_pipeline_node():
+    """Test pipeline node execution"""
+    node = PipelineNode(mock_factory, lambda s: s.profile)
+    state = WorkflowState(messages=[test_message])
+    result = await node(state)
+    assert len(result.messages) == 2
+
+# tests/composer/test_workflows.py
+async def test_chat_workflow():
+    """Test complete chat workflow"""
+    workflow = build_chat_workflow(ChatConfig())
+    result = await workflow.ainvoke(initial_state)
+    assert result.messages[-1].role == MessageRole.ASSISTANT
+
+# tests/composer/test_tool_registry.py
+async def test_semantic_tool_search():
+    """Test tool discovery via semantic similarity"""
+    registry = ToolRegistry()
+    spec = ToolSpec(description="fetch weather data")
+    tool = await registry.find_or_create_tool(spec)
+    assert tool.name == "weather_tool"
+```
+
+#### 5.3.2 Integration Tests
+
+```python
+# tests/integration/test_composer_integration.py
+async def test_end_to_end_chat():
+    """Test full chat flow through composer"""
+    composer = ComposerService()
+    context = create_test_context()
+    
+    workflow = await composer.compose_workflow(
+        context,
+        WorkflowType.CHAT
+    )
+    
+    result = await workflow.ainvoke({
+        "messages": [test_message]
+    })
+    
+    assert result["messages"][-1].role == MessageRole.ASSISTANT
+
+# tests/integration/test_streaming.py
+async def test_selective_streaming():
+    """Verify streaming modes work correctly"""
+    workflow = build_chat_workflow(ChatConfig(stream=True))
+    events = []
+    
+    async for event in workflow.astream_events(initial_state, version="v2"):
+        events.append(event)
+    
+    # Verify token chunks from chat node
+    token_events = [e for e in events if e["event"] == "on_chat_model_stream"]
+    assert len(token_events) > 0
+    
+    # Verify state updates from other nodes
+    update_events = [e for e in events if e["event"] == "on_chain_end"]
+    assert len(update_events) > 0
+```
+
+#### 5.3.3 Performance Tests
+
+```python
+# tests/performance/test_workflow_performance.py
+async def test_workflow_caching():
+    """Test that workflows are properly cached"""
+    composer = ComposerService()
+    context = create_test_context()
+    
+    start_time = time.time()
+    workflow1 = await composer.compose_workflow(context, WorkflowType.CHAT)
+    first_creation_time = time.time() - start_time
+    
+    start_time = time.time()
+    workflow2 = await composer.compose_workflow(context, WorkflowType.CHAT)
+    second_creation_time = time.time() - start_time
+    
+    # Second call should be much faster (cached)
+    assert second_creation_time < first_creation_time / 10
+    assert workflow1 is workflow2
+
+async def test_rag_depth_performance():
+    """Test RAG performance with different depths"""
+    shallow_config = ResearchConfig(search_depth="SHALLOW", max_sources=3)
+    deep_config = ResearchConfig(search_depth="DEEP", max_sources=10)
+    
+    shallow_workflow = build_research_workflow(shallow_config)
+    deep_workflow = build_research_workflow(deep_config)
+    
+    # Shallow should be faster
+    shallow_time = await measure_execution_time(shallow_workflow, test_state)
+    deep_time = await measure_execution_time(deep_workflow, test_state)
+    
+    assert shallow_time < deep_time
+    assert shallow_time < 5.0  # Under 5 seconds
+```
+
+### 5.4 Error Handling and Circuit Breaker Implementation
+
+```python
+# composer/core/errors.py
+class ComposerError(Exception):
+    """Base exception for composer errors"""
+    pass
+
+class WorkflowConstructionError(ComposerError):
+    """Failed to construct workflow"""
+    pass
+
+class NodeExecutionError(ComposerError):
+    """Node execution failed"""
+    def __init__(self, node_name: str, original_error: Exception):
+        self.node_name = node_name
+        self.original_error = original_error
+        super().__init__(f"Node '{node_name}' failed: {original_error}")
+
+class ToolGenerationError(ComposerError):
+    """Failed to generate dynamic tool"""
+    pass
+
+class CircuitOpenError(ComposerError):
+    """Circuit breaker is open"""
+    pass
+
+# composer/nodes/protected.py
+class CircuitProtectedNode:
+    def __init__(self, node, circuit_config: CircuitBreakerConfig):
+        self.node = node
+        self.circuit_config = circuit_config
+        self.failure_count = 0
+        self.last_failure_time = None
+    
+    async def __call__(self, state: WorkflowState) -> WorkflowState:
+        if self._is_circuit_open():
+            raise CircuitOpenError("Circuit breaker is open")
+        
+        try:
+            result = await asyncio.wait_for(
+                self.node(state),
+                timeout=self.circuit_config.base_timeout
+            )
+            self._on_success()
+            return result
+        except Exception as e:
+            self._on_failure()
+            raise NodeExecutionError(self.node.__class__.__name__, e)
+    
+    def _is_circuit_open(self) -> bool:
+        if self.failure_count < self.circuit_config.failure_threshold:
+            return False
+        
+        if self.last_failure_time is None:
+            return False
+        
+        time_since_failure = time.time() - self.last_failure_time
+        return time_since_failure < self.circuit_config.recovery_timeout
+    
+    def _on_success(self):
+        self.failure_count = 0
+        self.last_failure_time = None
+    
+    def _on_failure(self):
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+```
+
+### 5.5 Monitoring and Observability
+
+```python
+# composer/monitoring/metrics.py
+from prometheus_client import Histogram, Counter, Gauge
+
+class ComposerMetrics:
+    workflow_creation_time = Histogram('composer_workflow_creation_seconds')
+    node_execution_time = Histogram('composer_node_execution_seconds', ['node_type'])
+    tool_generation_count = Counter('composer_tool_generation_total', ['tool_type'])
+    workflow_cache_hits = Counter('composer_cache_hits_total')
+    workflow_cache_misses = Counter('composer_cache_misses_total')
+    active_workflows = Gauge('composer_active_workflows')
+    streaming_events_total = Counter('composer_streaming_events_total', ['event_type'])
+
+# composer/monitoring/logging.py
+import structlog
+
+class WorkflowLogger:
+    def __init__(self):
+        self.logger = structlog.get_logger("composer")
+    
+    def log_workflow_start(self, workflow_id: str, workflow_type: str, user_id: str):
+        self.logger.info(
+            "Workflow started",
+            workflow_id=workflow_id,
+            workflow_type=workflow_type,
+            user_id=user_id,
+            timestamp=datetime.now().isoformat()
+        )
+    
+    def log_node_execution(self, node_name: str, duration: float, success: bool):
+        self.logger.debug(
+            "Node executed",
+            node_name=node_name,
+            duration_ms=duration * 1000,
+            success=success
+        )
+    
+    def log_tool_generation(self, tool_spec: str, method: str, success: bool):
+        self.logger.info(
+            "Tool generation",
+            tool_spec=tool_spec,
+            method=method,  # "existing", "modified", "new"
+            success=success
+        )
+```
+
+### 5.6 Configuration Management
+
+```python
+# composer/config.py
+from dataclasses import dataclass, field
+from typing import Optional
+import os
+from schemas.circuit_breaker_config import CircuitBreakerConfig
+from schemas.memory_config import MemoryConfig
+
+@dataclass
+class ComposerConfig:
+    # Workflow settings
+    enable_workflow_caching: bool = True
+    workflow_cache_ttl: int = 3600
+    max_parallel_tools: int = 5
+    enable_multi_agent: bool = False
+    default_timeout: float = 60.0
+    
+    # Memory and performance
+    max_context_length: int = 128000
+    context_trim_threshold: float = 0.8
+    
+    # Tool settings
+    tool_similarity_threshold: float = 0.9
+    tool_modification_threshold: float = 0.6
+    enable_tool_generation: bool = True
+    
+    # Circuit breaker
+    circuit_breaker: CircuitBreakerConfig = field(default_factory=CircuitBreakerConfig)
+    
+    # Streaming
+    enable_streaming: bool = True
+    stream_buffer_size: int = 1024
+    
+    @classmethod
+    def from_env(cls) -> 'ComposerConfig':
+        """Load configuration from environment variables"""
+        return cls(
+            enable_workflow_caching=os.getenv('COMPOSER_ENABLE_CACHE', 'true').lower() == 'true',
+            workflow_cache_ttl=int(os.getenv('COMPOSER_CACHE_TTL', '3600')),
+            max_parallel_tools=int(os.getenv('COMPOSER_MAX_PARALLEL_TOOLS', '5')),
+            enable_multi_agent=os.getenv('COMPOSER_ENABLE_MULTI_AGENT', 'false').lower() == 'true',
+            default_timeout=float(os.getenv('COMPOSER_DEFAULT_TIMEOUT', '60.0')),
+            max_context_length=int(os.getenv('COMPOSER_MAX_CONTEXT_LENGTH', '128000')),
+            tool_similarity_threshold=float(os.getenv('COMPOSER_TOOL_SIMILARITY_THRESHOLD', '0.9')),
+            enable_tool_generation=os.getenv('COMPOSER_ENABLE_TOOL_GENERATION', 'true').lower() == 'true',
+            enable_streaming=os.getenv('COMPOSER_ENABLE_STREAMING', 'true').lower() == 'true'
+        )
+```
+
+### 5.7 Schema Integration and Code Generation
+
+Following the existing codebase pattern of YAML-driven development:
+
+#### Required Schema Definitions
+
+Add to `schemas/` directory:
+
+```yaml
+# schemas/composer_config.yaml
+$schema: http://json-schema.org/draft-07/schema#
+title: ComposerConfig
+description: Composer service configuration
+type: object
+properties:
+  enable_workflow_caching:
+    type: boolean
+    default: true
+  workflow_cache_ttl:
+    type: integer
+    default: 3600
+  max_parallel_tools:
+    type: integer
+    default: 5
+  enable_multi_agent:
+    type: boolean
+    default: false
+  circuit_breaker:
+    $ref: circuit_breaker_config.yaml
+
+# schemas/workflow_state.yaml  
+$schema: http://json-schema.org/draft-07/schema#
+title: WorkflowState
+description: LangGraph workflow state schema
+type: object
+properties:
+  messages:
+    type: array
+    items:
+      $ref: lang_chain_message.yaml
+  intent_classification:
+    $ref: intent_analysis.yaml
+  required_tools:
+    type: array
+    items:
+      $ref: available_tool.yaml
+  search_results:
+    type: string
+  rag_depth_config:
+    type: string
+    enum: ["SHALLOW", "DEEP"]
+  progress_updates:
+    type: array
+    items:
+      type: string
+
+# schemas/composer_request.yaml
+$schema: http://json-schema.org/draft-07/schema#  
+title: ComposerRequest
+description: Request to compose workflow
+type: object
+properties:
+  conversation_ctx:
+    $ref: conversation_ctx.yaml
+  workflow_type:
+    type: string
+    enum: ["CHAT", "RESEARCH", "MULTI_AGENT", "CREATIVE"]
+  config_overrides:
+    type: object
+required:
+  - conversation_ctx
+  - workflow_type
+```
+
+#### Code Generation Integration
+
+Update `regenerate_models.sh` to include composer schemas:
+
+```bash
+# Add to regenerate_models.sh
+echo "Generating composer models..."
+datamodel-codegen \
+    --input schemas/composer_config.yaml \
+    --output composer/schemas/composer_config.py
+
+datamodel-codegen \
+    --input schemas/workflow_state.yaml \
+    --output composer/schemas/workflow_state.py
+```
+
+### 5.8 Final Integrity Check: Compliance with LangGraph V1 Concepts
 
 The proposed architecture fully complies with and leverages the core capabilities of the LangGraph V1 framework.
 
 1.  **State Management:** The defined `GraphState` correctly employs reducer functions to manage complex state fields, such as concatenating `messages`, ensuring conversation context is consistently maintained across all nodes.
 2.  **Execution Control:** Conditional execution, achieved by reading `rag_depth_config` and `required_tools` from the state, is implemented through LangGraph's conditional edges, granting precise, programmatic control over the workflow.
 3.  **Streaming Paradigm:** The architecture correctly mandates the use of distinct streaming modes—`messages` for token output and `updates`/`custom` for state feedback—to deliver the selective streaming functionality required for optimal user experience and operational transparency.
+4.  **Error Resilience:** Circuit breaker patterns and comprehensive error handling ensure system stability under failure conditions.
+5.  **Observability:** Comprehensive metrics and structured logging provide full visibility into system performance and behavior.
+6.  **Schema Compliance:** Integration with existing YAML schema patterns ensures type safety and consistency across services.
 
 -----
 
-## 6\. Success Criteria
+## 6\. Success Criteria and Validation
 
-  - **Code Quality:** Reduce cyclomatic complexity by 40%; ensure modularity and clarity.
-  - **Performance:** Achieve \<100ms workflow creation with cache; \<5ms node execution overhead.
-  - **Maintainability:** Enable rapid new workflow creation (\<1 hour); tool addition without server code modification.
-  - **Reliability:** 99.9% uptime; graceful failure handling and recovery.
-  - **Backward Compatibility:** Support legacy APIs during migration with feature flags.
+### 6.1 Performance Metrics
+  - **Workflow Creation:** <100ms with cache hits, <2s for cache misses
+  - **Node Execution Overhead:** <5ms per node transition
+  - **Streaming Latency:** <50ms for first token, <10ms between tokens
+  - **Memory Usage:** 20% reduction through context management and workflow caching
+  - **Tool Generation:** <3s for new tool creation, <500ms for existing tool retrieval
+
+### 6.2 Code Quality Standards
+  - **Cyclomatic Complexity:** Reduce by 40% through modular node architecture
+  - **Test Coverage:** >90% for all composer modules
+  - **Type Safety:** 100% type hints with Pydantic model validation
+  - **Documentation:** API documentation for all public interfaces
+  - **Linting:** Pass all pyright, pylint, and black formatting checks
+
+### 6.3 Maintainability Goals
+  - **Workflow Creation:** New workflow types implementable in <1 hour
+  - **Tool Addition:** Static tools added without server code changes
+  - **Schema Evolution:** Backward-compatible schema updates via YAML versioning
+  - **Configuration Management:** All settings configurable via environment variables
+  - **Deployment:** Zero-downtime deployments with feature flags
+
+### 6.4 Reliability Requirements
+  - **Uptime:** 99.9% availability with graceful degradation
+  - **Error Recovery:** Circuit breakers prevent cascading failures
+  - **State Persistence:** Durable execution survives client disconnections
+  - **Monitoring:** Full observability with metrics, logging, and alerting
+  - **Testing:** Comprehensive unit, integration, and performance test suites
+
+### 6.5 Codebase Integration
+  - **Schema Compliance:** Use existing YAML schema generation patterns
+  - **Configuration:** Follow inference service environment variable patterns
+  - **Logging:** Integrate with existing structured logging framework
+  - **Database:** Leverage existing PostgreSQL connection patterns
+  - **Authentication:** Integrate with existing Auth0/JWT authentication
+  - **API Versioning:** Follow existing API versioning conventions
 
 -----
 
-## 7\. References
+## 7\. Codebase Integration Patterns
 
-  * LangChain and LangGraph Enter v1.0 Alpha: A New Era for Agentic AI Development
-  * LangChain & LangGraph 1.0 alpha releases
-  * LangGraph - LangChain
-  * How to stream state updates of your graph (LangGraphJS Docs)
-  * What's possible with LangGraph streaming - Overview (LangGraph Docs)
-  * Streaming - LangChain Python Documentation
-  * Adaptive RAG with local LLMs (LangGraphJS Tutorials)
-  * Dynamic tool calling in LangGraph agents - LangChain Changelog
-  * How to chain runnables | LangChain Python Documentation
-  * How to create tools | LangChain Python Documentation
-  * Tools | LangChain Concepts
-  * LangChain & LangGraph Official Tutorials and API references: [https://github.com/langchain-ai/langchain](https://github.com/langchain-ai/langchain)
-  * LangGraph v1.0 Alpha Documentation: [https://langchain.ai/docs/langgraph/v1](https://langchain.ai/docs/langgraph/v1)
-  * LangGraph Streaming Event Specification: [https://langchain.github.io/langgraph/posts/streaming](https://langchain.github.io/langgraph/posts/streaming)
-  * LangChain Multi-Agent Cookbook: [https://docs.langchain.com/docs/multiagent](https://docs.langchain.com/docs/multiagent)
-  * Adaptive RAG Design Patterns: [https://langchain.ai/blog/adaptive\_rag/](https://langchain.ai/blog/adaptive_rag/)
-  * Dynamic Tool Generation Concepts: [https://langchain.ai/blog/dynamic\_tools](https://langchain.ai/blog/dynamic_tools)
-  * Model Context Protocol (MCP) Overview: [https://github.com/langchain-ai/mcp/](https://github.com/langchain-ai/mcp/)
+### 7.1 Existing Infrastructure Integration
+
+**Database Integration:**
+- Use existing PostgreSQL connection patterns from `inference/server/config.py`
+- Leverage existing database schema in `inference/server/db/sql/`
+- Follow connection pooling patterns from server service
+
+**Configuration Management:**
+- Follow environment variable patterns from `schemas/config.yaml`
+- Use existing configuration validation with Pydantic models
+- Integrate with current API versioning system
+
+**Authentication and Authorization:**
+- Use existing Auth0/JWT patterns from `inference/server/auth.py`
+- Maintain current user management and session handling
+- Preserve existing API security patterns
+
+**Service Communication:**
+- Follow existing FastAPI patterns from `inference/server/app.py`
+- Use current middleware and error handling patterns
+- Maintain API versioning conventions
+
+### 7.2 Development Workflow Integration
+
+**Code Generation:**
+- Integrate composer schemas into `./regenerate_models.sh`
+- Follow existing YAML schema patterns for type safety
+- Use current Python and TypeScript model generation
+
+**Testing Patterns:**
+- Follow existing test structure in `inference/test/`
+- Use current pytest configuration and fixtures  
+- Maintain existing test database patterns
+
+**Deployment Integration:**
+- Follow Kubernetes deployment patterns from `inference/k8s/`
+- Use existing Docker build patterns from `inference/Dockerfile`
+- Integrate with current CI/CD pipeline
+
+**Monitoring Integration:**
+- Use existing structured logging patterns
+- Integrate with current Prometheus metrics collection
+- Follow established alerting and dashboard patterns
+
+## 8\. References
+
+### 8.1 LangGraph and LangChain Documentation
+- LangChain and LangGraph Enter v1.0 Alpha: A New Era for Agentic AI Development
+- LangChain & LangGraph 1.0 alpha releases
+- LangGraph - LangChain
+- How to stream state updates of your graph (LangGraphJS Docs)
+- What's possible with LangGraph streaming - Overview (LangGraph Docs)
+- Streaming - LangChain Python Documentation
+- Adaptive RAG with local LLMs (LangGraphJS Tutorials)
+- Dynamic tool calling in LangGraph agents - LangChain Changelog
+- How to chain runnables | LangChain Python Documentation
+- How to create tools | LangChain Python Documentation
+- Tools | LangChain Concepts
+
+### 8.2 Project-Specific References
+- LLM ML Lab Project Architecture (see `.github/copilot-instructions.md`)
+- Context Extension System Documentation (`docs/context_extension.md`)
+- GPU Configuration Guide (`docs/gpu_configuration.md`)
+- Pipeline Implementation Guide (`docs/PIPELINE_IMPLEMENTATION_GUIDE.md`)
+- Pipeline API Reference (`docs/PIPELINE_API_REFERENCE.md`)
+- Existing Schema Definitions (`schemas/*.yaml`)
+- Current Service Architecture (`inference/server/`, `inference/runner/`)
+
+### 8.3 External Framework References
+- LangChain & LangGraph Official Tutorials: [https://github.com/langchain-ai/langchain](https://github.com/langchain-ai/langchain)
+- LangGraph v1.0 Alpha Documentation: [https://langchain.ai/docs/langgraph/v1](https://langchain.ai/docs/langgraph/v1)
+- LangGraph Streaming Event Specification: [https://langchain.github.io/langgraph/posts/streaming](https://langchain.github.io/langgraph/posts/streaming)
+- LangChain Multi-Agent Cookbook: [https://docs.langchain.com/docs/multiagent](https://docs.langchain.com/docs/multiagent)
+- Adaptive RAG Design Patterns: [https://langchain.ai/blog/adaptive_rag/](https://langchain.ai/blog/adaptive_rag/)
+- Dynamic Tool Generation Concepts: [https://langchain.ai/blog/dynamic_tools](https://langchain.ai/blog/dynamic_tools)
+- Model Context Protocol (MCP) Overview: [https://github.com/langchain-ai/mcp/](https://github.com/langchain-ai/mcp/)

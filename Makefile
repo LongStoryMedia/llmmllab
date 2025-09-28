@@ -70,5 +70,8 @@ validate:
 	fi
 	@echo "Validation complete!"
 
+e2e-%:
+	kubectl exec -it -n ollama $$(kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}') -- /app/v.sh server python -m debug.test_real_end_to_end_pipeline $*
+
 .PHONY: inference maistro ui validate
 
