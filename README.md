@@ -144,6 +144,10 @@ The platform includes a sophisticated Context Extension System (documented in [c
 - **External Search**: Incorporates real-time web knowledge
 - **Hierarchical Summarization**: Compresses conversation context intelligently
 
+## Release Notes
+
+Version history and release notes are maintained in [docs/releases/](docs/releases/). See the [CHANGELOG](docs/releases/CHANGELOG.md) for a detailed history of changes across versions.
+
 ## License
 
 [MIT License](LICENSE)
