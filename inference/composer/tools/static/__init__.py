@@ -1,0 +1,1 @@
+"""Static pre-defined tools."""
