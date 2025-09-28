@@ -150,47 +150,20 @@ class MessageStorage:
             return messages
 
     async def delete_message(self, message_id: int) -> None:
-        # Get conversation_id directly from database without full message validation
-        conversation_id = None
-        try:
-            async with self.typed_pool.acquire() as conn:
-                row = await conn.fetchrow(
-                    "SELECT conversation_id FROM messages WHERE id = $1", message_id
-                )
-                if row:
-                    conversation_id = row["conversation_id"]
-                    # Delete the message
-                    await conn.execute(
-                        self.get_query("message.delete_message"), message_id
-                    )
-                else:
-                    logger.warning(
-                        f"Message {message_id} not found and could not be deleted"
-                    )
-                    return
+        # Get the message to find its conversation_id
+        message = await self.get_message(message_id)
+        if not message:
+            logger.warning(f"Message {message_id} not found and could not be deleted")
+            return
 
             # Invalidate message cache
             cache_storage.invalidate_message_cache(message_id)
 
-            # Invalidate conversation messages list cache
-            if conversation_id:
-                cache_storage.invalidate_conversation_messages_cache(conversation_id)
-
-            logger.info(f"   🗑️  Deleted message: {message_id}")
-
-        except Exception as e:
-            # If we can't delete the message due to validation errors, just log and continue
-            # since we're in cleanup mode anyway
-            logger.warning(f"   ⚠️  Could not delete message {message_id} due to: {e}")
-            # Still try to invalidate cache
-            try:
-                cache_storage.invalidate_message_cache(message_id)
-                if conversation_id:
-                    cache_storage.invalidate_conversation_messages_cache(
-                        conversation_id
-                    )
-            except Exception:
-                pass
+        # Invalidate conversation messages list cache
+        if message.conversation_id:
+            cache_storage.invalidate_conversation_messages_cache(
+                message.conversation_id
+            )
 
     async def _build_messages(
         self, conversation_id: int, message_dicts: List[dict], conn: TypedConnection
