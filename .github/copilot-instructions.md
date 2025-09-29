@@ -394,6 +394,12 @@ DO NOT ADD DOCUMENTATION FOR FIXES, CHANGES, CLEANUPS, OR TRANSFORMATIONS. ONLY 
 - **Architecture Description**: Document current system architecture, capabilities, and design decisions
 - **Feature Documentation**: Only document completed, production-ready features and their usage
 
+**Code Replacement Policy:**
+- **Remove and Replace**: When fixing architectural violations or major issues, remove the problematic file completely and replace with clean implementation
+- **No Deprecation Warnings**: Don't add deprecation notices or warnings - simply remove and replace
+- **Clean Slate**: New implementations should not reference or mention what they replaced
+- **Direct Replacement**: Use the same filename when replacing functionality to minimize import disruption
+
 ## Testing Strategy
 
 ### Unit Tests (`inference/test/`)
