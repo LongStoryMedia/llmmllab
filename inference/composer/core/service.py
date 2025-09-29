@@ -14,6 +14,7 @@ from composer.graph.builder import GraphBuilder
 from composer.tools.registry import ToolRegistry
 from composer.graph.cache import WorkflowCache
 from composer.agents.intent_classifier import IntentClassifierAgent
+from composer.monitoring.logging import composer_logger
 from composer.config import config
 
 

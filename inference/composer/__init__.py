@@ -103,6 +103,8 @@ async def execute_workflow(
 
 def get_composer_config():
     """Get current composer configuration."""
+    if _composer_service is None:
+        raise RuntimeError("Composer service not initialized. Call initialize_composer() first.")
     return {
         "service": "composer",
         "caching_enabled": config.default_workflow.enable_workflow_caching,

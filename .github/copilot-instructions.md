@@ -317,6 +317,23 @@ kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh server python -m debug.test_r
 
 DO NOT ADD DOCUMENTATION FOR FIXES. ONLY DOCUMENT FULLY IMPLEMENTED FEATURES, AND ALWAYS IN THE `docs/` FOLDER. ALWAYS LINK TO THE DOCS FROM THE README IF IT'S IMPORTANT.
 
-MANUAL VERIFICATION TESTS MUST BE IN THE `inference/debug` FOLDER.
-UNIT TESTS MUST BE IN THE `inference/test` FOLDER.
+## Testing Strategy
+
+### Unit Tests (`inference/test/`)
+Use for **automated testing** of interfaces, components, and business logic:
+- **When**: Testing public APIs, service interfaces, data models, utility functions
+- **Characteristics**: Fast, isolated, mockable dependencies, no external services
+- **Examples**: Functional interfaces, configuration parsing, data validation, error handling
+- **Framework**: pytest with mocking for external dependencies
+- **Execution**: `python -m pytest test/` or individual test files
+
+### Manual Verification Tests (`inference/debug/`)
+Use for **manual validation** and **integration testing** requiring real services:
+- **When**: End-to-end workflows, GPU operations, database connections, model execution
+- **Characteristics**: Requires real infrastructure, longer execution time, manual inspection
+- **Examples**: Model pipeline testing, database queries, GPU memory validation, service integration
+- **Framework**: Standalone Python scripts with detailed output
+- **Execution**: Direct script execution in pods or local environment with real services
+
+**Rule**: If testing an **interface** (API, service boundary, public functions), write **unit tests**. If testing **integration** or requiring **real infrastructure**, use **debug scripts**.
 
