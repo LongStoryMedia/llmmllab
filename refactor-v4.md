@@ -195,7 +195,7 @@ class ComposerService:
 
 **Highlights:**  
 
-- Uses a **LangGraph CompiledGraph** returned to the caller, which supports both streaming and batch execution.  
+- Uses a **LangGraph CompiledStateGraph** returned to the caller, which supports both streaming and batch execution.  
 - **Intent Analysis:** Before building a workflow, an LLM-based intent analyzer is invoked. The analysis guides tool selection and workflow type.  
 - **Caching:** Workflows are cached by (user_id, workflow_type, toolset) signature.
 

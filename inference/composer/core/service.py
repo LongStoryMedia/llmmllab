@@ -8,6 +8,8 @@ import logging
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
+from langgraph.graph.state import CompiledStateGraph
+
 from models.conversation_ctx import ConversationCtx
 from composer.graph.state import WorkflowState, ChatWorkflowState, ResearchWorkflowState
 from composer.graph.builder import GraphBuilder
@@ -59,7 +61,7 @@ class ComposerService:
             "ComposerService initialized",
             extra={
                 "graph_builder": "ready",
-                "tool_registry": "ready", 
+                "tool_registry": "ready",
                 "intent_classifier": "ready",
                 "workflow_caches": "ready",
             },
@@ -70,7 +72,7 @@ class ComposerService:
         conversation_ctx: ConversationCtx,
         workflow_type: str,
         config_overrides: Optional[Dict[str, Any]] = None,
-    ) -> "CompiledGraph":
+    ) -> "CompiledStateGraph":
         """
         Construct or retrieve a compiled graph for the given conversation.
 
@@ -93,13 +95,15 @@ class ComposerService:
 
             # 4. Use per-user cache if enabled
             user_cache = None
-            if (conversation_ctx.user_config and 
-                conversation_ctx.user_config.workflow.enable_workflow_caching):
+            if (
+                conversation_ctx.user_config
+                and conversation_ctx.user_config.workflow.enable_workflow_caching
+            ):
                 user_id = conversation_ctx.user_config.user_id
                 if user_id not in self.workflow_caches:
                     self.workflow_caches[user_id] = WorkflowCache()
                 user_cache = self.workflow_caches[user_id]
-                
+
                 cache_key = user_cache.get_cache_key(
                     conversation_ctx.user_config, workflow_type, tools
                 )
@@ -117,9 +121,7 @@ class ComposerService:
             )
 
             if user_cache:
-                workflow = await user_cache.get_or_create(
-                    cache_key, builder_fn
-                )
+                workflow = await user_cache.get_or_create(cache_key, builder_fn)
             else:
                 workflow = await builder_fn()
 
@@ -191,8 +193,10 @@ class ComposerService:
         """Merge user configuration with workflow-specific overrides."""
         # User config always has workflow and tool configs with proper defaults from storage layer
         if not conversation_ctx.user_config:
-            raise ValueError("ConversationCtx must have user_config with workflow and tool configs")
-        
+            raise ValueError(
+                "ConversationCtx must have user_config with workflow and tool configs"
+            )
+
         workflow_config = conversation_ctx.user_config.workflow
         tool_config = conversation_ctx.user_config.tool
 
@@ -267,8 +271,16 @@ class ComposerService:
                 "created_at": asyncio.get_event_loop().time(),
                 "composer_version": "0.1.0",
                 # Include user workflow preferences in metadata
-                "streaming_enabled": conversation_ctx.user_config.workflow.enable_streaming if conversation_ctx.user_config else True,
-                "workflow_timeout": conversation_ctx.user_config.workflow.default_timeout if conversation_ctx.user_config else 60.0,
+                "streaming_enabled": (
+                    conversation_ctx.user_config.workflow.enable_streaming
+                    if conversation_ctx.user_config
+                    else True
+                ),
+                "workflow_timeout": (
+                    conversation_ctx.user_config.workflow.default_timeout
+                    if conversation_ctx.user_config
+                    else 60.0
+                ),
             },
         )
 
@@ -280,7 +292,7 @@ class ComposerService:
 
     async def execute_workflow(
         self,
-        workflow: "CompiledGraph",
+        workflow: CompiledStateGraph,
         initial_state: WorkflowState,
         stream: bool = True,
     ):

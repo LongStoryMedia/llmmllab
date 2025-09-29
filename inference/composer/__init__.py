@@ -52,7 +52,7 @@ async def compose_workflow(
         config_overrides: Optional configuration overrides
         
     Returns:
-        CompiledGraph: Ready to execute LangGraph workflow
+        CompiledStateGraph: Ready to execute LangGraph workflow
         
     Raises:
         RuntimeError: If composer service not initialized
@@ -89,7 +89,7 @@ async def execute_workflow(
     Execute a compiled workflow with the given initial state.
     
     Args:
-        workflow: CompiledGraph from compose_workflow()
+        workflow: CompiledStateGraph from compose_workflow()
         initial_state: WorkflowState from create_initial_state()
         stream: Whether to stream events or return final result
         

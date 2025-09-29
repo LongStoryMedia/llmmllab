@@ -6,17 +6,16 @@ from typing import Dict, Any, List, Optional
 import sys
 sys.path.append('/Users/lons7862/workspace/llmmllab/inference')
 
+from langgraph.graph.state import CompiledStateGraph
 from models.conversation_ctx import ConversationCtx
 from models.available_tool import AvailableTool
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import WorkflowConstructionError
 
 
-class CompiledGraph:
-    """
-    Placeholder for LangGraph compiled graph.
-    In production, this would be a proper LangGraph StateGraph.compile() result.
-    """
+# Temporary placeholder until proper LangGraph implementation
+class _PlaceholderCompiledGraph:
+    """Temporary placeholder that mimics CompiledStateGraph interface."""
     
     def __init__(self, workflow_type: str, nodes: List[str], config: Dict[str, Any]):
         self.workflow_type = workflow_type
@@ -24,27 +23,12 @@ class CompiledGraph:
         self.config = config
     
     async def ainvoke(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Invoke the workflow with given state."""
-        # Placeholder implementation
-        composer_logger.logger.info(
-            "Executing workflow", 
-            extra={
-                "workflow_type": self.workflow_type,
-                "node_count": len(self.nodes)
-            }
-        )
+        """Placeholder for workflow execution."""
         return state
     
     async def astream_events(self, state: Dict[str, Any], version: str = "v2"):
-        """Stream workflow execution events."""
-        # Placeholder implementation for streaming
-        yield {"event": "workflow_start", "data": {"workflow_type": self.workflow_type}}
-        
-        for node in self.nodes:
-            yield {"event": "node_start", "data": {"node": node}}
-            yield {"event": "node_end", "data": {"node": node}}
-        
-        yield {"event": "workflow_end", "data": state}
+        """Placeholder for streaming."""
+        yield {"event": "placeholder", "data": state}
 
 
 class GraphBuilder:
@@ -64,7 +48,7 @@ class GraphBuilder:
         tools: List[AvailableTool],
         config: Dict[str, Any],
         workflow_type: str
-    ) -> CompiledGraph:
+    ) -> CompiledStateGraph:
         """
         Build workflow from context, tools, and configuration.
         
@@ -102,7 +86,7 @@ class GraphBuilder:
         conversation_ctx: ConversationCtx,
         tools: List[AvailableTool],
         config: Dict[str, Any]
-    ) -> CompiledGraph:
+    ) -> CompiledStateGraph:
         """
         Build standard chat workflow with RAG and tool support.
         
@@ -130,7 +114,9 @@ class GraphBuilder:
             "tools": [tool.dict() for tool in tools]
         }
         
-        compiled_graph = CompiledGraph("CHAT", nodes, workflow_config)
+        # TODO: Replace with actual LangGraph StateGraph construction and compilation
+        # For now, using placeholder - proper implementation would build and compile StateGraph
+        compiled_graph = _PlaceholderCompiledGraph("CHAT", nodes, workflow_config)
         
         composer_logger.logger.info(
             "Built chat workflow",
@@ -141,14 +127,14 @@ class GraphBuilder:
             }
         )
         
-        return compiled_graph
+        return compiled_graph  # type: ignore  # Placeholder until proper LangGraph implementation
     
     async def build_research_workflow(
         self,
         conversation_ctx: ConversationCtx,
         tools: List[AvailableTool],
         config: Dict[str, Any]
-    ) -> CompiledGraph:
+    ) -> CompiledStateGraph:
         """
         Build research workflow with configurable RAG depth.
         
@@ -170,7 +156,8 @@ class GraphBuilder:
             "tools": [tool.dict() for tool in tools]
         }
         
-        compiled_graph = CompiledGraph("RESEARCH", nodes, workflow_config)
+        # TODO: Replace with actual LangGraph StateGraph construction and compilation
+        compiled_graph = _PlaceholderCompiledGraph("RESEARCH", nodes, workflow_config)
         
         composer_logger.logger.info(
             "Built research workflow",
@@ -181,14 +168,14 @@ class GraphBuilder:
             }
         )
         
-        return compiled_graph
+        return compiled_graph  # type: ignore  # Placeholder until proper LangGraph implementation
     
     async def build_multi_agent_workflow(
         self,
         conversation_ctx: ConversationCtx,
         tools: List[AvailableTool],
         config: Dict[str, Any]
-    ) -> CompiledGraph:
+    ) -> CompiledStateGraph:
         """
         Build multi-agent orchestration workflow.
         
@@ -209,7 +196,8 @@ class GraphBuilder:
             "tools": [tool.dict() for tool in tools]
         }
         
-        compiled_graph = CompiledGraph("MULTI_AGENT", nodes, workflow_config)
+        # TODO: Replace with actual LangGraph StateGraph construction and compilation
+        compiled_graph = _PlaceholderCompiledGraph("MULTI_AGENT", nodes, workflow_config)
         
         composer_logger.logger.info(
             "Built multi-agent workflow",
@@ -219,14 +207,14 @@ class GraphBuilder:
             }
         )
         
-        return compiled_graph
+        return compiled_graph  # type: ignore  # Placeholder until proper LangGraph implementation
     
     async def build_creative_workflow(
         self,
         conversation_ctx: ConversationCtx,
         tools: List[AvailableTool],
         config: Dict[str, Any]
-    ) -> CompiledGraph:
+    ) -> CompiledStateGraph:
         """
         Build creative content generation workflow.
         
@@ -246,7 +234,8 @@ class GraphBuilder:
             "tools": [tool.dict() for tool in tools]
         }
         
-        compiled_graph = CompiledGraph("CREATIVE", nodes, workflow_config)
+        # TODO: Replace with actual LangGraph StateGraph construction and compilation
+        compiled_graph = _PlaceholderCompiledGraph("CREATIVE", nodes, workflow_config)
         
         composer_logger.logger.info(
             "Built creative workflow",
@@ -257,4 +246,4 @@ class GraphBuilder:
             }
         )
         
-        return compiled_graph
+        return compiled_graph  # type: ignore  # Placeholder until proper LangGraph implementation
