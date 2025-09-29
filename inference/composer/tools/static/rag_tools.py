@@ -1,6 +1,20 @@
 """
 LangChain RAG tools using interface layer functions directly.
-No unnecessary abstractions - uses runner and composer interface functions.
+
+These tools follow the architectural principle of using actual interface 
+boundaries from runner/__init__.py and composer/__init__.py rather than 
+creating unnecessary Protocol abstractions. Each tool receives concrete 
+functions that implement the required functionality.
+
+Tool Dependencies:
+- WebSearchTool: Callable[[str], Awaitable[List[dict]]] search function
+- MemoryRetrievalTool: Callable[[List[List[float]]], Awaitable[List[dict]]] memory function  
+- SummarizationTool: Callable[[str], Awaitable[str]] pipeline function
+
+Usage with Interface Layers:
+- Functions come from runner.run_pipeline, composer.execute_workflow, etc.
+- No custom Protocols or abstractions - direct use of interface boundaries
+- Maintains strict architectural decoupling through functional injection
 """
 
 import asyncio
