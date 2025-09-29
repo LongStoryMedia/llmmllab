@@ -30,6 +30,30 @@ Leveraging LangGraph v1 capabilities, this refactoring will deliver robust, scal
   - **Runner:** Executes LangGraph compiled graphs with pipeline facilities for streaming or batch runs.
   - **Tools:** Includes static tools (search, summarization) and dynamic tools derived from LLM-generated code.
 
+### 1.3 Shared Code Architecture
+
+The inference system implements **shared components** accessible by all services to enable proper decoupling:
+
+- **`models/`**: Generated Pydantic models from YAML schemas serving as shared data contracts
+- **`utils/`**: Shared utility functions (serialization, response handling, hardware management)
+- **`db/`**: Database interfaces, storage classes, and SQL queries (moved from `server/db/`)
+- **`test/`**: Shared test utilities and fixtures for cross-component testing
+- **`debug/`**: Validation and debugging scripts for system verification
+
+**Shared Component Access Rules:**
+- ✅ All services (`server`, `runner`, `composer`) can import from `models.*`, `utils.*`, `db.*`
+- ✅ Services use shared database interfaces (`db.interfaces.*`) and storage classes (`db.*_storage`)
+- ✅ Shared utilities provide common functionality without creating coupling
+- ❌ Shared components cannot import from specific services to maintain decoupling
+- ❌ Business logic must not be placed in shared components
+
+**Architectural Enforcement:**
+- ❌ `composer` cannot import from `server.services.*`, `server.handlers.*`
+- ❌ `server` cannot import from `runner.pipelines.*`, `composer.agent_runtime.*` 
+- ❌ `runner` cannot import from `server.*` or `composer.*`
+- ✅ All cross-service communication uses Protocol-based dependency injection
+- ✅ Database access exclusively through shared `db.*` interfaces
+
 -----
 
 ## 2\. Target Architecture
