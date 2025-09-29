@@ -188,6 +188,12 @@ YAML schemas in `schemas/` define the data contracts. When modifying APIs:
 3. Generate TypeScript types: `schema2code schemas/[name].yaml -l typescript -o ui/src/types/[name].ts`
 4. The schema2code tool automatically updates `__init__.py` with exports
 
+**Schema Design Rules:**
+- **Avoid Duplication**: If an enum or structure is used in multiple schemas, extract it to a separate schema file
+- **Use $ref**: Reference shared schemas using `$ref: "shared_schema.yaml"` instead of copying definitions
+- **Single Source of Truth**: Each data structure should be defined exactly once
+- **Example**: Instead of duplicating computational requirements enum, create `computational_requirement.yaml` and reference it
+
 ### Memory Management
 The platform implements sophisticated memory optimization:
 - Models loaded on-demand and unloaded after use

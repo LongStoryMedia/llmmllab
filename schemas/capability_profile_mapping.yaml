@@ -20,18 +20,7 @@ properties:
   computational_requirements:
     type: array
     items:
-      type: string
-      enum:
-        - high_memory
-        - gpu_acceleration
-        - parallel_processing
-        - real_time_processing
-        - large_data_handling
-        - complex_reasoning
-        - multi_modal_processing
-        - external_api_calls
-        - file_operations
-        - database_operations
+      $ref: "computational_requirement.yaml"
     description: Computational requirements imposed by this capability
 required:
   - capability

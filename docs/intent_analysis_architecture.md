@@ -72,7 +72,24 @@ reasoning:
    - Resource availability (computational requirements)
    - User preferences (from user config)
 
-### 5. Deprecated Schemas
+### 5. Schema Design Principles
+
+#### Shared Schema Pattern
+
+To avoid duplication and ensure consistency, shared enums and structures are extracted to separate schemas:
+
+- **ComputationalRequirement**: Referenced by both `IntentAnalysis` and `CapabilityProfileMapping`
+- **RequiredCapability**: Used across multiple workflow analysis components
+- **ComplexityLevel**: Shared complexity assessment scale
+
+#### Design Rules
+
+- **Avoid Duplication**: Extract shared enums/structures to separate schema files
+- **Use $ref**: Reference shared schemas instead of copying definitions
+- **Single Source of Truth**: Each data structure defined exactly once
+- **Consistent Naming**: Use consistent enum values across related schemas
+
+### 6. Deprecated Schemas
 
 #### Intent (Simple Boolean Classification)
 

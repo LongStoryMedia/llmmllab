@@ -155,6 +155,13 @@ When modifying APIs or data structures:
 3. Test the changes with the generated types
 4. Generated files: `inference/models/*.py`, `ui/src/types/*.ts`
 
+#### Schema Design Rules
+
+- **Avoid Duplication**: If an enum or structure is used in multiple schemas, extract it to a separate schema file
+- **Use $ref**: Reference shared schemas using `$ref: "shared_schema.yaml"` instead of copying definitions
+- **Single Source of Truth**: Each data structure should be defined exactly once
+- **Example**: Instead of duplicating computational requirements enum, create `computational_requirement.yaml` and reference it
+
 For more details on the schema architecture, see [Intent Analysis Architecture](docs/intent_analysis_architecture.md).
 
 ## Architecture

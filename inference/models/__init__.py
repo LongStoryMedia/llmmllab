@@ -13,6 +13,7 @@ try:
     from . import complexity_estimate
     from . import complexity_level
     from . import composer_service_config
+    from . import computational_requirement
     from . import config
     from . import conversation
     from . import conversation_ctx
@@ -122,6 +123,7 @@ __all__ = [
     'complexity_estimate',
     'complexity_level',
     'composer_service_config',
+    'computational_requirement',
     'config',
     'conversation',
     'conversation_ctx',
@@ -227,6 +229,7 @@ __all__ = [
     'ComposerServiceConfig',
     'HealthCheck',
     'RateLimit',
+    'ComputationalRequirement',
     'Config',
     'Conversation',
     'ConversationCtx',
@@ -359,6 +362,9 @@ from .composer_service_config import (
     ComposerServiceConfig,
     HealthCheck,
     RateLimit,
+)
+from .computational_requirement import (
+    ComputationalRequirement,
 )
 from .config import (
     Config,
