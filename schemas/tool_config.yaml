@@ -1,0 +1,63 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ToolConfig
+description: User-configurable tool execution settings
+type: object
+properties:
+  tool_similarity_threshold:
+    type: number
+    description: Similarity threshold for tool selection (0.0-1.0)
+    default: 0.9
+    minimum: 0.1
+    maximum: 1.0
+  tool_modification_threshold:
+    type: number
+    description: Threshold for tool modification/generation (0.0-1.0)
+    default: 0.6
+    minimum: 0.1
+    maximum: 1.0
+  enable_tool_generation:
+    type: boolean
+    description: Enable dynamic tool generation
+    default: true
+  max_tool_retries:
+    type: integer
+    description: Maximum retries for failed tool executions
+    default: 3
+    minimum: 0
+    maximum: 10
+  tool_timeout:
+    type: number
+    description: Default tool execution timeout in seconds
+    default: 30.0
+    minimum: 1.0
+    maximum: 120.0
+  enable_tool_caching:
+    type: boolean
+    description: Enable tool result caching
+    default: true
+  tool_cache_ttl:
+    type: integer
+    description: Tool cache TTL in seconds
+    default: 1800
+    minimum: 60
+    maximum: 7200
+  enable_semantic_search:
+    type: boolean
+    description: Enable semantic tool selection
+    default: true
+  search_top_k:
+    type: integer
+    description: Number of top tools to consider in semantic search
+    default: 10
+    minimum: 1
+    maximum: 50
+required:
+  - tool_similarity_threshold
+  - tool_modification_threshold
+  - enable_tool_generation
+  - max_tool_retries
+  - tool_timeout
+  - enable_tool_caching
+  - tool_cache_ttl
+  - enable_semantic_search
+  - search_top_k

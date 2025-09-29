@@ -46,7 +46,7 @@ class WorkflowCache:
     
     def __init__(self, max_size: int = 1000, default_ttl: int = None):
         self.max_size = max_size
-        self.default_ttl = default_ttl or config.workflow_cache_ttl
+        self.default_ttl = default_ttl or config.default_workflow.workflow_cache_ttl
         self.cache: Dict[str, CacheEntry] = {}
         self._lock = asyncio.Lock()
         

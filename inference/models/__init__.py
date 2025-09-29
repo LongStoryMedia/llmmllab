@@ -11,6 +11,7 @@ try:
     from . import circuit_breaker_config
     from . import complexity_estimate
     from . import complexity_level
+    from . import composer_service_config
     from . import config
     from . import conversation
     from . import conversation_ctx
@@ -93,6 +94,7 @@ try:
     from . import summary
     from . import tool_analysis_request
     from . import tool_analysis_response
+    from . import tool_config
     from . import tool_execution_result
     from . import tool_generation_result
     from . import tool_needs
@@ -102,6 +104,7 @@ try:
     from . import web_search_config
     from . import web_search_providers
     from . import web_socket_connection
+    from . import workflow_config
 except ImportError as e:
     import sys
     print(f"Warning: Some model modules could not be imported: {e}", file=sys.stderr)
@@ -116,6 +119,7 @@ __all__ = [
     'circuit_breaker_config',
     'complexity_estimate',
     'complexity_level',
+    'composer_service_config',
     'config',
     'conversation',
     'conversation_ctx',
@@ -198,6 +202,7 @@ __all__ = [
     'summary',
     'tool_analysis_request',
     'tool_analysis_response',
+    'tool_config',
     'tool_execution_result',
     'tool_generation_result',
     'tool_needs',
@@ -207,6 +212,7 @@ __all__ = [
     'web_search_config',
     'web_search_providers',
     'web_socket_connection',
+    'workflow_config',
     'AnalysisDepth',
     'AuthConfig',
     'AvailableTool',
@@ -215,6 +221,9 @@ __all__ = [
     'CircuitBreakerConfig',
     'ComplexityEstimate',
     'ComplexityLevel',
+    'ComposerServiceConfig',
+    'HealthCheck',
+    'RateLimit',
     'Config',
     'Conversation',
     'ConversationCtx',
@@ -302,6 +311,7 @@ __all__ = [
     'Summary',
     'ToolAnalysisRequest',
     'ToolAnalysisResponse',
+    'ToolConfig',
     'ToolExecutionResult',
     'ToolGenerationResult',
     'ToolNeeds',
@@ -311,6 +321,7 @@ __all__ = [
     'WebSearchConfig',
     'WebSearchProviders',
     'WebSocketConnection',
+    'WorkflowConfig',
 ]
 
 # Re-export all model classes for easy importing and IDE autocompletion
@@ -337,6 +348,11 @@ from .complexity_estimate import (
 )
 from .complexity_level import (
     ComplexityLevel,
+)
+from .composer_service_config import (
+    ComposerServiceConfig,
+    HealthCheck,
+    RateLimit,
 )
 from .config import (
     Config,
@@ -585,6 +601,9 @@ from .tool_analysis_request import (
 from .tool_analysis_response import (
     ToolAnalysisResponse,
 )
+from .tool_config import (
+    ToolConfig,
+)
 from .tool_execution_result import (
     ToolExecutionResult,
 )
@@ -611,4 +630,7 @@ from .web_search_providers import (
 )
 from .web_socket_connection import (
     WebSocketConnection,
+)
+from .workflow_config import (
+    WorkflowConfig,
 )

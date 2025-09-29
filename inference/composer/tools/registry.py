@@ -98,7 +98,12 @@ class ToolRegistry:
                         tools.append(tool_instance)
             
             # Phase 2: Dynamic Tool Assessment and Creation Logic
-            if intent.requires_tools and config.enable_tool_generation:
+            # Check if tool generation is enabled for this intent
+            tool_generation_enabled = (
+                hasattr(intent, 'requires_tools') and intent.requires_tools and 
+                config.default_tool.enable_tool_generation
+            )
+            if tool_generation_enabled:
                 dynamic_tool = await self._generate_or_retrieve_dynamic_tool(
                     conversation_ctx, intent
                 )
@@ -184,11 +189,11 @@ class ToolRegistry:
             )
             
             # Decision logic based on similarity thresholds
-            if similarity_score > config.tool_similarity_threshold:
+            if similarity_score > config.default_tool.tool_similarity_threshold:
                 # Use Existing
                 return await self._use_existing_tool(best_match_id)
             
-            elif similarity_score > config.tool_modification_threshold:
+            elif similarity_score > config.default_tool.tool_modification_threshold:
                 # Modify or Compose  
                 return await self._modify_or_compose_tool(best_match_id, intent)
             

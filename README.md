@@ -39,6 +39,21 @@ LLM ML Lab is a full-featured platform for deploying, serving, and evaluating la
 - **Context Extension**: Sophisticated system to extend LLM context windows
 - **Schema Validation**: YAML schemas for type-safety and consistency
 
+## Configuration Architecture
+
+The platform uses a hierarchical configuration system that separates system administration from user preferences:
+
+- **System Configuration**: Infrastructure settings (ports, databases, logging) managed by operators
+- **User Configuration**: Workflow and tool preferences customizable per user via UI
+- **Schema-Driven**: YAML schemas automatically generate Python models and TypeScript types
+
+Key configuration areas:
+- **Workflow Settings**: Caching, streaming, timeouts, multi-agent capabilities
+- **Tool Management**: Selection thresholds, generation preferences, execution settings
+- **Memory & Context**: Retrieval settings, circuit breakers, model profiles
+
+See [Configuration Architecture](docs/configuration_architecture.md) for detailed documentation.
+
 ## Component Documentation
 
 Each component has its own detailed README with specific instructions:
@@ -48,6 +63,7 @@ Each component has its own detailed README with specific instructions:
 - [YAML Schemas](schemas/README.md) - Data structure definitions
 - [Context Extension Architecture](docs/context_extension.md) - LLM context window extension system
 - [Dynamic Tool Generation](inference/server/tools/README.md) - Tool generation for model execution
+- [Configuration Architecture](docs/configuration_architecture.md) - Hierarchical configuration system
 
 ## Pipeline Documentation
 

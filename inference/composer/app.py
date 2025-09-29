@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from typing import Dict, Any, Optional
+import time
 import sys
 sys.path.append('/Users/lons7862/workspace/llmmllab/inference')
 
@@ -31,19 +32,19 @@ class ComposerResponse(BaseModel):
     message: Optional[str] = None
 
 
-# Global composer service instance
+# Global service instance and start time
 composer_service: Optional[ComposerService] = None
+start_time: float = time.time()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan management."""
+    """Manage application lifespan - startup and shutdown."""
     global composer_service
     
     # Startup
     composer_logger.logger.info("Starting composer service")
     composer_service = ComposerService()
-    
     yield
     
     # Shutdown
@@ -84,12 +85,18 @@ async def health_check():
 async def get_config():
     """Get current configuration."""
     return {
-        "caching_enabled": config.enable_workflow_caching,
-        "streaming_enabled": config.enable_streaming,
-        "multi_agent_enabled": config.enable_multi_agent,
-        "tool_generation_enabled": config.enable_tool_generation,
-        "cache_ttl": config.workflow_cache_ttl,
-        "max_context_length": config.max_context_length
+        "service": "composer",
+        "version": app.version,
+        "uptime": time.time() - start_time,
+        "host": config.service.host,
+        "port": config.service.port,
+        "debug": config.service.debug,
+        "caching_enabled": config.default_workflow.enable_workflow_caching,
+        "streaming_enabled": config.default_workflow.enable_streaming,
+        "multi_agent_enabled": config.default_workflow.enable_multi_agent,
+        "tool_generation_enabled": config.default_tool.enable_tool_generation,
+        "cache_ttl": config.default_workflow.workflow_cache_ttl,
+        "max_context_length": config.default_workflow.max_context_length
     }
 
 
@@ -193,8 +200,8 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "app:app",
-        host=config.host,
-        port=config.port,
-        reload=config.reload,
+        host=config.service.host,
+        port=config.service.port,
+        reload=config.service.reload,
         log_level="info"
     )

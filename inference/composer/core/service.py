@@ -45,7 +45,8 @@ class ComposerService:
         self.logger = logging.getLogger(__name__)
         self.graph_builder = GraphBuilder()
         self.tool_registry = ToolRegistry()
-        self.workflow_cache = WorkflowCache() if config.enable_workflow_caching else None
+        # Initialize workflow cache if enabled
+        self.workflow_cache = WorkflowCache() if config.default_workflow.enable_workflow_caching else None
         self.intent_classifier = IntentClassifierAgent()
         
         # Initialize core components
@@ -53,14 +54,11 @@ class ComposerService:
     
     def _initialize_components(self):
         """Initialize composer components and validate configuration."""
-        self.logger.info(
-            "Initializing ComposerService",
-            extra={
-                "caching_enabled": config.enable_workflow_caching,
-                "streaming_enabled": config.enable_streaming,
-                "multi_agent_enabled": config.enable_multi_agent
-            }
-        )
+        composer_logger.logger.info("Service initialized", extra={
+                "caching_enabled": config.default_workflow.enable_workflow_caching,
+                "streaming_enabled": config.default_workflow.enable_streaming,
+                "multi_agent_enabled": config.default_workflow.enable_multi_agent
+            })
     
     async def compose_workflow(
         self,
@@ -162,27 +160,40 @@ class ComposerService:
         config_overrides: Optional[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Merge user configuration with workflow-specific overrides."""
+        # Get effective workflow and tool configs (user settings override defaults)
+        workflow_config = config.get_workflow_config(
+            conversation_ctx.user_config.workflow if conversation_ctx.user_config else None
+        )
+        tool_config = config.get_tool_config(
+            conversation_ctx.user_config.tool if conversation_ctx.user_config else None
+        )
+        
         base_config = {
-            "streaming_enabled": config.enable_streaming,
-            "timeout": config.default_timeout,
-            "max_context_length": config.max_context_length
+            "streaming_enabled": workflow_config.enable_streaming,
+            "timeout": workflow_config.default_timeout,
+            "max_context_length": workflow_config.max_context_length,
+            "enable_multi_agent": workflow_config.enable_multi_agent,
+            "max_parallel_tools": workflow_config.max_parallel_tools,
+            "tool_similarity_threshold": tool_config.tool_similarity_threshold,
+            "enable_tool_generation": tool_config.enable_tool_generation,
+            "tool_timeout": tool_config.tool_timeout
         }
         
-        # Add conversation-specific config
+        # Add user-specific configuration if available
         if conversation_ctx.user_config:
             base_config.update({
                 "user_preferences": conversation_ctx.user_config.preferences,
-                "model_profile": conversation_ctx.user_config.model_profiles.primary_profile
+                "model_profiles": conversation_ctx.user_config.model_profiles
             })
         
-        # Add intent-driven config
+        # Add intent-specific configuration
         if intent:
             base_config.update({
-                "rag_depth": "DEEP" if intent.estimated_complexity == "high" else "SHALLOW",
-                "enable_tool_generation": intent.requires_tools and config.enable_tool_generation
+                "intent_type": intent.primary_intent,
+                "requires_tools": hasattr(intent, 'requires_tools') and intent.requires_tools
             })
         
-        # Apply overrides
+        # Apply any additional overrides
         if config_overrides:
             base_config.update(config_overrides)
         
@@ -239,7 +250,9 @@ class ComposerService:
         Supports both streaming and batch execution modes.
         """
         try:
-            if stream and config.enable_streaming:
+            # Check if streaming is enabled (use workflow config from state metadata)
+            streaming_enabled = initial_state.execution_metadata.get("streaming_enabled", config.default_workflow.enable_streaming)
+            if stream and streaming_enabled:
                 # Stream execution events
                 async for event in workflow.astream_events(
                     initial_state.dict(), 

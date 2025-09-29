@@ -24,6 +24,10 @@ properties:
     $ref: circuit_breaker_config.yaml
   gpu_config:
     $ref: gpu_config.yaml
+  workflow:
+    $ref: workflow_config.yaml
+  tool:
+    $ref: tool_config.yaml
   event_stream:
     $ref: event_stream_config.yaml
 required:
@@ -37,3 +41,5 @@ required:
   - image_generation
   - circuit_breaker
   - gpu_config
+  - workflow
+  - tool

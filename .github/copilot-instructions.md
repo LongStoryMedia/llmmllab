@@ -12,11 +12,34 @@ LLM ML Lab is a multi-modal language model platform with microservice architectu
 - **ui/**: React TypeScript frontend with Material UI Joy
 - **schemas/**: YAML schema definitions for type safety across services (generates code via `./regenerate_models.sh`)
 
+## Configuration Architecture
+
+The platform uses a **hierarchical configuration system**:
+
+- **System Config**: Service settings (host, port, database) - not user configurable
+- **User Config**: Workflow & tool preferences - customizable per user via UI
+- **Schema-Driven**: YAML schemas generate Python/TypeScript models automatically
+
+**Key Files:**
+- `schemas/composer_service_config.yaml` - System service settings
+- `schemas/workflow_config.yaml` - User workflow preferences (caching, streaming, timeouts)  
+- `schemas/tool_config.yaml` - User tool preferences (thresholds, generation, search)
+- `schemas/user_config.yaml` - Complete user configuration schema
+- `inference/composer/config.py` - Configuration loading and environment variables
+
+**Usage Pattern:**
+```python
+# Access system settings
+config.service.host, config.service.port
+
+# Get user preferences with fallbacks
+workflow_config = config.get_workflow_config(user_config.workflow)
+tool_config = config.get_tool_config(user_config.tool)
+```
+
 ## Key Development Workflows
 
 ### Environment Setup
-
-
 
 ```bash
 # Kubernetes pod commands (production/staging)
