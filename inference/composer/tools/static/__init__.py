@@ -1,12 +1,10 @@
 """Native composer tools following decoupling principles."""
 
-from .native_rag_tools import ComposerWebSearchTool, ComposerMemoryTool, ComposerSummarizationTool
-from .integration import ModernToolManager, get_tools
+from .rag_tools import WebSearchTool, MemoryRetrievalTool, SummarizationTool, RAGToolFactory
 
 __all__ = [
-    "ComposerWebSearchTool",
-    "ComposerMemoryTool", 
-    "ComposerSummarizationTool",
-    "ModernToolManager",
-    "get_tools",
+    "WebSearchTool",
+    "MemoryRetrievalTool", 
+    "SummarizationTool",
+    "RAGToolFactory",
 ]

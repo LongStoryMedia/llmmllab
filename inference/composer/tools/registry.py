@@ -61,18 +61,18 @@ class ToolRegistry:
     def _load_static_tools(self):
         """Load static tools from the static tools directory."""
         try:
-            # Import native composer RAG tools (decoupled from server services)
-            from composer.tools.static.native_rag_tools import (
-                ComposerWebSearchTool,
-                ComposerSummarizationTool,
-                ComposerMemoryTool,
+            # Import RAG tools (decoupled from server services)
+            from composer.tools.static.rag_tools import (
+                WebSearchTool,
+                SummarizationTool,
+                MemoryRetrievalTool,
             )
 
             self.static_tools.update(
                 {
-                    "web_search": ComposerWebSearchTool,
-                    "summarization": ComposerSummarizationTool,
-                    "memory_retrieval": ComposerMemoryTool,
+                    "web_search": WebSearchTool,
+                    "summarization": SummarizationTool,
+                    "memory_retrieval": MemoryRetrievalTool,
                 }
             )
 

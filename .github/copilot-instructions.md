@@ -397,8 +397,10 @@ DO NOT ADD DOCUMENTATION FOR FIXES, CHANGES, CLEANUPS, OR TRANSFORMATIONS. ONLY 
 **Code Replacement Policy:**
 - **Remove and Replace**: When fixing architectural violations or major issues, remove the problematic file completely and replace with clean implementation
 - **No Deprecation Warnings**: Don't add deprecation notices or warnings - simply remove and replace
+- **No Alias Files**: Don't create compatibility alias files that reference what was replaced
 - **Clean Slate**: New implementations should not reference or mention what they replaced
 - **Direct Replacement**: Use the same filename when replacing functionality to minimize import disruption
+- **Update Imports**: Update all imports to use the new clean implementation directly
 
 ## Testing Strategy
 
