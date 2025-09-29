@@ -1,12 +1,12 @@
-"""Static pre-defined tools."""
+"""Native composer tools following decoupling principles."""
 
-from .rag_tools import WebSearchTool, MemoryRetrievalTool, SummarizationTool
+from .native_rag_tools import ComposerWebSearchTool, ComposerMemoryTool, ComposerSummarizationTool
 from .integration import ModernToolManager, get_tools
 
 __all__ = [
-    "WebSearchTool",
-    "MemoryRetrievalTool", 
-    "SummarizationTool",
+    "ComposerWebSearchTool",
+    "ComposerMemoryTool", 
+    "ComposerSummarizationTool",
     "ModernToolManager",
     "get_tools",
 ]

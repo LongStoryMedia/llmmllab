@@ -1,6 +1,6 @@
 """
-Simplified tool integration for composer workflows.
-Provides unified interface for static and dynamic tools.
+Native composer tool integration following decoupling principles.
+Uses only thin interfaces between composer and other components.
 """
 
 import logging
@@ -8,48 +8,48 @@ from typing import List, AsyncGenerator, Union
 
 from langchain_core.tools import BaseTool
 
-from server.services.context import ConversationContext
-from .rag_tools import WebSearchTool, MemoryRetrievalTool, SummarizationTool
+from models import UserConfig
+from .native_rag_tools import ComposerWebSearchTool, ComposerMemoryTool, ComposerSummarizationTool
 
 logger = logging.getLogger(__name__)
 
 
 class StandardToolProvider:
-    """Provides standard RAG tools with proper typing."""
+    """Provides native composer RAG tools following decoupling principles."""
 
     @staticmethod
-    def get_standard_tools(conversation_ctx: ConversationContext) -> List[BaseTool]:
-        """Get standard RAG tools for the conversation context."""
+    def get_standard_tools(user_config: UserConfig, conversation_id: int) -> List[BaseTool]:
+        """Get native composer RAG tools using only thin interfaces."""
         return [
-            WebSearchTool(conversation_ctx=conversation_ctx),
-            MemoryRetrievalTool(conversation_ctx=conversation_ctx),
-            SummarizationTool(conversation_ctx=conversation_ctx),
+            ComposerWebSearchTool(user_config=user_config, conversation_id=conversation_id),
+            ComposerMemoryTool(user_config=user_config, conversation_id=conversation_id),
+            ComposerSummarizationTool(user_config=user_config, conversation_id=conversation_id),
         ]
 
 
 class ModernToolManager:
     """
-    Simplified tool management system focused on coordination.
-    Dynamic tool logic has been moved to composer/tools/dynamic/manager.py
+    Native composer tool management following decoupling principles.
+    Uses only thin interfaces to other components.
     """
 
     def __init__(self):
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     async def get_tools(
-        self, conversation_ctx: ConversationContext
+        self, user_config: UserConfig, conversation_id: int
     ) -> AsyncGenerator[Union[str, List[BaseTool]], None]:
         """
-        Get available tools for the conversation context.
+        Get native composer tools using only thin interfaces.
         
-        This is a simplified version that provides standard RAG tools.
+        Provides standard RAG tools implemented within composer component.
         Dynamic tool generation is handled by DynamicToolManager in composer/tools/dynamic/
         """
         try:
-            # Provide standard RAG tools
-            standard_tools = StandardToolProvider.get_standard_tools(conversation_ctx)
+            # Provide native composer RAG tools
+            standard_tools = StandardToolProvider.get_standard_tools(user_config, conversation_id)
             
-            self.logger.info(f"Providing {len(standard_tools)} standard tools")
+            self.logger.info(f"Providing {len(standard_tools)} native composer tools")
             yield standard_tools
 
         except Exception as e:
@@ -62,10 +62,10 @@ tool_manager = ModernToolManager()
 
 
 async def get_tools(
-    conversation_ctx: ConversationContext,
+    user_config: UserConfig, conversation_id: int
 ) -> AsyncGenerator[Union[str, List[BaseTool]], None]:
     """
-    Main entry point for getting tools - delegates to the simplified tool manager.
+    Main entry point for getting native composer tools using thin interfaces.
     """
-    async for result in tool_manager.get_tools(conversation_ctx):
+    async for result in tool_manager.get_tools(user_config, conversation_id):
         yield result
