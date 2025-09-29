@@ -46,10 +46,8 @@ class ComposerService:
         self.logger = logging.getLogger(__name__)
         self.graph_builder = GraphBuilder()
         self.tool_registry = ToolRegistry()
-        # Initialize workflow cache if enabled
-        self.workflow_cache = (
-            WorkflowCache() if config.default_workflow.enable_workflow_caching else None
-        )
+        # Workflow cache is now created per-user during workflow composition
+        self.workflow_caches = {}  # Dict[str, WorkflowCache] - keyed by user_id
         self.intent_classifier = IntentClassifierAgent()
 
         # Initialize core components
@@ -58,11 +56,12 @@ class ComposerService:
     def _initialize_components(self):
         """Initialize composer components and validate configuration."""
         composer_logger.logger.info(
-            "Service initialized",
+            "ComposerService initialized",
             extra={
-                "caching_enabled": config.default_workflow.enable_workflow_caching,
-                "streaming_enabled": config.default_workflow.enable_streaming,
-                "multi_agent_enabled": config.default_workflow.enable_multi_agent,
+                "graph_builder": "ready",
+                "tool_registry": "ready", 
+                "intent_classifier": "ready",
+                "workflow_caches": "ready",
             },
         )
 
@@ -92,13 +91,20 @@ class ComposerService:
                 conversation_ctx, workflow_type, intent, config_overrides
             )
 
-            # 4. Use cache if available
-            if self.workflow_cache:
-                cache_key = self.workflow_cache.get_cache_key(
+            # 4. Use per-user cache if enabled
+            user_cache = None
+            if (conversation_ctx.user_config and 
+                conversation_ctx.user_config.workflow.enable_workflow_caching):
+                user_id = conversation_ctx.user_config.user_id
+                if user_id not in self.workflow_caches:
+                    self.workflow_caches[user_id] = WorkflowCache()
+                user_cache = self.workflow_caches[user_id]
+                
+                cache_key = user_cache.get_cache_key(
                     conversation_ctx.user_config, workflow_type, tools
                 )
 
-                cached_workflow = await self.workflow_cache.get(cache_key)
+                cached_workflow = await user_cache.get(cache_key)
                 if cached_workflow:
                     self.logger.debug(
                         "Retrieved workflow from cache", extra={"cache_key": cache_key}
@@ -110,8 +116,8 @@ class ComposerService:
                 conversation_ctx, tools, workflow_config, workflow_type
             )
 
-            if self.workflow_cache:
-                workflow = await self.workflow_cache.get_or_create(
+            if user_cache:
+                workflow = await user_cache.get_or_create(
                     cache_key, builder_fn
                 )
             else:
@@ -309,8 +315,13 @@ class ComposerService:
         """Clean up resources on service shutdown."""
         self.logger.info("Shutting down ComposerService")
 
-        if self.workflow_cache:
-            await self.workflow_cache.close()
+        # Close all per-user workflow caches
+        for user_id, cache in self.workflow_caches.items():
+            try:
+                await cache.close()
+            except Exception as e:
+                self.logger.warning(f"Error closing cache for user {user_id}: {e}")
+        self.workflow_caches.clear()
 
         await self.tool_registry.close()
 

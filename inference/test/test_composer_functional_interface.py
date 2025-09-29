@@ -15,7 +15,7 @@ from composer import (
     create_initial_state,
     execute_workflow,
     get_composer_config,
-    get_composer_service
+    get_composer_service,
 )
 from models.default_configs import create_default_user_config
 from models.conversation import Conversation
@@ -32,6 +32,7 @@ class TestComposerFunctionalInterface:
     def setup_method(self):
         """Reset composer service before each test."""
         import composer
+
         composer._composer_service = None
 
     @pytest.fixture
@@ -43,18 +44,17 @@ class TestComposerFunctionalInterface:
             user_id="test_user",
             title="Test Conversation",
             created_at=datetime.now(),
-            updated_at=datetime.now()
+            updated_at=datetime.now(),
         )
-        
+
         test_message = Message(
             role=MessageRole.USER,
-            content=[MessageContent(
-                type=MessageContentType.TEXT,
-                text="Hello, how are you?"
-            )],
-            conversation_id=1
+            content=[
+                MessageContent(type=MessageContentType.TEXT, text="Hello, how are you?")
+            ],
+            conversation_id=1,
         )
-        
+
         return ConversationCtx(
             messages=[test_message],
             notes=[],
@@ -87,96 +87,99 @@ class TestComposerFunctionalInterface:
     @pytest.mark.asyncio
     async def test_initialization_and_shutdown(self, mock_composer_service):
         """Test composer initialization and shutdown."""
-        with patch('composer.core.service.ComposerService') as MockComposerService:
+        with patch("composer.core.service.ComposerService") as MockComposerService:
             MockComposerService.return_value = mock_composer_service
-            
+
             # Test initialization
             await initialize_composer()
-            
+
             # Verify service was created
             MockComposerService.assert_called_once()
-            
+
             # Test config access after initialization
             config = get_composer_config()
             assert isinstance(config, dict)
             assert config["service"] == "composer"
-            
+
             # Test service access after initialization
             service = get_composer_service()
             assert service is mock_composer_service
-            
+
             # Test shutdown
             await shutdown_composer()
             mock_composer_service.shutdown.assert_called_once()
-            
+
             # Verify service is cleared after shutdown
             import composer
+
             assert composer._composer_service is None
 
     @pytest.mark.asyncio
-    async def test_compose_workflow_interface(self, mock_conversation_ctx, mock_composer_service):
+    async def test_compose_workflow_interface(
+        self, mock_conversation_ctx, mock_composer_service
+    ):
         """Test that compose_workflow calls the service method properly."""
-        with patch('composer.core.service.ComposerService') as MockComposerService:
+        with patch("composer.core.service.ComposerService") as MockComposerService:
             MockComposerService.return_value = mock_composer_service
             mock_workflow = Mock()
             mock_composer_service.compose_workflow.return_value = mock_workflow
-            
+
             # Initialize composer
             await initialize_composer()
-            
+
             # Test workflow composition - just verify the interface works
             result = await compose_workflow(
-                conversation_ctx=mock_conversation_ctx,
-                workflow_type="CHAT"
+                conversation_ctx=mock_conversation_ctx, workflow_type="CHAT"
             )
-            
+
             # Verify result is returned
             assert result is mock_workflow
             # Verify service method was called (we don't check exact args due to mocking complexity)
             assert mock_composer_service.compose_workflow.called
-            
+
             # Cleanup
             await shutdown_composer()
 
-    @pytest.mark.asyncio  
-    async def test_create_initial_state_interface(self, mock_conversation_ctx, mock_composer_service):
+    @pytest.mark.asyncio
+    async def test_create_initial_state_interface(
+        self, mock_conversation_ctx, mock_composer_service
+    ):
         """Test that create_initial_state calls the service method properly."""
-        with patch('composer.core.service.ComposerService') as MockComposerService:
+        with patch("composer.core.service.ComposerService") as MockComposerService:
             MockComposerService.return_value = mock_composer_service
             mock_initial_state = {"test": "state"}
             mock_composer_service.create_initial_state.return_value = mock_initial_state
-            
+
             # Initialize composer
             await initialize_composer()
-            
+
             # Test initial state creation
             result = await create_initial_state(
-                conversation_ctx=mock_conversation_ctx,
-                workflow_type="CHAT"
+                conversation_ctx=mock_conversation_ctx, workflow_type="CHAT"
             )
-            
+
             # Verify result is returned
             assert result is mock_initial_state
             # Verify service method was called
             assert mock_composer_service.create_initial_state.called
-            
+
             # Cleanup
             await shutdown_composer()
 
     def test_interface_completeness(self):
         """Test that all expected functions are exported."""
         import composer
-        
+
         expected_functions = [
-            'initialize_composer',
-            'shutdown_composer',
-            'compose_workflow',
-            'create_initial_state',
-            'execute_workflow',
-            'get_composer_config',
-            'get_composer_service'
+            "initialize_composer",
+            "shutdown_composer",
+            "compose_workflow",
+            "create_initial_state",
+            "execute_workflow",
+            "get_composer_config",
+            "get_composer_service",
         ]
-        
+
         for func_name in expected_functions:
             assert hasattr(composer, func_name), f"Missing function: {func_name}"
             func = getattr(composer, func_name)
@@ -185,25 +188,25 @@ class TestComposerFunctionalInterface:
     @pytest.mark.asyncio
     async def test_basic_lifecycle(self, mock_composer_service):
         """Test basic initialization, config access, and shutdown lifecycle."""
-        with patch('composer.core.service.ComposerService') as MockComposerService:
+        with patch("composer.core.service.ComposerService") as MockComposerService:
             MockComposerService.return_value = mock_composer_service
-            
+
             try:
                 # Should fail before initialization
                 with pytest.raises(RuntimeError):
                     get_composer_service()
-                
+
                 # Initialize
                 await initialize_composer()
-                
+
                 # Should work after initialization
                 service = get_composer_service()
                 assert service is mock_composer_service
-                
+
                 config = get_composer_config()
                 assert isinstance(config, dict)
                 assert "service" in config
-                
+
             finally:
                 # Always shutdown
                 await shutdown_composer()
