@@ -172,17 +172,7 @@ class ComposerService:
                 extra={"error": str(e)},
                 exc_info=True,
             )
-            # Return default intent analysis
-
-            return IntentAnalysis(
-                primary_intent="chat",
-                confidence=0.5,
-                complexity_level=ComplexityLevel.TRIVIAL,
-                required_capabilities=[],
-                computational_requirements=[],
-                domain_specificity=0.0,
-                reusability_potential=0.5,
-            )
+            raise
 
     def _merge_config_overrides(
         self,
