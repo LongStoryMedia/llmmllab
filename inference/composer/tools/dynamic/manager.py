@@ -14,7 +14,7 @@ from models import (
     ToolGenerationResult,
 )
 from server.services.context import ConversationContext
-from server.db import storage
+from db import storage
 from runner import pipeline_factory
 from runner.pipeline_factory import PipelinePriority
 from runner.pipelines.run import run_pipeline

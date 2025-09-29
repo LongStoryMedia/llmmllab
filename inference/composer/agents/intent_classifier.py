@@ -17,7 +17,7 @@ from composer.core.errors import IntentAnalysisError
 from runner import pipeline_factory
 from runner.pipeline_factory import PipelinePriority
 from runner.pipelines.run import run_pipeline
-from server.db import storage
+from db import storage
 from utils.message import extract_message_text
 
 

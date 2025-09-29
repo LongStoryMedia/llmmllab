@@ -57,7 +57,7 @@ from server.routers import (
 )
 from server.auth import AuthMiddleware
 from server.config import API_VERSION
-from server.db.maintenance import maintenance_service
+from db.maintenance import maintenance_service
 from server.services.cleanup_service import cleanup_service
 from utils.hardware_manager import hardware_manager  # Import hardware manager
 
@@ -93,9 +93,9 @@ async def lifespan(_: FastAPI):
     print("Auth middleware already initialized and stored in app.state")
 
     # Initialize database connection
-    from server.db import storage
+    from db import storage
     from server.config import DB_CONNECTION_STRING, logger
-    from server.db.init_db import initialize_database
+    from db.init_db import initialize_database
 
     # Build connection string from individual environment variables if not already set
     connection_string = DB_CONNECTION_STRING

@@ -12,7 +12,7 @@ import ast
 import re
 
 from models import DynamicTool, ToolSimilarity, DeduplicationResult
-from server.db import storage
+from db import storage
 from runner import pipeline_factory, Embeddings
 from runner.pipeline_factory import PipelinePriority
 from runner.pipelines.run import embed_pipeline

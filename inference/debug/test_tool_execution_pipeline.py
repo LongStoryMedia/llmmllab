@@ -23,7 +23,7 @@ async def test_embedding_pipeline():
     try:
         from runner import pipeline_factory, embed_pipeline, EmbeddingPipeline, Embeddings
         from runner.pipeline_factory import PipelinePriority
-        from server.db import storage
+        from db import storage
         
         # Test texts of varying complexity
         test_texts = [

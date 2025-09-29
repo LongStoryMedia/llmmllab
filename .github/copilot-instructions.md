@@ -177,14 +177,33 @@ The inference service uses **four isolated Python environments**:
 
 Always use `/app/v.sh {service}` when executing commands in Kubernetes pods.
 
+### Shared Code Architecture
+
+The inference system has shared components that all services can access:
+
+- **`models/`**: Generated Pydantic models from YAML schemas (shared data contracts)
+- **`utils/`**: Shared utility functions (serialization, response handling, etc.)
+- **`db/`**: Database interfaces, storage classes, and SQL queries (MOVED from server/db/)
+- **`test/`**: Shared test utilities and fixtures
+- **`debug/`**: Validation and debugging scripts
+
+**Shared Component Access Rules:**
+- ✅ All services can import from `models.*`, `utils.*`, `db.*`
+- ✅ Services can use shared database interfaces and storage classes
+- ✅ Shared utilities provide common functionality without coupling
+- ❌ Shared components cannot import from specific services (server, runner, composer)
+- ❌ Business logic must not be placed in shared components
+
 ### **STRICT ARCHITECTURAL DECOUPLING REQUIREMENTS**
 
 **CRITICAL:** The `runner`, `server`, and `composer` components MUST remain completely decoupled:
 
 1. **NO CROSS-COMPONENT IMPORTS**: Components cannot directly import from each other
-   - ❌ `composer` cannot import from `server.services.*` or `server.db.*`
-   - ❌ `server` cannot import from `runner.pipelines.*` directly
+   - ❌ `composer` cannot import from `server.services.*`, `server.handlers.*`, etc.
+   - ❌ `server` cannot import from `runner.pipelines.*` or `composer.agent_runtime.*`
    - ❌ `runner` cannot import from `server.*` or `composer.*`
+   - ✅ ALL services can import from shared components: `models.*`, `utils.*`, `db.*`
+   - ✅ Database access uses shared `db.interfaces.*` and `db.*_storage` classes
 
 2. **THIN INTERFACE PATTERN**: Communication only through well-defined interfaces
    - Use dependency injection for external services

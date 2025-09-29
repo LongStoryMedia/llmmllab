@@ -10,8 +10,8 @@ from models.message import Message
 from models.message_role import MessageRole
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
-from server.db.cache_storage import cache_storage
-from server.db.db_utils import TypedConnection, typed_pool
+from db.cache_storage import cache_storage
+from db.db_utils import TypedConnection, typed_pool
 
 logger = logging.getLogger(__name__)
 

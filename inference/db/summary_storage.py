@@ -6,8 +6,8 @@ import json
 import logging
 from typing import List, Optional
 import asyncpg
-from server.db.db_utils import typed_pool
-from server.db.cache_storage import cache_storage
+from db.db_utils import typed_pool
+from db.cache_storage import cache_storage
 from models.summary import Summary
 
 logger = logging.getLogger(__name__)

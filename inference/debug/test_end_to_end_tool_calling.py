@@ -53,7 +53,7 @@ class EndToEndToolCallingTester:
             from models.message_content import MessageContent, MessageContentType
             
             # Initialize database connection first
-            from server.db import storage
+            from db import storage
             
             # Initialize database connection using cluster configuration
             db_host = os.getenv('DB_HOST', 'localhost')
@@ -152,7 +152,7 @@ class EndToEndToolCallingTester:
         )
         
         # Use storage service to add message to database
-        from server.db import storage
+        from db import storage
         message_id = await storage.message.add_message(message)
         if message_id:
             message.id = message_id
@@ -223,7 +223,7 @@ The search found {len(search_results.get('results', []))} relevant sources from 
             )
             
             # Add assistant message to database
-            from server.db import storage
+            from db import storage
             assistant_message_id = await storage.message.add_message(assistant_message)
             if assistant_message_id:
                 assistant_message.id = assistant_message_id
@@ -548,7 +548,7 @@ The search found {len(search_results.get('results', []))} relevant sources from 
         
         try:
             # Use actual database operations for cleanup
-            from server.db import storage
+            from db import storage
             
             if self.test_conversation_id:
                 # Delete conversation from database

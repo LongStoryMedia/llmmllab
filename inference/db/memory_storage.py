@@ -7,7 +7,7 @@ import logging
 from typing import List, Optional, Tuple
 from datetime import datetime
 import asyncpg
-from server.db.db_utils import typed_pool
+from db.db_utils import typed_pool
 from models.memory import Memory, MemoryFragment
 from models.message_role import MessageRole
 from models.memory_source import MemorySource

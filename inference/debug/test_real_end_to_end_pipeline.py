@@ -377,7 +377,7 @@ RESPONSE GUIDELINES:
 
         try:
             # Initialize real database connection
-            from server.db import storage
+            from db import storage
             import os
 
             # Build connection string from environment variables
@@ -433,7 +433,7 @@ RESPONSE GUIDELINES:
         logger.info("👤 Creating real user and model profile...")
 
         try:
-            from server.db import storage
+            from db import storage
             from models.user import User
             from models.model_profile import ModelProfile
             from models.model_parameters import ModelParameters
@@ -493,7 +493,7 @@ RESPONSE GUIDELINES:
         logger.info("💬 Creating real conversation...")
 
         try:
-            from server.db import storage
+            from db import storage
 
             # Ensure user exists in database first
             async with storage.pool.acquire() as conn:
@@ -531,7 +531,7 @@ RESPONSE GUIDELINES:
         logger.info("📝 Creating real message with tool context...")
 
         try:
-            from server.db import storage
+            from db import storage
             from models.message import Message
             from models.message_role import MessageRole
             from models.message_content import MessageContent, MessageContentType
@@ -627,7 +627,7 @@ After the tool executes, provide a detailed summary of the findings."""
             from runner.pipelines.run import stream_pipeline
             from server.tools.integration import get_tools
             from models.model_profile import ModelProfile
-            from server.db import storage
+            from db import storage
 
             # Get the real model profile
             model_profile = await storage.model_profile.get_model_profile_by_id(
@@ -1503,7 +1503,7 @@ After the tool executes, provide a detailed summary of the findings."""
         logger.info("✅ Validating real outputs...")
 
         try:
-            from server.db import storage
+            from db import storage
 
             # Validate conversation exists
             conversation = await storage.conversation.get_conversation(
@@ -1982,7 +1982,7 @@ After the tool executes, provide a detailed summary of the findings."""
         cleanup_errors = []
 
         try:
-            from server.db import storage
+            from db import storage
 
             # Clean up search-related data first (if any exists)
             await self._cleanup_search_data(storage, cleanup_errors)
