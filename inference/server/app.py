@@ -215,6 +215,16 @@ async def lifespan(_: FastAPI):
         ]
         for var in db_vars:
             print(f"  {var}: {'✓' if os.environ.get(var) else '✗'}")
+    # Initialize composer service
+    try:
+        from composer import initialize_composer
+        await initialize_composer()
+        logger.info("Composer service initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize composer service: {e}")
+        # Don't fail the entire service if composer fails
+        print(f"Warning: Composer service initialization failed: {e}")
+
     print("Services initialization completed successfully!")
     yield
     #     ]
@@ -245,6 +255,14 @@ async def lifespan(_: FastAPI):
             print("Database maintenance service stopped")
         except Exception as e:
             print(f"Error stopping database maintenance service: {e}")
+
+        # Stop composer service
+        try:
+            from composer import shutdown_composer
+            await shutdown_composer()
+            print("Composer service shutdown completed")
+        except Exception as e:
+            print(f"Error stopping composer service: {e}")
 
         # Stop vLLM service
         try:
