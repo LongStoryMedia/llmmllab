@@ -1,11 +1,11 @@
 """
-LangChain RAG tools with strict architectural decoupling.
-All dependencies are injected via constructor parameters using Protocol interfaces.
+LangChain RAG tools using interface layer functions directly.
+No unnecessary abstractions - uses runner and composer interface functions.
 """
 
 import asyncio
 import json
-from typing import List, Protocol, runtime_checkable
+from typing import List, Callable, Any, Awaitable
 
 from langchain_core.tools import BaseTool
 from pydantic import Field
@@ -16,55 +16,20 @@ from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
 
 
-@runtime_checkable
-class PipelineInterface(Protocol):
-    """Protocol for pipeline execution services."""
-    
-    async def execute_pipeline(self, message: Message, conversation_id: int) -> List[Message]:
-        """Execute a pipeline and return generated messages."""
-        ...
-
-
-@runtime_checkable  
-class SearchProviderInterface(Protocol):
-    """Protocol for search providers."""
-    
-    async def search(self, message: Message, conversation_id: int) -> List[dict]:
-        """Perform search and return search results."""
-        ...
-
-
-@runtime_checkable
-class MemoryStoreInterface(Protocol):
-    """Protocol for memory storage and retrieval."""
-    
-    async def retrieve_memories(self, embeddings: List[List[float]]) -> List[dict]:
-        """Retrieve memories based on embeddings."""
-        ...
-
-
 class WebSearchTool(BaseTool):
-    """Web search tool using dependency injection."""
+    """Web search tool using interface layer functions."""
     
     name: str = "web_search"
-    description: str = "Perform web search using injected search provider"
+    description: str = "Perform web search using provided search function"
     
-    search_provider: SearchProviderInterface = Field(..., exclude=True)
+    search_function: Callable[[str], Awaitable[List[dict]]] = Field(..., exclude=True)
     
-    def __init__(self, search_provider: SearchProviderInterface, **kwargs):
-        super().__init__(search_provider=search_provider, **kwargs)
+    def __init__(self, search_function: Callable[[str], Awaitable[List[dict]]], **kwargs):
+        super().__init__(search_function=search_function, **kwargs)
 
     async def _arun(self, query: str, **kwargs) -> str:
         try:
-            message = Message(
-                role=MessageRole.USER,
-                content=[MessageContent(type=MessageContentType.TEXT, text=query)],
-                conversation_id=kwargs.get("conversation_id", 0)
-            )
-            
-            search_results = await self.search_provider.search(
-                message, kwargs.get("conversation_id", 0)
-            )
+            search_results = await self.search_function(query)
             
             if search_results:
                 return f"Web search results: {json.dumps(search_results[:3], indent=2)}"
@@ -78,22 +43,22 @@ class WebSearchTool(BaseTool):
 
 
 class MemoryRetrievalTool(BaseTool):
-    """Memory retrieval tool using dependency injection."""
+    """Memory retrieval tool using simple function."""
     
     name: str = "memory_retrieval" 
-    description: str = "Retrieve memories using injected memory store"
+    description: str = "Retrieve memories using provided memory function"
     
-    memory_store: MemoryStoreInterface = Field(..., exclude=True)
+    memory_function: Callable[[List[List[float]]], Awaitable[List[dict]]] = Field(..., exclude=True)
     
-    def __init__(self, memory_store: MemoryStoreInterface, **kwargs):
-        super().__init__(memory_store=memory_store, **kwargs)
+    def __init__(self, memory_function: Callable[[List[List[float]]], Awaitable[List[dict]]], **kwargs):
+        super().__init__(memory_function=memory_function, **kwargs)
 
     async def _arun(self, embeddings: List[List[float]], **kwargs) -> str:
         try:
             if not embeddings:
                 return "No embeddings provided for memory retrieval"
             
-            memories = await self.memory_store.retrieve_memories(embeddings)
+            memories = await self.memory_function(embeddings)
             
             if memories:
                 return f"Retrieved memories: {json.dumps(memories, indent=2)}"
@@ -107,15 +72,15 @@ class MemoryRetrievalTool(BaseTool):
 
 
 class SummarizationTool(BaseTool):
-    """Summarization tool using dependency injection."""
+    """Summarization tool using simple pipeline function."""
     
     name: str = "summarization"
-    description: str = "Summarize content using injected pipeline"
+    description: str = "Summarize content using provided pipeline function"
     
-    pipeline: PipelineInterface = Field(..., exclude=True)
+    pipeline_function: Callable[[str], Awaitable[str]] = Field(..., exclude=True)
     
-    def __init__(self, pipeline: PipelineInterface, **kwargs):
-        super().__init__(pipeline=pipeline, **kwargs)
+    def __init__(self, pipeline_function: Callable[[str], Awaitable[str]], **kwargs):
+        super().__init__(pipeline_function=pipeline_function, **kwargs)
 
     async def _arun(self, content: str, **kwargs) -> str:
         try:
@@ -123,20 +88,10 @@ class SummarizationTool(BaseTool):
                 return "No content provided for summarization"
             
             summary_prompt = f"Please summarize: {content}"
-            message = Message(
-                role=MessageRole.USER,
-                content=[MessageContent(type=MessageContentType.TEXT, text=summary_prompt)],
-                conversation_id=kwargs.get("conversation_id", 0)
-            )
+            result = await self.pipeline_function(summary_prompt)
             
-            result_messages = await self.pipeline.execute_pipeline(
-                message, kwargs.get("conversation_id", 0)
-            )
-            
-            if result_messages and len(result_messages) > 0:
-                last_message = result_messages[-1]
-                if last_message.content and len(last_message.content) > 0:
-                    return f"Summary: {last_message.content[0].text}"
+            if result:
+                return f"Summary: {result}"
             
             return "Unable to generate summary"
         except Exception as e:
@@ -147,26 +102,26 @@ class SummarizationTool(BaseTool):
 
 
 class RAGToolFactory:
-    """Factory for creating RAG tools with proper dependency injection."""
+    """Factory for creating RAG tools with interface layer functions."""
     
     def __init__(
         self,
-        search_provider: SearchProviderInterface,
-        memory_store: MemoryStoreInterface, 
-        pipeline: PipelineInterface
+        search_function: Callable[[str], Awaitable[List[dict]]],
+        memory_function: Callable[[List[List[float]]], Awaitable[List[dict]]], 
+        pipeline_function: Callable[[str], Awaitable[str]]
     ):
-        self.search_provider = search_provider
-        self.memory_store = memory_store
-        self.pipeline = pipeline
+        self.search_function = search_function
+        self.memory_function = memory_function
+        self.pipeline_function = pipeline_function
     
     def create_web_search_tool(self) -> WebSearchTool:
-        return WebSearchTool(search_provider=self.search_provider)
+        return WebSearchTool(search_function=self.search_function)
     
     def create_memory_tool(self) -> MemoryRetrievalTool:
-        return MemoryRetrievalTool(memory_store=self.memory_store)
+        return MemoryRetrievalTool(memory_function=self.memory_function)
     
     def create_summarization_tool(self) -> SummarizationTool:
-        return SummarizationTool(pipeline=self.pipeline)
+        return SummarizationTool(pipeline_function=self.pipeline_function)
     
     def create_all_tools(self) -> List[BaseTool]:
         return [
