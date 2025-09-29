@@ -8,19 +8,18 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from models.composer_service_config import ComposerServiceConfig, RateLimit, HealthCheck
-from models.workflow_config import WorkflowConfig
-from models.tool_config import ToolConfig
 from models.circuit_breaker_config import CircuitBreakerConfig
+from models.default_configs import DEFAULT_WORKFLOW_CONFIG, DEFAULT_TOOL_CONFIG
 
 
 @dataclass
 class ComposerConfig:
     """
-    Composer service configuration.
+    Composer service system-level configuration.
 
-    Separates system settings (service-level) from user settings (workflow/tool preferences).
-    System settings are loaded from environment variables and configuration files.
-    User settings are loaded from UserConfig and can be customized per user.
+    Contains only system-level settings like service binding, database connections,
+    and infrastructure configuration. User-configurable workflow and tool settings
+    are handled through UserConfig and loaded from the database.
     """
 
     # System-level service configuration (not user configurable)
@@ -34,12 +33,26 @@ class ComposerConfig:
     database_url: Optional[str] = None
     redis_url: Optional[str] = None
 
-    # Default user configuration (can be overridden by UserConfig)
-    default_workflow: WorkflowConfig = field(default_factory=WorkflowConfig)
-    default_tool: ToolConfig = field(default_factory=ToolConfig)
-
-    # Circuit breaker for service reliability
+    # Circuit breaker for service reliability (system-level)
     circuit_breaker: CircuitBreakerConfig = field(default_factory=CircuitBreakerConfig)
+
+    @property
+    def default_workflow(self):
+        """System default workflow configuration for initialization purposes only.
+        
+        Note: For request processing, always use user_config.workflow which contains
+        user preferences with proper defaults applied at the storage layer.
+        """
+        return DEFAULT_WORKFLOW_CONFIG
+
+    @property 
+    def default_tool(self):
+        """System default tool configuration for initialization purposes only.
+        
+        Note: For request processing, always use user_config.tool which contains
+        user preferences with proper defaults applied at the storage layer.
+        """
+        return DEFAULT_TOOL_CONFIG
 
     @classmethod
     def from_env(cls) -> "ComposerConfig":
@@ -64,90 +77,14 @@ class ComposerConfig:
             ),
         )
 
-        # Load default workflow configuration
-        default_workflow = WorkflowConfig(
-            enable_workflow_caching=os.getenv("COMPOSER_ENABLE_CACHE", "true").lower()
-            == "true",
-            workflow_cache_ttl=int(os.getenv("COMPOSER_CACHE_TTL", "3600")),
-            max_parallel_tools=int(os.getenv("COMPOSER_MAX_PARALLEL_TOOLS", "5")),
-            enable_multi_agent=os.getenv("COMPOSER_ENABLE_MULTI_AGENT", "false").lower()
-            == "true",
-            default_timeout=float(os.getenv("COMPOSER_DEFAULT_TIMEOUT", "60.0")),
-            max_context_length=int(os.getenv("COMPOSER_MAX_CONTEXT_LENGTH", "128000")),
-            context_trim_threshold=float(
-                os.getenv("COMPOSER_CONTEXT_TRIM_THRESHOLD", "0.8")
-            ),
-            enable_streaming=os.getenv("COMPOSER_ENABLE_STREAMING", "true").lower()
-            == "true",
-            stream_buffer_size=int(os.getenv("COMPOSER_STREAM_BUFFER_SIZE", "1024")),
-        )
-
-        # Load default tool configuration
-        default_tool = ToolConfig(
-            tool_similarity_threshold=float(
-                os.getenv("COMPOSER_TOOL_SIMILARITY_THRESHOLD", "0.9")
-            ),
-            tool_modification_threshold=float(
-                os.getenv("COMPOSER_TOOL_MODIFICATION_THRESHOLD", "0.6")
-            ),
-            enable_tool_generation=os.getenv(
-                "COMPOSER_ENABLE_TOOL_GENERATION", "true"
-            ).lower()
-            == "true",
-            max_tool_retries=int(os.getenv("COMPOSER_MAX_TOOL_RETRIES", "3")),
-            tool_timeout=float(os.getenv("COMPOSER_TOOL_TIMEOUT", "30.0")),
-            enable_tool_caching=os.getenv(
-                "COMPOSER_ENABLE_TOOL_CACHING", "true"
-            ).lower()
-            == "true",
-            tool_cache_ttl=int(os.getenv("COMPOSER_TOOL_CACHE_TTL", "1800")),
-            enable_semantic_search=os.getenv(
-                "COMPOSER_ENABLE_SEMANTIC_SEARCH", "true"
-            ).lower()
-            == "true",
-            search_top_k=int(os.getenv("COMPOSER_SEARCH_TOP_K", "10")),
-        )
-
         return cls(
             service=service_config,
             database_url=os.getenv("COMPOSER_DATABASE_URL")
             or os.getenv("DATABASE_URL"),
             redis_url=os.getenv("COMPOSER_REDIS_URL") or os.getenv("REDIS_URL"),
-            default_workflow=default_workflow,
-            default_tool=default_tool,
         )
 
-    def get_workflow_config(
-        self, user_workflow_config: Optional[WorkflowConfig] = None
-    ) -> WorkflowConfig:
-        """
-        Get workflow configuration, prioritizing user settings over defaults.
 
-        Args:
-            user_workflow_config: User-specific workflow configuration from UserConfig
-
-        Returns:
-            WorkflowConfig with user preferences applied over system defaults
-        """
-        if user_workflow_config:
-            return user_workflow_config
-        return self.default_workflow
-
-    def get_tool_config(
-        self, user_tool_config: Optional[ToolConfig] = None
-    ) -> ToolConfig:
-        """
-        Get tool configuration, prioritizing user settings over defaults.
-
-        Args:
-            user_tool_config: User-specific tool configuration from UserConfig
-
-        Returns:
-            ToolConfig with user preferences applied over system defaults
-        """
-        if user_tool_config:
-            return user_tool_config
-        return self.default_tool
 
 
 # Global config instance
