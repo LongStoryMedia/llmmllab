@@ -333,13 +333,15 @@ kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}'
 kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh server python -m debug.test_real_end_to_end_pipeline qwen3-30b-a3b-q4-k-m
 ```
 
-DO NOT ADD DOCUMENTATION FOR FIXES. ONLY DOCUMENT FULLY IMPLEMENTED FEATURES, AND ALWAYS IN THE `docs/` FOLDER. ALWAYS LINK TO THE DOCS FROM THE README IF IT'S IMPORTANT.
+DO NOT ADD DOCUMENTATION FOR FIXES, CHANGES, CLEANUPS, OR TRANSFORMATIONS. ONLY DOCUMENT FULLY IMPLEMENTED FEATURES, AND ALWAYS IN THE `docs/` FOLDER. ALWAYS LINK TO THE DOCS FROM THE README IF IT'S IMPORTANT.
 
 **Documentation Standards:**
-- **Current State Only**: Document what the system currently does, not what it was changed from
-- **No Before/After**: Avoid "Before: X, After: Y" format - focus on current capabilities and architecture
-- **Implementation Focus**: Describe current functionality, integration points, and usage patterns
-- **Architecture Description**: Document current system architecture, not transformation history
+- **Current State ONLY**: Document what the system currently does, never what it was changed from
+- **No Change Documentation**: Never document fixes, cleanups, refactors, migrations, or "before/after" states
+- **No Transformation History**: Avoid any mention of previous implementations or what was replaced
+- **Implementation Focus**: Describe current functionality, integration points, and usage patterns only
+- **Architecture Description**: Document current system architecture, capabilities, and design decisions
+- **Feature Documentation**: Only document completed, production-ready features and their usage
 
 ## Testing Strategy
 
