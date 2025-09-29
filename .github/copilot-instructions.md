@@ -146,6 +146,7 @@ k exec -it -n ollama $POD_NAME -- /app/v.sh runner python -c "import torch; prin
 ```
 
 inference does not generally run locally due to hardware needs. use `inference/sync-code.sh` to sync code to remote cluster.
+However, when spot checking code and imports, make sure to always source `./.venv/bin/activate`
 the ui is fully local and connects to remote inference services.
 
 
@@ -175,6 +176,37 @@ The inference service uses **four isolated Python environments**:
 - `composer/`: LangGraph-based workflow orchestration and agentic system runtime
 
 Always use `/app/v.sh {service}` when executing commands in Kubernetes pods.
+
+### **STRICT ARCHITECTURAL DECOUPLING REQUIREMENTS**
+
+**CRITICAL:** The `runner`, `server`, and `composer` components MUST remain completely decoupled:
+
+1. **NO CROSS-COMPONENT IMPORTS**: Components cannot directly import from each other
+   - ❌ `composer` cannot import from `server.services.*` or `server.db.*`
+   - ❌ `server` cannot import from `runner.pipelines.*` directly
+   - ❌ `runner` cannot import from `server.*` or `composer.*`
+
+2. **THIN INTERFACE PATTERN**: Communication only through well-defined interfaces
+   - Use dependency injection for external services
+   - Define Protocol classes for interface contracts
+   - Pass dependencies as constructor parameters
+
+3. **COMPOSER AS EXECUTION RUNTIME**: Per refactor-requirements.md
+   - Composer is the "authoritative execution runtime" for agentic workflows
+   - All complex LangGraph logic must reside in `composer/agent_runtime/`
+   - Server provides only HTTP endpoints and basic request handling
+
+4. **DEPENDENCY INJECTION MANDATORY**: All composer tools must use dependency injection
+   - Tools receive PipelineInterface, SearchProviderInterface, MemoryStoreInterface as constructor params
+   - NO direct instantiation of server or runner classes
+   - Later orchestration layer will wire dependencies via Protocol implementations
+
+5. **ENFORCEMENT**: Any violation of these principles breaks the architecture
+   - Code review must verify no cross-component imports
+   - Tools must receive all dependencies via dependency injection
+   - Protocol definitions establish contracts without coupling
+
+This decoupling enables independent scaling, testing, and deployment of each component.
 
 ### Schema-Driven Development
 YAML schemas in `schemas/` define the data contracts. When modifying APIs:
