@@ -1,16 +1,19 @@
 """
 Intent analysis and classification agent.
-Runs LLM-based intent classifiers early in workflows to set retrieval depth,
-determine toolsets, and drive conditional routing.
+Performs comprehensive intent analysis following the capability-driven architecture.
+Maps user requests to RequiredCapabilities and assesses computational complexity.
 """
 import asyncio
-from typing import Dict, Any, Optional
+import re
+from typing import Dict, Any, Optional, List, Set
 import sys
 sys.path.append('/Users/lons7862/workspace/llmmllab/inference')
 
 from models.conversation_ctx import ConversationCtx
 from models.intent_analysis import IntentAnalysis
-from models.intent import Intent
+from models.complexity_level import ComplexityLevel
+from models.required_capability import RequiredCapability
+from models.computational_requirement import ComputationalRequirement
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import IntentAnalysisError
 
@@ -43,41 +46,62 @@ class IntentClassifierAgent:
         """
         Analyze conversation context to determine intent, complexity, and requirements.
         
-        This is the primary method that outputs structured IntentAnalysis
-        to guide subsequent workflow decisions.
+        Follows the capability-driven architecture:
+        User Request → IntentAnalysis → RequiredCapabilities → ModelProfileType → ModelTask
         """
         try:
             start_time = asyncio.get_event_loop().time()
             
-            # Extract relevant information from conversation context
-            analysis_input = self._prepare_analysis_input(conversation_ctx)
+            # Extract user query from conversation context
+            user_query = self._extract_user_query(conversation_ctx)
             
-            # Perform intent classification
-            intent_result = await self._classify_intent(analysis_input)
+            # Analyze primary intent
+            primary_intent = self._classify_primary_intent(user_query)
             
-            # Determine RAG depth based on complexity
-            rag_depth = self._determine_rag_depth(intent_result)
+            # Assess complexity level
+            complexity_level = self._assess_complexity(user_query)
             
-            # Assess tool requirements
-            tool_requirements = await self._assess_tool_requirements(intent_result, conversation_ctx)
+            # Identify required capabilities
+            required_capabilities = self._identify_required_capabilities(user_query, primary_intent)
+            
+            # Extract computational requirements
+            computational_requirements = self._extract_computational_requirements(
+                user_query, complexity_level, required_capabilities
+            )
+            
+            # Calculate domain specificity score
+            domain_specificity = self._calculate_domain_specificity(user_query, primary_intent)
+            
+            # Calculate reusability potential
+            reusability_potential = self._calculate_reusability_potential(
+                user_query, complexity_level, required_capabilities
+            )
+            
+            # Calculate confidence in analysis
+            confidence = self._calculate_confidence(
+                user_query, complexity_level, required_capabilities, computational_requirements
+            )
             
             # Create structured intent analysis
             intent_analysis = IntentAnalysis(
-                primary_intent=intent_result.get('primary_intent', 'chat'),
-                secondary_intents=intent_result.get('secondary_intents', []),
-                confidence=intent_result.get('confidence', 0.8),
-                estimated_complexity=intent_result.get('complexity', 'medium'),
-                requires_tools=tool_requirements['requires_tools'],
-                requires_external_data=tool_requirements['requires_external_data'],
-                rag_depth_recommendation=rag_depth,
-                tool_specification=tool_requirements.get('tool_specification', '')
+                primary_intent=primary_intent,
+                complexity_level=complexity_level,
+                required_capabilities=list(required_capabilities),
+                computational_requirements=list(computational_requirements),
+                domain_specificity=domain_specificity,
+                reusability_potential=reusability_potential,
+                confidence=confidence
             )
             
             processing_time = (asyncio.get_event_loop().time() - start_time) * 1000
             
             composer_logger.log_intent_analysis(
-                intent_result=intent_result,
-                confidence=intent_analysis.confidence,
+                intent_result={
+                    'primary_intent': primary_intent,
+                    'complexity': complexity_level.value,
+                    'capabilities_count': len(required_capabilities)
+                },
+                confidence=confidence,
                 processing_time_ms=processing_time
             )
             
@@ -87,151 +111,267 @@ class IntentClassifierAgent:
             composer_logger.log_error(e, {"context": "intent_analysis"})
             raise IntentAnalysisError(f"Intent analysis failed: {e}")
     
-    def _prepare_analysis_input(self, conversation_ctx: ConversationCtx) -> Dict[str, Any]:
-        """Prepare input data for intent analysis."""
-        # Extract the last few messages for context
-        recent_messages = []
-        if conversation_ctx.messages:
-            recent_messages = conversation_ctx.messages[-5:]  # Last 5 messages
+    def _extract_user_query(self, conversation_ctx: ConversationCtx) -> str:
+        """Extract the user query from conversation context."""
+        if not conversation_ctx.messages:
+            return ""
         
-        # Extract user query (typically the last user message)
-        user_query = ""
-        for message in reversed(recent_messages):
+        # Find the last user message
+        for message in reversed(conversation_ctx.messages):
             if message.role.value == 'user':
-                user_query = message.content
-                break
+                # Handle both string content and MessageContent list
+                if isinstance(message.content, str):
+                    return message.content
+                elif isinstance(message.content, list) and len(message.content) > 0:
+                    # Extract text from first content item
+                    first_content = message.content[0]
+                    if first_content.text:
+                        return first_content.text
+                    else:
+                        return str(first_content.type.value) if first_content.type else ""
+                return str(message.content)
         
-        return {
-            "user_query": user_query,
-            "message_count": len(conversation_ctx.messages) if conversation_ctx.messages else 0,
-            "conversation_length": len(str(conversation_ctx.messages)) if conversation_ctx.messages else 0,
-            "recent_messages": [{"role": msg.role.value, "content": msg.content[:200]} for msg in recent_messages],
-            "user_config": conversation_ctx.user_config.dict() if conversation_ctx.user_config else {}
-        }
+        return ""
     
-    async def _classify_intent(self, analysis_input: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Perform the actual intent classification using LLM.
-        
-        In a full implementation, this would use a structured prompt to classify
-        the user's intent into categories like: chat, research, creative, technical, etc.
-        """
-        user_query = analysis_input.get('user_query', '')
-        
-        # Simplified rule-based classification for now
-        # In production, this would use an LLM with structured output
-        intent_result = await self._rule_based_classification(user_query, analysis_input)
-        
-        return intent_result
-    
-    async def _rule_based_classification(self, user_query: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Simple rule-based classification as placeholder for LLM-based classification."""
+    def _classify_primary_intent(self, user_query: str) -> str:
+        """Classify the primary intent from available enum values."""
         query_lower = user_query.lower()
         
-        # Research indicators
-        research_keywords = ['research', 'analyze', 'compare', 'investigate', 'study', 'examine', 'find out', 'search for']
-        
-        # Creative indicators  
-        creative_keywords = ['create', 'generate', 'write', 'compose', 'design', 'make', 'build']
-        
-        # Technical indicators
-        technical_keywords = ['code', 'program', 'debug', 'implement', 'develop', 'algorithm']
-        
-        # Complex query indicators
-        complexity_indicators = ['detailed', 'comprehensive', 'thorough', 'in-depth', 'complete analysis']
-        
-        # Classify primary intent
-        if any(keyword in query_lower for keyword in research_keywords):
-            primary_intent = 'research'
-            complexity = 'high' if len(user_query) > 100 else 'medium'
-        elif any(keyword in query_lower for keyword in creative_keywords):
-            primary_intent = 'creative'
-            complexity = 'medium'
-        elif any(keyword in query_lower for keyword in technical_keywords):
-            primary_intent = 'technical'
-            complexity = 'high'
+        # Intent classification based on keywords
+        if any(keyword in query_lower for keyword in ['research', 'investigate', 'study', 'analyze', 'examine']):
+            return 'research'
+        elif any(keyword in query_lower for keyword in ['create', 'generate', 'write', 'compose', 'design', 'make']):
+            return 'creative'
+        elif any(keyword in query_lower for keyword in ['code', 'program', 'debug', 'implement', 'develop', 'algorithm']):
+            return 'technical'
+        elif any(keyword in query_lower for keyword in ['analyze', 'evaluation', 'assessment', 'breakdown']):
+            return 'analysis'
+        elif any(keyword in query_lower for keyword in ['summarize', 'summary', 'condense', 'brief']):
+            return 'summarization'
+        elif any(keyword in query_lower for keyword in ['remember', 'recall', 'previous', 'earlier', 'before']):
+            return 'memory_retrieval'
+        elif any(keyword in query_lower for keyword in ['search', 'find', 'look up', 'web']):
+            return 'web_search'
+        elif any(keyword in query_lower for keyword in ['image', 'picture', 'photo', 'visual', 'draw']):
+            return 'image_generation'
+        elif any(keyword in query_lower for keyword in ['data', 'dataset', 'process', 'transform', 'csv', 'json']):
+            return 'data_processing'
         else:
-            primary_intent = 'chat'
-            complexity = 'low'
-        
-        # Adjust complexity based on query characteristics
-        if any(indicator in query_lower for indicator in complexity_indicators):
-            complexity = 'high'
-        elif len(user_query) > 200:
-            complexity = 'medium' if complexity == 'low' else 'high'
-        
-        # Determine confidence based on keyword matches
-        confidence = 0.9 if any(keyword in query_lower for keyword in research_keywords + creative_keywords + technical_keywords) else 0.7
-        
-        return {
-            'primary_intent': primary_intent,
-            'secondary_intents': [],
-            'confidence': confidence,
-            'complexity': complexity,
-            'query_length': len(user_query),
-            'message_count': context.get('message_count', 0)
-        }
+            return 'chat'
     
-    def _determine_rag_depth(self, intent_result: Dict[str, Any]) -> str:
-        """
-        Determine RAG depth ('SHALLOW' or 'DEEP') based on intent classification.
+    def _assess_complexity(self, user_query: str) -> ComplexityLevel:
+        """Assess the complexity level of the user request."""
+        query_lower = user_query.lower()
+        query_length = len(user_query)
         
-        This decision drives the conditional edge routing in RAG operations.
-        """
-        complexity = intent_result.get('complexity', 'medium')
-        primary_intent = intent_result.get('primary_intent', 'chat')
+        # Specialized complexity indicators
+        specialized_keywords = ['algorithm', 'optimization', 'machine learning', 'neural network', 'quantum', 'cryptography']
+        if any(keyword in query_lower for keyword in specialized_keywords):
+            return ComplexityLevel.SPECIALIZED
         
-        # Deep RAG for research, high complexity, or specific intents
-        if (
-            complexity == 'high' or 
-            primary_intent in ['research', 'technical'] or
-            intent_result.get('query_length', 0) > 150
-        ):
+        # Complex indicators
+        complex_keywords = ['comprehensive', 'detailed analysis', 'in-depth', 'thorough', 'complete']
+        if any(keyword in query_lower for keyword in complex_keywords) or query_length > 200:
+            return ComplexityLevel.COMPLEX
+        
+        # Moderate indicators
+        moderate_keywords = ['analyze', 'compare', 'research', 'investigate']
+        if any(keyword in query_lower for keyword in moderate_keywords) or query_length > 100:
+            return ComplexityLevel.MODERATE
+        
+        # Simple indicators
+        if query_length > 20:
+            return ComplexityLevel.SIMPLE
+        
+        # Trivial for very short queries
+        return ComplexityLevel.TRIVIAL
+    
+    def _identify_required_capabilities(self, user_query: str, primary_intent: str) -> Set[RequiredCapability]:
+        """Identify what capabilities are required for the request."""
+        capabilities = set()
+        query_lower = user_query.lower()
+        
+        # Intent-based capability mapping
+        intent_capability_map = {
+            'research': {RequiredCapability.WEB_SEARCH, RequiredCapability.INFORMATION_RETRIEVAL, RequiredCapability.REASONING},
+            'creative': {RequiredCapability.TEXT_PROCESSING, RequiredCapability.REASONING, RequiredCapability.GENERAL_KNOWLEDGE},
+            'technical': {RequiredCapability.REASONING, RequiredCapability.TEXT_PROCESSING, RequiredCapability.GENERAL_KNOWLEDGE},
+            'analysis': {RequiredCapability.REASONING, RequiredCapability.TEXT_PROCESSING, RequiredCapability.GENERAL_KNOWLEDGE},
+            'summarization': {RequiredCapability.SUMMARIZATION, RequiredCapability.TEXT_PROCESSING},
+            'memory_retrieval': {RequiredCapability.CONVERSATION_MEMORY, RequiredCapability.INFORMATION_RETRIEVAL},
+            'web_search': {RequiredCapability.WEB_SEARCH, RequiredCapability.INFORMATION_RETRIEVAL},
+            'image_generation': {RequiredCapability.TEXT_PROCESSING, RequiredCapability.GENERAL_KNOWLEDGE},
+            'data_processing': {RequiredCapability.TEXT_PROCESSING, RequiredCapability.REASONING},
+            'chat': {RequiredCapability.GENERAL_KNOWLEDGE, RequiredCapability.TEXT_PROCESSING}
+        }
+        
+        # Add capabilities based on primary intent
+        capabilities.update(intent_capability_map.get(primary_intent, set()))
+        
+        # Keyword-based capability detection
+        if any(keyword in query_lower for keyword in ['calculate', 'math', 'compute', 'equation']):
+            capabilities.add(RequiredCapability.BASIC_MATH)
+        
+        if any(keyword in query_lower for keyword in ['search', 'find', 'lookup', 'web']):
+            capabilities.add(RequiredCapability.WEB_SEARCH)
+        
+        if any(keyword in query_lower for keyword in ['remember', 'previous', 'earlier', 'before']):
+            capabilities.add(RequiredCapability.CONVERSATION_MEMORY)
+        
+        # Ensure at least one capability
+        if not capabilities:
+            capabilities.add(RequiredCapability.GENERAL_KNOWLEDGE)
+        
+        return capabilities
+    
+    def _extract_computational_requirements(
+        self, 
+        user_query: str, 
+        complexity_level: ComplexityLevel, 
+        required_capabilities: Set[RequiredCapability]
+    ) -> Set[ComputationalRequirement]:
+        """Extract computational requirements based on query analysis."""
+        requirements = set()
+        query_lower = user_query.lower()
+        
+        # Complexity-based requirements
+        if complexity_level in [ComplexityLevel.COMPLEX, ComplexityLevel.SPECIALIZED]:
+            requirements.add(ComputationalRequirement.COMPLEX_REASONING)
+        
+        # Capability-based requirements
+        if RequiredCapability.WEB_SEARCH in required_capabilities:
+            requirements.add(ComputationalRequirement.EXTERNAL_API_CALLS)
+        
+        if len(required_capabilities) > 3:
+            requirements.add(ComputationalRequirement.PARALLEL_PROCESSING)
+        
+        # Content-based detection
+        if any(keyword in query_lower for keyword in ['large', 'big data', 'massive', 'huge']):
+            requirements.add(ComputationalRequirement.LARGE_DATA_HANDLING)
+            requirements.add(ComputationalRequirement.HIGH_MEMORY)
+        
+        if any(keyword in query_lower for keyword in ['image', 'video', 'audio', 'multimodal']):
+            requirements.add(ComputationalRequirement.MULTI_MODAL_PROCESSING)
+            requirements.add(ComputationalRequirement.GPU_ACCELERATION)
+        
+        if any(keyword in query_lower for keyword in ['real-time', 'live', 'instant', 'immediate']):
+            requirements.add(ComputationalRequirement.REAL_TIME_PROCESSING)
+        
+        if any(keyword in query_lower for keyword in ['file', 'document', 'save', 'export']):
+            requirements.add(ComputationalRequirement.FILE_OPERATIONS)
+        
+        if any(keyword in query_lower for keyword in ['database', 'sql', 'query', 'table']):
+            requirements.add(ComputationalRequirement.DATABASE_OPERATIONS)
+        
+        return requirements
+    
+    def _calculate_domain_specificity(self, user_query: str, primary_intent: str) -> float:
+        """Calculate domain specificity score (0-1)."""
+        query_lower = user_query.lower()
+        
+        # Domain-specific keywords
+        domain_keywords = [
+            'medical', 'legal', 'financial', 'scientific', 'academic', 'technical',
+            'engineering', 'research', 'clinical', 'pharmaceutical', 'biotechnology',
+            'quantum', 'neural', 'machine learning', 'ai', 'cryptocurrency', 'blockchain'
+        ]
+        
+        # Count domain-specific terms
+        domain_matches = sum(1 for keyword in domain_keywords if keyword in query_lower)
+        
+        # Base score from intent
+        intent_scores = {
+            'technical': 0.7,
+            'research': 0.6,
+            'analysis': 0.5,
+            'data_processing': 0.6,
+            'creative': 0.3,
+            'chat': 0.1
+        }
+        
+        base_score = intent_scores.get(primary_intent, 0.2)
+        
+        # Adjust for domain matches
+        domain_boost = min(domain_matches * 0.2, 0.6)
+        
+        return min(base_score + domain_boost, 1.0)
+    
+    def _calculate_reusability_potential(
+        self, 
+        user_query: str, 
+        complexity_level: ComplexityLevel, 
+        required_capabilities: Set[RequiredCapability]
+    ) -> float:
+        """Calculate reusability potential score (0-1)."""
+        query_lower = user_query.lower()
+        
+        # Base score from complexity
+        complexity_scores = {
+            ComplexityLevel.TRIVIAL: 0.2,
+            ComplexityLevel.SIMPLE: 0.4,
+            ComplexityLevel.MODERATE: 0.6,
+            ComplexityLevel.COMPLEX: 0.8,
+            ComplexityLevel.SPECIALIZED: 0.9
+        }
+        
+        base_score = complexity_scores.get(complexity_level, 0.5)
+        
+        # Adjust for capability diversity
+        capability_boost = min(len(required_capabilities) * 0.1, 0.3)
+        
+        # Reduce for highly personal/specific queries
+        personal_keywords = ['my', 'me', 'i', 'personal', 'private', 'specific to me']
+        personal_penalty = sum(0.1 for keyword in personal_keywords if keyword in query_lower)
+        
+        score = base_score + capability_boost - personal_penalty
+        return max(0.1, min(score, 1.0))
+    
+    def _calculate_confidence(
+        self, 
+        user_query: str, 
+        complexity_level: ComplexityLevel, 
+        required_capabilities: Set[RequiredCapability], 
+        computational_requirements: Set[ComputationalRequirement]
+    ) -> float:
+        """Calculate confidence in the analysis (0-1)."""
+        base_confidence = 0.7
+        
+        # Adjust based on query length and clarity
+        query_length = len(user_query)
+        if query_length < 10:
+            base_confidence -= 0.2  # Very short queries are ambiguous
+        elif query_length > 200:
+            base_confidence -= 0.1  # Very long queries may be unclear
+        else:
+            base_confidence += 0.1  # Good length for analysis
+        
+        # Adjust based on complexity clarity
+        if complexity_level in [ComplexityLevel.TRIVIAL, ComplexityLevel.SPECIALIZED]:
+            base_confidence += 0.1  # Clear extremes
+        
+        # Adjust based on capability identification
+        if len(required_capabilities) == 1:
+            base_confidence += 0.1  # Clear single capability
+        elif len(required_capabilities) > 5:
+            base_confidence -= 0.1  # Too many may indicate confusion
+        
+        # Adjust based on computational requirements specificity
+        if len(computational_requirements) > 0:
+            base_confidence += 0.05
+        
+        return max(0.1, min(base_confidence, 1.0))
+    
+    def determine_rag_depth(self, intent_analysis: IntentAnalysis) -> str:
+        """Determine RAG depth based on intent analysis for backward compatibility."""
+        # Map new architecture to legacy RAG depth decisions
+        if (intent_analysis.complexity_level in [ComplexityLevel.COMPLEX, ComplexityLevel.SPECIALIZED] or
+            intent_analysis.primary_intent in ['research', 'technical', 'analysis'] or
+            RequiredCapability.WEB_SEARCH in intent_analysis.required_capabilities):
             return 'DEEP'
         else:
             return 'SHALLOW'
     
-    async def _assess_tool_requirements(
-        self, 
-        intent_result: Dict[str, Any], 
-        conversation_ctx: ConversationCtx
-    ) -> Dict[str, Any]:
-        """
-        Assess whether the intent requires tools and what kind.
-        
-        This drives the Dynamic Tool Agent workflow.
-        """
-        primary_intent = intent_result.get('primary_intent', 'chat')
-        complexity = intent_result.get('complexity', 'medium')
-        
-        # Determine if tools are needed
-        requires_tools = primary_intent in ['research', 'technical', 'creative'] or complexity == 'high'
-        
-        # Determine if external data is needed
-        requires_external_data = primary_intent == 'research' or 'search' in intent_result.get('primary_intent', '')
-        
-        # Generate tool specification for dynamic tool creation
-        tool_specification = ""
-        if requires_tools:
-            if primary_intent == 'research':
-                tool_specification = "web search and content analysis tool"
-            elif primary_intent == 'technical':
-                tool_specification = "code analysis and generation tool"
-            elif primary_intent == 'creative':
-                tool_specification = "content generation and editing tool"
-        
-        return {
-            'requires_tools': requires_tools,
-            'requires_external_data': requires_external_data,
-            'tool_specification': tool_specification
-        }
-    
     async def decide_search_depth(self, conversation_ctx: ConversationCtx) -> str:
-        """
-        Specialized method for RAG depth decision.
-        
-        This method is designed to be called by the `decide_search_depth` node
-        in the workflow graph to set the `rag_depth_config` field.
-        """
+        """Legacy method for RAG depth decision - delegates to new architecture."""
         intent_analysis = await self.analyze(conversation_ctx)
-        return intent_analysis.rag_depth_recommendation
+        return self.determine_rag_depth(intent_analysis)
