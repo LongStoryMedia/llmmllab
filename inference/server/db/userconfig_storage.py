@@ -19,6 +19,8 @@ from models.default_configs import (
     DEFAULT_IMAGE_GENERATION_CONFIG,
     DEFAULT_CIRCUIT_BREAKER_CONFIG,
     DEFAULT_GPU_CONFIG,
+    DEFAULT_WORKFLOW_CONFIG,
+    DEFAULT_TOOL_CONFIG,
     create_default_user_config,
 )
 from server.db.cache_storage import cache_storage
@@ -91,6 +93,8 @@ class UserConfigStorage:
             "model_profiles",
             "circuit_breaker",
             "gpu_config",
+            "workflow",
+            "tool",
         ]:
             if field not in config_data or not isinstance(config_data[field], dict):
                 config_data[field] = {}
@@ -120,6 +124,12 @@ class UserConfigStorage:
         )
         self._apply_defaults(
             config_data["gpu_config"], DEFAULT_GPU_CONFIG.dict()
+        )
+        self._apply_defaults(
+            config_data["workflow"], DEFAULT_WORKFLOW_CONFIG.dict()
+        )
+        self._apply_defaults(
+            config_data["tool"], DEFAULT_TOOL_CONFIG.dict()
         )
 
     def _apply_defaults(self, target_dict: dict, defaults_dict: dict) -> None:

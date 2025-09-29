@@ -16,6 +16,8 @@ from .circuit_breaker_config import CircuitBreakerConfig
 from .gpu_config import GPUConfig
 from .user_config import UserConfig
 from .web_search_providers import WebSearchProviders
+from .workflow_config import WorkflowConfig
+from .tool_config import ToolConfig
 
 from .default_model_profiles import DEFAULT_MODEL_PROFILE_CONFIG
 
@@ -112,6 +114,32 @@ DEFAULT_GPU_CONFIG = GPUConfig(
     offload_kqv=True,
 )
 
+# Default workflow configuration
+DEFAULT_WORKFLOW_CONFIG = WorkflowConfig(
+    enable_workflow_caching=True,
+    workflow_cache_ttl=3600,
+    max_parallel_tools=5,
+    enable_multi_agent=False,
+    default_timeout=60.0,
+    max_context_length=128000,
+    context_trim_threshold=0.8,
+    enable_streaming=True,
+    stream_buffer_size=1024,
+)
+
+# Default tool configuration
+DEFAULT_TOOL_CONFIG = ToolConfig(
+    tool_similarity_threshold=0.9,
+    tool_modification_threshold=0.6,
+    enable_tool_generation=True,
+    max_tool_retries=3,
+    tool_timeout=30.0,
+    enable_tool_caching=True,
+    tool_cache_ttl=1800,
+    enable_semantic_search=True,
+    search_top_k=10,
+)
+
 
 # Function to create a default user config
 def create_default_user_config(user_id: str) -> UserConfig:
@@ -127,4 +155,6 @@ def create_default_user_config(user_id: str) -> UserConfig:
         model_profiles=DEFAULT_MODEL_PROFILE_CONFIG,
         circuit_breaker=DEFAULT_CIRCUIT_BREAKER_CONFIG,
         gpu_config=DEFAULT_GPU_CONFIG,
+        workflow=DEFAULT_WORKFLOW_CONFIG,
+        tool=DEFAULT_TOOL_CONFIG,
     )
