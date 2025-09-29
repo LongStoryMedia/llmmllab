@@ -1,6 +1,23 @@
 """
-Functional interface for composer service.
-Direct integration without HTTP overhead.
+Composer Service Interface Layer.
+
+Provides the public API boundary for the composer component, enabling other 
+services to interact with composer functionality while maintaining strict 
+architectural decoupling. This interface abstracts LangGraph workflow 
+construction, execution, and state management.
+
+Interface Functions:
+- initialize_composer(): Service lifecycle management
+- compose_workflow(): Create executable LangGraph workflows  
+- create_initial_state(): Generate workflow state from conversation context
+- execute_workflow(): Stream-enabled workflow execution
+- get_composer_config(): Runtime configuration access
+
+Architectural Role:
+- Defines clean API boundaries between components
+- Abstracts internal composer implementation details
+- Enables dependency injection for external services
+- Maintains Protocol-based decoupling requirements
 """
 
 from typing import Dict, Any, Optional, AsyncGenerator, Union

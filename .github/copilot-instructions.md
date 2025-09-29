@@ -194,6 +194,30 @@ The inference system has shared components that all services can access:
 - ❌ Shared components cannot import from specific services (server, runner, composer)
 - ❌ Business logic must not be placed in shared components
 
+### Component Interface Layers
+
+Each service component defines its **public API boundary** through its `__init__.py` file:
+
+**Composer Interface (`composer/__init__.py`):**
+- `initialize_composer()`, `compose_workflow()`, `execute_workflow()`
+- Abstracts LangGraph workflow construction and execution
+- Provides clean API for workflow orchestration without internal coupling
+- Enables other services to use composer functionality via Protocol interfaces
+
+**Runner Interface (`runner/__init__.py`):**
+- `pipeline_factory()`, `run_pipeline()`, `stream_pipeline()`, `embed_pipeline()`
+- Abstracts model execution pipelines and streaming functionality
+- Provides clean API for pipeline execution without internal coupling
+- Enables other services to use runner functionality via Protocol interfaces
+
+**Interface Layer Principles:**
+- ✅ Define clean API boundaries between components
+- ✅ Abstract internal implementation details from external consumers
+- ✅ Enable Protocol-based dependency injection patterns
+- ✅ Document all public functions with clear architectural roles
+- ❌ Expose internal classes or implementation details
+- ❌ Create dependencies on other service components
+
 ### **STRICT ARCHITECTURAL DECOUPLING REQUIREMENTS**
 
 **CRITICAL:** The `runner`, `server`, and `composer` components MUST remain completely decoupled:
