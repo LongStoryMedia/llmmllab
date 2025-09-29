@@ -1,5 +1,5 @@
 """
-Native composer RAG tools with strict architectural decoupling.
+LangChain RAG tools with strict architectural decoupling.
 All dependencies are injected via constructor parameters using Protocol interfaces.
 """
 
@@ -43,10 +43,10 @@ class MemoryStoreInterface(Protocol):
         ...
 
 
-class ComposerWebSearchTool(BaseTool):
-    """Native composer web search tool using dependency injection."""
+class WebSearchTool(BaseTool):
+    """Web search tool using dependency injection."""
     
-    name: str = "composer_web_search"
+    name: str = "web_search"
     description: str = "Perform web search using injected search provider"
     
     search_provider: SearchProviderInterface = Field(..., exclude=True)
@@ -55,7 +55,6 @@ class ComposerWebSearchTool(BaseTool):
         super().__init__(search_provider=search_provider, **kwargs)
 
     async def _arun(self, query: str, **kwargs) -> str:
-        """Async implementation for web search."""
         try:
             message = Message(
                 role=MessageRole.USER,
@@ -71,7 +70,6 @@ class ComposerWebSearchTool(BaseTool):
                 return f"Web search results: {json.dumps(search_results[:3], indent=2)}"
             else:
                 return f"No web search results found for: {query}"
-                
         except Exception as e:
             return f"Web search failed: {str(e)}"
 
@@ -79,10 +77,10 @@ class ComposerWebSearchTool(BaseTool):
         return asyncio.run(self._arun(query, **kwargs))
 
 
-class ComposerMemoryTool(BaseTool):
-    """Native composer memory retrieval tool using dependency injection."""
+class MemoryRetrievalTool(BaseTool):
+    """Memory retrieval tool using dependency injection."""
     
-    name: str = "composer_memory_retrieval" 
+    name: str = "memory_retrieval" 
     description: str = "Retrieve memories using injected memory store"
     
     memory_store: MemoryStoreInterface = Field(..., exclude=True)
@@ -91,7 +89,6 @@ class ComposerMemoryTool(BaseTool):
         super().__init__(memory_store=memory_store, **kwargs)
 
     async def _arun(self, embeddings: List[List[float]], **kwargs) -> str:
-        """Async implementation for memory retrieval."""
         try:
             if not embeddings:
                 return "No embeddings provided for memory retrieval"
@@ -102,7 +99,6 @@ class ComposerMemoryTool(BaseTool):
                 return f"Retrieved memories: {json.dumps(memories, indent=2)}"
             else:
                 return "No relevant memories found"
-                
         except Exception as e:
             return f"Memory retrieval failed: {str(e)}"
 
@@ -110,10 +106,10 @@ class ComposerMemoryTool(BaseTool):
         return asyncio.run(self._arun(embeddings, **kwargs))
 
 
-class ComposerSummarizationTool(BaseTool):
-    """Native composer summarization tool using dependency injection."""
+class SummarizationTool(BaseTool):
+    """Summarization tool using dependency injection."""
     
-    name: str = "composer_summarization"
+    name: str = "summarization"
     description: str = "Summarize content using injected pipeline"
     
     pipeline: PipelineInterface = Field(..., exclude=True)
@@ -122,7 +118,6 @@ class ComposerSummarizationTool(BaseTool):
         super().__init__(pipeline=pipeline, **kwargs)
 
     async def _arun(self, content: str, **kwargs) -> str:
-        """Async implementation for summarization."""
         try:
             if not content:
                 return "No content provided for summarization"
@@ -144,7 +139,6 @@ class ComposerSummarizationTool(BaseTool):
                     return f"Summary: {last_message.content[0].text}"
             
             return "Unable to generate summary"
-                
         except Exception as e:
             return f"Summarization failed: {str(e)}"
 
@@ -152,8 +146,8 @@ class ComposerSummarizationTool(BaseTool):
         return asyncio.run(self._arun(content, **kwargs))
 
 
-class ComposerToolFactory:
-    """Factory for creating composer tools with proper dependency injection."""
+class RAGToolFactory:
+    """Factory for creating RAG tools with proper dependency injection."""
     
     def __init__(
         self,
@@ -165,14 +159,14 @@ class ComposerToolFactory:
         self.memory_store = memory_store
         self.pipeline = pipeline
     
-    def create_web_search_tool(self) -> ComposerWebSearchTool:
-        return ComposerWebSearchTool(search_provider=self.search_provider)
+    def create_web_search_tool(self) -> WebSearchTool:
+        return WebSearchTool(search_provider=self.search_provider)
     
-    def create_memory_tool(self) -> ComposerMemoryTool:
-        return ComposerMemoryTool(memory_store=self.memory_store)
+    def create_memory_tool(self) -> MemoryRetrievalTool:
+        return MemoryRetrievalTool(memory_store=self.memory_store)
     
-    def create_summarization_tool(self) -> ComposerSummarizationTool:
-        return ComposerSummarizationTool(pipeline=self.pipeline)
+    def create_summarization_tool(self) -> SummarizationTool:
+        return SummarizationTool(pipeline=self.pipeline)
     
     def create_all_tools(self) -> List[BaseTool]:
         return [
