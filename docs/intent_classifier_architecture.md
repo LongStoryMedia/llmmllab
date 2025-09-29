@@ -1,30 +1,22 @@
-# IntentClassifierAgent LLM Transformation Summary
+# IntentClassifierAgent Architecture
 
 ## Overview
 
-The IntentClassifierAgent has been completely transformed from a heuristic-based system to an LLM-driven graph node that uses the "analysis" model profile for sophisticated intent classification.
+The IntentClassifierAgent is an LLM-driven graph node that uses the "analysis" model profile for sophisticated intent classification. It provides comprehensive intent analysis as part of the workflow orchestration system.
 
-## Key Architectural Changes
+## Current Architecture
 
-### 1. LLM-Driven Classification
-- **Before**: Keyword-based heuristic classification using string matching
-- **After**: Uses analysis model profile to perform comprehensive intent analysis via LLM
-- **Impact**: Much more sophisticated and context-aware classification
+### LLM-Driven Classification
+The IntentClassifierAgent uses the analysis model profile to perform comprehensive intent analysis via LLM. This provides sophisticated and context-aware classification that understands nuanced user requests beyond simple keyword matching.
 
-### 2. Graph Node Architecture
-- **Before**: Standalone agent with custom message extraction
-- **After**: Proper graph node that uses `current_user_message` field with assertion validation
-- **Impact**: Ready for integration into LangGraph workflow orchestration
+### Graph Node Architecture
+The agent functions as a proper graph node that uses the `current_user_message` field with assertion validation. It is designed for seamless integration into LangGraph workflow orchestration.
 
-### 3. Analysis Model Profile Integration
-- **Before**: No model integration, pure heuristics
-- **After**: Uses `conversation_ctx.user_config.model_profiles.analysis_profile_id` with pipeline factory
-- **Impact**: Leverages actual LLM capabilities for classification decisions
+### Analysis Model Profile Integration
+The agent accesses `conversation_ctx.user_config.model_profiles.analysis_profile_id` through the pipeline factory infrastructure. This leverages actual LLM capabilities for classification decisions rather than rule-based approaches.
 
-### 4. Structured LLM Prompting
-- **Before**: No LLM interaction
-- **After**: Comprehensive JSON-structured prompt covering all IntentAnalysis fields
-- **Impact**: Consistent, structured output with proper enum validation
+### Structured LLM Prompting
+The agent uses comprehensive JSON-structured prompts covering all IntentAnalysis fields. This ensures consistent, structured output with proper enum validation.
 
 ## Implementation Details
 
@@ -56,10 +48,7 @@ The IntentClassifierAgent has been completely transformed from a heuristic-based
    - Maintains system reliability
    - Uses simplified heuristic classification
 
-### Removed Methods
-- `_extract_user_query()` - replaced with current_user_message usage
-- All heuristic classification methods - replaced with LLM analysis
-- Statistical calculation methods - integrated into augmentation
+
 
 ## LLM Prompt Engineering
 
@@ -143,22 +132,20 @@ Created comprehensive test suites:
 - `test_intent_architecture.py` - Validates architectural changes
 - `test_llm_intent_classifier.py` - Tests full integration (requires infrastructure)
 
-## Migration Impact
+## System Requirements
 
-### Backwards Compatibility
-- **Interface**: Same `analyze()` method signature
-- **Output**: Same `IntentAnalysis` object structure
-- **Integration**: Uses same `ConversationCtx` input pattern
+### Interface Compatibility
+The agent maintains the same `analyze()` method signature and returns the same `IntentAnalysis` object structure. It uses the standard `ConversationCtx` input pattern for seamless integration.
 
 ### Configuration Requirements
 - Requires `analysis_profile_id` in user model profiles
 - Needs pipeline factory infrastructure
 - Depends on storage service for model profile retrieval
 
-### Performance Impact
-- **Latency**: Slight increase due to LLM calls (mitigated by HIGH priority)
-- **Accuracy**: Significant improvement in classification quality
-- **Reliability**: Enhanced with multi-layer fallback system
+### Performance Characteristics
+- Uses HIGH priority pipeline for responsive intent classification
+- Provides improved classification accuracy through LLM analysis
+- Enhanced reliability with multi-layer fallback system
 
 ## Future Enhancements
 
@@ -175,7 +162,7 @@ Created comprehensive test suites:
 
 ## Summary
 
-The IntentClassifierAgent transformation represents a major architectural upgrade from rule-based to AI-driven intent analysis. The agent now:
+The IntentClassifierAgent is an LLM-driven graph node that provides AI-powered intent analysis. The agent:
 
 1. **Leverages LLM Intelligence**: Uses analysis model profile for sophisticated classification
 2. **Integrates with Graph Architecture**: Proper current_user_message usage and assertions
@@ -183,9 +170,9 @@ The IntentClassifierAgent transformation represents a major architectural upgrad
 4. **Maintains Reliability**: Multi-layer fallback and error handling
 5. **Enables Advanced Workflows**: RAG depth determination and capability mapping
 
-This transformation enables much more sophisticated workflow orchestration based on intelligent intent understanding rather than simple keyword matching.
+This architecture enables sophisticated workflow orchestration based on intelligent intent understanding.
 
 ---
 
-*Transformation completed: September 29, 2025*  
-*Commit: 48dbe7a - Transform IntentClassifierAgent to LLM-driven graph node*
+*Documentation updated: September 29, 2025*  
+*Architecture: LLM-driven intent analysis graph node*

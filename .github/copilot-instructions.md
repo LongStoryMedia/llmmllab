@@ -335,6 +335,12 @@ kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh server python -m debug.test_r
 
 DO NOT ADD DOCUMENTATION FOR FIXES. ONLY DOCUMENT FULLY IMPLEMENTED FEATURES, AND ALWAYS IN THE `docs/` FOLDER. ALWAYS LINK TO THE DOCS FROM THE README IF IT'S IMPORTANT.
 
+**Documentation Standards:**
+- **Current State Only**: Document what the system currently does, not what it was changed from
+- **No Before/After**: Avoid "Before: X, After: Y" format - focus on current capabilities and architecture
+- **Implementation Focus**: Describe current functionality, integration points, and usage patterns
+- **Architecture Description**: Document current system architecture, not transformation history
+
 ## Testing Strategy
 
 ### Unit Tests (`inference/test/`)
