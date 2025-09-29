@@ -3,6 +3,7 @@ Structured logging for composer service.
 Follows inference service logging patterns.
 """
 import structlog
+import structlog.typing
 from datetime import datetime
 from typing import Dict, Any, Optional
 import sys
@@ -13,7 +14,7 @@ class ComposerLogger:
     """Structured logging for composer workflows."""
     
     def __init__(self, service_name: str = "composer"):
-        self.logger = structlog.get_logger(service_name)
+        self.logger: structlog.typing.FilteringBoundLogger = structlog.get_logger(service_name)
     
     def log_workflow_start(
         self, 
@@ -108,7 +109,6 @@ class ComposerLogger:
         """Log intent analysis results."""
         self.logger.debug(
             "Intent analysis completed",
-            event="intent_analysis",
             intent_result=intent_result,
             confidence=confidence,
             processing_time_ms=processing_time_ms,

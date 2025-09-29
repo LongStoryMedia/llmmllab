@@ -3,11 +3,13 @@ Functional interface for composer service.
 Direct integration without HTTP overhead.
 """
 
-from typing import Dict, Any, Optional, AsyncGenerator
+from typing import Dict, Any, Optional, AsyncGenerator, Union
 from composer.core.service import ComposerService
 from composer.config import config
 from composer.monitoring.logging import composer_logger
 from models.conversation_ctx import ConversationCtx
+
+from langchain_core.runnables.schema import StreamEvent
 
 # Global service instance
 _composer_service: Optional[ComposerService] = None
@@ -34,65 +36,61 @@ async def shutdown_composer() -> None:
 def get_composer_service() -> ComposerService:
     """Get the composer service instance."""
     if _composer_service is None:
-        raise RuntimeError("Composer service not initialized. Call initialize_composer() first.")
+        raise RuntimeError(
+            "Composer service not initialized. Call initialize_composer() first."
+        )
     return _composer_service
 
 
 async def compose_workflow(
     conversation_ctx: ConversationCtx,
     workflow_type: str,
-    config_overrides: Optional[Dict[str, Any]] = None
+    config_overrides: Optional[Dict[str, Any]] = None,
 ):
     """
     Compose a workflow for the given conversation context.
-    
+
     Args:
         conversation_ctx: The conversation context
         workflow_type: Type of workflow ("CHAT", "RESEARCH", etc.)
         config_overrides: Optional configuration overrides
-        
+
     Returns:
         CompiledStateGraph: Ready to execute LangGraph workflow
-        
+
     Raises:
         RuntimeError: If composer service not initialized
         WorkflowConstructionError: If workflow construction fails
     """
     service = get_composer_service()
     return await service.compose_workflow(
-        conversation_ctx,
-        workflow_type,
-        config_overrides
+        conversation_ctx, workflow_type, config_overrides
     )
 
 
 async def create_initial_state(
     conversation_ctx: ConversationCtx,
     workflow_type: str,
-    additional_context: Optional[Dict[str, Any]] = None
+    additional_context: Optional[Dict[str, Any]] = None,
 ):
     """Create initial workflow state from conversation context."""
     service = get_composer_service()
     return await service.create_initial_state(
-        conversation_ctx,
-        workflow_type,
-        additional_context
+        conversation_ctx, workflow_type, additional_context
     )
 
 
 async def execute_workflow(
-    workflow,
-    initial_state,
-    stream: bool = True
-) -> AsyncGenerator[Dict[str, Any], None]:
+    workflow, initial_state, stream: bool = True
+) -> AsyncGenerator[Union[StreamEvent, Dict[str, Any]], None]:
     """
     Execute a compiled workflow with the given initial state.
-    
+
     Args:
         workflow: CompiledStateGraph from compose_workflow()
         initial_state: WorkflowState from create_initial_state()
         stream: Whether to stream events or return final result
-        
+
     Yields:
         Dict containing workflow events (tokens, state updates, etc.)
     """
@@ -104,7 +102,9 @@ async def execute_workflow(
 def get_composer_config():
     """Get current composer configuration."""
     if _composer_service is None:
-        raise RuntimeError("Composer service not initialized. Call initialize_composer() first.")
+        raise RuntimeError(
+            "Composer service not initialized. Call initialize_composer() first."
+        )
     return {
         "service": "composer",
         "caching_enabled": config.default_workflow.enable_workflow_caching,
@@ -113,17 +113,17 @@ def get_composer_config():
         "tool_generation_enabled": config.default_tool.enable_tool_generation,
         "cache_ttl": config.default_workflow.workflow_cache_ttl,
         "max_context_length": config.default_workflow.max_context_length,
-        "tool_similarity_threshold": config.default_tool.tool_similarity_threshold
+        "tool_similarity_threshold": config.default_tool.tool_similarity_threshold,
     }
 
 
 # Convenience exports for direct usage
 __all__ = [
     "initialize_composer",
-    "shutdown_composer", 
+    "shutdown_composer",
     "get_composer_service",
     "compose_workflow",
     "create_initial_state",
     "execute_workflow",
-    "get_composer_config"
+    "get_composer_config",
 ]

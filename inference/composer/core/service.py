@@ -5,19 +5,18 @@ Central to the redesign - serves as the primary, authoritative execution runtime
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional, Required
+from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
 from langgraph.graph.state import CompiledStateGraph
 
-from models import ConversationCtx, IntentAnalysis, ComplexityLevel, RequiredCapability
+from models import ConversationCtx, IntentAnalysis, ComplexityLevel
 from composer.graph.state import WorkflowState, ChatWorkflowState, ResearchWorkflowState
 from composer.graph.builder import GraphBuilder
 from composer.tools.registry import ToolRegistry
 from composer.graph.cache import WorkflowCache
 from composer.agents.intent_classifier import IntentClassifierAgent
 from composer.monitoring.logging import composer_logger
-from composer.config import config
 
 
 @dataclass
