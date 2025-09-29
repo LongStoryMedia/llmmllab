@@ -205,6 +205,68 @@ spec:
             - name: INFERENCE_SERVICES_PORT
               value: "50051"
 
+            # Composer service configuration
+            - name: COMPOSER_HOST
+              value: "0.0.0.0"
+            - name: COMPOSER_PORT
+              value: "8001"
+            - name: COMPOSER_DEBUG
+              value: "false"
+            - name: COMPOSER_RELOAD
+              value: "false"
+            - name: COMPOSER_LOG_LEVEL
+              value: "INFO"
+            - name: COMPOSER_ENABLE_CORS
+              value: "true"
+            - name: COMPOSER_RATE_LIMIT_ENABLED
+              value: "true"
+            - name: COMPOSER_RATE_LIMIT_RPM
+              value: "60"
+            - name: COMPOSER_HEALTH_CHECK_ENABLED
+              value: "true"
+            - name: COMPOSER_HEALTH_CHECK_INTERVAL
+              value: "30"
+
+            # Composer workflow defaults (user-customizable via UI)
+            - name: COMPOSER_ENABLE_CACHE
+              value: "true"
+            - name: COMPOSER_CACHE_TTL
+              value: "3600"
+            - name: COMPOSER_MAX_PARALLEL_TOOLS
+              value: "5"
+            - name: COMPOSER_ENABLE_MULTI_AGENT
+              value: "false"
+            - name: COMPOSER_DEFAULT_TIMEOUT
+              value: "60.0"
+            - name: COMPOSER_MAX_CONTEXT_LENGTH
+              value: "128000"
+            - name: COMPOSER_CONTEXT_TRIM_THRESHOLD
+              value: "0.8"
+            - name: COMPOSER_ENABLE_STREAMING
+              value: "true"
+            - name: COMPOSER_STREAM_BUFFER_SIZE
+              value: "1024"
+
+            # Composer tool defaults (user-customizable via UI)
+            - name: COMPOSER_TOOL_SIMILARITY_THRESHOLD
+              value: "0.9"
+            - name: COMPOSER_TOOL_MODIFICATION_THRESHOLD
+              value: "0.6"
+            - name: COMPOSER_ENABLE_TOOL_GENERATION
+              value: "true"
+            - name: COMPOSER_MAX_TOOL_RETRIES
+              value: "3"
+            - name: COMPOSER_TOOL_TIMEOUT
+              value: "30.0"
+            - name: COMPOSER_ENABLE_TOOL_CACHING
+              value: "true"
+            - name: COMPOSER_TOOL_CACHE_TTL
+              value: "1800"
+            - name: COMPOSER_ENABLE_SEMANTIC_SEARCH
+              value: "true"
+            - name: COMPOSER_SEARCH_TOP_K
+              value: "10"
+
             # Internal security configuration
             - name: INTERNAL_API_KEY
               valueFrom:
@@ -226,6 +288,8 @@ spec:
               value: "/opt/venv/server"
             - name: RUNNER_VENV
               value: "/opt/venv/runner"
+            - name: COMPOSER_VENV
+              value: "/opt/venv/composer"
             - name: BASE_VENV
               value: "/opt/venv/base"
             # - name: CMAKE_ARGS
