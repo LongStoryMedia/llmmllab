@@ -213,7 +213,7 @@ class ComposerService:
 
 **Highlights:**
 
-  - Uses a **LangGraph CompiledStateGraph** returned to the caller, which supports both streaming and batch execution.
+  - Uses a **LangGraph CompiledGraph** returned to the caller, which supports both streaming and batch execution.
   - **Intent Analysis:** Before building a workflow, an LLM-based intent analyzer is invoked. The analysis guides tool selection and workflow type.
   - **Caching:** Workflows are cached by (user\_id, workflow\_type, toolset) signature.
 
@@ -554,7 +554,7 @@ composer/
   - [ ] Move `inference/server/tools/integration.py` → `composer/tools/static/`
   - [ ] Move `inference/server/tools/dynamic_tool.py` → `composer/tools/dynamic/generator.py`
   - [ ] Extract tool generation logic from server handlers
-  - [ ] Implement `ToolRegistry` with vector database for semantic search
+  - [ ] Implement `ToolRegistry` with semantic search similar to existing memory store and query (`server/db/sql/memory/search.sql`). Note: a query exists for this at `server/db/sql/tool/search_tools_by_embedding.sql`.
 
 #### Phase 2: Core Node Implementation (Week 3-4)
 
