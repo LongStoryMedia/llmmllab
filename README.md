@@ -121,6 +121,42 @@ For development or custom deployments, you can set up each component separately:
 
 See the individual component READMEs for more detailed instructions.
 
+## Development
+
+### Schema-Driven Development
+
+The platform uses YAML schemas to define data contracts and automatically generate Python models and TypeScript types.
+
+#### Regenerating All Models
+
+```bash
+# Generate Python and TypeScript models from YAML schemas
+./regenerate_models.sh
+
+# Language-specific generation
+./regenerate_models.sh python     # Generate only Python models
+./regenerate_models.sh typescript # Generate only TypeScript models
+```
+
+#### Creating New Schemas
+
+1. Create new YAML schema in `schemas/[name].yaml`
+2. Generate Python model: `schema2code schemas/[name].yaml -l python -o inference/models/[name].py`
+3. Generate TypeScript types: `schema2code schemas/[name].yaml -l typescript -o ui/src/types/[name].ts`
+
+The `schema2code` tool automatically updates `__init__.py` with exports and maintains type consistency across the platform.
+
+#### Schema Development Workflow
+
+When modifying APIs or data structures:
+
+1. Update the relevant YAML schema first
+2. Run generation commands to update models
+3. Test the changes with the generated types
+4. Generated files: `inference/models/*.py`, `ui/src/types/*.ts`
+
+For more details on the schema architecture, see [Intent Analysis Architecture](docs/intent_analysis_architecture.md).
+
 ## Architecture
 
 The system follows a microservice architecture where components communicate through well-defined APIs:

@@ -5,12 +5,12 @@ Central to the redesign - serves as the primary, authoritative execution runtime
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Required
 from dataclasses import dataclass
 
 from langgraph.graph.state import CompiledStateGraph
 
-from models.conversation_ctx import ConversationCtx
+from models import ConversationCtx, IntentAnalysis, ComplexityLevel, RequiredCapability
 from composer.graph.state import WorkflowState, ChatWorkflowState, ResearchWorkflowState
 from composer.graph.builder import GraphBuilder
 from composer.tools.registry import ToolRegistry
@@ -174,13 +174,15 @@ class ComposerService:
                 exc_info=True,
             )
             # Return default intent analysis
-            from models.intent_analysis import IntentAnalysis
 
             return IntentAnalysis(
                 primary_intent="chat",
                 confidence=0.5,
-                requires_tools=False,
-                estimated_complexity="low",
+                complexity_level=ComplexityLevel.TRIVIAL,
+                required_capabilities=[],
+                computational_requirements=[],
+                domain_specificity=0.0,
+                reusability_potential=0.5,
             )
 
     def _merge_config_overrides(

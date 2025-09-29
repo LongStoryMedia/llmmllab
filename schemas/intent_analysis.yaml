@@ -5,8 +5,18 @@ description: "Detailed analysis of user intent for smart tool generation"
 properties:
   primary_intent:
     type: string
-    description: "Primary intent identified from the user message"
-    maxLength: 200
+    enum:
+      - chat
+      - research
+      - creative
+      - technical
+      - analysis
+      - summarization
+      - memory_retrieval
+      - web_search
+      - image_generation
+      - data_processing
+    description: "Primary intent category identified from the user message"
   complexity_level:
     $ref: "complexity_level.yaml"
     description: "Assessed complexity level of the request"
@@ -19,7 +29,18 @@ properties:
     type: array
     items:
       type: string
-    description: "List of computational requirements identified"
+      enum:
+        - high_memory
+        - gpu_acceleration
+        - parallel_processing
+        - real_time_processing
+        - large_data_handling
+        - complex_reasoning
+        - multi_modal_processing
+        - external_api_calls
+        - file_operations
+        - database_operations
+    description: "List of specific computational requirements identified"
   domain_specificity:
     type: number
     minimum: 0.0

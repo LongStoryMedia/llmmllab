@@ -157,6 +157,12 @@ the ui is fully local and connects to remote inference services.
 # Language-specific generation
 ./regenerate_models.sh python     # Generate only Python models
 ./regenerate_models.sh typescript # Generate only TypeScript models
+
+# Generate a new model from a schema (creates both Python model and updates __init__.py)
+schema2code schemas/[name].yaml -l python -o inference/models/[name].py
+
+# Generate TypeScript types
+schema2code schemas/[name].yaml -l typescript -o ui/src/types/[name].ts
 ```
 
 ## Critical Patterns
@@ -175,6 +181,12 @@ YAML schemas in `schemas/` define the data contracts. When modifying APIs:
 1. Update relevant YAML schema first
 2. Run `./regenerate_models.sh` to generate Python models and TypeScript types
 3. Generated files: `inference/models/*.py`, `ui/src/types/*.ts`
+
+**Adding New Schemas:**
+1. Create new YAML schema in `schemas/[name].yaml`
+2. Generate Python model: `schema2code schemas/[name].yaml -l python -o inference/models/[name].py`
+3. Generate TypeScript types: `schema2code schemas/[name].yaml -l typescript -o ui/src/types/[name].ts`
+4. The schema2code tool automatically updates `__init__.py` with exports
 
 ### Memory Management
 The platform implements sophisticated memory optimization:

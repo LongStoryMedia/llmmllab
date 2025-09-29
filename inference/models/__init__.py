@@ -6,6 +6,7 @@ try:
     from . import analysis_depth
     from . import auth_config
     from . import available_tool
+    from . import capability_profile_mapping
     from . import chat_req
     from . import chat_response
     from . import circuit_breaker_config
@@ -114,6 +115,7 @@ __all__ = [
     'analysis_depth',
     'auth_config',
     'available_tool',
+    'capability_profile_mapping',
     'chat_req',
     'chat_response',
     'circuit_breaker_config',
@@ -216,6 +218,7 @@ __all__ = [
     'AnalysisDepth',
     'AuthConfig',
     'AvailableTool',
+    'CapabilityProfileMapping',
     'ChatReq',
     'ChatResponse',
     'CircuitBreakerConfig',
@@ -333,6 +336,9 @@ from .auth_config import (
 )
 from .available_tool import (
     AvailableTool,
+)
+from .capability_profile_mapping import (
+    CapabilityProfileMapping,
 )
 from .chat_req import (
     ChatReq,
