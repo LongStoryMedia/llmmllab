@@ -1,130 +1,182 @@
 """
-LangChain tool wrappers for RAG components compatible with latest BaseTool API.
+Native composer RAG tools with strict architectural decoupling.
+All dependencies are injected via constructor parameters using Protocol interfaces.
 """
 
 import asyncio
 import json
-from typing import List
+from typing import List, Protocol, runtime_checkable
 
 from langchain_core.tools import BaseTool
+from pydantic import Field
 
 from models.message import Message
-from server.services.context import ConversationContext
-from server.config import logger
+from models.message_role import MessageRole
+from models.message_content import MessageContent
+from models.message_content_type import MessageContentType
 
 
-# ============================================================================
-# LangChain Tools for RAG Components
-# ============================================================================
+@runtime_checkable
+class PipelineInterface(Protocol):
+    """Protocol for pipeline execution services."""
+    
+    async def execute_pipeline(self, message: Message, conversation_id: int) -> List[Message]:
+        """Execute a pipeline and return generated messages."""
+        ...
 
 
-class MemoryRetrievalTool(BaseTool):
-    """Tool for retrieving conversation memories using embeddings"""
-
-    name: str = "memory_retrieval"
-    description: str = "Retrieve relevant memories based on query embeddings"
-    conversation_ctx: ConversationContext
-
-    def __init__(self, conversation_ctx: ConversationContext):
-        super().__init__(conversation_ctx=conversation_ctx)
-
-    async def _arun(self, *args, **kwargs) -> str:
-        """Async implementation for memory retrieval"""
-        try:
-            tool_input = args[0] if args else kwargs.get("tool_input")
-            embeddings: List[List[float]] = (
-                tool_input if isinstance(tool_input, list) else []
-            )
-            if not embeddings:
-                return "No embeddings provided"
-
-            memories = await self.conversation_ctx.memory_context.retrieve_memories(
-                embeddings
-            )
-
-            if memories:
-                return f"Retrieved memories: {json.dumps(memories)}"
-            return "No relevant memories found"
-        except Exception as e:
-            logger.error(f"Memory retrieval error: {e}")
-            return f"Memory retrieval failed: {str(e)}"
-
-    def _run(self, *args, **kwargs) -> str:
-        """Sync fallback - not recommended for production"""
-        return asyncio.run(self._arun(*args, **kwargs))
+@runtime_checkable  
+class SearchProviderInterface(Protocol):
+    """Protocol for search providers."""
+    
+    async def search(self, message: Message, conversation_id: int) -> List[dict]:
+        """Perform search and return search results."""
+        ...
 
 
-class WebSearchTool(BaseTool):
-    """Tool for web search functionality"""
+@runtime_checkable
+class MemoryStoreInterface(Protocol):
+    """Protocol for memory storage and retrieval."""
+    
+    async def retrieve_memories(self, embeddings: List[List[float]]) -> List[dict]:
+        """Retrieve memories based on embeddings."""
+        ...
 
-    name: str = "web_search"
-    description: str = "Perform a web search and retrieve relevant results"
-    conversation_ctx: ConversationContext
 
-    def __init__(self, conversation_ctx: ConversationContext):
-        super().__init__(conversation_ctx=conversation_ctx)
+class ComposerWebSearchTool(BaseTool):
+    """Native composer web search tool using dependency injection."""
+    
+    name: str = "composer_web_search"
+    description: str = "Perform web search using injected search provider"
+    
+    search_provider: SearchProviderInterface = Field(..., exclude=True)
+    
+    def __init__(self, search_provider: SearchProviderInterface, **kwargs):
+        super().__init__(search_provider=search_provider, **kwargs)
 
     async def _arun(self, query: str, **kwargs) -> str:
-        """Async implementation for web search"""
+        """Async implementation for web search."""
         try:
-            # Create a Message object from the query
-            from models import MessageRole, MessageContent, MessageContentType
-
             message = Message(
                 role=MessageRole.USER,
                 content=[MessageContent(type=MessageContentType.TEXT, text=query)],
-                conversation_id=getattr(self.conversation_ctx.conversation, "id", 0),
+                conversation_id=kwargs.get("conversation_id", 0)
             )
-
-            # Use the existing search context to perform web search
-            search_results = await self.conversation_ctx.search_context.search(
-                message, getattr(self.conversation_ctx.conversation, "id", 0)
+            
+            search_results = await self.search_provider.search(
+                message, kwargs.get("conversation_id", 0)
             )
-
+            
             if search_results:
-                # Format the search synthesis results
-                formatted_results = []
-                for result in search_results[:3]:  # Limit to top 3 results
-                    formatted_results.append(
-                        f"URLs: {', '.join(result.urls[:3])}\n"
-                        f"Topics: {', '.join(result.topics)}\n"
-                        f"Synthesis: {result.synthesis}"
-                    )
-                return "Web search results:\n\n" + "\n\n".join(formatted_results)
+                return f"Web search results: {json.dumps(search_results[:3], indent=2)}"
             else:
                 return f"No web search results found for: {query}"
+                
         except Exception as e:
-            logger.error(f"Web search error: {e}")
             return f"Web search failed: {str(e)}"
 
     def _run(self, query: str, **kwargs) -> str:
-        """Sync fallback"""
         return asyncio.run(self._arun(query, **kwargs))
 
 
-class SummarizationTool(BaseTool):
-    """Tool for conversation summarization"""
+class ComposerMemoryTool(BaseTool):
+    """Native composer memory retrieval tool using dependency injection."""
+    
+    name: str = "composer_memory_retrieval" 
+    description: str = "Retrieve memories using injected memory store"
+    
+    memory_store: MemoryStoreInterface = Field(..., exclude=True)
+    
+    def __init__(self, memory_store: MemoryStoreInterface, **kwargs):
+        super().__init__(memory_store=memory_store, **kwargs)
 
-    name: str = "summarization"
-    description: str = "Summarize the conversation context"
-    conversation_ctx: ConversationContext
-
-    def __init__(self, conversation_ctx: ConversationContext):
-        super().__init__(conversation_ctx=conversation_ctx)
-
-    async def _arun(self, *args, **kwargs) -> str:
-        """Async implementation for summarization"""
+    async def _arun(self, embeddings: List[List[float]], **kwargs) -> str:
+        """Async implementation for memory retrieval."""
         try:
-            # Perform summarization
-            tool_input = args[0] if args else kwargs.get("tool_input")
-            messages = tool_input if isinstance(tool_input, list) else []
-            await self.conversation_ctx.summary_context.summarize(messages)
-
-            return "No summary generated"
+            if not embeddings:
+                return "No embeddings provided for memory retrieval"
+            
+            memories = await self.memory_store.retrieve_memories(embeddings)
+            
+            if memories:
+                return f"Retrieved memories: {json.dumps(memories, indent=2)}"
+            else:
+                return "No relevant memories found"
+                
         except Exception as e:
-            logger.error(f"Summarization error: {e}")
+            return f"Memory retrieval failed: {str(e)}"
+
+    def _run(self, embeddings: List[List[float]], **kwargs) -> str:
+        return asyncio.run(self._arun(embeddings, **kwargs))
+
+
+class ComposerSummarizationTool(BaseTool):
+    """Native composer summarization tool using dependency injection."""
+    
+    name: str = "composer_summarization"
+    description: str = "Summarize content using injected pipeline"
+    
+    pipeline: PipelineInterface = Field(..., exclude=True)
+    
+    def __init__(self, pipeline: PipelineInterface, **kwargs):
+        super().__init__(pipeline=pipeline, **kwargs)
+
+    async def _arun(self, content: str, **kwargs) -> str:
+        """Async implementation for summarization."""
+        try:
+            if not content:
+                return "No content provided for summarization"
+            
+            summary_prompt = f"Please summarize: {content}"
+            message = Message(
+                role=MessageRole.USER,
+                content=[MessageContent(type=MessageContentType.TEXT, text=summary_prompt)],
+                conversation_id=kwargs.get("conversation_id", 0)
+            )
+            
+            result_messages = await self.pipeline.execute_pipeline(
+                message, kwargs.get("conversation_id", 0)
+            )
+            
+            if result_messages and len(result_messages) > 0:
+                last_message = result_messages[-1]
+                if last_message.content and len(last_message.content) > 0:
+                    return f"Summary: {last_message.content[0].text}"
+            
+            return "Unable to generate summary"
+                
+        except Exception as e:
             return f"Summarization failed: {str(e)}"
 
-    def _run(self, *args, **kwargs) -> str:
-        """Sync fallback"""
-        return "Summarization requires async execution"
+    def _run(self, content: str, **kwargs) -> str:
+        return asyncio.run(self._arun(content, **kwargs))
+
+
+class ComposerToolFactory:
+    """Factory for creating composer tools with proper dependency injection."""
+    
+    def __init__(
+        self,
+        search_provider: SearchProviderInterface,
+        memory_store: MemoryStoreInterface, 
+        pipeline: PipelineInterface
+    ):
+        self.search_provider = search_provider
+        self.memory_store = memory_store
+        self.pipeline = pipeline
+    
+    def create_web_search_tool(self) -> ComposerWebSearchTool:
+        return ComposerWebSearchTool(search_provider=self.search_provider)
+    
+    def create_memory_tool(self) -> ComposerMemoryTool:
+        return ComposerMemoryTool(memory_store=self.memory_store)
+    
+    def create_summarization_tool(self) -> ComposerSummarizationTool:
+        return ComposerSummarizationTool(pipeline=self.pipeline)
+    
+    def create_all_tools(self) -> List[BaseTool]:
+        return [
+            self.create_web_search_tool(),
+            self.create_memory_tool(), 
+            self.create_summarization_tool()
+        ]
