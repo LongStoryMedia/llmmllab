@@ -37,6 +37,102 @@ workflow_config = config.get_workflow_config(user_config.workflow)
 tool_config = config.get_tool_config(user_config.tool)
 ```
 
+## Environment Variable Management
+
+The platform uses environment variables for infrastructure configuration with a **hierarchical override system**:
+
+### Environment Variable Hierarchy
+1. **Kubernetes Deployment** (`k8s/deployment.yaml`) - Production defaults
+2. **Local Development** (`.env` files) - Development overrides  
+3. **Runtime Configuration** - Dynamic user preferences via API
+
+### Composer Service Environment Variables
+
+**System Configuration (Infrastructure):**
+```bash
+# Service binding
+COMPOSER_HOST=0.0.0.0
+COMPOSER_PORT=8001
+COMPOSER_DEBUG=false
+COMPOSER_LOG_LEVEL=INFO
+
+# Performance & Security
+COMPOSER_ENABLE_CORS=true
+COMPOSER_RATE_LIMIT_RPM=60
+COMPOSER_HEALTH_CHECK_INTERVAL=30
+
+# Virtual environment
+COMPOSER_VENV=/opt/venv/composer
+```
+
+**User Configuration Defaults (UI-Customizable):**
+```bash
+# Workflow behavior defaults
+COMPOSER_ENABLE_STREAMING=true
+COMPOSER_MAX_PARALLEL_TOOLS=5
+COMPOSER_DEFAULT_TIMEOUT=60.0
+COMPOSER_CACHE_TTL=3600
+
+# Tool behavior defaults
+COMPOSER_TOOL_SIMILARITY_THRESHOLD=0.9
+COMPOSER_ENABLE_TOOL_GENERATION=true
+COMPOSER_TOOL_TIMEOUT=30.0
+COMPOSER_SEARCH_TOP_K=10
+```
+
+### Environment Variable Best Practices
+
+**When Adding New Environment Variables:**
+1. **Add to Schema First**: Update relevant YAML schema in `schemas/`
+2. **Update Config Loading**: Modify `composer/config.py` with proper parsing
+3. **Add to Kubernetes**: Include in `k8s/deployment.yaml` with production defaults
+4. **Document**: Add to `docs/k8s_environment_variables.md`
+5. **Validate**: Test with `debug/test_k8s_env_vars.py`
+
+**Environment Variable Naming Conventions:**
+- **System Settings**: `{SERVICE}_{SETTING}` (e.g., `COMPOSER_HOST`)
+- **User Defaults**: `{SERVICE}_{CATEGORY}_{SETTING}` (e.g., `COMPOSER_TOOL_TIMEOUT`)
+- **Boolean Values**: Use `"true"/"false"` strings (lowercase)
+- **Numeric Values**: Use string representations with proper validation
+
+**Testing Environment Variables:**
+```bash
+# Validate Kubernetes deployment configuration
+k exec -it -n ollama $POD_NAME -- /app/v.sh composer python debug/test_k8s_env_vars.py
+
+# Test configuration loading locally
+COMPOSER_DEBUG=true COMPOSER_PORT=8002 python -c "from composer.config import config; print(config.service.debug)"
+
+# Check all composer env vars in pod
+k exec -it -n ollama $POD_NAME -- env | grep COMPOSER
+```
+
+### Database & Infrastructure Variables
+
+**Required for Service Startup:**
+```bash
+# Database connectivity
+DATABASE_URL=postgresql://user:pass@host:port/db
+DB_HOST=192.168.0.71
+DB_PORT=32345
+DB_USER=lsm
+DB_PASSWORD=<from_secret>
+DB_NAME=llmmll
+
+# Redis caching
+REDIS_HOST=192.168.0.71  
+REDIS_PORT=32346
+REDIS_DB=0
+
+# Cross-module imports
+PYTHONPATH=/app
+```
+
+**Development vs Production:**
+- **Local Development**: Use `.env` files or direct shell exports
+- **Kubernetes Deployment**: Use deployment.yaml with secrets for sensitive values
+- **Testing**: Use validation scripts to ensure proper configuration
+
 ## Key Development Workflows
 
 ### Environment Setup
@@ -143,6 +239,65 @@ The code interfaces are in `inference/server/db/`.
 Web scraping is handled by Scrapy in `inference/server/services/web_extraction_service.py`.
 these are the settings available: https://docs.scrapy.org/en/latest/topics/settings.html
 and main docs: https://docs.scrapy.org/en/latest/
+
+## Environment Variable Troubleshooting
+
+### Common Configuration Issues
+
+**Service Won't Start:**
+1. Check required environment variables are set
+2. Validate boolean values are "true"/"false" (lowercase)
+3. Ensure numeric values are within schema constraints
+4. Verify virtual environment paths exist
+
+**Configuration Not Loading:**
+```bash
+# Debug configuration loading in pod
+k exec -it -n ollama $POD_NAME -- /app/v.sh composer python -c "from composer.config import config; print('Host:', config.service.host, 'Port:', config.service.port)"
+
+# Check environment variable parsing
+k exec -it -n ollama $POD_NAME -- env | grep COMPOSER | head -10
+```
+
+**Schema Validation Errors:**
+1. Run validation script: `debug/test_k8s_env_vars.py`
+2. Check YAML schema constraints in `schemas/`
+3. Verify environment variable naming conventions
+4. Ensure proper type conversion (string → bool/int/float)
+
+**User Config Override Issues:**
+```bash
+# Test user preference resolution
+k exec -it -n ollama $POD_NAME -- /app/v.sh composer python -c "
+from composer.config import config
+from models.workflow_config import WorkflowConfig
+user_config = WorkflowConfig(enable_streaming=False)
+resolved = config.get_workflow_config(user_config)
+print('User override working:', not resolved.enable_streaming)
+"
+```
+
+### Environment Variable Development Workflow
+
+**When Adding New Environment Variables:**
+1. **Schema First**: Update `schemas/[service]_config.yaml`
+2. **Generate Models**: Run `./regenerate_models.sh`
+3. **Update Config**: Modify `composer/config.py` parsing
+4. **Add to K8s**: Include in `k8s/deployment.yaml`
+5. **Test**: Use `debug/test_k8s_env_vars.py`
+6. **Document**: Update `docs/k8s_environment_variables.md`
+
+**Validation Commands:**
+```bash
+# Full environment validation
+k exec -it -n ollama $POD_NAME -- /app/v.sh composer python debug/test_k8s_env_vars.py
+
+# Quick config check
+k exec -it -n ollama $POD_NAME -- /app/v.sh composer python -c "from composer.config import config; print('✅ Config loaded')"
+
+# Environment variable debugging
+k exec -it -n ollama $POD_NAME -- env | grep -E "(COMPOSER|DB_|REDIS_)" | sort
+```
 
 ---
 DO NOT USE LONG OR COMPLEX COMMANDS. USE SCRIPTS INSTEAD.
