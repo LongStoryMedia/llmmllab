@@ -49,6 +49,7 @@ setup_project() {
 setup_project "evaluation"
 setup_project "server"
 setup_project "runner"
+setup_project "composer"
 
 # Return to original directory
 cd "$CURRENT_DIR"
