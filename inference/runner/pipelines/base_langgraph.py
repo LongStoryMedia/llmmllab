@@ -51,7 +51,7 @@ from utils.langgraph import (
     coerce_to_langchain_message_dict,
 )
 from utils.message import to_lc_message
-from runner.pipelines.base import BasePipelineCore, PipeType
+from runner.pipelines.base import BasePipelineCore, PipeType, GrammarInput
 
 T = TypeVar("T")
 
@@ -170,9 +170,18 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
 
     @abstractmethod
     async def _initialize_llm(
-        self, gguf_path: str, tools: Optional[List[BaseTool]] = None, grammar: Optional[str] = None
+        self, 
+        gguf_path: str, 
+        tools: Optional[List[BaseTool]] = None,
+        grammar: Optional[GrammarInput] = None,
     ) -> None:
-        """Initialize the LLM. Must be implemented by subclasses."""
+        """Initialize the language model. Must be implemented by subclasses.
+        
+        Args:
+            gguf_path: Path to the GGUF model file
+            tools: Optional tools for the pipeline
+            grammar: Optional grammar constraint (GBNF string, file path, or Pydantic model class)
+        """
         raise NotImplementedError("Subclass must implement _initialize_llm")
 
     @abstractmethod
@@ -228,11 +237,13 @@ Use these tools when they can help provide more accurate or comprehensive respon
                 }
 
             try:
-                # Initialize LLM if not done yet
-                if self.llm is None:
+                # Initialize LLM if not already done
+                if not self.llm:
                     gguf_path = self._get_gguf_path()
-                    await self._initialize_llm(gguf_path)
-
+                    await asyncio.wait_for(
+                        self._initialize_llm(gguf_path, None), timeout=30.0  # Default timeout for LLM init
+                    )
+                
                 # Build messages for LLM using standard LangChain format
                 messages = build_lc_messages(state.messages)
 
@@ -817,7 +828,7 @@ Use these tools when they can help provide more accurate or comprehensive respon
         tools: Optional[List[BaseTool]],
         timeout: float,
         is_tool_generation: bool = False,
-        grammar: Optional[str] = None,
+        grammar: Optional[GrammarInput] = None,
     ) -> CompiledStateGraph:
         """Create LangGraph with timeout-aware agent node."""
         tool_signature = hash(tuple(tool.name for tool in (tools or [])))

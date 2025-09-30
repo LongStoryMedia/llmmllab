@@ -15,7 +15,11 @@ from typing import (
     Protocol,
     runtime_checkable,
     Union,
+    Type,
 )
+from pathlib import Path
+
+from pydantic import BaseModel
 from datetime import datetime
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -41,6 +45,7 @@ from models import (
 
 Embeddings = List[List[float]]
 PipeReturn = Union[str, Embeddings, ChatResponse]
+GrammarInput = Union[str, Path, Type[BaseModel], None]
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +58,9 @@ class LangGraphCapable(Protocol):
     """Protocol for pipelines that support LangGraph workflows."""
 
     def create_graph(
-        self, tools: Optional[List[BaseTool]] = None, grammar: Optional[str] = None
+        self, 
+        tools: Optional[List[BaseTool]] = None,
+        grammar: Optional[GrammarInput] = None,
     ) -> CompiledStateGraph:
         """Create a LangGraph workflow for this pipeline."""
         ...  # pylint: disable=unnecessary-ellipsis
@@ -157,9 +164,16 @@ class BasePipelineCore(ABC, Generic[PipeType]):
 
     @abstractmethod
     def create_graph(
-        self, tools: Optional[List[BaseTool]] = None, grammar: Optional[str] = None
+        self, 
+        tools: Optional[List[BaseTool]] = None,
+        grammar: Optional[GrammarInput] = None,
     ) -> CompiledStateGraph[LangGraphState, None, LangGraphState, LangGraphState]:
-        """Create LangGraph workflow. Must be implemented by subclasses."""
+        """Create LangGraph workflow. Must be implemented by subclasses.
+        
+        Args:
+            tools: Optional tools for the pipeline
+            grammar: Optional grammar constraint (GBNF string, file path, or Pydantic model class)
+        """
 
     def cleanup(self) -> None:
         """Clean up pipeline resources."""

@@ -178,6 +178,48 @@ def validate_grammar(grammar: str) -> bool:
         return False
 
 
+def check_grammar_runtime_support() -> bool:
+    """
+    Check if the current runtime environment supports grammar constraints.
+    
+    Returns:
+        True if grammar constraints are supported, False otherwise
+    """
+    try:
+        import inspect
+        
+        # Check llama-cpp-python version and support
+        try:
+            import llama_cpp
+            from llama_cpp import Llama
+            
+            # Check if Llama methods support grammar
+            if hasattr(Llama, 'create_completion'):
+                sig = inspect.signature(Llama.create_completion)
+                if 'grammar' in sig.parameters:
+                    logger.debug("Grammar support detected in Llama.create_completion")
+                    return True
+            
+            if hasattr(Llama, 'create_chat_completion'):
+                sig = inspect.signature(Llama.create_chat_completion)
+                if 'grammar' in sig.parameters:
+                    logger.debug("Grammar support detected in Llama.create_chat_completion")
+                    return True
+                    
+            # Check version number
+            version = getattr(llama_cpp, '__version__', '0.0.0')
+            logger.info(f"llama-cpp-python version: {version}")
+            
+        except ImportError:
+            logger.warning("llama-cpp-python not available for grammar support check")
+            
+        return False
+        
+    except Exception as e:
+        logger.error(f"Grammar runtime support check failed: {e}")
+        return False
+
+
 class GrammarError(Exception):
     """Exception raised when grammar generation or validation fails."""
     pass

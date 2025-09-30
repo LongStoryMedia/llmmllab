@@ -251,7 +251,7 @@ class OpenAiGptOssPipe(BaseLlamaCppPipeline):
         return optimal_params
 
     async def _initialize_llm(
-        self, gguf_path: str, tools: Optional[List[BaseTool]] = None, grammar: Optional[str] = None
+        self, gguf_path: str, tools: Optional[List[BaseTool]] = None
     ) -> None:
         """Initialize llama.cpp model with GPT OSS-optimized parameters.
 
@@ -293,7 +293,7 @@ class OpenAiGptOssPipe(BaseLlamaCppPipeline):
         self._logger.info(
             "BYPASS: Initializing LLM without LangChain tool binding to prevent conflicts"
         )
-        await super()._initialize_llm(gguf_path, None, grammar)  # Pass None for tools, pass grammar
+        await super()._initialize_llm(gguf_path, None)  # Pass None instead of tools
 
         if tools:
             self._logger.debug(
@@ -719,12 +719,9 @@ FAILURE TO USE COMMENTARY CHANNEL FOR TOOLS IS COMPLETELY UNACCEPTABLE."""
         return False
 
     def create_graph(
-        self, tools: Optional[List[BaseTool]] = None, grammar: Optional[str] = None
+        self, tools: Optional[List[BaseTool]] = None
     ) -> CompiledStateGraph:
         """Create LangGraph with optimized caching and timeout protection."""
-        # Store grammar for later use during LLM initialization
-        self._current_grammar = grammar
-        
         tool_signature = hash(tuple(tool.name for tool in (tools or [])))
 
         if tool_signature in self.graph_cache:
@@ -1008,8 +1005,7 @@ FAILURE TO USE COMMENTARY CHANNEL FOR TOOLS IS COMPLETELY UNACCEPTABLE."""
             # Initialize LLM if not done yet
             if self.llm is None:
                 gguf_path = self._get_gguf_path()
-                grammar = getattr(self, '_current_grammar', None)
-                await self._initialize_llm(gguf_path, current_tools, grammar)
+                await self._initialize_llm(gguf_path, current_tools)
 
             # Convert to internal messages for processing
             internal_messages: List[Message] = []

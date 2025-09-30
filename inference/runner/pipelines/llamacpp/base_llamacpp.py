@@ -32,6 +32,7 @@ from runner.pipelines.base_langgraph import (
     CircuitBreakerConfig,
 )
 from models import Model, ModelProfile
+from runner.pipelines.base import GrammarInput
 
 
 @dataclass
@@ -73,8 +74,7 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
         model_size_category: str = "large",
     ):
         super().__init__(model, profile, expected_return_type, circuit_config)
-        self._logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self._model_size_category = model_size_category
+        self._logger = logging.getLogger(f\"{__name__}.{self.__class__.__name__}\")\n        self._model_size_category = model_size_category\n        self._grammar_constraint: Optional[str] = None  # Store grammar constraint for validation\n        self._grammar_model_class: Optional[type] = None  # Store Pydantic model class for validation
 
     @abstractmethod
     def _get_gguf_path(self) -> str:
@@ -153,9 +153,79 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
         self._logger.info(f"Applied GPU configuration: {kwargs}")
         return kwargs
 
+    def _process_grammar_input(self, grammar: Optional[GrammarInput]) -> Optional[str]:
+        """Process grammar input and return GBNF grammar string.
+        
+        Args:
+            grammar: Grammar input (GBNF string, file path, or Pydantic model class)
+            
+        Returns:
+            GBNF grammar string or None if no grammar provided
+        """
+        if grammar is None:
+            return None
+            
+        try:
+            from utils.grammar_generator import get_grammar_for_model, load_grammar_from_file
+            from pydantic import BaseModel
+            from pathlib import Path
+            
+            if isinstance(grammar, str):
+                # Assume it's already a GBNF grammar string
+                return grammar
+            elif isinstance(grammar, Path):
+                # Load from file
+                return load_grammar_from_file(grammar)
+            elif isinstance(grammar, type) and issubclass(grammar, BaseModel):
+                # Generate from Pydantic model
+                # Store the model class for validation
+                self._grammar_model_class = grammar
+                return get_grammar_for_model(grammar)
+            else:
+                self._logger.warning(f"Unsupported grammar type: {type(grammar)}")
+                return None
+                
+        except Exception as e:
+            self._logger.error(f"Error processing grammar input: {e}")
+            return None
+
+    def validate_output_against_grammar(self, output: str) -> tuple[bool, str]:
+        """Validate LLM output against grammar constraint.
+        
+        Args:
+            output: Raw LLM output text
+            
+        Returns:
+            Tuple of (is_valid, validation_message)
+        """
+        if not hasattr(self, '_grammar_constraint') or not self._grammar_constraint:
+            return True, "No grammar constraint"
+            
+        try:
+            # If we have a Pydantic model class, try to parse the output
+            if hasattr(self, '_grammar_model_class') and self._grammar_model_class:
+                from utils.grammar_generator import parse_structured_output
+                try:
+                    parsed = parse_structured_output(output, self._grammar_model_class)
+                    return True, f"Valid {self._grammar_model_class.__name__}"
+                except Exception as e:
+                    return False, f"Grammar validation failed: {e}"
+            
+            # For raw grammar strings, we can't easily validate without a full parser
+            # Return True for now, but log that validation is limited
+            self._logger.debug("Grammar validation limited for raw GBNF strings")
+            return True, "Grammar validation not implemented for raw GBNF"
+            
+        except Exception as e:
+            self._logger.error(f"Error validating grammar: {e}")
+            return False, f"Validation error: {e}"
+
     # ---------- LLM Initialization (Heuristic Backoff) ----------
     async def _initialize_llm(
-        self, gguf_path: str, tools: Optional[List[BaseTool]] = None, grammar: Optional[str] = None
+        self, 
+        gguf_path: str, 
+        tools: Optional[List[BaseTool]] = None,
+        grammar: Optional[GrammarInput] = None,
     ) -> None:  # noqa: D401
         """Initialize llama.cpp model with heuristic auto-backoff.
 
@@ -165,6 +235,11 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
             3. Only if all batch + gpu layer combinations fail, drop to the next smaller n_ctx
         We do NOT decrement logprobs progressively anymore (removed as ineffective).
         Stops at first successful load.
+        
+        Args:
+            gguf_path: Path to the GGUF model file
+            tools: Optional tools for the pipeline
+            grammar: Optional grammar constraint (GBNF string, file path, or Pydantic model class)
         """
         if os.environ.get("ALLOW_MISSING_GGUF", "false").lower() in {
             "1",
@@ -313,6 +388,23 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
                     try:
                         # Get GPU configuration kwargs
                         gpu_kwargs = self._get_gpu_config_kwargs()
+                        
+                        # Process grammar input if provided
+                        grammar_kwargs = {}
+                        grammar_string = None
+                        if grammar is not None:
+                            grammar_string = self._process_grammar_input(grammar)
+                            if grammar_string:
+                                # Store grammar for potential post-processing
+                                # Note: Current ChatLlamaCpp may not support grammar directly
+                                # We'll store it as metadata for now and implement constraint logic later
+                                self._grammar_constraint = grammar_string
+                                self._logger.info(f"Grammar constraint prepared: {len(grammar_string)} chars")
+                                # Try to set grammar parameter if supported
+                                try:
+                                    grammar_kwargs["grammar"] = grammar_string
+                                except Exception as e:
+                                    self._logger.debug(f"Grammar parameter not supported, storing for post-processing: {e}")
 
                         # Base kwargs for ChatLlamaCpp
                         base_kwargs = {
@@ -346,13 +438,8 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
                             ),
                         }
 
-                        # Add grammar if provided
-                        if grammar:
-                            base_kwargs["grammar"] = grammar
-                            self._logger.info(f"Using grammar constraint: {len(grammar)} characters")
-
-                        # Merge GPU configuration kwargs, letting GPU config override base settings
-                        final_kwargs = {**base_kwargs, **gpu_kwargs}
+                        # Merge GPU configuration kwargs and grammar kwargs, letting GPU config override base settings
+                        final_kwargs = {**base_kwargs, **gpu_kwargs, **grammar_kwargs}
 
                         # Remove any None values and prepare kwargs for ChatLlamaCpp
                         clean_kwargs = {
@@ -370,14 +457,23 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
                             if "unexpected keyword argument" in str(e):
                                 # Extract the unsupported parameter from error message
                                 error_str = str(e)
+                                unsupported_params = []
+                                
+                                # Check for known potentially unsupported parameters
                                 if "n_cpu_moe" in error_str:
+                                    unsupported_params.append("n_cpu_moe")
+                                if "grammar" in error_str:
+                                    unsupported_params.append("grammar")
+                                    self._logger.info("Grammar parameter not supported by ChatLlamaCpp, will use validation approach")
+                                
+                                if unsupported_params:
                                     self._logger.warning(
-                                        "n_cpu_moe parameter not supported by current llama-cpp-python version, removing..."
+                                        f"Parameters {unsupported_params} not supported by current version, removing..."
                                     )
                                     clean_kwargs_fallback = {
                                         k: v
                                         for k, v in clean_kwargs.items()
-                                        if k != "n_cpu_moe"
+                                        if k not in unsupported_params
                                     }
                                     self.llm = ChatLlamaCpp(**clean_kwargs_fallback)
                                 else:

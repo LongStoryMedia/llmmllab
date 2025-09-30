@@ -15,7 +15,6 @@ from runner import pipeline_factory, Embeddings
 from runner.pipeline_factory import PipelinePriority
 from runner.pipelines.run import embed_pipeline, run_pipeline
 from utils.model_profile import get_model_profile_for_task
-from utils.grammar import generate_grammar_from_pydantic
 
 
 class AdvancedToolDeduplicator:
@@ -328,23 +327,26 @@ class AdvancedToolDeduplicator:
             proposed_tool, existing_tools
         )
 
-        # Generate grammar for structured output
-        grammar = generate_grammar_from_pydantic(DeduplicationResult)
-        
-        # Execute grammar-constrained analysis
+        # Execute grammar-constrained analysis using DeduplicationResult schema
         with pipeline_factory.pipeline(
             mp, str, PipelinePriority.NORMAL, mp.circuit_breaker
         ) as pipeline:
+            # Use DeduplicationResult as grammar constraint for structured output
             result = await run_pipeline(
                 analysis_prompt, 
                 pipeline, 
-                tools=None, 
-                grammar=grammar  # Grammar constraint for structured output
+                grammar=DeduplicationResult
             )
             
             if result and result.message and result.message.content and result.message.content[0].text:
                 analysis_text = result.message.content[0].text
-                return self._parse_structured_deduplication_result(analysis_text, existing_tools)
+                try:
+                    # With grammar constraints, the output should be valid JSON matching DeduplicationResult
+                    from utils.grammar_generator import parse_structured_output
+                    return parse_structured_output(analysis_text, DeduplicationResult)
+                except Exception as e:
+                    self.logger.warning(f"Failed to parse grammar-constrained output, falling back: {e}")
+                    return self._parse_structured_deduplication_result(analysis_text, existing_tools)
             else:
                 # Fallback to basic similarity analysis
                 return await self.check_for_duplicates(proposed_tool, user_id)

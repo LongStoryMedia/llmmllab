@@ -33,6 +33,12 @@ from .pipeline_factory import (
 
 from .pipelines.base import Embeddings, EmbeddingPipeline  # for typing
 from .pipelines.run import run_pipeline, stream_pipeline, embed_pipeline
+from typing import Optional, Union, Type
+from pathlib import Path
+from pydantic import BaseModel
+
+# Grammar type definitions
+GrammarInput = Union[str, Path, Type[BaseModel], None]
 
 __all__ = [
     "pipeline_factory",
@@ -42,4 +48,5 @@ __all__ = [
     "stream_pipeline", 
     "embed_pipeline",
     "EmbeddingPipeline",
+    "GrammarInput",
 ]

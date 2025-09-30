@@ -7,9 +7,11 @@ import hashlib
 import uuid
 import logging
 import re
-from typing import Any, Dict, Optional, List, AsyncIterator, cast, Union
+from typing import Any, Dict, Optional, List, AsyncIterator, cast, Union, Type
 from datetime import datetime, timezone
+from pathlib import Path
 
+from pydantic import BaseModel
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.runnables.schema import StandardStreamEvent
 from langchain_core.runnables.config import RunnableConfig
@@ -25,6 +27,7 @@ from models import (
     EventStreamConfig,
 )
 from utils.langgraph import build_langgraph_state
+from utils.grammar_generator import get_grammar_for_model, parse_structured_output, StructuredOutputError
 
 from utils.message import (
     to_lc_message,
@@ -39,6 +42,7 @@ from .base import BasePipelineCore, EmbeddingPipeline
 
 # Type aliases for better readability
 MessageInput = Union[str, Message, List[Union[str, Message]], List[Message], List[str]]
+GrammarInput = Union[str, Path, Type[BaseModel], None]
 
 
 def _normalize_message_input(
@@ -461,11 +465,17 @@ async def stream_pipeline(
     messages: MessageInput,
     pipeline: BasePipelineCore,
     tools: Optional[List[BaseTool]] = None,
-    grammar: Optional[str] = None,
+    grammar: Optional[GrammarInput] = None,
 ) -> AsyncIterator[ChatResponse]:
     """
     Execute the LangGraph workflow for chat completion with enhanced error handling.
     Accepts flexible input: str, Message, List[str], or List[Message].
+    
+    Args:
+        messages: Input messages in various formats
+        pipeline: Pipeline instance to execute
+        tools: Optional tools for the pipeline
+        grammar: Optional grammar constraint (GBNF string, file path, or Pydantic model class)
     """
     logger = logging.getLogger(__name__)
 
@@ -509,7 +519,7 @@ async def stream_pipeline(
 
         # Create graph
         try:
-            graph = pipeline.create_graph(tools, grammar)
+            graph = pipeline.create_graph(tools, grammar=grammar)
         except Exception as e:
             logger.error(f"Error creating graph: {e}")
             yield create_streaming_chunk(
@@ -593,11 +603,17 @@ async def run_pipeline(
     messages: MessageInput,
     pipeline: BasePipelineCore,
     tools: Optional[List[BaseTool]] = None,
-    grammar: Optional[str] = None,
+    grammar: Optional[GrammarInput] = None,
 ) -> ChatResponse:
     """
     Get a complete response from the pipeline by aggregating streaming chunks.
     Accepts flexible input: str, Message, List[str], or List[Message].
+    
+    Args:
+        messages: Input messages in various formats
+        pipeline: Pipeline instance to execute
+        tools: Optional tools for the pipeline
+        grammar: Optional grammar constraint (GBNF string, file path, or Pydantic model class)
     """
     logger = logging.getLogger(__name__)
 
@@ -649,11 +665,17 @@ async def run_pipeline(
 async def embed_pipeline(
     messages: MessageInput,
     pipeline: EmbeddingPipeline,
+    grammar: Optional[GrammarInput] = None,
 ) -> List[List[float]]:
     """
     Get embeddings from the pipeline for the given messages.
     This provides a normalized interface for embedding operations.
     Accepts flexible input: str, Message, List[str], or List[Message].
+    
+    Args:
+        messages: Input messages in various formats
+        pipeline: Embedding pipeline instance
+        grammar: Optional grammar constraint (typically not used for embeddings)
     """
     logger = logging.getLogger(__name__)
 
@@ -699,6 +721,7 @@ async def chain_pipelines(
     initial_input: MessageInput,
     pipeline_steps: List[PipelineStep],
     tools: Optional[List[BaseTool]] = None,
+    grammar: Optional[GrammarInput] = None,
 ) -> ChatResponse:
     """
     Chain multiple pipeline calls where the output of one becomes input to the next.
@@ -707,6 +730,7 @@ async def chain_pipelines(
         initial_input: Starting input (str, Message, List[str], or List[Message])
         pipeline_steps: List of (pipeline, optional_prompt) tuples
         tools: Optional tools for pipelines that support them
+        grammar: Optional grammar constraint for the final pipeline step
 
     Returns:
         ChatResponse: Final result from the last pipeline
