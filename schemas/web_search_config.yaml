@@ -1,32 +1,113 @@
 $schema: http://json-schema.org/draft-07/schema#
 title: WebSearchConfig
-description: Web search settings
+description: Comprehensive web search settings for SearxNG integration
 type: object
 properties:
   enabled:
     type: boolean
     description: Whether web search is enabled
+    default: true
   auto_detect:
     type: boolean
-    description: Auto-detect web search
+    description: Auto-detect web search needs from user queries
+    default: true
   max_results:
     type: integer
-    description: Maximum number of results
+    description: Maximum number of search results to return
+    default: 5
+    minimum: 1
+    maximum: 20
   include_results:
     type: boolean
-    description: Include results in response
-  search_providers:
-    type: array
-    description: List of search providers to use
-    items:
-      $ref: web_search_providers.yaml
+    description: Include full search results in response
+    default: true
   max_urls_deep:
     type: integer
-    description: Maximum number of URLs to deep crawl
+    description: Maximum number of URLs to deep crawl for content extraction
+    default: 3
+    minimum: 0
+    maximum: 10
+  engines:
+    type: array
+    description: List of SearxNG search engines to use
+    items:
+      type: string
+    default:
+      [
+        "google",
+        "bing",
+        "duckduckgo",
+        "startpage",
+        "github",
+        "arxiv",
+        "wikipedia",
+      ]
+  categories:
+    type: array
+    description: SearxNG search categories to include
+    items:
+      type: string
+      enum:
+        [
+          "general",
+          "news",
+          "science",
+          "it",
+          "shopping",
+          "images",
+          "videos",
+          "music",
+          "files",
+          "social",
+        ]
+    default: ["general"]
+  language:
+    type: string
+    description: Language for search results
+    default: "en"
+    enum: ["en", "es", "fr", "de", "it", "pt", "zh", "ja", "ko", "ru", "ar"]
+  safesearch:
+    type: integer
+    description: Safe search level (0=off, 1=moderate, 2=strict)
+    default: 0
+    minimum: 0
+    maximum: 2
+  time_range:
+    type: string
+    description: Time range filter for results
+    default: ""
+    enum: ["", "day", "week", "month", "year"]
+  searx_host:
+    type: string
+    description: SearxNG host URL (defaults to SEARX_HOST environment variable)
+    default: ""
+  timeout:
+    type: number
+    description: Search timeout in seconds
+    default: 30.0
+    minimum: 5.0
+    maximum: 120.0
+  user_agent:
+    type: string
+    description: Custom User-Agent string for requests
+    default: "LLMMLLab-WebSearch/1.0"
+  enable_caching:
+    type: boolean
+    description: Enable result caching for performance
+    default: true
+  cache_ttl:
+    type: integer
+    description: Cache time-to-live in seconds
+    default: 300
+    minimum: 60
+    maximum: 3600
 required:
   - enabled
   - auto_detect
   - max_results
   - include_results
-  - search_providers
   - max_urls_deep
+  - engines
+  - categories
+  - language
+  - safesearch

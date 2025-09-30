@@ -42,40 +42,36 @@ from typing import Optional, List, Dict, Any
 from langchain_core.tools import BaseTool
 from langchain_community.utilities.searx_search import SearxSearchWrapper
 
-from models import SearchResult, SearchResultContent
+from models import SearchResult, SearchResultContent, WebSearchConfig
 
 from ...monitoring.logging import composer_logger
 
 
-def get_default_searx_config() -> Dict[str, Any]:
-    """Get default configuration for SearxNG with sane defaults."""
+def create_searx_config_from_web_config(web_config: WebSearchConfig) -> Dict[str, Any]:
+    """Convert WebSearchConfig to SearxSearchWrapper configuration."""
     return {
-        # Core search engines - prioritizing reliability and coverage
-        "engines": [
-            "google",  # Most comprehensive results
-            "bing",  # Good alternative coverage
-            "duckduckgo",  # Privacy-focused, good general results
-            "startpage",  # Google results without tracking
-            "github",  # For code and technical searches
-            "arxiv",  # Academic papers
-        ],
-        # Search parameters
-        "k": 10,  # Number of results to fetch
-        "language": "en",  # English language results
-        # Categories for general web search
-        "categories": ["general"],
-        # Additional parameters for better results
+        "engines": web_config.engines,
+        "k": web_config.max_results,
+        "language": web_config.language,
+        "categories": web_config.categories,
         "params": {
             "format": "json",
-            "language": "en",
-            "safesearch": 1,  # Moderate safe search
-            "time_range": "",  # No time restriction by default
+            "language": web_config.language,
+            "safesearch": web_config.safesearch,
+            "time_range": web_config.time_range or "",
         },
-        # Headers for better request handling
         "headers": {
-            "User-Agent": "LLMMLLab-WebSearch/1.0",
+            "User-Agent": web_config.user_agent or "LLMMLLab-WebSearch/1.0",
         },
+        "searx_host": web_config.searx_host,
+        "timeout": web_config.timeout,
     }
+
+
+def get_default_searx_config() -> Dict[str, Any]:
+    """Get default configuration for SearxNG with sane defaults."""
+    from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
+    return create_searx_config_from_web_config(DEFAULT_WEB_SEARCH_CONFIG)
 
 
 class SearxNG:
@@ -83,42 +79,52 @@ class SearxNG:
 
     def __init__(
         self,
+        web_config: Optional[WebSearchConfig] = None,
         searx_host: Optional[str] = None,
         engines: Optional[List[str]] = None,
         config: Optional[Dict[str, Any]] = None,
     ):
-        self.searx_host = searx_host or os.getenv("SEARX_HOST", "")
-
-        # Merge default config with custom config
-        default_config = get_default_searx_config()
-        if config:
-            # Deep merge configuration
-            merged_config = {**default_config}
-            merged_config.update(config)
-            if "params" in config and "params" in default_config:
-                merged_config["params"] = {
-                    **default_config["params"],
-                    **config["params"],
-                }
+        # Use WebSearchConfig if provided, otherwise fall back to legacy parameters
+        if web_config:
+            searx_config = create_searx_config_from_web_config(web_config)
         else:
-            merged_config = default_config
+            # Legacy fallback for backward compatibility
+            default_config = get_default_searx_config()
+            if config:
+                # Deep merge configuration
+                merged_config = {**default_config}
+                merged_config.update(config)
+                if "params" in config and "params" in default_config:
+                    merged_config["params"] = {
+                        **default_config["params"],
+                        **config["params"],
+                    }
+            else:
+                merged_config = default_config
+                
+            # Override with legacy parameters
+            if engines:
+                merged_config["engines"] = engines
+            if searx_host:
+                merged_config["searx_host"] = searx_host
+                
+            searx_config = merged_config
 
-        # Override engines if provided
-        if engines:
-            merged_config["engines"] = engines
+        self.searx_host = searx_config.get("searx_host") or os.getenv("SEARX_HOST", "")
+        self.web_config = web_config
 
         self.wrapper = SearxSearchWrapper(
             searx_host=self.searx_host,
-            engines=merged_config["engines"],
-            k=merged_config["k"],
-            params=merged_config["params"],
-            headers=merged_config["headers"],
-            categories=merged_config["categories"],
+            engines=searx_config["engines"],
+            k=searx_config["k"],
+            params=searx_config["params"],
+            headers=searx_config["headers"],
+            categories=searx_config["categories"],
         )
         self.logger = composer_logger.logger
 
         self.logger.debug(
-            f"SearxNG initialized with engines: {merged_config['engines']}"
+            f"SearxNG initialized with engines: {searx_config['engines']}"
         )
 
     async def search(self, query: str, max_results: int) -> SearchResult:
@@ -188,23 +194,26 @@ class SearxNG:
 class WebSearchTool(BaseTool):
     """Static tool for performing web searches using SearxNG provider.
 
-    Configured with optimized engines (Google, Bing, DuckDuckGo, Startpage)
-    for reliable web search results.
+    Configured with comprehensive WebSearchConfig integration supporting
+    engines, categories, timeouts, caching, and all SearxNG features.
     """
 
     name: str = "web_search"
     description: str = (
         "Search the web for information using a search query via SearxNG. "
-        "Uses multiple search engines (Google, Bing, DuckDuckGo, Startpage) "
-        "for comprehensive results. Returns formatted search results with titles, URLs, and content snippets."
+        "Configurable search engines, categories, and parameters for optimal results. "
+        "Returns formatted search results with titles, URLs, and content snippets."
     )
 
     def __init__(
         self,
-        engines: Optional[List[str]] = None,
-        config: Optional[Dict[str, Any]] = None,
+        web_config: Optional[WebSearchConfig] = None,
+        engines: Optional[List[str]] = None,  # Legacy support
+        config: Optional[Dict[str, Any]] = None,  # Legacy support
     ):
         super().__init__()
+        self.web_config = web_config
+        # Legacy parameters for backward compatibility
         self.engines = engines
         self.config = config
 
@@ -213,13 +222,19 @@ class WebSearchTool(BaseTool):
         try:
             # Import search provider directly
 
-            # Use SearxNG provider with configured engines and settings
-            provider = SearxNG(
-                engines=getattr(self, "engines", None),
-                config=getattr(self, "config", None),
-            )
+            # Use SearxNG provider with WebSearchConfig or legacy parameters
+            if hasattr(self, 'web_config') and self.web_config:
+                provider = SearxNG(web_config=self.web_config)
+                max_results = self.web_config.max_results
+            else:
+                # Legacy fallback
+                provider = SearxNG(
+                    engines=getattr(self, "engines", None),
+                    config=getattr(self, "config", None),
+                )
+                max_results = 5
 
-            search_result = await provider.search(query, 5)
+            search_result = await provider.search(query, max_results)
 
             if search_result and search_result.contents:
                 formatted_results = [
@@ -271,80 +286,70 @@ class WebSearchTool(BaseTool):
 
 def create_academic_search_tool() -> WebSearchTool:
     """Create a WebSearchTool optimized for academic and research content."""
-    return WebSearchTool(
+    from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
+    
+    academic_config = WebSearchConfig(
+        **DEFAULT_WEB_SEARCH_CONFIG.model_dump(),
         engines=[
             "google_scholar",  # Academic papers and citations
             "arxiv",  # Pre-print research papers
             "crossref",  # Academic publication metadata
             "google",  # General academic content
         ],
-        config={
-            "categories": ["science"],
-            "params": {
-                "format": "json",
-                "language": "en",
-                "safesearch": 0,  # Disable for academic content
-            },
-        },
+        categories=["science"],
+        safesearch=0,  # Disable for academic content
     )
+    return WebSearchTool(web_config=academic_config)
 
 
 def create_news_search_tool() -> WebSearchTool:
     """Create a WebSearchTool optimized for news and current events."""
-    return WebSearchTool(
+    from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
+    
+    news_config = WebSearchConfig(
+        **DEFAULT_WEB_SEARCH_CONFIG.model_dump(),
         engines=[
             "google_news",  # Google News
             "bing_news",  # Bing News
             "yahoo_news",  # Yahoo News
             "reddit",  # Community discussions
         ],
-        config={
-            "categories": ["news"],
-            "params": {
-                "format": "json",
-                "language": "en",
-                "time_range": "month",  # Recent news within a month
-                "safesearch": 1,
-            },
-        },
+        categories=["news"],
+        time_range="month",  # Recent news within a month
     )
+    return WebSearchTool(web_config=news_config)
 
 
 def create_technical_search_tool() -> WebSearchTool:
     """Create a WebSearchTool optimized for technical documentation and code."""
-    return WebSearchTool(
+    from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
+    
+    tech_config = WebSearchConfig(
+        **DEFAULT_WEB_SEARCH_CONFIG.model_dump(),
         engines=[
             "github",  # Code repositories and issues
             "stackoverflow",  # Programming Q&A
             "google",  # Technical documentation
             "duckduckgo",  # Alternative technical results
         ],
-        config={
-            "categories": ["it"],
-            "params": {
-                "format": "json",
-                "language": "en",
-                "safesearch": 0,  # Technical content may include code
-            },
-        },
+        categories=["it"],
+        safesearch=0,  # Technical content may include code
     )
+    return WebSearchTool(web_config=tech_config)
 
 
 def create_shopping_search_tool() -> WebSearchTool:
     """Create a WebSearchTool optimized for product and shopping searches."""
-    return WebSearchTool(
+    from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
+    
+    shopping_config = WebSearchConfig(
+        **DEFAULT_WEB_SEARCH_CONFIG.model_dump(),
         engines=[
             "google_shopping",  # Google Shopping results
             "bing_shopping",  # Bing Shopping
             "amazon",  # Amazon products
             "ebay",  # eBay listings
         ],
-        config={
-            "categories": ["shopping"],
-            "params": {
-                "format": "json",
-                "language": "en",
-                "safesearch": 1,
-            },
-        },
+        categories=["shopping"],
     )
+    return WebSearchTool(web_config=shopping_config)

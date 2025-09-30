@@ -15,7 +15,6 @@ from .image_generation_config import ImageGenerationConfig
 from .circuit_breaker_config import CircuitBreakerConfig
 from .gpu_config import GPUConfig
 from .user_config import UserConfig
-from .web_search_providers import WebSearchProviders
 from .workflow_config import WorkflowConfig
 from .tool_config import ToolConfig
 
@@ -58,14 +57,23 @@ DEFAULT_WEB_SEARCH_CONFIG = WebSearchConfig(
     auto_detect=True,
     max_results=5,
     include_results=True,
-    search_providers=[
-        WebSearchProviders.GOOGLE,
-        WebSearchProviders.BRAVE,
-        # WebSearchProviders.SERPER,
-        WebSearchProviders.SEARX,
-        WebSearchProviders.DDG,
-    ],
     max_urls_deep=3,
+    # SearxNG engine configuration - prioritizing reliability and coverage
+    engines=[
+        "google",      # Most comprehensive results
+        "bing",        # Good alternative coverage  
+        "duckduckgo",  # Privacy-focused, good general results
+        "startpage",   # Google results without tracking
+    ],
+    categories=["general"],
+    language="en",
+    safesearch=1,  # Moderate safe search
+    time_range="",  # No time restriction by default
+    searx_host="",  # Use SEARX_HOST environment variable
+    timeout=30.0,
+    user_agent="LLMMLLab-WebSearch/1.0",
+    enable_caching=True,
+    cache_ttl=300,  # 5 minute cache
 )
 
 # Default image generation configuration
