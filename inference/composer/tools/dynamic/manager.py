@@ -12,14 +12,18 @@ from models import (
     DynamicTool,
     ToolAnalysisResponse,
     ToolGenerationResult,
+    DeduplicationResult,
 )
-from server.services.context import ConversationContext
+from models.conversation_ctx import ConversationCtx
+from models import Message, MessageRole, MessageContent, MessageContentType
 from db import storage
 from runner import pipeline_factory
 from runner.pipeline_factory import PipelinePriority
 from runner.pipelines.run import run_pipeline
 from utils.message import extract_message_text
 from composer.agents.intent_classifier import IntentClassifierAgent
+from composer.tools.dynamic.deduplication import AdvancedToolDeduplicator
+
 # Import will be resolved at runtime - circular dependency with __init__.py
 # from .deduplication import AdvancedToolDeduplicator
 
@@ -35,13 +39,13 @@ class DynamicToolManager:
         # Initialize deduplicator lazily to avoid import issues
         self._deduplicator = None
 
-    @property  
+    @property
     def deduplicator(self):
         """Lazy loading of deduplicator to avoid circular imports."""
         if self._deduplicator is None:
             # Import deduplicator with error handling for missing dependencies
             try:
-                from composer.tools.dynamic.deduplication import AdvancedToolDeduplicator
+
                 self._deduplicator = AdvancedToolDeduplicator()
             except ImportError as e:
                 self.logger.warning(f"Could not import deduplicator: {e}")
@@ -51,10 +55,10 @@ class DynamicToolManager:
 
     def _create_fallback_deduplicator(self):
         """Create a minimal deduplicator when the full one can't be imported."""
+
         class FallbackDeduplicator:
-            async def check_for_duplicates(self, proposed_tool, conversation_ctx):
+            async def check_for_duplicates(self, proposed_tool, user_id: str):
                 # Simple fallback: always allow tool creation
-                from models import DeduplicationResult
                 return DeduplicationResult(
                     is_duplicate=False,
                     existing_tool=None,
@@ -62,10 +66,11 @@ class DynamicToolManager:
                     recommendation="Fallback deduplicator - no duplicate checking performed",
                     should_create_new=True,
                 )
+
         return FallbackDeduplicator()
 
     async def analyze_tool_need(
-        self, user_message_text: str, conversation_ctx: ConversationContext
+        self, user_message_text: str, conversation_ctx: ConversationCtx
     ) -> ToolAnalysisResponse:
         """
         Analyze if a dynamic tool is needed for the user request using intent analysis.
@@ -74,26 +79,27 @@ class DynamicToolManager:
         based on complexity, reusability, and computational requirements.
         """
         try:
-            # Convert ConversationContext to ConversationCtx for intent classifier
-            from models.conversation_ctx import ConversationCtx
-            
-            # Create a proper ConversationCtx with current message
-            from models import Message, MessageRole, MessageContent, MessageContentType
-            
-            user_message = Message(
-                role=MessageRole.USER,
-                content=[MessageContent(type=MessageContentType.TEXT, text=user_message_text)],
-                conversation_id=conversation_ctx.conversation.id,
-            )
-            
-            ctx = ConversationCtx(
-                messages=[],
-                notes=[],
-                images=[],
-                conversation=conversation_ctx.conversation,
-                current_user_message=user_message,
-                user_config=conversation_ctx.user_config,
-            )
+            # Use the conversation_ctx directly as it's already a ConversationCtx
+            # Ensure current user message is set for intent analysis
+            if not conversation_ctx.current_user_message:
+                user_message = Message(
+                    role=MessageRole.USER,
+                    content=[
+                        MessageContent(type=MessageContentType.TEXT, text=user_message_text)
+                    ],
+                    conversation_id=conversation_ctx.conversation.id,
+                )
+                # Create a new context with the user message
+                ctx = ConversationCtx(
+                    messages=conversation_ctx.messages,
+                    notes=conversation_ctx.notes,
+                    images=conversation_ctx.images,
+                    conversation=conversation_ctx.conversation,
+                    current_user_message=user_message,
+                    user_config=conversation_ctx.user_config,
+                )
+            else:
+                ctx = conversation_ctx
 
             # Use IntentClassifierAgent for comprehensive analysis
             intent_analysis = await self.intent_classifier.analyze(ctx)
@@ -124,7 +130,12 @@ class DynamicToolManager:
                 )
 
             # For moderate+ complexity, perform additional LLM analysis
-            mp = await storage.get_service(storage.model_profile).get_model_profile_by_id(
+            if not conversation_ctx.user_config:
+                raise ValueError("User config is required for tool analysis")
+                
+            mp = await storage.get_service(
+                storage.model_profile
+            ).get_model_profile_by_id(
                 conversation_ctx.user_config.model_profiles.analysis_profile_id,
                 conversation_ctx.user_config.user_id,
             )
@@ -133,7 +144,9 @@ class DynamicToolManager:
                 raise ValueError("Analysis model profile not found")
 
             # Use NORMAL priority for tool analysis (used occasionally)
-            with pipeline_factory.pipeline(mp, str, PipelinePriority.NORMAL) as pipeline:
+            with pipeline_factory.pipeline(
+                mp, str, PipelinePriority.NORMAL
+            ) as pipeline:
                 analysis_prompt = f"""
 You are a tool analysis assistant. Based on intent analysis showing {intent_analysis.complexity_level.value} complexity,
 determine if this user request requires creating a custom tool/function:
@@ -213,15 +226,18 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
         self,
         description: str,
         user_message_text: str,
-        conversation_ctx: ConversationContext,
+        conversation_ctx: ConversationCtx,
     ) -> ToolGenerationResult:
         """
         Generate a dynamic tool with advanced deduplication.
         """
         try:
             # Create a proposed tool for deduplication check
+            if not conversation_ctx.user_config:
+                raise ValueError("User config is required for tool generation")
+                
             proposed_tool = DynamicTool(
-                user_id=conversation_ctx.conversation.user_id,
+                user_id=conversation_ctx.user_config.user_id,
                 name=f"tool_for_{description[:30].replace(' ', '_')}",
                 description=description,
                 code="# Placeholder - will be generated if no duplicates found",
@@ -231,7 +247,7 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
 
             # Check for duplicates using advanced deduplication
             dedup_result = await self.deduplicator.check_for_duplicates(
-                proposed_tool, conversation_ctx
+                proposed_tool, conversation_ctx.user_config.user_id
             )
 
             self.logger.info(
@@ -271,9 +287,12 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
         self,
         description: str,
         user_message_text: str,
-        conversation_ctx: ConversationContext,
+        conversation_ctx: ConversationCtx,
     ) -> ToolGenerationResult:
         """Generate a completely new dynamic tool."""
+        if not conversation_ctx.user_config:
+            raise ValueError("User config is required for tool generation")
+            
         engineering_profile = await storage.get_service(
             storage.model_profile
         ).get_model_profile_by_id(
@@ -355,15 +374,17 @@ Respond with ONLY the JSON object, no other text or formatting."""
                         raise ValueError("Could not extract valid JSON from response")
 
                     # Create DynamicTool
-                    json_data["user_id"] = conversation_ctx.conversation.user_id
+                    json_data["user_id"] = conversation_ctx.user_config.user_id
                     dynamic_tool = DynamicTool(**json_data)
 
                     # Store the generated tool in the database
                     stored_tool = await storage.get_service(
                         storage.dynamic_tool
                     ).create_tool(dynamic_tool)
-                    
-                    self.logger.info(f"Successfully stored dynamic tool: {stored_tool.name}")
+
+                    self.logger.info(
+                        f"Successfully stored dynamic tool: {stored_tool.name}"
+                    )
                     return ToolGenerationResult(success=True, tool=stored_tool)
 
             except asyncio.TimeoutError:
@@ -395,14 +416,14 @@ Respond with ONLY the JSON object, no other text or formatting."""
         """Extract JSON from LLM response with robust parsing."""
         # Try to find JSON in the response
         import re
-        
+
         # Look for JSON object patterns
         json_patterns = [
-            r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}',  # Basic nested JSON
-            r'```json\s*(\{.*?\})\s*```',  # JSON in code blocks
-            r'```\s*(\{.*?\})\s*```',  # JSON in plain code blocks
+            r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}",  # Basic nested JSON
+            r"```json\s*(\{.*?\})\s*```",  # JSON in code blocks
+            r"```\s*(\{.*?\})\s*```",  # JSON in plain code blocks
         ]
-        
+
         for pattern in json_patterns:
             matches = re.findall(pattern, response, re.DOTALL)
             for match in matches:
@@ -410,11 +431,11 @@ Respond with ONLY the JSON object, no other text or formatting."""
                     return json.loads(match)
                 except json.JSONDecodeError:
                     continue
-        
+
         # Try parsing the entire response as JSON
         try:
             return json.loads(response.strip())
         except json.JSONDecodeError:
             pass
-        
+
         return None
