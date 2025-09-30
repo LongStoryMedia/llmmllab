@@ -1250,11 +1250,6 @@ properties:
     type: array
     items:
       type: string
-  search_results:
-    type: string
-  rag_depth_config:
-    type: string
-    enum: ["SHALLOW", "DEEP"]
   progress_updates:
     type: array
     items:
@@ -1287,11 +1282,6 @@ properties:
     type: array
     items:
       $ref: available_tool.yaml
-  search_results:
-    type: string
-  rag_depth_config:
-    type: string
-    enum: ["SHALLOW", "DEEP"]
   progress_updates:
     type: array
     items:
