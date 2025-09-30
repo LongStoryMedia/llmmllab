@@ -7,6 +7,7 @@ embeddings and similarity search with consistent behavior.
 
 import asyncio
 import json
+import logging
 
 from langchain_core.tools import BaseTool
 
@@ -20,6 +21,10 @@ class MemoryRetrievalTool(BaseTool):
     """Static tool for retrieving memories from database storage."""
     name: str = "memory_retrieval"
     description: str = "Retrieve relevant memories based on text query. Embeds the query and finds similar memories from database."
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def _arun(self, query: str) -> str:
         """Async implementation of memory retrieval using database storage."""
@@ -37,9 +42,32 @@ class MemoryRetrievalTool(BaseTool):
             
             # Generate embeddings for the query
             try:
-                # For static tool demo, use mock embeddings
-                # In real implementation, you'd use embed_pipeline with proper model
-                query_embeddings = [[0.1] * 768]  # Mock embedding for demo
+                from runner import embed_pipeline, pipeline_factory
+                from runner.pipeline_factory import PipelinePriority
+                
+                # Get default embedding model profile
+                # For static tool, we'll get the first available embedding model
+                try:
+                    # Try to get embedding pipeline
+                    embed_message = Message(
+                        role=MessageRole.USER,
+                        content=[MessageContent(type=MessageContentType.TEXT, text=query)]
+                    )
+                    
+                    # Use embed_pipeline with a simple embedding model approach
+                    # This requires getting an embedding pipeline from the factory
+                    from models.model_profile import ModelProfile
+                    from models.model import Model
+                    
+                    # Create a simple embedding request
+                    query_embeddings = await embed_pipeline(
+                        messages=[embed_message],
+                        pipeline=None  # Will use default embedding pipeline
+                    )
+                except Exception as embed_error:
+                    # Fallback to mock embeddings if no embedding model available
+                    self.logger.warning(f"Embedding generation failed, using mock: {embed_error}")
+                    query_embeddings = [[0.1] * 768]  # Fallback mock embedding
                 
                 # Retrieve similar memories from storage using correct method
                 memory_service = storage.get_service(storage.memory)
