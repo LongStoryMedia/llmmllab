@@ -6,7 +6,7 @@ This document outlines the requirements for implementing a deep research static 
 
 ## Architecture Overview
 
-```
+```plaintext
 Static Research Tool (LangChain BaseTool)
     ↓
 LangGraph Subgraph
@@ -19,10 +19,11 @@ LangGraph Subgraph
 └─────────────────────────────────────────────────┘
     ↓
 ┌─────────────────────────────────────────────────┐
-│ Subtask Execution Nodes (Parallel)             │
-│ - Web search for each subtask                   │
-│ - Information gathering                         │
-│ - Result synthesis                              │
+│ Subtask Execution Nodes (Parallel)              │
+│ - Static tools (web_search, memory, etc.)      │
+│ - Agent nodes (analysis, specialized agents)   │
+│ - Dynamic tools (generated per subtask)        │
+│ - Information gathering & synthesis             │
 └─────────────────────────────────────────────────┘
     ↓
 ┌─────────────────────────────────────────────────┐
@@ -83,6 +84,9 @@ properties:
   id: integer
   question: string (The question to investigate)
   keywords: array of strings (Search keywords)
+  node_type: string (Type of node: "static_tool", "agent", "dynamic_tool")
+  node_config: object (Configuration specific to the node type)
+  execution_priority: integer (Execution order priority)
 ```
 
 ### 4. Research Question Result Schema (`research_question_result.yaml`)
@@ -334,7 +338,14 @@ Create a detailed research plan with the following structure:
 
 1. **Research Plan Overview**: A 2-3 sentence summary of the research approach
 2. **Key Research Questions**: 3-8 specific questions that need to be investigated
-3. **Keywords**: Relevant search terms for each question
+3. **Execution Strategy**: For each question, determine the best node type and configuration
+
+Available node types:
+- "web_search": For web-based information gathering
+- "memory_search": For searching conversation/user memory
+- "static_analysis": For text analysis and summarization
+- "agent_analysis": For complex reasoning tasks
+- "dynamic_tool": For specialized tools generated per task
 
 Respond with ONLY a JSON object in this exact format:
 {{
@@ -342,20 +353,28 @@ Respond with ONLY a JSON object in this exact format:
     "questions": [
         {{
             "question": "Specific research question 1",
-            "keywords": ["keyword1", "keyword2", "keyword3"]
+            "keywords": ["keyword1", "keyword2", "keyword3"],
+            "node_type": "web_search",
+            "node_config": {{"max_results": 5, "search_depth": "standard"}},
+            "execution_priority": 1
         }},
         {{
             "question": "Specific research question 2", 
-            "keywords": ["keyword1", "keyword2", "keyword3"]
+            "keywords": ["keyword1", "keyword2", "keyword3"],
+            "node_type": "agent_analysis",
+            "node_config": {{"analysis_type": "comparative", "depth": "detailed"}},
+            "execution_priority": 2
         }}
     ]
 }}
 
 Guidelines:
-- Questions should be specific and answerable through web research
-- Keywords should be optimized for search engines
+- Questions should be specific and answerable through the chosen method
+- Select the most appropriate node type for each question
+- Keywords should be optimized for the chosen execution method
 - Plan should be comprehensive but focused
 - Limit to maximum 8 questions to ensure quality over quantity
+- Consider execution dependencies when setting priorities
 """
     
     async def _create_research_task(
@@ -904,29 +923,39 @@ class DeepResearchTool(BaseTool):
             return state
     
     async def _execute_subtasks(self, state: DeepResearchState) -> DeepResearchState:
-        """Execute research subtasks in parallel."""
+        """Execute research subtasks in parallel using appropriate node types."""
         try:
             if not state.research_task or not state.research_task.subtasks:
                 state.error_message = "No subtasks to execute"
                 return state
+            
+            # Group subtasks by priority for ordered execution
+            priority_groups = self._group_subtasks_by_priority(state.research_task.subtasks)
             
             # Execute subtasks in parallel (with concurrency limit)
             semaphore = asyncio.Semaphore(3)  # User configurable
             
             async def execute_single_subtask(subtask):
                 async with semaphore:
-                    return await self._research_single_question(
-                        subtask.question.question,
-                        subtask.question.keywords
+                    return await self._execute_subtask_by_node_type(
+                        subtask.question,
+                        state.conversation_ctx
                     )
             
-            # Run all subtasks
-            tasks = [
-                execute_single_subtask(subtask) 
-                for subtask in state.research_task.subtasks
-            ]
-            
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            # Execute priority groups in sequence, but subtasks within groups in parallel
+            all_results = {}
+            for priority, subtasks_group in sorted(priority_groups.items()):
+                tasks = [
+                    execute_single_subtask(subtask) 
+                    for subtask in subtasks_group
+                ]
+                
+                group_results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Store results with subtask IDs
+                for i, result in enumerate(group_results):
+                    subtask = subtasks_group[i]
+                    all_results[subtask.id] = result
             
             # Store results
             research_service = storage.get_service(storage.research_task)
@@ -958,46 +987,225 @@ class DeepResearchTool(BaseTool):
             state.error_message = f"Error executing subtasks: {str(e)}"
             return state
     
-    async def _research_single_question(self, question: str, keywords: List[str]) -> Dict:
-        """Research a single question using web search and summarization."""
+    def _group_subtasks_by_priority(self, subtasks: List[ResearchSubtask]) -> Dict[int, List[ResearchSubtask]]:
+        """Group subtasks by execution priority."""
+        priority_groups = {}
+        for subtask in subtasks:
+            priority = getattr(subtask.question, 'execution_priority', 1)
+            if priority not in priority_groups:
+                priority_groups[priority] = []
+            priority_groups[priority].append(subtask)
+        return priority_groups
+    
+    async def _execute_subtask_by_node_type(self, question: ResearchQuestion, conversation_ctx: ConversationCtx) -> Dict:
+        """Execute a subtask using the appropriate node type."""
         try:
-            # Perform web search
-            search_query = f"{question} {' '.join(keywords[:3])}"
+            node_type = getattr(question, 'node_type', 'web_search')
+            node_config = getattr(question, 'node_config', {})
+            
+            if node_type == "web_search":
+                return await self._execute_web_search_subtask(question, node_config)
+            elif node_type == "memory_search":
+                return await self._execute_memory_search_subtask(question, node_config)
+            elif node_type == "static_analysis":
+                return await self._execute_static_analysis_subtask(question, node_config)
+            elif node_type == "agent_analysis":
+                return await self._execute_agent_analysis_subtask(question, node_config, conversation_ctx)
+            elif node_type == "dynamic_tool":
+                return await self._execute_dynamic_tool_subtask(question, node_config, conversation_ctx)
+            else:
+                # Fallback to web search for unknown node types
+                return await self._execute_web_search_subtask(question, {})
+                
+        except Exception as e:
+            return {
+                "sources": [],
+                "synthesized_answer": f"Error executing subtask: {str(e)}",
+                "error": str(e),
+                "question": question.question,
+                "node_type": getattr(question, 'node_type', 'unknown')
+            }
+    
+    async def _execute_web_search_subtask(self, question: ResearchQuestion, config: Dict) -> Dict:
+        """Execute web search subtask."""
+        try:
+            max_results = config.get('max_results', 5)
+            search_query = f"{question.question} {' '.join(question.keywords[:3])}"
+            
             search_results = await self.web_search_tool._arun(search_query)
             search_data = json.loads(search_results)
             
             if search_data.get("status") != "success" or not search_data.get("results"):
                 return {
                     "sources": [],
-                    "synthesized_answer": f"No search results found for: {question}",
-                    "error": "No search results"
+                    "synthesized_answer": f"No search results found for: {question.question}",
+                    "error": "No search results",
+                    "node_type": "web_search"
                 }
             
-            # Combine search content for summarization
+            # Combine and summarize search content
             combined_content = ""
             sources = []
             
-            for result in search_data["results"]:
+            for result in search_data["results"][:max_results]:
                 combined_content += f"Source: {result['title']}\nURL: {result['url']}\nContent: {result['content']}\n\n"
                 sources.append(result["url"])
             
-            # Summarize the content to answer the question
-            summary_prompt = f"Question: {question}\n\nBased on the following information, provide a comprehensive answer:\n\n{combined_content}"
+            summary_prompt = f"Question: {question.question}\n\nBased on the following information, provide a comprehensive answer:\n\n{combined_content}"
             summary_result = await self.summarization_tool._arun(summary_prompt)
             summary_data = json.loads(summary_result)
             
             return {
                 "sources": sources,
                 "synthesized_answer": summary_data.get("summary", ""),
-                "question": question
+                "question": question.question,
+                "node_type": "web_search"
             }
             
         except Exception as e:
             return {
                 "sources": [],
-                "synthesized_answer": f"Error researching question: {str(e)}",
+                "synthesized_answer": f"Error in web search: {str(e)}",
                 "error": str(e),
-                "question": question
+                "question": question.question,
+                "node_type": "web_search"
+            }
+    
+    async def _execute_memory_search_subtask(self, question: ResearchQuestion, config: Dict) -> Dict:
+        """Execute memory search subtask."""
+        try:
+            from composer.tools.static.memory_retrieval_tool import MemoryRetrievalTool
+            
+            memory_tool = MemoryRetrievalTool()
+            search_query = f"{question.question} {' '.join(question.keywords)}"
+            
+            memory_results = await memory_tool._arun(search_query)
+            memory_data = json.loads(memory_results)
+            
+            if memory_data.get("status") != "success" or not memory_data.get("memories"):
+                return {
+                    "sources": ["conversation_memory"],
+                    "synthesized_answer": f"No relevant memories found for: {question.question}",
+                    "question": question.question,
+                    "node_type": "memory_search"
+                }
+            
+            # Combine memory content
+            combined_memories = ""
+            for memory in memory_data["memories"]:
+                combined_memories += f"Memory: {memory.get('content', '')}\nTimestamp: {memory.get('timestamp', '')}\n\n"
+            
+            # Summarize memories to answer question
+            summary_prompt = f"Question: {question.question}\n\nBased on the following memories, provide a comprehensive answer:\n\n{combined_memories}"
+            summary_result = await self.summarization_tool._arun(summary_prompt)
+            summary_data = json.loads(summary_result)
+            
+            return {
+                "sources": ["conversation_memory"],
+                "synthesized_answer": summary_data.get("summary", ""),
+                "question": question.question,
+                "node_type": "memory_search"
+            }
+            
+        except Exception as e:
+            return {
+                "sources": [],
+                "synthesized_answer": f"Error in memory search: {str(e)}",
+                "error": str(e),
+                "question": question.question,
+                "node_type": "memory_search"
+            }
+    
+    async def _execute_static_analysis_subtask(self, question: ResearchQuestion, config: Dict) -> Dict:
+        """Execute static analysis subtask (text processing, summarization)."""
+        try:
+            analysis_type = config.get('analysis_type', 'summarization')
+            
+            if analysis_type == 'summarization':
+                # Use summarization tool directly on the question context
+                summary_result = await self.summarization_tool._arun(question.question)
+                summary_data = json.loads(summary_result)
+                
+                return {
+                    "sources": ["static_analysis"],
+                    "synthesized_answer": summary_data.get("summary", ""),
+                    "question": question.question,
+                    "node_type": "static_analysis"
+                }
+            else:
+                # Other analysis types can be implemented here
+                return {
+                    "sources": ["static_analysis"],
+                    "synthesized_answer": f"Static analysis completed for: {question.question}",
+                    "question": question.question,
+                    "node_type": "static_analysis"
+                }
+                
+        except Exception as e:
+            return {
+                "sources": [],
+                "synthesized_answer": f"Error in static analysis: {str(e)}",
+                "error": str(e),
+                "question": question.question,
+                "node_type": "static_analysis"
+            }
+    
+    async def _execute_agent_analysis_subtask(self, question: ResearchQuestion, config: Dict, conversation_ctx: ConversationCtx) -> Dict:
+        """Execute agent-based analysis subtask."""
+        try:
+            from composer.agents.analysis.intent_analysis_agent import IntentAnalysisAgent
+            
+            # Use intent analysis agent for complex reasoning tasks
+            analysis_agent = IntentAnalysisAgent()
+            
+            # Create a temporary conversation context for the question
+            temp_ctx = conversation_ctx  # Could be modified for the specific question
+            
+            # This would need to be adapted based on the specific agent capabilities
+            analysis_result = await analysis_agent.analyze(temp_ctx)
+            
+            return {
+                "sources": ["agent_analysis"],
+                "synthesized_answer": f"Agent analysis completed for: {question.question}. Reasoning: {analysis_result.reasoning}",
+                "question": question.question,
+                "node_type": "agent_analysis",
+                "analysis_confidence": analysis_result.confidence
+            }
+            
+        except Exception as e:
+            return {
+                "sources": [],
+                "synthesized_answer": f"Error in agent analysis: {str(e)}",
+                "error": str(e),
+                "question": question.question,
+                "node_type": "agent_analysis"
+            }
+    
+    async def _execute_dynamic_tool_subtask(self, question: ResearchQuestion, config: Dict, conversation_ctx: ConversationCtx) -> Dict:
+        """Execute dynamic tool subtask (tools generated per specific need)."""
+        try:
+            # This would integrate with the dynamic tool generation system
+            # For now, return a placeholder implementation
+            tool_type = config.get('tool_type', 'general')
+            
+            # Dynamic tool generation would happen here
+            # This could involve creating specialized tools based on the question domain
+            
+            return {
+                "sources": ["dynamic_tool"],
+                "synthesized_answer": f"Dynamic tool analysis completed for: {question.question} (Tool type: {tool_type})",
+                "question": question.question,
+                "node_type": "dynamic_tool",
+                "tool_config": config
+            }
+            
+        except Exception as e:
+            return {
+                "sources": [],
+                "synthesized_answer": f"Error in dynamic tool: {str(e)}",
+                "error": str(e),
+                "question": question.question,
+                "node_type": "dynamic_tool"
             }
     
     async def _synthesize_results(self, state: DeepResearchState) -> DeepResearchState:
@@ -1152,6 +1360,35 @@ research:
       type: boolean
       default: true
       description: Whether to cache and reuse research results
+    node_type_preferences:
+      type: object
+      description: Preferences for different node types
+      properties:
+        web_search:
+          type: object
+          properties:
+            max_results: {type: integer, default: 5}
+            search_depth: {type: string, enum: ["standard", "deep"], default: "standard"}
+        memory_search:
+          type: object
+          properties:
+            max_memories: {type: integer, default: 10}
+            similarity_threshold: {type: number, default: 0.7}
+        agent_analysis:
+          type: object
+          properties:
+            analysis_depth: {type: string, enum: ["basic", "detailed", "comprehensive"], default: "detailed"}
+            enable_reasoning_chains: {type: boolean, default: true}
+        dynamic_tools:
+          type: object
+          properties:
+            enable_generation: {type: boolean, default: true}
+            max_generation_time: {type: integer, default: 60}
+    execution_strategy:
+      type: string
+      enum: ["parallel", "sequential", "priority_based"]
+      default: "priority_based"
+      description: How to execute subtasks
 ```
 
 ### Phase 5: Implementation Steps
@@ -1214,10 +1451,14 @@ class ResearchConfig(BaseModel):
 Upon completion, the system will provide:
 
 1. **Comprehensive Research Capability**: Multi-stage research with plan generation, parallel execution, and synthesis
-2. **Intelligent Caching**: Semantic and temporal similarity matching to avoid duplicate work
-3. **Scalable Architecture**: TimescaleDB integration for large-scale research data storage
-4. **Flexible Configuration**: User-configurable thresholds, limits, and behavior
-5. **Robust Error Handling**: Graceful degradation and fallback mechanisms
-6. **Performance Optimization**: Parallel subtask execution and efficient database queries
+2. **Flexible Node Execution**: Support for static tools, agents, and dynamically generated tools per subtask
+3. **Intelligent Caching**: Semantic and temporal similarity matching to avoid duplicate work
+4. **Scalable Architecture**: TimescaleDB integration for large-scale research data storage
+5. **Adaptive Execution Strategy**: Priority-based, parallel, or sequential execution modes
+6. **Multi-Modal Research**: Web search, memory retrieval, static analysis, agent reasoning, and dynamic tool generation
+7. **Flexible Configuration**: User-configurable thresholds, limits, and node-specific behavior
+8. **Robust Error Handling**: Graceful degradation and fallback mechanisms across all node types
+9. **Performance Optimization**: Intelligent subtask routing and efficient database queries
+10. **Extensible Architecture**: Easy addition of new node types and execution strategies
 
-The deep research tool will integrate seamlessly with existing static tools and provide advanced research capabilities while maintaining the static, predictable behavior required for LangChain integration.
+The deep research tool will integrate seamlessly with existing static tools, agents, and dynamic tool generation while providing advanced research capabilities and maintaining the static, predictable behavior required for LangChain integration.
