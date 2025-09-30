@@ -39,59 +39,54 @@ PROFILE_TYPE_TO_CONFIG_FIELD: Dict[ModelProfileType, str] = {
 
 
 async def get_model_profile_for_task(
-    config: ModelProfileConfig,
-    task: ModelProfileType,
-    user_id: str
+    config: ModelProfileConfig, task: ModelProfileType, user_id: str
 ) -> ModelProfile:
     """
     Get the appropriate model profile for a specific task.
-    
+
     Args:
         config: The user's model profile configuration
         task: The type of task requiring a model profile
         user_id: The user ID for profile lookup
-        
+
     Returns:
         The model profile for the specified task
-        
+
     Raises:
         ValueError: If the task type is not supported or profile not found
         AssertionError: If the retrieved profile is None
     """
-    # Get the config field name for this task type
-    config_field = PROFILE_TYPE_TO_CONFIG_FIELD.get(task)
-    if config_field is None:
-        raise ValueError(f"Unsupported task type: {task}")
-    
     # Get the profile ID from the config
-    profile_id: uuid.UUID = getattr(config, config_field)
-    
+    profile_id: uuid.UUID = get_profile_id_for_task(config, task)
+
     # Retrieve the model profile from storage
     mp = await storage.get_service(storage.model_profile).get_model_profile_by_id(
         profile_id, user_id
     )
-    
+
     assert mp, f"No profile for {task} (ID: {profile_id}, User: {user_id})"
-    
+
     return mp
 
 
-def get_profile_id_for_task(config: ModelProfileConfig, task: ModelProfileType) -> uuid.UUID:
+def get_profile_id_for_task(
+    config: ModelProfileConfig, task: ModelProfileType
+) -> uuid.UUID:
     """
     Get the profile ID for a specific task without database lookup.
-    
+
     Args:
         config: The user's model profile configuration
         task: The type of task requiring a model profile
-        
+
     Returns:
         The UUID of the profile for the specified task
-        
+
     Raises:
         ValueError: If the task type is not supported
     """
     config_field = PROFILE_TYPE_TO_CONFIG_FIELD.get(task)
     if config_field is None:
         raise ValueError(f"Unsupported task type: {task}")
-    
+
     return getattr(config, config_field)

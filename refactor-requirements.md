@@ -16,47 +16,23 @@ Leveraging LangGraph v1 capabilities, this refactoring will deliver robust, scal
 
 ### 1.1 Architecture Challenges
 
-  - **Fragmented orchestration:** Multiple isolated server components manually coordinate functions like summarization, retrieval, and tool management, leading to brittle systems.
-  - **Tool management sprawl:** Tools, especially dynamic tool instantiations, are decentralized, reducing reuse and introducing duplication.
-  - **Tight coupling:** Server and runner components are tightly bound through factories, restricting pipeline flexibility.
-  - **State and error handling gaps:** Mixed state management between manual and LangGraph approaches, inconsistent error propagation, and scattered cleanup logic.
-  - **Streaming constraints:** Only the primary agent supports streaming; secondary agents and tool nodes lack streaming integration.
-  - **Recovery and resource management:** Lacking circuit breakers and robust failure handling harms system reliability.
+- **Fragmented orchestration:** Multiple isolated server components manually coordinate functions like summarization, retrieval, and tool management, leading to brittle systems.
+- **Tool management sprawl:** Tools, especially dynamic tool instantiations, are decentralized, reducing reuse and introducing duplication.
+- **Tight coupling:** Server and runner components are tightly bound through factories, restricting pipeline flexibility.
+- **State and error handling gaps:** Mixed state management between manual and LangGraph approaches, inconsistent error propagation, and scattered cleanup logic.
+- **Streaming constraints:** Only the primary agent supports streaming; secondary agents and tool nodes lack streaming integration.
+- **Recovery and resource management:** Lacking circuit breakers and robust failure handling harms system reliability.
 
 ### 1.2 Roles of Major Components
 
-  - **Server:** Handles HTTP, auth, user config, and legacy orchestration currently scheduled for deprecation.
-  - **Composer:** Centralized orchestration, stateful workflow construction, execution, intent parsing, tool lifecycle, and error management.
-  - **Runner:** Executes LangGraph compiled graphs with pipeline facilities for streaming or batch runs.
-  - **Tools:** Includes static tools (search, summarization) and dynamic tools derived from LLM-generated code.
-
-### 1.3 Shared Code Architecture
-
-The inference system implements **shared components** accessible by all services to enable proper decoupling:
-
-- **`models/`**: Generated Pydantic models from YAML schemas serving as shared data contracts
-- **`utils/`**: Shared utility functions (serialization, response handling, hardware management)
-- **`db/`**: Database interfaces, storage classes, and SQL queries (moved from `server/db/`)
-- **`test/`**: Shared test utilities and fixtures for cross-component testing
-- **`debug/`**: Validation and debugging scripts for system verification
-
-**Shared Component Access Rules:**
-- ✅ All services (`server`, `runner`, `composer`) can import from `models.*`, `utils.*`, `db.*`
-- ✅ Services use shared database interfaces (`db.interfaces.*`) and storage classes (`db.*_storage`)
-- ✅ Shared utilities provide common functionality without creating coupling
-- ❌ Shared components cannot import from specific services to maintain decoupling
-- ❌ Business logic must not be placed in shared components
-
-**Architectural Enforcement:**
-- ❌ `composer` cannot import from `server.services.*`, `server.handlers.*`
-- ❌ `server` cannot import from `runner.pipelines.*`, `composer.agent_runtime.*` 
-- ❌ `runner` cannot import from `server.*` or `composer.*`
-- ✅ All cross-service communication uses Protocol-based dependency injection
-- ✅ Database access exclusively through shared `db.*` interfaces
+- **Server:** Handles HTTP, auth, user config, and legacy orchestration currently scheduled for deprecation.
+- **Composer:** Centralized orchestration, stateful workflow construction, execution, intent parsing, tool lifecycle, and error management.
+- **Runner:** Executes LangGraph compiled graphs with pipeline facilities for streaming or batch runs.
+- **Tools:** Includes static tools (search, summarization) and dynamic tools derived from LLM-generated code.
 
 -----
 
-## 2\. Target Architecture
+## 2. Target Architecture
 
 ### 2.1 Composer: The Heart of the New Architecture
 
@@ -64,15 +40,16 @@ Central to the redesign is the **Composer component**. The refactoring dictates 
 
 The Composer is responsible for:
 
-  - **Graph construction & execution:** Intelligently builds LangGraph task graphs based on conversation context and dynamically selected tools.
-  - **Streaming orchestration:** Uses LangGraph's `astream_events` API to manage and route streaming events for primary chat interaction and control non-streaming responses from secondary nodes smoothly.
-  - **State management:** Maintains a unified, authoritative GraphState with full persistence, checkpoints, and seamless recovery.
-  - **Tool management:** Centralizes tool registration, dynamic generation and discovery, leveraging semantic search to maximize reuse and minimize redundancy.
-  - **Intent analysis:** Runs LLM-based intent classifiers early in workflows to set retrieval depth, determine toolsets, and drive conditional routing.
-  - **Error resiliency:** Coordinates circuit breaker protections, error handling, and retry policies at per-node granularity.
-  - **Multi-agent orchestration:** Implements cross-agent handoffs through LangGraph `Command` primitives for complex collaborative workflows.
+- **Graph construction & execution:** Intelligently builds LangGraph task graphs based on conversation context and dynamically selected tools.
+- **Streaming orchestration:** Uses LangGraph's `astream_events` API to manage and route streaming events for primary chat interaction and control non-streaming responses from secondary nodes smoothly.
+- **State management:** Maintains a unified, authoritative GraphState with full persistence, checkpoints, and seamless recovery.
+- **Tool management:** Centralizes tool registration, dynamic generation and discovery, leveraging semantic search to maximize reuse and minimize redundancy.
+- **Intent analysis:** Runs LLM-based intent classifiers early in workflows to set retrieval depth, determine toolsets, and drive conditional routing.
+- **Error resiliency:** Coordinates circuit breaker protections, error handling, and retry policies at per-node granularity.
+- **Multi-agent orchestration:** Implements cross-agent handoffs through LangGraph `Command` primitives for complex collaborative workflows.
 
 ### 2.2 High-Level System Layout
+
 
 ```
 ┌──────────────────────────────┐        ┌────────────────────────┐
@@ -94,9 +71,9 @@ The Composer is responsible for:
            └───────────────────────┘  └───────────────────┘
 ```
 
-  - **Composer** is the *authoritative runtime* for LangGraph execution control and context-aware orchestration—removing fragmented server logic.
-  - Implements robust state persistence, error handling, real-time streaming, and intent-driven dynamic workflow selection (chat, research, multi-agent).
-  - Favors clean separation of concerns per LangGraph V1 principles.
+- **Composer** is the *authoritative runtime* for LangGraph execution control and context-aware orchestration—removing fragmented server logic.
+- Implements robust state persistence, error handling, real-time streaming, and intent-driven dynamic workflow selection (chat, research, multi-agent).
+- Favors clean separation of concerns per LangGraph V1 principles.
 
 ### 2.3 Architectural Shift Validation (LangGraph V1-alpha)
 
@@ -154,8 +131,8 @@ The `IntentClassifierAgent` is mandated to execute early in the graph flow. A no
 
 #### 3.3.2 Defining RAG Complexity Levels
 
-1.  **Level 1: Shallow RAG:** This path, executed by the `execute_shallow_search` node, involves a direct, single-pass retrieval using only the internal vector store retriever. This operation is designed to be fast and low-cost.
-2.  **Level 2: Deep RAG:** This path, executed by the `execute_deep_crawl_and_synthesize` node, triggers a more resource-intensive, multi-step sub-graph. This typically includes an initial web search using external APIs (e.g., Tavily API), followed by crawling, indexing of new data, and sophisticated synthesis across disparate sources.
+1. **Level 1: Shallow RAG:** This path, executed by the `execute_shallow_search` node, involves a direct, single-pass retrieval using only the internal vector store retriever. This operation is designed to be fast and low-cost.
+2. **Level 2: Deep RAG:** This path, executed by the `execute_deep_crawl_and_synthesize` node, triggers a more resource-intensive, multi-step sub-graph. This typically includes an initial web search using external APIs (e.g., Tavily API), followed by crawling, indexing of new data, and sophisticated synthesis across disparate sources.
 
 #### 3.3.3 Graph Topology for Adaptive Search Routing
 
@@ -173,9 +150,9 @@ The `IntentClassifierAgent` serves as the initial tool orchestration manager. It
 
 If standard tools are insufficient, the **Dynamic Tool Agent (DTA)** begins an intelligent assessment:
 
-1.  The DTA queries a **Tool Registry Vector Database (VDB)**, which stores descriptions and schemas of all existing dynamic tools.
-2.  It performs a semantic similarity check, comparing the user's functional requirement against the existing tool descriptions.
-3.  An LLM call judges relevance, culminating in a decisive workflow:
+1. The DTA queries a **Tool Registry Vector Database (VDB)**, which stores descriptions and schemas of all existing dynamic tools.
+2. It performs a semantic similarity check, comparing the user's functional requirement against the existing tool descriptions.
+3. An LLM call judges relevance, culminating in a decisive workflow:
       - **Use Existing:** If similarity score is high (e.g., \> 0.9), the existing tool is used.
       - **Modify or Compose:** If similarity is moderate (e.g., 0.6 - 0.9), the agent determines the existing tool requires modification, or multiple tools must be chained together using LCEL.
       - **Create New:** If similarity is low (e.g., \< 0.6), the agent initiates an LLM-driven process to generate the code and schema for a new tool.
@@ -190,7 +167,7 @@ Crucially, this complex sequence achieves **Abstraction** by utilizing the `.as_
 
 | Abstraction Principle | LangChain Mechanism | Implementation Detail | Benefit |
 | :--- | :--- | :--- | :--- |
-| **Composability** | LCEL Pipe Operator (`|`) and `RunnableSequence`. | Tools are defined as runnable objects that pass output of one to input of the next. | Allows rapid assembly of bespoke tools from existing atomic functions. |
+| **Composability** | LCEL Pipe Operator (`|`) and`RunnableSequence`. | Tools are defined as runnable objects that pass output of one to input of the next. | Allows rapid assembly of bespoke tools from existing atomic functions. |
 | **Abstraction** | `.as_tool()` method. | Attaches a name, description, and schema to a complex LCEL sequence. | Hides complexity from the reasoning LLM, simplifying agent decision-making. |
 | **Dynamic Creation** | LLM Output Parsing + Code Generation. | Intent Agent output dictates schema; LLM generates function code/LCEL sequence. | Enables creation of genuinely new, purpose-built tools on demand. |
 
@@ -237,9 +214,9 @@ class ComposerService:
 
 **Highlights:**
 
-  - Uses a **LangGraph CompiledGraph** returned to the caller, which supports both streaming and batch execution.
-  - **Intent Analysis:** Before building a workflow, an LLM-based intent analyzer is invoked. The analysis guides tool selection and workflow type.
-  - **Caching:** Workflows are cached by (user\_id, workflow\_type, toolset) signature.
+- Uses a **LangGraph CompiledGraph** returned to the caller, which supports both streaming and batch execution.
+- **Intent Analysis:** Before building a workflow, an LLM-based intent analyzer is invoked. The analysis guides tool selection and workflow type.
+- **Caching:** Workflows are cached by (user\_id, workflow\_type, toolset) signature.
 
 ### 4.1.2 Graph Builder Module
 
@@ -263,7 +240,7 @@ class GraphBuilder:
             return self.build_chat_workflow(conversation_ctx, tools, config)
 ```
 
-  - **Configurability:** The config object (e.g. `ResearchConfig`) carries parameters like `search_depth`, `max_sources`, and `retrieve_full_content`. The graph builder passes these to nodes.
+- **Configurability:** The config object (e.g. `ResearchConfig`) carries parameters like `search_depth`, `max_sources`, and `retrieve_full_content`. The graph builder passes these to nodes.
 
 ### 4.1.3 Tool Registry Module
 
@@ -325,7 +302,7 @@ class ToolRegistry:
 
 **Key Points:**
 
-  - **MCP Integration:** Tools can also be provided via the Model Context Protocol (MCP). By installing `langchain-mcp-adapters`, LangGraph agents can treat MCP-registered tools as first-class, reusing corporate or partner tool definitions.
+- **MCP Integration:** Tools can also be provided via the Model Context Protocol (MCP). By installing `langchain-mcp-adapters`, LangGraph agents can treat MCP-registered tools as first-class, reusing corporate or partner tool definitions.
 
 ### 4.1.4 State Manager Module
 
@@ -449,7 +426,7 @@ def build_chat_workflow(config: ChatConfig) -> StateGraph:
     return workflow.compile()
 ```
 
-  - **Graph Execution:** This workflow is run via `workflow.astream_events(initial_state, version="v2")`. The server consumes this stream:
+- **Graph Execution:** This workflow is run via `workflow.astream_events(initial_state, version="v2")`. The server consumes this stream:
 
 <!-- end list -->
 
@@ -481,7 +458,7 @@ def build_research_workflow(config: ResearchConfig) -> StateGraph:
     return workflow.compile()
 ```
 
-  - **Context-Aware Synthesis:** Before running `SynthesisNode`, the `StateManager` is used to enforce context limits. If total tokens exceed the LLM's window, older content is trimmed or summarized.
+- **Context-Aware Synthesis:** Before running `SynthesisNode`, the `StateManager` is used to enforce context limits. If total tokens exceed the LLM's window, older content is trimmed or summarized.
 
 -----
 
@@ -563,98 +540,112 @@ composer/
 #### Phase 1: Foundation Setup (Week 1-2)
 
 **Environment and Dependencies:**
-  - [ ] Update `inference/requirements.txt` to LangChain/LangGraph V1 alpha
-  - [ ] Create `composer/` directory in `inference/` following service patterns
-  - [ ] Set up `composer/pyproject.toml` and `composer/requirements.txt`
-  - [ ] Configure `composer/config.py` with environment variable patterns
+
+- [ ] Update `inference/requirements.txt` to LangChain/LangGraph V1 alpha
+- [ ] Create `composer/` directory in `inference/` following service patterns
+- [ ] Set up `composer/pyproject.toml` and `composer/requirements.txt`
+- [ ] Configure `composer/config.py` with environment variable patterns
 
 **Core Structure:**
-  - [ ] Create composer directory structure as specified
-  - [ ] Implement `GraphState` Pydantic model with LangGraph reducers
-  - [ ] Set up basic `ComposerService` in `composer/core/service.py`
-  - [ ] Configure logging with structured format matching inference service
+
+- [ ] Create composer directory structure as specified
+- [ ] Implement `GraphState` Pydantic model with LangGraph reducers
+- [ ] Set up basic `ComposerService` in `composer/core/service.py`
+- [ ] Configure logging with structured format matching inference service
 
 **Tool Migration:**
-  - [ ] Move `inference/server/tools/integration.py` → `composer/tools/static/`
-  - [ ] Move `inference/server/tools/dynamic_tool.py` → `composer/tools/dynamic/generator.py`
-  - [ ] Extract tool generation logic from server handlers
-  - [ ] Implement `ToolRegistry` with semantic search similar to existing memory store and query (`server/db/sql/memory/search.sql`). Note: a query exists for this at `server/db/sql/tool/search_tools_by_embedding.sql`.
+
+- [ ] Move `inference/server/tools/integration.py` → `composer/tools/static/`
+- [ ] Move `inference/server/tools/dynamic_tool.py` → `composer/tools/dynamic/generator.py`
+- [ ] Extract tool generation logic from server handlers
+- [ ] Implement `ToolRegistry` with semantic search similar to existing memory store and query (`server/db/sql/memory/search.sql`). Note: a query exists for this at `server/db/sql/tool/search_tools_by_embedding.sql`.
 
 #### Phase 2: Core Node Implementation (Week 3-4)
 
 **Basic Nodes:**
-  - [ ] Implement `PipelineNode` wrapping existing pipeline execution
-  - [ ] Create `ToolExecutorNode` using LangGraph's `ToolNode`
-  - [ ] Build `RAGNode` from `ConversationContext.process_rag_operations`
-  - [ ] Implement circuit breaker `CircuitProtectedNode` wrapper
+
+- [ ] Implement `PipelineNode` wrapping existing pipeline execution
+- [ ] Create `ToolExecutorNode` using LangGraph's `ToolNode`
+- [ ] Build `RAGNode` from `ConversationContext.process_rag_operations`
+- [ ] Implement circuit breaker `CircuitProtectedNode` wrapper
 
 **Specialized Nodes:**
-  - [ ] Create `TitleGenerationNode` from server logic
-  - [ ] Build `IntentClassifierAgent` with structured output schema
-  - [ ] Implement `DynamicToolGenerationNode` with registry integration
+
+- [ ] Create `TitleGenerationNode` from server logic
+- [ ] Build `IntentClassifierAgent` with structured output schema
+- [ ] Implement `DynamicToolGenerationNode` with registry integration
 
 **Graph Builder:**
-  - [ ] Implement `GraphBuilder.build_chat_workflow()`
-  - [ ] Create workflow caching with TTL
-  - [ ] Add conditional routing for RAG depth selection
+
+- [ ] Implement `GraphBuilder.build_chat_workflow()`
+- [ ] Create workflow caching with TTL
+- [ ] Add conditional routing for RAG depth selection
 
 #### Phase 3: Streaming and Advanced Features (Week 5-6)
 
 **Streaming Implementation:**
-  - [ ] Configure nodes for appropriate streaming modes
-  - [ ] Implement `StreamProcessor` for event routing
-  - [ ] Create WebSocket/SSE endpoints in `composer/streaming/api.py`
-  - [ ] Test selective streaming with token chunks and state updates
+
+- [ ] Configure nodes for appropriate streaming modes
+- [ ] Implement `StreamProcessor` for event routing
+- [ ] Create WebSocket/SSE endpoints in `composer/streaming/api.py`
+- [ ] Test selective streaming with token chunks and state updates
 
 **Advanced Workflows:**
-  - [ ] Implement research workflow with configurable depth
-  - [ ] Build multi-agent orchestration with `Command` primitives
-  - [ ] Add intent-driven tool selection and composition
-  - [ ] Implement semantic search for tool discovery
+
+- [ ] Implement research workflow with configurable depth
+- [ ] Build multi-agent orchestration with `Command` primitives
+- [ ] Add intent-driven tool selection and composition
+- [ ] Implement semantic search for tool discovery
 
 #### Phase 4: Integration and Migration (Week 7-8)
 
 **Server Integration:**
-  - [ ] Update `inference/server/handlers/completion.py` to use ComposerService
-  - [ ] Replace manual orchestration in `ConversationContext`
-  - [ ] Migrate RAG operations from server to composer nodes
-  - [ ] Update streaming endpoints to consume composer events
+
+- [ ] Update `inference/server/handlers/completion.py` to use ComposerService
+- [ ] Replace manual orchestration in `ConversationContext`
+- [ ] Migrate RAG operations from server to composer nodes
+- [ ] Update streaming endpoints to consume composer events
 
 **Legacy Migration:**
-  - [ ] Feature flag existing vs. new workflow systems
-  - [ ] Gradual migration of conversation types to composer
-  - [ ] Deprecate old pipeline orchestration logic
-  - [ ] Remove manual tool generation from server
+
+- [ ] Feature flag existing vs. new workflow systems
+- [ ] Gradual migration of conversation types to composer
+- [ ] Deprecate old pipeline orchestration logic
+- [ ] Remove manual tool generation from server
 
 #### Phase 5: Testing and Validation (Week 9-10)
 
 **Comprehensive Testing:**
-  - [ ] Unit tests for all nodes with mocked dependencies
-  - [ ] Integration tests for complete workflows
-  - [ ] Performance tests for caching and context management
-  - [ ] Streaming tests for event ordering and delivery
-  - [ ] Load tests for concurrent workflow execution
+
+- [ ] Unit tests for all nodes with mocked dependencies
+- [ ] Integration tests for complete workflows
+- [ ] Performance tests for caching and context management
+- [ ] Streaming tests for event ordering and delivery
+- [ ] Load tests for concurrent workflow execution
 
 **Documentation:**
-  - [ ] API documentation for composer service
-  - [ ] Configuration reference with environment variables
-  - [ ] Migration guide for existing functionality
-  - [ ] Troubleshooting guide for common issues
+
+- [ ] API documentation for composer service
+- [ ] Configuration reference with environment variables
+- [ ] Migration guide for existing functionality
+- [ ] Troubleshooting guide for common issues
 
 #### Phase 6: Production Deployment (Week 11-12)
 
 **Deployment Preparation:**
-  - [ ] Production configuration with environment variables
-  - [ ] Monitoring dashboards for composer metrics
-  - [ ] Alerting rules for circuit breaker states
-  - [ ] Performance baselines and SLA definitions
+
+- [ ] Production configuration with environment variables
+- [ ] Monitoring dashboards for composer metrics
+- [ ] Alerting rules for circuit breaker states
+- [ ] Performance baselines and SLA definitions
 
 **Rollout Strategy:**
-  - [ ] Canary deployment with feature flags
-  - [ ] Gradual traffic migration (10% → 50% → 100%)
-  - [ ] Performance monitoring and rollback procedures
-  - [ ] Legacy system deprecation timeline
-  - [ ] Post-migration cleanup and optimization
+
+- [ ] Canary deployment with feature flags
+- [ ] Gradual traffic migration (10% → 50% → 100%)
+- [ ] Performance monitoring and rollback procedures
+- [ ] Legacy system deprecation timeline
+- [ ] Post-migration cleanup and optimization
 
 ### 5.3 Testing Requirements
 
@@ -1022,52 +1013,57 @@ datamodel-codegen \
 
 The proposed architecture fully complies with and leverages the core capabilities of the LangGraph V1 framework.
 
-1.  **State Management:** The defined `GraphState` correctly employs reducer functions to manage complex state fields, such as concatenating `messages`, ensuring conversation context is consistently maintained across all nodes.
-2.  **Execution Control:** Conditional execution, achieved by reading `rag_depth_config` and `required_tools` from the state, is implemented through LangGraph's conditional edges, granting precise, programmatic control over the workflow.
-3.  **Streaming Paradigm:** The architecture correctly mandates the use of distinct streaming modes—`messages` for token output and `updates`/`custom` for state feedback—to deliver the selective streaming functionality required for optimal user experience and operational transparency.
-4.  **Error Resilience:** Circuit breaker patterns and comprehensive error handling ensure system stability under failure conditions.
-5.  **Observability:** Comprehensive metrics and structured logging provide full visibility into system performance and behavior.
-6.  **Schema Compliance:** Integration with existing YAML schema patterns ensures type safety and consistency across services.
+1. **State Management:** The defined `GraphState` correctly employs reducer functions to manage complex state fields, such as concatenating `messages`, ensuring conversation context is consistently maintained across all nodes.
+2. **Execution Control:** Conditional execution, achieved by reading `rag_depth_config` and `required_tools` from the state, is implemented through LangGraph's conditional edges, granting precise, programmatic control over the workflow.
+3. **Streaming Paradigm:** The architecture correctly mandates the use of distinct streaming modes—`messages` for token output and `updates`/`custom` for state feedback—to deliver the selective streaming functionality required for optimal user experience and operational transparency.
+4. **Error Resilience:** Circuit breaker patterns and comprehensive error handling ensure system stability under failure conditions.
+5. **Observability:** Comprehensive metrics and structured logging provide full visibility into system performance and behavior.
+6. **Schema Compliance:** Integration with existing YAML schema patterns ensures type safety and consistency across services.
 
 -----
 
 ## 6\. Success Criteria and Validation
 
 ### 6.1 Performance Metrics
-  - **Workflow Creation:** <100ms with cache hits, <2s for cache misses
-  - **Node Execution Overhead:** <5ms per node transition
-  - **Streaming Latency:** <50ms for first token, <10ms between tokens
-  - **Memory Usage:** 20% reduction through context management and workflow caching
-  - **Tool Generation:** <3s for new tool creation, <500ms for existing tool retrieval
+
+- **Workflow Creation:** <100ms with cache hits, <2s for cache misses
+- **Node Execution Overhead:** <5ms per node transition
+- **Streaming Latency:** <50ms for first token, <10ms between tokens
+- **Memory Usage:** 20% reduction through context management and workflow caching
+- **Tool Generation:** <3s for new tool creation, <500ms for existing tool retrieval
 
 ### 6.2 Code Quality Standards
-  - **Cyclomatic Complexity:** Reduce by 40% through modular node architecture
-  - **Test Coverage:** >90% for all composer modules
-  - **Type Safety:** 100% type hints with Pydantic model validation
-  - **Documentation:** API documentation for all public interfaces
-  - **Linting:** Pass all pyright, pylint, and black formatting checks
+
+- **Cyclomatic Complexity:** Reduce by 40% through modular node architecture
+- **Test Coverage:** >90% for all composer modules
+- **Type Safety:** 100% type hints with Pydantic model validation
+- **Documentation:** API documentation for all public interfaces
+- **Linting:** Pass all pyright, pylint, and black formatting checks
 
 ### 6.3 Maintainability Goals
-  - **Workflow Creation:** New workflow types implementable in <1 hour
-  - **Tool Addition:** Static tools added without server code changes
-  - **Schema Evolution:** Backward-compatible schema updates via YAML versioning
-  - **Configuration Management:** All settings configurable via environment variables
-  - **Deployment:** Zero-downtime deployments with feature flags
+
+- **Workflow Creation:** New workflow types implementable in <1 hour
+- **Tool Addition:** Static tools added without server code changes
+- **Schema Evolution:** Backward-compatible schema updates via YAML versioning
+- **Configuration Management:** All settings configurable via environment variables
+- **Deployment:** Zero-downtime deployments with feature flags
 
 ### 6.4 Reliability Requirements
-  - **Uptime:** 99.9% availability with graceful degradation
-  - **Error Recovery:** Circuit breakers prevent cascading failures
-  - **State Persistence:** Durable execution survives client disconnections
-  - **Monitoring:** Full observability with metrics, logging, and alerting
-  - **Testing:** Comprehensive unit, integration, and performance test suites
+
+- **Uptime:** 99.9% availability with graceful degradation
+- **Error Recovery:** Circuit breakers prevent cascading failures
+- **State Persistence:** Durable execution survives client disconnections
+- **Monitoring:** Full observability with metrics, logging, and alerting
+- **Testing:** Comprehensive unit, integration, and performance test suites
 
 ### 6.5 Codebase Integration
-  - **Schema Compliance:** Use existing YAML schema generation patterns
-  - **Configuration:** Follow inference service environment variable patterns
-  - **Logging:** Integrate with existing structured logging framework
-  - **Database:** Leverage existing PostgreSQL connection patterns
-  - **Authentication:** Integrate with existing Auth0/JWT authentication
-  - **API Versioning:** Follow existing API versioning conventions
+
+- **Schema Compliance:** Use existing YAML schema generation patterns
+- **Configuration:** Follow inference service environment variable patterns
+- **Logging:** Integrate with existing structured logging framework
+- **Database:** Leverage existing PostgreSQL connection patterns
+- **Authentication:** Integrate with existing Auth0/JWT authentication
+- **API Versioning:** Follow existing API versioning conventions
 
 -----
 
@@ -1076,21 +1072,25 @@ The proposed architecture fully complies with and leverages the core capabilitie
 ### 7.1 Existing Infrastructure Integration
 
 **Database Integration:**
+
 - Use existing PostgreSQL connection patterns from `inference/server/config.py`
 - Leverage existing database schema in `inference/server/db/sql/`
 - Follow connection pooling patterns from server service
 
 **Configuration Management:**
+
 - Follow environment variable patterns from `schemas/config.yaml`
 - Use existing configuration validation with Pydantic models
 - Integrate with current API versioning system
 
 **Authentication and Authorization:**
+
 - Use existing Auth0/JWT patterns from `inference/server/auth.py`
 - Maintain current user management and session handling
 - Preserve existing API security patterns
 
 **Service Communication:**
+
 - Follow existing FastAPI patterns from `inference/server/app.py`
 - Use current middleware and error handling patterns
 - Maintain API versioning conventions
@@ -1098,21 +1098,25 @@ The proposed architecture fully complies with and leverages the core capabilitie
 ### 7.2 Development Workflow Integration
 
 **Code Generation:**
+
 - Integrate composer schemas into `./regenerate_models.sh`
 - Follow existing YAML schema patterns for type safety
 - Use current Python and TypeScript model generation
 
 **Testing Patterns:**
+
 - Follow existing test structure in `inference/test/`
 - Use current pytest configuration and fixtures  
 - Maintain existing test database patterns
 
 **Deployment Integration:**
+
 - Follow Kubernetes deployment patterns from `inference/k8s/`
 - Use existing Docker build patterns from `inference/Dockerfile`
 - Integrate with current CI/CD pipeline
 
 **Monitoring Integration:**
+
 - Use existing structured logging patterns
 - Integrate with current Prometheus metrics collection
 - Follow established alerting and dashboard patterns
@@ -1120,6 +1124,7 @@ The proposed architecture fully complies with and leverages the core capabilitie
 ## 8\. References
 
 ### 8.1 LangGraph and LangChain Documentation
+
 - LangChain and LangGraph Enter v1.0 Alpha: A New Era for Agentic AI Development
 - LangChain & LangGraph 1.0 alpha releases
 - LangGraph - LangChain
@@ -1133,6 +1138,7 @@ The proposed architecture fully complies with and leverages the core capabilitie
 - Tools | LangChain Concepts
 
 ### 8.2 Project-Specific References
+
 - LLM ML Lab Project Architecture (see `.github/copilot-instructions.md`)
 - Context Extension System Documentation (`docs/context_extension.md`)
 - GPU Configuration Guide (`docs/gpu_configuration.md`)
@@ -1142,6 +1148,7 @@ The proposed architecture fully complies with and leverages the core capabilitie
 - Current Service Architecture (`inference/server/`, `inference/runner/`)
 
 ### 8.3 External Framework References
+
 - LangChain & LangGraph Official Tutorials: [https://github.com/langchain-ai/langchain](https://github.com/langchain-ai/langchain)
 - LangGraph v1.0 Alpha Documentation: [https://langchain.ai/docs/langgraph/v1](https://langchain.ai/docs/langgraph/v1)
 - LangGraph Streaming Event Specification: [https://langchain.github.io/langgraph/posts/streaming](https://langchain.github.io/langgraph/posts/streaming)

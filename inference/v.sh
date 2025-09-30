@@ -25,7 +25,6 @@ usage() {
     echo "  v runner 'python -m runner.main'"
     echo "  v server 'uvicorn server.main:app --host 0.0.0.0 --port 8000'"
     echo "  v evaluation 'python -m evaluation.benchmark'"
-    echo "  v composer 'uvicorn composer.app:app --host 0.0.0.0 --port 8001'"
     echo "  v runner --interactive  # Interactive shell"
     echo ""
     echo -e "${YELLOW}Cross-environment module access:${NC}"

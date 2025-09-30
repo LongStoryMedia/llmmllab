@@ -20,11 +20,6 @@ spec:
       targetPort: 8000
       protocol: TCP
       # nodePort: 30080
-    - name: composer
-      port: 8001
-      targetPort: 8001
-      protocol: TCP
-      # nodePort: 30081
     - name: grpc
       port: 50051
       targetPort: 50051

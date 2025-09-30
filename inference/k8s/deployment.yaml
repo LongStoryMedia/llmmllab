@@ -51,9 +51,6 @@ spec:
             - name: sd
               containerPort: 8000
               protocol: TCP
-            - name: composer
-              containerPort: 8001
-              protocol: TCP
           resources:
             requests:
               memory: "24Gi"

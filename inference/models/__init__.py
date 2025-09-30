@@ -80,6 +80,7 @@ try:
     from . import research_question_result
     from . import research_subtask
     from . import research_task
+    from . import research_task_status
     from . import resource_usage
     from . import retrieved_document
     from . import search_result
@@ -190,6 +191,7 @@ __all__ = [
     'research_question_result',
     'research_subtask',
     'research_task',
+    'research_task_status',
     'resource_usage',
     'retrieved_document',
     'search_result',
@@ -299,6 +301,7 @@ __all__ = [
     'ResearchQuestionResult',
     'ResearchSubtask',
     'ResearchTask',
+    'ResearchTaskStatus',
     'ResourceUsage',
     'ChunkInfo',
     'Metadata',
@@ -562,6 +565,9 @@ from .research_subtask import (
 )
 from .research_task import (
     ResearchTask,
+)
+from .research_task_status import (
+    ResearchTaskStatus,
 )
 from .resource_usage import (
     ResourceUsage,

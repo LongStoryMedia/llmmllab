@@ -20,9 +20,9 @@ LangGraph Subgraph
     ↓
 ┌─────────────────────────────────────────────────┐
 │ Subtask Execution Nodes (Parallel)              │
-│ - Static tools (web_search, memory, etc.)      │
-│ - Agent nodes (analysis, specialized agents)   │
-│ - Dynamic tools (generated per subtask)        │
+│ - Static tools (web_search, memory, etc.)       │
+│ - Agent nodes (analysis, specialized agents)    │
+│ - Dynamic tools (generated per subtask)         │
 │ - Information gathering & synthesis             │
 └─────────────────────────────────────────────────┘
     ↓
@@ -33,6 +33,54 @@ LangGraph Subgraph
 │ - Update task completion status                 │
 └─────────────────────────────────────────────────┘
 ```
+
+## Structured Output Integration
+
+The deep research system integrates with the grammar-constrained structured output system to ensure reliable, type-safe results across all research operations.
+
+### Research Output Patterns
+
+**Research Task Planning**: Use `research_plan.yaml` schema with grammar constraints for initial task decomposition.
+
+**Intent Analysis**: Apply structured output for research query understanding and requirement extraction.
+
+**Result Synthesis**: Use grammar-constrained synthesis patterns for consolidating research findings.
+
+**Dynamic Tools**: Generate research-specific tools with structured specifications.
+
+### Grammar-Constrained Agents
+
+All research agents use structured output:
+
+```python
+from composer.agents.base_analysis_agent import BaseAnalysisAgent
+from models.research_plan import ResearchPlan
+from utils.grammar_generator import GrammarGenerator
+
+class ResearchPlanningAgent(BaseAnalysisAgent):
+    async def analyze(self, query: str) -> ResearchPlan:
+        # Generate grammar for research plan schema
+        grammar = GrammarGenerator.from_schema(ResearchPlan)
+        
+        # Use structured output pipeline with grammar constraints
+        result = await self.pipeline_factory.create_structured_pipeline(
+            prompt_template=self.get_planning_prompt(),
+            output_schema=ResearchPlan,
+            grammar=grammar,
+            enable_fallback=True
+        )
+        
+        return await result.execute({"query": query})
+```
+
+### Schema Requirements
+
+The following schemas support structured research output:
+
+1. **research_plan.yaml** - Task decomposition and execution strategy
+2. **research_subtask.yaml** - Individual subtask specifications
+3. **research_synthesis.yaml** - Final result consolidation
+4. **dynamic_research_tool.yaml** - Generated research tool specifications
 
 ## Database Schema Requirements
 
@@ -128,12 +176,7 @@ enum:
 Create `composer/agents/analysis/` directory structure:
 
 ```
-composer/agents/analysis/
-├── __init__.py
-├── base_analysis_agent.py
-├── intent_analysis_agent.py
-└── research_task_agent.py
-```
+composer/agents/analysis/\n├── __init__.py\n├── base_analysis_agent.py\n├── intent_analysis_agent.py\n└── research_task_agent.py\n```
 
 #### 1.2 Base Analysis Agent (`base_analysis_agent.py`)
 
@@ -1595,6 +1638,7 @@ self.research_task = None
 4. Vector similarity indexes are created when pgvector extension is available
 
 #### Step 2: Agent Refactoring
+
 1. Create `composer/agents/analysis/` directory
 2. Implement `BaseAnalysisAgent` class
 3. Refactor existing `IntentClassifierAgent` to extend base class

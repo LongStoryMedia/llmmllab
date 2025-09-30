@@ -95,9 +95,6 @@ ENV PYTHONUNBUFFERED=1 \
     LOG_LEVEL="debug" \
     # Server configuration
     PORT=8000 \
-    # Composer configuration
-    COMPOSER_PORT=8001 \
-    COMPOSER_HOST="0.0.0.0" \
     # Image generation configuration
     IMAGE_DIR="/root/images" \
     IMAGE_GENERATION_ENABLED="true" \
@@ -187,7 +184,7 @@ RUN rm -rf /opt/wheels \
     && echo 'echo "Use: v <environment> <command>"' >> /root/.bashrc
 
 # Expose ports  
-EXPOSE 11434 8000 8001 50051
+EXPOSE 11434 8000 50051
 
 # Default command
 CMD ["/app/startup.sh"]
