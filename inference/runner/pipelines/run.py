@@ -461,6 +461,7 @@ async def stream_pipeline(
     messages: MessageInput,
     pipeline: BasePipelineCore,
     tools: Optional[List[BaseTool]] = None,
+    grammar: Optional[str] = None,
 ) -> AsyncIterator[ChatResponse]:
     """
     Execute the LangGraph workflow for chat completion with enhanced error handling.
@@ -508,7 +509,7 @@ async def stream_pipeline(
 
         # Create graph
         try:
-            graph = pipeline.create_graph(tools)
+            graph = pipeline.create_graph(tools, grammar)
         except Exception as e:
             logger.error(f"Error creating graph: {e}")
             yield create_streaming_chunk(
@@ -592,6 +593,7 @@ async def run_pipeline(
     messages: MessageInput,
     pipeline: BasePipelineCore,
     tools: Optional[List[BaseTool]] = None,
+    grammar: Optional[str] = None,
 ) -> ChatResponse:
     """
     Get a complete response from the pipeline by aggregating streaming chunks.
@@ -602,7 +604,7 @@ async def run_pipeline(
     try:
         chunks: List[str] = []
 
-        async for chunk in stream_pipeline(messages, pipeline, tools):
+        async for chunk in stream_pipeline(messages, pipeline, tools, grammar):
             if chunk and chunk.message:
                 text = extract_message_text(chunk.message)
                 if text:

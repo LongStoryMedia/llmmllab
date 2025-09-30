@@ -95,6 +95,7 @@ try:
     from . import streaming_chunk
     from . import summarization_config
     from . import summary
+    from . import tool
     from . import tool_analysis_request
     from . import tool_analysis_response
     from . import tool_config
@@ -206,6 +207,7 @@ __all__ = [
     'streaming_chunk',
     'summarization_config',
     'summary',
+    'tool',
     'tool_analysis_request',
     'tool_analysis_response',
     'tool_config',
@@ -318,6 +320,7 @@ __all__ = [
     'StreamingChunk',
     'SummarizationConfig',
     'Summary',
+    'Tool',
     'ToolAnalysisRequest',
     'ToolAnalysisResponse',
     'ToolConfig',
@@ -612,6 +615,9 @@ from .summarization_config import (
 )
 from .summary import (
     Summary,
+)
+from .tool import (
+    Tool,
 )
 from .tool_analysis_request import (
     ToolAnalysisRequest,

@@ -155,7 +155,7 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
 
     # ---------- LLM Initialization (Heuristic Backoff) ----------
     async def _initialize_llm(
-        self, gguf_path: str, tools: Optional[List[BaseTool]] = None
+        self, gguf_path: str, tools: Optional[List[BaseTool]] = None, grammar: Optional[str] = None
     ) -> None:  # noqa: D401
         """Initialize llama.cpp model with heuristic auto-backoff.
 
@@ -345,6 +345,11 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
                                 [StreamingStdOutCallbackHandler()]
                             ),
                         }
+
+                        # Add grammar if provided
+                        if grammar:
+                            base_kwargs["grammar"] = grammar
+                            self._logger.info(f"Using grammar constraint: {len(grammar)} characters")
 
                         # Merge GPU configuration kwargs, letting GPU config override base settings
                         final_kwargs = {**base_kwargs, **gpu_kwargs}

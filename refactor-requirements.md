@@ -1249,7 +1249,7 @@ properties:
   required_tools:
     type: array
     items:
-      type: string
+      $ref: tool.yaml
   progress_updates:
     type: array
     items:

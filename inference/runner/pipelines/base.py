@@ -53,7 +53,7 @@ class LangGraphCapable(Protocol):
     """Protocol for pipelines that support LangGraph workflows."""
 
     def create_graph(
-        self, tools: Optional[List[BaseTool]] = None
+        self, tools: Optional[List[BaseTool]] = None, grammar: Optional[str] = None
     ) -> CompiledStateGraph:
         """Create a LangGraph workflow for this pipeline."""
         ...  # pylint: disable=unnecessary-ellipsis
@@ -157,7 +157,7 @@ class BasePipelineCore(ABC, Generic[PipeType]):
 
     @abstractmethod
     def create_graph(
-        self, tools: Optional[List[BaseTool]] = None
+        self, tools: Optional[List[BaseTool]] = None, grammar: Optional[str] = None
     ) -> CompiledStateGraph[LangGraphState, None, LangGraphState, LangGraphState]:
         """Create LangGraph workflow. Must be implemented by subclasses."""
 

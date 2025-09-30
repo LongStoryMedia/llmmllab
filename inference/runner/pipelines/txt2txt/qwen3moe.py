@@ -599,9 +599,12 @@ Then provide your clear, direct answer outside the thinking tags."""
         return False
 
     def create_graph(
-        self, tools: Optional[List[BaseTool]] = None
+        self, tools: Optional[List[BaseTool]] = None, grammar: Optional[str] = None
     ) -> CompiledStateGraph:
         """Create LangGraph with optimized caching and timeout protection."""
+        # Store grammar for later use during LLM initialization
+        self._current_grammar = grammar
+        
         tool_signature = hash(tuple(tool.name for tool in (tools or [])))
 
         if tool_signature in self.graph_cache:
@@ -872,7 +875,8 @@ Then provide your clear, direct answer outside the thinking tags."""
             # Initialize LLM if not done yet
             if self.llm is None:
                 gguf_path = self._get_gguf_path()
-                await self._initialize_llm(gguf_path)
+                grammar = getattr(self, '_current_grammar', None)
+                await self._initialize_llm(gguf_path, None, grammar)
 
             # Build messages for LLM
             messages = build_lc_messages(state.messages)

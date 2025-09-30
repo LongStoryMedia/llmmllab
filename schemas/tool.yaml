@@ -8,7 +8,7 @@ properties:
     description: The unique name of the tool that clearly communicates its purpose
     minLength: 1
   description:
-    type: string  
+    type: string
     description: Used to tell the model how/when/why to use the tool. You can provide few-shot examples as a part of the description
     minLength: 1
   args_schema:
@@ -55,7 +55,7 @@ properties:
     default: false
   response_format:
     type: string
-    enum: 
+    enum:
       - "content"
       - "content_and_artifact"
     description: The tool response format. If 'content' then the output is interpreted as ToolMessage contents. If 'content_and_artifact' then output is expected to be a two-tuple of (content, artifact)

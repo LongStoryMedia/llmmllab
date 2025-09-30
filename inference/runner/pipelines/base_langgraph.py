@@ -170,7 +170,7 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
 
     @abstractmethod
     async def _initialize_llm(
-        self, gguf_path: str, tools: Optional[List[BaseTool]] = None
+        self, gguf_path: str, tools: Optional[List[BaseTool]] = None, grammar: Optional[str] = None
     ) -> None:
         """Initialize the LLM. Must be implemented by subclasses."""
         raise NotImplementedError("Subclass must implement _initialize_llm")
@@ -817,6 +817,7 @@ Use these tools when they can help provide more accurate or comprehensive respon
         tools: Optional[List[BaseTool]],
         timeout: float,
         is_tool_generation: bool = False,
+        grammar: Optional[str] = None,
     ) -> CompiledStateGraph:
         """Create LangGraph with timeout-aware agent node."""
         tool_signature = hash(tuple(tool.name for tool in (tools or [])))
@@ -827,7 +828,7 @@ Use these tools when they can help provide more accurate or comprehensive respon
         # Ensure LLM initialized
         if self.llm is None:
             gguf_path = self._get_gguf_path()
-            await self._initialize_llm(gguf_path, tools)
+            await self._initialize_llm(gguf_path, tools, grammar)
         else:
             # Bind tools if provided
             if tools:

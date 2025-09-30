@@ -39,7 +39,7 @@ __all__ = [
     "PipeReturn",
     "Embeddings",
     "run_pipeline",
-    "stream_pipeline",
+    "stream_pipeline", 
     "embed_pipeline",
     "EmbeddingPipeline",
 ]
