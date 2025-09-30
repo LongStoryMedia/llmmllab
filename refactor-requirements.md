@@ -43,7 +43,7 @@ The Composer is responsible for:
 - **Graph construction & execution:** Intelligently builds LangGraph task graphs based on conversation context and dynamically selected tools.
 - **Streaming orchestration:** Uses LangGraph's `astream_events` API to manage and route streaming events for primary chat interaction and control non-streaming responses from secondary nodes smoothly.
 - **State management:** Maintains a unified, authoritative GraphState with full persistence, checkpoints, and seamless recovery.
-- **Tool management:** Centralizes tool registration, dynamic generation and discovery, leveraging semantic search to maximize reuse and minimize redundancy.
+- **Tool management:** Centralizes tool registration, dynamic generation and discovery through **Engineering Agent** with grammar-constrained structured output, leveraging semantic search to maximize reuse and minimize redundancy.
 - **Intent analysis:** Runs grammar-constrained LLM intent classifiers with guaranteed structured output to set retrieval depth, determine toolsets, and drive conditional routing.
 - **Structured Output Control:** Implements llamacpp grammar constraints across all agent nodes to ensure type-safe, validated LLM responses with automatic Pydantic model parsing.
 - **Error resiliency:** Coordinates circuit breaker protections, error handling, and retry policies at per-node granularity.
@@ -115,7 +115,7 @@ In contrast, intermediate **Agent Nodes**—such as the Intent Classifier, Tool 
 | :--- | :--- | :--- | :--- | :--- |
 | **Primary Chat Generator** | Final Conversational LLM Response. | `messages` (LLM tokens + metadata) | Real-time token chunks. | Real-time token display (low perceived latency). |
 | **Intent Classification Agent** | Initial decision, intent parsing, tool request schema definition. | `updates` (State Delta) | Update to `intent_classification` and `rag_depth_config`. | Status update ("Analyzing intent...") upon completion. |
-| **Dynamic Tool Agent (DTA)** | Tool search, composition, and creation. | `updates` and `custom` (Progress signal) | Updates to `required_tools`. Custom signal: "Tool registry accessed (ID: X)." | Transparent tracking of dynamic tool assembly process. |
+| **Engineering Agent (Dynamic Tools)** | Tool search, composition, and creation with grammar constraints. | `updates` and `custom` (Progress signal) | Updates to `required_tools`. Custom signal: "Tool registry accessed (ID: X)." | Transparent tracking of dynamic tool assembly process. |
 | **Deep RAG Executor Node** | Executes resource-intensive crawl/synthesize. | `updates` or `custom` | Custom signal: "Fetched 10/100 records". Update to `search_results`. | Granular progress display during high-latency RAG. |
 
 #### 3.2.3 Integration Blueprint: Composer Service and UI
@@ -128,7 +128,7 @@ This addresses the need for configurable knowledge retrieval, moving away from a
 
 #### 3.3.1 The Intent Agent's Role in RAG Depth Selection
 
-The `IntentClassifierAgent` is mandated to execute early in the graph flow using **grammar-constrained structured output**. A node within this agent, `decide_search_depth`, analyzes the initial user message using llamacpp grammars derived from the `intent_analysis.yaml` schema. The grammar ensures the LLM output is guaranteed to match the `IntentAnalysis` Pydantic model, including valid search complexity values, automatically setting the `rag_depth_config` field in the GraphState to either `'SHALLOW'` or `'DEEP'` with type safety.
+The `IntentClassifierAgent` is mandated to execute early in the graph flow using **grammar-constrained structured output**. A node within this agent, `decide_search_depth`, analyzes the initial user message using llamacpp grammars derived from the `intent_analysis.yaml` schema. The grammar ensures the LLM output is guaranteed to match the `IntentAnalysis` Pydantic model.
 
 #### 3.3.2 Defining RAG Complexity Levels
 
@@ -199,18 +199,18 @@ class IntentClassifierNode:
 
 #### 3.4.1 Phase 1: Intent Discovery and Conditional Standard Tool Collection
 
-The `IntentClassifierAgent` serves as the initial tool orchestration manager using **grammar-constrained output**. It generates a type-safe `IntentAnalysis` model detailing functional needs with guaranteed structure validation. Based on this structured analysis, **Conditional Standard Tool Collection** occurs: pre-defined, standard tools are registered and conditionally included in the `required_tools` list in the GraphState. The grammar constraints ensure tool requirements are properly validated and formatted.
+The `IntentClassifierAgent` serves as the initial tool requirement analyzer using **grammar-constrained output**. It generates a type-safe `IntentAnalysis` model detailing functional needs with guaranteed structure validation. Based on this structured analysis, **Conditional Standard Tool Collection** occurs: pre-defined, standard tools are registered and conditionally included in the `required_tools` list in the GraphState. When dynamic tool generation is required, the **Engineering Agent** is invoked with grammar constraints to ensure predictable, structured tool creation. The grammar constraints ensure tool requirements are properly validated and formatted.
 
 #### 3.4.2 Phase 2: Dynamic Tool Assessment and Creation Logic
 
-If standard tools are insufficient, the **Dynamic Tool Agent (DTA)** begins an intelligent assessment:
+If standard tools are insufficient, the **Engineering Agent** begins an intelligent assessment for dynamic tool generation:
 
 1. The DTA queries a **Tool Registry Vector Database (VDB)**, which stores descriptions and schemas of all existing dynamic tools.
 2. It performs a semantic similarity check, comparing the user's functional requirement against the existing tool descriptions.
 3. A **grammar-constrained LLM call** using `dynamic_tool_spec.yaml` schema ensures structured tool assessment, culminating in a decisive workflow:
-      - **Use Existing:** If similarity score is high (e.g., \> 0.9), the existing tool is used.
+      - **Use Existing:** If similarity score is high (e.g., > 0.9), the existing tool is used.
       - **Modify or Compose:** If similarity is moderate (e.g., 0.6 - 0.9), the agent generates a structured modification specification with guaranteed valid LCEL composition syntax.
-      - **Create New:** If similarity is low (e.g., \< 0.6), the agent initiates a **structured LLM process** with grammar constraints to generate type-safe code and validated schema for a new tool.
+      - **Create New:** If similarity is low (e.g., < 0.6), the agent initiates a **structured LLM process** with grammar constraints to generate type-safe code and validated schema for a new tool.
 
 #### 3.4.3 Abstraction Mandate: Utilizing LCEL for Composability
 
@@ -224,7 +224,7 @@ Crucially, this complex sequence achieves **Abstraction** by utilizing the `.as_
 | :--- | :--- | :--- | :--- |
 | **Composability** | LCEL Pipe Operator (`|`) and`RunnableSequence`. | Tools are defined as runnable objects that pass output of one to input of the next. | Allows rapid assembly of bespoke tools from existing atomic functions. |
 | **Abstraction** | `.as_tool()` method. | Attaches a name, description, and schema to a complex LCEL sequence. | Hides complexity from the reasoning LLM, simplifying agent decision-making. |
-| **Dynamic Creation** | Grammar-Constrained LLM + Structured Output Parsing. | Intent Agent output dictates schema; grammar-constrained LLM generates validated function code/LCEL sequence using `dynamic_tool_spec.yaml`. | Enables creation of genuinely new, purpose-built tools with guaranteed syntax validity and type safety. |
+| **Dynamic Creation** | Grammar-Constrained Engineering Agent + Structured Output Parsing. | Intent Agent identifies requirements; **Engineering Agent** uses grammar-constrained LLM to generate validated function code/LCEL sequence using `dynamic_tool_spec.yaml`. | Enables creation of genuinely new, purpose-built tools with guaranteed syntax validity and type safety through specialized Engineering Agent. |
 
 -----
 
@@ -345,34 +345,34 @@ class ToolRegistry:
                 return existing_tool.clone_with_new_params(spec.parameters)
             else:
                 return existing_tool
-        # Create New with Grammar-Constrained Generation
+        # Create New with Engineering Agent Grammar-Constrained Generation
         else:
-            # Use structured output for guaranteed valid tool specification
-            tool_spec = await self._generate_tool_spec_structured(spec)
+            # Use Engineering Agent with structured output for guaranteed valid tool specification
+            tool_spec = await self._generate_tool_spec_with_engineering_agent(spec)
             new_tool = await self._compile_tool_from_structured_spec(tool_spec)
             tool_id = new_tool.name
             self.dynamic_tools[tool_id] = new_tool
             self.tool_embeddings[tool_id] = spec_vec
             return new_tool
     
-    async def _generate_tool_spec_structured(self, spec) -> DynamicToolSpec:
-        """Generate structured tool specification using grammar constraints."""
+    async def _generate_tool_spec_with_engineering_agent(self, spec) -> DynamicToolSpec:
+        """Generate structured tool specification using Engineering Agent with grammar constraints."""
         from utils.grammar_generator import GrammarGenerator
         from models.dynamic_tool_spec import DynamicToolSpec
         
         # Generate grammar for tool specification
         grammar = GrammarGenerator.from_pydantic_model(DynamicToolSpec)
         
-        # Create grammar-constrained pipeline
-        pipeline = await self.pipeline_factory.create_structured_pipeline(
-            prompt_template=self._get_tool_generation_prompt(),
+        # Create grammar-constrained Engineering Agent pipeline
+        engineering_pipeline = await self.pipeline_factory.create_structured_pipeline(
+            prompt_template=self._get_engineering_agent_prompt(),
             output_schema=DynamicToolSpec,
             grammar=grammar,
             enable_fallback=True
         )
         
-        # Generate structured tool specification
-        return await pipeline.execute({"requirement": spec.description})
+        # Generate structured tool specification via Engineering Agent
+        return await engineering_pipeline.execute({"requirement": spec.description})
     
     async def _compile_tool_from_structured_spec(self, tool_spec: DynamicToolSpec):
         """Compile tool from validated structured specification."""
@@ -472,10 +472,10 @@ class TitleGenerationNode:
         # ... implementation ...
         return state
 
-class DynamicToolGenerationNode:
-    """Analyzes intent and generates or retrieves dynamic tools as needed."""
+class EngineeringAgentNode:
+    """Engineering Agent that generates or retrieves dynamic tools using grammar-constrained structured output."""
     async def __call__(self, state: WorkflowState) -> WorkflowState:
-        # ... implementation using ToolRegistry ...
+        # ... implementation using ToolRegistry with Engineering Agent ...
         return state
 ```
 
@@ -490,7 +490,7 @@ def build_chat_workflow(config: ChatConfig) -> StateGraph:
     workflow = StateGraph(WorkflowState)
 
     workflow.add_node("rag_enrichment", RAGNode())
-    workflow.add_node("dynamic_tools", DynamicToolGenerationNode())
+    workflow.add_node("engineering_agent", EngineeringAgentNode())
     # Primary agent node: enable streaming for UI responsiveness
     workflow.add_node("agent", PipelineNode(
         pipeline_factory,
@@ -500,8 +500,8 @@ def build_chat_workflow(config: ChatConfig) -> StateGraph:
     workflow.add_node("tools", ToolExecutorNode())
 
     workflow.set_entry_point("rag_enrichment")
-    workflow.add_edge("rag_enrichment", "dynamic_tools")
-    workflow.add_edge("dynamic_tools", "agent")
+    workflow.add_edge("rag_enrichment", "engineering_agent")
+    workflow.add_edge("engineering_agent", "agent")
 
     def route_after_agent(state):
         return "tools" if state.messages[-1].tool_calls else END
@@ -576,7 +576,7 @@ composer/
 ├── nodes/
 │   ├── __init__.py
 │   ├── standard.py            # PipelineNode, ToolExecutorNode, RAGNode
-│   ├── specialized.py         # TitleGenerationNode, DynamicToolGenerationNode
+│   ├── specialized.py         # TitleGenerationNode, EngineeringAgentNode
 │   ├── protected.py           # CircuitProtectedNode wrapper
 │   └── rag/
 │       ├── __init__.py
@@ -609,7 +609,8 @@ composer/
 ├── agents/
 │   ├── __init__.py
 │   ├── intent_classifier.py   # Intent analysis and classification
-│   └── tool_orchestrator.py   # Dynamic tool discovery and composition
+│   ├── engineering_agent.py   # Dynamic tool generation with grammar constraints
+│   └── tool_orchestrator.py   # Tool discovery and composition coordination
 
 ├── monitoring/
 │   ├── __init__.py
@@ -659,7 +660,8 @@ composer/
 
 - [ ] Create `TitleGenerationNode` from server logic
 - [ ] Build `IntentClassifierAgent` with structured output schema
-- [ ] Implement `DynamicToolGenerationNode` with registry integration
+- [ ] Implement `EngineeringAgentNode` with grammar-constrained tool generation
+- [ ] Integrate Engineering Agent with ToolRegistry for dynamic tool creation
 
 **Graph Builder:**
 
@@ -690,6 +692,7 @@ composer/
 - [ ] Update `inference/server/handlers/completion.py` to use ComposerService
 - [ ] Replace manual orchestration in `ConversationContext`
 - [ ] Migrate RAG operations from server to composer nodes
+- [ ] Migrate dynamic tool generation to Engineering Agent with grammar constraints
 - [ ] Update streaming endpoints to consume composer events
 
 **Legacy Migration:**
