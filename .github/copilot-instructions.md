@@ -156,6 +156,20 @@ The inference system has shared components that all services can access:
 - ❌ Shared components cannot import from specific services (server, runner, composer)
 - ❌ Business logic must not be placed in shared components
 
+**Import Organization Rules:**
+- ✅ **Top-level imports preferred:** Place all imports at the top of the file unless there is a specific technical reason not to
+- ✅ **Standard import order:** Standard library → Third-party packages → Local imports (use `isort` format)
+- ✅ **Explicit imports:** Use explicit imports (`from module import Class`) rather than star imports (`from module import *`)
+- ❌ **Lazy imports only when necessary:** Only use function-level imports for circular dependencies, optional dependencies, or significant performance reasons
+- ❌ **Avoid nested imports:** Don't place imports inside classes or deeply nested functions unless required for functionality
+
+**Valid reasons for non-top-level imports:**
+- **Circular dependency resolution:** When modules have mutual dependencies
+- **Optional dependencies:** When imports are conditionally available (`try/except ImportError`)
+- **Heavy/expensive imports:** When import significantly impacts startup time and is rarely used
+- **Dynamic imports:** When import path is determined at runtime
+- **Plugin systems:** When loading modules dynamically based on configuration
+
 ### Component Interface Layers
 
 Each service component defines its **public API boundary** through its `__init__.py` file:
