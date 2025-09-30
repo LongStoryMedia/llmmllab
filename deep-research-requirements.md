@@ -473,21 +473,34 @@ Guidelines:
 
 #### 2.1 Database Service Interface
 
-Create `db/research_task_service.py`:
+Create `db/research_task_storage.py` (following the established naming pattern):
 
 ```python
 """
-Database service for research task management with TimescaleDB integration.
+Research task storage service following established database patterns.
 """
 from typing import List, Optional
 from datetime import datetime, timedelta
-from db.base_service import BaseService
+import logging
+import asyncpg
 from models.research_task import ResearchTask
 from models.research_subtask import ResearchSubtask
 from models.research_task_status import ResearchTaskStatus
+from models.research_question import ResearchQuestion
+from models.research_question_result import ResearchQuestionResult
+from db.db_utils import TypedConnection, typed_pool
 
-class ResearchTaskService(BaseService):
-    """Service for managing research tasks in TimescaleDB."""
+logger = logging.getLogger(__name__)
+
+
+class ResearchTaskStorage:
+    """Storage service for research tasks with TimescaleDB integration."""
+    
+    def __init__(self, pool: asyncpg.Pool, get_query):
+        self.pool = pool
+        self.typed_pool = typed_pool(pool)
+        self.get_query = get_query
+        self.logger = logging.getLogger(__name__)
     
     async def create_task(self, task: ResearchTask) -> int:
         """
@@ -499,53 +512,108 @@ class ResearchTaskService(BaseService):
         Returns:
             ID of the created task
         """
-        query = """
-            INSERT INTO research_tasks (
-                user_id, query, conversation_id, status, plan, 
-                embedding, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING id
-        """
-        
-        task_id = await self.fetch_val(
-            query,
-            task.user_id,
-            task.query,
-            task.conversation_id,
-            task.status.value,
-            task.plan,
-            task.embedding,
-            task.created_at,
-            task.updated_at
-        )
-        
-        # Create subtasks
-        for subtask in task.subtasks or []:
-            subtask.task_id = task_id
-            await self.create_subtask(subtask)
-        
-        return task_id
+        async with self.typed_pool.acquire() as conn:
+            # Create the main research task
+            row = await conn.fetchrow(
+                self.get_query("research.create_task"),
+                task.user_id,
+                task.query,
+                task.conversation_id,
+                task.status.value,
+                task.plan,
+                task.embedding,
+                task.error_message
+            )
+            task_id = row["id"] if row and "id" in row else None
+            
+            if not task_id:
+                raise ValueError("Failed to create research task")
+            
+            # Create subtasks
+            for subtask in task.subtasks or []:
+                await conn.execute(
+                    self.get_query("research.create_subtask"),
+                    task_id,
+                    subtask.question.question if subtask.question else None,
+                    subtask.question.keywords if subtask.question else [],
+                    getattr(subtask.question, 'node_type', 'web_search'),
+                    getattr(subtask.question, 'node_config', {}),
+                    getattr(subtask.question, 'execution_priority', 1),
+                    subtask.status.value
+                )
+            
+            return task_id
     
-    async def create_subtask(self, subtask: ResearchSubtask) -> int:
-        """Create a research subtask."""
-        query = """
-            INSERT INTO research_subtasks (
-                task_id, question_id, question_text, question_keywords,
-                status, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id
-        """
-        
-        return await self.fetch_val(
-            query,
-            subtask.task_id,
-            subtask.question.id if subtask.question else None,
-            subtask.question.question if subtask.question else None,
-            subtask.question.keywords if subtask.question else [],
-            subtask.status.value,
-            subtask.created_at,
-            subtask.updated_at
-        )
+    async def get_task(self, task_id: int) -> Optional[ResearchTask]:
+        """Get a research task by ID with all subtasks."""
+        async with self.typed_pool.acquire() as conn:
+            # Get main task
+            task_row = await conn.fetchrow(
+                self.get_query("research.get_task"),
+                task_id
+            )
+            
+            if not task_row:
+                return None
+            
+            # Get subtasks
+            subtask_rows = await conn.fetch(
+                self.get_query("research.get_task_subtasks"),
+                task_id
+            )
+            
+            # Build subtasks
+            subtasks = []
+            for row in subtask_rows:
+                question = ResearchQuestion(
+                    id=row["id"],
+                    question=row["question_text"],
+                    keywords=row["question_keywords"] or []
+                )
+                # Add node type and config if they exist
+                if row.get("node_type"):
+                    setattr(question, 'node_type', row["node_type"])
+                if row.get("node_config"):
+                    setattr(question, 'node_config', row["node_config"])
+                if row.get("execution_priority"):
+                    setattr(question, 'execution_priority', row["execution_priority"])
+                
+                result = None
+                if row.get("result_sources") or row.get("result_answer"):
+                    result = ResearchQuestionResult(
+                        id=row["id"],
+                        sources=row.get("result_sources", []),
+                        synthesized_answer=row.get("result_answer"),
+                        error_message=row.get("result_error")
+                    )
+                
+                subtask = ResearchSubtask(
+                    id=row["id"],
+                    task_id=task_id,
+                    question=question,
+                    result=result,
+                    status=ResearchTaskStatus(row["status"]),
+                    error_message=row.get("error_message"),
+                    created_at=row["created_at"],
+                    updated_at=row["updated_at"]
+                )
+                subtasks.append(subtask)
+            
+            # Build and return task
+            return ResearchTask(
+                id=task_row["id"],
+                user_id=task_row["user_id"],
+                query=task_row["query"],
+                conversation_id=task_row.get("conversation_id"),
+                status=ResearchTaskStatus(task_row["status"]),
+                error_message=task_row.get("error_message"),
+                plan=task_row.get("plan"),
+                embedding=task_row.get("embedding"),
+                subtasks=subtasks,
+                created_at=task_row["created_at"],
+                updated_at=task_row["updated_at"],
+                completed_at=task_row.get("completed_at")
+            )
     
     async def find_similar_tasks(
         self,
@@ -557,63 +625,38 @@ class ResearchTaskService(BaseService):
     ) -> List[ResearchTask]:
         """
         Find similar research tasks based on embedding similarity and recency.
-        
-        Args:
-            embedding: Query embedding vector
-            user_id: User ID to search within
-            similarity_threshold: Minimum cosine similarity (0.0-1.0)
-            max_age_days: Maximum age of tasks to consider
-            limit: Maximum number of results
+        """
+        async with self.typed_pool.acquire() as conn:
+            rows = await conn.fetch(
+                self.get_query("research.find_similar_tasks"),
+                embedding,
+                user_id,
+                similarity_threshold,
+                max_age_days,
+                limit
+            )
             
-        Returns:
-            List of similar research tasks
-        """
-        cutoff_date = datetime.now() - timedelta(days=max_age_days)
-        
-        query = """
-            SELECT rt.*, 
-                   1 - (rt.embedding <=> $1::vector) as similarity,
-                   -- Age factor: newer tasks get higher scores
-                   EXTRACT(EPOCH FROM (NOW() - rt.created_at)) / (86400.0 * $4) as age_factor
-            FROM research_tasks rt
-            WHERE rt.user_id = $2
-            AND rt.status = 'COMPLETED'
-            AND rt.created_at >= $3
-            AND rt.embedding IS NOT NULL
-            AND 1 - (rt.embedding <=> $1::vector) >= $5
-            ORDER BY (
-                (1 - (rt.embedding <=> $1::vector)) * 
-                (1 - (EXTRACT(EPOCH FROM (NOW() - rt.created_at)) / (86400.0 * $4)))
-            ) DESC
-            LIMIT $6
-        """
-        
-        rows = await self.fetch(
-            query,
-            embedding,
-            user_id,
-            cutoff_date,
-            max_age_days,
-            similarity_threshold,
-            limit
-        )
-        
-        return [self._row_to_research_task(row) for row in rows]
+            tasks = []
+            for row in rows:
+                task = await self.get_task(row["id"])
+                if task:
+                    tasks.append(task)
+            
+            return tasks
     
-    async def update_task_status(self, task_id: int, status: ResearchTaskStatus, error_message: str = None):
+    async def update_task_status(
+        self, 
+        task_id: int, 
+        status: ResearchTaskStatus, 
+        error_message: str = None
+    ):
         """Update research task status."""
-        query = """
-            UPDATE research_tasks 
-            SET status = $2, error_message = $3, updated_at = NOW()
-            WHERE id = $1
-        """
-        
-        await self.execute(query, task_id, status.value, error_message)
-        
-        if status == ResearchTaskStatus.COMPLETED:
-            await self.execute(
-                "UPDATE research_tasks SET completed_at = NOW() WHERE id = $1",
-                task_id
+        async with self.typed_pool.acquire() as conn:
+            await conn.execute(
+                self.get_query("research.update_task_status"),
+                task_id,
+                status.value,
+                error_message
             )
     
     async def update_subtask_result(
@@ -623,33 +666,26 @@ class ResearchTaskService(BaseService):
         status: ResearchTaskStatus = ResearchTaskStatus.COMPLETED
     ):
         """Update subtask with results."""
-        query = """
-            UPDATE research_subtasks 
-            SET result_sources = $2, result_answer = $3, status = $4, updated_at = NOW()
-            WHERE id = $1
-        """
-        
-        await self.execute(
-            query,
-            subtask_id,
-            result.get('sources', []),
-            result.get('synthesized_answer', ''),
-            status.value
-        )
-    
-    def _row_to_research_task(self, row) -> ResearchTask:
-        """Convert database row to ResearchTask object."""
-        # Implementation details for row conversion
-        pass
+        async with self.typed_pool.acquire() as conn:
+            await conn.execute(
+                self.get_query("research.update_subtask_result"),
+                subtask_id,
+                result.get('sources', []),
+                result.get('synthesized_answer', ''),
+                result.get('error_message'),
+                status.value
+            )
 ```
 
-#### 2.2 SQL Schema Migration
+#### 2.2 SQL Files Structure
 
-Create `db/sql/research_tables.sql`:
+Following the established pattern, create the following SQL files in `db/sql/research/`:
+
+**`db/sql/research/create_research_tasks_table.sql`**:
 
 ```sql
--- Research Tasks table with TimescaleDB hypertable
-CREATE TABLE research_tasks (
+-- Create research tasks table with TimescaleDB support
+CREATE TABLE IF NOT EXISTS research_tasks (
     id SERIAL PRIMARY KEY,
     user_id VARCHAR(255) NOT NULL,
     query TEXT NOT NULL,
@@ -660,43 +696,156 @@ CREATE TABLE research_tasks (
     embedding VECTOR(768),  -- Requires pgvector extension
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    completed_at TIMESTAMP WITH TIME ZONE,
-    
-    -- Indexes for performance
-    INDEX idx_research_tasks_user_id (user_id),
-    INDEX idx_research_tasks_status (status),
-    INDEX idx_research_tasks_created_at (created_at)
+    completed_at TIMESTAMP WITH TIME ZONE
 );
+```
 
--- Convert to TimescaleDB hypertable partitioned by time
-SELECT create_hypertable('research_tasks', 'created_at');
+**`db/sql/research/create_research_subtasks_table.sql`**:
 
--- Create vector similarity index
-CREATE INDEX idx_research_tasks_embedding 
-ON research_tasks 
-USING ivfflat (embedding vector_cosine_ops)
-WITH (lists = 100);
-
--- Research Subtasks table
-CREATE TABLE research_subtasks (
+```sql
+-- Create research subtasks table
+CREATE TABLE IF NOT EXISTS research_subtasks (
     id SERIAL PRIMARY KEY,
     task_id INTEGER NOT NULL REFERENCES research_tasks(id) ON DELETE CASCADE,
-    question_id INTEGER,
     question_text TEXT NOT NULL,
     question_keywords TEXT[] DEFAULT '{}',
+    node_type VARCHAR(50) DEFAULT 'web_search',
+    node_config JSONB DEFAULT '{}',
+    execution_priority INTEGER DEFAULT 1,
     result_sources TEXT[] DEFAULT '{}',
     result_answer TEXT,
+    result_error TEXT,
     status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
     error_message TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    
-    INDEX idx_research_subtasks_task_id (task_id),
-    INDEX idx_research_subtasks_status (status)
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+```
 
--- Convert subtasks to hypertable as well (optional, for large datasets)
-SELECT create_hypertable('research_subtasks', 'created_at');
+**`db/sql/research/create_research_tasks_hypertable.sql`**:
+
+```sql
+-- Convert to TimescaleDB hypertable (idempotent)
+SELECT create_hypertable('research_tasks', 'created_at', if_not_exists => TRUE);
+```
+
+**`db/sql/research/create_research_subtasks_hypertable.sql`**:
+
+```sql
+-- Convert subtasks to hypertable (idempotent)
+SELECT create_hypertable('research_subtasks', 'created_at', if_not_exists => TRUE);
+```
+
+**`db/sql/research/create_research_indexes.sql`**:
+
+```sql
+-- Create indexes for research tables (idempotent)
+CREATE INDEX IF NOT EXISTS idx_research_tasks_user_id ON research_tasks (user_id);
+CREATE INDEX IF NOT EXISTS idx_research_tasks_status ON research_tasks (status);
+CREATE INDEX IF NOT EXISTS idx_research_tasks_created_at ON research_tasks (created_at);
+CREATE INDEX IF NOT EXISTS idx_research_tasks_conversation_id ON research_tasks (conversation_id);
+
+CREATE INDEX IF NOT EXISTS idx_research_subtasks_task_id ON research_subtasks (task_id);
+CREATE INDEX IF NOT EXISTS idx_research_subtasks_status ON research_subtasks (status);
+CREATE INDEX IF NOT EXISTS idx_research_subtasks_priority ON research_subtasks (execution_priority);
+```
+
+**`db/sql/research/create_research_embedding_index.sql`**:
+
+```sql
+-- Create vector similarity index (requires pgvector)
+CREATE INDEX IF NOT EXISTS idx_research_tasks_embedding 
+ON research_tasks 
+USING ivfflat (embedding vector_cosine_ops)
+WITH (lists = 100);
+```
+
+**Query Files for Operations**:
+
+**`db/sql/research/create_task.sql`**:
+
+```sql
+-- Create a new research task
+INSERT INTO research_tasks (
+    user_id, query, conversation_id, status, plan, embedding, error_message
+) VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id;
+```
+
+**`db/sql/research/create_subtask.sql`**:
+
+```sql
+-- Create a new research subtask
+INSERT INTO research_subtasks (
+    task_id, question_text, question_keywords, node_type, 
+    node_config, execution_priority, status
+) VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id;
+```
+
+**`db/sql/research/get_task.sql`**:
+
+```sql
+-- Get research task by ID
+SELECT id, user_id, query, conversation_id, status, error_message, 
+       plan, embedding, created_at, updated_at, completed_at
+FROM research_tasks
+WHERE id = $1;
+```
+
+**`db/sql/research/get_task_subtasks.sql`**:
+
+```sql
+-- Get all subtasks for a research task
+SELECT id, task_id, question_text, question_keywords, node_type, 
+       node_config, execution_priority, result_sources, result_answer, 
+       result_error, status, error_message, created_at, updated_at
+FROM research_subtasks
+WHERE task_id = $1
+ORDER BY execution_priority ASC, created_at ASC;
+```
+
+**`db/sql/research/find_similar_tasks.sql`**:
+
+```sql
+-- Find similar research tasks based on embedding similarity and recency
+SELECT rt.id,
+       rt.user_id,
+       rt.query,
+       rt.plan,
+       1 - (rt.embedding <=> $1::vector) as similarity,
+       EXTRACT(EPOCH FROM (NOW() - rt.created_at)) / (86400.0 * $4) as age_factor
+FROM research_tasks rt
+WHERE rt.user_id = $2
+AND rt.status = 'COMPLETED'
+AND rt.created_at >= (NOW() - INTERVAL '%s days' % $4)
+AND rt.embedding IS NOT NULL
+AND 1 - (rt.embedding <=> $1::vector) >= $3
+ORDER BY (
+    (1 - (rt.embedding <=> $1::vector)) * 
+    (1 - (EXTRACT(EPOCH FROM (NOW() - rt.created_at)) / (86400.0 * $4)))
+) DESC
+LIMIT $5;
+```
+
+**`db/sql/research/update_task_status.sql`**:
+
+```sql
+-- Update research task status
+UPDATE research_tasks 
+SET status = $2, error_message = $3, updated_at = NOW(),
+    completed_at = CASE WHEN $2 = 'COMPLETED' THEN NOW() ELSE completed_at END
+WHERE id = $1;
+```
+
+**`db/sql/research/update_subtask_result.sql`**:
+
+```sql
+-- Update subtask with execution results
+UPDATE research_subtasks 
+SET result_sources = $2, result_answer = $3, result_error = $4, 
+    status = $5, updated_at = NOW()
+WHERE id = $1;
 ```
 
 ### Phase 3: Static Research Tool Implementation
@@ -910,7 +1059,7 @@ class DeepResearchTool(BaseTool):
             )
             research_task.embedding = plan_embedding[0] if plan_embedding else None
             
-            # Store in database
+            # Store in database using established storage pattern
             research_service = storage.get_service(storage.research_task)
             task_id = await research_service.create_task(research_task)
             research_task.id = task_id
@@ -1394,9 +1543,56 @@ research:
 ### Phase 5: Implementation Steps
 
 #### Step 1: Database Setup
-1. Run database migration to create research tables
-2. Install pgvector extension for embedding similarity
-3. Configure TimescaleDB hypertables for time-series optimization
+
+**Update `db/init_db.py`** to include research table initialization:
+
+Add to the `initialization_steps` list in the appropriate location:
+
+```python
+# Step 10: Create research tables (update step number as needed)
+(
+    "Creating research tables",
+    [
+        ("research.create_research_tasks_table", []),
+        ("research.create_research_subtasks_table", []),
+        ("research.create_research_tasks_hypertable", ["timescaledb"]),
+        ("research.create_research_subtasks_hypertable", ["timescaledb"]),
+        ("research.create_research_indexes", []),
+        ("research.create_research_embedding_index", ["vector"]),
+    ],
+),
+```
+
+**Update `db/__init__.py`** to include the research task storage service:
+
+Add import:
+
+```python
+from .research_task_storage import ResearchTaskStorage
+```
+
+Add to Storage class `__init__`:
+
+```python
+self.research_task = None
+```
+
+Add to Storage class `initialize` method:
+
+```python
+self.research_task = ResearchTaskStorage(self.pool, get_query)
+```
+
+Add to Storage class `close` method cleanup:
+
+```python
+self.research_task = None
+```
+
+1. SQL files are automatically loaded by the query system
+2. Database initialization runs all table creation queries idempotently
+3. TimescaleDB hypertables are created with proper dependency checking
+4. Vector similarity indexes are created when pgvector extension is available
 
 #### Step 2: Agent Refactoring
 1. Create `composer/agents/analysis/` directory
@@ -1406,12 +1602,16 @@ research:
 5. Update imports and dependencies
 
 #### Step 3: Database Services
-1. Implement `ResearchTaskService` with full CRUD operations
-2. Add semantic similarity search methods
-3. Integrate with existing storage service registry
-4. Add proper error handling and connection management
+
+1. Implement `ResearchTaskStorage` following established patterns
+2. Create all SQL files in `db/sql/research/` directory
+3. Integrate with existing storage service registry in `db/__init__.py`
+4. Add proper error handling and connection management using `typed_pool`
+5. Ensure all SQL queries are idempotent and follow naming conventions
+6. Test database initialization through `init_db.py` integration
 
 #### Step 4: Research Tool Implementation
+
 1. Implement `DeepResearchTool` with LangGraph subgraph
 2. Define proper state management between nodes
 3. Implement parallel subtask execution with concurrency control
@@ -1419,12 +1619,14 @@ research:
 5. Integrate with existing static tools for web search and summarization
 
 #### Step 5: Configuration Integration
+
 1. Update user configuration schema for research settings
 2. Add configuration validation and defaults
 3. Integrate research configuration with existing config system
 4. Add user-configurable thresholds and limits
 
 #### Step 6: Testing and Validation
+
 1. Create unit tests for all agent classes
 2. Test database operations with TimescaleDB
 3. Test LangGraph subgraph execution
@@ -1444,6 +1646,11 @@ class ResearchConfig(BaseModel):
     enable_caching: bool = True              # Enable result caching
     search_results_per_question: int = 5     # Web search results per subtask
     synthesis_max_length: int = 2000         # Maximum synthesis length
+
+# Storage access pattern (following established conventions):
+# research_service = storage.get_service(storage.research_task)
+# task_id = await research_service.create_task(research_task)
+# similar_tasks = await research_service.find_similar_tasks(embedding, user_id)
 ```
 
 ## Expected Outcomes
