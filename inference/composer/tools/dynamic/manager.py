@@ -6,6 +6,7 @@ Handles tool generation, analysis, and deduplication.
 import asyncio
 import json
 import logging
+import re
 from typing import Dict, Any, Optional
 
 from models import (
@@ -14,8 +15,8 @@ from models import (
     ToolGenerationResult,
     DeduplicationResult,
 )
-from models.conversation_ctx import ConversationCtx
-from models import Message, MessageRole, MessageContent, MessageContentType
+from utils.model_profile import get_model_profile_for_task
+from models.model_profile_type import ModelProfileType
 from db import storage
 from runner import pipeline_factory
 from runner.pipeline_factory import PipelinePriority
@@ -70,74 +71,33 @@ class DynamicToolManager:
         return FallbackDeduplicator()
 
     async def analyze_tool_need(
-        self, user_message_text: str, conversation_ctx: ConversationCtx
+        self, user_message_text: str, user_id: str
     ) -> ToolAnalysisResponse:
         """
         Analyze if a dynamic tool is needed for the user request using intent analysis.
 
         Uses the IntentClassifierAgent to make intelligent decisions about tool creation
         based on complexity, reusability, and computational requirements.
+        
+        Args:
+            user_message_text: The user's message text to analyze
+            user_id: User ID for retrieving configuration from shared data layer
         """
         try:
-            # Use the conversation_ctx directly as it's already a ConversationCtx
-            # Ensure current user message is set for intent analysis
-            if not conversation_ctx.current_user_message:
-                user_message = Message(
-                    role=MessageRole.USER,
-                    content=[
-                        MessageContent(type=MessageContentType.TEXT, text=user_message_text)
-                    ],
-                    conversation_id=conversation_ctx.conversation.id,
-                )
-                # Create a new context with the user message
-                ctx = ConversationCtx(
-                    messages=conversation_ctx.messages,
-                    notes=conversation_ctx.notes,
-                    images=conversation_ctx.images,
-                    conversation=conversation_ctx.conversation,
-                    current_user_message=user_message,
-                    user_config=conversation_ctx.user_config,
-                )
-            else:
-                ctx = conversation_ctx
+            # Get user config from shared data layer
+            user_config = await storage.get_service(storage.user_config).get_user_config(user_id)
+            if not user_config:
+                raise ValueError(f"User config not found for user {user_id}")
 
-            # Use IntentClassifierAgent for comprehensive analysis
-            intent_analysis = await self.intent_classifier.analyze(ctx)
+            # Create minimal context for intent analysis (avoiding ConversationCtx dependency)
+            # For now, use direct intent classification without the full context
+            # This follows the simplified pattern where composer components work with minimal dependencies
 
-            self.logger.info(
-                f"Intent analysis - Complexity: {intent_analysis.complexity_level}, "
-                f"Reusability: {intent_analysis.reusability_potential:.2f}"
-            )
-
-            # Apply gating rules based on intent analysis
-            if intent_analysis.complexity_level.value == "TRIVIAL":
-                return ToolAnalysisResponse(
-                    needs_dynamic_tool=False,
-                    description="Request is too simple for dynamic tool creation",
-                    confidence_score=0.9,
-                    reasoning=f"Intent analysis: {intent_analysis.primary_intent} with trivial complexity",
-                )
-
-            if (
-                intent_analysis.complexity_level.value == "SIMPLE"
-                and intent_analysis.reusability_potential < 0.6
-            ):
-                return ToolAnalysisResponse(
-                    needs_dynamic_tool=False,
-                    description="Request has low complexity and reusability potential",
-                    confidence_score=0.8,
-                    reasoning=f"Intent analysis: {intent_analysis.primary_intent} with low reusability",
-                )
-
-            # For moderate+ complexity, perform additional LLM analysis
-            if not conversation_ctx.user_config:
-                raise ValueError("User config is required for tool analysis")
-                
-            mp = await storage.get_service(
-                storage.model_profile
-            ).get_model_profile_by_id(
-                conversation_ctx.user_config.model_profiles.analysis_profile_id,
-                conversation_ctx.user_config.user_id,
+            # Get analysis model profile from user config
+            mp = await get_model_profile_for_task(
+                user_config.model_profiles,
+                ModelProfileType.Analysis,
+                user_id,
             )
 
             if not mp:
@@ -148,16 +108,9 @@ class DynamicToolManager:
                 mp, str, PipelinePriority.NORMAL
             ) as pipeline:
                 analysis_prompt = f"""
-You are a tool analysis assistant. Based on intent analysis showing {intent_analysis.complexity_level.value} complexity,
-determine if this user request requires creating a custom tool/function:
+You are a tool analysis assistant. Determine if this user request requires creating a custom tool/function:
 
 User request: {user_message_text}
-
-Intent analysis indicates:
-- Complexity: {intent_analysis.complexity_level.value}
-- Domain specificity: {intent_analysis.domain_specificity:.2f}
-- Required capabilities: {', '.join([cap.value for cap in intent_analysis.required_capabilities])}
-- Reusability score: {intent_analysis.reusability_potential:.2f}
 
 Consider if the request:
 1. Involves complex calculations or data processing beyond basic operations
@@ -199,10 +152,8 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
                 or "no tool" in normalized
             )
 
-            # Apply stricter gating for lower complexity requests
+            # Apply gating rules based on LLM analysis
             needs_tool = (not is_negative) and (len(response_text.split()) >= 6)
-            if intent_analysis.complexity_level.value == "SIMPLE":
-                needs_tool = needs_tool and intent_analysis.reusability_potential > 0.7
 
             return ToolAnalysisResponse(
                 needs_dynamic_tool=needs_tool,
@@ -210,7 +161,7 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
                     response_text.strip() if needs_tool else "No dynamic tool needed"
                 ),
                 confidence_score=0.8 if needs_tool else 0.2,
-                reasoning=f"Intent analysis: {intent_analysis.primary_intent}. LLM analysis: {response_text[:100]}...",
+                reasoning=f"LLM analysis: {response_text[:100]}...",
             )
 
         except Exception as e:
@@ -226,18 +177,20 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
         self,
         description: str,
         user_message_text: str,
-        conversation_ctx: ConversationCtx,
+        user_id: str,
     ) -> ToolGenerationResult:
         """
         Generate a dynamic tool with advanced deduplication.
+        
+        Args:
+            description: Tool description from analysis
+            user_message_text: Original user message
+            user_id: User ID for retrieving configuration from shared data layer
         """
         try:
-            # Create a proposed tool for deduplication check
-            if not conversation_ctx.user_config:
-                raise ValueError("User config is required for tool generation")
-                
+            # Create a proposed tool for deduplication check                
             proposed_tool = DynamicTool(
-                user_id=conversation_ctx.user_config.user_id,
+                user_id=user_id,
                 name=f"tool_for_{description[:30].replace(' ', '_')}",
                 description=description,
                 code="# Placeholder - will be generated if no duplicates found",
@@ -247,7 +200,7 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
 
             # Check for duplicates using advanced deduplication
             dedup_result = await self.deduplicator.check_for_duplicates(
-                proposed_tool, conversation_ctx.user_config.user_id
+                proposed_tool, user_id
             )
 
             self.logger.info(
@@ -276,7 +229,7 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
             # Generate new tool if no duplicates found
             self.logger.info("No duplicates found, generating new tool")
             return await self._generate_new_tool(
-                description, user_message_text, conversation_ctx
+                description, user_message_text, user_id
             )
 
         except Exception as e:
@@ -287,17 +240,18 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
         self,
         description: str,
         user_message_text: str,
-        conversation_ctx: ConversationCtx,
+        user_id: str,
     ) -> ToolGenerationResult:
         """Generate a completely new dynamic tool."""
-        if not conversation_ctx.user_config:
-            raise ValueError("User config is required for tool generation")
+        # Get user config from shared data layer
+        user_config = await storage.get_service(storage.user_config).get_user_config(user_id)
+        if not user_config:
+            raise ValueError(f"User config not found for user {user_id}")
             
-        engineering_profile = await storage.get_service(
-            storage.model_profile
-        ).get_model_profile_by_id(
-            conversation_ctx.user_config.model_profiles.engineering_profile_id,
-            conversation_ctx.user_config.user_id,
+        engineering_profile = await get_model_profile_for_task(
+            user_config.model_profiles,
+            ModelProfileType.Engineering,
+            user_id,
         )
 
         if not engineering_profile:
@@ -307,7 +261,7 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                user_circuit_breaker = conversation_ctx.user_config.circuit_breaker
+                user_circuit_breaker = user_config.circuit_breaker
                 with pipeline_factory.pipeline(
                     engineering_profile, str, PipelinePriority.LOW, user_circuit_breaker
                 ) as pipe:
@@ -374,7 +328,7 @@ Respond with ONLY the JSON object, no other text or formatting."""
                         raise ValueError("Could not extract valid JSON from response")
 
                     # Create DynamicTool
-                    json_data["user_id"] = conversation_ctx.user_config.user_id
+                    json_data["user_id"] = user_id
                     dynamic_tool = DynamicTool(**json_data)
 
                     # Store the generated tool in the database
@@ -414,9 +368,6 @@ Respond with ONLY the JSON object, no other text or formatting."""
 
     def _extract_json_from_response(self, response: str) -> Optional[Dict[str, Any]]:
         """Extract JSON from LLM response with robust parsing."""
-        # Try to find JSON in the response
-        import re
-
         # Look for JSON object patterns
         json_patterns = [
             r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}",  # Basic nested JSON
