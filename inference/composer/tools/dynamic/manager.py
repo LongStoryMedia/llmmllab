@@ -13,22 +13,24 @@ from models import (
     DynamicTool,
     ToolAnalysisResponse,
     ToolGenerationResult,
-    DeduplicationResult,
+    ModelProfileType,
 )
-from utils.model_profile import get_model_profile_for_task
-from models.model_profile_type import ModelProfileType
+from utils.model_profile import get_model_profile
+from utils.message import extract_message_text
+from utils.grammar_generator import parse_structured_output
+
 from db import storage
+
 from runner import pipeline_factory
 from runner.pipeline_factory import PipelinePriority
 from runner.pipelines.run import run_pipeline
-from utils.message import extract_message_text
+
 from composer.agents.intent_classifier import IntentClassifierAgent
 from composer.tools.dynamic.deduplication import AdvancedToolDeduplicator
 
-# Import will be resolved at runtime - circular dependency with __init__.py
-# from .deduplication import AdvancedToolDeduplicator
+from ...monitoring.logging import composer_logger
 
-logger = logging.getLogger(__name__)
+logger = composer_logger.logger
 
 
 class DynamicToolManager:
@@ -45,30 +47,8 @@ class DynamicToolManager:
         """Lazy loading of deduplicator to avoid circular imports."""
         if self._deduplicator is None:
             # Import deduplicator with error handling for missing dependencies
-            try:
-
-                self._deduplicator = AdvancedToolDeduplicator()
-            except ImportError as e:
-                self.logger.warning(f"Could not import deduplicator: {e}")
-                # Create a minimal fallback deduplicator
-                self._deduplicator = self._create_fallback_deduplicator()
+            self._deduplicator = AdvancedToolDeduplicator()
         return self._deduplicator
-
-    def _create_fallback_deduplicator(self):
-        """Create a minimal deduplicator when the full one can't be imported."""
-
-        class FallbackDeduplicator:
-            async def check_for_duplicates(self, proposed_tool, user_id: str):
-                # Simple fallback: always allow tool creation
-                return DeduplicationResult(
-                    is_duplicate=False,
-                    existing_tool=None,
-                    similarity_score=0.0,
-                    recommendation="Fallback deduplicator - no duplicate checking performed",
-                    should_create_new=True,
-                )
-
-        return FallbackDeduplicator()
 
     async def analyze_tool_need(
         self, user_message_text: str, user_id: str
@@ -78,30 +58,14 @@ class DynamicToolManager:
 
         Uses the IntentClassifierAgent to make intelligent decisions about tool creation
         based on complexity, reusability, and computational requirements.
-        
+
         Args:
             user_message_text: The user's message text to analyze
             user_id: User ID for retrieving configuration from shared data layer
         """
         try:
-            # Get user config from shared data layer
-            user_config = await storage.get_service(storage.user_config).get_user_config(user_id)
-            if not user_config:
-                raise ValueError(f"User config not found for user {user_id}")
-
-            # Create minimal context for intent analysis (avoiding ConversationCtx dependency)
-            # For now, use direct intent classification without the full context
-            # This follows the simplified pattern where composer components work with minimal dependencies
-
             # Get analysis model profile from user config
-            mp = await get_model_profile_for_task(
-                user_config.model_profiles,
-                ModelProfileType.Analysis,
-                user_id,
-            )
-
-            if not mp:
-                raise ValueError("Analysis model profile not found")
+            mp = await get_model_profile(user_id, ModelProfileType.Analysis)
 
             # Use NORMAL priority for tool analysis (used occasionally)
             with pipeline_factory.pipeline(
@@ -130,39 +94,20 @@ Examples that DON'T need dynamic tools:
 - "Search for current news" (standard search)
 - "What did we discuss earlier?" (memory retrieval)
 
-Respond with only "NO" if existing tools are sufficient.
-If a dynamic tool is needed, describe its purpose and functionality in less than 50 words.
+Respond in the following JSON format:
+{json.dumps(ToolAnalysisResponse.model_json_schema())}
 """
-                chat_response = await run_pipeline(analysis_prompt, pipeline)
-                response = (
+                chat_response = await run_pipeline(
+                    analysis_prompt, pipeline, grammar=ToolAnalysisResponse
+                )
+                response_text = (
                     extract_message_text(chat_response.message)
                     if chat_response.message
                     else ""
                 )
 
-            response_text = response.strip()
-            normalized = response_text.lower()
-            is_negative = (
-                normalized == "no"
-                or normalized.startswith("no\n")
-                or "do not" in normalized
-                or "does not" in normalized
-                or "don't" in normalized
-                or "not needed" in normalized
-                or "no tool" in normalized
-            )
-
-            # Apply gating rules based on LLM analysis
-            needs_tool = (not is_negative) and (len(response_text.split()) >= 6)
-
-            return ToolAnalysisResponse(
-                needs_dynamic_tool=needs_tool,
-                description=(
-                    response_text.strip() if needs_tool else "No dynamic tool needed"
-                ),
-                confidence_score=0.8 if needs_tool else 0.2,
-                reasoning=f"LLM analysis: {response_text[:100]}...",
-            )
+                # Parse the grammar-constrained response into structured object
+                return parse_structured_output(response_text, ToolAnalysisResponse)
 
         except Exception as e:
             self.logger.error(f"Error analyzing tool need: {e}", exc_info=True)
@@ -181,14 +126,14 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
     ) -> ToolGenerationResult:
         """
         Generate a dynamic tool with advanced deduplication.
-        
+
         Args:
             description: Tool description from analysis
             user_message_text: Original user message
             user_id: User ID for retrieving configuration from shared data layer
         """
         try:
-            # Create a proposed tool for deduplication check                
+            # Create a proposed tool for deduplication check
             proposed_tool = DynamicTool(
                 user_id=user_id,
                 name=f"tool_for_{description[:30].replace(' ', '_')}",
@@ -244,14 +189,15 @@ If a dynamic tool is needed, describe its purpose and functionality in less than
     ) -> ToolGenerationResult:
         """Generate a completely new dynamic tool."""
         # Get user config from shared data layer
-        user_config = await storage.get_service(storage.user_config).get_user_config(user_id)
+        user_config = await storage.get_service(storage.user_config).get_user_config(
+            user_id
+        )
         if not user_config:
             raise ValueError(f"User config not found for user {user_id}")
-            
-        engineering_profile = await get_model_profile_for_task(
-            user_config.model_profiles,
-            ModelProfileType.Engineering,
+
+        engineering_profile = await get_model_profile(
             user_id,
+            ModelProfileType.Engineering,
         )
 
         if not engineering_profile:
