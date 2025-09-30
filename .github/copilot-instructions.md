@@ -21,21 +21,8 @@ The platform uses a **hierarchical configuration system**:
 - **Schema-Driven**: YAML schemas generate Python/TypeScript models automatically
 
 **Key Files:**
-- `schemas/composer_service_config.yaml` - System service settings
-- `schemas/workflow_config.yaml` - User workflow preferences (caching, streaming, timeouts)  
-- `schemas/tool_config.yaml` - User tool preferences (thresholds, generation, search)
+- `schemas/config.yaml` - System service settings that holds system settings and default values for user configuration
 - `schemas/user_config.yaml` - Complete user configuration schema
-- `inference/composer/config.py` - Configuration loading and environment variables
-
-**Usage Pattern:**
-```python
-# Access system settings
-config.service.host, config.service.port
-
-# Get user preferences with fallbacks
-workflow_config = config.get_workflow_config(user_config.workflow)
-tool_config = config.get_tool_config(user_config.tool)
-```
 
 ## Environment Variable Management
 
@@ -43,69 +30,15 @@ The platform uses environment variables for infrastructure configuration with a 
 
 ### Environment Variable Hierarchy
 1. **Kubernetes Deployment** (`k8s/deployment.yaml`) - Production defaults
-2. **Local Development** (`.env` files) - Development overrides  
-3. **Runtime Configuration** - Dynamic user preferences via API
-
-### Composer Service Environment Variables
-
-**System Configuration (Infrastructure):**
-```bash
-# Service binding
-COMPOSER_HOST=0.0.0.0
-COMPOSER_PORT=8001
-COMPOSER_DEBUG=false
-COMPOSER_LOG_LEVEL=INFO
-
-# Performance & Security
-COMPOSER_ENABLE_CORS=true
-COMPOSER_RATE_LIMIT_RPM=60
-COMPOSER_HEALTH_CHECK_INTERVAL=30
-
-# Virtual environment
-COMPOSER_VENV=/opt/venv/composer
-```
-
-**User Configuration Defaults (UI-Customizable):**
-```bash
-# Workflow behavior defaults
-COMPOSER_ENABLE_STREAMING=true
-COMPOSER_MAX_PARALLEL_TOOLS=5
-COMPOSER_DEFAULT_TIMEOUT=60.0
-COMPOSER_CACHE_TTL=3600
-
-# Tool behavior defaults
-COMPOSER_TOOL_SIMILARITY_THRESHOLD=0.9
-COMPOSER_ENABLE_TOOL_GENERATION=true
-COMPOSER_TOOL_TIMEOUT=30.0
-COMPOSER_SEARCH_TOP_K=10
-```
+2. **Runtime Configuration** - Dynamic user preferences via API
 
 ### Environment Variable Best Practices
 
 **When Adding New Environment Variables:**
 1. **Add to Schema First**: Update relevant YAML schema in `schemas/`
-2. **Update Config Loading**: Modify `composer/config.py` with proper parsing
-3. **Add to Kubernetes**: Include in `k8s/deployment.yaml` with production defaults
-4. **Document**: Add to `docs/k8s_environment_variables.md`
-5. **Validate**: Test with `debug/test_k8s_env_vars.py`
-
-**Environment Variable Naming Conventions:**
-- **System Settings**: `{SERVICE}_{SETTING}` (e.g., `COMPOSER_HOST`)
-- **User Defaults**: `{SERVICE}_{CATEGORY}_{SETTING}` (e.g., `COMPOSER_TOOL_TIMEOUT`)
-- **Boolean Values**: Use `"true"/"false"` strings (lowercase)
-- **Numeric Values**: Use string representations with proper validation
-
-**Testing Environment Variables:**
-```bash
-# Validate Kubernetes deployment configuration
-k exec -it -n ollama $POD_NAME -- /app/v.sh composer python debug/test_k8s_env_vars.py
-
-# Test configuration loading locally
-COMPOSER_DEBUG=true COMPOSER_PORT=8002 python -c "from composer.config import config; print(config.service.debug)"
-
-# Check all composer env vars in pod
-k exec -it -n ollama $POD_NAME -- env | grep COMPOSER
-```
+1. **Add to Kubernetes**: Include in `k8s/deployment.yaml` with production defaults
+1. **Document**: Add to `docs/k8s_environment_variables.md`
+1. **Validate**: Test with `debug/test_k8s_env_vars.py`
 
 ### Database & Infrastructure Variables
 
@@ -166,6 +99,35 @@ schema2code schemas/[name].yaml -l python -o inference/models/[name].py
 schema2code schemas/[name].yaml -l typescript -o ui/src/types/[name].ts
 ```
 
+### Database Development Workflow
+
+**Adding New Storage Services:**
+1. **Schema First**: Create YAML schema in `schemas/[entity].yaml`
+2. **Generate Models**: Run `./regenerate_models.sh` to create Pydantic models
+3. **SQL Files**: Create SQL files in `db/sql/[entity]/` directory
+4. **Storage Service**: Implement `[entity]_storage.py` following established patterns
+5. **Integration**: Add to `init_db.py` and `db/__init__.py`
+6. **Testing**: Add unit tests and integration validation
+
+**SQL Development Rules:**
+- All SQL files must be idempotent (can be run multiple times safely)
+- Use proper parameter binding (`$1`, `$2`) never string formatting
+- Include appropriate indexes for query performance
+- Handle TimescaleDB and pgvector extensions gracefully
+- Follow consistent naming conventions (plural table names)
+
+**Database Testing:**
+```bash
+# Test database initialization
+k exec -it -n ollama $POD_NAME -- /app/v.sh server python -c "from db.init_db import initialize_database; import asyncio; asyncio.run(initialize_database(pool))"
+
+# Test storage service
+k exec -it -n ollama $POD_NAME -- /app/v.sh server python -c "from db import storage; print('✅ Storage initialized' if storage.initialized else '❌ Not initialized')"
+
+# Validate SQL queries load correctly
+k exec -it -n ollama $POD_NAME -- /app/v.sh server python -c "from db.queries import get_query; print(get_query('[entity].[operation]'))"
+```
+
 ## Critical Patterns
 
 ### Multi-Environment Architecture
@@ -217,39 +179,6 @@ Each service component defines its **public API boundary** through its `__init__
 - ✅ Document all public functions with clear architectural roles
 - ❌ Expose internal classes or implementation details
 - ❌ Create dependencies on other service components
-
-### **STRICT ARCHITECTURAL DECOUPLING REQUIREMENTS**
-
-**CRITICAL:** The `runner`, `server`, and `composer` components MUST remain completely decoupled:
-
-1. **NO CROSS-COMPONENT IMPORTS**: Components cannot directly import from each other
-   - ❌ `composer` cannot import from `server.services.*`, `server.handlers.*`, etc.
-   - ❌ `server` cannot import from `runner.pipelines.*` or `composer.agent_runtime.*`
-   - ❌ `runner` cannot import from `server.*` or `composer.*`
-   - ✅ ALL services can import from shared components: `models.*`, `utils.*`, `db.*`
-   - ✅ Database access uses shared `db.interfaces.*` and `db.*_storage` classes
-
-2. **THIN INTERFACE PATTERN**: Communication only through well-defined interfaces
-   - Use dependency injection for external services
-   - Define Protocol classes for interface contracts
-   - Pass dependencies as constructor parameters
-
-3. **COMPOSER AS EXECUTION RUNTIME**: Per refactor-requirements.md
-   - Composer is the "authoritative execution runtime" for agentic workflows
-   - All complex LangGraph logic must reside in `composer/agent_runtime/`
-   - Server provides only HTTP endpoints and basic request handling
-
-4. **DEPENDENCY INJECTION MANDATORY**: All composer tools must use dependency injection
-   - Tools receive PipelineInterface, SearchProviderInterface, MemoryStoreInterface as constructor params
-   - NO direct instantiation of server or runner classes
-   - Later orchestration layer will wire dependencies via Protocol implementations
-
-5. **ENFORCEMENT**: Any violation of these principles breaks the architecture
-   - Code review must verify no cross-component imports
-   - Tools must receive all dependencies via dependency injection
-   - Protocol definitions establish contracts without coupling
-
-This decoupling enables independent scaling, testing, and deployment of each component.
 
 ### Schema-Driven Development
 YAML schemas in `schemas/` define the data contracts. When modifying APIs:
@@ -316,17 +245,160 @@ The platform includes a sophisticated context extension system (see `docs/contex
 
 When working with chat/completion features, consider how changes affect context window management.
 
-## Database Access
-The platform uses PostgreSQL for persistent storage. 
-Access the database from within the psql Kubernetes pod:
+## Database Layer Architecture
 
+The platform uses **PostgreSQL with TimescaleDB** for persistent storage, following established patterns for storage services, SQL organization, and database initialization.
+
+### Database Access Patterns
+
+**Direct Database Access:**
 ```bash
 k exec -it psql-0 -n psql -- psql -h localhost -U lsm -d llmmll -v "ON_ERROR_STOP=1" -c "<SQL_COMMAND>"
-```  
+```
 
-## SQL files
-SQL schema and migration files are in `inference/server/db/sql/`.
-The code interfaces are in `inference/server/db/`. 
+**Storage Service Pattern:**
+- All database interactions use storage services in `db/`
+- Storage services follow consistent naming: `[entity]_storage.py` (e.g., `message_storage.py`, `conversation_storage.py`)
+- Services use `asyncpg.Pool`, `typed_pool()`, and `get_query()` function for SQL loading
+
+### SQL File Organization
+
+**Directory Structure:**
+```
+db/sql/
+├── message/          # Message-related SQL files
+├── conversation/     # Conversation-related SQL files
+├── memory/          # Memory storage SQL files  
+├── research/        # Research task SQL files
+└── [entity]/        # Each entity gets its own directory
+```
+
+**SQL File Types:**
+- **Schema Files**: `create_[table]_table.sql` - Table creation (idempotent)
+- **Index Files**: `create_[table]_indexes.sql` - Index creation (idempotent)
+- **Operation Files**: `create_[entity].sql`, `get_[entity].sql`, `update_[entity].sql` - CRUD operations
+- **Extension Files**: `create_[table]_hypertable.sql` - TimescaleDB hypertables
+- **Migration Files**: Named with clear purpose, all idempotent
+
+### SQL File Requirements
+
+**Idempotency Rules:**
+- ✅ Use `CREATE TABLE IF NOT EXISTS`
+- ✅ Use `CREATE INDEX IF NOT EXISTS`
+- ✅ Use `SELECT create_hypertable('[table]', '[column]', if_not_exists => TRUE)`
+- ✅ Handle conflicts gracefully with `ON CONFLICT` or conditional logic
+- ❌ Never use `CREATE TABLE` without `IF NOT EXISTS`
+- ❌ Never write SQL that fails if run multiple times
+
+**Query Organization:**
+- **Namespaced Keys**: Use `[entity].[operation]` (e.g., `message.get_content`, `research.create_task`)
+- **Parameter Binding**: Always use `$1`, `$2`, etc. - never string interpolation
+- **Consistent Naming**: Table names are plural (`messages`, `research_tasks`)
+- **Performance**: Include appropriate indexes for common queries
+
+### Storage Service Implementation
+
+**Required Constructor Pattern:**
+```python
+class [Entity]Storage:
+    def __init__(self, pool: asyncpg.Pool, get_query):
+        self.pool = pool
+        self.typed_pool = typed_pool(pool)
+        self.get_query = get_query
+        self.logger = logging.getLogger(__name__)
+```
+
+**Database Operation Pattern:**
+```python
+async def create_entity(self, entity: EntityModel) -> int:
+    async with self.typed_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            self.get_query("entity.create_entity"),
+            entity.field1,
+            entity.field2
+        )
+        return row["id"] if row and "id" in row else None
+```
+
+### Database Initialization Integration
+
+**Add to `init_db.py`:**
+All new storage services must be integrated into the initialization system:
+
+```python
+# Add to initialization_steps list:
+(
+    "Creating [entity] tables",
+    [
+        ("[entity].create_[entity]_table", []),
+        ("[entity].create_[entity]_indexes", []),
+        ("[entity].create_[entity]_hypertable", ["timescaledb"]),
+        ("[entity].create_[entity]_embedding_index", ["vector"]),
+    ],
+)
+```
+
+**Service Registration in `db/__init__.py`:**
+```python
+# Import storage service
+from .[entity]_storage import [Entity]Storage
+
+# Add to Storage class __init__:
+self.[entity] = None
+
+# Add to Storage class initialize method:
+self.[entity] = [Entity]Storage(self.pool, get_query)
+
+# Add to Storage class close method:
+self.[entity] = None
+```
+
+### Extension Integration
+
+**TimescaleDB Support:**
+- Use hypertables for time-series data (partitioned by `created_at`)
+- Enable compression policies for historical data
+- Set retention policies for data lifecycle management
+- Check for extension availability before creating time-series features
+
+**pgvector Support:**
+- Use `VECTOR(768)` columns for embeddings
+- Create `ivfflat` indexes with `vector_cosine_ops`
+- Implement similarity search with `<=>` operator
+- Always check vector extension availability before vector operations
+
+### Error Handling Patterns
+
+**Connection Management:**
+```python
+try:
+    async with self.typed_pool.acquire() as conn:
+        # Database operations
+except Exception as e:
+    logger.error(f"Database error: {e}")
+    raise
+```
+
+**Query Execution:**
+- Always use parameterized queries to prevent SQL injection
+- Handle connection timeouts and retries
+- Log errors with sufficient context for debugging
+- Use appropriate transaction boundaries for multi-step operations
+
+### Performance Considerations
+
+**Indexing Strategy:**
+- Primary keys: Always `SERIAL PRIMARY KEY`
+- Foreign keys: Always indexed
+- Query columns: Index based on WHERE clauses
+- Time-series: Use TimescaleDB hypertables for time-based partitioning
+- Text search: Use appropriate indexing for search patterns
+
+**Query Optimization:**
+- Use `EXPLAIN ANALYZE` to validate query performance
+- Limit result sets with pagination
+- Use appropriate JOIN strategies
+- Consider query caching for frequent operations 
 
 ## Web Scraping
 Web scraping is handled by Scrapy in `inference/server/services/web_extraction_service.py`.
@@ -375,10 +447,9 @@ print('User override working:', not resolved.enable_streaming)
 **When Adding New Environment Variables:**
 1. **Schema First**: Update `schemas/[service]_config.yaml`
 2. **Generate Models**: Run `./regenerate_models.sh`
-3. **Update Config**: Modify `composer/config.py` parsing
-4. **Add to K8s**: Include in `k8s/deployment.yaml`
-5. **Test**: Use `debug/test_k8s_env_vars.py`
-6. **Document**: Update `docs/k8s_environment_variables.md`
+3. **Add to K8s**: Include in `k8s/deployment.yaml`
+4. **Test**: Use `debug/test_k8s_env_vars.py`
+5. **Document**: Update `docs/k8s_environment_variables.md`
 
 **Validation Commands:**
 ```bash
@@ -391,24 +462,6 @@ k exec -it -n ollama $POD_NAME -- /app/v.sh composer python -c "from composer.co
 # Environment variable debugging
 k exec -it -n ollama $POD_NAME -- env | grep -E "(COMPOSER|DB_|REDIS_)" | sort
 ```
-
----
-DO NOT USE LONG OR COMPLEX COMMANDS. USE SCRIPTS INSTEAD.
-ALWAYS SYNC CODE WITH `inference/sync-code.sh` INSTEAD OF MANUAL RSYNC/CP COMMANDS.
-EVERY CHANGE SHOULD HAVE A GIT COMMIT.
-
-NESTED COMMANDS SUCH AS
-```bash
-POD_NAME=$(kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}') && kubectl exec -it -n ollama $POD_NAME -- /app/v.sh server python test_real_end_to_end_pipeline.py qwen3-30b-a3b-q4-k-m
-```
-ARE TOO COMPLEX FOR AUTO-APPROVAL. USE SOMETHING LIKE:
-```bash
-kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}'
-# remember the pod name printed
-kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh server python -m debug.test_real_end_to_end_pipeline qwen3-30b-a3b-q4-k-m
-```
-
-DO NOT ADD DOCUMENTATION FOR FIXES, CHANGES, CLEANUPS, OR TRANSFORMATIONS. ONLY DOCUMENT FULLY IMPLEMENTED FEATURES, AND ALWAYS IN THE `docs/` FOLDER. ALWAYS LINK TO THE DOCS FROM THE README IF IT'S IMPORTANT.
 
 **Documentation Standards:**
 - **Current State ONLY**: Document what the system currently does, never what it was changed from
@@ -446,3 +499,31 @@ Use for **manual validation** and **integration testing** requiring real service
 
 **Rule**: If testing an **interface** (API, service boundary, public functions), write **unit tests**. If testing **integration** or requiring **real infrastructure**, use **debug scripts**.
 
+
+## IMPORTANT NOTES
+
+DO NOT USE LONG OR COMPLEX COMMANDS. USE SCRIPTS INSTEAD.
+ALWAYS SYNC CODE WITH `inference/sync-code.sh` INSTEAD OF MANUAL RSYNC/CP COMMANDS.
+EVERY CHANGE SHOULD HAVE A GIT COMMIT.
+
+## DATABASE LAYER RULES
+
+ALL SQL FILES MUST BE IDEMPOTENT - THEY MUST BE SAFE TO RUN MULTIPLE TIMES.
+FOLLOW THE ESTABLISHED STORAGE SERVICE PATTERNS - USE `typed_pool`, `get_query`, AND PROPER ERROR HANDLING.
+ADD ALL NEW STORAGE SERVICES TO `init_db.py` INITIALIZATION AND `db/__init__.py` REGISTRATION.
+SQL FILES GO IN `db/sql/[entity]/` DIRECTORIES WITH CLEAR NAMING CONVENTIONS.
+ALWAYS USE PARAMETER BINDING ($1, $2) NEVER STRING FORMATTING IN SQL.
+TEST DATABASE INITIALIZATION AND STORAGE SERVICES AFTER CHANGES.
+
+NESTED COMMANDS SUCH AS
+```bash
+POD_NAME=$(kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}') && kubectl exec -it -n ollama $POD_NAME -- /app/v.sh server python test_real_end_to_end_pipeline.py qwen3-30b-a3b-q4-k-m
+```
+ARE TOO COMPLEX FOR AUTO-APPROVAL. USE SOMETHING LIKE:
+```bash
+kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}'
+# remember the pod name printed
+kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh server python -m debug.test_real_end_to_end_pipeline qwen3-30b-a3b-q4-k-m
+```
+
+DO NOT ADD DOCUMENTATION FOR FIXES, CHANGES, CLEANUPS, OR TRANSFORMATIONS. ONLY DOCUMENT FULLY IMPLEMENTED FEATURES, AND ALWAYS IN THE `docs/` FOLDER. ALWAYS LINK TO THE DOCS FROM THE README IF IT'S IMPORTANT.
