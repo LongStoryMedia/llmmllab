@@ -222,7 +222,7 @@ Crucially, this complex sequence achieves **Abstraction** by utilizing the `.as_
 
 | Abstraction Principle | LangChain Mechanism | Implementation Detail | Benefit |
 | :--- | :--- | :--- | :--- |
-| **Composability** | LCEL Pipe Operator (`|`) and`RunnableSequence`. | Tools are defined as runnable objects that pass output of one to input of the next. | Allows rapid assembly of bespoke tools from existing atomic functions. |
+| **Composability** | LCEL Pipe Operator (`\|`) and`RunnableSequence`. | Tools are defined as runnable objects that pass output of one to input of the next. | Allows rapid assembly of bespoke tools from existing atomic functions. |
 | **Abstraction** | `.as_tool()` method. | Attaches a name, description, and schema to a complex LCEL sequence. | Hides complexity from the reasoning LLM, simplifying agent decision-making. |
 | **Dynamic Creation** | Grammar-Constrained Engineering Agent + Structured Output Parsing. | Intent Agent identifies requirements; **Engineering Agent** uses grammar-constrained LLM to generate validated function code/LCEL sequence using `dynamic_tool_spec.yaml`. | Enables creation of genuinely new, purpose-built tools with guaranteed syntax validity and type safety through specialized Engineering Agent. |
 
@@ -246,23 +246,30 @@ class ComposerService:
 
     async def compose_workflow(
         self,
-        conversation_ctx: ConversationContext,
-        workflow_type: WorkflowType
+        user_id: str,
+        conversation_id: int,
+        workflow_type: WorkflowType,
+        messages: List[Message]
     ) -> CompiledGraph:
         """Construct or retrieve a compiled graph for the given conversation."""
+        # Retrieve user configuration and model profiles from shared data layer
+        user_config = await self.data_layer.get_user_config(user_id)
+        model_profiles = await self.data_layer.get_user_model_profiles(user_id)
+        
         # Determine tools and intent before building using structured output
-        intent = await self._analyze_intent_structured(conversation_ctx)
-        tools = await self.tool_registry.get_tools_for_context(intent, conversation_ctx)
-        # Incorporate conversation-specific config (e.g. search complexity)
-        config = conversation_ctx.user_config.get_workflow_config(workflow_type, intent)
+        intent = await self._analyze_intent_structured(messages, user_config)
+        tools = await self.tool_registry.get_tools_for_context(intent, user_config)
+        # Incorporate user-specific config (e.g. search complexity)
+        config = user_config.get_workflow_config(workflow_type, intent)
         # Use cache if available
-        key = self.workflow_cache.get_cache_key(conversation_ctx.user_config, workflow_type, tools)
-        builder_fn = lambda: self.graph_builder.build_from_context(conversation_ctx, tools, config)
+        key = self.workflow_cache.get_cache_key(user_config, workflow_type, tools)
+        builder_fn = lambda: self.graph_builder.build_from_context(user_id, messages, tools, config, model_profiles)
         workflow = await self.workflow_cache.get_or_create(key, builder_fn)
         return workflow
 
-    async def _analyze_intent(self, conversation_ctx):
-        # Use an LLM-based intent agent to label the conversation (deep_research, image_gen, etc.)
+    async def _analyze_intent_structured(self, messages: List[Message], user_config: UserConfig):
+        # Use grammar-constrained LLM-based intent agent to label the conversation
+        # Configuration and model profiles retrieved from shared data layer
         # (Implementation detail omitted)
         pass
 ```
@@ -282,17 +289,20 @@ class GraphBuilder:
 
     def build_from_context(
         self,
-        conversation_ctx: ConversationContext,
+        user_id: str,
+        messages: List[Message],
         tools: List[BaseTool],
-        config: WorkflowConfig
+        config: WorkflowConfig,
+        model_profiles: ModelProfiles
     ) -> CompiledGraph:
-        # Determine workflow type from intent
-        if conversation_ctx.intent.deep_research:
-            return self.build_research_workflow(conversation_ctx, tools, config)
-        elif conversation_ctx.intent.image_generation:
-            return self.build_creative_workflow(conversation_ctx, tools, config)
+        # Determine workflow type from intent (retrieved from shared data layer)
+        intent = config.intent_classification
+        if intent.deep_research:
+            return self.build_research_workflow(user_id, tools, config, model_profiles)
+        elif intent.image_generation:
+            return self.build_creative_workflow(user_id, tools, config, model_profiles)
         else:
-            return self.build_chat_workflow(conversation_ctx, tools, config)
+            return self.build_chat_workflow(user_id, tools, config, model_profiles)
 ```
 
 - **Configurability:** The config object (e.g. `ResearchConfig`) carries parameters like `search_depth`, `max_sources`, and `retrieve_full_content`. The graph builder passes these to nodes.
@@ -313,7 +323,7 @@ class ToolRegistry:
         self.dynamic_tools = {}  # id -> tool instance
         self.tool_embeddings = {}  # id -> embedding vector for semantic search
 
-    async def get_tools_for_context(self, intent: IntentAnalysis, conversation_ctx: ConversationContext):
+    async def get_tools_for_context(self, intent: IntentAnalysis, user_config: UserConfig):
         """Select applicable tools based on intent and context."""
         tools = []
         # 1. Include relevant static tools (conditional standard tool collection)
@@ -323,7 +333,7 @@ class ToolRegistry:
         # 2. Dynamic tool generation or retrieval
         if intent.needs_dynamic_tool:
             spec = intent.tool_spec
-            tool = await self._generate_or_retrieve_dynamic_tool(conversation_ctx, spec)
+            tool = await self._generate_or_retrieve_dynamic_tool(user_config, spec)
             if tool:
                 tools.append(tool)
         return tools
@@ -400,10 +410,13 @@ class StateManager:
     def create_initial_state(
         self,
         messages: List[Message],
-        context: Dict[str, Any]
+        user_id: str,
+        user_config: UserConfig
     ) -> WorkflowState:
         state = WorkflowState(
             messages=messages,
+            user_id=user_id,
+            user_config=user_config,
             # ... other initial state fields ...
         )
         return state
@@ -653,7 +666,7 @@ composer/
 
 - [ ] Implement `PipelineNode` wrapping existing pipeline execution
 - [ ] Create `ToolExecutorNode` using LangGraph's `ToolNode`
-- [ ] Build `RAGNode` from `ConversationContext.process_rag_operations`
+- [ ] Build `RAGNode` with configuration retrieved from shared data layer (not ConversationContext)
 - [ ] Implement circuit breaker `CircuitProtectedNode` wrapper
 
 **Specialized Nodes:**
@@ -690,7 +703,7 @@ composer/
 **Server Integration:**
 
 - [ ] Update `inference/server/handlers/completion.py` to use ComposerService
-- [ ] Replace manual orchestration in `ConversationContext`
+- [ ] Replace manual orchestration in server handlers (ConversationContext not available in composer)
 - [ ] Migrate RAG operations from server to composer nodes
 - [ ] Migrate dynamic tool generation to Engineering Agent with grammar constraints
 - [ ] Update streaming endpoints to consume composer events
@@ -772,11 +785,12 @@ async def test_semantic_tool_search():
 async def test_end_to_end_chat():
     """Test full chat flow through composer"""
     composer = ComposerService()
-    context = create_test_context()
     
     workflow = await composer.compose_workflow(
-        context,
-        WorkflowType.CHAT
+        user_id="test_user_123",
+        conversation_id=456,
+        workflow_type=WorkflowType.CHAT,
+        messages=[test_message]
     )
     
     result = await workflow.ainvoke({
@@ -810,14 +824,19 @@ async def test_selective_streaming():
 async def test_workflow_caching():
     """Test that workflows are properly cached"""
     composer = ComposerService()
-    context = create_test_context()
     
     start_time = time.time()
-    workflow1 = await composer.compose_workflow(context, WorkflowType.CHAT)
+    workflow1 = await composer.compose_workflow(
+        user_id="test_user", conversation_id=123, 
+        workflow_type=WorkflowType.CHAT, messages=[test_message]
+    )
     first_creation_time = time.time() - start_time
     
     start_time = time.time()
-    workflow2 = await composer.compose_workflow(context, WorkflowType.CHAT)
+    workflow2 = await composer.compose_workflow(
+        user_id="test_user", conversation_id=123,
+        workflow_type=WorkflowType.CHAT, messages=[test_message]
+    )
     second_creation_time = time.time() - start_time
     
     # Second call should be much faster (cached)
@@ -1246,18 +1265,28 @@ properties:
 # schemas/composer_request.yaml
 $schema: http://json-schema.org/draft-07/schema#  
 title: ComposerRequest
-description: Request to compose workflow
+description: Request to compose workflow (ConversationContext not available - use shared data layer)
 type: object
 properties:
-  conversation_ctx:
-    $ref: conversation_ctx.yaml
+  user_id:
+    type: string
+    description: User identifier for retrieving config from shared data layer
+  conversation_id:
+    type: integer
+    description: Conversation identifier
+  messages:
+    type: array
+    items:
+      $ref: message.yaml
   workflow_type:
     type: string
     enum: ["CHAT", "RESEARCH", "MULTI_AGENT", "CREATIVE"]
   config_overrides:
     type: object
 required:
-  - conversation_ctx
+  - user_id
+  - conversation_id
+  - messages
   - workflow_type
 ```
 
@@ -1344,6 +1373,7 @@ The proposed architecture fully complies with and leverages the core capabilitie
 - Use existing PostgreSQL connection patterns from `inference/server/config.py`
 - Leverage existing database schema in `inference/server/db/sql/`
 - Follow connection pooling patterns from server service
+- Access user configuration and model profiles through shared data layer (ConversationContext not available)
 
 **Configuration Management:**
 
