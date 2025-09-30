@@ -2,19 +2,32 @@
 Advanced duplicate tool detection and management system for composer.
 """
 
+import re
+import json
 import logging
 import asyncio
 import hashlib
-from typing import Dict, List, Optional
 import difflib
 import ast
+from typing import Dict, List, Optional, cast
 
-from models import DynamicTool, ToolSimilarity, DeduplicationResult, ModelProfileType
+from models import (
+    DynamicTool,
+    ToolSimilarity,
+    DeduplicationResult,
+    ModelProfileType,
+    PipelinePriority,
+)
 from db import storage
-from runner import pipeline_factory, Embeddings
-from runner.pipeline_factory import PipelinePriority
-from runner.pipelines.run import embed_pipeline, run_pipeline
+from runner import (
+    pipeline_factory,
+    Embeddings,
+    embed_pipeline,
+    run_pipeline,
+    EmbeddingPipeline,
+)
 from utils.model_profile import get_model_profile_for_task
+from utils.grammar_generator import parse_structured_output
 
 
 class AdvancedToolDeduplicator:
@@ -35,9 +48,7 @@ class AdvancedToolDeduplicator:
         """Find tools similar to the proposed tool."""
 
         # Get embedding for the proposed tool
-        proposed_embedding = await self._get_tool_embedding(
-            proposed_tool, user_id
-        )
+        proposed_embedding = await self._get_tool_embedding(proposed_tool, user_id)
 
         # Search for similar tools by embedding - returns tuple (tools, pagination)
         similar_tools, _ = await storage.get_service(
@@ -70,9 +81,7 @@ class AdvancedToolDeduplicator:
     ) -> DeduplicationResult:
         """Check if a proposed tool is a duplicate of existing tools."""
 
-        similar_tools = await self.find_similar_tools(
-            proposed_tool, user_id, limit=5
-        )
+        similar_tools = await self.find_similar_tools(proposed_tool, user_id, limit=5)
 
         if not similar_tools:
             return DeduplicationResult(
@@ -110,9 +119,7 @@ class AdvancedToolDeduplicator:
             should_create_new=True,
         )
 
-    async def _get_tool_embedding(
-        self, tool: DynamicTool, user_id: str
-    ) -> List[float]:
+    async def _get_tool_embedding(self, tool: DynamicTool, user_id: str) -> List[float]:
         """Get embedding for a tool."""
 
         cache_key = self._get_cache_key(tool)
@@ -131,9 +138,7 @@ class AdvancedToolDeduplicator:
 
         # Get model profile for embedding task
         mp = await get_model_profile_for_task(
-            uc.model_profiles,
-            ModelProfileType.Embedding,
-            user_id
+            uc.model_profiles, ModelProfileType.Embedding, user_id
         )
 
         if not mp:
@@ -143,11 +148,8 @@ class AdvancedToolDeduplicator:
         with pipeline_factory.pipeline(
             mp, Embeddings, PipelinePriority.LOW
         ) as pipeline:
-            from typing import cast
-            from runner.pipelines.base import EmbeddingPipeline
-
             embedding_result = await embed_pipeline(
-                [text_for_embedding], cast(EmbeddingPipeline, pipeline)
+                text_for_embedding, cast(EmbeddingPipeline, pipeline)
             )
 
         if not embedding_result or len(embedding_result) == 0:
@@ -299,11 +301,14 @@ class AdvancedToolDeduplicator:
         )
 
     async def analyze_tools_with_structured_output(
-        self, proposed_tool: DynamicTool, existing_tools: List[DynamicTool], user_id: str
+        self,
+        proposed_tool: DynamicTool,
+        existing_tools: List[DynamicTool],
+        user_id: str,
     ) -> DeduplicationResult:
         """
         Perform advanced deduplication analysis using grammar-constrained structured output.
-        
+
         This method leverages LLM analysis with guaranteed structured output to provide
         more sophisticated duplicate detection and merging recommendations.
         """
@@ -314,9 +319,7 @@ class AdvancedToolDeduplicator:
 
         # Get model profile for analysis task
         mp = await get_model_profile_for_task(
-            uc.model_profiles,
-            ModelProfileType.Analysis,
-            user_id
+            uc.model_profiles, ModelProfileType.Analysis, user_id
         )
 
         if not mp:
@@ -333,20 +336,27 @@ class AdvancedToolDeduplicator:
         ) as pipeline:
             # Use DeduplicationResult as grammar constraint for structured output
             result = await run_pipeline(
-                analysis_prompt, 
-                pipeline, 
-                grammar=DeduplicationResult
+                analysis_prompt, pipeline, grammar=DeduplicationResult
             )
-            
-            if result and result.message and result.message.content and result.message.content[0].text:
+
+            if (
+                result
+                and result.message
+                and result.message.content
+                and result.message.content[0].text
+            ):
                 analysis_text = result.message.content[0].text
                 try:
                     # With grammar constraints, the output should be valid JSON matching DeduplicationResult
-                    from utils.grammar_generator import parse_structured_output
+
                     return parse_structured_output(analysis_text, DeduplicationResult)
                 except Exception as e:
-                    self.logger.warning(f"Failed to parse grammar-constrained output, falling back: {e}")
-                    return self._parse_structured_deduplication_result(analysis_text, existing_tools)
+                    self.logger.warning(
+                        f"Failed to parse grammar-constrained output, falling back: {e}"
+                    )
+                    return self._parse_structured_deduplication_result(
+                        analysis_text, existing_tools
+                    )
             else:
                 # Fallback to basic similarity analysis
                 return await self.check_for_duplicates(proposed_tool, user_id)
@@ -355,7 +365,7 @@ class AdvancedToolDeduplicator:
         self, proposed_tool: DynamicTool, existing_tools: List[DynamicTool]
     ) -> str:
         """Create structured prompt for deduplication analysis."""
-        
+
         existing_tools_info = []
         for i, tool in enumerate(existing_tools[:5]):  # Limit to top 5 for context
             existing_tools_info.append(
@@ -364,7 +374,7 @@ class AdvancedToolDeduplicator:
                 f"  Description: {tool.description}\n"
                 f"  Code Preview: {tool.code[:200]}...\n"
             )
-        
+
         return f"""
 Analyze the proposed tool against existing tools to determine if it's a duplicate and provide recommendations.
 
@@ -399,38 +409,37 @@ Focus on functional equivalence rather than syntactic similarity.
     ) -> DeduplicationResult:
         """Parse structured analysis result with fallback handling."""
         try:
-            import json
-            import re
-            
             # Extract JSON from response (handle potential markdown formatting)
-            json_match = re.search(r'\{.*\}', analysis_text, re.DOTALL)
+            json_match = re.search(r"\{.*\}", analysis_text, re.DOTALL)
             if not json_match:
                 raise ValueError("No JSON structure found in response")
-            
+
             analysis_data = json.loads(json_match.group())
-            
+
             # Find the best matching existing tool if duplicate detected
             existing_tool = None
             if analysis_data.get("is_duplicate", False) and existing_tools:
                 existing_tool = existing_tools[0]  # Use first/most similar tool
-            
+
             return DeduplicationResult(
                 is_duplicate=analysis_data.get("is_duplicate", False),
                 existing_tool=existing_tool,
                 similarity_score=float(analysis_data.get("similarity_score", 0.0)),
-                recommendation=analysis_data.get("recommendation", "Analysis completed"),
+                recommendation=analysis_data.get(
+                    "recommendation", "Analysis completed"
+                ),
                 should_create_new=analysis_data.get("should_create_new", True),
-                merge_suggestion=analysis_data.get("merge_suggestion")
+                merge_suggestion=analysis_data.get("merge_suggestion"),
             )
-            
+
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             self.logger.warning(f"Failed to parse structured deduplication result: {e}")
-            
+
             # Fallback to heuristic analysis
             return DeduplicationResult(
                 is_duplicate=False,
                 existing_tool=existing_tools[0] if existing_tools else None,
                 similarity_score=0.5 if existing_tools else 0.0,
                 recommendation=f"Structured analysis failed, using heuristic fallback. Consider manual review. Error: {e}",
-                should_create_new=True
+                should_create_new=True,
             )

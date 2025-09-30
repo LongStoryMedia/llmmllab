@@ -6,7 +6,6 @@ Fixes critical issues with the current streaming architecture.
 import hashlib
 import uuid
 import logging
-import re
 from typing import Any, Dict, Optional, List, AsyncIterator, cast, Union, Type
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,7 +26,11 @@ from models import (
     EventStreamConfig,
 )
 from utils.langgraph import build_langgraph_state
-from utils.grammar_generator import get_grammar_for_model, parse_structured_output, StructuredOutputError
+from utils.grammar_generator import (
+    get_grammar_for_model,
+    parse_structured_output,
+    StructuredOutputError,
+)
 
 from utils.message import (
     to_lc_message,
@@ -362,10 +365,10 @@ class EventStreamProcessor:
         """Process tool start events with improved tool name detection."""
         try:
             data = evt.get("data", {})
-            
+
             # Try multiple ways to extract tool name from LangGraph events
             tool_name = "unknown"
-            
+
             # Method 1: Check event-level name field first (most common for LangGraph)
             if "name" in evt:
                 tool_name = evt["name"]
@@ -373,7 +376,11 @@ class EventStreamProcessor:
             elif "name" in data:
                 tool_name = data["name"]
             # Method 3: Check if data has a 'tool' field with name
-            elif "tool" in data and isinstance(data["tool"], dict) and "name" in data["tool"]:
+            elif (
+                "tool" in data
+                and isinstance(data["tool"], dict)
+                and "name" in data["tool"]
+            ):
                 tool_name = data["tool"]["name"]
             # Method 4: Check for nested structure
             elif "input" in data and isinstance(data["input"], dict):
@@ -384,10 +391,12 @@ class EventStreamProcessor:
             # Method 5: Check event metadata
             elif "metadata" in evt and "name" in evt["metadata"]:
                 tool_name = evt["metadata"]["name"]
-            
+
             # Log for debugging
-            self.logger.debug(f"Tool start event - extracted name: '{tool_name}', data keys: {list(data.keys())}")
-            
+            self.logger.debug(
+                f"Tool start event - extracted name: '{tool_name}', data keys: {list(data.keys())}"
+            )
+
             tool_input = data.get("input", {})
 
             tool_txt = ""
@@ -422,14 +431,20 @@ class EventStreamProcessor:
             tool_output = str(data.get("output", ""))
 
             # Make truncation configurable with much higher limit for comprehensive output
-            max_output_length = getattr(self, 'max_tool_output_length', 10000)  # Default 10K chars for full web content
-            
+            max_output_length = getattr(
+                self, "max_tool_output_length", 10000
+            )  # Default 10K chars for full web content
+
             if len(tool_output) > max_output_length:
                 # Show beginning and end for better context, but with more generous limits
-                quarter_length = (max_output_length - 40) // 4  # Show first 1/4 and last 1/4 
-                tool_output = (tool_output[:quarter_length * 3] + 
-                             "\n... (content truncated for length) ...\n" + 
-                             tool_output[-quarter_length:])
+                quarter_length = (
+                    max_output_length - 40
+                ) // 4  # Show first 1/4 and last 1/4
+                tool_output = (
+                    tool_output[: quarter_length * 3]
+                    + "\n... (content truncated for length) ...\n"
+                    + tool_output[-quarter_length:]
+                )
 
             return create_streaming_chunk(
                 f"✅ **Tool completed**\n{tool_output}\n\n",
@@ -470,7 +485,7 @@ async def stream_pipeline(
     """
     Execute the LangGraph workflow for chat completion with enhanced error handling.
     Accepts flexible input: str, Message, List[str], or List[Message].
-    
+
     Args:
         messages: Input messages in various formats
         pipeline: Pipeline instance to execute
@@ -608,7 +623,7 @@ async def run_pipeline(
     """
     Get a complete response from the pipeline by aggregating streaming chunks.
     Accepts flexible input: str, Message, List[str], or List[Message].
-    
+
     Args:
         messages: Input messages in various formats
         pipeline: Pipeline instance to execute
@@ -671,7 +686,7 @@ async def embed_pipeline(
     Get embeddings from the pipeline for the given messages.
     This provides a normalized interface for embedding operations.
     Accepts flexible input: str, Message, List[str], or List[Message].
-    
+
     Args:
         messages: Input messages in various formats
         pipeline: Embedding pipeline instance
