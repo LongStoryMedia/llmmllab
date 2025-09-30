@@ -12,11 +12,12 @@ Configuration:
 
 Usage:
     # Default general web search
-    tool = WebSearchTool()
+    tool = create_web_search_tool()
     result = await tool._arun("machine learning trends 2025")
 
-    # Custom engines
-    tool = WebSearchTool(engines=["google", "duckduckgo"])
+    # Custom configuration
+    custom_config = WebSearchConfig(engines=["google", "duckduckgo"], max_results=10)
+    tool = WebSearchTool(web_config=custom_config)
 
     # Specialized search tools
     academic_tool = create_academic_search_tool()
@@ -36,7 +37,6 @@ Available Engines (see https://docs.searxng.org/dev/engines/index.html):
 import asyncio
 import json
 import os
-import re
 from typing import Optional, List, Dict, Any
 
 from langchain_core.tools import BaseTool
@@ -47,84 +47,40 @@ from models import SearchResult, SearchResultContent, WebSearchConfig
 from ...monitoring.logging import composer_logger
 
 
-def create_searx_config_from_web_config(web_config: WebSearchConfig) -> Dict[str, Any]:
-    """Convert WebSearchConfig to SearxSearchWrapper configuration."""
-    return {
-        "engines": web_config.engines,
-        "k": web_config.max_results,
-        "language": web_config.language,
-        "categories": web_config.categories,
-        "params": {
+
+
+
+class SearxNG:
+    """Wrapper for Searx Search API using WebSearchConfig."""
+
+    def __init__(self, web_config: WebSearchConfig):
+        self.web_config = web_config
+        self.searx_host = web_config.searx_host or os.getenv("SEARX_HOST", "")
+        
+        # Build SearxSearchWrapper parameters directly from WebSearchConfig
+        params = {
             "format": "json",
             "language": web_config.language,
             "safesearch": web_config.safesearch,
             "time_range": web_config.time_range or "",
-        },
-        "headers": {
+        }
+        
+        headers = {
             "User-Agent": web_config.user_agent or "LLMMLLab-WebSearch/1.0",
-        },
-        "searx_host": web_config.searx_host,
-        "timeout": web_config.timeout,
-    }
-
-
-def get_default_searx_config() -> Dict[str, Any]:
-    """Get default configuration for SearxNG with sane defaults."""
-    from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
-    return create_searx_config_from_web_config(DEFAULT_WEB_SEARCH_CONFIG)
-
-
-class SearxNG:
-    """Wrapper for Searx Search API with optimized configuration."""
-
-    def __init__(
-        self,
-        web_config: Optional[WebSearchConfig] = None,
-        searx_host: Optional[str] = None,
-        engines: Optional[List[str]] = None,
-        config: Optional[Dict[str, Any]] = None,
-    ):
-        # Use WebSearchConfig if provided, otherwise fall back to legacy parameters
-        if web_config:
-            searx_config = create_searx_config_from_web_config(web_config)
-        else:
-            # Legacy fallback for backward compatibility
-            default_config = get_default_searx_config()
-            if config:
-                # Deep merge configuration
-                merged_config = {**default_config}
-                merged_config.update(config)
-                if "params" in config and "params" in default_config:
-                    merged_config["params"] = {
-                        **default_config["params"],
-                        **config["params"],
-                    }
-            else:
-                merged_config = default_config
-                
-            # Override with legacy parameters
-            if engines:
-                merged_config["engines"] = engines
-            if searx_host:
-                merged_config["searx_host"] = searx_host
-                
-            searx_config = merged_config
-
-        self.searx_host = searx_config.get("searx_host") or os.getenv("SEARX_HOST", "")
-        self.web_config = web_config
+        }
 
         self.wrapper = SearxSearchWrapper(
             searx_host=self.searx_host,
-            engines=searx_config["engines"],
-            k=searx_config["k"],
-            params=searx_config["params"],
-            headers=searx_config["headers"],
-            categories=searx_config["categories"],
+            engines=web_config.engines,
+            k=web_config.max_results,
+            params=params,
+            headers=headers,
+            categories=web_config.categories,
         )
         self.logger = composer_logger.logger
 
         self.logger.debug(
-            f"SearxNG initialized with engines: {searx_config['engines']}"
+            f"SearxNG initialized with engines: {web_config.engines}"
         )
 
     async def search(self, query: str, max_results: int) -> SearchResult:
@@ -194,8 +150,8 @@ class SearxNG:
 class WebSearchTool(BaseTool):
     """Static tool for performing web searches using SearxNG provider.
 
-    Configured with comprehensive WebSearchConfig integration supporting
-    engines, categories, timeouts, caching, and all SearxNG features.
+    Uses WebSearchConfig for type-safe configuration with all default values
+    already merged at the data layer.
     """
 
     name: str = "web_search"
@@ -205,36 +161,16 @@ class WebSearchTool(BaseTool):
         "Returns formatted search results with titles, URLs, and content snippets."
     )
 
-    def __init__(
-        self,
-        web_config: Optional[WebSearchConfig] = None,
-        engines: Optional[List[str]] = None,  # Legacy support
-        config: Optional[Dict[str, Any]] = None,  # Legacy support
-    ):
+    def __init__(self, web_config: WebSearchConfig):
         super().__init__()
         self.web_config = web_config
-        # Legacy parameters for backward compatibility
-        self.engines = engines
-        self.config = config
 
-    async def _arun(self, query: str) -> str:
+    async def _arun(self, query: str, **kwargs: Any) -> str:
         """Async implementation of web search using SearxNG provider."""
         try:
-            # Import search provider directly
-
-            # Use SearxNG provider with WebSearchConfig or legacy parameters
-            if hasattr(self, 'web_config') and self.web_config:
-                provider = SearxNG(web_config=self.web_config)
-                max_results = self.web_config.max_results
-            else:
-                # Legacy fallback
-                provider = SearxNG(
-                    engines=getattr(self, "engines", None),
-                    config=getattr(self, "config", None),
-                )
-                max_results = 5
-
-            search_result = await provider.search(query, max_results)
+            # Use SearxNG provider with WebSearchConfig
+            provider = SearxNG(web_config=self.web_config)
+            search_result = await provider.search(query, self.web_config.max_results)
 
             if search_result and search_result.contents:
                 formatted_results = [
@@ -279,6 +215,16 @@ class WebSearchTool(BaseTool):
     def _run(self, query: str, **kwargs) -> str:
         """Sync implementation using async."""
         return asyncio.run(self._arun(query))
+
+
+# Factory functions for creating WebSearchTool instances
+
+def create_web_search_tool(web_config: Optional[WebSearchConfig] = None) -> WebSearchTool:
+    """Create a WebSearchTool with the given configuration or default configuration."""
+    if web_config is None:
+        from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
+        web_config = DEFAULT_WEB_SEARCH_CONFIG
+    return WebSearchTool(web_config=web_config)
 
 
 # Convenience factory functions for specialized search configurations
