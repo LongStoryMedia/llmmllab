@@ -52,7 +52,7 @@ The Composer is responsible for:
 ### 2.2 High-Level System Layout
 
 
-```
+```plaintext
 ┌──────────────────────────────┐        ┌────────────────────────┐
 │        Client/UI Layer       │◄──────►│       Server Layer     │
 │ (Display, request routing,   │        │ (HTTP, auth, user mgmt)│
@@ -263,7 +263,7 @@ class ComposerService:
         workflow_config = await self._get_workflow_config(user_id, workflow_type, intent)
         # Use cache if available - cache key based on user_id, not config objects
         key = self.workflow_cache.get_cache_key(user_id, workflow_type, tools)
-        builder_fn = lambda: self.graph_builder.build_from_context(user_id, messages, tools, workflow_config)
+        builder_fn = lambda: self.graph_builder.build_from_context(user_id, messages, tools)
         workflow = await self.workflow_cache.get_or_create(key, builder_fn)
         return workflow
 
@@ -293,23 +293,26 @@ class GraphBuilder:
         self,
         user_id: str,
         messages: List[Message],
-        tools: List[BaseTool],
-        workflow_config: WorkflowConfig
+        tools: List[BaseTool]
     ) -> CompiledGraph:
         # Configuration and model profiles retrieved internally from shared data layer
         # Following pattern: uc = await storage.get_service(storage.user_config).get_user_config(user_id)
         # Model profiles accessed via: get_model_profile_for_task(uc.model_profiles, task_type, user_id)
         
+        # Retrieve user config and workflow preferences internally
+        uc = await storage.get_service(storage.user_config).get_user_config(user_id)
+        workflow_config = uc.workflow_preferences  # Retrieved from shared data layer
         intent = workflow_config.intent_classification
+        
         if intent.deep_research:
-            return await self.build_research_workflow(user_id, workflow_config)
+            return await self.build_research_workflow(user_id, tools)
         elif intent.image_generation:
-            return await self.build_creative_workflow(user_id, workflow_config)
+            return await self.build_creative_workflow(user_id, tools)
         else:
-            return await self.build_chat_workflow(user_id, workflow_config)
+            return await self.build_chat_workflow(user_id, tools)
 ```
 
-- **Configurability:** The config object (e.g. `ResearchConfig`) carries parameters like `search_depth`, `max_sources`, and `retrieve_full_content`. The graph builder passes these to nodes.
+- **Configurability:** Configuration parameters like `search_depth`, `max_sources`, and `retrieve_full_content` are retrieved internally by nodes from the shared data layer using user_id. No config objects are passed between components.
 
 ### 4.1.3 Tool Registry Module
 
@@ -521,8 +524,12 @@ class EngineeringAgentNode:
 ```python
 # composer/workflows/chat.py
 
-async def build_chat_workflow(user_id: str, workflow_config: ChatConfig) -> StateGraph:
+async def build_chat_workflow(user_id: str, tools: List[BaseTool]) -> StateGraph:
     workflow = StateGraph(WorkflowState)
+
+    # Configuration retrieved internally from shared data layer using user_id
+    # Example: uc = await storage.get_service(storage.user_config).get_user_config(user_id)
+    # Example: chat_config = uc.workflow_preferences.chat_config
 
     workflow.add_node("rag_enrichment", RAGNode(user_id))
     workflow.add_node("engineering_agent", EngineeringAgentNode(user_id))
@@ -533,7 +540,7 @@ async def build_chat_workflow(user_id: str, workflow_config: ChatConfig) -> Stat
         ModelProfileType.Primary,
         stream=True  # stream responses for primary chat agent
     ))
-    workflow.add_node("tools", ToolExecutorNode())
+    workflow.add_node("tools", ToolExecutorNode(tools))  # Tools passed within composer
 
     workflow.set_entry_point("rag_enrichment")
     workflow.add_edge("rag_enrichment", "engineering_agent")
@@ -565,12 +572,16 @@ async for event in workflow.astream_events(initial_state, version="v2"):
 ```python
 # composer/workflows/research.py
 
-async def build_research_workflow(user_id: str, workflow_config: ResearchConfig) -> StateGraph:
+async def build_research_workflow(user_id: str, tools: List[BaseTool]) -> StateGraph:
     workflow = StateGraph(ResearchState)
 
+    # Configuration retrieved internally from shared data layer using user_id
+    # Example: uc = await storage.get_service(storage.user_config).get_user_config(user_id)
+    # Example: research_config = uc.workflow_preferences.research_config
+    
     # Configuration values retrieved internally via user_id in each node
-    workflow.add_node("query_expansion", QueryExpansionNode(user_id, depth=workflow_config.search_depth))
-    workflow.add_node("parallel_search", ParallelSearchNode(user_id, max_sources=workflow_config.max_sources, full_text=workflow_config.retrieve_full_content))
+    workflow.add_node("query_expansion", QueryExpansionNode(user_id))  # Gets depth from user config internally
+    workflow.add_node("parallel_search", ParallelSearchNode(user_id))  # Gets max_sources, full_text from user config internally
     workflow.add_node("synthesis", SynthesisNode(user_id))
 
     workflow.set_entry_point("query_expansion")
@@ -789,7 +800,7 @@ async def test_pipeline_node():
 # tests/composer/test_workflows.py
 async def test_chat_workflow():
     """Test complete chat workflow"""
-    workflow = await build_chat_workflow(user_id, ChatConfig())
+    workflow = await build_chat_workflow(user_id, tools)
     result = await workflow.ainvoke(initial_state)
     assert result.messages[-1].role == MessageRole.ASSISTANT
 
@@ -826,7 +837,7 @@ async def test_end_to_end_chat():
 # tests/integration/test_streaming.py
 async def test_selective_streaming():
     """Verify streaming modes work correctly"""
-    workflow = await build_chat_workflow(user_id, ChatConfig(stream=True))
+    workflow = await build_chat_workflow(user_id, tools)  # Streaming config retrieved from user preferences
     events = []
     
     async for event in workflow.astream_events(initial_state, version="v2"):
@@ -869,11 +880,11 @@ async def test_workflow_caching():
 
 async def test_rag_depth_performance():
     """Test RAG performance with different depths"""
-    shallow_config = ResearchConfig(search_depth="SHALLOW", max_sources=3)
-    deep_config = ResearchConfig(search_depth="DEEP", max_sources=10)
+    # Configuration retrieved internally from user preferences in shared data layer
+    # Test with different user configs that have different research preferences
     
-    shallow_workflow = await build_research_workflow(user_id, shallow_config)
-    deep_workflow = await build_research_workflow(user_id, deep_config)
+    shallow_workflow = await build_research_workflow(user_id_shallow, tools)
+    deep_workflow = await build_research_workflow(user_id_deep, tools)
     
     # Shallow should be faster
     shallow_time = await measure_execution_time(shallow_workflow, test_state)
