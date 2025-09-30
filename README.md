@@ -48,6 +48,7 @@ The platform uses a hierarchical configuration system that separates system admi
 - **Schema-Driven**: YAML schemas automatically generate Python models and TypeScript types
 
 Key configuration areas:
+
 - **Workflow Settings**: Caching, streaming, timeouts, multi-agent capabilities
 - **Tool Management**: Selection thresholds, generation preferences, execution settings
 - **Memory & Context**: Retrieval settings, circuit breakers, model profiles

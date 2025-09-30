@@ -60,7 +60,7 @@ properties:
           "files",
           "social",
         ]
-    default: ["general"]
+    default: ["general", "news", "science", "it"]
   language:
     type: string
     description: Language for search results

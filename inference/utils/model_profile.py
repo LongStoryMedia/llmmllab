@@ -38,6 +38,27 @@ PROFILE_TYPE_TO_CONFIG_FIELD: Dict[ModelProfileType, str] = {
 }
 
 
+async def get_model_profile(user_id: str, task: ModelProfileType) -> ModelProfile:
+    """
+    Get the appropriate model profile for a specific task.
+
+    Args:
+        user_id: The user ID for profile lookup
+        task: The type of task requiring a model profile
+
+    Returns:
+        The model profile for the specified task
+
+    Raises:
+        ValueError: If the task type is not supported or profile not found
+    """
+    config = await storage.get_service(storage.user_config).get_user_config(user_id)
+    if not config:
+        raise ValueError(f"User config not found for user {user_id}")
+
+    return await get_model_profile_for_task(config.model_profiles, task, user_id)
+
+
 async def get_model_profile_for_task(
     config: ModelProfileConfig, task: ModelProfileType, user_id: str
 ) -> ModelProfile:

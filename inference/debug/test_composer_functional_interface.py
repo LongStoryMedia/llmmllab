@@ -7,15 +7,12 @@ import sys
 import os
 import asyncio
 
-# Add inference path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
 from composer import (
     initialize_composer,
     shutdown_composer,
     compose_workflow,
     get_composer_config,
-    get_composer_service
+    get_composer_service,
 )
 from models.default_configs import create_default_user_config
 from models.conversation import Conversation
@@ -30,26 +27,28 @@ from datetime import datetime
 async def test_functional_interface():
     """Test that the functional interface works correctly."""
     print("🧪 Testing composer functional interface...")
-    
+
     try:
         # Test 1: Initialization
         print("\n1. Testing initialization...")
         await initialize_composer()
         print("✅ Composer initialized successfully")
-        
+
         # Test 2: Configuration access
         print("\n2. Testing configuration access...")
         config = get_composer_config()
-        print(f"✅ Config retrieved: caching={config['caching_enabled']}, streaming={config['streaming_enabled']}")
-        
+        print(
+            f"✅ Config retrieved: caching={config['caching_enabled']}, streaming={config['streaming_enabled']}"
+        )
+
         # Test 3: Service access
         print("\n3. Testing service access...")
         service = get_composer_service()
         print(f"✅ Service retrieved: {type(service).__name__}")
-        
+
         # Test 4: Workflow composition (mock data)
         print("\n4. Testing workflow composition...")
-        
+
         # Create mock conversation context
         user_config = create_default_user_config("test_user")
         conversation = Conversation(
@@ -57,18 +56,17 @@ async def test_functional_interface():
             user_id="test_user",
             title="Test Conversation",
             created_at=datetime.now(),
-            updated_at=datetime.now()
+            updated_at=datetime.now(),
         )
-        
+
         test_message = Message(
             role=MessageRole.USER,
-            content=[MessageContent(
-                type=MessageContentType.TEXT,
-                text="Hello, how are you?"
-            )],
-            conversation_id=1
+            content=[
+                MessageContent(type=MessageContentType.TEXT, text="Hello, how are you?")
+            ],
+            conversation_id=1,
         )
-        
+
         conversation_ctx = ConversationCtx(
             messages=[test_message],
             notes=[],
@@ -77,38 +75,38 @@ async def test_functional_interface():
             current_user_message=test_message,
             user_config=user_config,
         )
-        
+
         try:
             workflow = await compose_workflow(
-                conversation_ctx=conversation_ctx,
-                workflow_type="CHAT"
+                conversation_ctx=conversation_ctx, workflow_type="CHAT"
             )
             print("✅ Workflow composed successfully (mock)")
             print(f"   Workflow type: {type(workflow)}")
         except Exception as e:
             print(f"⚠️  Workflow composition failed (expected in test): {e}")
             print("   This is normal since we don't have full LangGraph setup")
-        
+
         # Test 5: Shutdown
         print("\n5. Testing shutdown...")
         await shutdown_composer()
         print("✅ Composer shutdown successfully")
-        
+
         print("\n🎉 All functional interface tests completed!")
-        
+
     except Exception as e:
         print(f"❌ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
-        
+
     return True
 
 
 async def test_error_handling():
     """Test error handling when service not initialized."""
     print("\n🧪 Testing error handling...")
-    
+
     try:
         # Should raise RuntimeError since not initialized
         get_composer_service()
@@ -126,13 +124,13 @@ async def main():
     """Run all tests."""
     print("🚀 Starting composer functional interface tests...")
     print("=" * 60)
-    
+
     # Test error handling first (when not initialized)
     error_test_passed = await test_error_handling()
-    
+
     # Test main functionality
     functionality_test_passed = await test_functional_interface()
-    
+
     print("\n" + "=" * 60)
     if error_test_passed and functionality_test_passed:
         print("🎉 All tests passed! Functional interface working correctly.")

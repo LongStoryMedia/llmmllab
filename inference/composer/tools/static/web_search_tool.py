@@ -25,7 +25,7 @@ Usage:
     tech_tool = create_technical_search_tool()
     shopping_tool = create_shopping_search_tool()
 
-Available Engines (see https://docs.searxng.org/dev/engines/index.html):
+Available Engines (see https://docs.searxng.org/dev/engines/index.html and https://github.com/searxng/searxng/tree/master/searx/engines):
 - Web: google, bing, duckduckgo, startpage, yahoo, yandex
 - Academic: google_scholar, arxiv, crossref, semantic_scholar
 - News: google_news, bing_news, yahoo_news, reddit
@@ -47,16 +47,13 @@ from models import SearchResult, SearchResultContent, WebSearchConfig
 from ...monitoring.logging import composer_logger
 
 
-
-
-
 class SearxNG:
     """Wrapper for Searx Search API using WebSearchConfig."""
 
     def __init__(self, web_config: WebSearchConfig):
         self.web_config = web_config
         self.searx_host = web_config.searx_host or os.getenv("SEARX_HOST", "")
-        
+
         # Build SearxSearchWrapper parameters directly from WebSearchConfig
         params = {
             "format": "json",
@@ -64,7 +61,7 @@ class SearxNG:
             "safesearch": web_config.safesearch,
             "time_range": web_config.time_range or "",
         }
-        
+
         headers = {
             "User-Agent": web_config.user_agent or "LLMMLLab-WebSearch/1.0",
         }
@@ -79,9 +76,7 @@ class SearxNG:
         )
         self.logger = composer_logger.logger
 
-        self.logger.debug(
-            f"SearxNG initialized with engines: {web_config.engines}"
-        )
+        self.logger.debug(f"SearxNG initialized with engines: {web_config.engines}")
 
     async def search(self, query: str, max_results: int) -> SearchResult:
         """Execute search using Searx Search API."""
@@ -219,10 +214,14 @@ class WebSearchTool(BaseTool):
 
 # Factory functions for creating WebSearchTool instances
 
-def create_web_search_tool(web_config: Optional[WebSearchConfig] = None) -> WebSearchTool:
+
+def create_web_search_tool(
+    web_config: Optional[WebSearchConfig] = None,
+) -> WebSearchTool:
     """Create a WebSearchTool with the given configuration or default configuration."""
     if web_config is None:
         from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
+
         web_config = DEFAULT_WEB_SEARCH_CONFIG
     return WebSearchTool(web_config=web_config)
 
@@ -233,7 +232,7 @@ def create_web_search_tool(web_config: Optional[WebSearchConfig] = None) -> WebS
 def create_academic_search_tool() -> WebSearchTool:
     """Create a WebSearchTool optimized for academic and research content."""
     from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
-    
+
     academic_config = WebSearchConfig(
         **DEFAULT_WEB_SEARCH_CONFIG.model_dump(),
         engines=[
@@ -251,7 +250,7 @@ def create_academic_search_tool() -> WebSearchTool:
 def create_news_search_tool() -> WebSearchTool:
     """Create a WebSearchTool optimized for news and current events."""
     from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
-    
+
     news_config = WebSearchConfig(
         **DEFAULT_WEB_SEARCH_CONFIG.model_dump(),
         engines=[
@@ -269,7 +268,7 @@ def create_news_search_tool() -> WebSearchTool:
 def create_technical_search_tool() -> WebSearchTool:
     """Create a WebSearchTool optimized for technical documentation and code."""
     from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
-    
+
     tech_config = WebSearchConfig(
         **DEFAULT_WEB_SEARCH_CONFIG.model_dump(),
         engines=[
@@ -287,7 +286,7 @@ def create_technical_search_tool() -> WebSearchTool:
 def create_shopping_search_tool() -> WebSearchTool:
     """Create a WebSearchTool optimized for product and shopping searches."""
     from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
-    
+
     shopping_config = WebSearchConfig(
         **DEFAULT_WEB_SEARCH_CONFIG.model_dump(),
         engines=[

@@ -6,8 +6,6 @@ Handles tool generation, analysis, and deduplication.
 import asyncio
 import json
 import logging
-import re
-from typing import Dict, Any, Optional
 
 from models import (
     DynamicTool,
@@ -207,9 +205,11 @@ Respond in the following JSON format:
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                user_circuit_breaker = user_config.circuit_breaker
                 with pipeline_factory.pipeline(
-                    engineering_profile, str, PipelinePriority.LOW, user_circuit_breaker
+                    engineering_profile,
+                    str,
+                    PipelinePriority.LOW,
+                    user_config.circuit_breaker,
                 ) as pipe:
                     generation_prompt = f"""Create a custom tool/function for this user request:
 
@@ -232,28 +232,13 @@ Requirements:
 - Return meaningful results
 
 Format your response as ONLY a valid JSON object matching this exact schema:
-{DynamicTool.model_json_schema()}
-
-Example response format:
-{{
-  "user_id": 1,
-  "name": "example_tool",
-  "description": "This tool does something useful",
-  "code": "def example_tool(param1):\\n    return str(param1)",
-  "function_name": "example_tool",
-  "parameters": {{
-    "param1": {{
-      "type": "string",
-      "description": "The input parameter"
-    }}
-  }}
-}}
+{json.dumps(DynamicTool.model_json_schema())}
 
 Respond with ONLY the JSON object, no other text or formatting."""
 
                     # Add timeout to prevent tool generation from blocking
                     response = await asyncio.wait_for(
-                        run_pipeline(generation_prompt, pipe),
+                        run_pipeline(generation_prompt, pipe, grammar=DynamicTool),
                         timeout=300.0,  # 5 minute timeout for tool generation
                     )
                     tool_response = (
@@ -265,17 +250,7 @@ Respond with ONLY the JSON object, no other text or formatting."""
                     if not tool_response:
                         raise ValueError("No response from engineering pipeline")
 
-                    # Extract and parse JSON
-                    json_data = self._extract_json_from_response(tool_response)
-                    if not json_data:
-                        self.logger.error(
-                            f"Could not extract valid JSON from response: {tool_response[:500]}..."
-                        )
-                        raise ValueError("Could not extract valid JSON from response")
-
-                    # Create DynamicTool
-                    json_data["user_id"] = user_id
-                    dynamic_tool = DynamicTool(**json_data)
+                    dynamic_tool = parse_structured_output(tool_response, DynamicTool)
 
                     # Store the generated tool in the database
                     stored_tool = await storage.get_service(
@@ -311,28 +286,3 @@ Respond with ONLY the JSON object, no other text or formatting."""
         return ToolGenerationResult(
             success=False, error_message="Tool generation failed after all retries"
         )
-
-    def _extract_json_from_response(self, response: str) -> Optional[Dict[str, Any]]:
-        """Extract JSON from LLM response with robust parsing."""
-        # Look for JSON object patterns
-        json_patterns = [
-            r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}",  # Basic nested JSON
-            r"```json\s*(\{.*?\})\s*```",  # JSON in code blocks
-            r"```\s*(\{.*?\})\s*```",  # JSON in plain code blocks
-        ]
-
-        for pattern in json_patterns:
-            matches = re.findall(pattern, response, re.DOTALL)
-            for match in matches:
-                try:
-                    return json.loads(match)
-                except json.JSONDecodeError:
-                    continue
-
-        # Try parsing the entire response as JSON
-        try:
-            return json.loads(response.strip())
-        except json.JSONDecodeError:
-            pass
-
-        return None

@@ -2,14 +2,14 @@
 Runner Service Interface Layer.
 
 Provides the public API boundary for the runner component, enabling other
-services to execute model pipelines while maintaining strict architectural 
-decoupling. This interface abstracts pipeline execution, streaming, and 
+services to execute model pipelines while maintaining strict architectural
+decoupling. This interface abstracts pipeline execution, streaming, and
 embedding generation.
 
 Interface Functions:
 - pipeline_factory(): Create configured pipeline instances
 - run_pipeline(): Execute pipelines with conversation context
-- stream_pipeline(): Stream-enabled pipeline execution  
+- stream_pipeline(): Stream-enabled pipeline execution
 - embed_pipeline(): Generate embeddings from text content
 
 Interface Types:
@@ -19,12 +19,16 @@ Interface Types:
 
 Architectural Role:
 - Defines clean API boundaries between components
-- Abstracts internal runner implementation details 
+- Abstracts internal runner implementation details
 - Enables Protocol-based dependency injection
 - Maintains decoupling from server and composer components
 """
 
 __version__ = "0.1.0"
+
+from typing import Union, Type
+from pathlib import Path
+from pydantic import BaseModel
 
 from .pipeline_factory import (
     pipeline_factory,
@@ -33,9 +37,6 @@ from .pipeline_factory import (
 
 from .pipelines.base import Embeddings, EmbeddingPipeline  # for typing
 from .pipelines.run import run_pipeline, stream_pipeline, embed_pipeline
-from typing import Optional, Union, Type
-from pathlib import Path
-from pydantic import BaseModel
 
 # Grammar type definitions
 GrammarInput = Union[str, Path, Type[BaseModel], None]
@@ -45,7 +46,7 @@ __all__ = [
     "PipeReturn",
     "Embeddings",
     "run_pipeline",
-    "stream_pipeline", 
+    "stream_pipeline",
     "embed_pipeline",
     "EmbeddingPipeline",
     "GrammarInput",

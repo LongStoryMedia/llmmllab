@@ -588,15 +588,14 @@ class ToolRegistry:
 - **Data Layer Access Pattern:** Configuration and model profiles retrieved using shared data layer:
 
   ```python
-  # Retrieve user configuration
-  uc = await storage.get_service(storage.user_config).get_user_config(user_id)
-  
   # Get model profile for specific task
-  mp = await get_model_profile_for_task(
-      uc.model_profiles, 
-      ModelProfileType.Primary, 
-      user_id
+  mp = await get_model_profile(
+      user_id,
+      ModelProfileType.Primary
   )
+
+  # Get user configuration
+  uc = await storage.get_service(storage.user_config).get_user_config(user_id)
   ```
 
 - **Caching Efficiency:** 3-tier caching (memory -> redis -> postgres) makes repeated config retrieval efficient

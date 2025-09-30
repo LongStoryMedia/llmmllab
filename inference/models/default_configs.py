@@ -29,11 +29,13 @@ DEFAULT_PREFERENCES_CONFIG = PreferencesConfig(
 # Default memory configuration
 DEFAULT_MEMORY_CONFIG = MemoryConfig(
     enabled=True,
-    limit=100,
+    limit=5,
     enable_cross_user=False,
     enable_cross_conversation=True,
     similarity_threshold=0.7,
     always_retrieve=False,
+    embedding_model_name="all-MiniLM-L6-v2",
+    timeout=10.0,
 )
 
 # Default summarization configuration

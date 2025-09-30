@@ -35,7 +35,3 @@ properties:
   intent:
     $ref: intent.yaml
     description: The intent detected from the user's message
-  user_config:
-    $ref: user_config.yaml
-    description: User-specific configuration and preferences
-    nullable: true
