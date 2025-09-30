@@ -252,24 +252,26 @@ class ComposerService:
         messages: List[Message]
     ) -> CompiledGraph:
         """Construct or retrieve a compiled graph for the given conversation."""
-        # Retrieve user configuration and model profiles from shared data layer
-        user_config = await self.data_layer.get_user_config(user_id)
-        model_profiles = await self.data_layer.get_user_model_profiles(user_id)
+        # Configuration and model profiles retrieved from shared data layer internally
+        # Data layer provides 3-tier caching (memory -> redis -> postgres) for efficiency
+        # No need to pass config objects - they are retrieved as needed with user_id
         
         # Determine tools and intent before building using structured output
-        intent = await self._analyze_intent_structured(messages, user_config)
-        tools = await self.tool_registry.get_tools_for_context(intent, user_config)
-        # Incorporate user-specific config (e.g. search complexity)
-        config = user_config.get_workflow_config(workflow_type, intent)
-        # Use cache if available
-        key = self.workflow_cache.get_cache_key(user_config, workflow_type, tools)
-        builder_fn = lambda: self.graph_builder.build_from_context(user_id, messages, tools, config, model_profiles)
+        intent = await self._analyze_intent_structured(messages, user_id)
+        tools = await self.tool_registry.get_tools_for_context(intent, user_id)
+        # Workflow config retrieved internally from shared data layer
+        workflow_config = await self._get_workflow_config(user_id, workflow_type, intent)
+        # Use cache if available - cache key based on user_id, not config objects
+        key = self.workflow_cache.get_cache_key(user_id, workflow_type, tools)
+        builder_fn = lambda: self.graph_builder.build_from_context(user_id, messages, tools, workflow_config)
         workflow = await self.workflow_cache.get_or_create(key, builder_fn)
         return workflow
 
-    async def _analyze_intent_structured(self, messages: List[Message], user_config: UserConfig):
+    async def _analyze_intent_structured(self, messages: List[Message], user_id: str):
         # Use grammar-constrained LLM-based intent agent to label the conversation
-        # Configuration and model profiles retrieved from shared data layer
+        # Configuration and model profiles retrieved internally from shared data layer using user_id
+        # Example: uc = await storage.get_service(storage.user_config).get_user_config(user_id)
+        # Example: mp = await get_model_profile_for_task(uc.model_profiles, ModelProfileType.Analysis, user_id)
         # (Implementation detail omitted)
         pass
 ```
@@ -287,22 +289,24 @@ class ComposerService:
 class GraphBuilder:
     """Constructs LangGraph workflows dynamically."""
 
-    def build_from_context(
+    async def build_from_context(
         self,
         user_id: str,
         messages: List[Message],
         tools: List[BaseTool],
-        config: WorkflowConfig,
-        model_profiles: ModelProfiles
+        workflow_config: WorkflowConfig
     ) -> CompiledGraph:
-        # Determine workflow type from intent (retrieved from shared data layer)
-        intent = config.intent_classification
+        # Configuration and model profiles retrieved internally from shared data layer
+        # Following pattern: uc = await storage.get_service(storage.user_config).get_user_config(user_id)
+        # Model profiles accessed via: get_model_profile_for_task(uc.model_profiles, task_type, user_id)
+        
+        intent = workflow_config.intent_classification
         if intent.deep_research:
-            return self.build_research_workflow(user_id, tools, config, model_profiles)
+            return await self.build_research_workflow(user_id, workflow_config)
         elif intent.image_generation:
-            return self.build_creative_workflow(user_id, tools, config, model_profiles)
+            return await self.build_creative_workflow(user_id, workflow_config)
         else:
-            return self.build_chat_workflow(user_id, tools, config, model_profiles)
+            return await self.build_chat_workflow(user_id, workflow_config)
 ```
 
 - **Configurability:** The config object (e.g. `ResearchConfig`) carries parameters like `search_depth`, `max_sources`, and `retrieve_full_content`. The graph builder passes these to nodes.
@@ -323,7 +327,7 @@ class ToolRegistry:
         self.dynamic_tools = {}  # id -> tool instance
         self.tool_embeddings = {}  # id -> embedding vector for semantic search
 
-    async def get_tools_for_context(self, intent: IntentAnalysis, user_config: UserConfig):
+    async def get_tools_for_context(self, intent: IntentAnalysis, user_id: str):
         """Select applicable tools based on intent and context."""
         tools = []
         # 1. Include relevant static tools (conditional standard tool collection)
@@ -333,7 +337,7 @@ class ToolRegistry:
         # 2. Dynamic tool generation or retrieval
         if intent.needs_dynamic_tool:
             spec = intent.tool_spec
-            tool = await self._generate_or_retrieve_dynamic_tool(user_config, spec)
+            tool = await self._generate_or_retrieve_dynamic_tool(user_id, spec)
             if tool:
                 tools.append(tool)
         return tools
@@ -398,6 +402,21 @@ class ToolRegistry:
 
 **Key Points:**
 
+- **Data Layer Access Pattern:** Configuration and model profiles retrieved using shared data layer:
+
+  ```python
+  # Retrieve user configuration
+  uc = await storage.get_service(storage.user_config).get_user_config(user_id)
+  
+  # Get model profile for specific task
+  mp = await get_model_profile_for_task(
+      uc.model_profiles, 
+      ModelProfileType.Primary, 
+      user_id
+  )
+  ```
+
+- **Caching Efficiency:** 3-tier caching (memory -> redis -> postgres) makes repeated config retrieval efficient
 - **MCP Integration:** Tools can also be provided via the Model Context Protocol (MCP). By installing `langchain-mcp-adapters`, LangGraph agents can treat MCP-registered tools as first-class, reusing corporate or partner tool definitions.
 
 ### 4.1.4 State Manager Module
@@ -407,16 +426,19 @@ class ToolRegistry:
 class StateManager:
     """Manages workflow state, checkpoints, and context length."""
 
-    def create_initial_state(
+    async def create_initial_state(
         self,
         messages: List[Message],
-        user_id: str,
-        user_config: UserConfig
+        user_id: str
     ) -> WorkflowState:
+        # User configuration retrieved internally from shared data layer
+        # Example: uc = await storage.get_service(storage.user_config).get_user_config(user_id)
+        # 3-tier caching (memory -> redis -> postgres) makes repeated retrieval efficient
+        
         state = WorkflowState(
             messages=messages,
             user_id=user_id,
-            user_config=user_config,
+            # user_config not stored in state - retrieved as needed with user_id
             # ... other initial state fields ...
         )
         return state
@@ -499,15 +521,16 @@ class EngineeringAgentNode:
 ```python
 # composer/workflows/chat.py
 
-def build_chat_workflow(config: ChatConfig) -> StateGraph:
+async def build_chat_workflow(user_id: str, workflow_config: ChatConfig) -> StateGraph:
     workflow = StateGraph(WorkflowState)
 
-    workflow.add_node("rag_enrichment", RAGNode())
-    workflow.add_node("engineering_agent", EngineeringAgentNode())
+    workflow.add_node("rag_enrichment", RAGNode(user_id))
+    workflow.add_node("engineering_agent", EngineeringAgentNode(user_id))
     # Primary agent node: enable streaming for UI responsiveness
+    # Model profile retrieved internally using user_id
     workflow.add_node("agent", PipelineNode(
-        pipeline_factory,
-        lambda s: s.user_config.model_profiles.primary_profile,
+        user_id,
+        ModelProfileType.Primary,
         stream=True  # stream responses for primary chat agent
     ))
     workflow.add_node("tools", ToolExecutorNode())
@@ -542,12 +565,13 @@ async for event in workflow.astream_events(initial_state, version="v2"):
 ```python
 # composer/workflows/research.py
 
-def build_research_workflow(config: ResearchConfig) -> StateGraph:
+async def build_research_workflow(user_id: str, workflow_config: ResearchConfig) -> StateGraph:
     workflow = StateGraph(ResearchState)
 
-    workflow.add_node("query_expansion", QueryExpansionNode(depth=config.search_depth))
-    workflow.add_node("parallel_search", ParallelSearchNode(max_sources=config.max_sources, full_text=config.retrieve_full_content))
-    workflow.add_node("synthesis", SynthesisNode())
+    # Configuration values retrieved internally via user_id in each node
+    workflow.add_node("query_expansion", QueryExpansionNode(user_id, depth=workflow_config.search_depth))
+    workflow.add_node("parallel_search", ParallelSearchNode(user_id, max_sources=workflow_config.max_sources, full_text=workflow_config.retrieve_full_content))
+    workflow.add_node("synthesis", SynthesisNode(user_id))
 
     workflow.set_entry_point("query_expansion")
     workflow.add_edge("query_expansion", "parallel_search")
@@ -567,7 +591,7 @@ def build_research_workflow(config: ResearchConfig) -> StateGraph:
 
 A clean, structured file hierarchy is mandatory for managing complexity. Following inference service patterns:
 
-```
+```text
 composer/
 ├── requirements.txt
 ├── pyproject.toml             # Python package configuration
@@ -765,7 +789,7 @@ async def test_pipeline_node():
 # tests/composer/test_workflows.py
 async def test_chat_workflow():
     """Test complete chat workflow"""
-    workflow = build_chat_workflow(ChatConfig())
+    workflow = await build_chat_workflow(user_id, ChatConfig())
     result = await workflow.ainvoke(initial_state)
     assert result.messages[-1].role == MessageRole.ASSISTANT
 
@@ -802,7 +826,7 @@ async def test_end_to_end_chat():
 # tests/integration/test_streaming.py
 async def test_selective_streaming():
     """Verify streaming modes work correctly"""
-    workflow = build_chat_workflow(ChatConfig(stream=True))
+    workflow = await build_chat_workflow(user_id, ChatConfig(stream=True))
     events = []
     
     async for event in workflow.astream_events(initial_state, version="v2"):
@@ -848,8 +872,8 @@ async def test_rag_depth_performance():
     shallow_config = ResearchConfig(search_depth="SHALLOW", max_sources=3)
     deep_config = ResearchConfig(search_depth="DEEP", max_sources=10)
     
-    shallow_workflow = build_research_workflow(shallow_config)
-    deep_workflow = build_research_workflow(deep_config)
+    shallow_workflow = await build_research_workflow(user_id, shallow_config)
+    deep_workflow = await build_research_workflow(user_id, deep_config)
     
     # Shallow should be faster
     shallow_time = await measure_execution_time(shallow_workflow, test_state)
@@ -1373,7 +1397,10 @@ The proposed architecture fully complies with and leverages the core capabilitie
 - Use existing PostgreSQL connection patterns from `inference/server/config.py`
 - Leverage existing database schema in `inference/server/db/sql/`
 - Follow connection pooling patterns from server service
-- Access user configuration and model profiles through shared data layer (ConversationContext not available)
+- Access user configuration and model profiles through shared data layer using user_id (ConversationContext not available)
+- Follow existing pattern: `await storage.get_service(storage.user_config).get_user_config(user_id)`
+- Use `get_model_profile_for_task()` utility for model profile retrieval
+- Leverage 3-tier caching system for efficient repeated access
 
 **Configuration Management:**
 
