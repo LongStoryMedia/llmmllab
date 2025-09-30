@@ -8,7 +8,7 @@ The analysis confirms that the specified refactoring requirements—incorporatin
 
 The foundation of system integrity is provided by LangGraph V1 alpha's features, particularly its **Durable Execution** capability, which provides a built-in agent runtime ensuring state continuity and reliability. This resilience is essential because the architecture mandates moving the actual execution of the complex agent graph into the remote composer service. Furthermore, LangGraph V1 emphasizes **Execution Control**, enabling "fine-tuned control over execution." This programmatic control is the prerequisite for implementing the conditional logic that governs dynamic tool selection and the flexible routing necessary for configurable RAG depth.
 
-Leveraging LangGraph v1 capabilities, this refactoring will deliver robust, scalable, and maintainable workflows encompassing adaptive retrieval, dynamic tool management, multi-agent orchestration, and precise streaming control. The document captures all architectural motivations, detailed requirements, code examples, validation grounds, and strategic implementation phases to enable a smooth migration and future system growth.
+Leveraging LangGraph v1 capabilities and **grammar-constrained structured output**, this refactoring will deliver robust, scalable, and maintainable workflows encompassing adaptive retrieval, dynamic tool management, multi-agent orchestration, and precise streaming control. The integration of llamacpp grammars ensures type-safe, reliable LLM output across all agent interactions, eliminating JSON parsing errors and providing guaranteed structure validation. The document captures all architectural motivations, detailed requirements, code examples, validation grounds, and strategic implementation phases to enable a smooth migration and future system growth.
 
 -----
 
@@ -44,7 +44,8 @@ The Composer is responsible for:
 - **Streaming orchestration:** Uses LangGraph's `astream_events` API to manage and route streaming events for primary chat interaction and control non-streaming responses from secondary nodes smoothly.
 - **State management:** Maintains a unified, authoritative GraphState with full persistence, checkpoints, and seamless recovery.
 - **Tool management:** Centralizes tool registration, dynamic generation and discovery, leveraging semantic search to maximize reuse and minimize redundancy.
-- **Intent analysis:** Runs LLM-based intent classifiers early in workflows to set retrieval depth, determine toolsets, and drive conditional routing.
+- **Intent analysis:** Runs grammar-constrained LLM intent classifiers with guaranteed structured output to set retrieval depth, determine toolsets, and drive conditional routing.
+- **Structured Output Control:** Implements llamacpp grammar constraints across all agent nodes to ensure type-safe, validated LLM responses with automatic Pydantic model parsing.
 - **Error resiliency:** Coordinates circuit breaker protections, error handling, and retry policies at per-node granularity.
 - **Multi-agent orchestration:** Implements cross-agent handoffs through LangGraph `Command` primitives for complex collaborative workflows.
 
@@ -88,7 +89,7 @@ A foundational requirement for a sophisticated, durable LangGraph system is the 
 | Field Name | Type | Reducer Function (LangGraph) | Purpose |
 | :--- | :--- | :--- | :--- |
 | `messages` | `List` | `lambda x, y: x.concat(y)` | Conversation history and final outputs, essential for context and token streaming. |
-| `intent_classification` | `IntentSchema` | `lambda x, y: y` | Structured output from the Intent Agent, directing subsequent RAG and tool decisions. |
+| `intent_classification` | `IntentAnalysis` | `lambda x, y: y` | Grammar-constrained structured output from Intent Agent using `intent_analysis.yaml` schema. |
 | `required_tools` | `List` | `lambda x, y: y` | The curated list of standard and dynamic tools collected for the current execution phase. |
 | `search_results` | `str` | `lambda x, y: y` | The consolidated, synthesized output from RAG execution (whether shallow or deep). |
 | `rag_depth_config` | `str` | `lambda x, y: y` | Stores the decision ('SHALLOW' or 'DEEP'), which drives the conditional edge for RAG routing. |
@@ -127,7 +128,7 @@ This addresses the need for configurable knowledge retrieval, moving away from a
 
 #### 3.3.1 The Intent Agent's Role in RAG Depth Selection
 
-The `IntentClassifierAgent` is mandated to execute early in the graph flow. A node within this agent, `decide_search_depth`, analyzes the initial user message. Its LLM prompt must be specifically designed to output a structured Pydantic object that includes the required search complexity, setting the `rag_depth_config` field in the GraphState to either `'SHALLOW'` or `'DEEP'`.
+The `IntentClassifierAgent` is mandated to execute early in the graph flow using **grammar-constrained structured output**. A node within this agent, `decide_search_depth`, analyzes the initial user message using llamacpp grammars derived from the `intent_analysis.yaml` schema. The grammar ensures the LLM output is guaranteed to match the `IntentAnalysis` Pydantic model, including valid search complexity values, automatically setting the `rag_depth_config` field in the GraphState to either `'SHALLOW'` or `'DEEP'` with type safety.
 
 #### 3.3.2 Defining RAG Complexity Levels
 
@@ -140,11 +141,65 @@ After the `IntentClassifierAgent` completes, the flow routes to a designated `Ro
 
 ### 3.4 Intent-Driven Dynamic Tool Discovery and Composability
 
-This demands a high degree of agent intelligence to select, modify, compose, and generate executable functions dynamically based on user intent, leveraging LangChain Expression Language (LCEL).
+This demands a high degree of agent intelligence to select, modify, compose, and generate executable functions dynamically based on **grammar-constrained intent analysis**, leveraging LangChain Expression Language (LCEL) with structured output validation.
+
+#### 3.4.0 Structured Intent Analysis Implementation
+
+```python
+# composer/nodes/intent_classifier.py
+from models.intent_analysis import IntentAnalysis
+from utils.grammar_generator import GrammarGenerator
+
+class IntentClassifierNode:
+    """Grammar-constrained intent analysis node."""
+    
+    def __init__(self, pipeline_factory):
+        self.pipeline_factory = pipeline_factory
+        # Generate grammar for intent analysis at initialization
+        self.intent_grammar = GrammarGenerator.from_pydantic_model(IntentAnalysis)
+    
+    async def __call__(self, state: WorkflowState) -> WorkflowState:
+        """Analyze intent with guaranteed structured output."""
+        
+        # Create grammar-constrained pipeline
+        structured_pipeline = await self.pipeline_factory.create_structured_pipeline(
+            prompt_template=self._get_intent_prompt(),
+            output_schema=IntentAnalysis,
+            grammar=self.intent_grammar,
+            enable_fallback=True
+        )
+        
+        # Execute with type-safe result
+        intent_analysis = await structured_pipeline.execute({
+            "user_query": state.messages[-1].content,
+            "conversation_context": self._format_context(state.messages)
+        })
+        
+        # Update state with validated structured output
+        state.intent_classification = intent_analysis
+        state.rag_depth_config = intent_analysis.search_complexity.value
+        
+        return state
+    
+    def _get_intent_prompt(self) -> str:
+        return """Analyze the user's request and classify their intent.
+        
+        User Query: {user_query}
+        Conversation Context: {conversation_context}
+        
+        Classify the intent including:
+        1. Main intent category and complexity
+        2. Required search depth (SHALLOW or DEEP)
+        3. Tool requirements and capabilities needed
+        4. Resource intensity and time sensitivity
+        
+        Respond with valid JSON matching the IntentAnalysis schema.
+        All fields are required and must conform to the specified enums and constraints."""
+```
 
 #### 3.4.1 Phase 1: Intent Discovery and Conditional Standard Tool Collection
 
-The `IntentClassifierAgent` serves as the initial tool orchestration manager. It outputs a structured `IntentSchema` detailing functional needs. Based on this, **Conditional Standard Tool Collection** occurs: pre-defined, standard tools are registered and conditionally included in the `required_tools` list in the GraphState.
+The `IntentClassifierAgent` serves as the initial tool orchestration manager using **grammar-constrained output**. It generates a type-safe `IntentAnalysis` model detailing functional needs with guaranteed structure validation. Based on this structured analysis, **Conditional Standard Tool Collection** occurs: pre-defined, standard tools are registered and conditionally included in the `required_tools` list in the GraphState. The grammar constraints ensure tool requirements are properly validated and formatted.
 
 #### 3.4.2 Phase 2: Dynamic Tool Assessment and Creation Logic
 
@@ -152,10 +207,10 @@ If standard tools are insufficient, the **Dynamic Tool Agent (DTA)** begins an i
 
 1. The DTA queries a **Tool Registry Vector Database (VDB)**, which stores descriptions and schemas of all existing dynamic tools.
 2. It performs a semantic similarity check, comparing the user's functional requirement against the existing tool descriptions.
-3. An LLM call judges relevance, culminating in a decisive workflow:
+3. A **grammar-constrained LLM call** using `dynamic_tool_spec.yaml` schema ensures structured tool assessment, culminating in a decisive workflow:
       - **Use Existing:** If similarity score is high (e.g., \> 0.9), the existing tool is used.
-      - **Modify or Compose:** If similarity is moderate (e.g., 0.6 - 0.9), the agent determines the existing tool requires modification, or multiple tools must be chained together using LCEL.
-      - **Create New:** If similarity is low (e.g., \< 0.6), the agent initiates an LLM-driven process to generate the code and schema for a new tool.
+      - **Modify or Compose:** If similarity is moderate (e.g., 0.6 - 0.9), the agent generates a structured modification specification with guaranteed valid LCEL composition syntax.
+      - **Create New:** If similarity is low (e.g., \< 0.6), the agent initiates a **structured LLM process** with grammar constraints to generate type-safe code and validated schema for a new tool.
 
 #### 3.4.3 Abstraction Mandate: Utilizing LCEL for Composability
 
@@ -169,7 +224,7 @@ Crucially, this complex sequence achieves **Abstraction** by utilizing the `.as_
 | :--- | :--- | :--- | :--- |
 | **Composability** | LCEL Pipe Operator (`|`) and`RunnableSequence`. | Tools are defined as runnable objects that pass output of one to input of the next. | Allows rapid assembly of bespoke tools from existing atomic functions. |
 | **Abstraction** | `.as_tool()` method. | Attaches a name, description, and schema to a complex LCEL sequence. | Hides complexity from the reasoning LLM, simplifying agent decision-making. |
-| **Dynamic Creation** | LLM Output Parsing + Code Generation. | Intent Agent output dictates schema; LLM generates function code/LCEL sequence. | Enables creation of genuinely new, purpose-built tools on demand. |
+| **Dynamic Creation** | Grammar-Constrained LLM + Structured Output Parsing. | Intent Agent output dictates schema; grammar-constrained LLM generates validated function code/LCEL sequence using `dynamic_tool_spec.yaml`. | Enables creation of genuinely new, purpose-built tools with guaranteed syntax validity and type safety. |
 
 -----
 
@@ -195,8 +250,8 @@ class ComposerService:
         workflow_type: WorkflowType
     ) -> CompiledGraph:
         """Construct or retrieve a compiled graph for the given conversation."""
-        # Determine tools and intent before building
-        intent = await self._analyze_intent(conversation_ctx)
+        # Determine tools and intent before building using structured output
+        intent = await self._analyze_intent_structured(conversation_ctx)
         tools = await self.tool_registry.get_tools_for_context(intent, conversation_ctx)
         # Incorporate conversation-specific config (e.g. search complexity)
         config = conversation_ctx.user_config.get_workflow_config(workflow_type, intent)
@@ -258,7 +313,7 @@ class ToolRegistry:
         self.dynamic_tools = {}  # id -> tool instance
         self.tool_embeddings = {}  # id -> embedding vector for semantic search
 
-    async def get_tools_for_context(self, intent, conversation_ctx):
+    async def get_tools_for_context(self, intent: IntentAnalysis, conversation_ctx: ConversationContext):
         """Select applicable tools based on intent and context."""
         tools = []
         # 1. Include relevant static tools (conditional standard tool collection)
@@ -290,14 +345,45 @@ class ToolRegistry:
                 return existing_tool.clone_with_new_params(spec.parameters)
             else:
                 return existing_tool
-        # Create New
+        # Create New with Grammar-Constrained Generation
         else:
-            code = await LLM.generate_tool_code(spec)
-            new_tool = compile_tool_from_code(code)
+            # Use structured output for guaranteed valid tool specification
+            tool_spec = await self._generate_tool_spec_structured(spec)
+            new_tool = await self._compile_tool_from_structured_spec(tool_spec)
             tool_id = new_tool.name
             self.dynamic_tools[tool_id] = new_tool
             self.tool_embeddings[tool_id] = spec_vec
             return new_tool
+    
+    async def _generate_tool_spec_structured(self, spec) -> DynamicToolSpec:
+        """Generate structured tool specification using grammar constraints."""
+        from utils.grammar_generator import GrammarGenerator
+        from models.dynamic_tool_spec import DynamicToolSpec
+        
+        # Generate grammar for tool specification
+        grammar = GrammarGenerator.from_pydantic_model(DynamicToolSpec)
+        
+        # Create grammar-constrained pipeline
+        pipeline = await self.pipeline_factory.create_structured_pipeline(
+            prompt_template=self._get_tool_generation_prompt(),
+            output_schema=DynamicToolSpec,
+            grammar=grammar,
+            enable_fallback=True
+        )
+        
+        # Generate structured tool specification
+        return await pipeline.execute({"requirement": spec.description})
+    
+    async def _compile_tool_from_structured_spec(self, tool_spec: DynamicToolSpec):
+        """Compile tool from validated structured specification."""
+        # Validate Python code syntax before compilation
+        try:
+            compile(tool_spec.implementation, '<dynamic_tool>', 'exec')
+        except SyntaxError as e:
+            raise ToolGenerationError(f"Generated tool has syntax errors: {e}")
+        
+        # Create tool from validated specification
+        return self._create_tool_instance(tool_spec)
 ```
 
 **Key Points:**
@@ -919,9 +1005,151 @@ class ComposerConfig:
         )
 ```
 
-### 5.7 Schema Integration and Code Generation
+### 5.7 Structured Output Integration
 
-Following the existing codebase pattern of YAML-driven development:
+#### Grammar-Constrained LLM Output System
+
+The refactored system integrates **llamacpp grammar constraints** to ensure reliable, type-safe structured output across all LLM interactions. This eliminates JSON parsing errors and provides guaranteed validation.
+
+##### Core Structured Output Components
+
+```python
+# composer/utils/structured_output.py
+from typing import Type, TypeVar, Dict, Any
+from pydantic import BaseModel
+from utils.grammar_generator import GrammarGenerator
+
+T = TypeVar('T', bound=BaseModel)
+
+class StructuredOutputPipeline:
+    """Pipeline wrapper for grammar-constrained structured output."""
+    
+    def __init__(self, pipeline_factory):
+        self.pipeline_factory = pipeline_factory
+        self._grammar_cache: Dict[str, str] = {}
+    
+    async def create_structured_pipeline(
+        self,
+        prompt_template: str,
+        output_schema: Type[T],
+        enable_fallback: bool = True,
+        max_retries: int = 3,
+        **kwargs
+    ) -> 'StructuredPipeline[T]':
+        """Create grammar-constrained pipeline for structured output."""
+        
+        # Generate or retrieve cached grammar
+        schema_key = f"{output_schema.__name__}_{hash(str(output_schema.schema()))}"
+        if schema_key not in self._grammar_cache:
+            self._grammar_cache[schema_key] = GrammarGenerator.from_pydantic_model(output_schema)
+        
+        grammar = self._grammar_cache[schema_key]
+        
+        # Create grammar-constrained pipeline
+        pipeline = await self.pipeline_factory.create_grammar_pipeline(
+            prompt_template=prompt_template,
+            grammar=grammar,
+            output_schema=output_schema,
+            enable_fallback=enable_fallback,
+            max_retries=max_retries,
+            **kwargs
+        )
+        
+        return StructuredPipeline(pipeline, output_schema)
+
+class StructuredPipeline:
+    """Grammar-constrained pipeline with type-safe execution."""
+    
+    def __init__(self, pipeline, output_schema: Type[T]):
+        self.pipeline = pipeline
+        self.output_schema = output_schema
+    
+    async def execute(self, inputs: Dict[str, Any]) -> T:
+        """Execute pipeline with guaranteed structured output."""
+        try:
+            # Execute with grammar constraints
+            result = await self.pipeline.invoke(inputs)
+            
+            # Validate and parse result
+            if isinstance(result, self.output_schema):
+                return result
+            elif isinstance(result, dict):
+                return self.output_schema(**result)
+            else:
+                # Parse JSON string result
+                import json
+                data = json.loads(str(result)) if isinstance(result, str) else result
+                return self.output_schema(**data)
+                
+        except Exception as e:
+            raise StructuredOutputError(f"Failed to generate structured output: {e}")
+
+class StructuredOutputError(Exception):
+    """Exception raised when structured output generation fails."""
+    pass
+```
+
+##### Integration with Agent Nodes
+
+All agent nodes use structured output through base class integration:
+
+```python
+# composer/nodes/base_structured_node.py
+from abc import ABC, abstractmethod
+from typing import Type, TypeVar, Generic
+from pydantic import BaseModel
+
+T = TypeVar('T', bound=BaseModel)
+
+class BaseStructuredNode(ABC, Generic[T]):
+    """Base class for nodes with structured output requirements."""
+    
+    def __init__(self, output_schema: Type[T], pipeline_factory):
+        self.output_schema = output_schema
+        self.structured_output = StructuredOutputPipeline(pipeline_factory)
+    
+    @abstractmethod
+    def get_prompt_template(self) -> str:
+        """Return the prompt template for structured output generation."""
+        pass
+    
+    async def execute_structured(
+        self,
+        inputs: Dict[str, Any],
+        **kwargs
+    ) -> T:
+        """Execute node with guaranteed structured output."""
+        
+        pipeline = await self.structured_output.create_structured_pipeline(
+            prompt_template=self.get_prompt_template(),
+            output_schema=self.output_schema,
+            **kwargs
+        )
+        
+        return await pipeline.execute(inputs)
+```
+
+##### Structured Output Configuration
+
+```python
+# composer/config.py (addition)
+@dataclass
+class StructuredOutputConfig:
+    """Configuration for grammar-constrained output."""
+    enable_grammar_constraints: bool = True
+    fallback_on_grammar_failure: bool = True
+    max_grammar_retries: int = 3
+    grammar_cache_size: int = 100
+    grammar_validation_strict: bool = False
+    
+    # Performance settings
+    grammar_generation_timeout: float = 10.0
+    structured_parsing_timeout: float = 5.0
+```
+
+### 5.8 Schema Integration and Code Generation
+
+Following the existing codebase pattern of YAML-driven development with structured output support:
 
 #### Required Schema Definitions
 
@@ -952,7 +1180,7 @@ properties:
 # schemas/workflow_state.yaml  
 $schema: http://json-schema.org/draft-07/schema#
 title: WorkflowState
-description: LangGraph workflow state schema
+description: LangGraph workflow state schema with structured output support
 type: object
 properties:
   messages:
@@ -962,6 +1190,43 @@ properties:
   intent_classification:
     $ref: intent_analysis.yaml
   required_tools:
+    type: array
+    items:
+      type: string
+  search_results:
+    type: string
+  rag_depth_config:
+    type: string
+    enum: ["SHALLOW", "DEEP"]
+  progress_updates:
+    type: array
+    items:
+      type: string
+
+# schemas/structured_output_config.yaml
+$schema: http://json-schema.org/draft-07/schema#
+title: StructuredOutputConfig
+description: Configuration for grammar-constrained structured output
+type: object
+properties:
+  enable_grammar_constraints:
+    type: boolean
+    default: true
+  fallback_on_grammar_failure:
+    type: boolean
+    default: true
+  max_grammar_retries:
+    type: integer
+    default: 3
+    minimum: 1
+    maximum: 10
+  grammar_cache_size:
+    type: integer
+    default: 100
+    minimum: 10
+  grammar_validation_strict:
+    type: boolean
+    default: false
     type: array
     items:
       $ref: available_tool.yaml

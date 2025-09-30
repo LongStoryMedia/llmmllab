@@ -312,16 +312,16 @@ class BaseAnalysisAgent(ABC, Generic[T]):
 - Guaranteed valid question structure
 - Proper node type validation
 
-#### 4. Memory Synthesis
+#### 4. Memory Storage and Synthesis
 
-**Files**: `composer/services/memory_synthesis.py`
-**Current State**: Free-form synthesis
-**Required Schema**: Create `schemas/memory_synthesis.yaml`
+**Files**: `composer/services/memory_service.py`
+**Current State**: Basic memory storage
+**Required Schema**: Use existing `schemas/memory.yaml`
 **Updates Needed**:
 
-- Structured memory consolidation
-- Tagged memory categories
-- Importance scoring
+- Grammar-constrained memory fragment creation
+- Structured memory consolidation using existing schema
+- Type-safe memory source classification
 
 #### 5. Conversation Summarization
 
@@ -344,132 +344,6 @@ class BaseAnalysisAgent(ABC, Generic[T]):
 - Structured error categorization
 - Solution suggestions
 - Severity classification
-
-### New Schema Requirements
-
-#### Dynamic Tool Specification
-
-```yaml
-# schemas/dynamic_tool_spec.yaml
-type: object
-required:
-  - name
-  - description
-  - parameters
-  - implementation
-properties:
-  name:
-    type: string
-    pattern: "^[a-zA-Z_][a-zA-Z0-9_]*$"
-    description: Valid Python function name
-  description:
-    type: string
-    maxLength: 500
-    description: Tool description for LangChain
-  parameters:
-    type: object
-    description: JSON schema for tool parameters
-  implementation:
-    type: string
-    description: Complete Python function implementation
-  dependencies:
-    type: array
-    items:
-      type: string
-    description: Required Python imports
-  error_handling:
-    type: string
-    description: Error handling strategy
-  validation_rules:
-    type: array
-    items:
-      type: string
-    description: Input validation requirements
-```
-
-#### Research Plan Structure
-
-```yaml
-# schemas/research_plan.yaml
-type: object
-required:
-  - plan_overview
-  - questions
-  - execution_strategy
-properties:
-  plan_overview:
-    type: string
-    maxLength: 1000
-    description: Research approach summary
-  questions:
-    type: array
-    minItems: 1
-    maxItems: 8
-    items:
-      $ref: "research_question_structured.yaml"
-  execution_strategy:
-    type: string
-    enum: ["parallel", "sequential", "priority_based"]
-    default: "priority_based"
-  estimated_duration:
-    type: integer
-    minimum: 1
-    description: Estimated completion time in minutes
-  confidence_level:
-    type: number
-    minimum: 0.0
-    maximum: 1.0
-    description: Confidence in plan effectiveness
-```
-
-#### Memory Synthesis Structure
-
-```yaml
-# schemas/memory_synthesis.yaml
-type: object
-required:
-  - synthesis_summary
-  - key_concepts
-  - memory_categories
-properties:
-  synthesis_summary:
-    type: string
-    maxLength: 2000
-    description: Consolidated memory summary
-  key_concepts:
-    type: array
-    items:
-      type: object
-      required: [concept, importance, context]
-      properties:
-        concept:
-          type: string
-        importance:
-          type: number
-          minimum: 0.0
-          maximum: 1.0
-        context:
-          type: string
-  memory_categories:
-    type: array
-    items:
-      type: object
-      required: [category, memories, weight]
-      properties:
-        category:
-          type: string
-        memories:
-          type: array
-          items:
-            type: integer
-        weight:
-          type: number
-  consolidation_actions:
-    type: array
-    items:
-      type: string
-      enum: ["merge", "archive", "highlight", "delete"]
-```
 
 ## Implementation Plan
 
@@ -615,39 +489,47 @@ Respond with valid JSON matching the DynamicToolSpec schema.
 
 ### Phase 4: Memory & Summarization
 
-#### Step 1: Memory Synthesis Update
+#### Step 1: Memory Service Update
 
 ```python
-# composer/services/structured_memory_synthesis.py
-class StructuredMemorySynthesis(BaseAnalysisAgent[MemorySynthesis]):
+# composer/services/structured_memory_service.py
+from models.memory import Memory
+from models.memory_fragment import MemoryFragment
+from models.memory_source import MemorySource
+
+class StructuredMemoryService(BaseAnalysisAgent[Memory]):
     def __init__(self):
         super().__init__(
-            ModelProfileType.MemorySynthesis,
-            MemorySynthesis
+            ModelProfileType.MemoryStorage,
+            Memory
         )
     
-    async def synthesize_memories(self, memories: List[Memory], conversation_ctx: ConversationCtx) -> MemorySynthesis:
-        """Create structured synthesis of conversation memories."""
-        memory_content = self._format_memories_for_synthesis(memories)
-        prompt = self.create_synthesis_prompt(memory_content)
-        
+    async def create_memory_from_conversation(
+        self, 
+        content: str, 
+        source_type: MemorySource, 
+        conversation_ctx: ConversationCtx
+    ) -> Memory:
+        """Create structured memory from conversation content."""
+        prompt = self.create_memory_prompt(content, source_type)
         pipeline = await self.get_structured_pipeline(conversation_ctx)
         return await pipeline.run_structured(prompt)
     
-    def create_synthesis_prompt(self, memory_content: str) -> str:
+    def create_memory_prompt(self, content: str, source_type: MemorySource) -> str:
         return f"""
-Analyze and synthesize the following conversation memories into a structured format.
+Analyze the conversation content and create structured memory fragments.
 
-Memories:
-{memory_content}
+Content:
+{content}
 
-Create a comprehensive synthesis including:
-1. Overall summary of key information
-2. Important concepts with importance ratings (0.0-1.0)
-3. Memory categorization with weights
-4. Recommended consolidation actions
+Source Type: {source_type.value}
 
-Respond with valid JSON matching the MemorySynthesis schema.
+Create structured memory with:
+1. Meaningful memory fragments with role and content
+2. Appropriate timestamps and similarity scoring
+3. Source identification and conversation linking
+
+Respond with valid JSON matching the Memory schema.
 """
 ```
 
