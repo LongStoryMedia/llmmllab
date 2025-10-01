@@ -5,30 +5,13 @@ Constructs LangGraph workflows dynamically based on conversation context and too
 
 from typing import Dict, Any, List
 
+from langgraph.graph import StateGraph, END, START
 from langgraph.graph.state import CompiledStateGraph
 from models.available_tool import AvailableTool
 from models.workflow_type import WorkflowType
 from composer.monitoring.logging import composer_logger
 from models import Message
 from composer.core.errors import WorkflowConstructionError
-
-
-# Temporary placeholder until proper LangGraph implementation
-class _PlaceholderCompiledGraph:
-    """Temporary placeholder that mimics CompiledStateGraph interface."""
-
-    def __init__(self, workflow_type: str, nodes: List[str], config: Dict[str, Any]):
-        self.workflow_type = workflow_type
-        self.nodes = nodes
-        self.config = config
-
-    async def ainvoke(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Placeholder for workflow execution."""
-        return state
-
-    async def astream_events(self, state: Dict[str, Any], version: str = "v2"):  # noqa: ARG002
-        """Placeholder for streaming."""
-        yield {"event": "placeholder", "data": state}
 
 
 class GraphBuilder:
@@ -39,8 +22,9 @@ class GraphBuilder:
     supporting different workflow types with appropriate node compositions.
     """
 
-    def __init__(self):
-        composer_logger.logger.info("GraphBuilder initialized")
+    def __init__(self, pipeline_factory=None):
+        self.pipeline_factory = pipeline_factory
+        composer_logger.logger.info("GraphBuilder initialized", extra={"has_pipeline_factory": pipeline_factory is not None})
 
     async def _get_user_config(self, user_id: str):
         """Get user configuration from shared data layer."""
@@ -146,8 +130,8 @@ class GraphBuilder:
             if not user_config:
                 raise WorkflowConstructionError("Unable to retrieve user configuration")
 
-            # Initialize pipeline factory (placeholder - will be injected)
-            pipeline_factory = None  # TODO: Inject from service
+            # Use injected pipeline factory
+            pipeline_factory = self.pipeline_factory
 
             # Add nodes to workflow
             workflow.add_node("intent_classifier", IntentClassifierNode(pipeline_factory))
@@ -252,8 +236,8 @@ class GraphBuilder:
             if not user_config:
                 raise WorkflowConstructionError("Unable to retrieve user configuration")
 
-            # Initialize pipeline factory (placeholder - will be injected)
-            pipeline_factory = None  # TODO: Inject from service
+            # Use injected pipeline factory
+            pipeline_factory = self.pipeline_factory
 
             # Add research-specific nodes
             workflow.add_node("intent_classifier", IntentClassifierNode(pipeline_factory))
@@ -314,28 +298,74 @@ class GraphBuilder:
             "final_response",
         ]
 
-        workflow_config = {
-            "enable_handoffs": (
-                workflow_config_obj.enable_multi_agent if workflow_config_obj else True
-            ),
-                        "max_agent_iterations": 5,  # PLACEHOLDER: Add to workflow config schema
-            "tools": [tool.dict() for tool in tools],
-        }
+        try:
+            from langgraph.graph import StateGraph, END
+            from composer.graph.state import WorkflowState
+            from composer.nodes.standard import PipelineNode, ToolExecutorNode
+            from composer.nodes.specialized import IntentClassifierNode, EngineeringAgentNode
+            from models import ModelProfileType
+            
+            composer_logger.logger.info(
+                "Building multi-agent workflow",
+                extra={"user_id": user_id, "tool_count": len(tools)}
+            )
 
-        # PLACEHOLDER: Replace with actual LangGraph StateGraph construction and compilation
-        compiled_graph = _PlaceholderCompiledGraph(
-            "MULTI_AGENT", nodes, workflow_config
-        )
+            # Create workflow graph
+            workflow = StateGraph(WorkflowState)
 
-        composer_logger.logger.info(
-            "Built multi-agent workflow",
-            extra={
-                "node_count": len(nodes),
-                "max_iterations": workflow_config["max_agent_iterations"],
-            },
-        )
+            # Configuration retrieved internally from shared data layer using user_id
+            user_config = await self._get_user_config(user_id)
+            if not user_config:
+                raise WorkflowConstructionError("Unable to retrieve user configuration")
 
-        return compiled_graph  # type: ignore  # Placeholder until proper LangGraph implementation
+            # Use injected pipeline factory
+            pipeline_factory = self.pipeline_factory
+
+            # Add multi-agent coordination nodes
+            workflow.add_node("agent_router", IntentClassifierNode(pipeline_factory))
+            workflow.add_node("specialist_agent_1", EngineeringAgentNode(pipeline_factory))
+            workflow.add_node("specialist_agent_2", PipelineNode(
+                pipeline_factory, 
+                ModelProfileType.Analysis, 
+                stream=True
+            ))
+            workflow.add_node("coordination", PipelineNode(
+                pipeline_factory, 
+                ModelProfileType.Primary, 
+                stream=True
+            ))
+            workflow.add_node("final_response", PipelineNode(
+                pipeline_factory, 
+                ModelProfileType.Primary, 
+                stream=True
+            ))
+            
+            # Define multi-agent workflow logic
+            workflow.set_entry_point("agent_router")
+            workflow.add_edge("agent_router", "specialist_agent_1")
+            workflow.add_edge("specialist_agent_1", "coordination")
+            workflow.add_edge("coordination", "final_response")
+            workflow.add_edge("final_response", END)
+            
+            # Compile workflow
+            compiled_workflow = workflow.compile()
+            
+            composer_logger.logger.info(
+                "Built multi-agent workflow",
+                extra={
+                    "node_count": len(nodes),
+                    "enable_handoffs": workflow_config_obj.enable_multi_agent if workflow_config_obj else True,
+                },
+            )
+            
+            return compiled_workflow
+
+        except Exception as e:
+            composer_logger.logger.error(
+                "Failed to build multi-agent workflow",
+                extra={"user_id": user_id, "error": str(e)}
+            )
+            raise WorkflowConstructionError(f"Multi-agent workflow construction failed: {e}") from e
 
     async def build_creative_workflow(
         self, user_id: str, messages: List[Message], tools: List[AvailableTool]  # noqa: ARG002
@@ -357,27 +387,74 @@ class GraphBuilder:
             "output_formatting",
         ]
 
-        workflow_config = {
-                        "creative_mode": "balanced",  # PLACEHOLDER: Add creative_mode to workflow config schema
-            "refinement_iterations": 2,  # PLACEHOLDER: Add to workflow config schema
-            "enable_response_critique": (
-                refinement_config.enable_response_critique
-                if refinement_config
-                else True
-            ),
-            "tools": [tool.dict() for tool in tools],
-        }
+        try:
+            from langgraph.graph import StateGraph, END
+            from composer.graph.state import WorkflowState
+            from composer.nodes.standard import PipelineNode
+            from composer.nodes.specialized import IntentClassifierNode
+            from models import ModelProfileType
+            
+            composer_logger.logger.info(
+                "Building creative workflow",
+                extra={"user_id": user_id, "tool_count": len(tools)}
+            )
 
-        # PLACEHOLDER: Replace with actual LangGraph StateGraph construction and compilation
-        compiled_graph = _PlaceholderCompiledGraph("CREATIVE", nodes, workflow_config)
+            # Create workflow graph
+            workflow = StateGraph(WorkflowState)
 
-        composer_logger.logger.info(
-            "Built creative workflow",
-            extra={
-                "node_count": len(nodes),
-                "creative_mode": workflow_config["creative_mode"],
-                "refinement_iterations": workflow_config["refinement_iterations"],
-            },
-        )
+            # Configuration retrieved internally from shared data layer using user_id
+            user_config = await self._get_user_config(user_id)
+            if not user_config:
+                raise WorkflowConstructionError("Unable to retrieve user configuration")
 
-        return compiled_graph  # type: ignore  # Placeholder until proper LangGraph implementation
+            # Use injected pipeline factory
+            pipeline_factory = self.pipeline_factory
+
+            # Add creative workflow nodes
+            workflow.add_node("creative_planning", PipelineNode(
+                pipeline_factory, 
+                ModelProfileType.Primary, 
+                stream=False
+            ))
+            workflow.add_node("content_generation", PipelineNode(
+                pipeline_factory, 
+                ModelProfileType.Primary, 
+                stream=True
+            ))
+            workflow.add_node("refinement", PipelineNode(
+                pipeline_factory, 
+                ModelProfileType.SelfCritique, 
+                stream=False
+            ))
+            workflow.add_node("output_formatting", PipelineNode(
+                pipeline_factory, 
+                ModelProfileType.Formatting, 
+                stream=True
+            ))
+            
+            # Define creative workflow logic
+            workflow.set_entry_point("creative_planning")
+            workflow.add_edge("creative_planning", "content_generation")
+            workflow.add_edge("content_generation", "refinement")
+            workflow.add_edge("refinement", "output_formatting")
+            workflow.add_edge("output_formatting", END)
+            
+            # Compile workflow
+            compiled_workflow = workflow.compile()
+            
+            composer_logger.logger.info(
+                "Built creative workflow",
+                extra={
+                    "node_count": len(nodes),
+                    "enable_critique": refinement_config.enable_response_critique if refinement_config else True,
+                },
+            )
+            
+            return compiled_workflow
+
+        except Exception as e:
+            composer_logger.logger.error(
+                "Failed to build creative workflow",
+                extra={"user_id": user_id, "error": str(e)}
+            )
+            raise WorkflowConstructionError(f"Creative workflow construction failed: {e}") from e

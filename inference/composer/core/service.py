@@ -17,7 +17,8 @@ from langgraph.graph.state import CompiledStateGraph
 
 from models import IntentAnalysis, Message, WorkflowType, LangChainMessage
 
-from db import storage
+# Lazy import to avoid circular dependencies
+# from db import storage
 
 from composer.graph.state import WorkflowState, ChatWorkflowState, ResearchWorkflowState
 from composer.graph.builder import GraphBuilder
@@ -43,7 +44,16 @@ class ComposerService:
 
     def __init__(self):
         self.logger = composer_logger.logger
-        self.graph_builder = GraphBuilder()
+        
+        # Import pipeline factory to inject into GraphBuilder
+        try:
+            from runner import pipeline_factory
+            self.pipeline_factory = pipeline_factory
+        except ImportError as e:
+            self.logger.warning(f"Could not import pipeline_factory: {e}")
+            self.pipeline_factory = None
+        
+        self.graph_builder = GraphBuilder(pipeline_factory=self.pipeline_factory)
         self.tool_registry = ToolRegistry()
         # Workflow cache is now created per-user during workflow composition
         self.workflow_caches: Dict[str, WorkflowCache] = (
@@ -89,6 +99,7 @@ class ComposerService:
             # 1. Get user configuration from shared data layer
             # Configuration overrides and defaults are resolved at the data layer
             # ComposerService receives final resolved configuration
+            from db import storage
             user_config = await storage.get_service(
                 storage.user_config
             ).get_user_config(user_id)
@@ -181,6 +192,7 @@ class ComposerService:
         """Create initial workflow state from user configuration."""
 
         # Get user configuration for workflow preferences
+        from db import storage
         user_config = await storage.get_service(storage.user_config).get_user_config(
             user_id
         )
