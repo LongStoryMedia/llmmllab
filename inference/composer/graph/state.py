@@ -58,10 +58,6 @@ class WorkflowState(BaseModel):
         default=None, description="User identifier for personalization"
     )
 
-    conversation_id: Optional[str] = Field(
-        default=None, description="Conversation identifier for state persistence"
-    )
-
     workflow_type: Optional[str] = Field(
         default=None,
         description="Type of workflow: CHAT, RESEARCH, MULTI_AGENT, CREATIVE",

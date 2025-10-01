@@ -31,10 +31,6 @@ properties:
     type: boolean
     description: Always retrieve memories regardless of query content
     default: false
-  embedding_model_name:
-    type: string
-    description: Name of the embedding model to use for query encoding
-    default: "all-MiniLM-L6-v2"
   timeout:
     type: number
     description: Memory retrieval timeout in seconds
@@ -48,5 +44,4 @@ required:
   - enable_cross_conversation
   - similarity_threshold
   - always_retrieve
-  - embedding_model_name
   - timeout

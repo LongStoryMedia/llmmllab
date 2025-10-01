@@ -24,6 +24,7 @@ from models.message import Message
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
 from models.message_role import MessageRole
+from models.workflow_type import WorkflowType
 
 
 class TestComposerFunctionalInterface:
@@ -61,7 +62,6 @@ class TestComposerFunctionalInterface:
             images=[],
             conversation=conversation,
             current_user_message=test_message,
-            user_config=user_config,
         )
 
     @pytest.fixture
@@ -127,9 +127,11 @@ class TestComposerFunctionalInterface:
             # Initialize composer
             await initialize_composer()
 
-            # Test workflow composition - just verify the interface works
+            # Test workflow composition - extract user_id and messages for new interface
+            user_id = mock_conversation_ctx.conversation.user_id
+            messages = mock_conversation_ctx.messages
             result = await compose_workflow(
-                conversation_ctx=mock_conversation_ctx, workflow_type="CHAT"
+                user_id=user_id, messages=messages, workflow_type=WorkflowType.CHAT
             )
 
             # Verify result is returned
@@ -153,9 +155,11 @@ class TestComposerFunctionalInterface:
             # Initialize composer
             await initialize_composer()
 
-            # Test initial state creation
+            # Test initial state creation - extract user_id and messages for new interface
+            user_id = mock_conversation_ctx.conversation.user_id
+            messages = mock_conversation_ctx.messages
             result = await create_initial_state(
-                conversation_ctx=mock_conversation_ctx, workflow_type="CHAT"
+                user_id=user_id, messages=messages, workflow_type=WorkflowType.CHAT
             )
 
             # Verify result is returned

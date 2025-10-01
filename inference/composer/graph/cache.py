@@ -8,10 +8,8 @@ import hashlib
 import json
 import time
 from typing import Dict, Any, Optional, Callable, List
-import sys
 
-from models.user_config import UserConfig
-from models.available_tool import AvailableTool
+from models import AvailableTool, WorkflowType
 from composer.config import config
 from composer.monitoring.logging import composer_logger
 
@@ -44,7 +42,7 @@ class WorkflowCache:
     Caches compiled LangGraph workflows by (user_config, workflow_type, tools) signature.
     """
 
-    def __init__(self, max_size: int = 1000, default_ttl: int = None):
+    def __init__(self, max_size: int = 1000, default_ttl: Optional[int] = None):
         self.max_size = max_size
         self.default_ttl = default_ttl or config.default_workflow.workflow_cache_ttl
         self.cache: Dict[str, CacheEntry] = {}
@@ -53,25 +51,56 @@ class WorkflowCache:
         # Start background cleanup task
         self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
 
-    def get_cache_key(
-        self, user_config: UserConfig, workflow_type: str, tools: List[AvailableTool]
+    async def _get_user_config(self, user_id: str):
+        """Get user configuration from shared data layer."""
+        try:
+            from db import storage  # pylint: disable=import-outside-toplevel
+
+            # Initialize storage if not done
+            if not storage.pool:
+                composer_logger.logger.warning(
+                    "Database not initialized for WorkflowCache"
+                )
+                return None
+
+            user_config = await storage.get_service(
+                storage.user_config
+            ).get_user_config(user_id)
+            if not user_config:
+                composer_logger.logger.warning(
+                    f"No user config found for {user_id} in WorkflowCache"
+                )
+                return None
+            return user_config
+        except Exception as e:
+            composer_logger.logger.error(
+                f"Failed to get user config for {user_id} in WorkflowCache: {e}"
+            )
+            return None
+
+    async def get_cache_key(
+        self, user_id: str, workflow_type: WorkflowType, tools: List[AvailableTool]
     ) -> str:
         """
-        Generate cache key from user config, workflow type, and tools.
+        Generate cache key from user_id, workflow type, and tools.
+        Configuration is retrieved from shared data layer using user_id.
 
         The cache key uniquely identifies a workflow configuration to enable
         safe reuse across requests with identical parameters.
         """
+        # Get user configuration from shared data layer
+        user_config = await self._get_user_config(user_id)
+
         # Create deterministic representation
         key_data = {
-            "user_id": user_config.user_id if user_config else "anonymous",
-            "workflow_type": workflow_type,
+            "user_id": user_id,
+            "workflow_type": workflow_type.name,
             "model_profile": (
-                user_config.model_profiles.primary_profile.id
+                user_config.model_profiles.primary_profile_id
                 if user_config and user_config.model_profiles
                 else "default"
             ),
-            "tools": sorted([tool.id for tool in tools]),
+            "tools": sorted([tool.name for tool in tools if tool.name]),
             "preferences": (
                 user_config.preferences.dict()
                 if user_config and user_config.preferences

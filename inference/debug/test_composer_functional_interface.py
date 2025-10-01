@@ -21,6 +21,7 @@ from models.message import Message
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
 from models.message_role import MessageRole
+from models.workflow_type import WorkflowType
 from datetime import datetime
 
 
@@ -73,12 +74,14 @@ async def test_functional_interface():
             images=[],
             conversation=conversation,
             current_user_message=test_message,
-            user_config=user_config,
         )
 
         try:
+            # Extract user_id and messages for the new interface (architectural compliance)
+            user_id = conversation_ctx.conversation.user_id
+            messages = conversation_ctx.messages
             workflow = await compose_workflow(
-                conversation_ctx=conversation_ctx, workflow_type="CHAT"
+                user_id=user_id, messages=messages, workflow_type=WorkflowType.CHAT
             )
             print("✅ Workflow composed successfully (mock)")
             print(f"   Workflow type: {type(workflow)}")

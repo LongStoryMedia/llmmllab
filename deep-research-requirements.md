@@ -175,8 +175,13 @@ enum:
 
 Create `composer/agents/analysis/` directory structure:
 
+```txt
+composer/agents/analysis/
+├── __init__.py
+├── base_analysis_agent.py
+├── intent_analysis_agent.py
+└── research_task_agent.py
 ```
-composer/agents/analysis/\n├── __init__.py\n├── base_analysis_agent.py\n├── intent_analysis_agent.py\n└── research_task_agent.py\n```
 
 #### 1.2 Base Analysis Agent (`base_analysis_agent.py`)
 
@@ -308,16 +313,7 @@ Available computational requirements: high_memory, gpu_acceleration, parallel_pr
 User Request: {user_query}
 
 Respond with ONLY a JSON object in this exact format:
-{{
-    "primary_intent": "<intent_type>",
-    "complexity_level": "<complexity_level>",
-    "required_capabilities": ["<capability1>", "<capability2>"],
-    "computational_requirements": ["<requirement1>", "<requirement2>"],
-    "domain_specificity": 0.0,
-    "reusability_potential": 0.0,
-    "confidence": 0.0,
-    "reasoning": "Brief explanation of classification decisions"
-}}
+{{json.dumps(IntentAnalysis.model_json_schema())}}
 """
     
     # ... (existing parsing and fallback methods remain the same)
@@ -391,25 +387,7 @@ Available node types:
 - "dynamic_tool": For specialized tools generated per task
 
 Respond with ONLY a JSON object in this exact format:
-{{
-    "plan": "Detailed research plan overview describing the approach and methodology",
-    "questions": [
-        {{
-            "question": "Specific research question 1",
-            "keywords": ["keyword1", "keyword2", "keyword3"],
-            "node_type": "web_search",
-            "node_config": {{"max_results": 5, "search_depth": "standard"}},
-            "execution_priority": 1
-        }},
-        {{
-            "question": "Specific research question 2", 
-            "keywords": ["keyword1", "keyword2", "keyword3"],
-            "node_type": "agent_analysis",
-            "node_config": {{"analysis_type": "comparative", "depth": "detailed"}},
-            "execution_priority": 2
-        }}
-    ]
-}}
+{json.dumps(ResearchPlan.model_json_schema())}
 
 Guidelines:
 - Questions should be specific and answerable through the chosen method

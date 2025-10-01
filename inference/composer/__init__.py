@@ -1,15 +1,15 @@
 """
 Composer Service Interface Layer.
 
-Provides the public API boundary for the composer component, enabling other 
-services to interact with composer functionality while maintaining strict 
-architectural decoupling. This interface abstracts LangGraph workflow 
+Provides the public API boundary for the composer component, enabling other
+services to interact with composer functionality while maintaining strict
+architectural decoupling. This interface abstracts LangGraph workflow
 construction, execution, and state management.
 
 Interface Functions:
 - initialize_composer(): Service lifecycle management
-- compose_workflow(): Create executable LangGraph workflows  
-- create_initial_state(): Generate workflow state from conversation context
+- compose_workflow(): Create executable LangGraph workflows using user_id and messages
+- create_initial_state(): Generate workflow state from user_id and messages
 - execute_workflow(): Stream-enabled workflow execution
 - get_composer_config(): Runtime configuration access
 
@@ -20,11 +20,12 @@ Architectural Role:
 - Maintains Protocol-based decoupling requirements
 """
 
-from typing import Dict, Any, Optional, AsyncGenerator, Union
+from typing import Dict, Any, Optional, AsyncGenerator, Union, List
 from composer.core.service import ComposerService
 from composer.config import config
 from composer.monitoring.logging import composer_logger
-from models.conversation_ctx import ConversationCtx
+from models.message import Message
+from models.workflow_type import WorkflowType
 
 from langchain_core.runnables.schema import StreamEvent
 
@@ -34,7 +35,7 @@ _composer_service: Optional[ComposerService] = None
 
 async def initialize_composer() -> None:
     """Initialize the composer service. Should be called once at startup."""
-    global _composer_service
+    global _composer_service  # noqa: PLW0603
     if _composer_service is None:
         composer_logger.logger.info("Initializing composer service")
         _composer_service = ComposerService()
@@ -43,7 +44,7 @@ async def initialize_composer() -> None:
 
 async def shutdown_composer() -> None:
     """Shutdown the composer service. Should be called at server shutdown."""
-    global _composer_service
+    global _composer_service  # noqa: PLW0603
     if _composer_service:
         composer_logger.logger.info("Shutting down composer service")
         await _composer_service.shutdown()
@@ -60,17 +61,17 @@ def get_composer_service() -> ComposerService:
 
 
 async def compose_workflow(
-    conversation_ctx: ConversationCtx,
-    workflow_type: str,
-    config_overrides: Optional[Dict[str, Any]] = None,
+    user_id: str,
+    messages: List[Message],
+    workflow_type: WorkflowType,
 ):
     """
-    Compose a workflow for the given conversation context.
+    Compose a workflow for the given user and conversation messages.
 
     Args:
-        conversation_ctx: The conversation context
-        workflow_type: Type of workflow ("CHAT", "RESEARCH", etc.)
-        config_overrides: Optional configuration overrides
+        user_id: User ID for configuration retrieval from shared data layer
+        messages: List of conversation messages
+        workflow_type: Type of workflow (WorkflowType enum: CHAT, RESEARCH, MULTI_AGENT, CREATIVE)
 
     Returns:
         CompiledStateGraph: Ready to execute LangGraph workflow
@@ -78,22 +79,39 @@ async def compose_workflow(
     Raises:
         RuntimeError: If composer service not initialized
         WorkflowConstructionError: If workflow construction fails
+
+    Note:
+        Configuration is retrieved from shared data layer using user_id.
+        No configuration objects should be passed as arguments (architectural rule).
     """
     service = get_composer_service()
-    return await service.compose_workflow(
-        conversation_ctx, workflow_type, config_overrides
-    )
+    return await service.compose_workflow(user_id, messages, workflow_type)
 
 
 async def create_initial_state(
-    conversation_ctx: ConversationCtx,
-    workflow_type: str,
+    user_id: str,
+    messages: List[Message],
+    workflow_type: WorkflowType,
     additional_context: Optional[Dict[str, Any]] = None,
 ):
-    """Create initial workflow state from conversation context."""
+    """Create initial workflow state from user messages and configuration.
+
+    Args:
+        user_id: User ID for configuration retrieval from shared data layer
+        messages: List of conversation messages
+        workflow_type: Type of workflow
+        additional_context: Optional additional context for state initialization
+
+    Returns:
+        WorkflowState: Initial state for workflow execution
+
+    Note:
+        User configuration is retrieved from shared data layer using user_id.
+        No configuration objects should be passed as arguments (architectural rule).
+    """
     service = get_composer_service()
     return await service.create_initial_state(
-        conversation_ctx, workflow_type, additional_context
+        user_id, messages, workflow_type, additional_context
     )
 
 

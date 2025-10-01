@@ -65,6 +65,8 @@ Each component has its own detailed README with specific instructions:
 - [Context Extension Architecture](docs/context_extension.md) - LLM context window extension system
 - [Dynamic Tool Generation](inference/server/tools/README.md) - Tool generation for model execution
 - [Configuration Architecture](docs/configuration_architecture.md) - Hierarchical configuration system
+- [Composer Configuration Architecture](docs/composer_configuration_architecture.md) - Configuration management rules for composer components
+- [Multi-Tier User Config Caching](docs/multi_tier_user_config_caching.md) - In-memory → Redis → Database caching system
 
 ## Pipeline Documentation
 

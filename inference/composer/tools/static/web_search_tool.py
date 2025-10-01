@@ -11,19 +11,25 @@ Configuration:
 - Specialized search tools for academic, news, technical, and shopping searches
 
 Usage:
-    # Default general web search
-    tool = create_web_search_tool()
+    # Create tool using user_id - configuration retrieved from data layer
+    tool = create_web_search_tool(user_id="user_123")
     result = await tool._arun("machine learning trends 2025")
 
-    # Custom configuration
-    custom_config = WebSearchConfig(engines=["google", "duckduckgo"], max_results=10)
-    tool = WebSearchTool(web_config=custom_config)
+    # Direct instantiation
+    tool = WebSearchTool(user_id="user_123")
+    result = await tool._arun("search query")
 
-    # Specialized search tools
-    academic_tool = create_academic_search_tool()
-    news_tool = create_news_search_tool()
-    tech_tool = create_technical_search_tool()
-    shopping_tool = create_shopping_search_tool()
+    # Specialized search tools using user configuration
+    academic_tool = create_academic_search_tool(user_id="user_123")
+    news_tool = create_news_search_tool(user_id="user_123")
+    tech_tool = create_technical_search_tool(user_id="user_123")
+    shopping_tool = create_shopping_search_tool(user_id="user_123")
+
+User Configuration Integration:
+- Configuration retrieved from shared data layer via storage.user_config.get_user_config(user_id)
+- User-specific web search preferences merged with system defaults at data layer
+- Ensures user preferences are always respected for engines, categories, limits, etc.
+- Specialized search behavior should be configured through user preferences rather than factory overrides
 
 Available Engines (see https://docs.searxng.org/dev/engines/index.html and https://github.com/searxng/searxng/tree/master/searx/engines):
 - Web: google, bing, duckduckgo, startpage, yahoo, yandex
@@ -145,8 +151,8 @@ class SearxNG:
 class WebSearchTool(BaseTool):
     """Static tool for performing web searches using SearxNG provider.
 
-    Uses WebSearchConfig for type-safe configuration with all default values
-    already merged at the data layer.
+    Retrieves user-specific WebSearchConfig from shared data layer with defaults
+    merged automatically. Uses actual user_id to get proper configuration.
     """
 
     name: str = "web_search"
@@ -156,16 +162,37 @@ class WebSearchTool(BaseTool):
         "Returns formatted search results with titles, URLs, and content snippets."
     )
 
-    def __init__(self, web_config: WebSearchConfig):
+    def __init__(self, user_id: str):
         super().__init__()
-        self.web_config = web_config
+        self.user_id = user_id
+
+    async def _get_web_search_config(self) -> WebSearchConfig:
+        """Get web search configuration from user config via shared data layer."""
+        try:
+            from db import storage
+            from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
+
+            # Get complete user config with defaults merged at data layer
+            user_config = await storage.get_service(
+                storage.user_config
+            ).get_user_config(self.user_id)
+            if not user_config:
+                return DEFAULT_WEB_SEARCH_CONFIG
+            return user_config.web_search
+        except Exception as e:
+            from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
+
+            return DEFAULT_WEB_SEARCH_CONFIG
 
     async def _arun(self, query: str, **kwargs: Any) -> str:
         """Async implementation of web search using SearxNG provider."""
         try:
+            # Get web search configuration from user config
+            web_config = await self._get_web_search_config()
+
             # Use SearxNG provider with WebSearchConfig
-            provider = SearxNG(web_config=self.web_config)
-            search_result = await provider.search(query, self.web_config.max_results)
+            provider = SearxNG(web_config=web_config)
+            search_result = await provider.search(query, web_config.max_results)
 
             if search_result and search_result.contents:
                 formatted_results = [
@@ -216,85 +243,57 @@ class WebSearchTool(BaseTool):
 
 
 def create_web_search_tool(
-    web_config: Optional[WebSearchConfig] = None,
+    user_id: str,
 ) -> WebSearchTool:
-    """Create a WebSearchTool with the given configuration or default configuration."""
-    if web_config is None:
-        from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
+    """Create a WebSearchTool that uses user configuration from data layer.
 
-        web_config = DEFAULT_WEB_SEARCH_CONFIG
-    return WebSearchTool(web_config=web_config)
+    Args:
+        user_id: User ID for configuration retrieval
+
+    Returns:
+        Configured WebSearchTool instance
+    """
+    return WebSearchTool(user_id=user_id)
 
 
 # Convenience factory functions for specialized search configurations
 
 
-def create_academic_search_tool() -> WebSearchTool:
-    """Create a WebSearchTool optimized for academic and research content."""
-    from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
+def create_academic_search_tool(user_id: str) -> WebSearchTool:
+    """Create a WebSearchTool that uses user configuration from data layer.
 
-    academic_config = WebSearchConfig(
-        **DEFAULT_WEB_SEARCH_CONFIG.model_dump(),
-        engines=[
-            "google_scholar",  # Academic papers and citations
-            "arxiv",  # Pre-print research papers
-            "crossref",  # Academic publication metadata
-            "google",  # General academic content
-        ],
-        categories=["science"],
-        safesearch=0,  # Disable for academic content
-    )
-    return WebSearchTool(web_config=academic_config)
+    Note: Academic search behavior should be configured through user preferences
+    in the user_config.web_search settings rather than factory function overrides.
+    This ensures user preferences are always respected.
+
+    Args:
+        user_id: User ID for configuration retrieval
+
+    Returns:
+        WebSearchTool using user's web search configuration
+    """
+    return WebSearchTool(user_id=user_id)
 
 
-def create_news_search_tool() -> WebSearchTool:
-    """Create a WebSearchTool optimized for news and current events."""
-    from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
+def create_news_search_tool(user_id: str) -> WebSearchTool:
+    """Create a WebSearchTool that uses user configuration from data layer.
 
-    news_config = WebSearchConfig(
-        **DEFAULT_WEB_SEARCH_CONFIG.model_dump(),
-        engines=[
-            "google_news",  # Google News
-            "bing_news",  # Bing News
-            "yahoo_news",  # Yahoo News
-            "reddit",  # Community discussions
-        ],
-        categories=["news"],
-        time_range="month",  # Recent news within a month
-    )
-    return WebSearchTool(web_config=news_config)
+    Note: News search behavior should be configured through user preferences.
+    """
+    return WebSearchTool(user_id=user_id)
 
 
-def create_technical_search_tool() -> WebSearchTool:
-    """Create a WebSearchTool optimized for technical documentation and code."""
-    from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
+def create_technical_search_tool(user_id: str) -> WebSearchTool:
+    """Create a WebSearchTool that uses user configuration from data layer.
 
-    tech_config = WebSearchConfig(
-        **DEFAULT_WEB_SEARCH_CONFIG.model_dump(),
-        engines=[
-            "github",  # Code repositories and issues
-            "stackoverflow",  # Programming Q&A
-            "google",  # Technical documentation
-            "duckduckgo",  # Alternative technical results
-        ],
-        categories=["it"],
-        safesearch=0,  # Technical content may include code
-    )
-    return WebSearchTool(web_config=tech_config)
+    Note: Technical search behavior should be configured through user preferences.
+    """
+    return WebSearchTool(user_id=user_id)
 
 
-def create_shopping_search_tool() -> WebSearchTool:
-    """Create a WebSearchTool optimized for product and shopping searches."""
-    from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
+def create_shopping_search_tool(user_id: str) -> WebSearchTool:
+    """Create a WebSearchTool that uses user configuration from data layer.
 
-    shopping_config = WebSearchConfig(
-        **DEFAULT_WEB_SEARCH_CONFIG.model_dump(),
-        engines=[
-            "google_shopping",  # Google Shopping results
-            "bing_shopping",  # Bing Shopping
-            "amazon",  # Amazon products
-            "ebay",  # eBay listings
-        ],
-        categories=["shopping"],
-    )
-    return WebSearchTool(web_config=shopping_config)
+    Note: Shopping search behavior should be configured through user preferences.
+    """
+    return WebSearchTool(user_id=user_id)

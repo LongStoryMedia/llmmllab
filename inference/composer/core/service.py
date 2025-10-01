@@ -1,32 +1,30 @@
 """
 Main ComposerService orchestrator.
 Central to the redesign - serves as the primary, authoritative execution runtime.
+
+Configuration Management:
+- Configuration overrides and default merging happens at the data layer
+- Configuration is NOT passed as arguments in composer components
+- Allowed arguments: user_id, messages/query, tools, workflow_type
+- Components retrieve configuration from shared data layer using user_id
+- No configuration merging logic should exist in service layer components
 """
 
 import asyncio
-import logging
-from typing import Dict, Any, Optional
-from dataclasses import dataclass
+from typing import Dict, Any, Optional, List
 
 from langgraph.graph.state import CompiledStateGraph
 
-from models import ConversationCtx, IntentAnalysis, ComplexityLevel
+from models import IntentAnalysis, Message, WorkflowType, LangChainMessage
+
+from db import storage
+
 from composer.graph.state import WorkflowState, ChatWorkflowState, ResearchWorkflowState
 from composer.graph.builder import GraphBuilder
 from composer.tools.registry import ToolRegistry
 from composer.graph.cache import WorkflowCache
 from composer.agents.intent_classifier import IntentClassifierAgent
 from composer.monitoring.logging import composer_logger
-
-
-@dataclass
-class WorkflowType:
-    """Enumeration of supported workflow types."""
-
-    CHAT = "CHAT"
-    RESEARCH = "RESEARCH"
-    MULTI_AGENT = "MULTI_AGENT"
-    CREATIVE = "CREATIVE"
 
 
 class ComposerService:
@@ -44,11 +42,13 @@ class ComposerService:
     """
 
     def __init__(self):
-        self.logger = logging.getLogger(__name__)
+        self.logger = composer_logger.logger
         self.graph_builder = GraphBuilder()
         self.tool_registry = ToolRegistry()
         # Workflow cache is now created per-user during workflow composition
-        self.workflow_caches = {}  # Dict[str, WorkflowCache] - keyed by user_id
+        self.workflow_caches: Dict[str, WorkflowCache] = (
+            {}
+        )  # Dict[str, WorkflowCache] - keyed by user_id
         self.intent_classifier = IntentClassifierAgent()
 
         # Initialize core components
@@ -56,7 +56,7 @@ class ComposerService:
 
     def _initialize_components(self):
         """Initialize composer components and validate configuration."""
-        composer_logger.logger.info(
+        self.logger.info(
             "ComposerService initialized",
             extra={
                 "graph_builder": "ready",
@@ -68,43 +68,46 @@ class ComposerService:
 
     async def compose_workflow(
         self,
-        conversation_ctx: ConversationCtx,
-        workflow_type: str,
-        config_overrides: Optional[Dict[str, Any]] = None,
+        user_id: str,
+        messages: List[Message],
+        workflow_type: WorkflowType,
     ) -> "CompiledStateGraph":
         """
-        Construct or retrieve a compiled graph for the given conversation.
+        Construct or retrieve a compiled graph.
 
-        This is the main entry point for workflow composition, implementing
-        the core architectural shift to Composer-centric design.
+        This is the main entry point for workflow composition.
+
+        args:
+            user_id: User ID for configuration retrieval
+            messages: Conversation messages
+            workflow_type: Type of workflow to compose (e.g. "CHAT", "RESEARCH")
+
+        returns:
+            CompiledStateGraph: Ready to execute LangGraph workflow
         """
         try:
-            # 1. Analyze intent before building workflow
-            intent = await self._analyze_intent(conversation_ctx)
+            # 1. Get user configuration from shared data layer
+            # Configuration overrides and defaults are resolved at the data layer
+            # ComposerService receives final resolved configuration
+            user_config = await storage.get_service(
+                storage.user_config
+            ).get_user_config(user_id)
 
-            # 2. Get tools for this context and intent
-            tools = await self.tool_registry.get_tools_for_context(
-                intent, conversation_ctx
-            )
+            # 2. Analyze intent before building workflow
+            intent = await self._analyze_intent(user_id, messages)
 
-            # 3. Merge configuration overrides
-            workflow_config = self._merge_config_overrides(
-                conversation_ctx, workflow_type, intent, config_overrides
-            )
+            # 3. Get tools for this context and intent
+            tools = await self.tool_registry.get_tools_for_context(intent, user_id)
 
             # 4. Use per-user cache if enabled
             user_cache = None
-            if (
-                conversation_ctx.user_config
-                and conversation_ctx.user_config.workflow.enable_workflow_caching
-            ):
-                user_id = conversation_ctx.user_config.user_id
+            if user_config.workflow.enable_workflow_caching:
                 if user_id not in self.workflow_caches:
                     self.workflow_caches[user_id] = WorkflowCache()
                 user_cache = self.workflow_caches[user_id]
 
-                cache_key = user_cache.get_cache_key(
-                    conversation_ctx.user_config, workflow_type, tools
+                cache_key = await user_cache.get_cache_key(
+                    user_id, workflow_type, tools
                 )
 
                 cached_workflow = await user_cache.get(cache_key)
@@ -114,9 +117,11 @@ class ComposerService:
                     )
                     return cached_workflow
 
-            # 5. Build new workflow
+            # 5. Build new workflow (configuration retrieved internally from data layer)
+            # Note: Type conversion handled by ToolRegistry.get_tools_for_context
+            # which returns List[AvailableTool] compatible objects
             builder_fn = lambda: self.graph_builder.build_from_context(
-                conversation_ctx, tools, workflow_config, workflow_type
+                user_id, messages, tools, workflow_type
             )
 
             if user_cache:
@@ -129,11 +134,7 @@ class ComposerService:
                 extra={
                     "workflow_type": workflow_type,
                     "tool_count": len(tools),
-                    "user_id": (
-                        conversation_ctx.user_config.user_id
-                        if conversation_ctx.user_config
-                        else None
-                    ),
+                    "user_id": user_id,
                 },
             )
 
@@ -145,18 +146,14 @@ class ComposerService:
                 extra={
                     "workflow_type": workflow_type,
                     "error": str(e),
-                    "user_id": (
-                        conversation_ctx.user_config.user_id
-                        if conversation_ctx.user_config
-                        else None
-                    ),
+                    "user_id": user_id,
                 },
                 exc_info=True,
             )
             raise
 
     async def _analyze_intent(
-        self, conversation_ctx: ConversationCtx
+        self, user_id: str, messages: List[Message]
     ) -> "IntentAnalysis":
         """
         Use an LLM-based intent agent to analyze conversation context.
@@ -165,75 +162,28 @@ class ComposerService:
         and RAG depth configuration.
         """
         try:
-            return await self.intent_classifier.analyze(conversation_ctx)
+            return await self.intent_classifier.analyze(user_id, messages)
         except Exception as e:
             self.logger.warning(
                 "Intent analysis failed, using defaults",
-                extra={"error": str(e)},
+                extra={"error": str(e), "user_id": user_id},
                 exc_info=True,
             )
             raise
 
-    def _merge_config_overrides(
-        self,
-        conversation_ctx: ConversationCtx,
-        workflow_type: str,
-        intent: "IntentAnalysis",
-        config_overrides: Optional[Dict[str, Any]],
-    ) -> Dict[str, Any]:
-        """Merge user configuration with workflow-specific overrides."""
-        # User config always has workflow and tool configs with proper defaults from storage layer
-        if not conversation_ctx.user_config:
-            raise ValueError(
-                "ConversationCtx must have user_config with workflow and tool configs"
-            )
-
-        workflow_config = conversation_ctx.user_config.workflow
-        tool_config = conversation_ctx.user_config.tool
-
-        base_config = {
-            "streaming_enabled": workflow_config.enable_streaming,
-            "timeout": workflow_config.default_timeout,
-            "max_context_length": workflow_config.max_context_length,
-            "enable_multi_agent": workflow_config.enable_multi_agent,
-            "max_parallel_tools": workflow_config.max_parallel_tools,
-            "tool_similarity_threshold": tool_config.tool_similarity_threshold,
-            "enable_tool_generation": tool_config.enable_tool_generation,
-            "tool_timeout": tool_config.tool_timeout,
-        }
-
-        # Add user-specific configuration if available
-        if conversation_ctx.user_config:
-            base_config.update(
-                {
-                    "user_preferences": conversation_ctx.user_config.preferences,
-                    "model_profiles": conversation_ctx.user_config.model_profiles,
-                }
-            )
-
-        # Add intent-specific configuration
-        if intent:
-            base_config.update(
-                {
-                    "intent_type": intent.primary_intent,
-                    "requires_tools": hasattr(intent, "requires_tools")
-                    and intent.requires_tools,
-                }
-            )
-
-        # Apply any additional overrides
-        if config_overrides:
-            base_config.update(config_overrides)
-
-        return base_config
-
     async def create_initial_state(
         self,
-        conversation_ctx: ConversationCtx,
-        workflow_type: str,
+        user_id: str,
+        messages: List[Message],
+        workflow_type: WorkflowType,
         additional_context: Optional[Dict[str, Any]] = None,
     ) -> WorkflowState:
-        """Create initial workflow state from conversation context."""
+        """Create initial workflow state from user configuration."""
+
+        # Get user configuration for workflow preferences
+        user_config = await storage.get_service(storage.user_config).get_user_config(
+            user_id
+        )
 
         # Choose appropriate state class based on workflow type
         if workflow_type == WorkflowType.RESEARCH:
@@ -243,35 +193,42 @@ class ComposerService:
         else:
             state_class = WorkflowState
 
-        # Extract messages from conversation
-        messages = []
-        if conversation_ctx.messages:
-            messages = conversation_ctx.messages
+        langchain_messages = []
+        for msg in messages:
+            if hasattr(msg, "content") and hasattr(msg, "role"):
+                # Convert from Message to LangChainMessage
+                # Extract text content from MessageContent list
+                content_text = ""
+                if isinstance(msg.content, list):
+                    content_parts = []
+                    for content_part in msg.content:
+                        if hasattr(content_part, "text"):
+                            content_parts.append(content_part.text)
+                        elif isinstance(content_part, str):
+                            content_parts.append(content_part)
+                    content_text = "\n".join(content_parts)
+                else:
+                    content_text = str(msg.content)
 
-        # Create base state with user workflow configuration
+                langchain_messages.append(
+                    LangChainMessage(
+                        content=content_text,
+                        type="human" if msg.role.value == "user" else "ai",
+                    )
+                )
+            else:
+                langchain_messages.append(msg)  # Assume already correct format
+
         state = state_class(
-            messages=messages,
-            user_id=(
-                conversation_ctx.user_config.user_id
-                if conversation_ctx.user_config
-                else None
-            ),
-            conversation_id=getattr(conversation_ctx, "conversation_id", None),
+            messages=langchain_messages,
+            user_id=user_id,
             workflow_type=workflow_type,
             execution_metadata={
                 "created_at": asyncio.get_event_loop().time(),
                 "composer_version": "0.1.0",
                 # Include user workflow preferences in metadata
-                "streaming_enabled": (
-                    conversation_ctx.user_config.workflow.enable_streaming
-                    if conversation_ctx.user_config
-                    else True
-                ),
-                "workflow_timeout": (
-                    conversation_ctx.user_config.workflow.default_timeout
-                    if conversation_ctx.user_config
-                    else 60.0
-                ),
+                "streaming_enabled": user_config.workflow.enable_streaming,
+                "workflow_timeout": user_config.workflow.default_timeout,
             },
         )
 
@@ -300,12 +257,12 @@ class ComposerService:
             if stream and streaming_enabled:
                 # Stream execution events
                 async for event in workflow.astream_events(
-                    initial_state.dict(), version="v2"
+                    initial_state.model_dump(), version="v2"
                 ):
                     yield event
             else:
                 # Batch execution
-                result = await workflow.ainvoke(initial_state.dict())
+                result = await workflow.ainvoke(initial_state.model_dump())
                 yield {"event": "workflow_complete", "data": result}
 
         except Exception as e:

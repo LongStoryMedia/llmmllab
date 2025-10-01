@@ -218,6 +218,7 @@ async def lifespan(_: FastAPI):
     # Initialize composer service
     try:
         from composer import initialize_composer
+
         await initialize_composer()
         logger.info("Composer service initialized successfully")
     except Exception as e:
@@ -259,6 +260,7 @@ async def lifespan(_: FastAPI):
         # Stop composer service
         try:
             from composer import shutdown_composer
+
             await shutdown_composer()
             print("Composer service shutdown completed")
         except Exception as e:

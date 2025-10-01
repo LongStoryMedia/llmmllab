@@ -18,9 +18,9 @@ from models.default_configs import DEFAULT_MEMORY_CONFIG
 
 def demo_memory_config_patterns():
     """Demonstrate MemoryConfig usage patterns."""
-    
+
     print("🧠 MemoryConfig Usage Patterns Demo\n")
-    
+
     # 1. Default configuration
     print("1. Default Configuration:")
     default_config = DEFAULT_MEMORY_CONFIG
@@ -31,7 +31,7 @@ def demo_memory_config_patterns():
     print(f"   Cross-User: {default_config.enable_cross_user}")
     print(f"   Embedding Model: {default_config.embedding_model_name}")
     print(f"   Timeout: {default_config.timeout}s\n")
-    
+
     # 2. Custom configuration
     print("2. Custom Configuration:")
     custom_config = MemoryConfig(
@@ -48,43 +48,55 @@ def demo_memory_config_patterns():
     print(f"   Custom Threshold: {custom_config.similarity_threshold}")
     print(f"   Custom Model: {custom_config.embedding_model_name}")
     print(f"   Custom Timeout: {custom_config.timeout}s\n")
-    
+
     # 3. Configuration inheritance/merging pattern
     print("3. Configuration Override Pattern:")
-    
+
     # Create base dict and modify specific fields
     focused_dict = DEFAULT_MEMORY_CONFIG.model_dump()
-    focused_dict.update({
-        "similarity_threshold": 0.9,  # Higher precision
-        "limit": 3,  # Fewer results
-        "enable_cross_conversation": False,  # Stay focused
-    })
+    focused_dict.update(
+        {
+            "similarity_threshold": 0.9,  # Higher precision
+            "limit": 3,  # Fewer results
+            "enable_cross_conversation": False,  # Stay focused
+        }
+    )
     focused_config = MemoryConfig(**focused_dict)
-    print(f"   Focused - Threshold: {focused_config.similarity_threshold}, Limit: {focused_config.limit}")
-    
+    print(
+        f"   Focused - Threshold: {focused_config.similarity_threshold}, Limit: {focused_config.limit}"
+    )
+
     broad_dict = DEFAULT_MEMORY_CONFIG.model_dump()
-    broad_dict.update({
-        "similarity_threshold": 0.6,  # Lower threshold
-        "limit": 15,  # More results
-        "enable_cross_conversation": True,  # Broader search
-    })
+    broad_dict.update(
+        {
+            "similarity_threshold": 0.6,  # Lower threshold
+            "limit": 15,  # More results
+            "enable_cross_conversation": True,  # Broader search
+        }
+    )
     broad_config = MemoryConfig(**broad_dict)
-    print(f"   Broad - Threshold: {broad_config.similarity_threshold}, Limit: {broad_config.limit}")
-    
+    print(
+        f"   Broad - Threshold: {broad_config.similarity_threshold}, Limit: {broad_config.limit}"
+    )
+
     research_dict = DEFAULT_MEMORY_CONFIG.model_dump()
-    research_dict.update({
-        "always_retrieve": True,  # Always provide context
-        "timeout": 30.0,  # Longer timeout for thorough search
-    })
+    research_dict.update(
+        {
+            "always_retrieve": True,  # Always provide context
+            "timeout": 30.0,  # Longer timeout for thorough search
+        }
+    )
     research_config = MemoryConfig(**research_dict)
-    print(f"   Research - Always Retrieve: {research_config.always_retrieve}, Timeout: {research_config.timeout}s\n")
+    print(
+        f"   Research - Always Retrieve: {research_config.always_retrieve}, Timeout: {research_config.timeout}s\n"
+    )
 
 
 def demo_validation():
     """Demonstrate configuration validation."""
-    
+
     print("4. Configuration Validation:\n")
-    
+
     # Test valid configuration
     try:
         valid_config = MemoryConfig(
@@ -100,17 +112,17 @@ def demo_validation():
         print("   ✅ Valid configuration created successfully")
     except Exception as e:
         print(f"   ❌ Valid config failed: {e}")
-    
+
     # Test validation constraints
     validation_tests = [
         ("Limit too high", {"limit": 100}),
-        ("Limit too low", {"limit": 0}), 
+        ("Limit too low", {"limit": 0}),
         ("Threshold too high", {"similarity_threshold": 1.5}),
         ("Threshold too low", {"similarity_threshold": -0.1}),
         ("Timeout too high", {"timeout": 120.0}),
         ("Timeout too low", {"timeout": 0.5}),
     ]
-    
+
     for test_name, override in validation_tests:
         try:
             test_dict = DEFAULT_MEMORY_CONFIG.model_dump()
@@ -123,11 +135,12 @@ def demo_validation():
 
 def demo_api_improvements():
     """Show API design improvements."""
-    
+
     print("\n5. API Design Improvements:\n")
-    
+
     print("   BEFORE (Optional Configuration with Hardcoded Fallbacks):")
-    print("""
+    print(
+        """
    class MemoryRetrievalTool:
        def __init__(self):
            # Hardcoded defaults scattered throughout code
@@ -140,10 +153,12 @@ def demo_api_improvements():
            limit = getattr(self, 'limit', 5)
            threshold = self.config.get('threshold', 0.7) if hasattr(self, 'config') else 0.7
            cross_conv = self.cross_conversation if hasattr(self, 'cross_conversation') else True
-   """)
-    
+   """
+    )
+
     print("   AFTER (Required Configuration):")
-    print("""
+    print(
+        """
    class MemoryRetrievalTool:
        def __init__(self, memory_config: MemoryConfig):
            self.memory_config = memory_config  # Always complete, validated
@@ -153,23 +168,25 @@ def demo_api_improvements():
            limit = self.memory_config.limit
            threshold = self.memory_config.similarity_threshold
            cross_conv = self.memory_config.enable_cross_conversation
-   """)
-    
+   """
+    )
+
     print("   Benefits:")
     print("   • Eliminated hardcoded defaults and fallback chains")
     print("   • Type safety with Pydantic validation at construction")
     print("   • User preferences always respected via data layer defaults")
-    print("   • Consistent behavior across all tool instances") 
+    print("   • Consistent behavior across all tool instances")
     print("   • Clear configuration source and ownership")
 
 
 def demo_user_integration():
     """Show user configuration integration."""
-    
+
     print("\n6. User Configuration Integration:\n")
-    
+
     print("   Pattern in Composer Nodes:")
-    print("""
+    print(
+        """
    # Memory config retrieved with user preferences + defaults
    user_config = await storage.user_config.get_user_config(user_id) 
    memory_config = user_config.memory  # Guaranteed complete MemoryConfig
@@ -179,8 +196,9 @@ def demo_user_integration():
    
    # Tool uses user's similarity threshold, limits, etc.
    results = await memory_tool._arun("machine learning concepts")
-   """)
-    
+   """
+    )
+
     print("   Data Layer Responsibilities:")
     print("   • Merge user preferences with system defaults")
     print("   • Ensure all required fields are populated")
@@ -192,12 +210,12 @@ def main():
     """Run all demonstrations."""
     print("🔧 MemoryConfig Pattern Demonstration")
     print("=" * 50)
-    
+
     demo_memory_config_patterns()
     demo_validation()
     demo_api_improvements()
     demo_user_integration()
-    
+
     print("\n" + "=" * 50)
     print("✅ MemoryConfig pattern demonstration complete!")
     print("\nKey Benefits:")

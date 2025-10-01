@@ -34,7 +34,6 @@ DEFAULT_MEMORY_CONFIG = MemoryConfig(
     enable_cross_conversation=True,
     similarity_threshold=0.7,
     always_retrieve=False,
-    embedding_model_name="all-MiniLM-L6-v2",
     timeout=10.0,
 )
 
@@ -62,10 +61,10 @@ DEFAULT_WEB_SEARCH_CONFIG = WebSearchConfig(
     max_urls_deep=3,
     # SearxNG engine configuration - prioritizing reliability and coverage
     engines=[
-        "google",      # Most comprehensive results
-        "bing",        # Good alternative coverage  
+        "google",  # Most comprehensive results
+        "bing",  # Good alternative coverage
         "duckduckgo",  # Privacy-focused, good general results
-        "startpage",   # Google results without tracking
+        "startpage",  # Google results without tracking
     ],
     categories=["general"],
     language="en",

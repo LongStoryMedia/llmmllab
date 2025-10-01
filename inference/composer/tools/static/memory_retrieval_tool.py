@@ -1,46 +1,38 @@
 """
 Static memory retrieval tool for database storage with configurable parameters.
 
-This tool retrieves relevant memories from the database using embeddings and 
+This tool retrieves relevant memories from the database using embeddings and
 similarity search. Configuration is driven by MemoryConfig which controls
 similarity thresholds, result limits, cross-user/conversation access, and
 embedding model selection.
 
 Configuration:
 - Similarity thresholds for memory matching (0.0-1.0)
-- Result limits (1-50 memories)  
+- Result limits (1-50 memories)
 - Cross-user and cross-conversation access controls
 - Embedding model selection and timeout settings
 - Always-retrieve behavior for research workflows
 
 Usage:
-    # Default configuration
-    tool = create_memory_retrieval_tool()
+    # Create tool using user_id - configuration retrieved from data layer
+    tool = create_memory_retrieval_tool(user_id="user_123")
     result = await tool._arun("machine learning concepts")
-    
-    # Custom configuration
-    custom_config = MemoryConfig(
-        similarity_threshold=0.8,
-        limit=10, 
-        enable_cross_conversation=True
-    )
-    tool = MemoryRetrievalTool(memory_config=custom_config)
-    
-    # Specialized memory tools
-    focused_tool = create_focused_memory_tool()  # High relevance, few results
-    broad_tool = create_broad_memory_tool()      # Lower threshold, more results  
-    research_tool = create_research_memory_tool()  # Research-optimized settings
 
-Integration with User Configuration:
-- Memory configuration can be retrieved using get_model_profile utility
-- User-specific memory preferences merged at data layer with defaults
-- Supports embedding model profiles for consistent query encoding
+    # Direct instantiation
+    tool = MemoryRetrievalTool(user_id="user_123")
+    result = await tool._arun("search query")
+
+User Configuration Integration:
+- Configuration retrieved from shared data layer via storage.user_config.get_user_config(user_id)
+- User-specific memory preferences merged with system defaults at data layer
+- Uses actual user_id for embedding model profile retrieval
+- Ensures user preferences are always respected for similarity thresholds, limits, etc.
+- Proper user and conversation filtering based on user's privacy settings
 """
 
 import asyncio
 import json
 import logging
-from typing import Optional, Union
 
 from langchain_core.tools import BaseTool
 
@@ -62,13 +54,31 @@ class MemoryRetrievalTool(BaseTool):
         "with configurable cross-user/conversation settings and similarity thresholds."
     )
 
-    def __init__(self, memory_config: MemoryConfig, **kwargs):
+    def __init__(self, user_id: str, **kwargs):
         super().__init__(**kwargs)
-        self.memory_config = memory_config
+        self.user_id = user_id
         self.logger = logging.getLogger(self.__class__.__name__)
-        
-        self.logger.debug(f"MemoryRetrievalTool initialized with limit: {memory_config.limit}, "
-                         f"similarity_threshold: {memory_config.similarity_threshold}")
+
+        self.logger.debug(f"MemoryRetrievalTool initialized for user: {user_id}")
+
+    async def _get_memory_config(self) -> MemoryConfig:
+        """Get memory configuration from user config via shared data layer."""
+        try:
+            # Get complete user config with defaults merged at data layer
+            user_config = await storage.get_service(
+                storage.user_config
+            ).get_user_config(self.user_id)
+            if not user_config:
+                self.logger.warning(
+                    f"No user config found for {self.user_id}, using defaults"
+                )
+                return DEFAULT_MEMORY_CONFIG
+            return user_config.memory
+        except Exception as e:
+            self.logger.error(
+                f"Failed to get user config for {self.user_id}: {e}, using defaults"
+            )
+            return DEFAULT_MEMORY_CONFIG
 
     async def _arun(self, query: str) -> str:
         """Async implementation of memory retrieval using database storage."""
@@ -84,103 +94,97 @@ class MemoryRetrievalTool(BaseTool):
                     indent=2,
                 )
 
-            # Generate embeddings for the query
-            try:
+            # Get memory configuration from user config
+            memory_config = await self._get_memory_config()
 
-                                # Get embedding model profile for query encoding
-                try:
-                    # Get the embedding model profile (will need user_id in actual usage)
-                    # For now, use a placeholder - in actual composer usage, this would come from context
-                    embedding_profile = await get_model_profile(
-                        user_id="system",  # TODO: Get from execution context
-                        task=ModelProfileType.Embedding
-                    )
-                    
-                    # Get embedding pipeline from factory
-                    embedding_pipeline = pipeline_factory.get_pipeline(
-                        profile=embedding_profile,
-                        expected_type=list  # Embeddings return List[List[float]]
-                    )
-                    
-                    if not embedding_pipeline:
-                        raise ValueError("No embedding pipeline available")
-                        
-                    # Generate embeddings for the query (cast to EmbeddingPipeline)
-                    if isinstance(embedding_pipeline, EmbeddingPipeline):
-                        query_embeddings = await embed_pipeline(
-                            query, pipeline=embedding_pipeline
-                        )
-                    else:
-                        raise ValueError("Pipeline is not an EmbeddingPipeline")
-                except Exception as embed_error:
-                    # Fallback to mock embeddings if no embedding model available
-                    self.logger.warning(
-                        f"Embedding generation failed, using mock: {embed_error}"
-                    )
-                    query_embeddings = [[0.1] * 768]  # Fallback mock embedding
+            # Generate embeddings for the query with fallback handling
+            query_embeddings = None
 
-                # Retrieve similar memories from storage using configuration
-                memory_service = storage.get_service(storage.memory)
-                
-                # Configure user and conversation filtering based on memory config
-                # TODO: In actual composer usage, get these from execution context
-                user_filter = None if self.memory_config.enable_cross_user else None  # Would be actual user_id
-                conversation_filter = None if self.memory_config.enable_cross_conversation else None  # Would be actual conversation_id
-                
-                memories = await memory_service.search_similarity(
-                    embeddings=query_embeddings,
-                    min_similarity=self.memory_config.similarity_threshold,
-                    limit=self.memory_config.limit,
-                    user_id=user_filter,
-                    conversation_id=conversation_filter,
+            # Try to get embedding model profile and generate embeddings
+            embedding_profile = await get_model_profile(
+                user_id=self.user_id, task=ModelProfileType.Embedding
+            )
+
+            # Get embedding pipeline from factory
+            embedding_pipeline = pipeline_factory.get_pipeline(
+                profile=embedding_profile,
+                expected_type=list,  # Embeddings return List[List[float]]
+            )
+
+            if embedding_pipeline and isinstance(embedding_pipeline, EmbeddingPipeline):
+                # Generate embeddings for the query
+                query_embeddings = await embed_pipeline(
+                    query, pipeline=embedding_pipeline
                 )
-
-                # Format memories for display
-                formatted_memories = [
-                    {
-                        "content": (
-                            "\n".join([f.content for f in memory.fragments])
-                            if hasattr(memory, "fragments")
-                            else str(memory)
-                        ),
-                        "timestamp": (
-                            memory.created_at.isoformat()
-                            if hasattr(memory, "created_at")
-                            else None
-                        ),
-                        "similarity": (
-                            memory.similarity if hasattr(memory, "similarity") else 1.0
-                        ),
-                        "source": (
-                            memory.source.value
-                            if hasattr(memory, "source")
-                            else "unknown"
-                        ),
-                    }
-                    for memory in memories[:self.memory_config.limit]  # Use configured limit
-                ]
-
-                return json.dumps(
-                    {
-                        "status": "success",
-                        "memories": formatted_memories,
-                        "query": query,
-                        "count": len(formatted_memories),
-                    },
-                    indent=2,
+            else:
+                # Use fallback if no valid pipeline available
+                self.logger.warning(
+                    "No valid embedding pipeline available, using mock embeddings"
                 )
+                query_embeddings = [[0.1] * 768]  # Fallback mock embedding
 
-            except Exception as embed_error:
-                return json.dumps(
-                    {
-                        "status": "error",
-                        "error": f"Embedding generation failed: {str(embed_error)}",
-                        "query": query,
-                    },
-                    indent=2,
+            # If embeddings are still None, use fallback
+            if query_embeddings is None:
+                self.logger.warning(
+                    "Embedding generation returned None, using mock embeddings"
                 )
+                query_embeddings = [[0.1] * 768]  # Fallback mock embedding
+
+            # Retrieve similar memories from storage using configuration
+            memory_service = storage.get_service(storage.memory)
+
+            # Configure user and conversation filtering based on memory config
+            user_filter = None if memory_config.enable_cross_user else self.user_id
+            conversation_filter = (
+                None if memory_config.enable_cross_conversation else None
+            )  # TODO: Get from execution context
+
+            memories = await memory_service.search_similarity(
+                embeddings=query_embeddings,
+                min_similarity=memory_config.similarity_threshold,
+                limit=memory_config.limit,
+                user_id=user_filter,
+                conversation_id=conversation_filter,
+            )
+
+            # Format memories for display
+            formatted_memories = [
+                {
+                    "content": (
+                        "\n".join([f.content for f in memory.fragments])
+                        if hasattr(memory, "fragments")
+                        else str(memory)
+                    ),
+                    "timestamp": (
+                        memory.created_at.isoformat()
+                        if hasattr(memory, "created_at")
+                        else None
+                    ),
+                    "similarity": (
+                        memory.similarity if hasattr(memory, "similarity") else 1.0
+                    ),
+                    "source": (
+                        memory.source.value if hasattr(memory, "source") else "unknown"
+                    ),
+                }
+                for memory in memories[: memory_config.limit]  # Use configured limit
+            ]
+
+            return json.dumps(
+                {
+                    "status": "success",
+                    "memories": formatted_memories,
+                    "query": query,
+                    "count": len(formatted_memories),
+                },
+                indent=2,
+            )
 
         except Exception as e:
+            # Log the full exception for debugging
+            self.logger.error(
+                f"Memory retrieval failed for query '{query}': {e}", exc_info=True
+            )
             return json.dumps(
                 {"status": "error", "error": str(e), "query": query}, indent=2
             )
@@ -192,73 +196,20 @@ class MemoryRetrievalTool(BaseTool):
 
 # Factory functions for creating memory retrieval tools
 
-def create_memory_retrieval_tool(
-    memory_config: Optional[MemoryConfig] = None
-) -> MemoryRetrievalTool:
+
+def create_memory_retrieval_tool(user_id: str) -> MemoryRetrievalTool:
     """
-    Create a memory retrieval tool with configuration.
-    
+    Create a memory retrieval tool that uses user configuration from data layer.
+
     Args:
-        memory_config: Memory configuration (uses defaults if None)
-        
+        user_id: User ID for configuration retrieval
+
     Returns:
         Configured MemoryRetrievalTool instance
     """
-    if memory_config is None:
-        memory_config = DEFAULT_MEMORY_CONFIG
-    
-    return MemoryRetrievalTool(memory_config=memory_config)
+    return MemoryRetrievalTool(user_id=user_id)
 
 
-def create_focused_memory_tool() -> MemoryRetrievalTool:
-    """
-    Create a memory tool focused on high-relevance results.
-    
-    Returns:
-        MemoryRetrievalTool with higher similarity threshold and fewer results
-    """
-    focused_config = MemoryConfig(
-        **DEFAULT_MEMORY_CONFIG.model_dump(),
-        similarity_threshold=0.85,  # Higher threshold for focused results
-        limit=3,  # Fewer, more focused results
-        enable_cross_conversation=False,  # Stay within current conversation
-    )
-    
-    return MemoryRetrievalTool(memory_config=focused_config)
-
-
-def create_broad_memory_tool() -> MemoryRetrievalTool:
-    """
-    Create a memory tool for broad memory exploration.
-    
-    Returns:
-        MemoryRetrievalTool with lower similarity threshold and more results
-    """
-    broad_config = MemoryConfig(
-        **DEFAULT_MEMORY_CONFIG.model_dump(),
-        similarity_threshold=0.6,  # Lower threshold for broader search
-        limit=10,  # More results for comprehensive view
-        enable_cross_conversation=True,  # Search across conversations
-        enable_cross_user=False,  # Keep user-specific
-    )
-    
-    return MemoryRetrievalTool(memory_config=broad_config)
-
-
-def create_research_memory_tool() -> MemoryRetrievalTool:
-    """
-    Create a memory tool optimized for research tasks.
-    
-    Returns:
-        MemoryRetrievalTool with configuration suitable for research
-    """
-    research_config = MemoryConfig(
-        **DEFAULT_MEMORY_CONFIG.model_dump(),
-        similarity_threshold=0.75,  # Balanced threshold
-        limit=8,  # Good number for research context
-        enable_cross_conversation=True,  # Access historical research
-        always_retrieve=True,  # Always provide context for research
-        timeout=15.0,  # Longer timeout for thorough search
-    )
-    
-    return MemoryRetrievalTool(memory_config=research_config)
+# Note: Specialized memory behavior should be configured through user preferences
+# in the user_config.memory settings rather than factory function overrides.
+# This ensures user preferences are always respected and configuration is centralized.

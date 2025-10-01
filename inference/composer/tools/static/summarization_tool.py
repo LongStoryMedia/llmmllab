@@ -11,16 +11,8 @@ import json
 from langchain_core.tools import BaseTool
 from runner import run_pipeline, pipeline_factory
 from runner.pipeline_factory import PipelinePriority
-from models import (
-    ChatResponse,
-    Message,
-    MessageRole,
-    MessageContent,
-    MessageContentType,
-    ModelProfileType,
-)
-from db import storage
-from utils import get_model_profile_for_task
+from models import ModelProfileType
+from utils import get_model_profile, extract_message_text
 
 
 class SummarizationTool(BaseTool):
@@ -50,14 +42,9 @@ class SummarizationTool(BaseTool):
 
             # Use LLM pipeline for proper summarization
             try:
-                uc = await storage.get_service(storage.user_config).get_user_config(
-                    self.user_id
-                )
-                assert uc, f"No user config for user {self.user_id}"
-                mp = await get_model_profile_for_task(
-                    uc.model_profiles,
-                    ModelProfileType.PrimarySummary,
+                mp = await get_model_profile(
                     self.user_id,
+                    ModelProfileType.PrimarySummary,
                 )
 
                 # Create summarization prompt
@@ -67,15 +54,11 @@ class SummarizationTool(BaseTool):
                     mp, str, PipelinePriority.NORMAL, mp.circuit_breaker
                 ) as pipeline:
                     result = await run_pipeline(summary_prompt, pipeline)
-                    if (
-                        result
-                        and result.message
-                        and result.message.content
-                        and result.message.content[0].text
-                    ):
-                        return result.message.content[0].text
-                    else:
-                        return "No summary generated."
+                    return (
+                        extract_message_text(result.message)
+                        if result and result.message
+                        else ""
+                    )
 
             except Exception as llm_error:
                 # Final fallback to simple processing

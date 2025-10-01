@@ -170,13 +170,13 @@ class BaseLangGraphPipeline(BasePipelineCore[PipeType], ABC):
 
     @abstractmethod
     async def _initialize_llm(
-        self, 
-        gguf_path: str, 
+        self,
+        gguf_path: str,
         tools: Optional[List[BaseTool]] = None,
         grammar: Optional[GrammarInput] = None,
     ) -> None:
         """Initialize the language model. Must be implemented by subclasses.
-        
+
         Args:
             gguf_path: Path to the GGUF model file
             tools: Optional tools for the pipeline
@@ -241,9 +241,10 @@ Use these tools when they can help provide more accurate or comprehensive respon
                 if not self.llm:
                     gguf_path = self._get_gguf_path()
                     await asyncio.wait_for(
-                        self._initialize_llm(gguf_path, None), timeout=30.0  # Default timeout for LLM init
+                        self._initialize_llm(gguf_path, None),
+                        timeout=30.0,  # Default timeout for LLM init
                     )
-                
+
                 # Build messages for LLM using standard LangChain format
                 messages = build_lc_messages(state.messages)
 

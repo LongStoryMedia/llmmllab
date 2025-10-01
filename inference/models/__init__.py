@@ -109,6 +109,7 @@ try:
     from . import web_search_providers
     from . import web_socket_connection
     from . import workflow_config
+    from . import workflow_type
 except ImportError as e:
     import sys
     print(f"Warning: Some model modules could not be imported: {e}", file=sys.stderr)
@@ -221,6 +222,7 @@ __all__ = [
     'web_search_providers',
     'web_socket_connection',
     'workflow_config',
+    'workflow_type',
     'AnalysisDepth',
     'AuthConfig',
     'AvailableTool',
@@ -334,6 +336,7 @@ __all__ = [
     'WebSearchProviders',
     'WebSocketConnection',
     'WorkflowConfig',
+    'WorkflowType',
 ]
 
 # Re-export all model classes for easy importing and IDE autocompletion
@@ -657,4 +660,7 @@ from .web_socket_connection import (
 )
 from .workflow_config import (
     WorkflowConfig,
+)
+from .workflow_type import (
+    WorkflowType,
 )
