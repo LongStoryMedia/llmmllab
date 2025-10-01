@@ -6,6 +6,7 @@ Constructs LangGraph workflows dynamically based on conversation context and too
 from typing import Any, List
 
 from langgraph.graph import StateGraph, END
+from langgraph.graph.state import CompiledStateGraph
 from models.available_tool import AvailableTool
 from models.workflow_type import WorkflowType
 from models import Message, ModelProfileType
@@ -33,7 +34,10 @@ class GraphBuilder:
 
     def __init__(self, pipeline_factory=None):
         self.pipeline_factory = pipeline_factory
-        composer_logger.logger.info("GraphBuilder initialized", has_pipeline_factory=pipeline_factory is not None)
+        composer_logger.logger.info(
+            "GraphBuilder initialized",
+            has_pipeline_factory=pipeline_factory is not None,
+        )
 
     async def _get_user_config(self, user_id: str):
         """Get user configuration from shared data layer."""
@@ -106,7 +110,7 @@ class GraphBuilder:
 
     async def build_chat_workflow(
         self, user_id: str, messages: List[Message], tools: List[AvailableTool]
-    ) -> Any:
+    ) -> CompiledStateGraph:
         """
         Build a standard chat workflow with conditional RAG routing.
 
@@ -119,7 +123,7 @@ class GraphBuilder:
         try:
             composer_logger.logger.info(
                 "Building chat workflow",
-                extra={"user_id": user_id, "tool_count": len(tools)}
+                extra={"user_id": user_id, "tool_count": len(tools)},
             )
 
             # Create workflow graph
@@ -134,39 +138,89 @@ class GraphBuilder:
             pipeline_factory = self.pipeline_factory
 
             # Add nodes to workflow
-            workflow.add_node("intent_classifier", IntentClassifierNode(pipeline_factory))
-            workflow.add_node("engineering_agent", EngineeringAgentNode(pipeline_factory))
+            workflow.add_node(
+                "intent_classifier", IntentClassifierNode(pipeline_factory)
+            )
+            workflow.add_node(
+                "engineering_agent", EngineeringAgentNode(pipeline_factory)
+            )
             workflow.add_node("execute_shallow_search", ShallowRAGExecutor(user_id))
-            workflow.add_node("execute_deep_crawl_and_synthesize", DeepRAGExecutor(user_id))
-            
+            workflow.add_node(
+                "execute_deep_crawl_and_synthesize", DeepRAGExecutor(user_id)
+            )
+
             # Primary agent node: enable streaming for UI responsiveness
-            workflow.add_node("chat_agent", PipelineNode(
-                pipeline_factory, 
-                ModelProfileType.Primary, 
-                stream=True
-            ))
-            
+            workflow.add_node(
+                "chat_agent",
+                PipelineNode(pipeline_factory, ModelProfileType.Primary, stream=True),
+            )
+
             # Tool execution node
             if tools:
-                workflow.add_node("tool_executor", ToolExecutorNode([]))  # Tools will be populated
+                workflow.add_node(
+                    "tool_executor", ToolExecutorNode([])
+                )  # Tools will be populated
 
             # Set up workflow flow
             workflow.set_entry_point("intent_classifier")
-            workflow.add_edge("intent_classifier", "engineering_agent")
+            
+            # Conditional routing after intent classification
+            def route_after_intent(state: WorkflowState) -> str:
+                """Route to engineering agent for technical requests, or directly to RAG routing."""
+                try:
+                    intent_analysis = getattr(state, 'intent_classification', None)
+                    if not intent_analysis:
+                        # Default to shallow search if no intent analysis
+                        return "execute_shallow_search"
+                    
+                    # Check if this is a technical/engineering request
+                    primary_intent = getattr(intent_analysis, 'primary_intent', '').lower()
+                    required_capabilities = getattr(intent_analysis, 'required_capabilities', [])
+                    
+                    # Route to engineering agent for technical requests
+                    is_technical = (
+                        'technical' in primary_intent or
+                        'engineering' in primary_intent or  
+                        'code' in primary_intent or
+                        'programming' in primary_intent or
+                        any('TECHNICAL' in str(cap) or 'ENGINEERING' in str(cap) 
+                            for cap in required_capabilities)
+                    )
+                    
+                    if is_technical:
+                        return "engineering_agent"
+                    
+                    # For non-technical requests, route directly to RAG based on complexity
+                    router = RAGRouter()
+                    return router.route_rag_depth(state)
+                    
+                except Exception as e:
+                    composer_logger.logger.warning(f"Intent routing failed: {e}, defaulting to shallow search")
+                    return "execute_shallow_search"
 
-            # Conditional RAG routing after engineering agent
+            workflow.add_conditional_edges(
+                "intent_classifier",
+                route_after_intent,
+                {
+                    "engineering_agent": "engineering_agent",
+                    "execute_shallow_search": "execute_shallow_search",
+                    "execute_deep_crawl_and_synthesize": "execute_deep_crawl_and_synthesize",
+                },
+            )
+
+            # Conditional RAG routing after engineering agent (for technical requests)
             def route_rag_depth(state: WorkflowState) -> str:
                 """Route to appropriate RAG implementation based on intent."""
                 router = RAGRouter()
                 return router.route_rag_depth(state)
 
             workflow.add_conditional_edges(
-                "engineering_agent", 
+                "engineering_agent",
                 route_rag_depth,
                 {
                     "execute_shallow_search": "execute_shallow_search",
-                    "execute_deep_crawl_and_synthesize": "execute_deep_crawl_and_synthesize"
-                }
+                    "execute_deep_crawl_and_synthesize": "execute_deep_crawl_and_synthesize",
+                },
             )
 
             # Both RAG paths lead to chat agent
@@ -176,10 +230,12 @@ class GraphBuilder:
             # Conditional routing after chat agent
             def route_after_agent(state: WorkflowState) -> str:
                 """Route to tools if tool calls present, otherwise end."""
-                if (state.messages and 
-                    hasattr(state.messages[-1], 'tool_calls') and 
-                    state.messages[-1].tool_calls and
-                    tools):
+                if (
+                    state.messages
+                    and hasattr(state.messages[-1], "tool_calls")
+                    and state.messages[-1].tool_calls
+                    and tools
+                ):
                     return "tool_executor"
                 return END
 
@@ -191,20 +247,22 @@ class GraphBuilder:
 
             # Compile and return workflow
             compiled_workflow = workflow.compile()
-            
+
             composer_logger.logger.info(
                 "Chat workflow built successfully",
-                extra={"user_id": user_id, "nodes": len(workflow.nodes)}
+                extra={"user_id": user_id, "nodes": len(workflow.nodes)},
             )
-            
+
             return compiled_workflow
 
         except Exception as e:
             composer_logger.logger.error(
                 "Failed to build chat workflow",
-                extra={"user_id": user_id, "error": str(e)}
+                extra={"user_id": user_id, "error": str(e)},
             )
-            raise WorkflowConstructionError(f"Chat workflow construction failed: {e}") from e
+            raise WorkflowConstructionError(
+                f"Chat workflow construction failed: {e}"
+            ) from e
 
     async def build_research_workflow(
         self, user_id: str, messages: List[Message], tools: List[AvailableTool]
@@ -218,7 +276,7 @@ class GraphBuilder:
         try:
             composer_logger.logger.info(
                 "Building research workflow",
-                extra={"user_id": user_id, "tool_count": len(tools)}
+                extra={"user_id": user_id, "tool_count": len(tools)},
             )
 
             # Create research workflow graph
@@ -233,18 +291,26 @@ class GraphBuilder:
             pipeline_factory = self.pipeline_factory
 
             # Add research-specific nodes
-            workflow.add_node("intent_classifier", IntentClassifierNode(pipeline_factory))
-            workflow.add_node("query_expansion", PipelineNode(
-                pipeline_factory, 
-                ModelProfileType.Analysis, 
-                stream=False  # Analysis doesn't need streaming
-            ))
+            workflow.add_node(
+                "intent_classifier", IntentClassifierNode(pipeline_factory)
+            )
+            workflow.add_node(
+                "query_expansion",
+                PipelineNode(
+                    pipeline_factory,
+                    ModelProfileType.Analysis,
+                    stream=False,  # Analysis doesn't need streaming
+                ),
+            )
             workflow.add_node("enhanced_rag", EnhancedRAGExecutor(user_id))
-            workflow.add_node("synthesis_agent", PipelineNode(
-                pipeline_factory, 
-                ModelProfileType.Primary, 
-                stream=True  # Final synthesis can stream
-            ))
+            workflow.add_node(
+                "synthesis_agent",
+                PipelineNode(
+                    pipeline_factory,
+                    ModelProfileType.Primary,
+                    stream=True,  # Final synthesis can stream
+                ),
+            )
 
             # Set up research workflow flow
             workflow.set_entry_point("intent_classifier")
@@ -255,23 +321,28 @@ class GraphBuilder:
 
             # Compile and return workflow
             compiled_workflow = workflow.compile()
-            
+
             composer_logger.logger.info(
                 "Research workflow built successfully",
-                extra={"user_id": user_id, "nodes": len(workflow.nodes)}
+                extra={"user_id": user_id, "nodes": len(workflow.nodes)},
             )
-            
+
             return compiled_workflow
 
         except Exception as e:
             composer_logger.logger.error(
                 "Failed to build research workflow",
-                extra={"user_id": user_id, "error": str(e)}
+                extra={"user_id": user_id, "error": str(e)},
             )
-            raise WorkflowConstructionError(f"Research workflow construction failed: {e}") from e
+            raise WorkflowConstructionError(
+                f"Research workflow construction failed: {e}"
+            ) from e
 
     async def build_multi_agent_workflow(
-        self, user_id: str, messages: List[Message], tools: List[AvailableTool]  # noqa: ARG002
+        self,
+        user_id: str,
+        messages: List[Message],
+        tools: List[AvailableTool],  # noqa: ARG002
     ) -> Any:
         """
         Build multi-agent orchestration workflow.
@@ -294,7 +365,7 @@ class GraphBuilder:
         try:
             composer_logger.logger.info(
                 "Building multi-agent workflow",
-                extra={"user_id": user_id, "tool_count": len(tools)}
+                extra={"user_id": user_id, "tool_count": len(tools)},
             )
 
             # Create workflow graph
@@ -310,52 +381,60 @@ class GraphBuilder:
 
             # Add multi-agent coordination nodes
             workflow.add_node("agent_router", IntentClassifierNode(pipeline_factory))
-            workflow.add_node("specialist_agent_1", EngineeringAgentNode(pipeline_factory))
-            workflow.add_node("specialist_agent_2", PipelineNode(
-                pipeline_factory, 
-                ModelProfileType.Analysis, 
-                stream=True
-            ))
-            workflow.add_node("coordination", PipelineNode(
-                pipeline_factory, 
-                ModelProfileType.Primary, 
-                stream=True
-            ))
-            workflow.add_node("final_response", PipelineNode(
-                pipeline_factory, 
-                ModelProfileType.Primary, 
-                stream=True
-            ))
-            
+            workflow.add_node(
+                "specialist_agent_1", EngineeringAgentNode(pipeline_factory)
+            )
+            workflow.add_node(
+                "specialist_agent_2",
+                PipelineNode(pipeline_factory, ModelProfileType.Analysis, stream=True),
+            )
+            workflow.add_node(
+                "coordination",
+                PipelineNode(pipeline_factory, ModelProfileType.Primary, stream=True),
+            )
+            workflow.add_node(
+                "final_response",
+                PipelineNode(pipeline_factory, ModelProfileType.Primary, stream=True),
+            )
+
             # Define multi-agent workflow logic
             workflow.set_entry_point("agent_router")
             workflow.add_edge("agent_router", "specialist_agent_1")
             workflow.add_edge("specialist_agent_1", "coordination")
             workflow.add_edge("coordination", "final_response")
             workflow.add_edge("final_response", END)
-            
+
             # Compile workflow
             compiled_workflow = workflow.compile()
-            
+
             composer_logger.logger.info(
                 "Built multi-agent workflow",
                 extra={
                     "node_count": len(nodes),
-                    "enable_handoffs": workflow_config_obj.enable_multi_agent if workflow_config_obj else True,
+                    "enable_handoffs": (
+                        workflow_config_obj.enable_multi_agent
+                        if workflow_config_obj
+                        else True
+                    ),
                 },
             )
-            
+
             return compiled_workflow
 
         except Exception as e:
             composer_logger.logger.error(
                 "Failed to build multi-agent workflow",
-                extra={"user_id": user_id, "error": str(e)}
+                extra={"user_id": user_id, "error": str(e)},
             )
-            raise WorkflowConstructionError(f"Multi-agent workflow construction failed: {e}") from e
+            raise WorkflowConstructionError(
+                f"Multi-agent workflow construction failed: {e}"
+            ) from e
 
     async def build_creative_workflow(
-        self, user_id: str, messages: List[Message], tools: List[AvailableTool]  # noqa: ARG002
+        self,
+        user_id: str,
+        messages: List[Message],
+        tools: List[AvailableTool],  # noqa: ARG002
     ) -> Any:
         """
         Build creative content generation workflow.
@@ -377,7 +456,7 @@ class GraphBuilder:
         try:
             composer_logger.logger.info(
                 "Building creative workflow",
-                extra={"user_id": user_id, "tool_count": len(tools)}
+                extra={"user_id": user_id, "tool_count": len(tools)},
             )
 
             # Create workflow graph
@@ -392,50 +471,56 @@ class GraphBuilder:
             pipeline_factory = self.pipeline_factory
 
             # Add creative workflow nodes
-            workflow.add_node("creative_planning", PipelineNode(
-                pipeline_factory, 
-                ModelProfileType.Primary, 
-                stream=False
-            ))
-            workflow.add_node("content_generation", PipelineNode(
-                pipeline_factory, 
-                ModelProfileType.Primary, 
-                stream=True
-            ))
-            workflow.add_node("refinement", PipelineNode(
-                pipeline_factory, 
-                ModelProfileType.SelfCritique, 
-                stream=False
-            ))
-            workflow.add_node("output_formatting", PipelineNode(
-                pipeline_factory, 
-                ModelProfileType.Formatting, 
-                stream=True
-            ))
-            
+            workflow.add_node(
+                "creative_planning",
+                PipelineNode(pipeline_factory, ModelProfileType.Primary, stream=False),
+            )
+            workflow.add_node(
+                "content_generation",
+                PipelineNode(pipeline_factory, ModelProfileType.Primary, stream=True),
+            )
+            workflow.add_node(
+                "refinement",
+                PipelineNode(
+                    pipeline_factory, ModelProfileType.SelfCritique, stream=False
+                ),
+            )
+            workflow.add_node(
+                "output_formatting",
+                PipelineNode(
+                    pipeline_factory, ModelProfileType.Formatting, stream=True
+                ),
+            )
+
             # Define creative workflow logic
             workflow.set_entry_point("creative_planning")
             workflow.add_edge("creative_planning", "content_generation")
             workflow.add_edge("content_generation", "refinement")
             workflow.add_edge("refinement", "output_formatting")
             workflow.add_edge("output_formatting", END)
-            
+
             # Compile workflow
             compiled_workflow = workflow.compile()
-            
+
             composer_logger.logger.info(
                 "Built creative workflow",
                 extra={
                     "node_count": len(nodes),
-                    "enable_critique": refinement_config.enable_response_critique if refinement_config else True,
+                    "enable_critique": (
+                        refinement_config.enable_response_critique
+                        if refinement_config
+                        else True
+                    ),
                 },
             )
-            
+
             return compiled_workflow
 
         except Exception as e:
             composer_logger.logger.error(
                 "Failed to build creative workflow",
-                extra={"user_id": user_id, "error": str(e)}
+                extra={"user_id": user_id, "error": str(e)},
             )
-            raise WorkflowConstructionError(f"Creative workflow construction failed: {e}") from e
+            raise WorkflowConstructionError(
+                f"Creative workflow construction failed: {e}"
+            ) from e
