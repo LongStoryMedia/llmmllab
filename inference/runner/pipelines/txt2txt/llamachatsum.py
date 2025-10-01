@@ -240,12 +240,9 @@ Summary: [/INST]"""
             return 0.5  # Neutral score on error
 
     def create_graph(
-        self, _tools: Optional[List[BaseTool]] = None, grammar: Optional[str] = None
+        self, _tools: Optional[List[BaseTool]] = None
     ) -> CompiledStateGraph:
         """Create a simple LangGraph for BART summarization."""
-        # Store grammar for later use during LLM initialization
-        self._current_grammar = grammar
-        
         from models import LangGraphState
 
         # Simple state graph that just processes the input
@@ -284,8 +281,7 @@ Summary: [/INST]"""
             # Initialize LLM if not done yet
             if self.llm is None:
                 gguf_path = self._get_gguf_path()
-                grammar = getattr(self, '_current_grammar', None)
-                await self._initialize_llm(gguf_path, None, grammar)
+                await self._initialize_llm(gguf_path)
 
             # Ensure LLM is properly initialized after the initialization call
             if self.llm is None:
@@ -445,8 +441,7 @@ Summary: """
             # Initialize LLM if not done yet
             if self.llm is None:
                 gguf_path = self._get_gguf_path()
-                grammar = getattr(self, '_current_grammar', None)
-                await self._initialize_llm(gguf_path, None, grammar)
+                await self._initialize_llm(gguf_path)
 
             # Ensure LLM is properly initialized after the initialization call
             if self.llm is None:
@@ -539,8 +534,7 @@ Summary: """
             # Initialize LLM if not done yet
             if self.llm is None:
                 gguf_path = self._get_gguf_path()
-                grammar = getattr(self, '_current_grammar', None)
-                await self._initialize_llm(gguf_path, None, grammar)
+                await self._initialize_llm(gguf_path)
 
             # Ensure LLM is properly initialized after the initialization call
             if self.llm is None:

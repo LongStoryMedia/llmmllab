@@ -3,10 +3,11 @@ LCEL serialization helpers for tool composability.
 Implements abstraction through LCEL RunnableSequence composition.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from langchain_core.tools import BaseTool
 
-from composer.monitoring.logging import composer_logger
+from ...monitoring.logging import composer_logger
+from ..registry import ToolRegistry
 
 
 class RunnableToolComposer:
@@ -55,7 +56,9 @@ class RunnableToolComposer:
                 e, {"context": "tool_chaining", "tool_count": len(tools)}
             )
             # Return first tool as fallback
-            return tools[0] if tools else None
+            if not tools:
+                raise ValueError("Cannot return tool from empty list")
+            return tools[0]
 
     @staticmethod
     def parallel_tools(tools: List[BaseTool], name: str, description: str) -> BaseTool:
@@ -105,11 +108,13 @@ class RunnableToolComposer:
         except Exception as e:
             composer_logger.log_error(e, {"context": "parallel_tool_composition"})
             # Return first tool as fallback
-            return tools[0] if tools else None
+            if not tools:
+                raise ValueError("Cannot return tool from empty list")
+            return tools[0]
 
     @staticmethod
     def conditional_tool(
-        condition_fn: callable,
+        condition_fn: Callable,
         true_tool: BaseTool,
         false_tool: BaseTool,
         name: str,
@@ -176,7 +181,7 @@ class RunnableToolComposer:
 
     @staticmethod
     def deserialize_tool_chain(
-        serialized_data: Dict[str, Any], tool_registry: "ToolRegistry"
+        serialized_data: Dict[str, Any], tool_registry: ToolRegistry
     ) -> Optional[BaseTool]:
         """
         Deserialize a tool chain from stored data.
