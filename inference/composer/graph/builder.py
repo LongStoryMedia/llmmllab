@@ -11,6 +11,7 @@ from models.workflow_type import WorkflowType
 from models import Message, ModelProfileType
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import WorkflowConstructionError
+from composer.graph.state import WorkflowState, ResearchWorkflowState
 
 # Node imports
 from composer.nodes.standard import PipelineNode, ToolExecutorNode
@@ -116,8 +117,6 @@ class GraphBuilder:
         4. Primary chat agent with streaming support
         """
         try:
-            from composer.graph.state import WorkflowState
-            
             composer_logger.logger.info(
                 "Building chat workflow",
                 extra={"user_id": user_id, "tool_count": len(tools)}
@@ -217,8 +216,6 @@ class GraphBuilder:
         multi-source analysis, and detailed synthesis.
         """
         try:
-            from composer.graph.state import ResearchWorkflowState
-            
             composer_logger.logger.info(
                 "Building research workflow",
                 extra={"user_id": user_id, "tool_count": len(tools)}
@@ -295,8 +292,6 @@ class GraphBuilder:
         ]
 
         try:
-            from composer.graph.state import WorkflowState
-            
             composer_logger.logger.info(
                 "Building multi-agent workflow",
                 extra={"user_id": user_id, "tool_count": len(tools)}
@@ -380,8 +375,6 @@ class GraphBuilder:
         ]
 
         try:
-            from composer.graph.state import WorkflowState
-            
             composer_logger.logger.info(
                 "Building creative workflow",
                 extra={"user_id": user_id, "tool_count": len(tools)}
