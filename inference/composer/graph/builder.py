@@ -3,14 +3,23 @@ GraphBuilder for dynamic workflow construction.
 Constructs LangGraph workflows dynamically based on conversation context and tools.
 """
 
-from typing import Dict, Any, List
+from typing import Any, List
 
-from langgraph.graph import StateGraph, END, START
+from langgraph.graph import StateGraph, END
 from models.available_tool import AvailableTool
 from models.workflow_type import WorkflowType
+from models import Message, ModelProfileType
 from composer.monitoring.logging import composer_logger
-from models import Message
 from composer.core.errors import WorkflowConstructionError
+
+# Node imports
+from composer.nodes.standard import PipelineNode, ToolExecutorNode
+from composer.nodes.specialized import IntentClassifierNode, EngineeringAgentNode
+from composer.nodes.rag.router import RAGRouter, ShallowRAGExecutor, DeepRAGExecutor
+from composer.nodes.rag.executor import EnhancedRAGExecutor
+
+# Database import - lazy loaded to avoid circular dependencies
+from db import storage  # pylint: disable=import-outside-toplevel
 
 
 class GraphBuilder:
@@ -28,8 +37,6 @@ class GraphBuilder:
     async def _get_user_config(self, user_id: str):
         """Get user configuration from shared data layer."""
         try:
-            from db import storage
-
             # Initialize storage if not done
             if not storage.pool:
                 composer_logger.logger.warning(
@@ -109,12 +116,7 @@ class GraphBuilder:
         4. Primary chat agent with streaming support
         """
         try:
-            from langgraph.graph import StateGraph, END
             from composer.graph.state import WorkflowState
-            from composer.nodes.standard import PipelineNode, ToolExecutorNode, RAGNode
-            from composer.nodes.specialized import IntentClassifierNode, EngineeringAgentNode
-            from composer.nodes.rag.router import RAGRouter, ShallowRAGExecutor, DeepRAGExecutor
-            from models import ModelProfileType
             
             composer_logger.logger.info(
                 "Building chat workflow",
@@ -215,12 +217,7 @@ class GraphBuilder:
         multi-source analysis, and detailed synthesis.
         """
         try:
-            from langgraph.graph import StateGraph, END
             from composer.graph.state import ResearchWorkflowState
-            from composer.nodes.standard import PipelineNode
-            from composer.nodes.rag.executor import EnhancedRAGExecutor
-            from composer.nodes.specialized import IntentClassifierNode
-            from models import ModelProfileType
             
             composer_logger.logger.info(
                 "Building research workflow",
@@ -298,11 +295,7 @@ class GraphBuilder:
         ]
 
         try:
-            from langgraph.graph import StateGraph, END
             from composer.graph.state import WorkflowState
-            from composer.nodes.standard import PipelineNode, ToolExecutorNode
-            from composer.nodes.specialized import IntentClassifierNode, EngineeringAgentNode
-            from models import ModelProfileType
             
             composer_logger.logger.info(
                 "Building multi-agent workflow",
@@ -387,11 +380,7 @@ class GraphBuilder:
         ]
 
         try:
-            from langgraph.graph import StateGraph, END
             from composer.graph.state import WorkflowState
-            from composer.nodes.standard import PipelineNode
-            from composer.nodes.specialized import IntentClassifierNode
-            from models import ModelProfileType
             
             composer_logger.logger.info(
                 "Building creative workflow",
