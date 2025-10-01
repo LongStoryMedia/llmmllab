@@ -13,7 +13,7 @@ from langchain_core.messages import AIMessage
 
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolNode, tools_condition
+from langchain.agents import ToolNode, tools_condition
 
 from models import (
     MessageContent,

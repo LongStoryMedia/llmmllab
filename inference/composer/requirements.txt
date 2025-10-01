@@ -10,7 +10,7 @@ langchain-core>=1.0.0a1
 langgraph>=1.0.0a1
 langchain-openai>=1.0.0a1
 langchain-anthropic>=1.0.0a1
-langchain-community>=1.0.0a1
+langchain-legacy>=1.0.0a1
 
 # Database and caching
 redis==6.4.0

@@ -19,7 +19,7 @@ from langchain_core.messages import AIMessage
 # Avoid importing ChatLlamaCpp at module import time to prevent heavy GPU lib load in dev/test
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolNode, tools_condition
+from langchain.agents import ToolNode, tools_condition
 
 from models import (
     MessageContent,

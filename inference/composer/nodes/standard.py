@@ -7,7 +7,7 @@ import asyncio
 from typing import List, Any, Optional, Dict, AsyncIterator, Union
 
 from langchain_core.tools import BaseTool
-from langgraph.prebuilt import ToolNode
+from langchain.agents import ToolNode
 
 from models import Message, ChatResponse, LangChainMessage, AvailableTool, ModelProfileType
 

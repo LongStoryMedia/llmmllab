@@ -180,7 +180,7 @@ RUN rm -rf /opt/wheels \
     && echo "# Auto-source run_with_env.sh" >> /root/.bashrc \
     && echo "source /app/run_with_env.sh" >> /root/.bashrc \
     && echo 'echo -e "\033[1;32m=== Inference Environment Ready ===\033[0m"' >> /root/.bashrc \
-    && echo 'echo -e "\033[1;33mAvailable environments: runner, server, evaluation\033[0m"' >> /root/.bashrc \
+    && echo 'echo -e "\033[1;33mAvailable environments: runner, composer, server, evaluation\033[0m"' >> /root/.bashrc \
     && echo 'echo "Use: v <environment> <command>"' >> /root/.bashrc
 
 # Expose ports  

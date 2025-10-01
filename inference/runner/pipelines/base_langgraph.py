@@ -31,7 +31,7 @@ from langchain_core.runnables import Runnable
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.prebuilt import ToolNode, tools_condition
+from langchain.agents import ToolNode, tools_condition
 
 from models import (
     Message,

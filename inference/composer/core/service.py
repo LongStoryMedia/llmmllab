@@ -44,15 +44,16 @@ class ComposerService:
 
     def __init__(self):
         self.logger = composer_logger.logger
-        
+
         # Import pipeline factory to inject into GraphBuilder
         try:
             from runner import pipeline_factory
+
             self.pipeline_factory = pipeline_factory
         except ImportError as e:
             self.logger.warning(f"Could not import pipeline_factory: {e}")
             self.pipeline_factory = None
-        
+
         self.graph_builder = GraphBuilder(pipeline_factory=self.pipeline_factory)
         self.tool_registry = ToolRegistry()
         # Workflow cache is now created per-user during workflow composition
@@ -100,6 +101,7 @@ class ComposerService:
             # Configuration overrides and defaults are resolved at the data layer
             # ComposerService receives final resolved configuration
             from db import storage
+
             user_config = await storage.get_service(
                 storage.user_config
             ).get_user_config(user_id)
@@ -192,7 +194,8 @@ class ComposerService:
         """Create initial workflow state from user configuration."""
 
         # Get user configuration for workflow preferences
-        from db import storage
+        from db import storage  # pylint: disable=import-outside-toplevel
+
         user_config = await storage.get_service(storage.user_config).get_user_config(
             user_id
         )
