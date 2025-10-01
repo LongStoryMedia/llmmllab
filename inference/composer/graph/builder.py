@@ -114,101 +114,184 @@ class GraphBuilder:
             ) from e
 
     async def build_chat_workflow(
-        self, user_id: str, messages: List[Message], tools: List[AvailableTool]  # noqa: ARG002
+        self, user_id: str, messages: List[Message], tools: List[AvailableTool]
     ) -> CompiledStateGraph:
         """
-        Build standard chat workflow with RAG and tool support.
+        Build a standard chat workflow with conditional RAG routing.
 
-        Workflow: RAG Enrichment -> Dynamic Tools -> Agent -> Tool Execution (conditional)
-        Configuration retrieved from shared data layer using user_id.
+        This workflow includes:
+        1. Intent classification to determine RAG depth
+        2. Conditional RAG routing (shallow vs deep)
+        3. Dynamic tool orchestration
+        4. Primary chat agent with streaming support
         """
-        # Get user configuration from shared data layer
-        user_config = await self._get_user_config(user_id)
-        workflow_config_obj = user_config.workflow if user_config else None
-        tool_config_obj = user_config.tool if user_config else None
+        try:
+            from langgraph.graph import StateGraph, END
+            from composer.graph.state import WorkflowState
+            from composer.nodes.standard import PipelineNode, ToolExecutorNode, RAGNode
+            from composer.nodes.specialized import IntentClassifierNode, EngineeringAgentNode
+            from composer.nodes.rag.router import RAGRouter, ShallowRAGExecutor, DeepRAGExecutor
+            from models import ModelProfileType
+            
+            composer_logger.logger.info(
+                "Building chat workflow",
+                extra={"user_id": user_id, "tool_count": len(tools)}
+            )
 
-        nodes = []
+            # Create workflow graph
+            workflow = StateGraph(WorkflowState)
 
-        # Always include RAG enrichment for context
-        nodes.append("rag_enrichment")
+            # Configuration retrieved internally from shared data layer using user_id
+            user_config = await self._get_user_config(user_id)
+            if not user_config:
+                raise WorkflowConstructionError("Unable to retrieve user configuration")
 
-        # Add dynamic tools if enabled
-        enable_tool_generation = (
-            tool_config_obj.enable_tool_generation if tool_config_obj else False
-        )
-        if enable_tool_generation:
-            nodes.append("dynamic_tools")
+            # Initialize pipeline factory (placeholder - will be injected)
+            pipeline_factory = None  # TODO: Inject from service
 
-        # Primary chat agent (with streaming enabled)
-        nodes.append("agent")
+            # Add nodes to workflow
+            workflow.add_node("intent_classifier", IntentClassifierNode(pipeline_factory))
+            workflow.add_node("engineering_agent", EngineeringAgentNode(pipeline_factory))
+            workflow.add_node("execute_shallow_search", ShallowRAGExecutor(user_id))
+            workflow.add_node("execute_deep_crawl_and_synthesize", DeepRAGExecutor(user_id))
+            
+            # Primary agent node: enable streaming for UI responsiveness
+            workflow.add_node("chat_agent", PipelineNode(
+                pipeline_factory, 
+                ModelProfileType.Primary, 
+                stream=True
+            ))
+            
+            # Tool execution node
+            if tools:
+                workflow.add_node("tool_executor", ToolExecutorNode([]))  # Tools will be populated
 
-        # Tool execution if tools are available
-        if tools:
-            nodes.append("tools")
+            # Set up workflow flow
+            workflow.set_entry_point("intent_classifier")
+            workflow.add_edge("intent_classifier", "engineering_agent")
 
-        workflow_config = {
-            "streaming_enabled": (
-                workflow_config_obj.enable_streaming if workflow_config_obj else True
-            ),
-            "tools": [tool.dict() for tool in tools],
-        }
+            # Conditional RAG routing after engineering agent
+            def route_rag_depth(state: WorkflowState) -> str:
+                """Route to appropriate RAG implementation based on intent."""
+                router = RAGRouter()
+                return router.route_rag_depth(state)
 
-        # PLACEHOLDER: Replace with actual LangGraph StateGraph construction and compilation
-        # For now, using placeholder - proper implementation would build and compile StateGraph
-        compiled_graph = _PlaceholderCompiledGraph("CHAT", nodes, workflow_config)
+            workflow.add_conditional_edges(
+                "engineering_agent", 
+                route_rag_depth,
+                {
+                    "execute_shallow_search": "execute_shallow_search",
+                    "execute_deep_crawl_and_synthesize": "execute_deep_crawl_and_synthesize"
+                }
+            )
 
-        composer_logger.logger.info(
-            "Built chat workflow",
-            extra={
-                "node_count": len(nodes),
-                "nodes": nodes,
-                "streaming_enabled": workflow_config["streaming_enabled"],
-            },
-        )
+            # Both RAG paths lead to chat agent
+            workflow.add_edge("execute_shallow_search", "chat_agent")
+            workflow.add_edge("execute_deep_crawl_and_synthesize", "chat_agent")
 
-        return compiled_graph  # type: ignore  # Placeholder until proper LangGraph implementation
+            # Conditional routing after chat agent
+            def route_after_agent(state: WorkflowState) -> str:
+                """Route to tools if tool calls present, otherwise end."""
+                if (state.messages and 
+                    hasattr(state.messages[-1], 'tool_calls') and 
+                    state.messages[-1].tool_calls and
+                    tools):
+                    return "tool_executor"
+                return END
+
+            if tools:
+                workflow.add_conditional_edges("chat_agent", route_after_agent)
+                workflow.add_edge("tool_executor", "chat_agent")  # Tools back to agent
+            else:
+                workflow.add_edge("chat_agent", END)
+
+            # Compile and return workflow
+            compiled_workflow = workflow.compile()
+            
+            composer_logger.logger.info(
+                "Chat workflow built successfully",
+                extra={"user_id": user_id, "nodes": len(workflow.nodes)}
+            )
+            
+            return compiled_workflow
+
+        except Exception as e:
+            composer_logger.logger.error(
+                "Failed to build chat workflow",
+                extra={"user_id": user_id, "error": str(e)}
+            )
+            raise WorkflowConstructionError(f"Chat workflow construction failed: {e}") from e
 
     async def build_research_workflow(
-        self, user_id: str, messages: List[Message], tools: List[AvailableTool]  # noqa: ARG002
+        self, user_id: str, messages: List[Message], tools: List[AvailableTool]
     ) -> CompiledStateGraph:
         """
-        Build research workflow with configurable RAG depth.
+        Build a research workflow with deep RAG and synthesis capabilities.
 
-        Workflow: Intent Classification -> Conditional RAG (Shallow/Deep) -> Synthesis -> Response
-        Configuration retrieved from shared data layer using user_id.
+        This workflow emphasizes comprehensive information gathering,
+        multi-source analysis, and detailed synthesis.
         """
-        # Get user configuration from shared data layer
-        user_config = await self._get_user_config(user_id)
-        web_search_config = user_config.web_search if user_config else None
+        try:
+            from langgraph.graph import StateGraph, END
+            from composer.graph.state import ResearchWorkflowState
+            from composer.nodes.standard import PipelineNode
+            from composer.nodes.rag.executor import EnhancedRAGExecutor
+            from composer.nodes.specialized import IntentClassifierNode
+            from models import ModelProfileType
+            
+            composer_logger.logger.info(
+                "Building research workflow",
+                extra={"user_id": user_id, "tool_count": len(tools)}
+            )
 
-        nodes = [
-            "intent_classification",
-            "rag_router",  # Conditional node for RAG depth
-            "parallel_search",
-            "synthesis",
-            "response_generation",
-        ]
+            # Create research workflow graph
+            workflow = StateGraph(ResearchWorkflowState)
 
-        workflow_config = {
-            "rag_depth": "DEEP",  # NOTE: Add rag_depth to workflow config schema
-            "max_sources": (web_search_config.max_results if web_search_config else 10),
-            "retrieve_full_content": True,  # NOTE: Add to workflow config schema
-            "tools": [tool.dict() for tool in tools],
-        }
+            # Configuration retrieved internally from shared data layer using user_id
+            user_config = await self._get_user_config(user_id)
+            if not user_config:
+                raise WorkflowConstructionError("Unable to retrieve user configuration")
 
-        # PLACEHOLDER: Implement LangGraph StateGraph construction and compilation
-        compiled_graph = _PlaceholderCompiledGraph("RESEARCH", nodes, workflow_config)
+            # Initialize pipeline factory (placeholder - will be injected)
+            pipeline_factory = None  # TODO: Inject from service
 
-        composer_logger.logger.info(
-            "Built research workflow",
-            extra={
-                "node_count": len(nodes),
-                "rag_depth": workflow_config["rag_depth"],
-                "max_sources": workflow_config["max_sources"],
-            },
-        )
+            # Add research-specific nodes
+            workflow.add_node("intent_classifier", IntentClassifierNode(pipeline_factory))
+            workflow.add_node("query_expansion", PipelineNode(
+                pipeline_factory, 
+                ModelProfileType.Analysis, 
+                stream=False  # Analysis doesn't need streaming
+            ))
+            workflow.add_node("enhanced_rag", EnhancedRAGExecutor(user_id))
+            workflow.add_node("synthesis_agent", PipelineNode(
+                pipeline_factory, 
+                ModelProfileType.Primary, 
+                stream=True  # Final synthesis can stream
+            ))
 
-        return compiled_graph  # type: ignore  # Placeholder until proper LangGraph implementation
+            # Set up research workflow flow
+            workflow.set_entry_point("intent_classifier")
+            workflow.add_edge("intent_classifier", "query_expansion")
+            workflow.add_edge("query_expansion", "enhanced_rag")
+            workflow.add_edge("enhanced_rag", "synthesis_agent")
+            workflow.add_edge("synthesis_agent", END)
+
+            # Compile and return workflow
+            compiled_workflow = workflow.compile()
+            
+            composer_logger.logger.info(
+                "Research workflow built successfully",
+                extra={"user_id": user_id, "nodes": len(workflow.nodes)}
+            )
+            
+            return compiled_workflow
+
+        except Exception as e:
+            composer_logger.logger.error(
+                "Failed to build research workflow",
+                extra={"user_id": user_id, "error": str(e)}
+            )
+            raise WorkflowConstructionError(f"Research workflow construction failed: {e}") from e
 
     async def build_multi_agent_workflow(
         self, user_id: str, messages: List[Message], tools: List[AvailableTool]  # noqa: ARG002
