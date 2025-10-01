@@ -3,12 +3,12 @@ Intent analysis and classification agent.
 Performs comprehensive intent analysis following the capability-driven architecture.
 Maps user requests to RequiredCapabilities and assesses computational complexity.
 
-REFACTOR STATUS: ✅ COMPLETED - Updated to use shared data layer pattern with user_id.
+REFACTOR STATUS: ✅ COMPLETED - Updated to use shared data layer utilities.
 - ✅ analyze() method now accepts user_id and messages instead of ConversationCtx
-- ✅ Configuration retrieved via storage.user_config.get_user_config(user_id) pattern
-- ✅ Proper fallback handling when user config or model profiles unavailable
+- ✅ Uses shared get_model_profile() utility with automatic caching and config management
+- ✅ Proper fallback handling when model profiles unavailable
 - ✅ Message extraction logic updated to work with messages list
-- ✅ Removed ConversationCtx dependencies throughout the component
+- ✅ Removed ConversationCtx dependencies and custom user config handling
 """
 
 import asyncio
