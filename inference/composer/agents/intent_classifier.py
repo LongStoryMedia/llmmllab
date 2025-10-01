@@ -24,6 +24,8 @@ from models import (
     Message,
     UserConfig
 )
+from models.model_profile_type import ModelProfileType
+from utils.model_profile import get_model_profile
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import IntentAnalysisError
 from runner.pipelines.run import run_pipeline
@@ -43,10 +45,10 @@ class IntentClassifierAgent:
     - Follows shared data layer pattern for configuration retrieval
 
     Configuration Management:
-    - Retrieves user configuration from shared data layer using user_id
-    - Accesses analysis model profile via user_config.model_profiles.analysis_profile_id
+    - Uses shared get_model_profile() utility for analysis model profile retrieval
+    - Data layer manages user configuration access and multi-tier caching automatically  
     - No configuration objects passed as arguments (architectural compliance)
-    - Falls back gracefully when user config or model profiles unavailable
+    - Falls back gracefully when model profiles unavailable
 
     Grammar-Constrained Output:
     - Ensures LLM output matches IntentAnalysis Pydantic model structure
@@ -60,46 +62,7 @@ class IntentClassifierAgent:
             "Intent classifier initialized with analysis model profile"
         )
 
-    async def _get_user_config(self, user_id: str) -> Optional[UserConfig]:
-        """
-        Retrieve user configuration from shared data layer.
-        
-        Uses multi-tier caching system (memory → Redis → database) for performance.
-        Follows architectural pattern of configuration access via user_id only.
-        
-        Args:
-            user_id: User ID for configuration retrieval
-            
-        Returns:
-            UserConfig | None: User configuration or None if unavailable
-        """
-        try:
-            # Check storage initialization
-            if not storage.pool:
-                composer_logger.logger.warning(
-                    "Storage not initialized in IntentClassifierAgent", 
-                    extra={"user_id": user_id, "component": "intent_classifier"}
-                )
-                return None
-                
-            # Retrieve user config via shared data layer (multi-tier cached)
-            user_config = await storage.get_service(storage.user_config).get_user_config(user_id)
-            if not user_config:
-                composer_logger.logger.warning(
-                    "User configuration not found", 
-                    extra={"user_id": user_id, "component": "intent_classifier"}
-                )
-                return None
-                
-            return user_config
-            
-        except Exception as e:
-            composer_logger.logger.error(
-                "Failed to retrieve user configuration", 
-                extra={"user_id": user_id, "error": str(e), "component": "intent_classifier"},
-                exc_info=True
-            )
-            return None
+
 
     def determine_rag_depth(self, intent_analysis: IntentAnalysis) -> str:
         """
@@ -142,10 +105,9 @@ class IntentClassifierAgent:
         5. Return validated IntentAnalysis with guaranteed schema compliance
 
         Configuration Retrieval:
-        - Uses storage.user_config.get_user_config(user_id) for configuration access
-        - Accesses analysis_profile_id from user_config.model_profiles
-        - Multi-tier caching (memory → Redis → database) provides performance optimization
-        - Graceful fallback when configuration unavailable
+        - Uses shared get_model_profile(user_id, ModelProfileType.Analysis) utility
+        - Data layer manages multi-tier caching (memory → Redis → database) automatically
+        - Graceful fallback when model profile or configuration unavailable
 
         Grammar Constraints:
         - LLM output guaranteed to match IntentAnalysis Pydantic model
@@ -166,22 +128,6 @@ class IntentClassifierAgent:
         try:
             start_time = asyncio.get_event_loop().time()
 
-            # Get user configuration from shared data layer
-            user_config = await self._get_user_config(user_id)
-            
-            # Handle case where no user config is available
-            if not user_config:
-                # Return fallback intent analysis
-                return IntentAnalysis(
-                    primary_intent="chat",
-                    complexity_level=ComplexityLevel.SIMPLE,
-                    required_capabilities=[RequiredCapability.TEXT_PROCESSING],
-                    computational_requirements=[ComputationalRequirement.COMPLEX_REASONING],
-                    domain_specificity=0.3,
-                    reusability_potential=0.7,
-                    confidence=0.6
-                )
-
             # Extract current user message from messages list
             current_user_message = None
             if messages:
@@ -201,16 +147,15 @@ class IntentClassifierAgent:
             # Extract user message text
             user_query = extract_message_text(current_user_message)
 
-            # Get analysis model profile
-            mp = await storage.get_service(
-                storage.model_profile
-            ).get_model_profile_by_id(
-                user_config.model_profiles.analysis_profile_id,
-                user_config.user_id,
-            )
-
-            if not mp:
-                # Fallback to simple analysis if no model profile available
+            # Get analysis model profile using shared utility (handles caching and user config access)
+            try:
+                mp = await get_model_profile(user_id, ModelProfileType.Analysis)
+            except (ValueError, AssertionError) as e:
+                composer_logger.logger.warning(
+                    "Failed to get analysis model profile, using fallback", 
+                    extra={"user_id": user_id, "error": str(e), "component": "intent_classifier"}
+                )
+                # Return fallback intent analysis when model profile unavailable
                 return IntentAnalysis(
                     primary_intent="chat",
                     complexity_level=ComplexityLevel.SIMPLE,
