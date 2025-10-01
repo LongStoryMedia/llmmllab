@@ -6,7 +6,6 @@ Constructs LangGraph workflows dynamically based on conversation context and too
 from typing import Dict, Any, List
 
 from langgraph.graph import StateGraph, END, START
-from langgraph.graph.state import CompiledStateGraph
 from models.available_tool import AvailableTool
 from models.workflow_type import WorkflowType
 from composer.monitoring.logging import composer_logger
@@ -24,7 +23,7 @@ class GraphBuilder:
 
     def __init__(self, pipeline_factory=None):
         self.pipeline_factory = pipeline_factory
-        composer_logger.logger.info("GraphBuilder initialized", extra={"has_pipeline_factory": pipeline_factory is not None})
+        composer_logger.logger.info("GraphBuilder initialized", has_pipeline_factory=pipeline_factory is not None)
 
     async def _get_user_config(self, user_id: str):
         """Get user configuration from shared data layer."""
@@ -59,7 +58,7 @@ class GraphBuilder:
         messages: List[Message],
         tools: List[AvailableTool],
         workflow_type: str,
-    ) -> CompiledStateGraph:
+    ) -> Any:
         """
         Build workflow from user configuration, tools, and workflow type.
 
@@ -99,7 +98,7 @@ class GraphBuilder:
 
     async def build_chat_workflow(
         self, user_id: str, messages: List[Message], tools: List[AvailableTool]
-    ) -> CompiledStateGraph:
+    ) -> Any:
         """
         Build a standard chat workflow with conditional RAG routing.
 
@@ -208,7 +207,7 @@ class GraphBuilder:
 
     async def build_research_workflow(
         self, user_id: str, messages: List[Message], tools: List[AvailableTool]
-    ) -> CompiledStateGraph:
+    ) -> Any:
         """
         Build a research workflow with deep RAG and synthesis capabilities.
 
@@ -279,7 +278,7 @@ class GraphBuilder:
 
     async def build_multi_agent_workflow(
         self, user_id: str, messages: List[Message], tools: List[AvailableTool]  # noqa: ARG002
-    ) -> CompiledStateGraph:
+    ) -> Any:
         """
         Build multi-agent orchestration workflow.
 
@@ -369,7 +368,7 @@ class GraphBuilder:
 
     async def build_creative_workflow(
         self, user_id: str, messages: List[Message], tools: List[AvailableTool]  # noqa: ARG002
-    ) -> CompiledStateGraph:
+    ) -> Any:
         """
         Build creative content generation workflow.
 

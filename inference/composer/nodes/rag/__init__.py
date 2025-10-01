@@ -5,7 +5,7 @@ from .executor import RAGExecutorNode, EnhancedRAGExecutor
 
 __all__ = [
     "RAGRouter",
-    "ShallowRAGExecutor", 
+    "ShallowRAGExecutor",
     "DeepRAGExecutor",
     "RAGExecutorNode",
     "EnhancedRAGExecutor",
