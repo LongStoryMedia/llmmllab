@@ -2,34 +2,25 @@
 Intent analysis and classification agent.
 Performs comprehensive intent analysis following the capability-driven architecture.
 Maps user requests to RequiredCapabilities and assesses computational complexity.
-
-REFACTOR STATUS: ✅ COMPLETED - Updated to use shared data layer utilities.
-- ✅ analyze() method now accepts user_id and messages instead of ConversationCtx
-- ✅ Uses shared get_model_profile() utility with automatic caching and config management
-- ✅ Proper fallback handling when model profiles unavailable
-- ✅ Message extraction logic updated to work with messages list
-- ✅ Removed ConversationCtx dependencies and custom user config handling
 """
 
 import asyncio
 import json
 
-from typing import List, Optional
+from typing import List
 
 from models import (
     IntentAnalysis, 
     ComplexityLevel, 
     RequiredCapability, 
     ComputationalRequirement, 
-    Message,
-    UserConfig
+    Message
 )
 from models.model_profile_type import ModelProfileType
 from utils.model_profile import get_model_profile
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import IntentAnalysisError
 from runner.pipelines.run import run_pipeline
-from db import storage
 from utils.message import extract_message_text
 
 
@@ -37,23 +28,21 @@ class IntentClassifierAgent:
     """
     Grammar-constrained LLM intent analysis agent for workflow routing and tool selection.
 
-    Architectural Role:
-    - Executes early in LangGraph flow using grammar-constrained structured output
-    - Uses llamacpp grammars derived from intent_analysis.yaml schema  
-    - Generates type-safe IntentAnalysis model with guaranteed structure validation
-    - Guides tool selection, workflow type selection, and RAG depth configuration
-    - Follows shared data layer pattern for configuration retrieval
+    This agent performs comprehensive intent analysis using structured LLM output with
+    grammar constraints to ensure guaranteed schema validation. It analyzes user messages
+    to determine primary intent, complexity levels, required capabilities, and computational
+    requirements that drive LangGraph workflow routing decisions.
 
-    Configuration Management:
-    - Uses shared get_model_profile() utility for analysis model profile retrieval
-    - Data layer manages user configuration access and multi-tier caching automatically  
-    - No configuration objects passed as arguments (architectural compliance)
-    - Falls back gracefully when model profiles unavailable
+    Key Features:
+    - Grammar-constrained structured output using llamacpp grammars
+    - Type-safe IntentAnalysis model generation with schema validation
+    - Adaptive RAG depth determination based on complexity assessment
+    - Graceful fallback handling when model profiles unavailable
+    - Integration with shared model profile utilities for configuration management
 
-    Grammar-Constrained Output:
-    - Ensures LLM output matches IntentAnalysis Pydantic model structure
-    - Eliminates JSON parsing errors through grammar validation
-    - Provides type-safe, predictable structured output for graph routing
+    The agent executes early in LangGraph workflows to guide tool selection,
+    workflow type selection, and retrieval depth configuration through structured
+    intent classification that eliminates JSON parsing errors.
     """
 
     def __init__(self):
@@ -95,32 +84,22 @@ class IntentClassifierAgent:
 
     async def analyze(self, user_id: str, messages: List[Message]) -> IntentAnalysis:
         """
-        Grammar-constrained intent analysis using structured LLM output.
+        Perform grammar-constrained intent analysis using structured LLM output.
 
-        Architectural Flow:
-        1. Retrieve user configuration from shared data layer using user_id
-        2. Extract latest user message from messages list
-        3. Get analysis model profile from user configuration  
-        4. Execute grammar-constrained LLM analysis with structured output
-        5. Return validated IntentAnalysis with guaranteed schema compliance
+        Extracts the latest user message from conversation history and analyzes it using
+        a specialized analysis model profile. The LLM output is grammar-constrained to
+        ensure guaranteed structure validation matching the IntentAnalysis schema.
 
-        Configuration Retrieval:
-        - Uses shared get_model_profile(user_id, ModelProfileType.Analysis) utility
-        - Data layer manages multi-tier caching (memory → Redis → database) automatically
-        - Graceful fallback when model profile or configuration unavailable
+        The analysis produces structured intent classification including primary intent,
+        complexity assessment, required capabilities, and computational requirements.
+        This structured output drives LangGraph conditional routing for workflow selection.
 
-        Grammar Constraints:
-        - LLM output guaranteed to match IntentAnalysis Pydantic model
-        - Uses llamacpp grammars derived from intent_analysis.yaml schema
-        - Eliminates JSON parsing errors through structure validation
-        - Enables type-safe conditional routing in LangGraph workflows
-        
         Args:
-            user_id: User ID for shared data layer configuration retrieval
-            messages: Conversation messages (extracts current user message)
+            user_id: User ID for model profile retrieval
+            messages: Conversation messages list
             
         Returns:
-            IntentAnalysis: Grammar-validated structured analysis for workflow routing
+            IntentAnalysis: Validated structured analysis for workflow routing
 
         Raises:
             IntentAnalysisError: When analysis fails or user message unavailable
