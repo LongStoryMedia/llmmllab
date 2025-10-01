@@ -133,6 +133,19 @@ class ToolRegistry:
             # Return minimal tool set on error
             return []
 
+    async def generate_dynamic_tool(self, tool_spec: Any, user_id: str) -> Optional[Any]:
+        """
+        Public interface for dynamic tool generation.
+        
+        Args:
+            tool_spec: Tool specification (DynamicTool model)
+            user_id: User identifier
+            
+        Returns:
+            Generated tool instance or None
+        """
+        return await self._generate_or_retrieve_dynamic_tool(user_id, tool_spec)
+
     async def _get_user_config(self, user_id: str):
         """Get user configuration from shared data layer."""
         try:
@@ -179,7 +192,7 @@ class ToolRegistry:
             or getattr(intent, "requires_external_data", False)
         )
 
-    def _create_tool_instance(self, tool_cls: Any, user_id: str) -> Optional[Tool]:  # noqa: ARG002
+    def _create_tool_instance(self, tool_cls: Any, user_id: str) -> Optional[Tool]:
         """Create tool instance from tool class with user configuration."""
         # PLACEHOLDER: Use user_id to configure tool instances when needed
         try:

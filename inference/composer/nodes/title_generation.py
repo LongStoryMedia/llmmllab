@@ -9,8 +9,6 @@ from models.lang_chain_message import LangChainMessage
 from models.model_profile_type import ModelProfileType
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
-from composer.core.errors import NodeExecutionError
-
 # Lazy imports to avoid circular dependencies
 from db import storage  # pylint: disable=import-outside-toplevel
 from utils.model_profile import get_model_profile_for_task  # pylint: disable=import-outside-toplevel
@@ -61,11 +59,9 @@ class TitleGenerationNode:
             if not user_id:
                 return state
 
-            # Get model profile for analysis tasks
+            # Get user configuration for pipeline creation
             uc = await storage.get_service(storage.user_config).get_user_config(user_id)
-            model_profile = get_model_profile_for_task(
-                uc.model_profiles, ModelProfileType.Analysis, user_id
-            )
+            # Model profile will be used by pipeline factory internally
 
             self.logger.info(
                 "Generating conversation title",

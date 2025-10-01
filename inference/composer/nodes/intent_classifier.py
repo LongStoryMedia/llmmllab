@@ -64,11 +64,9 @@ class IntentClassifierNode:
 
             latest_query = getattr(user_messages[-1], 'content', '')
 
-            # Get model profile for analysis tasks
+            # Get user configuration for pipeline creation
             uc = await storage.get_service(storage.user_config).get_user_config(user_id)
-            model_profile = get_model_profile_for_task(
-                uc.model_profiles, ModelProfileType.Analysis, user_id
-            )
+            # Model profile will be used by pipeline factory internally
 
             self.logger.info(
                 "Analyzing user intent",

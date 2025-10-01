@@ -3,12 +3,11 @@ Engineering agent node for dynamic tool generation and orchestration.
 Generates, retrieves, or composes tools based on intent analysis and user requirements.
 """
 
-from typing import List, Optional, Any
+from typing import Optional, Any
 
 from models.intent_analysis import IntentAnalysis
 from models.available_tool import AvailableTool
 from models.dynamic_tool import DynamicTool
-from models.model_profile_type import ModelProfileType
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import NodeExecutionError
@@ -16,7 +15,6 @@ from composer.tools.registry import ToolRegistry
 
 # Lazy imports to avoid circular dependencies
 from db import storage  # pylint: disable=import-outside-toplevel
-from utils.model_profile import get_model_profile_for_task  # pylint: disable=import-outside-toplevel
 from utils.grammar_generator import get_grammar_for_model  # pylint: disable=import-outside-toplevel
 
 
@@ -151,8 +149,8 @@ class EngineeringAgentNode:
             if not tool_spec:
                 return None
 
-            # Use ToolRegistry's dynamic tool generation method
-            dynamic_tool = await self.tool_registry._generate_or_retrieve_dynamic_tool(
+            # Use ToolRegistry's public dynamic tool generation method
+            dynamic_tool = await self.tool_registry.generate_dynamic_tool(
                 tool_spec, user_id
             )
             
@@ -186,11 +184,7 @@ class EngineeringAgentNode:
             Structured tool specification
         """
         try:
-            # Get model profile for tool generation
-            uc = await storage.get_service(storage.user_config).get_user_config(user_id)
-            model_profile = get_model_profile_for_task(
-                uc.model_profiles, ModelProfileType.Primary, user_id
-            )
+            # User configuration will be accessed by pipeline factory internally
 
             # Create grammar-constrained Engineering Agent pipeline
             engineering_pipeline = await self.pipeline_factory.create_structured_pipeline(
