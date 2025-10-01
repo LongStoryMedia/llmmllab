@@ -59,9 +59,7 @@ class TitleGenerationNode:
             if not user_id:
                 return state
 
-            # Get user configuration for pipeline creation
-            uc = await storage.get_service(storage.user_config).get_user_config(user_id)
-            # Model profile will be used by pipeline factory internally
+            # User configuration and model profile will be accessed by pipeline factory internally
 
             self.logger.info(
                 "Generating conversation title",

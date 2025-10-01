@@ -12,9 +12,6 @@ from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import NodeExecutionError
 from composer.tools.registry import ToolRegistry
-
-# Lazy imports to avoid circular dependencies
-from db import storage  # pylint: disable=import-outside-toplevel
 from utils.grammar_generator import get_grammar_for_model  # pylint: disable=import-outside-toplevel
 
 

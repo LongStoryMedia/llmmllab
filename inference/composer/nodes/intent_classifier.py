@@ -7,7 +7,6 @@ from typing import List
 
 from models.lang_chain_message import LangChainMessage
 from models.intent_analysis import IntentAnalysis
-from models.model_profile_type import ModelProfileType
 from models.complexity_level import ComplexityLevel
 from models.required_capability import RequiredCapability
 from models.computational_requirement import ComputationalRequirement
@@ -17,7 +16,6 @@ from composer.core.errors import NodeExecutionError
 
 # Lazy imports to avoid circular dependencies
 from db import storage  # pylint: disable=import-outside-toplevel
-from utils.model_profile import get_model_profile_for_task  # pylint: disable=import-outside-toplevel
 from utils.grammar_generator import get_grammar_for_model  # pylint: disable=import-outside-toplevel
 
 
@@ -64,9 +62,7 @@ class IntentClassifierNode:
 
             latest_query = getattr(user_messages[-1], 'content', '')
 
-            # Get user configuration for pipeline creation
-            uc = await storage.get_service(storage.user_config).get_user_config(user_id)
-            # Model profile will be used by pipeline factory internally
+            # User configuration and model profile will be accessed by pipeline factory internally
 
             self.logger.info(
                 "Analyzing user intent",
