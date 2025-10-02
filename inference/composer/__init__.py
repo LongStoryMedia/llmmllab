@@ -62,16 +62,12 @@ def get_composer_service() -> ComposerService:
 
 async def compose_workflow(
     user_id: str,
-    messages: List[Message],
-    workflow_type: WorkflowType,
 ):
     """
     Compose a workflow for the given user and conversation messages.
 
     Args:
         user_id: User ID for configuration retrieval from shared data layer
-        messages: List of conversation messages
-        workflow_type: Type of workflow (WorkflowType enum: CHAT, RESEARCH, MULTI_AGENT, CREATIVE)
 
     Returns:
         CompiledStateGraph: Ready to execute LangGraph workflow
@@ -84,8 +80,7 @@ async def compose_workflow(
         Configuration is retrieved from shared data layer using user_id.
         No configuration objects should be passed as arguments (architectural rule).
     """
-    service = get_composer_service()
-    return await service.compose_workflow(user_id, messages, workflow_type)
+    return await get_composer_service().compose_workflow(user_id)
 
 
 async def create_initial_state(

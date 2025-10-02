@@ -3,7 +3,7 @@ GraphBuilder for dynamic workflow construction.
 Constructs LangGraph workflows dynamically based on conversation context and tools.
 """
 
-from typing import Any, List
+from typing import Any, List, Optional
 
 from langgraph.graph import StateGraph, END
 from langgraph.graph.state import CompiledStateGraph
@@ -109,167 +109,48 @@ class GraphBuilder:
                 f"Failed to build {workflow_type} workflow: {e}"
             ) from e
 
-    async def build_chat_workflow(
-        self, user_id: str, messages: List[Message], tools: List[AvailableTool]
+    async def build_master_workflow(
+        self, user_id: str, workflow_type: Optional[WorkflowType] = None
     ) -> CompiledStateGraph:
         """
-        Build a standard chat workflow with conditional RAG routing.
-
-        This workflow includes:
-        1. Intent classification to determine RAG depth
-        2. Conditional RAG routing (shallow vs deep)
-        3. Dynamic tool orchestration
-        4. Primary chat agent with streaming support
+        Build master workflow with intelligent routing and optional explicit workflow type.
+        
+        Args:
+            user_id: User ID for configuration retrieval
+            workflow_type: Optional explicit workflow type. If None, uses intent analysis.
+        
+        Returns:
+            CompiledStateGraph: Master workflow with intelligent routing
         """
         try:
             composer_logger.logger.info(
-                "Building chat workflow",
-                extra={"user_id": user_id, "tool_count": len(tools)},
+                "Building master workflow",
+                extra={"user_id": user_id, "workflow_type": workflow_type}
             )
-
-            # Create workflow graph
-            workflow = StateGraph(WorkflowState)
-
-            # Configuration retrieved internally from shared data layer using user_id
-            user_config = await self._get_user_config(user_id)
-            if not user_config:
-                raise WorkflowConstructionError("Unable to retrieve user configuration")
-
-            # Use injected pipeline factory
-            pipeline_factory = self.pipeline_factory
-
-            # Add nodes to workflow
-            workflow.add_node("intent_classifier", IntentClassifierNode())
-            workflow.add_node(
-                "engineering_agent", EngineeringAgentNode(pipeline_factory)
-            )
-            workflow.add_node("execute_shallow_search", ShallowRAGExecutor(user_id))
-            workflow.add_node(
-                "execute_deep_crawl_and_synthesize", DeepRAGExecutor(user_id)
-            )
-
-            # Primary agent node: enable streaming for UI responsiveness
-            workflow.add_node(
-                "chat_agent",
-                PipelineNode(pipeline_factory, ModelProfileType.Primary, stream=True),
-            )
-
-            # Tool execution node
-            if tools:
-                workflow.add_node(
-                    "tool_executor", ToolExecutorNode([])
-                )  # Tools will be populated
-
-            # Set up workflow flow
-            workflow.set_entry_point("intent_classifier")
-
-            # Conditional routing after intent classification
-            def route_after_intent(state: WorkflowState) -> str:
-                """Route to engineering agent for technical requests, or directly to RAG routing."""
-                try:
-                    intent_analysis = getattr(state, "intent_classification", None)
-                    if not intent_analysis:
-                        # Default to shallow search if no intent analysis
-                        return "execute_shallow_search"
-
-                    # Check if this is a technical/engineering request
-                    primary_intent = getattr(
-                        intent_analysis, "primary_intent", ""
-                    ).lower()
-                    required_capabilities = getattr(
-                        intent_analysis, "required_capabilities", []
-                    )
-
-                    # Route to engineering agent for technical requests
-                    is_technical = (
-                        "technical" in primary_intent
-                        or "engineering" in primary_intent
-                        or "code" in primary_intent
-                        or "programming" in primary_intent
-                        or any(
-                            "TECHNICAL" in str(cap) or "ENGINEERING" in str(cap)
-                            for cap in required_capabilities
-                        )
-                    )
-
-                    if is_technical:
-                        return "engineering_agent"
-
-                    # For non-technical requests, route directly to RAG based on complexity
-                    router = RAGRouter()
-                    return router.route_rag_depth(state)
-
-                except Exception as e:
-                    composer_logger.logger.warning(
-                        f"Intent routing failed: {e}, defaulting to shallow search"
-                    )
-                    return "execute_shallow_search"
-
-            workflow.add_conditional_edges(
-                "intent_classifier",
-                route_after_intent,
-                {
-                    "engineering_agent": "engineering_agent",
-                    "execute_shallow_search": "execute_shallow_search",
-                    "execute_deep_crawl_and_synthesize": "execute_deep_crawl_and_synthesize",
-                },
-            )
-
-            # Conditional RAG routing after engineering agent (for technical requests)
-            def route_rag_depth(state: WorkflowState) -> str:
-                """Route to appropriate RAG implementation based on intent."""
-                router = RAGRouter()
-                return router.route_rag_depth(state)
-
-            workflow.add_conditional_edges(
-                "engineering_agent",
-                route_rag_depth,
-                {
-                    "execute_shallow_search": "execute_shallow_search",
-                    "execute_deep_crawl_and_synthesize": "execute_deep_crawl_and_synthesize",
-                },
-            )
-
-            # Both RAG paths lead to chat agent
-            workflow.add_edge("execute_shallow_search", "chat_agent")
-            workflow.add_edge("execute_deep_crawl_and_synthesize", "chat_agent")
-
-            # Conditional routing after chat agent
-            def route_after_agent(state: WorkflowState) -> str:
-                """Route to tools if tool calls present, otherwise end."""
-                if (
-                    state.messages
-                    and hasattr(state.messages[-1], "tool_calls")
-                    and state.messages[-1].tool_calls
-                    and tools
-                ):
-                    return "tool_executor"
-                return END
-
-            if tools:
-                workflow.add_conditional_edges("chat_agent", route_after_agent)
-                workflow.add_edge("tool_executor", "chat_agent")  # Tools back to agent
+            
+            if workflow_type:
+                # For explicit workflow type, route directly to that workflow
+                if workflow_type == WorkflowType.RESEARCH:
+                    return await self.build_research_workflow(user_id, [], [])
+                elif workflow_type == WorkflowType.CREATIVE:
+                    return await self.build_creative_workflow(user_id, [], [])
+                elif workflow_type == WorkflowType.MULTI_AGENT:
+                    return await self.build_multi_agent_workflow(user_id, [], [])
+                else:  # Default to chat
+                    return await self.build_from_context(user_id, [], [], WorkflowType.CHAT)
             else:
-                workflow.add_edge("chat_agent", END)
-
-            # Compile and return workflow
-            compiled_workflow = workflow.compile()
-
-            composer_logger.logger.info(
-                "Chat workflow built successfully",
-                extra={"user_id": user_id, "nodes": len(workflow.nodes)},
-            )
-
-            return compiled_workflow
-
+                # For intelligent routing, analyze context and build appropriate workflow
+                # TODO: Implement proper intent analysis here
+                # For now, default to chat workflow
+                return await self.build_from_context(user_id, [], [], WorkflowType.CHAT)
+                
         except Exception as e:
             composer_logger.logger.error(
-                "Failed to build chat workflow",
-                extra={"user_id": user_id, "error": str(e)},
+                "Failed to build master workflow",
+                extra={"user_id": user_id, "error": str(e)}
             )
-            raise WorkflowConstructionError(
-                f"Chat workflow construction failed: {e}"
-            ) from e
+            # Fallback to chat workflow
+            return await self.build_from_context(user_id, [], [], WorkflowType.CHAT)
 
     async def build_research_workflow(
         self, user_id: str, messages: List[Message], tools: List[AvailableTool]

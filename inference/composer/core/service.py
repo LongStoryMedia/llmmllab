@@ -16,15 +16,11 @@ from typing import Dict, Any, Optional, List
 from langgraph.graph.state import CompiledStateGraph
 
 from models import Message, LangChainMessage
-
-# Lazy import to avoid circular dependencies
-# from db import storage
+from models.workflow_type import WorkflowType
 
 from composer.graph.state import WorkflowState
 from composer.graph.builder import GraphBuilder
-from composer.tools.registry import ToolRegistry
 from composer.graph.cache import WorkflowCache
-from composer.agents.intent_classifier import IntentClassifierAgent
 from composer.monitoring.logging import composer_logger
 
 
@@ -44,45 +40,18 @@ class ComposerService:
 
     def __init__(self):
         self.logger = composer_logger.logger
+        from runner import pipeline_factory  # pylint: disable=import-outside-toplevel
 
-        # Import pipeline factory to inject into GraphBuilder
-        try:
-            from runner import (
-                pipeline_factory,
-            )  # pylint: disable=import-outside-toplevel
-
-            self.pipeline_factory = pipeline_factory
-        except ImportError as e:
-            self.logger.warning(f"Could not import pipeline_factory: {e}")
-            self.pipeline_factory = None
+        self.pipeline_factory = pipeline_factory
 
         self.graph_builder = GraphBuilder(pipeline_factory=self.pipeline_factory)
-        self.tool_registry = ToolRegistry()
         # Workflow cache is now created per-user during workflow composition
-        self.workflow_caches: Dict[str, WorkflowCache] = (
-            {}
-        )  # Dict[str, WorkflowCache] - keyed by user_id
-        self.intent_classifier = IntentClassifierAgent()
-
-        # Initialize core components
-        self._initialize_components()
-
-    def _initialize_components(self):
-        """Initialize composer components and validate configuration."""
-        self.logger.info(
-            "ComposerService initialized",
-            extra={
-                "graph_builder": "ready",
-                "tool_registry": "ready",
-                "intent_classifier": "ready",
-                "workflow_caches": "ready",
-            },
-        )
+        self.workflow_caches: Dict[str, WorkflowCache] = {}
 
     async def compose_workflow(
         self,
         user_id: str,
-        messages: List[Message],
+        workflow_type: Optional["WorkflowType"] = None,
     ) -> CompiledStateGraph:
         """
         Construct or retrieve a master workflow with intelligent routing.
@@ -92,7 +61,6 @@ class ComposerService:
 
         args:
             user_id: User ID for configuration retrieval
-            messages: Conversation messages
 
         returns:
             CompiledStateGraph: Master workflow with intelligent routing
@@ -123,9 +91,9 @@ class ComposerService:
                     )
                     return cached_workflow
 
-            # 3. Build master workflow with intelligent routing
+            # 3. Build master workflow with intelligent routing or explicit type
             # Intent analysis and tool selection happen inside the graph now
-            builder_fn = lambda: self.graph_builder.build_master_workflow(user_id)
+            builder_fn = lambda: self.graph_builder.build_master_workflow(user_id, workflow_type)
 
             if user_cache:
                 workflow = await user_cache.get_or_create(cache_key, builder_fn)
@@ -256,7 +224,4 @@ class ComposerService:
             except Exception as e:
                 self.logger.warning(f"Error closing cache for user {user_id}: {e}")
         self.workflow_caches.clear()
-
-        await self.tool_registry.close()
-
         # Close other resources as needed
