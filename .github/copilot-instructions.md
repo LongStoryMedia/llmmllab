@@ -497,21 +497,23 @@ k exec -it -n ollama $POD_NAME -- env | grep -E "(COMPOSER|DB_|REDIS_)" | sort
 
 ### Unit Tests (`inference/test/`)
 Use for **automated testing** of interfaces, components, and business logic:
-- **When**: Testing public APIs, service interfaces, data models, utility functions
-- **Characteristics**: Fast, isolated, mockable dependencies, no external services
-- **Examples**: Functional interfaces, configuration parsing, data validation, error handling
+- **When**: Testing public APIs, service interfaces, data models, utility functions, schema validation
+- **Characteristics**: Fast, isolated, mockable dependencies, no external services, automated execution
+- **Examples**: Pydantic model creation, configuration parsing, data validation, error handling, interface compatibility
 - **Framework**: pytest with mocking for external dependencies
 - **Execution**: `python -m pytest test/` or individual test files
+- **Key Indicator**: Can run without database, GPU, or network - pure Python logic testing
 
 ### Manual Verification Tests (`inference/debug/`)
 Use for **manual validation** and **integration testing** requiring real services:
-- **When**: End-to-end workflows, GPU operations, database connections, model execution
-- **Characteristics**: Requires real infrastructure, longer execution time, manual inspection
-- **Examples**: Model pipeline testing, database queries, GPU memory validation, service integration
+- **When**: End-to-end workflows, GPU operations, database connections, model execution, system integration
+- **Characteristics**: Requires real infrastructure, longer execution time, manual inspection, external dependencies
+- **Examples**: Model pipeline testing, database queries, GPU memory validation, service integration, LLM execution
 - **Framework**: Standalone Python scripts with detailed output
 - **Execution**: Direct script execution in pods or local environment with real services
+- **Key Indicator**: Needs actual database, GPU, network services, or manual human verification
 
-**Rule**: If testing an **interface** (API, service boundary, public functions), write **unit tests**. If testing **integration** or requiring **real infrastructure**, use **debug scripts**.
+**Rule**: If testing **pure Python logic** (models, interfaces, parsing, validation), write **unit tests**. If testing **system integration** or requiring **real infrastructure**, use **debug scripts**.
 
 
 ## IMPORTANT NOTES
