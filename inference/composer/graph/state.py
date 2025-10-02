@@ -29,14 +29,16 @@ from models.workflow_type import WorkflowType
 
 class ExecutionStrategy(str, Enum):
     """Workflow execution strategies for multi-graph coordination."""
+
     SINGLE = "single"
-    PARALLEL = "parallel" 
+    PARALLEL = "parallel"
     SERIES = "series"
     HYBRID = "hybrid"
 
 
 class RoutingDecision(str, Enum):
     """Valid routing decisions for subgraph selection."""
+
     CHAT = "chat"
     RESEARCH = "research"
     CREATIVE = "creative"
@@ -49,12 +51,12 @@ class WorkflowState(BaseModel):
     Unified LangGraph state schema with reducer functions.
     This state is shared across all nodes in composer workflows.
     """
-    
+
     model_config = {
         "arbitrary_types_allowed": True,  # Allow LangChain message types
-        "validate_assignment": True,     # Validate on field assignment
-        "use_enum_values": True,        # Use enum values in serialization
-        "extra": "forbid"               # Prevent extra fields for type safety
+        "validate_assignment": True,  # Validate on field assignment
+        "use_enum_values": True,  # Use enum values in serialization
+        "extra": "forbid",  # Prevent extra fields for type safety
     }
 
     # Conversation history and final outputs - essential for context and token streaming
@@ -91,23 +93,21 @@ class WorkflowState(BaseModel):
 
     # Routing and execution control fields (referenced by builder.py)
     next_node: Optional[str] = Field(
-        default=None, 
-        description="Next node name for Command-based deterministic routing"
-    )
-    
-    routing_decision: Optional[RoutingDecision] = Field(
         default=None,
-        description="Explicit routing decision from router node"
+        description="Next node name for Command-based deterministic routing",
     )
-    
+
+    routing_decision: Optional[RoutingDecision] = Field(
+        default=None, description="Explicit routing decision from router node"
+    )
+
     execution_strategy: ExecutionStrategy = Field(
         default=ExecutionStrategy.SINGLE,
-        description="Strategy for executing multiple subgraphs"
+        description="Strategy for executing multiple subgraphs",
     )
-    
+
     selected_workflows: List[str] = Field(
-        default_factory=list,
-        description="List of workflows selected for execution"
+        default_factory=list, description="List of workflows selected for execution"
     )
 
     # Additional context fields
@@ -123,25 +123,23 @@ class WorkflowState(BaseModel):
     execution_metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Runtime metadata and debugging information"
     )
-    
+
     # Circuit breaker and error tracking
     error_details: Annotated[List[str], operator.add] = Field(
         default_factory=list,
-        description="Error details for circuit breaker and recovery"
-    )
-    
-    # Timing and performance metadata
-    execution_start_time: Optional[datetime] = Field(
-        default=None,
-        description="Workflow execution start timestamp"
-    )
-    
-    node_execution_times: Dict[str, float] = Field(
-        default_factory=dict,
-        description="Execution time tracking per node"
+        description="Error details for circuit breaker and recovery",
     )
 
-    @field_validator('workflow_type', mode='before')
+    # Timing and performance metadata
+    execution_start_time: Optional[datetime] = Field(
+        default=None, description="Workflow execution start timestamp"
+    )
+
+    node_execution_times: Dict[str, float] = Field(
+        default_factory=dict, description="Execution time tracking per node"
+    )
+
+    @field_validator("workflow_type", mode="before")
     @classmethod
     def validate_workflow_type(cls, v):
         """Ensure workflow_type is properly typed."""
@@ -155,12 +153,12 @@ class WorkflowState(BaseModel):
 
 class ChatWorkflowState(WorkflowState):
     """Specialized state for chat workflows."""
-    
+
     model_config = {
         "arbitrary_types_allowed": True,
         "validate_assignment": True,
         "use_enum_values": True,
-        "extra": "forbid"
+        "extra": "forbid",
     }
 
     title_generated: bool = Field(
@@ -174,12 +172,12 @@ class ChatWorkflowState(WorkflowState):
 
 class ResearchWorkflowState(WorkflowState):
     """Specialized state for research workflows."""
-    
+
     model_config = {
         "arbitrary_types_allowed": True,
         "validate_assignment": True,
         "use_enum_values": True,
-        "extra": "forbid"
+        "extra": "forbid",
     }
 
     query_expanded: bool = Field(
@@ -197,12 +195,12 @@ class ResearchWorkflowState(WorkflowState):
 
 class MultiAgentWorkflowState(WorkflowState):
     """Specialized state for multi-agent orchestration."""
-    
+
     model_config = {
         "arbitrary_types_allowed": True,
         "validate_assignment": True,
         "use_enum_values": True,
-        "extra": "forbid"
+        "extra": "forbid",
     }
 
     active_agent: Optional[str] = Field(

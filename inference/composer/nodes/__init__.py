@@ -4,6 +4,7 @@ from .standard import PipelineNode, ToolExecutorNode, RAGNode, CircuitProtectedN
 from .title_generation import TitleGenerationNode
 from .intent_classifier import IntentClassifierNode
 from .engineering_agent import EngineeringAgentNode
+from .workflow_router import WorkflowRouter
 
 __all__ = [
     "PipelineNode",
@@ -13,4 +14,5 @@ __all__ = [
     "TitleGenerationNode",
     "IntentClassifierNode",
     "EngineeringAgentNode",
+    "WorkflowRouter",
 ]

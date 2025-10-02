@@ -22,6 +22,7 @@ from composer.nodes.standard import PipelineNode
 from composer.nodes.intent_classifier import IntentClassifierNode
 from composer.nodes.engineering_agent import EngineeringAgentNode
 from composer.nodes.rag.executor import EnhancedRAGExecutor
+from composer.nodes.workflow_router import WorkflowRouter
 from composer.tools.registry import ToolRegistry
 from composer.workflows.chat import build_chat_workflow
 from composer.workflows.research import build_research_workflow as build_research_workflow_impl
@@ -218,9 +219,9 @@ class GraphBuilder:
 
             else:
                 # Complex subgraph routing (preserve existing comprehensive capabilities)
-                # Add router node with routing logic
+                # Add router node with dedicated WorkflowRouter
                 workflow.add_node(
-                    "router", self._create_router_node(user_id, workflow_type)
+                    "router", WorkflowRouter(user_id)
                 )
 
                 # Create and add subgraphs as compiled nodes
@@ -238,10 +239,11 @@ class GraphBuilder:
                 workflow.add_edge("intent_analysis", "tool_collection")
                 workflow.add_edge("tool_collection", "router")
 
-                # Conditional routing from router to subgraphs
+                # Conditional routing from router to subgraphs using WorkflowRouter
+                router_instance = WorkflowRouter(user_id)
                 workflow.add_conditional_edges(
                     "router",
-                    self._route_to_subgraphs,
+                    router_instance.get_routing_target,
                     {
                         "chat": "chat_subgraph",
                         "research": "research_subgraph",
@@ -594,51 +596,7 @@ class GraphBuilder:
 
         return coordinate_execution
 
-    def _route_to_subgraphs(self, state: WorkflowState) -> str:
-        """Determine which subgraph to route to using Command primitive for deterministic routing."""
-        try:
-            # Check for Command-based routing decision (production-grade deterministic routing)
-            if state.next_node:
-                composer_logger.logger.info(
-                    "Using Command-based deterministic routing",
-                    extra={"next_node": state.next_node},
-                )
-                return state.next_node
-
-            # Check for explicit routing decision from router (strongly typed)
-            if state.routing_decision:
-                composer_logger.logger.info(
-                    "Using explicit routing decision",
-                    extra={"routing_decision": state.routing_decision.value},
-                )
-                return state.routing_decision.value
-
-            # Fallback to intent-based routing with structured validation
-            intent_analysis = getattr(state, "intent_classification", None)
-            if intent_analysis and hasattr(intent_analysis, "primary_intent"):
-                primary_intent = intent_analysis.primary_intent.lower()
-                # Use deterministic mapping instead of string matching
-                routing_map = {
-                    "research": "research",
-                    "analysis": "research",
-                    "creative": "creative",
-                    "generate": "creative",
-                    "multi_agent": "multi_agent",
-                    "collaboration": "multi_agent",
-                }
-
-                for key, route in routing_map.items():
-                    if key in primary_intent:
-                        return route
-
-            # Default fallback
-            return "chat"
-
-        except Exception as e:
-            composer_logger.logger.error(
-                "Routing error - falling back to chat", extra={"error": str(e)}
-            )
-            return "chat"
+    # Routing methods removed - now handled by dedicated WorkflowRouter class
 
     async def _create_fallback_workflow(
         self, user_id: str
@@ -661,77 +619,7 @@ class GraphBuilder:
 
             return workflow.compile()
 
-    def _create_router_node(
-        self, user_id: str, explicit_workflow_type: Optional[WorkflowType] = None
-    ):
-        """
-        Create intelligent router node that determines workflow execution strategy.
-
-        The router can decide to:
-        - Route to single subgraph based on intent or explicit type
-        - Execute multiple subgraphs in parallel
-        - Execute subgraphs in series
-        - Use hybrid parallel+series execution
-        """
-
-        async def route_workflows(state):
-            """Route to appropriate subgraph(s) based on intent analysis or explicit type."""
-            try:
-                if explicit_workflow_type:
-                    # Explicit routing - force specific workflow type
-                    state.selected_workflows = [explicit_workflow_type.value]
-                    state.execution_strategy = "single"
-                    return state
-
-                # Intelligent routing based on intent analysis
-                intent = getattr(state, "intent", "chat")
-                complexity = getattr(state, "complexity", "simple")
-
-                # Route based on intent and complexity
-                if complexity == "high" and "research" in intent.lower():
-                    # High complexity research might need multiple workflows
-                    state.selected_workflows = ["research", "creative"]
-                    state.execution_strategy = (
-                        "series"  # Research first, then creative synthesis
-                    )
-                elif "multi" in intent.lower() or "agent" in intent.lower():
-                    state.selected_workflows = ["multi_agent"]
-                    state.execution_strategy = "single"
-                elif "creative" in intent.lower() or "generate" in intent.lower():
-                    state.selected_workflows = ["creative"]
-                    state.execution_strategy = "single"
-                elif "research" in intent.lower() or "analyze" in intent.lower():
-                    state.selected_workflows = ["research"]
-                    state.execution_strategy = "single"
-                else:
-                    # Default to chat for simple interactions
-                    state.selected_workflows = ["chat"]
-                    state.execution_strategy = "single"
-
-                composer_logger.logger.info(
-                    "Router determined execution strategy",
-                    extra={
-                        "user_id": user_id,
-                        "intent": intent,
-                        "complexity": complexity,
-                        "selected_workflows": state.selected_workflows,
-                        "execution_strategy": state.execution_strategy,
-                    },
-                )
-
-                return state
-
-            except Exception as e:
-                composer_logger.logger.error(
-                    "Router failed, falling back to chat",
-                    extra={"user_id": user_id, "error": str(e)},
-                )
-                # Fallback to chat workflow
-                state.selected_workflows = ["chat"]
-                state.execution_strategy = "single"
-                return state
-
-        return route_workflows
+    # Router node creation removed - now handled by dedicated WorkflowRouter class
 
     def _create_tool_collection_node(self, user_id: str):
         """
