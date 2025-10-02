@@ -3,7 +3,8 @@ GraphBuilder for dynamic workflow construction.
 Constructs LangGraph workflows dynamically based on conversation context and tools.
 """
 
-from typing import Any, Optional, Dict, List\nimport asyncio
+import asyncio
+from typing import Any, Optional, Dict, List
 
 from langgraph.graph import StateGraph, END
 from langgraph.graph.state import CompiledStateGraph
@@ -23,9 +24,6 @@ from composer.nodes.engineering_agent import EngineeringAgentNode
 from composer.nodes.rag.executor import EnhancedRAGExecutor
 from composer.tools.registry import ToolRegistry
 
-# Database import - lazy loaded to avoid circular dependencies
-from db import storage  # pylint: disable=import-outside-toplevel
-
 
 class GraphBuilder:
     """
@@ -41,22 +39,25 @@ class GraphBuilder:
         self._circuit_breaker_failures = {}
         self._max_failures = 3
         self._reset_timeout = 60  # seconds
-        
+
         # Performance optimization: Cache compiled subgraphs
         self._subgraph_cache = {}
-        
+
         composer_logger.logger.info(
             "GraphBuilder initialized with production optimizations",
             extra={
                 "has_pipeline_factory": pipeline_factory is not None,
                 "circuit_breaker_enabled": True,
-                "subgraph_caching_enabled": True
+                "subgraph_caching_enabled": True,
             },
         )
 
     async def _get_user_config(self, user_id: str):
         """Get user configuration from shared data layer."""
         try:
+            # Database import - lazy loaded to avoid circular dependencies
+            from db import storage  # pylint: disable=import-outside-toplevel
+
             # Initialize storage if not done
             if not storage.pool:
                 composer_logger.logger.warning(
@@ -79,7 +80,9 @@ class GraphBuilder:
             )
             return None
 
-    async def build_from_context(self, user_id: str, workflow_type: str) -> CompiledStateGraph:
+    async def build_from_context(
+        self, user_id: str, workflow_type: WorkflowType
+    ) -> CompiledStateGraph:
         """
         Build workflow from user configuration, tools, and workflow type.
 
@@ -572,18 +575,18 @@ class GraphBuilder:
             if state.next_node:
                 composer_logger.logger.info(
                     "Using Command-based deterministic routing",
-                    extra={"next_node": state.next_node}
+                    extra={"next_node": state.next_node},
                 )
                 return state.next_node
-            
+
             # Check for explicit routing decision from router (strongly typed)
             if state.routing_decision:
                 composer_logger.logger.info(
                     "Using explicit routing decision",
-                    extra={"routing_decision": state.routing_decision.value}
+                    extra={"routing_decision": state.routing_decision.value},
                 )
                 return state.routing_decision.value
-                
+
             # Fallback to intent-based routing with structured validation
             intent_analysis = getattr(state, "intent_classification", None)
             if intent_analysis and hasattr(intent_analysis, "primary_intent"):
@@ -592,23 +595,22 @@ class GraphBuilder:
                 routing_map = {
                     "research": "research",
                     "analysis": "research",
-                    "creative": "creative", 
+                    "creative": "creative",
                     "generate": "creative",
                     "multi_agent": "multi_agent",
-                    "collaboration": "multi_agent"
+                    "collaboration": "multi_agent",
                 }
-                
+
                 for key, route in routing_map.items():
                     if key in primary_intent:
                         return route
-            
+
             # Default fallback
             return "chat"
-            
+
         except Exception as e:
             composer_logger.logger.error(
-                "Routing error - falling back to chat",
-                extra={"error": str(e)}
+                "Routing error - falling back to chat", extra={"error": str(e)}
             )
             return "chat"
 
@@ -708,9 +710,8 @@ class GraphBuilder:
     def _create_tool_collection_node(self, user_id: str):
         """
         Create optimized tool collection node with LCEL parallel execution.
-        
-        Implements intra-node concurrency as recommended in builder-refactor.md
-        for maximum performance during tool discovery and collection.
+
+        Implements intra-node concurrency for maximum performance during tool discovery and collection.
         Uses ToolRegistry with parallel static/dynamic tool collection.
         """
 
@@ -721,25 +722,31 @@ class GraphBuilder:
                 if self._is_circuit_open("tool_collection"):
                     composer_logger.logger.warning(
                         "Circuit breaker open for tool_collection",
-                        extra={"user_id": user_id}
+                        extra={"user_id": user_id},
                     )
                     # Return cached/minimal tools
                     state.required_tools = []
                     return state
 
                 # LCEL RunnableParallel for concurrent tool operations
-                parallel_operations = RunnableParallel({
-                    "static_tools": RunnableLambda(self._collect_static_tools),
-                    "dynamic_tools": RunnableLambda(self._collect_dynamic_tools),
-                    "intent_tools": RunnableLambda(self._collect_intent_based_tools)
-                })
+                parallel_operations = RunnableParallel(
+                    {
+                        "static_tools": RunnableLambda(self._collect_static_tools),
+                        "dynamic_tools": RunnableLambda(self._collect_dynamic_tools),
+                        "intent_tools": RunnableLambda(
+                            self._collect_intent_based_tools
+                        ),
+                    }
+                )
 
                 # Execute tool collection operations concurrently with strongly typed state
-                tool_results = await parallel_operations.ainvoke({
-                    "state": state,
-                    "user_id": user_id,
-                    "intent": state.intent_classification  # Use strongly typed field
-                })
+                tool_results = await parallel_operations.ainvoke(
+                    {
+                        "state": state,
+                        "user_id": user_id,
+                        "intent": state.intent_classification,  # Use strongly typed field
+                    }
+                )
 
                 # Merge results efficiently
                 all_tools = []
@@ -758,19 +765,19 @@ class GraphBuilder:
                         "total_tools": len(unique_tools),
                         "static_count": len(tool_results.get("static_tools", [])),
                         "dynamic_count": len(tool_results.get("dynamic_tools", [])),
-                        "intent_count": len(tool_results.get("intent_tools", []))
-                    }
+                        "intent_count": len(tool_results.get("intent_tools", [])),
+                    },
                 )
 
                 return state
-                
+
             except Exception as e:
                 # Circuit breaker increment
                 self._record_failure("tool_collection")
-                
+
                 composer_logger.logger.error(
                     "Tool collection failed",
-                    extra={"user_id": user_id, "error": str(e)}
+                    extra={"user_id": user_id, "error": str(e)},
                 )
                 # Graceful degradation - return minimal toolset
                 state.required_tools = []
@@ -782,14 +789,14 @@ class GraphBuilder:
         """Check if circuit breaker is open for given operation."""
         if operation not in self._circuit_breaker_failures:
             return False
-            
+
         failures, last_failure = self._circuit_breaker_failures[operation]
-        
+
         # Reset circuit if timeout exceeded
         if (asyncio.get_event_loop().time() - last_failure) > self._reset_timeout:
             del self._circuit_breaker_failures[operation]
             return False
-            
+
         return failures >= self._max_failures
 
     def _record_failure(self, operation: str):
@@ -801,39 +808,41 @@ class GraphBuilder:
         else:
             self._circuit_breaker_failures[operation] = (1, current_time)
 
-    async def _collect_static_tools(self, input_data: Dict[str, Any]) -> List[AvailableTool]:
+    async def _collect_static_tools(
+        self, input_data: Dict[str, Any]
+    ) -> List[AvailableTool]:
         """Collect static tools with error handling."""
         try:
             registry = ToolRegistry()
             # Initialize static tools using available methods\n            # Note: Static tools are loaded during ToolRegistry init"
-            
+
             # Convert static tools to AvailableTool format
             static_tools = []
             for name, tool_cls in registry.static_tools.items():
                 if tool_cls:
                     available_tool = AvailableTool(
-                        name=name,
-                        description=f"Static tool: {name}",
-                        type="static"
+                        name=name, description=f"Static tool: {name}", type="static"
                     )
                     static_tools.append(available_tool)
-            
+
             composer_logger.logger.debug(
                 "Static tools collected",
-                extra={"count": len(static_tools), "input_context": bool(input_data)}
+                extra={"count": len(static_tools), "input_context": bool(input_data)},
             )
-            
+
             return static_tools
         except Exception as e:
             composer_logger.logger.error(f"Static tool collection failed: {e}")
             return []
 
-    async def _collect_dynamic_tools(self, input_data: Dict[str, Any]) -> List[AvailableTool]:
+    async def _collect_dynamic_tools(
+        self, input_data: Dict[str, Any]
+    ) -> List[AvailableTool]:
         """Collect dynamic tools with error handling."""
         try:
             registry = ToolRegistry()
             user_id = input_data.get("user_id")
-            
+
             # Get dynamic tools from registry
             dynamic_tools = []
             for tool_id, tool_instance in registry.dynamic_tools.items():
@@ -841,24 +850,26 @@ class GraphBuilder:
                     available_tool = AvailableTool(
                         name=f"dynamic_{tool_id}",
                         description=f"Dynamic tool: {tool_id}",
-                        type="dynamic"
+                        type="dynamic",
                     )
                     dynamic_tools.append(available_tool)
-                    
+
             return dynamic_tools if user_id else []
         except Exception as e:
             composer_logger.logger.error(f"Dynamic tool collection failed: {e}")
             return []
 
-    async def _collect_intent_based_tools(self, input_data: Dict[str, Any]) -> List[AvailableTool]:
+    async def _collect_intent_based_tools(
+        self, input_data: Dict[str, Any]
+    ) -> List[AvailableTool]:
         """Collect tools based on intent analysis using ToolRegistry.get_tools_for_context."""
         try:
             intent = input_data.get("intent")
             user_id = input_data.get("user_id")
-            
+
             if not intent or not user_id:
                 return []
-                
+
             registry = ToolRegistry()
             # Use the correct method from ToolRegistry
             tools = await registry.get_tools_for_context(intent, user_id)
@@ -871,24 +882,32 @@ class GraphBuilder:
         """Deduplicate tools by name, keeping the first occurrence."""
         seen_names = set()
         unique_tools = []
-        
+
         for tool in tools:
-            tool_name = getattr(tool, 'name', str(tool))
+            tool_name = getattr(tool, "name", str(tool))
             if tool_name not in seen_names:
                 seen_names.add(tool_name)
                 unique_tools.append(tool)
-                
+
         return unique_tools
 
     def _get_retry_policy(self, operation_type: str) -> RetryPolicy:
         """Get retry policy based on operation type for resilience."""
         retry_policies = {
-            "llm_call": RetryPolicy(max_attempts=3, backoff_factor=1.5, initial_interval=1.0),
-            "tool_execution": RetryPolicy(max_attempts=2, backoff_factor=2.0, initial_interval=0.5),
-            "rag_operation": RetryPolicy(max_attempts=2, backoff_factor=1.5, initial_interval=2.0),
-            "default": RetryPolicy(max_attempts=2, backoff_factor=1.0, initial_interval=1.0)
+            "llm_call": RetryPolicy(
+                max_attempts=3, backoff_factor=1.5, initial_interval=1.0
+            ),
+            "tool_execution": RetryPolicy(
+                max_attempts=2, backoff_factor=2.0, initial_interval=0.5
+            ),
+            "rag_operation": RetryPolicy(
+                max_attempts=2, backoff_factor=1.5, initial_interval=2.0
+            ),
+            "default": RetryPolicy(
+                max_attempts=2, backoff_factor=1.0, initial_interval=1.0
+            ),
         }
-        
+
         return retry_policies.get(operation_type, retry_policies["default"])
 
     # Enhanced Execution Methods (from enhanced_builder pattern)
