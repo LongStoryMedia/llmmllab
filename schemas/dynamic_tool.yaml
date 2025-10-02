@@ -29,7 +29,7 @@ properties:
     type: string
     format: date-time
     description: The timestamp when the tool was last updated
-  
+
   # LangChain BaseTool interface properties
   name:
     type: string
@@ -88,7 +88,7 @@ properties:
       - "content_and_artifact"
     description: The tool response format. If 'content' then the output is interpreted as ToolMessage contents. If 'content_and_artifact' then output is expected to be a two-tuple of (content, artifact)
     default: "content"
-  
+
   # Legacy parameters field (kept for backward compatibility)
   parameters:
     type: object

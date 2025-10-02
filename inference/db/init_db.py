@@ -153,6 +153,7 @@ async def initialize_database(connection_pool: Any) -> bool:
                     "Creating dynamic tools tables",
                     [
                         ("tool.create_tool_table", []),
+                        ("tool.migrate_basetool_interface", []),
                         ("tool.create_embedding_index", ["vector"]),
                     ],
                 ),
