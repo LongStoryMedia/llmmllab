@@ -8,8 +8,7 @@ from typing import List, Dict, Any, Optional
 
 from models import LangChainMessage, ModelProfileType
 
-from db import storage
-from utils.model_profile_utils import get_model_profile_for_task
+# Database imports moved to method level to avoid circular dependencies
 
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
@@ -58,6 +57,7 @@ class RAGExecutorNode:
                 return state
 
             # Get user configuration from shared data layer
+            from db import storage  # pylint: disable=import-outside-toplevel
             uc = await storage.get_service(storage.user_config).get_user_config(self.user_id)
             search_config = uc.workflow_preferences.search_config
 

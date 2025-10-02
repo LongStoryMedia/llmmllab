@@ -1,6 +1,6 @@
 """
 Chat workflow implementation for composer.
-Implements the standard chat workflow with adaptive RAG and tool orchestration.
+Implements the standard chat workflow with adaptive search and tool orchestration.
 """
 
 from typing import List, Any, Dict
@@ -14,7 +14,7 @@ from composer.graph.state import WorkflowState
 from composer.nodes.standard import PipelineNode, ToolExecutorNode
 from composer.nodes.intent_classifier import IntentClassifierNode
 from composer.nodes.engineering_agent import EngineeringAgentNode
-from composer.nodes.rag.router import RAGRouter, ShallowRAGExecutor, DeepRAGExecutor
+from composer.nodes.search.router import SearchDepthRouter, ShallowSearchExecutor, DeepSearchExecutor
 from composer.monitoring.logging import composer_logger
 
 
@@ -24,12 +24,12 @@ async def build_chat_workflow(
     pipeline_factory: Any = None
 ) -> CompiledStateGraph:
     """
-    Build standard chat workflow with adaptive RAG routing.
+    Build standard chat workflow with adaptive search routing.
     
     Workflow includes:
-    1. Intent classification to determine RAG depth  
+    1. Intent classification to determine search depth  
     2. Engineering agent for dynamic tool orchestration
-    3. Conditional RAG routing (shallow vs deep)
+    3. Conditional search routing (shallow vs deep)
     4. Primary chat agent with streaming support
     5. Tool execution with conditional routing
     
@@ -52,8 +52,8 @@ async def build_chat_workflow(
     # Add workflow nodes
     workflow.add_node("intent_classifier", IntentClassifierNode())
     workflow.add_node("engineering_agent", EngineeringAgentNode(pipeline_factory))
-    workflow.add_node("execute_shallow_search", ShallowRAGExecutor(user_id))
-    workflow.add_node("execute_deep_crawl_and_synthesize", DeepRAGExecutor(user_id))
+    workflow.add_node("execute_shallow_search", ShallowSearchExecutor(user_id))
+    workflow.add_node("execute_deep_crawl_and_synthesize", DeepSearchExecutor(user_id))
     
     # Primary chat agent with streaming enabled
     workflow.add_node("chat_agent", PipelineNode(
@@ -72,22 +72,22 @@ async def build_chat_workflow(
     # Linear flow to engineering agent
     workflow.add_edge("intent_classifier", "engineering_agent")
 
-    # Conditional RAG routing based on intent analysis
-    def route_rag_depth(state: WorkflowState) -> str:
-        """Route to appropriate RAG implementation based on intent classification."""
-        router = RAGRouter()
-        return router.route_rag_depth(state)
+    # Conditional search routing based on intent analysis
+    def route_search_depth(state: WorkflowState) -> str:
+        """Route to appropriate search implementation based on intent classification."""
+        router = SearchDepthRouter()
+        return router.route_search_depth(state)
 
     workflow.add_conditional_edges(
         "engineering_agent", 
-        route_rag_depth,
+        route_search_depth,
         {
             "execute_shallow_search": "execute_shallow_search",
             "execute_deep_crawl_and_synthesize": "execute_deep_crawl_and_synthesize"
         }
     )
 
-    # Both RAG paths flow to chat agent
+    # Both search paths flow to chat agent
     workflow.add_edge("execute_shallow_search", "chat_agent")
     workflow.add_edge("execute_deep_crawl_and_synthesize", "chat_agent")
 
@@ -130,7 +130,7 @@ def get_chat_workflow_config(user_id: str) -> Dict[str, Any]:
     return {
         "workflow_type": "chat",
         "streaming_enabled": True,
-        "adaptive_rag": True,
+        "adaptive_search": True,
         "tool_orchestration": True,
         "intent_classification": True,
         "user_id": user_id
