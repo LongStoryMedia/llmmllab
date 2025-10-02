@@ -3,12 +3,11 @@ GraphBuilder for dynamic workflow construction.
 Constructs LangGraph workflows dynamically based on conversation context and tools.
 """
 
-from typing import Any, Optional, Dict, List
-import asyncio
+from typing import Any, Optional, Dict, List\nimport asyncio
 
 from langgraph.graph import StateGraph, END
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.types import Command, RetryPolicy
+from langgraph.types import RetryPolicy
 from langchain_core.runnables import RunnableParallel, RunnableLambda
 from models.workflow_type import WorkflowType
 from models import ModelProfileType
@@ -80,7 +79,7 @@ class GraphBuilder:
             )
             return None
 
-    async def build_from_context(self, user_id: str, workflow_type: str) -> Any:
+    async def build_from_context(self, user_id: str, workflow_type: str) -> CompiledStateGraph:
         """
         Build workflow from user configuration, tools, and workflow type.
 
@@ -251,7 +250,7 @@ class GraphBuilder:
             # Create simple fallback workflow
             return await self._create_fallback_workflow(user_id)
 
-    async def build_research_workflow(self, user_id: str) -> Any:
+    async def build_research_workflow(self, user_id: str) -> CompiledStateGraph:
         """
         Build a research workflow with deep RAG and synthesis capabilities.
 
@@ -321,7 +320,7 @@ class GraphBuilder:
                 f"Research workflow construction failed: {e}"
             ) from e
 
-    async def build_multi_agent_workflow(self, user_id: str) -> Any:
+    async def build_multi_agent_workflow(self, user_id: str) -> CompiledStateGraph:
         """
         Build multi-agent orchestration workflow.
 
@@ -566,25 +565,24 @@ class GraphBuilder:
 
         return coordinate_execution
 
-    def _route_to_subgraphs(self, state):
+    def _route_to_subgraphs(self, state: WorkflowState) -> str:
         """Determine which subgraph to route to using Command primitive for deterministic routing."""
         try:
             # Check for Command-based routing decision (production-grade deterministic routing)
-            if hasattr(state, 'next_node') and state.next_node:
+            if state.next_node:
                 composer_logger.logger.info(
                     "Using Command-based deterministic routing",
                     extra={"next_node": state.next_node}
                 )
                 return state.next_node
             
-            # Check for explicit routing decision from router
-            routing_decision = getattr(state, 'routing_decision', None)
-            if routing_decision:
+            # Check for explicit routing decision from router (strongly typed)
+            if state.routing_decision:
                 composer_logger.logger.info(
                     "Using explicit routing decision",
-                    extra={"routing_decision": routing_decision}
+                    extra={"routing_decision": state.routing_decision.value}
                 )
-                return routing_decision
+                return state.routing_decision.value
                 
             # Fallback to intent-based routing with structured validation
             intent_analysis = getattr(state, "intent_classification", None)
@@ -736,11 +734,11 @@ class GraphBuilder:
                     "intent_tools": RunnableLambda(self._collect_intent_based_tools)
                 })
 
-                # Execute tool collection operations concurrently
+                # Execute tool collection operations concurrently with strongly typed state
                 tool_results = await parallel_operations.ainvoke({
                     "state": state,
                     "user_id": user_id,
-                    "intent": getattr(state, "intent_classification", None)
+                    "intent": state.intent_classification  # Use strongly typed field
                 })
 
                 # Merge results efficiently
@@ -807,7 +805,7 @@ class GraphBuilder:
         """Collect static tools with error handling."""
         try:
             registry = ToolRegistry()
-            registry._load_static_tools()  # Initialize static tools
+            # Initialize static tools using available methods\n            # Note: Static tools are loaded during ToolRegistry init"
             
             # Convert static tools to AvailableTool format
             static_tools = []
@@ -819,6 +817,11 @@ class GraphBuilder:
                         type="static"
                     )
                     static_tools.append(available_tool)
+            
+            composer_logger.logger.debug(
+                "Static tools collected",
+                extra={"count": len(static_tools), "input_context": bool(input_data)}
+            )
             
             return static_tools
         except Exception as e:
