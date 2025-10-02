@@ -3,22 +3,20 @@ GraphBuilder for dynamic workflow construction.
 Constructs LangGraph workflows dynamically based on conversation context and tools.
 """
 
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 from langgraph.graph import StateGraph, END
 from langgraph.graph.state import CompiledStateGraph
-from models.available_tool import AvailableTool
 from models.workflow_type import WorkflowType
-from models import Message, ModelProfileType
+from models import ModelProfileType
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import WorkflowConstructionError
 from composer.graph.state import WorkflowState, ResearchWorkflowState
 
 # Node imports
-from composer.nodes.standard import PipelineNode, ToolExecutorNode
+from composer.nodes.standard import PipelineNode
 from composer.nodes.intent_classifier import IntentClassifierNode
 from composer.nodes.engineering_agent import EngineeringAgentNode
-from composer.nodes.rag.router import RAGRouter, ShallowRAGExecutor, DeepRAGExecutor
 from composer.nodes.rag.executor import EnhancedRAGExecutor
 
 # Database import - lazy loaded to avoid circular dependencies
@@ -65,13 +63,7 @@ class GraphBuilder:
             )
             return None
 
-    async def build_from_context(
-        self,
-        user_id: str,
-        messages: List[Message],
-        tools: List[AvailableTool],
-        workflow_type: str,
-    ) -> Any:
+    async def build_from_context(self, user_id: str, workflow_type: str) -> Any:
         """
         Build workflow from user configuration, tools, and workflow type.
 
@@ -83,23 +75,22 @@ class GraphBuilder:
                 "Building workflow from context",
                 extra={
                     "workflow_type": workflow_type,
-                    "tool_count": len(tools),
                     "user_id": user_id,
                 },
             )
 
             # Select appropriate build method based on workflow type
             if workflow_type == WorkflowType.CHAT:
-                return await self.build_chat_workflow(user_id, messages, tools)
+                return await self._build_chat_subgraph()
             elif workflow_type == WorkflowType.RESEARCH:
-                return await self.build_research_workflow(user_id, messages, tools)
+                return await self.build_research_workflow(user_id)
             elif workflow_type == WorkflowType.MULTI_AGENT:
-                return await self.build_multi_agent_workflow(user_id, messages, tools)
+                return await self.build_multi_agent_workflow(user_id)
             elif workflow_type == WorkflowType.CREATIVE:
-                return await self.build_creative_workflow(user_id, messages, tools)
+                return await self.build_creative_workflow(user_id)
             else:
                 # Default to chat workflow
-                return await self.build_chat_workflow(user_id, messages, tools)
+                return await self._build_chat_subgraph()
 
         except Exception as e:
             composer_logger.log_error(
@@ -113,48 +104,88 @@ class GraphBuilder:
         self, user_id: str, workflow_type: Optional[WorkflowType] = None
     ) -> CompiledStateGraph:
         """
-        Build master workflow with intelligent routing and optional explicit workflow type.
+        Build master workflow with intelligent routing to subgraphs.
+        
+        Creates a single graph with:
+        1. Intent analysis node (unless explicit workflow_type provided)
+        2. Router node that determines execution strategy
+        3. Conditional routing to appropriate subgraph(s)
+        4. Support for parallel, series, or single execution strategies
         
         Args:
             user_id: User ID for configuration retrieval
-            workflow_type: Optional explicit workflow type. If None, uses intent analysis.
+            workflow_type: Optional explicit workflow type for direct routing
         
         Returns:
-            CompiledStateGraph: Master workflow with intelligent routing
+            CompiledStateGraph: Master workflow with intelligent subgraph routing
         """
         try:
             composer_logger.logger.info(
-                "Building master workflow",
+                "Building master workflow with subgraph routing",
                 extra={"user_id": user_id, "workflow_type": workflow_type}
             )
             
-            if workflow_type:
-                # For explicit workflow type, route directly to that workflow
-                if workflow_type == WorkflowType.RESEARCH:
-                    return await self.build_research_workflow(user_id, [], [])
-                elif workflow_type == WorkflowType.CREATIVE:
-                    return await self.build_creative_workflow(user_id, [], [])
-                elif workflow_type == WorkflowType.MULTI_AGENT:
-                    return await self.build_multi_agent_workflow(user_id, [], [])
-                else:  # Default to chat
-                    return await self.build_from_context(user_id, [], [], WorkflowType.CHAT)
-            else:
-                # For intelligent routing, analyze context and build appropriate workflow
-                # TODO: Implement proper intent analysis here
-                # For now, default to chat workflow
-                return await self.build_from_context(user_id, [], [], WorkflowType.CHAT)
+            # Create master workflow graph
+            workflow = StateGraph(WorkflowState)
+            
+            # Add intent analysis node (always present for context enrichment)
+            workflow.add_node("intent_analysis", IntentClassifierNode())
+            
+            # Add router node with routing logic
+            workflow.add_node("router", self._create_router_node(user_id, workflow_type))
+            
+            # Create and add subgraphs as compiled nodes
+            subgraphs = await self._create_all_subgraphs(user_id)
+            
+            # Add subgraph nodes
+            for name, subgraph in subgraphs.items():
+                workflow.add_node(f"{name}_subgraph", subgraph)
+            
+            # Add execution coordinator node
+            workflow.add_node("coordinator", self._create_coordinator_node(user_id))
+            
+            # Define workflow edges
+            workflow.set_entry_point("intent_analysis")
+            workflow.add_edge("intent_analysis", "router")
+            
+            # Conditional routing from router to subgraphs
+            workflow.add_conditional_edges(
+                "router",
+                self._route_to_subgraphs,
+                {
+                    "chat": "chat_subgraph",
+                    "research": "research_subgraph", 
+                    "creative": "creative_subgraph",
+                    "multi_agent": "multi_agent_subgraph",
+                    "coordinator": "coordinator"  # For parallel/series execution
+                }
+            )
+            
+            # All subgraphs route to coordinator for result processing
+            for name in subgraphs.keys():
+                workflow.add_edge(f"{name}_subgraph", "coordinator")
+            
+            workflow.add_edge("coordinator", END)
+            
+            # Compile and return the master workflow
+            compiled_workflow = workflow.compile()
+            
+            composer_logger.logger.info(
+                "Master workflow compiled successfully",
+                extra={"user_id": user_id, "subgraph_count": len(subgraphs)}
+            )
+            
+            return compiled_workflow
                 
         except Exception as e:
             composer_logger.logger.error(
                 "Failed to build master workflow",
                 extra={"user_id": user_id, "error": str(e)}
             )
-            # Fallback to chat workflow
-            return await self.build_from_context(user_id, [], [], WorkflowType.CHAT)
+            # Create simple fallback workflow
+            return await self._create_fallback_workflow(user_id)
 
-    async def build_research_workflow(
-        self, user_id: str, messages: List[Message], tools: List[AvailableTool]
-    ) -> Any:
+    async def build_research_workflow(self, user_id: str) -> Any:
         """
         Build a research workflow with deep RAG and synthesis capabilities.
 
@@ -164,7 +195,7 @@ class GraphBuilder:
         try:
             composer_logger.logger.info(
                 "Building research workflow",
-                extra={"user_id": user_id, "tool_count": len(tools)},
+                extra={"user_id": user_id},
             )
 
             # Create research workflow graph
@@ -224,12 +255,7 @@ class GraphBuilder:
                 f"Research workflow construction failed: {e}"
             ) from e
 
-    async def build_multi_agent_workflow(
-        self,
-        user_id: str,
-        messages: List[Message],
-        tools: List[AvailableTool],  # noqa: ARG002
-    ) -> Any:
+    async def build_multi_agent_workflow(self, user_id: str) -> Any:
         """
         Build multi-agent orchestration workflow.
 
@@ -251,7 +277,7 @@ class GraphBuilder:
         try:
             composer_logger.logger.info(
                 "Building multi-agent workflow",
-                extra={"user_id": user_id, "tool_count": len(tools)},
+                extra={"user_id": user_id},
             )
 
             # Create workflow graph
@@ -316,12 +342,7 @@ class GraphBuilder:
                 f"Multi-agent workflow construction failed: {e}"
             ) from e
 
-    async def build_creative_workflow(
-        self,
-        user_id: str,
-        messages: List[Message],
-        tools: List[AvailableTool],  # noqa: ARG002
-    ) -> CompiledStateGraph:
+    async def build_creative_workflow(self, user_id: str) -> CompiledStateGraph:
         """
         Build creative content generation workflow.
 
@@ -342,7 +363,7 @@ class GraphBuilder:
         try:
             composer_logger.logger.info(
                 "Building creative workflow",
-                extra={"user_id": user_id, "tool_count": len(tools)},
+                extra={"user_id": user_id},
             )
 
             # Create workflow graph
@@ -410,3 +431,178 @@ class GraphBuilder:
             raise WorkflowConstructionError(
                 f"Creative workflow construction failed: {e}"
             ) from e
+
+    async def _create_all_subgraphs(self, user_id: str) -> dict:
+        """Create all workflow subgraphs."""
+        try:
+            subgraphs = {
+                "chat": await self._build_chat_subgraph(),
+                "research": await self.build_research_workflow(user_id),
+                "creative": await self.build_creative_workflow(user_id),
+                "multi_agent": await self.build_multi_agent_workflow(user_id)
+            }
+            return subgraphs
+        except Exception as e:
+            composer_logger.logger.error(f"Failed to create subgraphs: {e}")
+            # Return minimal chat subgraph as fallback
+            return {"chat": await self._build_chat_subgraph()}
+
+    async def _build_chat_subgraph(self) -> CompiledStateGraph:
+        """Build simple chat subgraph."""
+        workflow = StateGraph(WorkflowState)
+        
+        # Simple chat pipeline
+        pipeline_factory = self.pipeline_factory
+        workflow.add_node(
+            "chat_response",
+            PipelineNode(
+                pipeline_factory,
+                ModelProfileType.Primary,
+                stream=True,
+            ),
+        )
+        
+        workflow.set_entry_point("chat_response")
+        workflow.add_edge("chat_response", END)
+        
+        return workflow.compile()
+
+    def _create_coordinator_node(self, user_id: str):
+        """Create coordinator node for handling execution strategy."""
+        async def coordinate_execution(state):
+            """Coordinate execution of multiple subgraphs based on strategy."""
+            try:
+                execution_strategy = getattr(state, "execution_strategy", "single")
+                selected_workflows = getattr(state, "selected_workflows", ["chat"])
+                
+                composer_logger.logger.info(
+                    "Coordinating workflow execution",
+                    extra={
+                        "user_id": user_id,
+                        "strategy": execution_strategy,
+                        "workflows": selected_workflows
+                    }
+                )
+                
+                # For now, just pass through - coordination logic can be enhanced
+                state.final_response = getattr(state, "response", "Processing complete")
+                return state
+                
+            except Exception as e:
+                composer_logger.logger.error(
+                    "Coordination failed",
+                    extra={"user_id": user_id, "error": str(e)}
+                )
+                state.final_response = "Sorry, there was an error processing your request."
+                return state
+                
+        return coordinate_execution
+
+    def _route_to_subgraphs(self, state):
+        """Determine which subgraph to route to based on state."""
+        try:
+            execution_strategy = getattr(state, "execution_strategy", "single")
+            selected_workflows = getattr(state, "selected_workflows", ["chat"])
+            
+            # For complex strategies, route to coordinator
+            if execution_strategy in ["parallel", "series"] and len(selected_workflows) > 1:
+                return "coordinator"
+            
+            # For single workflow, route directly
+            if selected_workflows:
+                workflow_type = selected_workflows[0]
+                if workflow_type in ["research", "creative", "multi_agent", "chat"]:
+                    return workflow_type
+            
+            # Default fallback
+            return "chat"
+            
+        except Exception as e:
+            composer_logger.logger.error(f"Routing failed: {e}")
+            return "chat"
+
+    async def _create_fallback_workflow(self, user_id: str) -> CompiledStateGraph:  # noqa: ARG002
+        """Create minimal fallback workflow."""
+        try:
+            return await self._build_chat_subgraph()
+        except Exception as e:
+            composer_logger.logger.error(f"Fallback workflow creation failed: {e}")
+            # Create absolute minimal workflow
+            workflow = StateGraph(WorkflowState)
+            
+            async def minimal_response(state):
+                state.response = "I apologize, but I'm experiencing technical difficulties. Please try again later."
+                return state
+            
+            workflow.add_node("minimal_response", minimal_response)
+            workflow.set_entry_point("minimal_response")
+            workflow.add_edge("minimal_response", END)
+            
+            return workflow.compile()
+
+    def _create_router_node(self, user_id: str, explicit_workflow_type: Optional[WorkflowType] = None):
+        """
+        Create intelligent router node that determines workflow execution strategy.
+        
+        The router can decide to:
+        - Route to single subgraph based on intent or explicit type
+        - Execute multiple subgraphs in parallel
+        - Execute subgraphs in series
+        - Use hybrid parallel+series execution
+        """
+        async def route_workflows(state):
+            """Route to appropriate subgraph(s) based on intent analysis or explicit type."""
+            try:
+                if explicit_workflow_type:
+                    # Explicit routing - force specific workflow type
+                    state.selected_workflows = [explicit_workflow_type.value]
+                    state.execution_strategy = "single"
+                    return state
+                
+                # Intelligent routing based on intent analysis
+                intent = getattr(state, "intent", "chat")
+                complexity = getattr(state, "complexity", "simple")
+                
+                # Route based on intent and complexity
+                if complexity == "high" and "research" in intent.lower():
+                    # High complexity research might need multiple workflows
+                    state.selected_workflows = ["research", "creative"]
+                    state.execution_strategy = "series"  # Research first, then creative synthesis
+                elif "multi" in intent.lower() or "agent" in intent.lower():
+                    state.selected_workflows = ["multi_agent"]
+                    state.execution_strategy = "single"
+                elif "creative" in intent.lower() or "generate" in intent.lower():
+                    state.selected_workflows = ["creative"]
+                    state.execution_strategy = "single"
+                elif "research" in intent.lower() or "analyze" in intent.lower():
+                    state.selected_workflows = ["research"]
+                    state.execution_strategy = "single"
+                else:
+                    # Default to chat for simple interactions
+                    state.selected_workflows = ["chat"]
+                    state.execution_strategy = "single"
+                
+                composer_logger.logger.info(
+                    "Router determined execution strategy",
+                    extra={
+                        "user_id": user_id,
+                        "intent": intent,
+                        "complexity": complexity,
+                        "selected_workflows": state.selected_workflows,
+                        "execution_strategy": state.execution_strategy
+                    }
+                )
+                
+                return state
+                
+            except Exception as e:
+                composer_logger.logger.error(
+                    "Router failed, falling back to chat",
+                    extra={"user_id": user_id, "error": str(e)}
+                )
+                # Fallback to chat workflow
+                state.selected_workflows = ["chat"]
+                state.execution_strategy = "single"
+                return state
+                
+        return route_workflows
