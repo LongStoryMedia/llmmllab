@@ -25,6 +25,7 @@ from composer.nodes.rag.executor import EnhancedRAGExecutor
 from composer.tools.registry import ToolRegistry
 from composer.workflows.chat import build_chat_workflow
 from composer.workflows.research import build_research_workflow as build_research_workflow_impl
+from composer.graph.cache import WorkflowCache
 
 
 class GraphBuilder:
@@ -42,15 +43,15 @@ class GraphBuilder:
         self._max_failures = 3
         self._reset_timeout = 60  # seconds
 
-        # Performance optimization: Cache compiled subgraphs
-        self._subgraph_cache = {}
+        # Performance optimization: Cache compiled workflows with TTL and LRU eviction
+        self._workflow_cache = WorkflowCache()
 
         composer_logger.logger.info(
             "GraphBuilder initialized with production optimizations",
             extra={
                 "has_pipeline_factory": pipeline_factory is not None,
                 "circuit_breaker_enabled": True,
-                "subgraph_caching_enabled": True,
+                "workflow_cache_enabled": True,
             },
         )
 
@@ -294,20 +295,30 @@ class GraphBuilder:
 
     async def build_research_workflow(self, user_id: str) -> CompiledStateGraph:
         """
-        Build a research workflow using dedicated workflow implementation.
+        Build a research workflow using dedicated workflow implementation with caching.
         
         This method delegates to the canonical research workflow definition
-        to eliminate code duplication.
+        to eliminate code duplication and uses WorkflowCache for performance.
         """
         try:
             # Get available tools for this user/workflow
             tools = await self._get_workflow_tools(user_id)
             
-            # Use the dedicated research workflow function
-            return await build_research_workflow_impl(
-                user_id=user_id,
-                tools=tools,
-                pipeline_factory=self.pipeline_factory
+            # Generate cache key for this specific workflow configuration
+            cache_key = await self._workflow_cache.get_cache_key(
+                user_id=user_id, 
+                workflow_type=WorkflowType.RESEARCH, 
+                tools=tools
+            )
+            
+            # Use cache with factory function for workflow creation
+            return await self._workflow_cache.get_or_create(
+                cache_key=cache_key,
+                factory_fn=lambda: build_research_workflow_impl(
+                    user_id=user_id,
+                    tools=tools,
+                    pipeline_factory=self.pipeline_factory
+                )
             )
             
         except Exception as e:
@@ -512,16 +523,26 @@ class GraphBuilder:
             return {"chat": await self._build_chat_subgraph()}
 
     async def _build_chat_subgraph(self) -> CompiledStateGraph:
-        """Build chat workflow using dedicated workflow implementation."""
+        """Build chat workflow using dedicated workflow implementation with caching."""
         try:
             # Get available tools for chat workflow
             tools = await self._get_workflow_tools("")  # Empty user_id for subgraph
             
-            # Use the dedicated chat workflow function
-            return await build_chat_workflow(
-                user_id="",  # Empty for subgraph usage
-                tools=tools,
-                pipeline_factory=self.pipeline_factory
+            # Generate cache key for chat subgraph
+            cache_key = await self._workflow_cache.get_cache_key(
+                user_id="",  # Empty for subgraph
+                workflow_type=WorkflowType.CHAT,
+                tools=tools
+            )
+            
+            # Use cache with factory function for workflow creation
+            return await self._workflow_cache.get_or_create(
+                cache_key=cache_key,
+                factory_fn=lambda: build_chat_workflow(
+                    user_id="",  # Empty for subgraph usage
+                    tools=tools,
+                    pipeline_factory=self.pipeline_factory
+                )
             )
             
         except Exception as e:
@@ -1139,3 +1160,28 @@ class GraphBuilder:
             )
             # Fallback to chat flow
             return await self._execute_chat_flow(state, user_id)
+
+    # Cache Management Methods
+    
+    async def get_cache_stats(self) -> Dict[str, Any]:
+        """Get workflow cache statistics for monitoring and debugging."""
+        return await self._workflow_cache.get_stats()
+    
+    async def clear_cache(self) -> None:
+        """Clear all cached workflows (useful for debugging or config changes)."""
+        await self._workflow_cache.clear()
+        composer_logger.logger.info("GraphBuilder workflow cache cleared")
+    
+    async def invalidate_user_workflows(self, user_id: str) -> None:
+        """Invalidate cached workflows for a specific user (e.g., when user config changes)."""
+        # For now, we clear all cache since we don't have user-specific keys stored
+        # This could be optimized in the future to track keys by user_id
+        await self._workflow_cache.clear()
+        composer_logger.logger.info(
+            f"All workflows invalidated due to user config change for {user_id}"
+        )
+    
+    async def close(self) -> None:
+        """Clean up GraphBuilder resources including workflow cache."""
+        await self._workflow_cache.close()
+        composer_logger.logger.info("GraphBuilder closed and cache cleaned up")
