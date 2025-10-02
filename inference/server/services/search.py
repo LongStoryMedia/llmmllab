@@ -17,7 +17,7 @@ from models import (
     MessageContentType,
     MessageContent,
 )
-from server.db import storage
+from db import storage
 from server.services.search_providers import SearchProviderFactory
 from server.services.web_extraction_service import WebExtractionService
 

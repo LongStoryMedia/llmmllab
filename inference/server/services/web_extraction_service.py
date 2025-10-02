@@ -27,7 +27,7 @@ from models import (
 
 from utils.message import extract_message_text
 
-from server.db import storage
+from db import storage
 from runner import (
     pipeline_factory,
     Embeddings,

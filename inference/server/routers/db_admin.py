@@ -4,7 +4,7 @@ Internal API endpoints for database maintenance and administration.
 
 from fastapi import APIRouter, HTTPException, Request
 from server.auth import is_admin
-from server.db.maintenance import maintenance_service
+from db.maintenance import maintenance_service
 
 router = APIRouter(
     prefix="/internal/db",

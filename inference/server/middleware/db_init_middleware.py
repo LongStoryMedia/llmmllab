@@ -8,7 +8,7 @@ from fastapi import Request
 import logging
 import os
 
-from server.db import storage
+from db import storage
 from server.config import DB_CONNECTION_STRING
 
 logger = logging.getLogger("inference-service")

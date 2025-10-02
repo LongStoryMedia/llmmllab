@@ -7,7 +7,7 @@ from typing import List, Optional
 from datetime import datetime
 
 from models import Memory, UserConfig
-from server.db import storage
+from db import storage
 
 
 class MemoryContext:

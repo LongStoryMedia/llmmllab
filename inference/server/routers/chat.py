@@ -17,7 +17,7 @@ from fastapi.responses import StreamingResponse
 from models import ChatResponse, Conversation, Message, MessageContentType, MessageRole
 from server.auth import get_request_id, get_user_id, is_admin
 from server.config import logger  # Import logger from config
-from server.db import storage  # Import database storage
+from db import storage  # Import database storage
 from server.handlers.completion import agent_chat_completion
 from server.services.context import get_conversation_context_from_request
 

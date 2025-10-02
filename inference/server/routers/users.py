@@ -10,7 +10,7 @@ from typing import List
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
 
-from server.db import storage
+from db import storage
 from server.auth import get_user_id, is_admin
 
 from models.user import User

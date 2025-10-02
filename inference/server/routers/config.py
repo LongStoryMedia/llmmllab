@@ -11,7 +11,7 @@ from server.auth import get_user_id
 from server.config import logger
 
 # Import storage layer
-from server.db import storage
+from db import storage
 
 # Import models - use the same imports as storage layer
 from models.user_config import UserConfig

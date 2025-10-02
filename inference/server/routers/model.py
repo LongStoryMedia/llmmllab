@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, validator
 import server.config as config
 from server.auth import get_user_id, is_admin
 from server.config import logger
-from server.db import storage
+from db import storage
 
 from models.model_profile import ModelProfile, ModelParameters
 from models.model import Model

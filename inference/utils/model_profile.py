@@ -11,7 +11,7 @@ import uuid
 from models.model_profile_config import ModelProfileConfig
 from models.model_profile_type import ModelProfileType
 from models.model_profile import ModelProfile
-from db import storage
+# Database import moved to function level to avoid circular dependencies
 
 
 # Mapping between ModelProfileType enum and ModelProfileConfig field names
@@ -52,6 +52,7 @@ async def get_model_profile(user_id: str, task: ModelProfileType) -> ModelProfil
     Raises:
         ValueError: If the task type is not supported or profile not found
     """
+    from db import storage  # pylint: disable=import-outside-toplevel
     config = await storage.get_service(storage.user_config).get_user_config(user_id)
     if not config:
         raise ValueError(f"User config not found for user {user_id}")
@@ -81,6 +82,7 @@ async def get_model_profile_for_task(
     profile_id: uuid.UUID = get_profile_id_for_task(config, task)
 
     # Retrieve the model profile from storage
+    from db import storage  # pylint: disable=import-outside-toplevel
     mp = await storage.get_service(storage.model_profile).get_model_profile_by_id(
         profile_id, user_id
     )
