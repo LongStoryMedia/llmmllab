@@ -139,9 +139,7 @@ class GraphBuilder:
             pipeline_factory = self.pipeline_factory
 
             # Add nodes to workflow
-            workflow.add_node(
-                "intent_classifier", IntentClassifierNode()
-            )
+            workflow.add_node("intent_classifier", IntentClassifierNode())
             workflow.add_node(
                 "engineering_agent", EngineeringAgentNode(pipeline_factory)
             )
@@ -164,39 +162,47 @@ class GraphBuilder:
 
             # Set up workflow flow
             workflow.set_entry_point("intent_classifier")
-            
+
             # Conditional routing after intent classification
             def route_after_intent(state: WorkflowState) -> str:
                 """Route to engineering agent for technical requests, or directly to RAG routing."""
                 try:
-                    intent_analysis = getattr(state, 'intent_classification', None)
+                    intent_analysis = getattr(state, "intent_classification", None)
                     if not intent_analysis:
                         # Default to shallow search if no intent analysis
                         return "execute_shallow_search"
-                    
+
                     # Check if this is a technical/engineering request
-                    primary_intent = getattr(intent_analysis, 'primary_intent', '').lower()
-                    required_capabilities = getattr(intent_analysis, 'required_capabilities', [])
-                    
+                    primary_intent = getattr(
+                        intent_analysis, "primary_intent", ""
+                    ).lower()
+                    required_capabilities = getattr(
+                        intent_analysis, "required_capabilities", []
+                    )
+
                     # Route to engineering agent for technical requests
                     is_technical = (
-                        'technical' in primary_intent or
-                        'engineering' in primary_intent or  
-                        'code' in primary_intent or
-                        'programming' in primary_intent or
-                        any('TECHNICAL' in str(cap) or 'ENGINEERING' in str(cap) 
-                            for cap in required_capabilities)
+                        "technical" in primary_intent
+                        or "engineering" in primary_intent
+                        or "code" in primary_intent
+                        or "programming" in primary_intent
+                        or any(
+                            "TECHNICAL" in str(cap) or "ENGINEERING" in str(cap)
+                            for cap in required_capabilities
+                        )
                     )
-                    
+
                     if is_technical:
                         return "engineering_agent"
-                    
+
                     # For non-technical requests, route directly to RAG based on complexity
                     router = RAGRouter()
                     return router.route_rag_depth(state)
-                    
+
                 except Exception as e:
-                    composer_logger.logger.warning(f"Intent routing failed: {e}, defaulting to shallow search")
+                    composer_logger.logger.warning(
+                        f"Intent routing failed: {e}, defaulting to shallow search"
+                    )
                     return "execute_shallow_search"
 
             workflow.add_conditional_edges(
@@ -292,9 +298,7 @@ class GraphBuilder:
             pipeline_factory = self.pipeline_factory
 
             # Add research-specific nodes
-            workflow.add_node(
-                "intent_classifier", IntentClassifierNode()
-            )
+            workflow.add_node("intent_classifier", IntentClassifierNode())
             workflow.add_node(
                 "query_expansion",
                 PipelineNode(
@@ -436,7 +440,7 @@ class GraphBuilder:
         user_id: str,
         messages: List[Message],
         tools: List[AvailableTool],  # noqa: ARG002
-    ) -> Any:
+    ) -> CompiledStateGraph:
         """
         Build creative content generation workflow.
 
