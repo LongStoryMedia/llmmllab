@@ -15,7 +15,7 @@ from models import ModelProfileType
 from models.available_tool import AvailableTool
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import WorkflowConstructionError
-from composer.graph.state import WorkflowState, ResearchWorkflowState
+from composer.graph.state import WorkflowState
 
 # Node imports
 from composer.nodes.standard import PipelineNode
@@ -23,6 +23,8 @@ from composer.nodes.intent_classifier import IntentClassifierNode
 from composer.nodes.engineering_agent import EngineeringAgentNode
 from composer.nodes.rag.executor import EnhancedRAGExecutor
 from composer.tools.registry import ToolRegistry
+from composer.workflows.chat import build_chat_workflow
+from composer.workflows.research import build_research_workflow as build_research_workflow_impl
 
 
 class GraphBuilder:
@@ -79,6 +81,43 @@ class GraphBuilder:
                 f"Failed to get user config for {user_id} in GraphBuilder: {e}"
             )
             return None
+
+    async def _get_workflow_tools(self, user_id: str) -> List[AvailableTool]:
+        """Get available tools for a workflow, using simplified collection for dedicated workflows."""
+        try:
+            registry = ToolRegistry()
+            
+            # Get basic tool set - static tools primarily
+            tools = []
+            
+            # Add static tools
+            for name, tool_cls in registry.static_tools.items():
+                if tool_cls:
+                    available_tool = AvailableTool(
+                        name=name, 
+                        description=f"Static tool: {name}", 
+                        type="static"
+                    )
+                    tools.append(available_tool)
+            
+            # Add a few dynamic tools if user_id provided
+            if user_id:
+                for tool_id, tool_instance in list(registry.dynamic_tools.items())[:3]:  # Limit for performance
+                    if tool_instance:
+                        available_tool = AvailableTool(
+                            name=f"dynamic_{tool_id}",
+                            description=f"Dynamic tool: {tool_id}",
+                            type="dynamic",
+                        )
+                        tools.append(available_tool)
+                        
+            return tools
+            
+        except Exception as e:
+            composer_logger.logger.error(
+                f"Failed to get workflow tools for {user_id}: {e}"
+            )
+            return []  # Return empty list on error
 
     async def build_from_context(
         self, user_id: str, workflow_type: WorkflowType
@@ -255,65 +294,22 @@ class GraphBuilder:
 
     async def build_research_workflow(self, user_id: str) -> CompiledStateGraph:
         """
-        Build a research workflow with deep RAG and synthesis capabilities.
-
-        This workflow emphasizes comprehensive information gathering,
-        multi-source analysis, and detailed synthesis.
+        Build a research workflow using dedicated workflow implementation.
+        
+        This method delegates to the canonical research workflow definition
+        to eliminate code duplication.
         """
         try:
-            composer_logger.logger.info(
-                "Building research workflow",
-                extra={"user_id": user_id},
+            # Get available tools for this user/workflow
+            tools = await self._get_workflow_tools(user_id)
+            
+            # Use the dedicated research workflow function
+            return await build_research_workflow_impl(
+                user_id=user_id,
+                tools=tools,
+                pipeline_factory=self.pipeline_factory
             )
-
-            # Create research workflow graph
-            workflow = StateGraph(ResearchWorkflowState)
-
-            # Configuration retrieved internally from shared data layer using user_id
-            user_config = await self._get_user_config(user_id)
-            if not user_config:
-                raise WorkflowConstructionError("Unable to retrieve user configuration")
-
-            # Use injected pipeline factory
-            pipeline_factory = self.pipeline_factory
-
-            # Add research-specific nodes
-            workflow.add_node("intent_classifier", IntentClassifierNode())
-            workflow.add_node(
-                "query_expansion",
-                PipelineNode(
-                    pipeline_factory,
-                    ModelProfileType.Analysis,
-                    stream=False,  # Analysis doesn't need streaming
-                ),
-            )
-            workflow.add_node("enhanced_rag", EnhancedRAGExecutor(user_id))
-            workflow.add_node(
-                "synthesis_agent",
-                PipelineNode(
-                    pipeline_factory,
-                    ModelProfileType.Primary,
-                    stream=True,  # Final synthesis can stream
-                ),
-            )
-
-            # Set up research workflow flow
-            workflow.set_entry_point("intent_classifier")
-            workflow.add_edge("intent_classifier", "query_expansion")
-            workflow.add_edge("query_expansion", "enhanced_rag")
-            workflow.add_edge("enhanced_rag", "synthesis_agent")
-            workflow.add_edge("synthesis_agent", END)
-
-            # Compile and return workflow
-            compiled_workflow = workflow.compile()
-
-            composer_logger.logger.info(
-                "Research workflow built successfully",
-                extra={"user_id": user_id, "nodes": len(workflow.nodes)},
-            )
-
-            return compiled_workflow
-
+            
         except Exception as e:
             composer_logger.logger.error(
                 "Failed to build research workflow",
@@ -516,24 +512,33 @@ class GraphBuilder:
             return {"chat": await self._build_chat_subgraph()}
 
     async def _build_chat_subgraph(self) -> CompiledStateGraph:
-        """Build simple chat subgraph."""
-        workflow = StateGraph(WorkflowState)
-
-        # Simple chat pipeline
-        pipeline_factory = self.pipeline_factory
-        workflow.add_node(
-            "chat_response",
-            PipelineNode(
-                pipeline_factory,
-                ModelProfileType.Primary,
-                stream=True,
-            ),
-        )
-
-        workflow.set_entry_point("chat_response")
-        workflow.add_edge("chat_response", END)
-
-        return workflow.compile()
+        """Build chat workflow using dedicated workflow implementation."""
+        try:
+            # Get available tools for chat workflow
+            tools = await self._get_workflow_tools("")  # Empty user_id for subgraph
+            
+            # Use the dedicated chat workflow function
+            return await build_chat_workflow(
+                user_id="",  # Empty for subgraph usage
+                tools=tools,
+                pipeline_factory=self.pipeline_factory
+            )
+            
+        except Exception as e:
+            composer_logger.logger.error(f"Failed to build chat subgraph: {e}")
+            # Create minimal fallback on error
+            workflow = StateGraph(WorkflowState)
+            workflow.add_node(
+                "chat_response",
+                PipelineNode(
+                    self.pipeline_factory,
+                    ModelProfileType.Primary,
+                    stream=True,
+                ),
+            )
+            workflow.set_entry_point("chat_response")
+            workflow.add_edge("chat_response", END)
+            return workflow.compile()
 
     def _create_coordinator_node(self, user_id: str):
         """Create coordinator node for handling execution strategy."""
