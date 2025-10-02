@@ -42,7 +42,7 @@ class PipelineNode:
         self.pipeline_factory = pipeline_factory
         self.profile_type = profile_type
         self.stream = stream
-        self.logger = composer_logger.bind(component="PipelineNode")
+        self.logger = composer_logger.logger
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
@@ -103,7 +103,7 @@ class PipelineNode:
 
                 # Add response to state messages
                 assistant_message = LangChainMessage(
-                    role="assistant",
+                    type="ai",
                     content=getattr(response, "content", "Response generated"),
                     tool_calls=getattr(response, "tool_calls", None),
                 )
@@ -111,7 +111,7 @@ class PipelineNode:
             else:
                 # Fallback when pipeline factory not available
                 fallback_message = LangChainMessage(
-                    role="assistant",
+                    type="ai",
                     content="Pipeline factory not configured - this is a placeholder response.",
                 )
                 state.messages.append(fallback_message)
@@ -132,7 +132,7 @@ class ToolExecutorNode:
     """
     Executes tool calls produced by the previous agent or tool node.
 
-    Uses LangGraph's ToolNode for reliable tool execution with proper error handling.
+    Uses LangChain v1.0 ToolNode for reliable tool execution with proper error handling.
     """
 
     def __init__(self, tools: List[BaseTool]):
@@ -143,8 +143,9 @@ class ToolExecutorNode:
             tools: List of available tools for execution
         """
         self.tools = {tool.name: tool for tool in tools}
-        self.tool_node = ToolNode(tools)
-        self.logger = composer_logger.bind(component="ToolExecutorNode")
+        # ToolNode in v1.0 supports handle_tool_errors parameter for better error handling
+        self.tool_node = ToolNode(tools, handle_tool_errors=True)
+        self.logger = composer_logger.logger
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
@@ -173,25 +174,22 @@ class ToolExecutorNode:
                 tools=[call.get("name", "unknown") for call in last_message.tool_calls],
             )
 
-            # Execute tools using LangGraph ToolNode
+            # Execute tools using LangChain v1.0 ToolNode
             tool_results = await self.tool_node.ainvoke({"messages": [last_message]})
 
-            # Add tool results to state messages
+            # Add tool results to state messages (v1.0 compatible)
             if "messages" in tool_results:
                 state.messages.extend(tool_results["messages"])
+            elif hasattr(tool_results, 'messages'):
+                # Handle alternative response format
+                state.messages.extend(tool_results.messages)
 
-            # Update tool execution status in state
-            if not hasattr(state, "tool_executions"):
-                state.tool_executions = []
-
-            state.tool_executions.extend(
-                [
-                    {
-                        "tool_name": call.get("name", "unknown"),
-                        "status": "completed",
-                        "timestamp": asyncio.get_event_loop().time(),
-                    }
-                    for call in last_message.tool_calls
+            # Log tool execution completion
+            self.logger.info(
+                "Tool execution completed",
+                user_id=getattr(state, "user_id", "unknown"),
+                completed_tools=[
+                    call.get("name", "unknown") for call in last_message.tool_calls
                 ]
             )
 
@@ -207,7 +205,7 @@ class ToolExecutorNode:
 
             # Add error message to state
             error_message = LangChainMessage(
-                role="assistant", content=f"Tool execution failed: {str(e)}"
+                type="ai", content=f"Tool execution failed: {str(e)}"
             )
             state.messages.append(error_message)
 
@@ -230,7 +228,7 @@ class SearchNode:
             user_id: User identifier for configuration retrieval
         """
         self.user_id = user_id
-        self.logger = composer_logger.bind(component="SearchNode")
+        self.logger = composer_logger.logger
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
@@ -248,7 +246,7 @@ class SearchNode:
 
             # Get user query from latest message
             latest_message = state.messages[-1]
-            if latest_message.role != "user":
+            if latest_message.type != "human":
                 return state
 
             query = latest_message.content
@@ -260,19 +258,27 @@ class SearchNode:
                 uc = await storage.get_service(storage.user_config).get_user_config(
                     self.user_id
                 )
-                search_config = uc.workflow_preferences.search_config
-            except ImportError:
+                # Safe attribute access with fallbacks
+                workflow_prefs = getattr(uc, 'workflow_preferences', None)
+                search_config = getattr(workflow_prefs, 'search_config', None) if workflow_prefs else None
+                
+                if not search_config:
+                    # Use default configuration
+                    search_config = type(
+                        "Config", (), {"depth": "shallow", "max_sources": 5, "similarity_threshold": 0.7}
+                    )()
+            except (ImportError, AttributeError):
                 # Fallback configuration when database not available
                 search_config = type(
-                    "Config", (), {"max_sources": 5, "similarity_threshold": 0.7}
+                    "Config", (), {"depth": "shallow", "max_sources": 5, "similarity_threshold": 0.7}
                 )()
 
             self.logger.info(
                 "Performing search retrieval",
                 user_id=self.user_id,
                 query_length=len(query),
-                search_depth=search_config.depth,
-                max_sources=search_config.max_sources,
+                search_depth=getattr(search_config, 'depth', 'shallow'),
+                max_sources=getattr(search_config, 'max_sources', 5),
             )
 
             # Perform vector search using existing memory retrieval
@@ -285,13 +291,17 @@ class SearchNode:
                 )
                 return state
 
-            # Search conversation memory
-            memories = await memory_service.search_memories(
-                user_id=self.user_id,
-                query=query,
-                limit=search_config.max_sources,
-                similarity_threshold=search_config.similarity_threshold,
-            )
+            # Search conversation memory (if method available)
+            search_method = getattr(memory_service, 'search_memories', None)
+            if search_method:
+                memories = await search_method(
+                    user_id=self.user_id,
+                    query=query,
+                    limit=getattr(search_config, 'max_sources', 5),
+                    similarity_threshold=getattr(search_config, 'similarity_threshold', 0.7),
+                )
+            else:
+                memories = []  # Fallback if method not available
 
             # Format search results
             if memories:
@@ -306,7 +316,7 @@ class SearchNode:
 
                 # Add context to messages for the model
                 context_message = LangChainMessage(
-                    role="system", content=f"Retrieved context:\n\n{search_results}"
+                    type="system", content=f"Retrieved context:\n\n{search_results}"
                 )
                 state.messages.insert(-1, context_message)  # Insert before user message
             else:
@@ -351,7 +361,7 @@ class CircuitProtectedNode:
         self.last_failure_time = None
         self.circuit_open = False
 
-        self.logger = composer_logger.bind(component="CircuitProtectedNode")
+        self.logger = composer_logger.logger
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
@@ -430,7 +440,7 @@ class CircuitProtectedNode:
 
         # Add fallback message
         fallback_message = LangChainMessage(
-            role="assistant",
+            type="ai",
             content=f"I'm experiencing technical difficulties. Please try again later. Error: {str(error)[:100]}...",
         )
         state.messages.append(fallback_message)
