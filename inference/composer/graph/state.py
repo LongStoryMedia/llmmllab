@@ -1,18 +1,47 @@
 """
 GraphState Pydantic models with LangGraph reducers.
-This is the centralized state schema that acts as the common interface for all nodes.
+This is the centralized state schema that acts as the common interface     @validator('workflow_type', pre=True)
+    @classmethod
+    def validate_workflow_type(cls, v):
+        \"\"\"Ensure workflow_type is properly typed.\"\"\"
+        if isinstance(v, str):
+            try:
+                return WorkflowType(v.upper())
+            except ValueError:
+                return WorkflowType.CHAT  # Default fallback
+        return vodes.
 """
 
 import operator
+from datetime import datetime
+from enum import Enum
 
 from typing import List, Dict, Any, Optional, Annotated
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 
 from langgraph.graph import add_messages
 
 from models.lang_chain_message import LangChainMessage
 from models.intent_analysis import IntentAnalysis
 from models.available_tool import AvailableTool
+from models.workflow_type import WorkflowType
+
+
+class ExecutionStrategy(str, Enum):
+    """Workflow execution strategies for multi-graph coordination."""
+    SINGLE = "single"
+    PARALLEL = "parallel" 
+    SERIES = "series"
+    HYBRID = "hybrid"
+
+
+class RoutingDecision(str, Enum):
+    """Valid routing decisions for subgraph selection."""
+    CHAT = "chat"
+    RESEARCH = "research"
+    CREATIVE = "creative"
+    MULTI_AGENT = "multi_agent"
+    COORDINATOR = "coordinator"
 
 
 class WorkflowState(BaseModel):
@@ -53,12 +82,33 @@ class WorkflowState(BaseModel):
         description="Progress signals during tool or crawl execution",
     )
 
+    # Routing and execution control fields (referenced by builder.py)
+    next_node: Optional[str] = Field(
+        default=None, 
+        description="Next node name for Command-based deterministic routing"
+    )
+    
+    routing_decision: Optional[RoutingDecision] = Field(
+        default=None,
+        description="Explicit routing decision from router node"
+    )
+    
+    execution_strategy: ExecutionStrategy = Field(
+        default=ExecutionStrategy.SINGLE,
+        description="Strategy for executing multiple subgraphs"
+    )
+    
+    selected_workflows: List[str] = Field(
+        default_factory=list,
+        description="List of workflows selected for execution"
+    )
+
     # Additional context fields
     user_id: Optional[str] = Field(
         default=None, description="User identifier for personalization"
     )
 
-    workflow_type: Optional[str] = Field(
+    workflow_type: Optional[WorkflowType] = Field(
         default=None,
         description="Type of workflow: CHAT, RESEARCH, MULTI_AGENT, CREATIVE",
     )
@@ -66,6 +116,33 @@ class WorkflowState(BaseModel):
     execution_metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Runtime metadata and debugging information"
     )
+    
+    # Circuit breaker and error tracking
+    error_details: Annotated[List[str], operator.add] = Field(
+        default_factory=list,
+        description="Error details for circuit breaker and recovery"
+    )
+    
+    # Timing and performance metadata
+    execution_start_time: Optional[datetime] = Field(
+        default=None,
+        description="Workflow execution start timestamp"
+    )
+    
+    node_execution_times: Dict[str, float] = Field(
+        default_factory=dict,
+        description="Execution time tracking per node"
+    )
+
+    @validator('workflow_type', pre=True)
+    def validate_workflow_type(cls, v):
+        """Ensure workflow_type is properly typed."""
+        if isinstance(v, str):
+            try:
+                return WorkflowType(v.upper())
+            except ValueError:
+                return WorkflowType.CHAT  # Default fallback
+        return v
 
 
 class ChatWorkflowState(WorkflowState):
