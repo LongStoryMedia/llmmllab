@@ -17,7 +17,7 @@ from datetime import datetime
 from enum import Enum
 
 from typing import List, Dict, Any, Optional, Annotated
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from langgraph.graph import add_messages
 
@@ -49,6 +49,13 @@ class WorkflowState(BaseModel):
     Unified LangGraph state schema with reducer functions.
     This state is shared across all nodes in composer workflows.
     """
+    
+    model_config = {
+        "arbitrary_types_allowed": True,  # Allow LangChain message types
+        "validate_assignment": True,     # Validate on field assignment
+        "use_enum_values": True,        # Use enum values in serialization
+        "extra": "forbid"               # Prevent extra fields for type safety
+    }
 
     # Conversation history and final outputs - essential for context and token streaming
     messages: Annotated[List[LangChainMessage], add_messages] = Field(
@@ -134,7 +141,8 @@ class WorkflowState(BaseModel):
         description="Execution time tracking per node"
     )
 
-    @validator('workflow_type', pre=True)
+    @field_validator('workflow_type', mode='before')
+    @classmethod
     def validate_workflow_type(cls, v):
         """Ensure workflow_type is properly typed."""
         if isinstance(v, str):
@@ -147,6 +155,13 @@ class WorkflowState(BaseModel):
 
 class ChatWorkflowState(WorkflowState):
     """Specialized state for chat workflows."""
+    
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "validate_assignment": True,
+        "use_enum_values": True,
+        "extra": "forbid"
+    }
 
     title_generated: bool = Field(
         default=False, description="Whether conversation title has been generated"
@@ -159,6 +174,13 @@ class ChatWorkflowState(WorkflowState):
 
 class ResearchWorkflowState(WorkflowState):
     """Specialized state for research workflows."""
+    
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "validate_assignment": True,
+        "use_enum_values": True,
+        "extra": "forbid"
+    }
 
     query_expanded: bool = Field(
         default=False, description="Whether initial query has been expanded"
@@ -175,6 +197,13 @@ class ResearchWorkflowState(WorkflowState):
 
 class MultiAgentWorkflowState(WorkflowState):
     """Specialized state for multi-agent orchestration."""
+    
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "validate_assignment": True,
+        "use_enum_values": True,
+        "extra": "forbid"
+    }
 
     active_agent: Optional[str] = Field(
         default=None, description="Currently active agent identifier"
