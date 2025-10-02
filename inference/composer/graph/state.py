@@ -64,7 +64,7 @@ class WorkflowState(BaseModel):
         default_factory=list, description="Conversation history and LLM outputs"
     )
 
-    # Structured output from Intent Agent - directs subsequent RAG and tool decisions
+    # Structured output from Intent Agent - directs subsequent search and tool decisions
     intent_classification: Annotated[Optional[IntentAnalysis], operator.add] = Field(
         default=None, description="Intent analysis results for routing decisions"
     )
@@ -75,14 +75,14 @@ class WorkflowState(BaseModel):
         description="Dynamic and static tools selected for this workflow",
     )
 
-    # Consolidated, synthesized output from RAG execution (shallow or deep)
+    # Consolidated, synthesized output from search execution (shallow or deep)
     search_results: Annotated[Optional[str], operator.add] = Field(
-        default=None, description="Results from RAG operations"
+        default=None, description="Results from search operations"
     )
 
-    # Stores RAG depth decision - drives conditional edge routing
-    rag_depth_config: Annotated[Optional[str], operator.add] = Field(
-        default=None, description="RAG complexity level: 'SHALLOW' or 'DEEP'"
+    # Stores search depth decision - drives conditional edge routing
+    search_depth_config: Annotated[Optional[str], operator.add] = Field(
+        default=None, description="Search complexity level: 'SHALLOW' or 'DEEP'"
     )
 
     # User-defined signals for granular progress tracking

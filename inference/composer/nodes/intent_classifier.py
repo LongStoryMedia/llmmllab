@@ -66,14 +66,14 @@ class IntentClassifierNode:
             state.intent_classification = intent_analysis
             
             # Configure RAG depth based on intent analysis
-            state.rag_depth_config = self.agent.determine_rag_depth(intent_analysis).upper()
+            state.search_depth_config = self.agent.determine_search_depth(intent_analysis).upper()
 
             self.logger.info(
                 "Intent classification completed",
                 extra={
                     "user_id": user_id,
                     "primary_intent": intent_analysis.primary_intent,
-                    "rag_depth": state.rag_depth_config,
+                    "search_depth": state.search_depth_config,
                     "complexity_level": intent_analysis.complexity_level.value
                 }
             )
@@ -95,7 +95,7 @@ class IntentClassifierNode:
                     getattr(state.messages[-1], 'content', '') if state.messages else "unknown query"
                 )
                 state.intent_classification = fallback_intent
-                state.rag_depth_config = "SHALLOW"
+                state.search_depth_config = "SHALLOW"
             except Exception:
                 # Final fallback if even the heuristic fails
                 minimal_intent = IntentAnalysis(
@@ -108,6 +108,6 @@ class IntentClassifierNode:
                     confidence=0.1
                 )
                 state.intent_classification = minimal_intent
-                state.rag_depth_config = "SHALLOW"
+                state.search_depth_config = "SHALLOW"
             
             return state

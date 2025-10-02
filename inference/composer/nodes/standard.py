@@ -1,6 +1,6 @@
 """
 Standard LangGraph nodes for basic workflow operations.
-Implements PipelineNode, ToolExecutorNode, RAGNode per Phase 2 requirements.
+Implements PipelineNode, ToolExecutorNode, SearchNode for agentic search workflows.
 """
 
 import asyncio
@@ -214,7 +214,7 @@ class ToolExecutorNode:
             return state
 
 
-class RAGNode:
+class SearchNode:
     """
     Retrieval-Augmented Generation node.
 
@@ -224,17 +224,17 @@ class RAGNode:
 
     def __init__(self, user_id: str):
         """
-        Initialize RAG node.
+        Initialize Search node.
 
         Args:
             user_id: User identifier for configuration retrieval
         """
         self.user_id = user_id
-        self.logger = composer_logger.bind(component="RAGNode")
+        self.logger = composer_logger.bind(component="SearchNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
-        Perform retrieval augmentation on the latest user message.
+        Perform search retrieval on the latest user message.
 
         Args:
             state: Current workflow state
@@ -268,7 +268,7 @@ class RAGNode:
                 )()
 
             self.logger.info(
-                "Performing RAG retrieval",
+                "Performing search retrieval",
                 user_id=self.user_id,
                 query_length=len(query),
                 search_depth=search_config.depth,
@@ -316,11 +316,11 @@ class RAGNode:
 
         except Exception as e:
             self.logger.error(
-                "RAG node execution failed", user_id=self.user_id, error=str(e)
+                "Search node execution failed", user_id=self.user_id, error=str(e)
             )
 
-            # Continue without RAG on error
-            state.search_results = f"RAG retrieval failed: {str(e)}"
+            # Continue without search on error
+            state.search_results = f"Search retrieval failed: {str(e)}"
             return state
 
 

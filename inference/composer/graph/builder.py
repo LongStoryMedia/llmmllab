@@ -21,11 +21,13 @@ from composer.graph.state import WorkflowState
 from composer.nodes.standard import PipelineNode
 from composer.nodes.intent_classifier import IntentClassifierNode
 from composer.nodes.engineering_agent import EngineeringAgentNode
-from composer.nodes.rag.executor import EnhancedRAGExecutor
+# Enhanced search components now handled in dedicated workflow implementations
 from composer.nodes.workflow_router import WorkflowRouter
 from composer.tools.registry import ToolRegistry
 from composer.workflows.chat import build_chat_workflow
 from composer.workflows.research import build_research_workflow as build_research_workflow_impl
+from composer.workflows.multi_agent import build_multi_agent_workflow as build_multi_agent_workflow_impl
+from composer.workflows.creative import build_creative_workflow as build_creative_workflow_impl
 from composer.graph.cache import WorkflowCache
 
 
@@ -334,82 +336,30 @@ class GraphBuilder:
 
     async def build_multi_agent_workflow(self, user_id: str) -> CompiledStateGraph:
         """
-        Build multi-agent orchestration workflow.
-
-        Workflow: Agent Router -> Specialized Agents -> Coordination -> Final Response
-        Configuration retrieved from shared data layer using user_id.
+        Build multi-agent orchestration workflow using dedicated workflow implementation with caching.
+        
+        This method delegates to the canonical multi-agent workflow definition
+        to eliminate code duplication and uses WorkflowCache for performance.
         """
-        # Get user configuration from shared data layer
-        user_config = await self._get_user_config(user_id)
-        workflow_config_obj = user_config.workflow if user_config else None
-
-        nodes = [
-            "agent_router",
-            "specialist_agent_1",
-            "specialist_agent_2",
-            "coordination",
-            "final_response",
-        ]
-
         try:
-            composer_logger.logger.info(
-                "Building multi-agent workflow",
-                extra={"user_id": user_id},
+            # Check cache first
+            cache_key = f"multi_agent_{user_id}"
+            if cached := await self._workflow_cache.get(cache_key):
+                return cached
+
+            # Get tools for this workflow
+            tools = await self._get_workflow_tools(user_id)
+
+            # Use dedicated workflow implementation
+            compiled_workflow = await build_multi_agent_workflow_impl(
+                user_id, tools, self.pipeline_factory
             )
 
-            # Create workflow graph
-            workflow = StateGraph(WorkflowState)
-
-            # Configuration retrieved internally from shared data layer using user_id
-            user_config = await self._get_user_config(user_id)
-            if not user_config:
-                raise WorkflowConstructionError("Unable to retrieve user configuration")
-
-            # Use injected pipeline factory
-            pipeline_factory = self.pipeline_factory
-
-            # Add multi-agent coordination nodes
-            workflow.add_node("agent_router", IntentClassifierNode())
-            workflow.add_node(
-                "specialist_agent_1", EngineeringAgentNode(pipeline_factory)
-            )
-            workflow.add_node(
-                "specialist_agent_2",
-                PipelineNode(pipeline_factory, ModelProfileType.Analysis, stream=True),
-            )
-            workflow.add_node(
-                "coordination",
-                PipelineNode(pipeline_factory, ModelProfileType.Primary, stream=True),
-            )
-            workflow.add_node(
-                "final_response",
-                PipelineNode(pipeline_factory, ModelProfileType.Primary, stream=True),
-            )
-
-            # Define multi-agent workflow logic
-            workflow.set_entry_point("agent_router")
-            workflow.add_edge("agent_router", "specialist_agent_1")
-            workflow.add_edge("specialist_agent_1", "coordination")
-            workflow.add_edge("coordination", "final_response")
-            workflow.add_edge("final_response", END)
-
-            # Compile workflow
-            compiled_workflow = workflow.compile()
-
-            composer_logger.logger.info(
-                "Built multi-agent workflow",
-                extra={
-                    "node_count": len(nodes),
-                    "enable_handoffs": (
-                        workflow_config_obj.enable_multi_agent
-                        if workflow_config_obj
-                        else True
-                    ),
-                },
-            )
+            # Cache the result
+            await self._workflow_cache.set(cache_key, compiled_workflow)
 
             return compiled_workflow
-
+            
         except Exception as e:
             composer_logger.logger.error(
                 "Failed to build multi-agent workflow",
@@ -421,85 +371,30 @@ class GraphBuilder:
 
     async def build_creative_workflow(self, user_id: str) -> CompiledStateGraph:
         """
-        Build creative content generation workflow.
-
-        Workflow: Creative Planning -> Content Generation -> Refinement -> Output
-        Configuration retrieved from shared data layer using user_id.
+        Build creative content generation workflow using dedicated workflow implementation with caching.
+        
+        This method delegates to the canonical creative workflow definition
+        to eliminate code duplication and uses WorkflowCache for performance.
         """
-        # Get user configuration from shared data layer
-        user_config = await self._get_user_config(user_id)
-        refinement_config = user_config.refinement if user_config else None
-
-        nodes = [
-            "creative_planning",
-            "content_generation",
-            "refinement",
-            "output_formatting",
-        ]
-
         try:
-            composer_logger.logger.info(
-                "Building creative workflow",
-                extra={"user_id": user_id},
+            # Check cache first
+            cache_key = f"creative_{user_id}"
+            if cached := await self._workflow_cache.get(cache_key):
+                return cached
+
+            # Get tools for this workflow
+            tools = await self._get_workflow_tools(user_id)
+
+            # Use dedicated workflow implementation
+            compiled_workflow = await build_creative_workflow_impl(
+                user_id, tools, self.pipeline_factory
             )
 
-            # Create workflow graph
-            workflow = StateGraph(WorkflowState)
-
-            # Configuration retrieved internally from shared data layer using user_id
-            user_config = await self._get_user_config(user_id)
-            if not user_config:
-                raise WorkflowConstructionError("Unable to retrieve user configuration")
-
-            # Use injected pipeline factory
-            pipeline_factory = self.pipeline_factory
-
-            # Add creative workflow nodes
-            workflow.add_node(
-                "creative_planning",
-                PipelineNode(pipeline_factory, ModelProfileType.Primary, stream=False),
-            )
-            workflow.add_node(
-                "content_generation",
-                PipelineNode(pipeline_factory, ModelProfileType.Primary, stream=True),
-            )
-            workflow.add_node(
-                "refinement",
-                PipelineNode(
-                    pipeline_factory, ModelProfileType.SelfCritique, stream=False
-                ),
-            )
-            workflow.add_node(
-                "output_formatting",
-                PipelineNode(
-                    pipeline_factory, ModelProfileType.Formatting, stream=True
-                ),
-            )
-
-            # Define creative workflow logic
-            workflow.set_entry_point("creative_planning")
-            workflow.add_edge("creative_planning", "content_generation")
-            workflow.add_edge("content_generation", "refinement")
-            workflow.add_edge("refinement", "output_formatting")
-            workflow.add_edge("output_formatting", END)
-
-            # Compile workflow
-            compiled_workflow = workflow.compile()
-
-            composer_logger.logger.info(
-                "Built creative workflow",
-                extra={
-                    "node_count": len(nodes),
-                    "enable_critique": (
-                        refinement_config.enable_response_critique
-                        if refinement_config
-                        else True
-                    ),
-                },
-            )
+            # Cache the result
+            await self._workflow_cache.set(cache_key, compiled_workflow)
 
             return compiled_workflow
-
+            
         except Exception as e:
             composer_logger.logger.error(
                 "Failed to build creative workflow",
@@ -952,9 +847,10 @@ class GraphBuilder:
             )
             state = await query_expander(state)
 
-            # Enhanced RAG for research using existing infrastructure
-            enhanced_rag = EnhancedRAGExecutor(user_id)
-            state = await enhanced_rag(state)
+            # Deep search for research using modern search architecture
+            from composer.nodes.search.router import DeepSearchExecutor  # pylint: disable=import-outside-toplevel
+            deep_search = DeepSearchExecutor(user_id)
+            state = await deep_search(state)
 
             # Research synthesis
             synthesizer = PipelineNode(

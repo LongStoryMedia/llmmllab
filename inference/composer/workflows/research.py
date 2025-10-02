@@ -1,6 +1,6 @@
 """
 Research workflow implementation for composer.
-Implements research workflow with deep RAG and comprehensive synthesis.
+Implements research workflow with deep search and comprehensive synthesis.
 """
 
 from typing import List, Any, Dict
@@ -13,7 +13,7 @@ from models import AvailableTool, ModelProfileType
 from composer.graph.state import ResearchWorkflowState
 from composer.nodes.standard import PipelineNode
 from composer.nodes.intent_classifier import IntentClassifierNode
-from composer.nodes.rag.executor import EnhancedRAGExecutor
+from composer.nodes.search.router import DeepSearchExecutor
 from composer.monitoring.logging import composer_logger
 
 
@@ -59,7 +59,7 @@ async def build_research_workflow(
     )
 
     # Enhanced RAG with multi-source capabilities
-    workflow.add_node("enhanced_rag", EnhancedRAGExecutor(user_id))
+    workflow.add_node("deep_search", DeepSearchExecutor(user_id))
 
     # Synthesis agent for comprehensive results
     workflow.add_node(
@@ -74,8 +74,8 @@ async def build_research_workflow(
     # Set research workflow flow - linear progression for thorough analysis
     workflow.set_entry_point("intent_classifier")
     workflow.add_edge("intent_classifier", "query_expansion")
-    workflow.add_edge("query_expansion", "enhanced_rag")
-    workflow.add_edge("enhanced_rag", "synthesis_agent")
+    workflow.add_edge("query_expansion", "deep_search")
+    workflow.add_edge("deep_search", "synthesis_agent")
     workflow.add_edge("synthesis_agent", END)
 
     # Compile and return workflow

@@ -35,7 +35,7 @@ class IntentClassifierAgent:
     Key Features:
     - Grammar-constrained structured output using llamacpp grammars
     - Type-safe IntentAnalysis model generation with schema validation
-    - Adaptive RAG depth determination based on complexity assessment
+    - Adaptive search depth determination based on complexity assessment
     - Graceful fallback handling when model profiles unavailable
     - Integration with shared model profile utilities for configuration management
 
@@ -50,11 +50,11 @@ class IntentClassifierAgent:
             "Intent classifier initialized with analysis model profile"
         )
 
-    def determine_rag_depth(self, intent_analysis: IntentAnalysis) -> str:
+    def determine_search_depth(self, intent_analysis: IntentAnalysis) -> str:
         """
-        Determine RAG depth configuration for adaptive retrieval routing.
+        Determine search depth configuration for adaptive retrieval routing.
 
-        Maps IntentAnalysis complexity levels to RAG execution paths:
+        Maps IntentAnalysis complexity levels to search execution paths:
         - COMPLEX/SPECIALIZED → "deep" (multi-step crawl and synthesis)
         - MODERATE → "moderate" (enhanced retrieval with limited sources)
         - TRIVIAL/SIMPLE → "shallow" (single-pass vector store retrieval)
@@ -67,7 +67,7 @@ class IntentClassifierAgent:
             intent_analysis: Structured intent analysis from grammar-constrained LLM
 
         Returns:
-            str: RAG depth configuration ("shallow", "moderate", "deep")
+            str: Search depth configuration ("shallow", "moderate", "deep")
         """
         if intent_analysis.complexity_level in [
             ComplexityLevel.COMPLEX,

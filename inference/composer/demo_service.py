@@ -16,7 +16,7 @@ from composer.graph.state import WorkflowState
 from composer.nodes.intent_classifier import IntentClassifierNode
 from composer.nodes.engineering_agent import EngineeringAgentNode
 from composer.nodes.standard import PipelineNode
-from composer.nodes.rag.router import ShallowRAGExecutor
+from composer.nodes.search.router import ShallowSearchExecutor
 from composer.monitoring.logging import composer_logger
 from models.model_profile_type import ModelProfileType
 
@@ -119,9 +119,9 @@ class RefactoredComposerService:
 
     async def _execute_chat_flow(self, state: WorkflowState, user_id: str) -> WorkflowState:
         """Execute optimized chat flow."""
-        # Lightweight RAG
-        rag_executor = ShallowRAGExecutor(user_id)
-        state = await rag_executor(state)
+        # Lightweight search
+        search_executor = ShallowSearchExecutor(user_id)
+        state = await search_executor(state)
         
         # Chat response with streaming
         chat_agent = PipelineNode(
@@ -135,10 +135,10 @@ class RefactoredComposerService:
 
     async def _execute_research_flow(self, state: WorkflowState, user_id: str) -> WorkflowState:
         """Execute research-focused flow."""
-        # Enhanced RAG for research
-        from composer.nodes.rag.executor import EnhancedRAGExecutor
-        enhanced_rag = EnhancedRAGExecutor(user_id)
-        state = await enhanced_rag(state)
+        # Enhanced search for research
+        from composer.nodes.search.router import DeepSearchExecutor
+        deep_search = DeepSearchExecutor(user_id)
+        state = await deep_search(state)
         
         # Research synthesis
         synthesizer = PipelineNode(
