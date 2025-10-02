@@ -1,5 +1,8 @@
 -- List all dynamic tools for a specific user with pagination
-SELECT id, user_id, name, description, code, function_name, embedding, parameters, created_at, updated_at
+SELECT id, user_id, name, description, code, function_name, embedding, 
+       args_schema, return_direct, verbose, tags, metadata, 
+       handle_tool_error, handle_validation_error, response_format, parameters, 
+       created_at, updated_at
 FROM dynamic_tools
 WHERE user_id = $1
 ORDER BY created_at DESC
