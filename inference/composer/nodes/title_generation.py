@@ -6,12 +6,8 @@ Generates concise, descriptive titles based on conversation content.
 from typing import List
 
 from models.lang_chain_message import LangChainMessage
-from models.model_profile_type import ModelProfileType
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
-# Lazy imports to avoid circular dependencies
-from db import storage  # pylint: disable=import-outside-toplevel
-from utils.model_profile import get_model_profile_for_task  # pylint: disable=import-outside-toplevel
 
 
 class TitleGenerationNode:

@@ -82,7 +82,7 @@ class ComposerService:
         user_id: str,
         messages: List[Message],
         workflow_type: WorkflowType,
-    ) -> "CompiledStateGraph":
+    ) -> CompiledStateGraph:
         """
         Construct or retrieve a compiled graph.
 
@@ -100,7 +100,7 @@ class ComposerService:
             # 1. Get user configuration from shared data layer
             # Configuration overrides and defaults are resolved at the data layer
             # ComposerService receives final resolved configuration
-            from db import storage
+            from db import storage  # pylint: disable=import-outside-toplevel
 
             user_config = await storage.get_service(
                 storage.user_config

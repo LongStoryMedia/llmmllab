@@ -3,15 +3,13 @@ Intent classification node for workflow routing.
 Wraps the IntentClassifierAgent to provide LangGraph workflow integration.
 """
 
-from typing import List
-
-from models.lang_chain_message import LangChainMessage
 from models.intent_analysis import IntentAnalysis
 from models.complexity_level import ComplexityLevel
+from models.required_capability import RequiredCapability
+from models.computational_requirement import ComputationalRequirement
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import NodeExecutionError
-from composer.agents.intent_classifier import IntentClassifierAgent
 
 
 class IntentClassifierNode:
@@ -22,13 +20,13 @@ class IntentClassifierNode:
     proper LangGraph node interface. Handles state updates and RAG routing configuration.
     """
 
-    def __init__(self, pipeline_factory=None):
+    def __init__(self):
         """
         Initialize intent classifier node with agent delegation.
-        
-        Args:
-            pipeline_factory: Factory for creating structured pipelines (passed to agent)
         """
+        # Lazy import to avoid circular dependencies
+        from composer.agents.intent_classifier import IntentClassifierAgent  # pylint: disable=import-outside-toplevel
+        
         self.agent = IntentClassifierAgent()
         self.logger = composer_logger.logger
 
@@ -100,10 +98,6 @@ class IntentClassifierNode:
                 state.rag_depth_config = "SHALLOW"
             except Exception:
                 # Final fallback if even the heuristic fails
-                from models.complexity_level import ComplexityLevel
-                from models.required_capability import RequiredCapability
-                from models.computational_requirement import ComputationalRequirement
-                
                 minimal_intent = IntentAnalysis(
                     primary_intent="chat",
                     complexity_level=ComplexityLevel.SIMPLE,

@@ -16,7 +16,8 @@ from composer.graph.state import WorkflowState, ResearchWorkflowState
 
 # Node imports
 from composer.nodes.standard import PipelineNode, ToolExecutorNode
-from composer.nodes.specialized import IntentClassifierNode, EngineeringAgentNode
+from composer.nodes.intent_classifier import IntentClassifierNode
+from composer.nodes.engineering_agent import EngineeringAgentNode
 from composer.nodes.rag.router import RAGRouter, ShallowRAGExecutor, DeepRAGExecutor
 from composer.nodes.rag.executor import EnhancedRAGExecutor
 
@@ -139,7 +140,7 @@ class GraphBuilder:
 
             # Add nodes to workflow
             workflow.add_node(
-                "intent_classifier", IntentClassifierNode(pipeline_factory)
+                "intent_classifier", IntentClassifierNode()
             )
             workflow.add_node(
                 "engineering_agent", EngineeringAgentNode(pipeline_factory)
@@ -292,7 +293,7 @@ class GraphBuilder:
 
             # Add research-specific nodes
             workflow.add_node(
-                "intent_classifier", IntentClassifierNode(pipeline_factory)
+                "intent_classifier", IntentClassifierNode()
             )
             workflow.add_node(
                 "query_expansion",
@@ -380,7 +381,7 @@ class GraphBuilder:
             pipeline_factory = self.pipeline_factory
 
             # Add multi-agent coordination nodes
-            workflow.add_node("agent_router", IntentClassifierNode(pipeline_factory))
+            workflow.add_node("agent_router", IntentClassifierNode())
             workflow.add_node(
                 "specialist_agent_1", EngineeringAgentNode(pipeline_factory)
             )

@@ -1,8 +1,9 @@
 """LangGraph workflow nodes."""
 
 from .standard import PipelineNode, ToolExecutorNode, RAGNode, CircuitProtectedNode
-
-from .specialized import TitleGenerationNode, IntentClassifierNode, EngineeringAgentNode
+from .title_generation import TitleGenerationNode
+from .intent_classifier import IntentClassifierNode
+from .engineering_agent import EngineeringAgentNode
 
 __all__ = [
     "PipelineNode",

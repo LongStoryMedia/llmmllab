@@ -61,8 +61,7 @@ class EngineeringAgentNode:
                 AvailableTool(
                     name=getattr(tool, 'name', 'unnamed_tool'),
                     description=getattr(tool, 'description', 'No description available'),
-                    parameters=getattr(tool, 'parameters', {}),
-                    tool_type="static" if hasattr(tool, '_static') else "dynamic"
+                    type="static" if hasattr(tool, '_static') else "dynamic"
                 )
                 for tool in tools if tool is not None
             ]
