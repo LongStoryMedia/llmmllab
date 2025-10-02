@@ -18,6 +18,7 @@ from composer.nodes.standard import PipelineNode
 from composer.nodes.intent_classifier import IntentClassifierNode
 from composer.nodes.engineering_agent import EngineeringAgentNode
 from composer.nodes.rag.executor import EnhancedRAGExecutor
+from composer.tools.registry import ToolRegistry
 
 # Database import - lazy loaded to avoid circular dependencies
 from db import storage  # pylint: disable=import-outside-toplevel
@@ -131,6 +132,9 @@ class GraphBuilder:
             # Add intent analysis node (always present for context enrichment)
             workflow.add_node("intent_analysis", IntentClassifierNode())
             
+            # Add tool collection node (collects available tools based on intent)
+            workflow.add_node("tool_collection", self._create_tool_collection_node(user_id))
+            
             # Add router node with routing logic
             workflow.add_node("router", self._create_router_node(user_id, workflow_type))
             
@@ -146,7 +150,8 @@ class GraphBuilder:
             
             # Define workflow edges
             workflow.set_entry_point("intent_analysis")
-            workflow.add_edge("intent_analysis", "router")
+            workflow.add_edge("intent_analysis", "tool_collection")
+            workflow.add_edge("tool_collection", "router")
             
             # Conditional routing from router to subgraphs
             workflow.add_conditional_edges(
@@ -606,3 +611,63 @@ class GraphBuilder:
                 return state
                 
         return route_workflows
+
+    def _create_tool_collection_node(self, user_id: str):
+        """
+        Create tool collection node that gathers available tools based on intent analysis.
+        
+        This replaces the tool collection logic that was previously in the core service.
+        Uses ToolRegistry to collect both static and dynamic tools based on intent.
+        """
+        async def collect_tools(state):
+            """Collect available tools based on intent analysis results."""
+            try:
+                # Get intent from previous node
+                intent = getattr(state, 'intent_analysis', None) or getattr(state, 'intent', None)
+                
+                if not intent:
+                    composer_logger.logger.warning(
+                        "No intent analysis found, using minimal tool set",
+                        extra={"user_id": user_id}
+                    )
+                    # Set empty tool list and continue\n                    state.required_tools = []
+                    return state
+                
+                composer_logger.logger.info(
+                    "Collecting tools for intent",
+                    extra={
+                        "user_id": user_id,
+                        "primary_intent": getattr(intent, 'primary_intent', 'unknown'),
+                        "requires_tools": getattr(intent, 'requires_tools', False)
+                    }
+                )
+                
+                # Initialize tool registry
+                tool_registry = ToolRegistry()
+                
+                # Get tools for the current intent and user context
+                tools = await tool_registry.get_tools_for_context(intent, user_id)
+                
+                # Store tools in state for subgraphs to use
+                # Store tools in state for subgraphs to use\n                state.required_tools = tools
+                
+                composer_logger.logger.info(
+                    "Tool collection completed",
+                    extra={
+                        "user_id": user_id,
+                        "tool_count": len(tools),
+                        "tool_names": [tool.name for tool in tools] if tools else []
+                    }
+                )
+                
+                return state
+                
+            except Exception as e:
+                composer_logger.logger.error(
+                    "Tool collection failed",
+                    extra={"user_id": user_id, "error": str(e)}
+                )
+                # Continue with empty tool list on error\n                state.required_tools = []
+                return state
+                
+        return collect_tools
