@@ -15,12 +15,12 @@ from typing import Dict, Any, Optional, List
 
 from langgraph.graph.state import CompiledStateGraph
 
-from models import IntentAnalysis, Message, WorkflowType, LangChainMessage
+from models import Message, LangChainMessage
 
 # Lazy import to avoid circular dependencies
 # from db import storage
 
-from composer.graph.state import WorkflowState, ChatWorkflowState, ResearchWorkflowState
+from composer.graph.state import WorkflowState
 from composer.graph.builder import GraphBuilder
 from composer.tools.registry import ToolRegistry
 from composer.graph.cache import WorkflowCache
@@ -47,7 +47,9 @@ class ComposerService:
 
         # Import pipeline factory to inject into GraphBuilder
         try:
-            from runner import pipeline_factory
+            from runner import (
+                pipeline_factory,
+            )  # pylint: disable=import-outside-toplevel
 
             self.pipeline_factory = pipeline_factory
         except ImportError as e:
@@ -81,61 +83,49 @@ class ComposerService:
         self,
         user_id: str,
         messages: List[Message],
-        workflow_type: WorkflowType,
     ) -> CompiledStateGraph:
         """
-        Construct or retrieve a compiled graph.
+        Construct or retrieve a master workflow with intelligent routing.
 
-        This is the main entry point for workflow composition.
+        The workflow will handle intent analysis, tool selection, and routing
+        internally using LangGraph's native capabilities.
 
         args:
             user_id: User ID for configuration retrieval
             messages: Conversation messages
-            workflow_type: Type of workflow to compose (e.g. "CHAT", "RESEARCH")
 
         returns:
-            CompiledStateGraph: Ready to execute LangGraph workflow
+            CompiledStateGraph: Master workflow with intelligent routing
         """
         try:
             # 1. Get user configuration from shared data layer
-            # Configuration overrides and defaults are resolved at the data layer
-            # ComposerService receives final resolved configuration
             from db import storage  # pylint: disable=import-outside-toplevel
 
             user_config = await storage.get_service(
                 storage.user_config
             ).get_user_config(user_id)
 
-            # 2. Analyze intent before building workflow
-            intent = await self._analyze_intent(user_id, messages)
-
-            # 3. Get tools for this context and intent
-            tools = await self.tool_registry.get_tools_for_context(intent, user_id)
-
-            # 4. Use per-user cache if enabled
+            # 2. Use per-user cache if enabled (cache based on user_id only now)
             user_cache = None
             if user_config.workflow.enable_workflow_caching:
                 if user_id not in self.workflow_caches:
                     self.workflow_caches[user_id] = WorkflowCache()
                 user_cache = self.workflow_caches[user_id]
 
-                cache_key = await user_cache.get_cache_key(
-                    user_id, workflow_type, tools
-                )
+                # Simplified cache key - master workflow is the same for all users
+                cache_key = f"master_workflow_{user_id}"
 
                 cached_workflow = await user_cache.get(cache_key)
                 if cached_workflow:
                     self.logger.debug(
-                        "Retrieved workflow from cache", extra={"cache_key": cache_key}
+                        "Retrieved master workflow from cache",
+                        extra={"cache_key": cache_key},
                     )
                     return cached_workflow
 
-            # 5. Build new workflow (configuration retrieved internally from data layer)
-            # Note: Type conversion handled by ToolRegistry.get_tools_for_context
-            # which returns List[AvailableTool] compatible objects
-            builder_fn = lambda: self.graph_builder.build_from_context(
-                user_id, messages, tools, workflow_type
-            )
+            # 3. Build master workflow with intelligent routing
+            # Intent analysis and tool selection happen inside the graph now
+            builder_fn = lambda: self.graph_builder.build_master_workflow(user_id)
 
             if user_cache:
                 workflow = await user_cache.get_or_create(cache_key, builder_fn)
@@ -143,52 +133,25 @@ class ComposerService:
                 workflow = await builder_fn()
 
             self.logger.info(
-                "Workflow composed successfully",
-                extra={
-                    "workflow_type": workflow_type,
-                    "tool_count": len(tools),
-                    "user_id": user_id,
-                },
+                "Master workflow composed successfully", extra={"user_id": user_id}
             )
 
             return workflow
 
         except Exception as e:
             self.logger.error(
-                "Failed to compose workflow",
-                extra={
-                    "workflow_type": workflow_type,
-                    "error": str(e),
-                    "user_id": user_id,
-                },
-                exc_info=True,
-            )
-            raise
-
-    async def _analyze_intent(
-        self, user_id: str, messages: List[Message]
-    ) -> "IntentAnalysis":
-        """
-        Use an LLM-based intent agent to analyze conversation context.
-
-        This analysis guides tool selection, workflow type selection,
-        and RAG depth configuration.
-        """
-        try:
-            return await self.intent_classifier.analyze(user_id, messages)
-        except Exception as e:
-            self.logger.warning(
-                "Intent analysis failed, using defaults",
+                "Failed to compose master workflow",
                 extra={"error": str(e), "user_id": user_id},
                 exc_info=True,
             )
             raise
 
+    # Intent analysis now handled within the master workflow graph
+
     async def create_initial_state(
         self,
         user_id: str,
         messages: List[Message],
-        workflow_type: WorkflowType,
         additional_context: Optional[Dict[str, Any]] = None,
     ) -> WorkflowState:
         """Create initial workflow state from user configuration."""
@@ -200,13 +163,8 @@ class ComposerService:
             user_id
         )
 
-        # Choose appropriate state class based on workflow type
-        if workflow_type == WorkflowType.RESEARCH:
-            state_class = ResearchWorkflowState
-        elif workflow_type == WorkflowType.CHAT:
-            state_class = ChatWorkflowState
-        else:
-            state_class = WorkflowState
+        # Use base WorkflowState - the graph will determine appropriate subgraph
+        state_class = WorkflowState
 
         langchain_messages = []
         for msg in messages:
@@ -237,7 +195,7 @@ class ComposerService:
         state = state_class(
             messages=langchain_messages,
             user_id=user_id,
-            workflow_type=workflow_type,
+            # workflow_type will be determined by the graph based on intent analysis
             execution_metadata={
                 "created_at": asyncio.get_event_loop().time(),
                 "composer_version": "0.1.0",
@@ -249,7 +207,8 @@ class ComposerService:
 
         # Add additional context
         if additional_context:
-            state.execution_metadata.update(additional_context)
+            for key, value in additional_context.items():
+                state.execution_metadata[key] = value
 
         return state
 
