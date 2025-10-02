@@ -303,25 +303,12 @@ class DynamicToolStorage:
 
             for row in rows:
                 try:
-                    tool_data = dict(row)
-
-                    # Store the similarity score separately
-                    similarity_score = tool_data.pop("similarity_score", None)
-
-                    # Parse parameters if stored as JSON string
-                    if isinstance(tool_data.get("parameters"), str):
-                        try:
-                            tool_data["parameters"] = json.loads(
-                                tool_data["parameters"]
-                            )
-                        except json.JSONDecodeError as e:
-                            logger.error(
-                                f"Failed to parse parameters JSON for tool: {e}"
-                            )
-                            continue
-
+                    # Store the similarity score separately before parsing
+                    row_dict = dict(row)
+                    similarity_score = row_dict.pop("similarity_score", None)
+                    
                     # Create the tool and add similarity score as an attribute
-                    tool = DynamicTool(**tool_data)
+                    tool = self._parse_tool_from_row(row_dict)
                     setattr(tool, "similarity_score", similarity_score)
                     tools.append(tool)
                 except Exception as e:
