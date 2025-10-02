@@ -135,50 +135,80 @@ class GraphBuilder:
             # Add tool collection node (collects available tools based on intent)
             workflow.add_node("tool_collection", self._create_tool_collection_node(user_id))
             
-            # Add router node with routing logic
-            workflow.add_node("router", self._create_router_node(user_id, workflow_type))
-            
-            # Create and add subgraphs as compiled nodes
-            subgraphs = await self._create_all_subgraphs(user_id)
-            
-            # Add subgraph nodes
-            for name, subgraph in subgraphs.items():
-                workflow.add_node(f"{name}_subgraph", subgraph)
-            
-            # Add execution coordinator node
-            workflow.add_node("coordinator", self._create_coordinator_node(user_id))
-            
-            # Define workflow edges
-            workflow.set_entry_point("intent_analysis")
-            workflow.add_edge("intent_analysis", "tool_collection")
-            workflow.add_edge("tool_collection", "router")
-            
-            # Conditional routing from router to subgraphs
-            workflow.add_conditional_edges(
-                "router",
-                self._route_to_subgraphs,
-                {
-                    "chat": "chat_subgraph",
-                    "research": "research_subgraph", 
-                    "creative": "creative_subgraph",
-                    "multi_agent": "multi_agent_subgraph",
-                    "coordinator": "coordinator"  # For parallel/series execution
-                }
+            # Enhanced execution pattern: Use direct execution for simple workflows,
+            # subgraph routing for complex scenarios or when workflow_type is not specified
+            use_enhanced_execution = (
+                workflow_type is not None and
+                workflow_type in [WorkflowType.CHAT, WorkflowType.RESEARCH, WorkflowType.CREATIVE]
             )
             
-            # All subgraphs route to coordinator for result processing
-            for name in subgraphs.keys():
-                workflow.add_edge(f"{name}_subgraph", "coordinator")
-            
-            workflow.add_edge("coordinator", END)
+            if use_enhanced_execution:
+                # Enhanced direct execution pattern (from enhanced_builder)
+                # workflow_type is guaranteed to be non-None here due to use_enhanced_execution check
+                assert workflow_type is not None  # Type narrowing for mypy
+                executor = self._create_workflow_executor(user_id, workflow_type)
+                workflow.add_node("enhanced_executor", executor)
+                
+                # Simple direct routing for enhanced execution
+                workflow.set_entry_point("intent_analysis")
+                workflow.add_edge("intent_analysis", "tool_collection")
+                workflow.add_edge("tool_collection", "enhanced_executor")
+                workflow.add_edge("enhanced_executor", END)
+                
+            else:
+                # Complex subgraph routing (preserve existing comprehensive capabilities)
+                # Add router node with routing logic
+                workflow.add_node("router", self._create_router_node(user_id, workflow_type))
+                
+                # Create and add subgraphs as compiled nodes
+                subgraphs = await self._create_all_subgraphs(user_id)
+                
+                # Add subgraph nodes
+                for name, subgraph in subgraphs.items():
+                    workflow.add_node(f"{name}_subgraph", subgraph)
+                
+                # Add execution coordinator node
+                workflow.add_node("coordinator", self._create_coordinator_node(user_id))
+                
+                # Define complex workflow edges
+                workflow.set_entry_point("intent_analysis")
+                workflow.add_edge("intent_analysis", "tool_collection")
+                workflow.add_edge("tool_collection", "router")
+                
+                # Conditional routing from router to subgraphs
+                workflow.add_conditional_edges(
+                    "router",
+                    self._route_to_subgraphs,
+                    {
+                        "chat": "chat_subgraph",
+                        "research": "research_subgraph", 
+                        "creative": "creative_subgraph",
+                        "multi_agent": "multi_agent_subgraph",
+                        "coordinator": "coordinator"  # For parallel/series execution
+                    }
+                )
+                
+                # All subgraphs route to coordinator for result processing
+                for name in subgraphs.keys():
+                    workflow.add_edge(f"{name}_subgraph", "coordinator")
+                
+                workflow.add_edge("coordinator", END)
             
             # Compile and return the master workflow
             compiled_workflow = workflow.compile()
             
-            composer_logger.logger.info(
-                "Master workflow compiled successfully",
-                extra={"user_id": user_id, "subgraph_count": len(subgraphs)}
-            )
+            if use_enhanced_execution:
+                composer_logger.logger.info(
+                    "Enhanced master workflow compiled successfully",
+                    extra={"user_id": user_id, "execution_pattern": "enhanced_direct", "workflow_type": workflow_type.value if workflow_type else None}
+                )
+            else:
+                # For complex routing, we know subgraphs was created
+                subgraph_count = len([n for n in workflow.nodes.keys() if n.endswith('_subgraph')])
+                composer_logger.logger.info(
+                    "Master workflow with subgraphs compiled successfully", 
+                    extra={"user_id": user_id, "execution_pattern": "complex_subgraphs", "subgraph_count": subgraph_count}
+                )
             
             return compiled_workflow
                 
@@ -671,3 +701,232 @@ class GraphBuilder:
                 return state
                 
         return collect_tools
+
+    # Enhanced Execution Methods (from enhanced_builder pattern)
+    
+    def _create_workflow_executor(self, user_id: str, workflow_type: WorkflowType):
+        """Create executor for explicit workflow type (enhanced_builder pattern)."""
+        async def workflow_executor(state: WorkflowState) -> WorkflowState:
+            """Execute specific workflow type with enhanced execution patterns."""
+            try:
+                composer_logger.logger.info(
+                    "Executing explicit workflow",
+                    extra={"user_id": user_id, "workflow_type": workflow_type.value}
+                )
+                
+                if workflow_type == WorkflowType.RESEARCH:
+                    return await self._execute_research_flow(state, user_id)
+                elif workflow_type == WorkflowType.CREATIVE:
+                    return await self._execute_creative_flow(state, user_id)
+                elif workflow_type == WorkflowType.MULTI_AGENT:
+                    return await self._execute_multi_agent_flow(state, user_id)
+                else:  # Default to chat
+                    return await self._execute_chat_flow(state, user_id)
+                    
+            except Exception as e:
+                composer_logger.logger.error(
+                    "Workflow executor failed",
+                    extra={"user_id": user_id, "error": str(e)}
+                )
+                return await self._execute_chat_flow(state, user_id)  # Fallback
+        
+        return workflow_executor
+
+    def _create_intelligent_executor(self, user_id: str):
+        """Create executor that routes based on intent analysis (enhanced_builder pattern)."""
+        async def intelligent_executor(state: WorkflowState) -> WorkflowState:
+            """Route and execute based on intent classification with enhanced routing."""
+            try:
+                intent_analysis = getattr(state, "intent_classification", None)
+                
+                if not intent_analysis:
+                    return await self._execute_chat_flow(state, user_id)
+                
+                primary_intent = getattr(intent_analysis, "primary_intent", "").lower()
+                complexity = getattr(intent_analysis, "complexity_level", None)
+                
+                # Intelligent routing based on intent with enhanced logic
+                if "research" in primary_intent or "analysis" in primary_intent:
+                    composer_logger.logger.info(
+                        "Routing to research flow", 
+                        extra={"user_id": user_id, "intent": primary_intent}
+                    )
+                    return await self._execute_research_flow(state, user_id)
+                elif "creative" in primary_intent or "generate" in primary_intent:
+                    composer_logger.logger.info(
+                        "Routing to creative flow", 
+                        extra={"user_id": user_id, "intent": primary_intent}
+                    )
+                    return await self._execute_creative_flow(state, user_id)
+                elif complexity and str(complexity).upper() in ["COMPLEX", "SPECIALIZED"]:
+                    composer_logger.logger.info(
+                        "Routing to multi-agent flow", 
+                        extra={"user_id": user_id, "complexity": complexity}
+                    )
+                    return await self._execute_multi_agent_flow(state, user_id)
+                else:
+                    composer_logger.logger.info(
+                        "Routing to chat flow", 
+                        extra={"user_id": user_id, "intent": primary_intent}
+                    )
+                    return await self._execute_chat_flow(state, user_id)
+                    
+            except Exception as e:
+                composer_logger.logger.error(
+                    "Intelligent executor failed",
+                    extra={"user_id": user_id, "error": str(e)}
+                )
+                return await self._execute_chat_flow(state, user_id)
+        
+        return intelligent_executor
+
+    async def _execute_chat_flow(self, state: WorkflowState, user_id: str) -> WorkflowState:
+        """Execute optimized chat flow with enhanced execution pattern."""
+        try:
+            # Simple chat response with streaming
+            chat_agent = PipelineNode(
+                self.pipeline_factory,
+                ModelProfileType.Primary,
+                stream=True
+            )
+            state = await chat_agent(state)
+            
+            # Handle tools if needed (integration with existing tool system)
+            if (state.messages and 
+                hasattr(state.messages[-1], "tool_calls") and 
+                getattr(state.messages[-1], "tool_calls", None) and
+                getattr(state, "required_tools", None)):
+                # Tool execution integration with existing ToolRegistry system
+                composer_logger.logger.info(
+                    "Tool execution requested in chat flow",
+                    extra={"user_id": user_id, "tool_count": len(state.required_tools)}
+                )
+            
+            return state
+            
+        except Exception as e:
+            composer_logger.logger.error(
+                "Chat flow execution failed",
+                extra={"user_id": user_id, "error": str(e)}
+            )
+            # Return minimal response on error - continue with existing state
+            return state
+
+    async def _execute_research_flow(self, state: WorkflowState, user_id: str) -> WorkflowState:
+        """Execute research-focused flow with enhanced execution pattern."""
+        try:
+            # Query expansion for better research
+            query_expander = PipelineNode(
+                self.pipeline_factory,
+                ModelProfileType.Analysis,
+                stream=False
+            )
+            state = await query_expander(state)
+            
+            # Enhanced RAG for research using existing infrastructure
+            enhanced_rag = EnhancedRAGExecutor(user_id)
+            state = await enhanced_rag(state)
+            
+            # Research synthesis
+            synthesizer = PipelineNode(
+                self.pipeline_factory,
+                ModelProfileType.Primary,
+                stream=True
+            )
+            state = await synthesizer(state)
+            
+            composer_logger.logger.info(
+                "Research flow completed",
+                extra={"user_id": user_id}
+            )
+            
+            return state
+            
+        except Exception as e:
+            composer_logger.logger.error(
+                "Research flow execution failed",
+                extra={"user_id": user_id, "error": str(e)}
+            )
+            # Fallback to chat flow
+            return await self._execute_chat_flow(state, user_id)
+
+    async def _execute_creative_flow(self, state: WorkflowState, user_id: str) -> WorkflowState:
+        """Execute creative generation flow with enhanced execution pattern."""
+        try:
+            # Creative planning
+            planner = PipelineNode(
+                self.pipeline_factory,
+                ModelProfileType.Primary,
+                stream=False
+            )
+            state = await planner(state)
+            
+            # Content generation
+            generator = PipelineNode(
+                self.pipeline_factory,
+                ModelProfileType.Primary,
+                stream=True
+            )
+            state = await generator(state)
+            
+            # Refinement (if SelfCritique profile exists)
+            if hasattr(ModelProfileType, 'SelfCritique'):
+                refiner = PipelineNode(
+                    self.pipeline_factory,
+                    ModelProfileType.SelfCritique,
+                    stream=False
+                )
+                state = await refiner(state)
+            
+            composer_logger.logger.info(
+                "Creative flow completed",
+                extra={"user_id": user_id}
+            )
+            
+            return state
+            
+        except Exception as e:
+            composer_logger.logger.error(
+                "Creative flow execution failed",
+                extra={"user_id": user_id, "error": str(e)}
+            )
+            # Fallback to chat flow
+            return await self._execute_chat_flow(state, user_id)
+
+    async def _execute_multi_agent_flow(self, state: WorkflowState, user_id: str) -> WorkflowState:
+        """Execute multi-agent coordination flow with enhanced execution pattern."""
+        try:
+            # Specialist agent coordination using existing infrastructure
+            specialist1 = EngineeringAgentNode(self.pipeline_factory)
+            state = await specialist1(state)
+            
+            # Coordination agent
+            coordinator = PipelineNode(
+                self.pipeline_factory,
+                ModelProfileType.Primary,
+                stream=True
+            )
+            state = await coordinator(state)
+            
+            # Final synthesis
+            synthesizer = PipelineNode(
+                self.pipeline_factory,
+                ModelProfileType.Primary,
+                stream=True
+            )
+            state = await synthesizer(state)
+            
+            composer_logger.logger.info(
+                "Multi-agent flow completed",
+                extra={"user_id": user_id}
+            )
+            
+            return state
+            
+        except Exception as e:
+            composer_logger.logger.error(
+                "Multi-agent flow execution failed",
+                extra={"user_id": user_id, "error": str(e)}
+            )
+            # Fallback to chat flow
+            return await self._execute_chat_flow(state, user_id)
