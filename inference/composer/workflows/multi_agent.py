@@ -3,12 +3,13 @@ Multi-agent workflow implementation for composer.
 Implements multi-agent orchestration with specialist coordination.
 """
 
-from typing import List, Any, Dict
+from typing import Any, Dict
 
 from langgraph.graph import StateGraph, END
 from langgraph.graph.state import CompiledStateGraph
 
-from models import AvailableTool, ModelProfileType
+from models import ModelProfileType
+from runner import PipelineFactory
 
 from composer.graph.state import WorkflowState
 from composer.nodes import PipelineNode, ToolExecutorNode
@@ -18,7 +19,7 @@ from composer.monitoring.logging import composer_logger
 
 
 async def build_multi_agent_workflow(
-    user_id: str, tools: List[AvailableTool], pipeline_factory: Any = None
+    user_id: str, pipeline_factory: PipelineFactory
 ) -> CompiledStateGraph:
     """
     Build multi-agent orchestration workflow with specialist coordination.
@@ -42,7 +43,7 @@ async def build_multi_agent_workflow(
     """
     composer_logger.logger.info(
         "Building multi-agent workflow",
-        extra={"user_id": user_id, "tool_count": len(tools)},
+        extra={"user_id": user_id},
     )
 
     # Create workflow graph
@@ -81,9 +82,8 @@ async def build_multi_agent_workflow(
         PipelineNode(pipeline_factory, ModelProfileType.Primary, stream=True),
     )
 
-    # Tool execution node (if tools available)
-    if tools:
-        workflow.add_node("tool_executor", ToolExecutorNode([]))
+    # Tool execution node - tools populated at runtime
+    workflow.add_node("tool_executor", ToolExecutorNode([]))  # Tools populated at runtime
 
     # Set workflow entry point
     workflow.set_entry_point("intent_classifier")
@@ -126,22 +126,19 @@ async def build_multi_agent_workflow(
     workflow.add_edge("coordination", "final_response")
 
     # Conditional routing after final response
-    if tools:
+    def route_after_response(state: WorkflowState) -> str:
+        """Route to tools if tool calls present, otherwise end."""
+        if (
+            state.messages
+            and hasattr(state.messages[-1], "tool_calls")
+            and state.messages[-1].tool_calls
+            and hasattr(state, 'required_tools') and state.required_tools
+        ):
+            return "tool_executor"
+        return END
 
-        def route_after_response(state: WorkflowState) -> str:
-            """Route to tools if tool calls present, otherwise end."""
-            if (
-                state.messages
-                and hasattr(state.messages[-1], "tool_calls")
-                and state.messages[-1].tool_calls
-            ):
-                return "tool_executor"
-            return END
-
-        workflow.add_conditional_edges("final_response", route_after_response)
-        workflow.add_edge("tool_executor", "final_response")  # Tools loop back
-    else:
-        workflow.add_edge("final_response", END)
+    workflow.add_conditional_edges("final_response", route_after_response)
+    workflow.add_edge("tool_executor", "final_response")  # Tools loop back
 
     # Compile and return workflow
     compiled_workflow = workflow.compile()

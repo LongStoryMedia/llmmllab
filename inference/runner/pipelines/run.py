@@ -25,7 +25,7 @@ from models import (
     MessageContentType,
     EventStreamConfig,
 )
-from utils.langgraph import build_langgraph_state
+from composer.utils.langgraph import build_langgraph_state
 from utils.grammar_generator import (
     get_grammar_for_model,
     parse_structured_output,

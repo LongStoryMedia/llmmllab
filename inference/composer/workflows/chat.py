@@ -3,12 +3,12 @@ Chat workflow implementation for composer.
 Implements the standard chat workflow with adaptive search and tool orchestration.
 """
 
-from typing import List, Any, Dict
+from typing import Any, Dict
 
 from langgraph.graph import StateGraph, END
 from langgraph.graph.state import CompiledStateGraph
 
-from models import AvailableTool, ModelProfileType
+from models import ModelProfileType
 
 from composer.graph.state import WorkflowState
 from composer.nodes import PipelineNode, ToolExecutorNode
@@ -20,7 +20,6 @@ from composer.monitoring.logging import composer_logger
 
 async def build_chat_workflow(
     user_id: str, 
-    tools: List[AvailableTool],
     pipeline_factory: Any = None
 ) -> CompiledStateGraph:
     """
@@ -35,7 +34,6 @@ async def build_chat_workflow(
     
     Args:
         user_id: User identifier for configuration retrieval
-        tools: Available tools for this workflow
         pipeline_factory: Factory for creating pipeline instances
         
     Returns:
@@ -43,7 +41,7 @@ async def build_chat_workflow(
     """
     composer_logger.logger.info(
         "Building chat workflow",
-        extra={"user_id": user_id, "tool_count": len(tools)}
+        extra={"user_id": user_id}
     )
 
     # Create workflow graph
@@ -62,9 +60,8 @@ async def build_chat_workflow(
         stream=True
     ))
     
-    # Tool execution node (if tools available)
-    if tools:
-        workflow.add_node("tool_executor", ToolExecutorNode([]))  # Tools populated at runtime
+    # Tool execution node - tools populated at runtime by tool_collection_node
+    workflow.add_node("tool_executor", ToolExecutorNode([]))  # Tools populated at runtime
 
     # Set workflow entry point
     workflow.set_entry_point("intent_classifier")
@@ -92,19 +89,17 @@ async def build_chat_workflow(
     workflow.add_edge("execute_comprehensive_research", "chat_agent")
 
     # Conditional routing after chat agent
-    if tools:
-        def route_after_agent(state: WorkflowState) -> str:
-            """Route to tools if tool calls present, otherwise end."""
-            if (state.messages and 
-                hasattr(state.messages[-1], 'tool_calls') and 
-                state.messages[-1].tool_calls):
-                return "tool_executor"
-            return END
+    def route_after_agent(state: WorkflowState) -> str:
+        """Route to tools if tool calls present, otherwise end."""
+        if (state.messages and 
+            hasattr(state.messages[-1], 'tool_calls') and 
+            state.messages[-1].tool_calls and
+            hasattr(state, 'required_tools') and state.required_tools):
+            return "tool_executor"
+        return END
 
-        workflow.add_conditional_edges("chat_agent", route_after_agent)
-        workflow.add_edge("tool_executor", "chat_agent")  # Tools loop back to agent
-    else:
-        workflow.add_edge("chat_agent", END)
+    workflow.add_conditional_edges("chat_agent", route_after_agent)
+    workflow.add_edge("tool_executor", "chat_agent")  # Tools loop back to agent
 
     # Compile and return workflow
     compiled_workflow = workflow.compile()

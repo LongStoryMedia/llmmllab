@@ -6,7 +6,8 @@ properties:
   available_tools:
     type: array
     items:
-      $ref: available_tool.yaml
+      type: string
+    description: List of available tool names
   needs_dynamic_tool:
     type: boolean
   dynamic_tool:

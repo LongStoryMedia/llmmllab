@@ -1,8 +1,6 @@
 """
 ToolRegistry with semantic search for dynamic tool discovery and reuse.
-Implements the composab                    tool_instance = self._create_tool_instance(
-                        name, tool_cls, user_id
-                    )ty and abstraction requirements.
+Implements the composability and abstraction requirements.
 """
 
 import asyncio
@@ -10,7 +8,9 @@ from typing import Dict, List, Optional, Tuple, Any
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-from models import Tool, IntentAnalysis, AvailableTool
+from langchain.tools import BaseTool
+
+from models import Tool, IntentAnalysis, DynamicTool
 
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import ToolGenerationError
@@ -30,15 +30,11 @@ class ToolRegistry:
     """
 
     def __init__(self):
-        # Static tool definitions (pre-defined tools)
-        self.static_tools: Dict[str, Any] = {
-            "web_search": None,  # Will be loaded from static modules
-            "memory_retrieval": None,
-            "summarization": None,
-        }
+        # Static tool definitions (pre-defined tool classes for instantiation)
+        self.static_tools: Dict[str, type[BaseTool]] = {}
 
-        # Dynamic tool instances (id -> tool instance)
-        self.dynamic_tools: Dict[str, Any] = {}
+        # Dynamic tool instances (id -> actual tool instances)
+        self.dynamic_tools: Dict[str, Tool] = {}
 
         # Tool embeddings for semantic search (id -> embedding vector)
         self.tool_embeddings: Dict[str, np.ndarray] = {}
@@ -83,7 +79,7 @@ class ToolRegistry:
 
     async def get_tools_for_context(
         self, intent: IntentAnalysis, user_id: str
-    ) -> List[AvailableTool]:
+    ) -> List[Tool]:
         """
         Select applicable tools based on intent and user configuration.
 
@@ -133,23 +129,42 @@ class ToolRegistry:
             # Return minimal tool set on error
             return []
 
-    async def generate_dynamic_tool(self, tool_spec: Any, user_id: str) -> Optional[Any]:
+    async def generate_dynamic_tool(
+        self, tool_spec: Any, user_id: str
+    ) -> Optional[Any]:
         """
         Public interface for dynamic tool generation.
-        
+
         Args:
             tool_spec: Tool specification (DynamicTool model)
             user_id: User identifier
-            
+
         Returns:
             Generated tool instance or None
         """
         return await self._generate_or_retrieve_dynamic_tool(user_id, tool_spec)
+    
+    async def register_dynamic_tool_instance(self, tool_id: str, tool_instance: Tool) -> None:
+        """
+        Register a dynamic tool instance in the registry for reuse.
+        
+        Args:
+            tool_id: Unique identifier for the tool
+            tool_instance: The actual Tool instance to store
+        """
+        async with self._lock:
+            self.dynamic_tools[tool_id] = tool_instance
+            composer_logger.logger.info(
+                f"Registered dynamic tool instance: {tool_id}",
+                extra={"tool_name": getattr(tool_instance, 'name', tool_id)}
+            )
 
     async def _get_user_config(self, user_id: str):
         """Get user configuration from shared data layer."""
         try:
-            from db import storage
+            # avoid circular import
+            from db import storage  # pylint: disable=import-outside-toplevel
+
             # from models.default_configs import DEFAULT_TOOL_CONFIG  # Currently unused
 
             # Initialize storage if not done
@@ -174,6 +189,40 @@ class ToolRegistry:
             )
             return None
 
+    async def get_static_tool_instances(self, user_id: str) -> List[Tool]:
+        """
+        Get instances of all static tools for a user.
+        This method is for the GraphBuilder's tool collection functionality.
+        
+        Args:
+            user_id: User identifier for configuration
+            
+        Returns:
+            List of instantiated static Tool objects
+        """
+        instances = []
+        for name, tool_cls in self.static_tools.items():
+            if tool_cls:
+                tool_instance = self._create_tool_instance(tool_cls, user_id)
+                if tool_instance:
+                    instances.append(tool_instance)
+        return instances
+    
+    async def get_dynamic_tool_instances(self, user_id: str) -> List[Tool]:
+        """
+        Get all dynamic tool instances for a user.
+        This method is for the GraphBuilder's tool collection functionality.
+        
+        Args:
+            user_id: User identifier (currently not used for filtering, but available for future use)
+            
+        Returns:
+            List of dynamic Tool instances
+        """
+        async with self._lock:
+            # For now, return all dynamic tools. In the future, could filter by user_id
+            return list(self.dynamic_tools.values())
+    
     def _should_include_static_tool(
         self, tool_name: str, intent: IntentAnalysis
     ) -> bool:
@@ -265,8 +314,8 @@ class ToolRegistry:
                 return await self._modify_or_compose_tool(best_match_id, intent)
 
             else:
-                # Create New - temporarily disabled to avoid AvailableTool structure issues
-                # PLACEHOLDER: Implement _create_new_tool with proper AvailableTool structure
+                # Create New - temporarily disabled to avoid Tool structure issues
+                # PLACEHOLDER: Implement _create_new_tool with proper Tool structure
                 composer_logger.logger.warning(
                     f"Dynamic tool creation not yet implemented for user {user_id}"
                 )
@@ -321,7 +370,7 @@ class ToolRegistry:
         return best_match_id, best_similarity
 
     async def _use_existing_tool(self, tool_id: str) -> Optional[Tool]:
-        """Return existing dynamic tool by ID."""
+        """Return existing dynamic tool instance by ID."""
         async with self._lock:
             existing_tool = self.dynamic_tools.get(tool_id)
             if existing_tool:
@@ -367,13 +416,13 @@ class ToolRegistry:
             additional_context={"reason": "creation_not_implemented"},
         )
 
-        # Temporarily return None to avoid AvailableTool structure issues
-        # PLACEHOLDER: Implement proper dynamic tool creation with correct AvailableTool fields
+        # Temporarily return None to avoid Tool structure issues
+        # PLACEHOLDER: Implement proper dynamic tool creation with correct Tool fields
         composer_logger.logger.warning("Dynamic tool creation temporarily disabled")
         return None
 
-        # Temporarily disabled due to AvailableTool structure
-        # PLACEHOLDER: Implement proper tool registration with correct AvailableTool handling
+        # Temporarily disabled due to Tool structure
+        # PLACEHOLDER: Implement proper tool registration with correct Tool handling
         # composer_logger.logger.warning("Tool registration temporarily disabled")
         # return
 

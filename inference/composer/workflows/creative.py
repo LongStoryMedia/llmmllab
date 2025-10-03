@@ -3,12 +3,12 @@ Creative workflow implementation for composer.
 Implements creative content generation with planning and refinement.
 """
 
-from typing import List, Any, Dict
+from typing import Any, Dict
 
 from langgraph.graph import StateGraph, END
 from langgraph.graph.state import CompiledStateGraph
 
-from models import AvailableTool, ModelProfileType
+from models import ModelProfileType
 
 from composer.graph.state import WorkflowState
 from composer.nodes import PipelineNode, ToolExecutorNode
@@ -18,7 +18,7 @@ from composer.monitoring.logging import composer_logger
 
 
 async def build_creative_workflow(
-    user_id: str, tools: List[AvailableTool], pipeline_factory: Any = None
+    user_id: str, pipeline_factory: Any = None
 ) -> CompiledStateGraph:
     """
     Build creative content generation workflow with planning and refinement.
@@ -40,7 +40,7 @@ async def build_creative_workflow(
     """
     composer_logger.logger.info(
         "Building creative workflow",
-        extra={"user_id": user_id, "tool_count": len(tools)},
+        extra={"user_id": user_id},
     )
 
     # Create workflow graph
@@ -74,9 +74,8 @@ async def build_creative_workflow(
         PipelineNode(pipeline_factory, ModelProfileType.Formatting, stream=True),
     )
 
-    # Tool execution node (if tools available)
-    if tools:
-        workflow.add_node("tool_executor", ToolExecutorNode([]))
+    # Tool execution node - tools populated at runtime
+    workflow.add_node("tool_executor", ToolExecutorNode([]))  # Tools populated at runtime
 
     # Set workflow entry point
     workflow.set_entry_point("intent_classifier")
@@ -107,22 +106,19 @@ async def build_creative_workflow(
     workflow.add_edge("refinement", "output_formatting")
 
     # Conditional routing after output formatting
-    if tools:
+    def route_after_output(state: WorkflowState) -> str:
+        """Route to tools if tool calls present, otherwise end."""
+        if (
+            state.messages
+            and hasattr(state.messages[-1], "tool_calls")
+            and state.messages[-1].tool_calls
+            and hasattr(state, 'required_tools') and state.required_tools
+        ):
+            return "tool_executor"
+        return END
 
-        def route_after_output(state: WorkflowState) -> str:
-            """Route to tools if tool calls present, otherwise end."""
-            if (
-                state.messages
-                and hasattr(state.messages[-1], "tool_calls")
-                and state.messages[-1].tool_calls
-            ):
-                return "tool_executor"
-            return END
-
-        workflow.add_conditional_edges("output_formatting", route_after_output)
-        workflow.add_edge("tool_executor", "output_formatting")  # Tools loop back
-    else:
-        workflow.add_edge("output_formatting", END)
+    workflow.add_conditional_edges("output_formatting", route_after_output)
+    workflow.add_edge("tool_executor", "output_formatting")  # Tools loop back
 
     # Compile and return workflow
     compiled_workflow = workflow.compile()

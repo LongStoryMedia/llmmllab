@@ -31,10 +31,10 @@ setup_project() {
     pip install --upgrade pip
     
     # Install shared dependencies first
-    if [ -d "/opt/wheels" ]; then
-        echo "Installing shared dependencies from wheels..."
-        pip install --no-index --find-links=/opt/wheels torch torchaudio torchvision llama-cpp-python
-    fi
+    # if [ -d "/opt/wheels" ]; then
+    #     echo "Installing shared dependencies from wheels..."
+    #     pip install --no-index --find-links=/opt/wheels torch torchaudio torchvision llama-cpp-python
+    # fi
     
     # Install project-specific requirements
     pip install -r requirements.txt

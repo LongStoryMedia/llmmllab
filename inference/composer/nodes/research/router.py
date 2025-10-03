@@ -109,14 +109,16 @@ class QuickResearchExecutor:
     low latency responses. Uses internal memory and cached knowledge sources.
     """
 
-    def __init__(self, user_id: str):
+    def __init__(self, user_id: str, pipeline_factory=None):
         """
         Initialize shallow search executor.
         
         Args:
             user_id: User identifier for configuration and context
+            pipeline_factory: Factory for creating embedding pipelines (optional)
         """
         self.user_id = user_id
+        self.pipeline_factory = pipeline_factory
         self.logger = composer_logger.logger
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
@@ -160,8 +162,10 @@ class QuickResearchExecutor:
             
             try:
                 # Get embeddings for the query
-                embedding_agent = EmbeddingAgent()
-                query_embeddings = await embedding_agent.get_embeddings([query])
+                if not self.pipeline_factory:
+                    raise NodeExecutionError("Pipeline factory not available for embedding generation")
+                embedding_agent = EmbeddingAgent(self.pipeline_factory)
+                query_embeddings = await embedding_agent.generate_embeddings([query], self.user_id)
                 
                 # Search memories using embeddings
                 memory_agent = MemoryAgent()
@@ -251,14 +255,16 @@ class ComprehensiveResearchExecutor:
     comprehensive analysis from internal knowledge, external sources, and synthesis.
     """
 
-    def __init__(self, user_id: str):
+    def __init__(self, user_id: str, pipeline_factory=None):
         """
         Initialize deep search executor.
         
         Args:
             user_id: User identifier for configuration and context
+            pipeline_factory: Factory for creating embedding pipelines (optional)
         """
         self.user_id = user_id
+        self.pipeline_factory = pipeline_factory
         self.logger = composer_logger.logger
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
@@ -368,8 +374,10 @@ class ComprehensiveResearchExecutor:
             
             try:
                 # Get embeddings for the query
-                embedding_agent = EmbeddingAgent()
-                query_embeddings = await embedding_agent.get_embeddings([query])
+                if not self.pipeline_factory:
+                    raise NodeExecutionError("Pipeline factory not available for embedding generation")
+                embedding_agent = EmbeddingAgent(self.pipeline_factory)
+                query_embeddings = await embedding_agent.generate_embeddings([query], self.user_id)
                 
                 # Search memories using embeddings
                 memory_agent = MemoryAgent()

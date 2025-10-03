@@ -44,7 +44,7 @@ from models import (
     CircuitBreakerConfig,
 )
 from models.default_configs import DEFAULT_CIRCUIT_BREAKER_CONFIG
-from utils.langgraph import (
+from composer.utils.langgraph import (
     LangGraphState,
     build_langgraph_state,
     build_lc_messages,

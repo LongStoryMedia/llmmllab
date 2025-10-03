@@ -140,9 +140,12 @@ class WebSearchNode:
             )
 
             # Extract content using the agent
-            extraction_results = await self.agent.extract_urls_content(
-                urls=urls,
-                user_id=user_id
+            search_query = " ".join([url for url in urls[:3]])  # Use URLs as search terms
+            extraction_results = await self.agent.perform_search(
+                query=search_query,
+                user_id=user_id,
+                search_depth="DEEP",
+                max_results=len(urls)
             )
 
             # Store extraction results in state
@@ -151,9 +154,15 @@ class WebSearchNode:
 
             # Combine extracted content for search results
             if extraction_results:
-                combined_content = "\n\n".join([
-                    result.get("content", "") for result in extraction_results
-                ])
+                # extraction_results is a dict from perform_search, get content from it
+                content = extraction_results.get("content", "")
+                if isinstance(content, list):
+                    combined_content = "\n\n".join([
+                        item.get("content", "") if isinstance(item, dict) else str(item) 
+                        for item in content
+                    ])
+                else:
+                    combined_content = str(content)
                 state.search_results = combined_content[:2000]  # Truncate if too long
 
             self.logger.info(

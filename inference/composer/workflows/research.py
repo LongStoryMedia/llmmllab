@@ -3,12 +3,12 @@ Research workflow implementation for composer.
 Implements research workflow with deep search and comprehensive synthesis.
 """
 
-from typing import List, Any, Dict
+from typing import Any, Dict
 
 from langgraph.graph import StateGraph, END
 from langgraph.graph.state import CompiledStateGraph
 
-from models import AvailableTool, ModelProfileType
+from models import ModelProfileType
 
 from composer.graph.state import ResearchWorkflowState
 from composer.nodes import PipelineNode
@@ -18,7 +18,7 @@ from composer.monitoring.logging import composer_logger
 
 
 async def build_research_workflow(
-    user_id: str, tools: List[AvailableTool], pipeline_factory: Any = None
+    user_id: str, pipeline_factory: Any = None
 ) -> CompiledStateGraph:
     """
     Build research workflow with deep RAG and synthesis capabilities.
@@ -31,7 +31,6 @@ async def build_research_workflow(
 
     Args:
         user_id: User identifier for configuration retrieval
-        tools: Available tools for this workflow
         pipeline_factory: Factory for creating pipeline instances
 
     Returns:

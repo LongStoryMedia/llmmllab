@@ -1,9 +1,3 @@
-# Composer service requirements
-fastapi==0.116.2
-uvicorn==0.35.0
-pydantic==2.11.9
-python-dotenv==1.1.1
-
 # LangChain/LangGraph V1.0 alpha
 langchain>=1.0.0a1
 langchain-core>=1.0.0a1

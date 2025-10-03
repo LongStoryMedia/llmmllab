@@ -21,9 +21,9 @@ Architectural Role:
 """
 
 from typing import Dict, Any, Optional, AsyncGenerator, Union, List
-from composer.core.service import ComposerService
-from composer.config import config
-from composer.monitoring.logging import composer_logger
+from .core.service import ComposerService
+from .config import config
+from .monitoring.logging import composer_logger
 from models.message import Message
 from models.workflow_type import WorkflowType
 
@@ -60,6 +60,14 @@ def get_composer_service() -> ComposerService:
     return _composer_service
 
 
+async def get_or_init_composer_service() -> ComposerService:
+    """Get or initialize the composer service instance."""
+    global _composer_service  # noqa: PLW0603
+    if _composer_service is None:
+        await initialize_composer()
+    return _composer_service
+
+
 async def compose_workflow(
     user_id: str,
 ):
@@ -80,7 +88,8 @@ async def compose_workflow(
         Configuration is retrieved from shared data layer using user_id.
         No configuration objects should be passed as arguments (architectural rule).
     """
-    return await get_composer_service().compose_workflow(user_id)
+    svc = await get_or_init_composer_service()
+    return await svc.compose_workflow(user_id)
 
 
 async def create_initial_state(
@@ -124,7 +133,7 @@ async def execute_workflow(
     Yields:
         Dict containing workflow events (tokens, state updates, etc.)
     """
-    service = get_composer_service()
+    service = await get_or_init_composer_service()
     async for event in service.execute_workflow(workflow, initial_state, stream):
         yield event
 

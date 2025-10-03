@@ -3,7 +3,7 @@ Engineering Agent Node for LangGraph workflow integration.
 Provides LangGraph node wrapper for dynamic tool generation and orchestration.
 """
 
-from models.available_tool import AvailableTool
+from models.tool import Tool
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import NodeExecutionError
@@ -56,17 +56,16 @@ class EngineeringAgentNode:
             # Delegate to agent for tool orchestration
             tools = await self.agent.orchestrate_tools(intent, user_id, user_query)
 
-            # Convert tools to AvailableTool format for state
-            available_tools = [
-                AvailableTool(
+            # Convert tools to Tool format for state
+            tool_models = [
+                Tool(
                     name=getattr(tool, 'name', 'unnamed_tool'),
-                    description=getattr(tool, 'description', 'No description available'),
-                    type="static" if hasattr(tool, '_static') else "dynamic"
+                    description=getattr(tool, 'description', 'No description available')
                 )
                 for tool in tools if tool is not None
             ]
             
-            state.required_tools = available_tools
+            state.required_tools = tool_models
             return state
 
         except Exception as e:

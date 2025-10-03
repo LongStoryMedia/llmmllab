@@ -30,10 +30,7 @@ from typing import Union, Type
 from pathlib import Path
 from pydantic import BaseModel
 
-from .pipeline_factory import (
-    pipeline_factory,
-    PipeReturn,
-)
+from .pipeline_factory import pipeline_factory, PipeReturn, PipelineFactory
 
 from .pipelines.base import Embeddings, EmbeddingPipeline  # for typing
 from .pipelines.run import run_pipeline, stream_pipeline, embed_pipeline
@@ -50,4 +47,5 @@ __all__ = [
     "embed_pipeline",
     "EmbeddingPipeline",
     "GrammarInput",
+    "PipelineFactory",
 ]

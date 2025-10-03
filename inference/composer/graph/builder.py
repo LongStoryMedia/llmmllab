@@ -12,7 +12,10 @@ from langgraph.types import RetryPolicy
 from langchain_core.runnables import RunnableParallel, RunnableLambda
 from models.workflow_type import WorkflowType
 from models import ModelProfileType
-from models.available_tool import AvailableTool
+from models.tool import Tool
+
+from runner import PipelineFactory
+
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import WorkflowConstructionError
 from composer.graph.state import WorkflowState
@@ -21,13 +24,14 @@ from composer.graph.state import WorkflowState
 from composer.nodes import PipelineNode
 from composer.nodes.routing import IntentClassifierNode
 from composer.nodes.agents import EngineeringAgentNode
+
 # Enhanced search components now handled in dedicated workflow implementations
 from composer.nodes.routing import WorkflowRouter
 from composer.tools.registry import ToolRegistry
 from composer.workflows.chat import build_chat_workflow
-from composer.workflows.research import build_research_workflow as build_research_workflow_impl
-from composer.workflows.multi_agent import build_multi_agent_workflow as build_multi_agent_workflow_impl
-from composer.workflows.creative import build_creative_workflow as build_creative_workflow_impl
+from composer.workflows.research import build_research_workflow
+from composer.workflows.multi_agent import build_multi_agent_workflow
+from composer.workflows.creative import build_creative_workflow
 from composer.graph.cache import WorkflowCache
 
 
@@ -39,7 +43,7 @@ class GraphBuilder:
     supporting different workflow types with appropriate node compositions.
     """
 
-    def __init__(self, pipeline_factory=None):
+    def __init__(self, pipeline_factory: PipelineFactory):
         self.pipeline_factory = pipeline_factory
         # Circuit breaker for resilience
         self._circuit_breaker_failures = {}
@@ -86,43 +90,6 @@ class GraphBuilder:
             )
             return None
 
-    async def _get_workflow_tools(self, user_id: str) -> List[AvailableTool]:
-        """Get available tools for a workflow, using simplified collection for dedicated workflows."""
-        try:
-            registry = ToolRegistry()
-            
-            # Get basic tool set - static tools primarily
-            tools = []
-            
-            # Add static tools
-            for name, tool_cls in registry.static_tools.items():
-                if tool_cls:
-                    available_tool = AvailableTool(
-                        name=name, 
-                        description=f"Static tool: {name}", 
-                        type="static"
-                    )
-                    tools.append(available_tool)
-            
-            # Add a few dynamic tools if user_id provided
-            if user_id:
-                for tool_id, tool_instance in list(registry.dynamic_tools.items())[:3]:  # Limit for performance
-                    if tool_instance:
-                        available_tool = AvailableTool(
-                            name=f"dynamic_{tool_id}",
-                            description=f"Dynamic tool: {tool_id}",
-                            type="dynamic",
-                        )
-                        tools.append(available_tool)
-                        
-            return tools
-            
-        except Exception as e:
-            composer_logger.logger.error(
-                f"Failed to get workflow tools for {user_id}: {e}"
-            )
-            return []  # Return empty list on error
-
     async def build_from_context(
         self, user_id: str, workflow_type: WorkflowType
     ) -> CompiledStateGraph:
@@ -143,7 +110,7 @@ class GraphBuilder:
 
             # Select appropriate build method based on workflow type
             if workflow_type == WorkflowType.CHAT:
-                return await self._build_chat_subgraph()
+                return await self._build_chat_subgraph(user_id)
             elif workflow_type == WorkflowType.RESEARCH:
                 return await self.build_research_workflow(user_id)
             elif workflow_type == WorkflowType.MULTI_AGENT:
@@ -152,7 +119,7 @@ class GraphBuilder:
                 return await self.build_creative_workflow(user_id)
             else:
                 # Default to chat workflow
-                return await self._build_chat_subgraph()
+                return await self._build_chat_subgraph(user_id)
 
         except Exception as e:
             composer_logger.log_error(
@@ -222,9 +189,7 @@ class GraphBuilder:
             else:
                 # Complex subgraph routing (preserve existing comprehensive capabilities)
                 # Add router node with dedicated WorkflowRouter
-                workflow.add_node(
-                    "router", WorkflowRouter(user_id)
-                )
+                workflow.add_node("router", WorkflowRouter(user_id))
 
                 # Create and add subgraphs as compiled nodes
                 subgraphs = await self._create_all_subgraphs(user_id)
@@ -300,31 +265,30 @@ class GraphBuilder:
     async def build_research_workflow(self, user_id: str) -> CompiledStateGraph:
         """
         Build a research workflow using dedicated workflow implementation with caching.
-        
+
         This method delegates to the canonical research workflow definition
         to eliminate code duplication and uses WorkflowCache for performance.
         """
         try:
-            # Get available tools for this user/workflow
-            tools = await self._get_workflow_tools(user_id)
-            
-            # Generate cache key for this specific workflow configuration
-            cache_key = await self._workflow_cache.get_cache_key(
-                user_id=user_id, 
-                workflow_type=WorkflowType.RESEARCH, 
-                tools=tools
+            # Generate cache key for this workflow configuration
+            cache_key = f"research_{user_id}"
+
+            # Check cache first
+            if cached := await self._workflow_cache.get(cache_key):
+                return cached
+
+            # Use dedicated workflow implementation - tools collected during execution
+            if not self.pipeline_factory:
+                raise WorkflowConstructionError("Pipeline factory not initialized")
+
+            compiled_workflow = await build_research_workflow(
+                user_id=user_id, pipeline_factory=self.pipeline_factory
             )
-            
-            # Use cache with factory function for workflow creation
-            return await self._workflow_cache.get_or_create(
-                cache_key=cache_key,
-                factory_fn=lambda: build_research_workflow_impl(
-                    user_id=user_id,
-                    tools=tools,
-                    pipeline_factory=self.pipeline_factory
-                )
-            )
-            
+
+            # Cache the result
+            await self._workflow_cache.set(cache_key, compiled_workflow)
+            return compiled_workflow
+
         except Exception as e:
             composer_logger.logger.error(
                 "Failed to build research workflow",
@@ -337,7 +301,7 @@ class GraphBuilder:
     async def build_multi_agent_workflow(self, user_id: str) -> CompiledStateGraph:
         """
         Build multi-agent orchestration workflow using dedicated workflow implementation with caching.
-        
+
         This method delegates to the canonical multi-agent workflow definition
         to eliminate code duplication and uses WorkflowCache for performance.
         """
@@ -347,19 +311,19 @@ class GraphBuilder:
             if cached := await self._workflow_cache.get(cache_key):
                 return cached
 
-            # Get tools for this workflow
-            tools = await self._get_workflow_tools(user_id)
+            # Use dedicated workflow implementation - tools collected during execution
+            if not self.pipeline_factory:
+                raise WorkflowConstructionError("Pipeline factory not initialized")
 
-            # Use dedicated workflow implementation
-            compiled_workflow = await build_multi_agent_workflow_impl(
-                user_id, tools, self.pipeline_factory
+            compiled_workflow = await build_multi_agent_workflow(
+                user_id=user_id, pipeline_factory=self.pipeline_factory
             )
 
             # Cache the result
             await self._workflow_cache.set(cache_key, compiled_workflow)
 
             return compiled_workflow
-            
+
         except Exception as e:
             composer_logger.logger.error(
                 "Failed to build multi-agent workflow",
@@ -372,7 +336,7 @@ class GraphBuilder:
     async def build_creative_workflow(self, user_id: str) -> CompiledStateGraph:
         """
         Build creative content generation workflow using dedicated workflow implementation with caching.
-        
+
         This method delegates to the canonical creative workflow definition
         to eliminate code duplication and uses WorkflowCache for performance.
         """
@@ -382,19 +346,19 @@ class GraphBuilder:
             if cached := await self._workflow_cache.get(cache_key):
                 return cached
 
-            # Get tools for this workflow
-            tools = await self._get_workflow_tools(user_id)
+            # Use dedicated workflow implementation - tools collected during execution
+            if not self.pipeline_factory:
+                raise WorkflowConstructionError("Pipeline factory not initialized")
 
-            # Use dedicated workflow implementation
-            compiled_workflow = await build_creative_workflow_impl(
-                user_id, tools, self.pipeline_factory
+            compiled_workflow = await build_creative_workflow(
+                user_id=user_id, pipeline_factory=self.pipeline_factory
             )
 
             # Cache the result
             await self._workflow_cache.set(cache_key, compiled_workflow)
 
             return compiled_workflow
-            
+
         except Exception as e:
             composer_logger.logger.error(
                 "Failed to build creative workflow",
@@ -408,7 +372,7 @@ class GraphBuilder:
         """Create all workflow subgraphs."""
         try:
             subgraphs = {
-                "chat": await self._build_chat_subgraph(),
+                "chat": await self._build_chat_subgraph(user_id),
                 "research": await self.build_research_workflow(user_id),
                 "creative": await self.build_creative_workflow(user_id),
                 "multi_agent": await self.build_multi_agent_workflow(user_id),
@@ -417,31 +381,31 @@ class GraphBuilder:
         except Exception as e:
             composer_logger.logger.error(f"Failed to create subgraphs: {e}")
             # Return minimal chat subgraph as fallback
-            return {"chat": await self._build_chat_subgraph()}
+            return {"chat": await self._build_chat_subgraph(user_id)}
 
-    async def _build_chat_subgraph(self) -> CompiledStateGraph:
+    async def _build_chat_subgraph(self, user_id: str) -> CompiledStateGraph:
         """Build chat workflow using dedicated workflow implementation with caching."""
         try:
-            # Get available tools for chat workflow
-            tools = await self._get_workflow_tools("")  # Empty user_id for subgraph
-            
             # Generate cache key for chat subgraph
-            cache_key = await self._workflow_cache.get_cache_key(
-                user_id="",  # Empty for subgraph
-                workflow_type=WorkflowType.CHAT,
-                tools=tools
+            cache_key = "chat_subgraph"
+
+            # Check cache first
+            if cached := await self._workflow_cache.get(cache_key):
+                return cached
+
+            # Use dedicated workflow implementation - tools collected during execution
+            if not self.pipeline_factory:
+                raise WorkflowConstructionError("Pipeline factory not initialized")
+
+            compiled_workflow = await build_chat_workflow(
+                user_id=user_id,
+                pipeline_factory=self.pipeline_factory,
             )
-            
-            # Use cache with factory function for workflow creation
-            return await self._workflow_cache.get_or_create(
-                cache_key=cache_key,
-                factory_fn=lambda: build_chat_workflow(
-                    user_id="",  # Empty for subgraph usage
-                    tools=tools,
-                    pipeline_factory=self.pipeline_factory
-                )
-            )
-            
+
+            # Cache the result
+            await self._workflow_cache.set(cache_key, compiled_workflow)
+            return compiled_workflow
+
         except Exception as e:
             composer_logger.logger.error(f"Failed to build chat subgraph: {e}")
             # Create minimal fallback on error
@@ -498,7 +462,7 @@ class GraphBuilder:
     ) -> CompiledStateGraph:  # noqa: ARG002
         """Create minimal fallback workflow."""
         try:
-            return await self._build_chat_subgraph()
+            return await self._build_chat_subgraph(user_id)
         except Exception as e:
             composer_logger.logger.error(f"Fallback workflow creation failed: {e}")
             # Create absolute minimal workflow
@@ -617,22 +581,20 @@ class GraphBuilder:
         else:
             self._circuit_breaker_failures[operation] = (1, current_time)
 
-    async def _collect_static_tools(
-        self, input_data: Dict[str, Any]
-    ) -> List[AvailableTool]:
+    async def _collect_static_tools(self, input_data: Dict[str, Any]) -> List[Tool]:
         """Collect static tools with error handling."""
         try:
             registry = ToolRegistry()
-            # Initialize static tools using available methods\n            # Note: Static tools are loaded during ToolRegistry init"
+            user_id = input_data.get("user_id")
 
-            # Convert static tools to AvailableTool format
-            static_tools = []
-            for name, tool_cls in registry.static_tools.items():
-                if tool_cls:
-                    available_tool = AvailableTool(
-                        name=name, description=f"Static tool: {name}", type="static"
-                    )
-                    static_tools.append(available_tool)
+            if not user_id:
+                composer_logger.logger.warning(
+                    "No user_id provided for static tool collection"
+                )
+                return []
+
+            # Use registry method to get actual tool instances
+            static_tools = await registry.get_static_tool_instances(user_id)
 
             composer_logger.logger.debug(
                 "Static tools collected",
@@ -644,33 +606,29 @@ class GraphBuilder:
             composer_logger.logger.error(f"Static tool collection failed: {e}")
             return []
 
-    async def _collect_dynamic_tools(
-        self, input_data: Dict[str, Any]
-    ) -> List[AvailableTool]:
+    async def _collect_dynamic_tools(self, input_data: Dict[str, Any]) -> List[Tool]:
         """Collect dynamic tools with error handling."""
         try:
             registry = ToolRegistry()
             user_id = input_data.get("user_id")
 
-            # Get dynamic tools from registry
-            dynamic_tools = []
-            for tool_id, tool_instance in registry.dynamic_tools.items():
-                if tool_instance:
-                    available_tool = AvailableTool(
-                        name=f"dynamic_{tool_id}",
-                        description=f"Dynamic tool: {tool_id}",
-                        type="dynamic",
-                    )
-                    dynamic_tools.append(available_tool)
+            if not user_id:
+                composer_logger.logger.warning(
+                    "No user_id provided for dynamic tool collection"
+                )
+                return []
 
-            return dynamic_tools if user_id else []
+            # Use registry method to get actual tool instances
+            dynamic_tools = await registry.get_dynamic_tool_instances(user_id)
+
+            return dynamic_tools
         except Exception as e:
             composer_logger.logger.error(f"Dynamic tool collection failed: {e}")
             return []
 
     async def _collect_intent_based_tools(
         self, input_data: Dict[str, Any]
-    ) -> List[AvailableTool]:
+    ) -> List[Tool]:
         """Collect tools based on intent analysis using ToolRegistry.get_tools_for_context."""
         try:
             intent = input_data.get("intent")
@@ -687,7 +645,7 @@ class GraphBuilder:
             composer_logger.logger.error(f"Intent-based tool collection failed: {e}")
             return []
 
-    def _deduplicate_tools(self, tools: List[AvailableTool]) -> List[AvailableTool]:
+    def _deduplicate_tools(self, tools: List[Tool]) -> List[Tool]:
         """Deduplicate tools by name, keeping the first occurrence."""
         seen_names = set()
         unique_tools = []
@@ -848,7 +806,10 @@ class GraphBuilder:
             state = await query_expander(state)
 
             # Deep search for research using modern search architecture
-            from composer.nodes.research import ComprehensiveResearchExecutor  # pylint: disable=import-outside-toplevel
+            from composer.nodes.research import (
+                ComprehensiveResearchExecutor,
+            )  # pylint: disable=import-outside-toplevel
+
             deep_search = ComprehensiveResearchExecutor(user_id)
             state = await deep_search(state)
 
@@ -946,16 +907,16 @@ class GraphBuilder:
             return await self._execute_chat_flow(state, user_id)
 
     # Cache Management Methods
-    
+
     async def get_cache_stats(self) -> Dict[str, Any]:
         """Get workflow cache statistics for monitoring and debugging."""
         return await self._workflow_cache.get_stats()
-    
+
     async def clear_cache(self) -> None:
         """Clear all cached workflows (useful for debugging or config changes)."""
         await self._workflow_cache.clear()
         composer_logger.logger.info("GraphBuilder workflow cache cleared")
-    
+
     async def invalidate_user_workflows(self, user_id: str) -> None:
         """Invalidate cached workflows for a specific user (e.g., when user config changes)."""
         # For now, we clear all cache since we don't have user-specific keys stored
@@ -964,7 +925,7 @@ class GraphBuilder:
         composer_logger.logger.info(
             f"All workflows invalidated due to user config change for {user_id}"
         )
-    
+
     async def close(self) -> None:
         """Clean up GraphBuilder resources including workflow cache."""
         await self._workflow_cache.close()

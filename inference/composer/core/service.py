@@ -93,7 +93,9 @@ class ComposerService:
 
             # 3. Build master workflow with intelligent routing or explicit type
             # Intent analysis and tool selection happen inside the graph now
-            builder_fn = lambda: self.graph_builder.build_master_workflow(user_id, workflow_type)
+            builder_fn = lambda: self.graph_builder.build_master_workflow(
+                user_id, workflow_type
+            )
 
             if user_cache:
                 workflow = await user_cache.get_or_create(cache_key, builder_fn)
@@ -120,64 +122,30 @@ class ComposerService:
         self,
         user_id: str,
         messages: List[Message],
-        workflow_type: WorkflowType,
-        additional_context: Optional[Dict[str, Any]] = None,
     ) -> WorkflowState:
-        """Create initial workflow state from user configuration."""
+        """Create initial workflow state from messages."""
 
-        # Get user configuration for workflow preferences
+        # Get user configuration from shared data layer
         from db import storage  # pylint: disable=import-outside-toplevel
 
         user_config = await storage.get_service(storage.user_config).get_user_config(
             user_id
         )
 
-        # Use base WorkflowState - the graph will determine appropriate subgraph
-        state_class = WorkflowState
+        # Use centralized utility to build workflow state
+        # Import here to avoid circular dependency (utils imports WorkflowState)
+        from composer.utils.langgraph import (
+            build_workflow_state,
+        )  # pylint: disable=import-outside-toplevel
 
-        langchain_messages = []
-        for msg in messages:
-            if hasattr(msg, "content") and hasattr(msg, "role"):
-                # Convert from Message to LangChainMessage
-                # Extract text content from MessageContent list
-                content_text = ""
-                if isinstance(msg.content, list):
-                    content_parts = []
-                    for content_part in msg.content:
-                        if hasattr(content_part, "text"):
-                            content_parts.append(content_part.text)
-                        elif isinstance(content_part, str):
-                            content_parts.append(content_part)
-                    content_text = "\n".join(content_parts)
-                else:
-                    content_text = str(msg.content)
-
-                langchain_messages.append(
-                    LangChainMessage(
-                        content=content_text,
-                        type="human" if msg.role.value == "user" else "ai",
-                    )
-                )
-            else:
-                langchain_messages.append(msg)  # Assume already correct format
-
-        state = state_class(
-            messages=langchain_messages,
+        state = build_workflow_state(
             user_id=user_id,
-            # workflow_type will be determined by the graph based on intent analysis
-            execution_metadata={
-                "created_at": asyncio.get_event_loop().time(),
-                "composer_version": "0.1.0",
-                # Include user workflow preferences in metadata
-                "streaming_enabled": user_config.workflow.enable_streaming,
-                "workflow_timeout": user_config.workflow.default_timeout,
+            messages=messages,
+            user_config=user_config,
+            additional_context={
+                "service_version": "composer-0.1.0",
             },
         )
-
-        # Add additional context
-        if additional_context:
-            for key, value in additional_context.items():
-                state.execution_metadata[key] = value
 
         return state
 

@@ -9,7 +9,7 @@ import json
 import time
 from typing import Dict, Any, Optional, Callable, List
 
-from models import AvailableTool, WorkflowType
+from models import Tool, WorkflowType
 from composer.config import config
 from composer.monitoring.logging import composer_logger
 
@@ -79,7 +79,7 @@ class WorkflowCache:
             return None
 
     async def get_cache_key(
-        self, user_id: str, workflow_type: WorkflowType, tools: List[AvailableTool]
+        self, user_id: str, workflow_type: WorkflowType, tools: List[Tool]
     ) -> str:
         """
         Generate cache key from user_id, workflow type, and tools.

@@ -1,15 +1,6 @@
 """
 GraphState Pydantic models with LangGraph reducers.
-This is the centralized state schema that acts as the common interface     @validator('workflow_type', pre=True)
-    @classmethod
-    def validate_workflow_type(cls, v):
-        \"\"\"Ensure workflow_type is properly typed.\"\"\"
-        if isinstance(v, str):
-            try:
-                return WorkflowType(v.upper())
-            except ValueError:
-                return WorkflowType.CHAT  # Default fallback
-        return vodes.
+This is the centralized state schema that acts as the common interface
 """
 
 import operator
@@ -23,7 +14,7 @@ from langgraph.graph import add_messages
 
 from models.lang_chain_message import LangChainMessage
 from models.intent_analysis import IntentAnalysis
-from models.available_tool import AvailableTool
+from models.tool import Tool
 from models.workflow_type import WorkflowType
 
 
@@ -70,7 +61,7 @@ class WorkflowState(BaseModel):
     )
 
     # Curated list of tools collected for current execution phase
-    required_tools: Annotated[List[AvailableTool], operator.add] = Field(
+    required_tools: Annotated[List[Tool], operator.add] = Field(
         default_factory=list,
         description="Dynamic and static tools selected for this workflow",
     )
