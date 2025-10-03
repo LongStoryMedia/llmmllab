@@ -1,16 +1,12 @@
 """
 Standard LangGraph nodes collection - convenient imports for all node types.
-Imports all individual node classes for easy access.
+Imports all individual node classes for easy access from organized subdirectories.
 """
 
-# Import all individual node classes
-from .pipeline import PipelineNode
-from .tools import ToolExecutorNode
-from .circuit import CircuitProtectedNode
-from .embedding import EmbeddingNode
-from .memory import MemoryNode
-from .websearch import WebSearchNode
-from .summary import SummarizationNode
+# Import from organized subdirectories
+from .infrastructure import PipelineNode, ToolExecutorNode, CircuitProtectedNode
+from .memory import EmbeddingNode, MemoryNode
+from .processing import WebSearchNode, SummarizationNode
 
 # Export all nodes for convenient imports
 __all__ = [

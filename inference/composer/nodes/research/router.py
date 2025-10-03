@@ -14,28 +14,28 @@ from composer.monitoring.logging import composer_logger
 from composer.core.errors import NodeExecutionError
 
 
-class SearchDepthRouter:
+class ResearchRouter:
     """
-    Routes search execution based on query complexity and intent classification.
+    Routes research execution based on query complexity and intent classification.
     
-    Implements conditional routing for SHALLOW vs DEEP search strategies based on the
+    Implements conditional routing for SHALLOW vs DEEP research strategies based on the
     search_depth_config field in workflow state. This is part of a modern agentic
-    system that adapts search strategy to query complexity.
+    system that adapts research strategy to query complexity.
     """
 
     def __init__(self):
         """Initialize search depth router."""
         self.logger = composer_logger.logger
 
-    def route_search_depth(self, state: WorkflowState) -> str:
+    def route_research_depth(self, state: WorkflowState) -> str:
         """
-        Determine search routing based on state configuration.
+        Determine research routing based on state configuration.
         
         Args:
             state: Current workflow state
             
         Returns:
-            Next node name: "execute_shallow_search" or "execute_deep_crawl_and_synthesize"
+            Next node name: "execute_quick_research" or "execute_comprehensive_research"
         """
         try:
             # Check for explicit search depth configuration
@@ -45,8 +45,8 @@ class SearchDepthRouter:
                 search_depth = getattr(state, 'rag_depth_config', None)
             
             if not search_depth:
-                # Default to shallow search if no configuration
-                return "execute_shallow_search"
+                # Default to quick research if no configuration
+                return "execute_quick_research"
 
             if str(search_depth).upper() == "DEEP":
                 self.logger.info(
@@ -56,7 +56,7 @@ class SearchDepthRouter:
                         "reason": "Complex query requires comprehensive information gathering"
                     }
                 )
-                return "execute_deep_crawl_and_synthesize"
+                return "execute_comprehensive_research"
             else:
                 self.logger.info(
                     "Routing to shallow search strategy",
@@ -65,7 +65,7 @@ class SearchDepthRouter:
                         "reason": "Simple query using fast retrieval"
                     }
                 )
-                return "execute_shallow_search"
+                return "execute_quick_research"
 
         except Exception as e:
             self.logger.error(
@@ -75,12 +75,12 @@ class SearchDepthRouter:
                     "user_id": getattr(state, 'user_id', 'unknown')
                 }
             )
-            return "execute_shallow_search"
+            return "execute_quick_research"
 
 
-class ShallowSearchExecutor:
+class QuickResearchExecutor:
     """
-    Executes shallow search using internal knowledge sources.
+    Executes quick research using internal knowledge sources.
     
     Fast, single-pass information retrieval designed for simple queries requiring
     low latency responses. Uses internal memory and cached knowledge sources.
@@ -123,7 +123,7 @@ class ShallowSearchExecutor:
             search_config = uc.workflow_preferences.search_config
 
             self.logger.info(
-                "Executing shallow search strategy",
+                "Executing quick research strategy",
                 extra={
                     "user_id": self.user_id,
                     "query_length": len(query),
@@ -209,7 +209,7 @@ class ShallowSearchExecutor:
         return "\n\n".join(result_parts)
 
 
-class DeepSearchExecutor:
+class ComprehensiveResearchExecutor:
     """
     Executes comprehensive search with multiple information sources and synthesis.
     

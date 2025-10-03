@@ -12,8 +12,8 @@ from models import AvailableTool, ModelProfileType
 
 from composer.graph.state import ResearchWorkflowState
 from composer.nodes.standard import PipelineNode
-from composer.nodes.intent_classifier import IntentClassifierNode
-from composer.nodes.search.router import DeepSearchExecutor
+from composer.nodes.routing import IntentClassifierNode
+from composer.nodes.research import ComprehensiveResearchExecutor
 from composer.monitoring.logging import composer_logger
 
 
@@ -59,7 +59,7 @@ async def build_research_workflow(
     )
 
     # Enhanced RAG with multi-source capabilities
-    workflow.add_node("deep_search", DeepSearchExecutor(user_id))
+    workflow.add_node("comprehensive_research", ComprehensiveResearchExecutor(user_id))
 
     # Synthesis agent for comprehensive results
     workflow.add_node(
@@ -74,8 +74,8 @@ async def build_research_workflow(
     # Set research workflow flow - linear progression for thorough analysis
     workflow.set_entry_point("intent_classifier")
     workflow.add_edge("intent_classifier", "query_expansion")
-    workflow.add_edge("query_expansion", "deep_search")
-    workflow.add_edge("deep_search", "synthesis_agent")
+    workflow.add_edge("query_expansion", "comprehensive_research")
+    workflow.add_edge("comprehensive_research", "synthesis_agent")
     workflow.add_edge("synthesis_agent", END)
 
     # Compile and return workflow

@@ -12,9 +12,9 @@ from models import AvailableTool, ModelProfileType
 
 from composer.graph.state import WorkflowState
 from composer.nodes.standard import PipelineNode, ToolExecutorNode
-from composer.nodes.intent_classifier import IntentClassifierNode
-from composer.nodes.engineering_agent import EngineeringAgentNode
-from composer.nodes.search.router import SearchDepthRouter, ShallowSearchExecutor, DeepSearchExecutor
+from composer.nodes.routing import IntentClassifierNode
+from composer.nodes.agents import EngineeringAgentNode
+from composer.nodes.research import ResearchRouter, QuickResearchExecutor, ComprehensiveResearchExecutor
 from composer.monitoring.logging import composer_logger
 
 
@@ -52,8 +52,8 @@ async def build_chat_workflow(
     # Add workflow nodes
     workflow.add_node("intent_classifier", IntentClassifierNode())
     workflow.add_node("engineering_agent", EngineeringAgentNode(pipeline_factory))
-    workflow.add_node("execute_shallow_search", ShallowSearchExecutor(user_id))
-    workflow.add_node("execute_deep_crawl_and_synthesize", DeepSearchExecutor(user_id))
+    workflow.add_node("execute_quick_research", QuickResearchExecutor(user_id))
+    workflow.add_node("execute_comprehensive_research", ComprehensiveResearchExecutor(user_id))
     
     # Primary chat agent with streaming enabled
     workflow.add_node("chat_agent", PipelineNode(
@@ -75,21 +75,21 @@ async def build_chat_workflow(
     # Conditional search routing based on intent analysis
     def route_search_depth(state: WorkflowState) -> str:
         """Route to appropriate search implementation based on intent classification."""
-        router = SearchDepthRouter()
-        return router.route_search_depth(state)
+        router = ResearchRouter()
+        return router.route_research_depth(state)
 
     workflow.add_conditional_edges(
         "engineering_agent", 
         route_search_depth,
         {
-            "execute_shallow_search": "execute_shallow_search",
-            "execute_deep_crawl_and_synthesize": "execute_deep_crawl_and_synthesize"
+            "execute_quick_research": "execute_quick_research",
+            "execute_comprehensive_research": "execute_comprehensive_research"
         }
     )
 
-    # Both search paths flow to chat agent
-    workflow.add_edge("execute_shallow_search", "chat_agent")
-    workflow.add_edge("execute_deep_crawl_and_synthesize", "chat_agent")
+    # Both research paths flow to chat agent
+    workflow.add_edge("execute_quick_research", "chat_agent")
+    workflow.add_edge("execute_comprehensive_research", "chat_agent")
 
     # Conditional routing after chat agent
     if tools:

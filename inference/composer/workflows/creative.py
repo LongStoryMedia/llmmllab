@@ -12,8 +12,8 @@ from models import AvailableTool, ModelProfileType
 
 from composer.graph.state import WorkflowState
 from composer.nodes.standard import PipelineNode, ToolExecutorNode
-from composer.nodes.intent_classifier import IntentClassifierNode
-from composer.nodes.engineering_agent import EngineeringAgentNode
+from composer.nodes.routing import IntentClassifierNode
+from composer.nodes.agents import EngineeringAgentNode
 from composer.monitoring.logging import composer_logger
 
 

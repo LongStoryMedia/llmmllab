@@ -3,10 +3,10 @@ Search depth routing components for adaptive information retrieval in agentic sy
 Implements shallow/deep search routing based on query complexity and intent classification.
 """
 
-from .router import SearchDepthRouter, ShallowSearchExecutor, DeepSearchExecutor
+from .router import ResearchRouter, QuickResearchExecutor, ComprehensiveResearchExecutor
 
 __all__ = [
-    "SearchDepthRouter",
-    "ShallowSearchExecutor", 
-    "DeepSearchExecutor",
+    "ResearchRouter",
+    "QuickResearchExecutor", 
+    "ComprehensiveResearchExecutor",
 ]

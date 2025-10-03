@@ -19,10 +19,10 @@ from composer.graph.state import WorkflowState
 
 # Node imports
 from composer.nodes.standard import PipelineNode
-from composer.nodes.intent_classifier import IntentClassifierNode
-from composer.nodes.engineering_agent import EngineeringAgentNode
+from composer.nodes.routing import IntentClassifierNode
+from composer.nodes.agents import EngineeringAgentNode
 # Enhanced search components now handled in dedicated workflow implementations
-from composer.nodes.workflow_router import WorkflowRouter
+from composer.nodes.routing import WorkflowRouter
 from composer.tools.registry import ToolRegistry
 from composer.workflows.chat import build_chat_workflow
 from composer.workflows.research import build_research_workflow as build_research_workflow_impl
@@ -848,8 +848,8 @@ class GraphBuilder:
             state = await query_expander(state)
 
             # Deep search for research using modern search architecture
-            from composer.nodes.search.router import DeepSearchExecutor  # pylint: disable=import-outside-toplevel
-            deep_search = DeepSearchExecutor(user_id)
+            from composer.nodes.research import ComprehensiveResearchExecutor  # pylint: disable=import-outside-toplevel
+            deep_search = ComprehensiveResearchExecutor(user_id)
             state = await deep_search(state)
 
             # Research synthesis
