@@ -1,16 +1,28 @@
 """
-Web Search Agent for web content retrieval with configurable search depth.
+Web Searclass WebSearchAgent:web content retrieval and processing.
+Provides core business logic for web search operations and content extraction.
 """
 
+from typing import List, Optional, Dict, Any
 import asyncio
-from typing import List, Dict, Any
 
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import NodeExecutionError
 
 
-class WebSearchAgent:
-    """
+class WebSearchAge        """
+        Extract content from specific URLs.
+        
+        Args:
+            urls: List of URLs to extract content from
+            user_id: User identifier
+            query: Search query for context
+            conversation_id: Conversation ID for context
+            timeout: Extraction timeout per URL
+            
+        Returns:
+            List of extracted content results
+        """
     Web Search Agent for web content retrieval with configurable search depth.
     
     Provides core business logic for web search, content extraction, and result processing.
@@ -46,7 +58,7 @@ class WebSearchAgent:
             self.logger.info(
                 "Performing web search",
                 user_id=user_id,
-                query=query[:100],
+                query=query[:100],  # Truncate for logging
                 search_depth=search_depth,
                 max_results=max_results
             )
@@ -150,7 +162,7 @@ class WebSearchAgent:
         timeout: int
     ) -> List[Dict[str, Any]]:
         """
-        Perform comprehensive web search with detailed content extraction.
+        Perform deep/comprehensive web search with detailed content extraction.
         
         Args:
             query: Search query
@@ -224,20 +236,38 @@ class WebSearchAgent:
         Returns:
             Filtered and ranked results
         """
-        # Simple filtering by content length and title quality
-        filtered = []
-        for result in results:
-            content_length = len(result.get("content", ""))
-            title_length = len(result.get("title", ""))
-            
-            # Skip results with very little content or generic titles
-            if content_length > 100 and title_length > 5:
-                result["quality_score"] = content_length + (title_length * 10)
-                filtered.append(result)
+        # Score results based on content quality metrics
+        scored_results = []
         
-        # Sort by quality score and return top results
-        filtered.sort(key=lambda x: x.get("quality_score", 0), reverse=True)
-        return filtered[:max_results]
+        for result in results:
+            score = 0
+            
+            # Score based on content length (prefer substantial content)
+            content_length = len(result.get("content", ""))
+            if content_length > 1000:
+                score += 3
+            elif content_length > 500:
+                score += 2
+            elif content_length > 100:
+                score += 1
+            
+            # Score based on metadata availability
+            if result.get("title"):
+                score += 1
+            if result.get("description"):
+                score += 1
+            if result.get("keywords"):
+                score += 1
+                
+            # Prefer results with structured content
+            if result.get("structured_data"):
+                score += 2
+                
+            scored_results.append((score, result))
+        
+        # Sort by score (descending) and return top results
+        scored_results.sort(key=lambda x: x[0], reverse=True)
+        return [result for score, result in scored_results[:max_results]]
 
     async def _process_search_results(
         self, 
@@ -271,30 +301,32 @@ class WebSearchAgent:
 
     async def _synthesize_content(self, results: List[Dict[str, Any]]) -> str:
         """
-        Synthesize content from multiple search results.
+        Synthesize content from multiple search results into coherent summary.
         
         Args:
-            results: Search results to synthesize
+            results: Search results with extracted content
             
         Returns:
             Synthesized content summary
         """
         try:
-            if not results:
+            # Extract key content from each result
+            content_pieces = []
+            for result in results:
+                title = result.get("title", "")
+                content = result.get("content", "")[:500]  # Truncate for synthesis
+                url = result.get("url", "")
+                
+                if content:
+                    piece = f"From {title or url}:\n{content}"
+                    content_pieces.append(piece)
+            
+            if not content_pieces:
                 return "No content available for synthesis."
             
-            # Extract key content pieces
-            content_pieces = []
-            for result in results[:3]:  # Focus on top 3 results
-                title = result.get("title", "")
-                content = result.get("content", "")[:500]  # Limit content length
-                
-                if title and content:
-                    content_pieces.append(f"{title}: {content}")
-            
-            # Create synthesis
-            synthesis = "Content synthesis from search results:\n\n"
-            synthesis += "\n\n".join(content_pieces)
+            # Simple synthesis - in a full implementation, this would use an LLM
+            synthesis = f"Synthesized from {len(content_pieces)} sources:\n\n"
+            synthesis += "\n\n---\n\n".join(content_pieces[:3])  # Limit to top 3
             
             if len(content_pieces) > 3:
                 synthesis += f"\n\n... and {len(content_pieces) - 3} more sources"
@@ -304,3 +336,64 @@ class WebSearchAgent:
         except Exception as e:
             self.logger.error(f"Content synthesis failed: {e}")
             return "Content synthesis unavailable."
+
+    async def extract_urls_content(
+        self, 
+        urls: List[str], 
+        user_id: str,
+        query: str = "",
+        conversation_id: int = 0,
+        timeout: int = 30
+    ) -> List[Dict[str, Any]]:
+        """
+        Extract content from specific URLs.
+        
+        Args:
+            urls: List of URLs to extract content from
+            user_id: User identifier
+            timeout: Extraction timeout per URL
+            
+        Returns:
+            List of extracted content results
+        """
+        try:
+            self.logger.info(
+                "Extracting content from URLs",
+                user_id=user_id,
+                url_count=len(urls)
+            )
+
+            # Import extraction service
+            from server.services.web_extraction_service import WebExtractionService  # pylint: disable=import-outside-toplevel
+            
+            search_service = WebExtractionService()
+            
+            # Extract content from each URL
+            extraction_results = []
+            for url in urls:
+                try:
+                    result = await asyncio.wait_for(
+                        search_service.extract_content_from_url(url),
+                        timeout=timeout
+                    )
+                    if result:
+                        extraction_results.append(result)
+                except Exception as e:
+                    self.logger.warning(f"Failed to extract from {url}: {e}")
+                    continue
+
+            self.logger.info(
+                "URL content extraction completed",
+                user_id=user_id,
+                successful_extractions=len(extraction_results)
+            )
+
+            return extraction_results
+
+        except Exception as e:
+            self.logger.error(
+                "URL content extraction failed",
+                user_id=user_id,
+                error=str(e)
+            )
+            raise NodeExecutionError(f"URL content extraction failed: {e}") from e

@@ -14,6 +14,29 @@ from composer.monitoring.logging import composer_logger
 from composer.core.errors import NodeExecutionError
 
 
+def _extract_text_from_content(content) -> str:
+    """Extract text from message content, handling both str and list types."""
+    if isinstance(content, str):
+        return content
+    elif isinstance(content, list):
+        # Extract text from list items
+        text_parts = []
+        for item in content:
+            if isinstance(item, str):
+                text_parts.append(item)
+            elif isinstance(item, dict) and 'text' in item:
+                text_parts.append(str(item['text']))
+            elif isinstance(item, dict):
+                # Try to get any text-like content
+                for key in ['content', 'value', 'message']:
+                    if key in item:
+                        text_parts.append(str(item[key]))
+                        break
+        return ' '.join(text_parts) if text_parts else ''
+    else:
+        return str(content)
+
+
 class ResearchRouter:
     """
     Routes research execution based on query complexity and intent classification.
@@ -115,7 +138,7 @@ class QuickResearchExecutor:
             if not user_messages:
                 return state
 
-            query = user_messages[-1].content
+            query = _extract_text_from_content(user_messages[-1].content)
 
             # Retrieve user configuration from shared data layer
             from db import storage  # pylint: disable=import-outside-toplevel
@@ -131,15 +154,26 @@ class QuickResearchExecutor:
                 }
             )
 
-            # Perform memory search using existing storage service
-            memory_service = storage.get_service(storage.memory)
+            # Perform memory search using embedding and memory agents
+            from composer.agents.embedding_agent import EmbeddingAgent  # pylint: disable=import-outside-toplevel
+            from composer.agents.memory_agent import MemoryAgent  # pylint: disable=import-outside-toplevel
             
-            memories = await memory_service.search_memories(
-                user_id=self.user_id,
-                query=query,
-                limit=min(search_config.max_sources, 5),  # Limit for shallow search
-                similarity_threshold=search_config.similarity_threshold
-            )
+            try:
+                # Get embeddings for the query
+                embedding_agent = EmbeddingAgent()
+                query_embeddings = await embedding_agent.get_embeddings([query])
+                
+                # Search memories using embeddings
+                memory_agent = MemoryAgent()
+                memories = await memory_agent.search_memories(
+                    embeddings=query_embeddings,
+                    user_id=self.user_id,
+                    limit=min(search_config.max_sources, 5),  # Limit for shallow search
+                    min_similarity=search_config.similarity_threshold
+                )
+            except Exception as e:
+                self.logger.warning(f"Memory search failed: {e}")
+                memories = []
 
             # Format search results
             if memories:
@@ -246,7 +280,7 @@ class ComprehensiveResearchExecutor:
             if not user_messages:
                 return state
 
-            query = user_messages[-1].content
+            query = _extract_text_from_content(user_messages[-1].content)
 
             # Retrieve user configuration from shared data layer
             from db import storage  # pylint: disable=import-outside-toplevel
@@ -328,15 +362,26 @@ class ComprehensiveResearchExecutor:
             Formatted internal knowledge context
         """
         try:
-            from db import storage  # pylint: disable=import-outside-toplevel
-            memory_service = storage.get_service(storage.memory)
+            # Use embedding and memory agents for proper search
+            from composer.agents.embedding_agent import EmbeddingAgent  # pylint: disable=import-outside-toplevel
+            from composer.agents.memory_agent import MemoryAgent  # pylint: disable=import-outside-toplevel
             
-            memories = await memory_service.search_memories(
-                user_id=self.user_id,
-                query=query,
-                limit=10,  # More results for comprehensive search
-                similarity_threshold=0.7
-            )
+            try:
+                # Get embeddings for the query
+                embedding_agent = EmbeddingAgent()
+                query_embeddings = await embedding_agent.get_embeddings([query])
+                
+                # Search memories using embeddings
+                memory_agent = MemoryAgent()
+                memories = await memory_agent.search_memories(
+                    embeddings=query_embeddings,
+                    user_id=self.user_id,
+                    limit=10,  # More results for comprehensive search
+                    min_similarity=0.7
+                )
+            except Exception as e:
+                self.logger.warning(f"Memory search failed in internal knowledge search: {e}")
+                memories = []
 
             if memories:
                 knowledge_parts = []
@@ -374,28 +419,36 @@ class ComprehensiveResearchExecutor:
             if not getattr(search_config, 'enable_web_search', True):
                 return "External search disabled in user configuration."
 
-            # Use existing web search service for external information
-            from server.services.web_extraction_service import WebExtractionService
+            # Use web search agent for external information
+            from composer.agents.web_search_agent import WebSearchAgent  # pylint: disable=import-outside-toplevel
             
-            web_service = WebExtractionService()
+            web_agent = WebSearchAgent()
             
             # Perform external search with configured parameters
-            search_results = await web_service.search_and_extract(
+            search_results = await web_agent.perform_search(
                 query=query,
+                user_id=self.user_id,
+                search_depth="DEEP" if search_config.retrieve_full_content else "SHALLOW",
                 max_results=min(search_config.max_sources, 10),
-                extract_full_content=search_config.retrieve_full_content
+                timeout=30
             )
 
-            if search_results:
+            if search_results and search_results.get("results"):
                 external_parts = []
-                for i, result in enumerate(search_results):
+                for i, result in enumerate(search_results["results"]):
                     title = result.get('title', 'Unknown')
                     content = result.get('content', '')[:800]  # Substantial excerpts
                     url = result.get('url', '')
                     
                     external_parts.append(f"Source {i+1}: {title}\nURL: {url}\n{content}")
                 
-                return "EXTERNAL SOURCES:\n" + "\n\n".join(external_parts)
+                # Include search summary
+                summary = search_results.get("summary", "")
+                results_text = "EXTERNAL SOURCES:\n" + "\n\n".join(external_parts)
+                if summary:
+                    results_text = f"{summary}\n\n{results_text}"
+                
+                return results_text
             else:
                 return "No relevant external sources found."
 

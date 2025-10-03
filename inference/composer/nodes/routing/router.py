@@ -4,19 +4,10 @@ Consolidates workflow-level routing logic from GraphBuilder into a dedicated, re
 """
 
 from typing import Optional, Dict, Any
-from enum import Enum
 
 from models.workflow_type import WorkflowType
-from composer.graph.state import WorkflowState, RoutingDecision
+from composer.graph.state import WorkflowState, RoutingDecision, ExecutionStrategy
 from composer.monitoring.logging import composer_logger
-
-
-class ExecutionStrategy(Enum):
-    """Execution strategies for workflow coordination."""
-    SINGLE = "single"
-    PARALLEL = "parallel" 
-    SERIES = "series"
-    HYBRID = "hybrid"
 
 
 class WorkflowRouter:
@@ -59,8 +50,8 @@ class WorkflowRouter:
             state.execution_strategy = routing_result["execution_strategy"]
             
             # Set routing decision for deterministic routing if single workflow
-            if (routing_result["execution_strategy"] == ExecutionStrategy.SINGLE.value 
-                and len(routing_result["selected_workflows"]) == 1):
+            if (routing_result["execution_strategy"] == ExecutionStrategy.SINGLE 
+                and len(routing_result["workflows"]) == 1):
                 workflow_name = routing_result["selected_workflows"][0]
                 # Map to RoutingDecision enum if it exists, otherwise use string
                 try:
@@ -89,7 +80,7 @@ class WorkflowRouter:
             
             # Safe fallback
             state.selected_workflows = ["chat"]
-            state.execution_strategy = ExecutionStrategy.SINGLE.value
+            state.execution_strategy = ExecutionStrategy.SINGLE
             return state
 
     def determine_routing_strategy(
@@ -112,18 +103,16 @@ class WorkflowRouter:
             if hasattr(state, 'next_node') and state.next_node:
                 return {
                     "selected_workflows": [state.next_node],
-                    "execution_strategy": ExecutionStrategy.SINGLE.value,
+                    "execution_strategy": ExecutionStrategy.SINGLE,
                     "reason": "command_based_routing"
-                }
-
-            # Priority 2: Explicit routing decision from state
+                }            # Priority 2: Explicit routing decision from state
             if hasattr(state, 'routing_decision') and state.routing_decision:
                 workflow_name = (state.routing_decision.value 
                                if hasattr(state.routing_decision, 'value') 
                                else str(state.routing_decision))
                 return {
                     "selected_workflows": [workflow_name],
-                    "execution_strategy": ExecutionStrategy.SINGLE.value,
+                    "execution_strategy": ExecutionStrategy.SINGLE,
                     "reason": "explicit_routing_decision"
                 }
 
@@ -131,7 +120,7 @@ class WorkflowRouter:
             if explicit_workflow_type:
                 return {
                     "selected_workflows": [explicit_workflow_type.value],
-                    "execution_strategy": ExecutionStrategy.SINGLE.value,
+                    "execution_strategy": ExecutionStrategy.SINGLE,
                     "reason": "explicit_workflow_type"
                 }
 
@@ -147,7 +136,7 @@ class WorkflowRouter:
             # Ultimate fallback
             return {
                 "selected_workflows": ["chat"],
-                "execution_strategy": ExecutionStrategy.SINGLE.value,
+                "execution_strategy": ExecutionStrategy.SINGLE,
                 "reason": "error_fallback"
             }
 
@@ -177,32 +166,32 @@ class WorkflowRouter:
             # High complexity research might benefit from multiple workflows
             return {
                 "selected_workflows": ["research", "creative"],
-                "execution_strategy": ExecutionStrategy.SERIES.value,
+                "execution_strategy": ExecutionStrategy.SERIES,
                 "reason": "complex_research_series"
             }
         elif "multi" in primary_intent or "agent" in primary_intent or "collaboration" in primary_intent:
             return {
                 "selected_workflows": ["multi_agent"],
-                "execution_strategy": ExecutionStrategy.SINGLE.value,
+                "execution_strategy": ExecutionStrategy.SINGLE,
                 "reason": "multi_agent_intent"
             }
         elif "creative" in primary_intent or "generate" in primary_intent or "write" in primary_intent:
             return {
                 "selected_workflows": ["creative"],
-                "execution_strategy": ExecutionStrategy.SINGLE.value,
+                "execution_strategy": ExecutionStrategy.SINGLE,
                 "reason": "creative_intent"
             }
         elif "research" in primary_intent or "analyze" in primary_intent or "search" in primary_intent:
             return {
                 "selected_workflows": ["research"],
-                "execution_strategy": ExecutionStrategy.SINGLE.value,
+                "execution_strategy": ExecutionStrategy.SINGLE,
                 "reason": "research_intent"
             }
         else:
             # Default to chat for simple interactions
             return {
                 "selected_workflows": ["chat"],
-                "execution_strategy": ExecutionStrategy.SINGLE.value,
+                "execution_strategy": ExecutionStrategy.SINGLE,
                 "reason": "default_chat"
             }
 
@@ -227,7 +216,7 @@ class WorkflowRouter:
             execution_strategy = routing_result["execution_strategy"]
             
             # For single workflow execution, return the workflow target
-            if execution_strategy == ExecutionStrategy.SINGLE.value and len(selected_workflows) == 1:
+            if execution_strategy == ExecutionStrategy.SINGLE and len(selected_workflows) == 1:
                 workflow_name = selected_workflows[0]
                 # Map workflow names to subgraph node names
                 return f"{workflow_name}_subgraph"

@@ -74,7 +74,7 @@ class WebSearchNode:
                 "Web search completed successfully",
                 user_id=user_id,
                 results_count=search_results.get("result_count", 0),
-                content_length=len(state.search_results)
+                content_length=len(state.search_results or "")
             )
 
             return state

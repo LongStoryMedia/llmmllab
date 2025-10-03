@@ -59,7 +59,7 @@ class EmbeddingAgent:
                 
                 # Use embedding model profile or fallback to provided model
                 if not model_name:
-                    model_profile = await get_model_profile(user_id, ModelProfileType.EMBEDDING)
+                    model_profile = await get_model_profile(user_id, ModelProfileType.Embedding)
                     model_name = model_profile.model_name if model_profile else "nomic-embed-text"
                     
             except Exception as e:

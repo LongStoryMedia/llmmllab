@@ -108,11 +108,14 @@ class ToolSecurityValidator:
 
                 # Check for exec/eval in string form
                 elif isinstance(node, ast.Str):
-                    if any(
-                        forbidden in node.s.lower()
-                        for forbidden in ["exec(", "eval(", "__import__"]
-                    ):
-                        return False, "Potential code injection detected"
+                    # Safely convert string content to lowercase for checking
+                    string_content = node.s
+                    if isinstance(string_content, str):
+                        if any(
+                            forbidden in string_content.lower()
+                            for forbidden in ["exec(", "eval(", "__import__"]
+                        ):
+                            return False, "Potential code injection detected"
 
             return True, "Code validation passed"
 
