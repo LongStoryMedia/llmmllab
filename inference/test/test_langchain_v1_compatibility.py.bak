@@ -15,7 +15,7 @@ def test_langchain_v1_imports():
         from langgraph.graph.state import CompiledStateGraph
         
         # LangChain v1.0 imports
-        from langgraph.prebuilt import ToolNode  # Moved location in v1.0
+        from langchain.agents import ToolNode  # Moved location in v1.0
         from langchain_core.tools import BaseTool
         from langchain_core.runnables import RunnableParallel, RunnableLambda
         
@@ -54,7 +54,7 @@ def test_message_structure():
 def test_tool_node_v1_compatibility():
     """Test that ToolNode usage is compatible with v1.0."""
     try:
-        from langgraph.prebuilt import ToolNode
+        from langchain.agents import ToolNode
         from langchain_core.tools import BaseTool
         
         # Create a simple test tool

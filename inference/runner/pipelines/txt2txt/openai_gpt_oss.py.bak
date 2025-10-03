@@ -17,7 +17,7 @@ from langchain_core.messages import AIMessage
 # LangGraph components (mirroring qwen3moe pattern)
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolNode
+from langchain.agents import ToolNode
 
 # Import harmony formatting utilities
 from openai_harmony import (
