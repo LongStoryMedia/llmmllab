@@ -120,6 +120,7 @@ class ComposerService:
         self,
         user_id: str,
         messages: List[Message],
+        workflow_type: WorkflowType,
         additional_context: Optional[Dict[str, Any]] = None,
     ) -> WorkflowState:
         """Create initial workflow state from user configuration."""
