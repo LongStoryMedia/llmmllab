@@ -18,7 +18,7 @@ from composer.core.errors import WorkflowConstructionError
 from composer.graph.state import WorkflowState
 
 # Node imports
-from composer.nodes.standard import PipelineNode
+from composer.nodes import PipelineNode
 from composer.nodes.routing import IntentClassifierNode
 from composer.nodes.agents import EngineeringAgentNode
 # Enhanced search components now handled in dedicated workflow implementations

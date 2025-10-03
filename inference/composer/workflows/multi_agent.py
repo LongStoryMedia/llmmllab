@@ -11,7 +11,7 @@ from langgraph.graph.state import CompiledStateGraph
 from models import AvailableTool, ModelProfileType
 
 from composer.graph.state import WorkflowState
-from composer.nodes.standard import PipelineNode, ToolExecutorNode
+from composer.nodes import PipelineNode, ToolExecutorNode
 from composer.nodes.routing import IntentClassifierNode
 from composer.nodes.agents import EngineeringAgentNode
 from composer.monitoring.logging import composer_logger

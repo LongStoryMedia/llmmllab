@@ -51,11 +51,11 @@ def test_imports():
         print(f"  ❌ Memory workflow import failed: {e}")
     
     try:
-        from composer.nodes.standard import (
+        from composer.nodes import (
             PipelineNode, ToolExecutorNode, CircuitProtectedNode,
             EmbeddingNode, MemoryNode, WebSearchNode, SummarizationNode
         )
-        print("  ✅ Standard.py import module works")
+        print("  ✅ Main composer.nodes import works")
     except Exception as e:
         print(f"  ❌ Standard.py imports failed: {e}")
     

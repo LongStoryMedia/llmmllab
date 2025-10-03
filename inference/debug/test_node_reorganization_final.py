@@ -45,19 +45,19 @@ def test_organized_imports():
     except Exception as e:
         print(f"  ❌ Research imports failed: {e}")
 
-def test_standard_compatibility():
-    """Test backward compatibility through standard.py."""
-    print("\nTesting standard.py backward compatibility:")
+def test_main_module_imports():
+    """Test imports through main composer.nodes module."""
+    print("\nTesting main composer.nodes module imports:")
     print("=" * 50)
     
     try:
-        from composer.nodes.standard import (
+        from composer.nodes import (
             PipelineNode, ToolExecutorNode, CircuitProtectedNode,
             EmbeddingNode, MemoryNode, WebSearchNode, SummarizationNode
         )
-        print("  ✅ All standard.py imports work correctly")
+        print("  ✅ All main module imports work correctly")
     except Exception as e:
-        print(f"  ❌ Standard.py imports failed: {e}")
+        print(f"  ❌ Main module imports failed: {e}")
 
 def test_main_init_imports():
     """Test importing through main nodes __init__.py."""
@@ -116,14 +116,14 @@ def show_organization():
     print("    📄 engineering.py    - EngineeringAgentNode")
     print("  📁 research/          - Research workflows")
     print("    📄 router.py         - ResearchRouter, QuickResearchExecutor, ComprehensiveResearchExecutor")
-    print("  📄 standard.py        - Backward compatibility imports")
+    print("  📄 __init__.py        - Main module imports")
 
 if __name__ == "__main__":
     print("Node Reorganization Verification")
     print("=" * 50)
     
     test_organized_imports()
-    test_standard_compatibility()
+    test_main_module_imports()
     test_main_init_imports()
     test_workflow_imports()
     show_organization()
@@ -131,6 +131,6 @@ if __name__ == "__main__":
     print("\n" + "=" * 50)
     print("🎉 Node reorganization completed successfully!")
     print("✅ All nodes organized by functional purpose")
-    print("✅ Backward compatibility maintained")
+    print("✅ Main module imports maintained")
     print("✅ Research nodes renamed appropriately")
     print("✅ All workflows updated with new imports")

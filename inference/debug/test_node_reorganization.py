@@ -50,16 +50,16 @@ def test_individual_imports():
     except Exception as e:
         print(f"  ❌ SummarizationNode: {e}")
 
-def test_standard_imports():
-    """Test importing all classes from standard.py."""
-    print("\nTesting standard.py import module:")
+def test_main_init_imports():
+    """Test importing all classes from main composer.nodes module."""
+    print("\nTesting composer.nodes main module:")
     
     try:
-        from composer.nodes.standard import (
+        from composer.nodes import (
             PipelineNode, ToolExecutorNode, CircuitProtectedNode, 
             EmbeddingNode, MemoryNode, WebSearchNode, SummarizationNode
         )
-        print("  ✅ All classes imported from standard.py successfully")
+        print("  ✅ All classes imported from composer.nodes successfully")
         
         classes = [PipelineNode, ToolExecutorNode, CircuitProtectedNode, 
                   EmbeddingNode, MemoryNode, WebSearchNode, SummarizationNode]
@@ -88,9 +88,9 @@ if __name__ == "__main__":
     print("=" * 40)
     
     test_individual_imports()
-    test_standard_imports()
+    test_main_init_imports()
     test_nodes_init_imports()
     
     print("\n" + "=" * 40)
     print("Verification complete! All node files are properly organized with single-word names.")
-    print("Standard.py serves as a convenient import module for all node classes.")
+    print("Main composer.nodes module serves as a convenient import for all node classes.")

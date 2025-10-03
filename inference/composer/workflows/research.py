@@ -11,7 +11,7 @@ from langgraph.graph.state import CompiledStateGraph
 from models import AvailableTool, ModelProfileType
 
 from composer.graph.state import ResearchWorkflowState
-from composer.nodes.standard import PipelineNode
+from composer.nodes import PipelineNode
 from composer.nodes.routing import IntentClassifierNode
 from composer.nodes.research import ComprehensiveResearchExecutor
 from composer.monitoring.logging import composer_logger
