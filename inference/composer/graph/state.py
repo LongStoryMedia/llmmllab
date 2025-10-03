@@ -37,6 +37,13 @@ class RoutingDecision(str, Enum):
     COORDINATOR = "coordinator"
 
 
+class AgentSpecialization(str, Enum):
+    """Agent specialization types for multi-agent routing."""
+    
+    ANALYSIS = "analysis_agent"
+    CONTENT_GENERATION = "content_generation_agent"
+
+
 class WorkflowState(BaseModel):
     """
     Unified LangGraph state schema with reducer functions.

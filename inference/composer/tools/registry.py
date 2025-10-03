@@ -143,11 +143,13 @@ class ToolRegistry:
             Generated tool instance or None
         """
         return await self._generate_or_retrieve_dynamic_tool(user_id, tool_spec)
-    
-    async def register_dynamic_tool_instance(self, tool_id: str, tool_instance: Tool) -> None:
+
+    async def register_dynamic_tool_instance(
+        self, tool_id: str, tool_instance: Tool
+    ) -> None:
         """
         Register a dynamic tool instance in the registry for reuse.
-        
+
         Args:
             tool_id: Unique identifier for the tool
             tool_instance: The actual Tool instance to store
@@ -156,7 +158,7 @@ class ToolRegistry:
             self.dynamic_tools[tool_id] = tool_instance
             composer_logger.logger.info(
                 f"Registered dynamic tool instance: {tool_id}",
-                extra={"tool_name": getattr(tool_instance, 'name', tool_id)}
+                extra={"tool_name": getattr(tool_instance, "name", tool_id)},
             )
 
     async def _get_user_config(self, user_id: str):
@@ -193,10 +195,10 @@ class ToolRegistry:
         """
         Get instances of all static tools for a user.
         This method is for the GraphBuilder's tool collection functionality.
-        
+
         Args:
             user_id: User identifier for configuration
-            
+
         Returns:
             List of instantiated static Tool objects
         """
@@ -207,22 +209,22 @@ class ToolRegistry:
                 if tool_instance:
                     instances.append(tool_instance)
         return instances
-    
+
     async def get_dynamic_tool_instances(self, user_id: str) -> List[Tool]:
         """
         Get all dynamic tool instances for a user.
         This method is for the GraphBuilder's tool collection functionality.
-        
+
         Args:
             user_id: User identifier (currently not used for filtering, but available for future use)
-            
+
         Returns:
             List of dynamic Tool instances
         """
         async with self._lock:
             # For now, return all dynamic tools. In the future, could filter by user_id
             return list(self.dynamic_tools.values())
-    
+
     def _should_include_static_tool(
         self, tool_name: str, intent: IntentAnalysis
     ) -> bool:

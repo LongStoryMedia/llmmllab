@@ -117,9 +117,8 @@ class GraphBuilder:
                 return await self.build_multi_agent_workflow(user_id)
             elif workflow_type == WorkflowType.CREATIVE:
                 return await self.build_creative_workflow(user_id)
-            else:
-                # Default to chat workflow
-                return await self._build_chat_subgraph(user_id)
+            # Default to chat workflow
+            return await self._build_chat_subgraph(user_id)
 
         except Exception as e:
             composer_logger.log_error(

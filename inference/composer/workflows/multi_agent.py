@@ -11,7 +11,7 @@ from langgraph.graph.state import CompiledStateGraph
 from models import ModelProfileType
 from runner import PipelineFactory
 
-from composer.graph.state import WorkflowState
+from composer.graph.state import WorkflowState, AgentSpecialization
 from composer.nodes import PipelineNode, ToolExecutorNode
 from composer.nodes.routing import IntentClassifierNode
 from composer.nodes.agents import EngineeringAgentNode
@@ -70,6 +70,11 @@ async def build_multi_agent_workflow(
         PipelineNode(pipeline_factory, ModelProfileType.Primary, stream=False),
     )
 
+    # workflow.add_node(
+    #     "image_generation_agent",
+    #     PipelineNode(pipeline_factory, ModelProfileType.ImageGeneration, stream=False),
+    # )
+
     # Coordination agent
     workflow.add_node(
         "coordination",
@@ -83,7 +88,9 @@ async def build_multi_agent_workflow(
     )
 
     # Tool execution node - tools populated at runtime
-    workflow.add_node("tool_executor", ToolExecutorNode([]))  # Tools populated at runtime
+    workflow.add_node(
+        "tool_executor", ToolExecutorNode([])
+    )  # Tools populated at runtime
 
     # Set workflow entry point
     workflow.set_entry_point("intent_classifier")
@@ -92,29 +99,52 @@ async def build_multi_agent_workflow(
     workflow.add_edge("intent_classifier", "engineering_agent")
     workflow.add_edge("engineering_agent", "agent_router")
 
-    # Conditional routing to specialists based on task type
+    # Conditional routing to specialists based on intent analysis
     def route_to_specialists(state: WorkflowState) -> str:
-        """Route to appropriate specialist agents based on task analysis."""
-        # Enhanced routing logic based on intent analysis and task type
-        task_type = getattr(state, "task_type", "general")
-
-        if task_type in [
-            "technical",
-            "analysis",
-            "research",
-            "data_processing",
-            "summarization",
-        ]:
-            return "analysis_agent"
-        else:
-            return "content_generation_agent"
+        """Route to appropriate specialist agents based on intent analysis."""
+        from models.required_capability import RequiredCapability
+        from composer.graph.state import AgentSpecialization
+        
+        # Use actual intent classification from state
+        if not state.intent_classification:
+            # Default to content generation if no intent analysis available
+            return AgentSpecialization.CONTENT_GENERATION.value
+        
+        intent = state.intent_classification
+        
+        # Route based on required capabilities from intent analysis
+        analysis_capabilities = {
+            RequiredCapability.DATA_PROCESSING,
+            RequiredCapability.INFORMATION_RETRIEVAL,
+            RequiredCapability.WEB_SEARCH,
+            RequiredCapability.SUMMARIZATION,
+            RequiredCapability.REASONING,
+            RequiredCapability.DATABASE_ACCESS,
+            RequiredCapability.API_INTEGRATION,
+        }
+        
+        # Check if any required capabilities match analysis specialization
+        if any(cap in analysis_capabilities for cap in intent.required_capabilities):
+            return AgentSpecialization.ANALYSIS.value
+        
+        # Route based on primary intent patterns
+        analysis_intents = {
+            "research", "analyze", "investigate", "summarize", 
+            "compare", "evaluate", "calculate", "process"
+        }
+        
+        if any(keyword in intent.primary_intent.lower() for keyword in analysis_intents):
+            return AgentSpecialization.ANALYSIS.value
+        
+        # Default to content generation for creative, general, and conversational tasks
+        return AgentSpecialization.CONTENT_GENERATION.value
 
     workflow.add_conditional_edges(
         "agent_router",
         route_to_specialists,
         {
-            "analysis_agent": "analysis_agent",
-            "content_generation_agent": "content_generation_agent",
+            AgentSpecialization.ANALYSIS.value: "analysis_agent",
+            AgentSpecialization.CONTENT_GENERATION.value: "content_generation_agent",
         },
     )
 
@@ -132,7 +162,8 @@ async def build_multi_agent_workflow(
             state.messages
             and hasattr(state.messages[-1], "tool_calls")
             and state.messages[-1].tool_calls
-            and hasattr(state, 'required_tools') and state.required_tools
+            and hasattr(state, "required_tools")
+            and state.required_tools
         ):
             return "tool_executor"
         return END
