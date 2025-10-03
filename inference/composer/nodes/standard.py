@@ -1,6 +1,6 @@
 """
 Standard LangGraph nodes for basic workflow operations.
-Implements PipelineNode, ToolExecutorNode, SearchNode for agentic search workflows.
+Implements PipelineNode, ToolExecutorNode, and CircuitProtectedNode for agentic workflows.
 """
 
 import asyncio
@@ -10,6 +10,7 @@ from langchain_core.tools import BaseTool
 from langchain.agents import ToolNode
 
 from models import ChatResponse, LangChainMessage, ModelProfileType
+from utils.model_profile import get_model_profile
 
 # Lazy imports to avoid circular dependencies
 # from db import storage - imported when needed
@@ -62,8 +63,6 @@ class PipelineNode:
 
             # Lazy imports to avoid circular dependencies
             try:
-                from utils.model_profile import get_model_profile
-
                 # Get model profile for this task type using user_id from state
                 model_profile = await get_model_profile(user_id, self.profile_type)
             except ImportError as ie:
@@ -201,142 +200,6 @@ class ToolExecutorNode:
             )
             state.messages.append(error_message)
 
-            return state
-
-
-class SearchNode:
-    """
-    Retrieval-Augmented Generation node.
-
-    Embeds latest user message and performs retrieval augmentation based on
-    user configuration retrieved from shared data layer.
-    """
-
-    def __init__(self, user_id: str):
-        """
-        Initialize Search node.
-
-        Args:
-            user_id: User identifier for configuration retrieval
-        """
-        self.user_id = user_id
-        self.logger = composer_logger.logger
-
-    async def __call__(self, state: WorkflowState) -> WorkflowState:
-        """
-        Perform search retrieval on the latest user message.
-
-        Args:
-            state: Current workflow state
-
-        Returns:
-            Updated workflow state with search results
-        """
-        try:
-            if not state.messages:
-                return state
-
-            # Get user query from latest message
-            latest_message = state.messages[-1]
-            if latest_message.type != "human":
-                return state
-
-            query = latest_message.content
-
-            # Retrieve user configuration from shared data layer
-            try:
-                from db import storage
-
-                uc = await storage.get_service(storage.user_config).get_user_config(
-                    self.user_id
-                )
-                # Safe attribute access with fallbacks
-                workflow_prefs = getattr(uc, "workflow_preferences", None)
-                search_config = (
-                    getattr(workflow_prefs, "search_config", None)
-                    if workflow_prefs
-                    else None
-                )
-
-                if not search_config:
-                    # Use default configuration
-                    search_config = type(
-                        "Config",
-                        (),
-                        {
-                            "depth": "shallow",
-                            "max_sources": 5,
-                            "similarity_threshold": 0.7,
-                        },
-                    )()
-            except (ImportError, AttributeError):
-                # Fallback configuration when database not available
-                search_config = type(
-                    "Config",
-                    (),
-                    {"depth": "shallow", "max_sources": 5, "similarity_threshold": 0.7},
-                )()
-
-            self.logger.info(
-                "Performing search retrieval",
-                user_id=self.user_id,
-                query_length=len(query),
-                search_depth=getattr(search_config, "depth", "shallow"),
-                max_sources=getattr(search_config, "max_sources", 5),
-            )
-
-            # Perform vector search using existing memory retrieval
-            try:
-                memory_service = storage.get_service(storage.memory)
-            except (NameError, AttributeError):
-                # Database not available - skip memory search
-                state.search_results = (
-                    "Memory search unavailable - database not configured."
-                )
-                return state
-
-            # Search conversation memory (if method available)
-            search_method = getattr(memory_service, "search_memories", None)
-            if search_method:
-                memories = await search_method(
-                    user_id=self.user_id,
-                    query=query,
-                    limit=getattr(search_config, "max_sources", 5),
-                    similarity_threshold=getattr(
-                        search_config, "similarity_threshold", 0.7
-                    ),
-                )
-            else:
-                memories = []  # Fallback if method not available
-
-            # Format search results
-            if memories:
-                search_results = "\n\n".join(
-                    [
-                        f"Memory {i+1}: {memory.content}"
-                        for i, memory in enumerate(memories)
-                    ]
-                )
-
-                state.search_results = search_results
-
-                # Add context to messages for the model
-                context_message = LangChainMessage(
-                    type="system", content=f"Retrieved context:\n\n{search_results}"
-                )
-                state.messages.insert(-1, context_message)  # Insert before user message
-            else:
-                state.search_results = "No relevant context found."
-
-            return state
-
-        except Exception as e:
-            self.logger.error(
-                "Search node execution failed", user_id=self.user_id, error=str(e)
-            )
-
-            # Continue without search on error
-            state.search_results = f"Search retrieval failed: {str(e)}"
             return state
 
 
