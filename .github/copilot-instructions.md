@@ -77,11 +77,46 @@ kubectl exec -n ollama $POD_NAME -- /app/v.sh composer python -c "from composer.
 - **Manual Verification** (`inference/debug/`): Integration tests requiring real services
 
 ## Critical Notes
-- **Always sync with** `inference/sync-code.sh`
+- **Always sync with** `inference/sync-code.sh` - never use manual rsync/cp
 - **Always commit changes** with descriptive messages
 - **Avoid complex nested commands** - use scripts instead
-- **Fix pod errors immediately** - don't ignore crash loops
+- **Fix pod errors immediately** - don't ignore crash loops or leave pods in bad state
 - **Document only completed features** in `docs/` folder
+
+## Import Path Rules
+
+**NEVER use hardcoded path imports:**
+```python
+# ❌ NEVER DO THIS
+import sys
+sys.path.append('/Users/lons7862/workspace/llmmllab/inference')
+```
+
+**Use proper Python module imports and PYTHONPATH configuration instead.**
+**Rely on virtual environment activation and project structure for imports.**
+
+## Database Layer Rules
+
+- **ALL SQL files must be idempotent** - safe to run multiple times
+- **Follow established storage service patterns** - use `typed_pool`, `get_query`, proper error handling
+- **Add all new storage services** to `init_db.py` and `db/__init__.py` registration
+- **SQL files go in `db/sql/[entity]/`** directories with clear naming conventions
+- **Always use parameter binding** ($1, $2) never string formatting in SQL
+- **Test database initialization** and storage services after changes
+
+## Command Complexity Rules
+
+**Avoid nested commands like:**
+```bash
+POD_NAME=$(kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}') && kubectl exec -it -n ollama $POD_NAME -- /app/v.sh server python test.py
+```
+
+**Use simple commands instead:**
+```bash
+kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}'
+# Remember the pod name, then:
+kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh server python -m debug.test
+```
 
 ## Schema-Driven Development
 1. Update YAML schema in `schemas/`
