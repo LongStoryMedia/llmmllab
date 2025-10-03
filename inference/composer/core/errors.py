@@ -23,13 +23,21 @@ class WorkflowConstructionError(ComposerError):
 class NodeExecutionError(ComposerError):
     """Node execution failed."""
 
-    def __init__(self, node_name: str, original_error: Exception):
+    def __init__(self, node_name: str, original_error: Optional[Exception] = None):
         self.node_name = node_name
         self.original_error = original_error
-        super().__init__(
-            f"Node '{node_name}' failed: {original_error}",
-            {"node_name": node_name, "original_error": str(original_error)},
-        )
+
+        if original_error:
+            message = f"Node '{node_name}' failed: {original_error}"
+            details = {
+                "node_name": node_name,
+                "original_error": str(original_error),
+            }
+        else:
+            message = f"Node '{node_name}' failed"
+            details = {"node_name": node_name}
+
+        super().__init__(message, details)
 
 
 class ToolGenerationError(ComposerError):

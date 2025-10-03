@@ -42,7 +42,7 @@ class PipelineNode:
         self.pipeline_factory = pipeline_factory
         self.profile_type = profile_type
         self.stream = stream
-        self.logger = composer_logger.logger
+        self.logger = composer_logger.logger.bind(component="PipelineNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
@@ -62,21 +62,13 @@ class PipelineNode:
 
             # Lazy imports to avoid circular dependencies
             try:
-                from db import storage
-                from utils.model_profile_utils import get_model_profile_for_task
+                from utils.model_profile import get_model_profile
 
-                uc = await storage.get_service(storage.user_config).get_user_config(
-                    user_id
-                )
-
-                # Get model profile for this task type
-                model_profile = get_model_profile_for_task(
-                    uc.model_profiles, self.profile_type, user_id
-                )
+                # Get model profile for this task type using user_id from state
+                model_profile = await get_model_profile(user_id, self.profile_type)
             except ImportError as ie:
-                self.logger.warning(f"Database not available: {ie}")
+                self.logger.warning(f"Model profile utility not available: {ie}")
                 model_profile = None
-                uc = None
 
             self.logger.info(
                 "Executing pipeline node",
@@ -180,7 +172,7 @@ class ToolExecutorNode:
             # Add tool results to state messages (v1.0 compatible)
             if "messages" in tool_results:
                 state.messages.extend(tool_results["messages"])
-            elif hasattr(tool_results, 'messages'):
+            elif hasattr(tool_results, "messages"):
                 # Handle alternative response format
                 state.messages.extend(tool_results.messages)
 
@@ -190,7 +182,7 @@ class ToolExecutorNode:
                 user_id=getattr(state, "user_id", "unknown"),
                 completed_tools=[
                     call.get("name", "unknown") for call in last_message.tool_calls
-                ]
+                ],
             )
 
             return state
@@ -259,26 +251,38 @@ class SearchNode:
                     self.user_id
                 )
                 # Safe attribute access with fallbacks
-                workflow_prefs = getattr(uc, 'workflow_preferences', None)
-                search_config = getattr(workflow_prefs, 'search_config', None) if workflow_prefs else None
-                
+                workflow_prefs = getattr(uc, "workflow_preferences", None)
+                search_config = (
+                    getattr(workflow_prefs, "search_config", None)
+                    if workflow_prefs
+                    else None
+                )
+
                 if not search_config:
                     # Use default configuration
                     search_config = type(
-                        "Config", (), {"depth": "shallow", "max_sources": 5, "similarity_threshold": 0.7}
+                        "Config",
+                        (),
+                        {
+                            "depth": "shallow",
+                            "max_sources": 5,
+                            "similarity_threshold": 0.7,
+                        },
                     )()
             except (ImportError, AttributeError):
                 # Fallback configuration when database not available
                 search_config = type(
-                    "Config", (), {"depth": "shallow", "max_sources": 5, "similarity_threshold": 0.7}
+                    "Config",
+                    (),
+                    {"depth": "shallow", "max_sources": 5, "similarity_threshold": 0.7},
                 )()
 
             self.logger.info(
                 "Performing search retrieval",
                 user_id=self.user_id,
                 query_length=len(query),
-                search_depth=getattr(search_config, 'depth', 'shallow'),
-                max_sources=getattr(search_config, 'max_sources', 5),
+                search_depth=getattr(search_config, "depth", "shallow"),
+                max_sources=getattr(search_config, "max_sources", 5),
             )
 
             # Perform vector search using existing memory retrieval
@@ -292,13 +296,15 @@ class SearchNode:
                 return state
 
             # Search conversation memory (if method available)
-            search_method = getattr(memory_service, 'search_memories', None)
+            search_method = getattr(memory_service, "search_memories", None)
             if search_method:
                 memories = await search_method(
                     user_id=self.user_id,
                     query=query,
-                    limit=getattr(search_config, 'max_sources', 5),
-                    similarity_threshold=getattr(search_config, 'similarity_threshold', 0.7),
+                    limit=getattr(search_config, "max_sources", 5),
+                    similarity_threshold=getattr(
+                        search_config, "similarity_threshold", 0.7
+                    ),
                 )
             else:
                 memories = []  # Fallback if method not available
