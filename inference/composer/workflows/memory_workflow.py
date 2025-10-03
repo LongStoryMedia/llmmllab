@@ -9,7 +9,8 @@ from langgraph.graph import StateGraph, END
 from langgraph.graph.state import CompiledStateGraph
 
 from composer.graph.state import WorkflowState
-from composer.nodes.memory_nodes import EmbeddingNode, MemoryNode
+from composer.nodes.embedding import EmbeddingNode
+from composer.nodes.memory import MemoryNode
 from composer.monitoring.logging import composer_logger
 
 
