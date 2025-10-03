@@ -16,6 +16,8 @@ from composer.nodes import PipelineNode, ToolExecutorNode
 from composer.nodes.routing import IntentClassifierNode
 from composer.nodes.agents import EngineeringAgentNode
 from composer.monitoring.logging import composer_logger
+from composer.graph.state import AgentSpecialization
+from models.required_capability import RequiredCapability
 
 
 async def build_multi_agent_workflow(
@@ -102,16 +104,14 @@ async def build_multi_agent_workflow(
     # Conditional routing to specialists based on intent analysis
     def route_to_specialists(state: WorkflowState) -> str:
         """Route to appropriate specialist agents based on intent analysis."""
-        from models.required_capability import RequiredCapability
-        from composer.graph.state import AgentSpecialization
-        
+
         # Use actual intent classification from state
         if not state.intent_classification:
             # Default to content generation if no intent analysis available
             return AgentSpecialization.CONTENT_GENERATION.value
-        
+
         intent = state.intent_classification
-        
+
         # Route based on required capabilities from intent analysis
         analysis_capabilities = {
             RequiredCapability.DATA_PROCESSING,
@@ -122,20 +122,28 @@ async def build_multi_agent_workflow(
             RequiredCapability.DATABASE_ACCESS,
             RequiredCapability.API_INTEGRATION,
         }
-        
+
         # Check if any required capabilities match analysis specialization
         if any(cap in analysis_capabilities for cap in intent.required_capabilities):
             return AgentSpecialization.ANALYSIS.value
-        
+
         # Route based on primary intent patterns
         analysis_intents = {
-            "research", "analyze", "investigate", "summarize", 
-            "compare", "evaluate", "calculate", "process"
+            "research",
+            "analyze",
+            "investigate",
+            "summarize",
+            "compare",
+            "evaluate",
+            "calculate",
+            "process",
         }
-        
-        if any(keyword in intent.primary_intent.lower() for keyword in analysis_intents):
+
+        if any(
+            keyword in intent.primary_intent.lower() for keyword in analysis_intents
+        ):
             return AgentSpecialization.ANALYSIS.value
-        
+
         # Default to content generation for creative, general, and conversational tasks
         return AgentSpecialization.CONTENT_GENERATION.value
 
