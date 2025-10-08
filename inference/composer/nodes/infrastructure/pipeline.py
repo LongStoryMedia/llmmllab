@@ -160,6 +160,32 @@ class PipelineNode:
                         ),
                     )
 
+                    # If model emitted inline <tool_call> blocks but underlying simple pipeline
+                    # did not structure them into tool_calls metadata, extract them now so the
+                    # ToolExecutorNode can act on them in the very next node.
+                    if not tool_calls and final_content and "<tool_call>" in final_content:
+                        import re, json
+                        extracted_calls = []
+                        pattern = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.DOTALL)
+                        for match in pattern.finditer(final_content):
+                            block = match.group(1).strip().strip('`')
+                            try:
+                                parsed = json.loads(block)
+                                name = parsed.get("name") or parsed.get("tool")
+                                args = parsed.get("arguments") or parsed.get("args") or {}
+                                if name:
+                                    extracted_calls.append({"name": name, "arguments": args})
+                            except Exception:  # pragma: no cover - best effort parsing
+                                continue
+                        if extracted_calls:
+                            tool_calls = extracted_calls
+                            self.logger.info(
+                                "Extracted tool calls from inline markup",
+                                user_id=state.user_id,
+                                tool_count=len(tool_calls),
+                                tools=[c.get("name") for c in tool_calls],
+                            )
+
                     # Create final response from accumulated content
                     response = ChatResponse(
                         done=True,
