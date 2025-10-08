@@ -727,7 +727,6 @@ Please search for the most recent information and provide a comprehensive summar
             initial_state = await create_initial_state(
                 user_id=self.test_user_id,
                 conversation_id=self.test_conversation_id,
-                messages=messages,
             )
             logger.info(f"   ✅ Initial state created: {type(initial_state).__name__}")
 
@@ -770,6 +769,7 @@ Please search for the most recent information and provide a comprehensive summar
             response_chunks = []
             tool_calls_detected = False
             full_response = ""
+            error_events: list = []
 
             # Capture workflow events and detailed data
             event_count = 0
@@ -785,6 +785,9 @@ Please search for the most recent information and provide a comprehensive summar
                 # Capture significant events for detailed logging
                 if "event" in event_dict:
                     event_type = event_dict["event"]
+                    # Capture explicit error events (LangGraph may surface as on_chain_error / on_tool_error etc.)
+                    if event_type.lower().endswith("error") or "error" in event_type.lower():
+                        error_events.append(event_dict)
 
                     # Log significant events to output file
                     if event_type in [
@@ -953,6 +956,8 @@ Please search for the most recent information and provide a comprehensive summar
             logger.info(f"   ✅ Workflow execution completed in {execution_time:.2f}s")
             logger.info(f"   📊 Total response chunks: {len(response_chunks)}")
             logger.info(f"   🛠️  Tool calls detected: {tool_calls_detected}")
+            if error_events:
+                logger.error(f"   🚫 Captured {len(error_events)} workflow error events; marking execution as failed")
 
             # Write execution summary
             execution_summary = {
@@ -1037,6 +1042,13 @@ Please search for the most recent information and provide a comprehensive summar
             # Validate that we actually got meaningful output
             success = True
             validation_errors = []
+
+            # If pipeline node failure logged earlier or error events captured, mark failure
+            if error_events:
+                success = False
+                validation_errors.append(
+                    f"Encountered {len(error_events)} workflow error events (first type: {error_events[0].get('event')})"
+                )
 
             # Check 1: Must have actual response content
             if len(full_response.strip()) == 0:
@@ -1331,9 +1343,16 @@ Please search for the most recent information and provide a comprehensive summar
                         cleaned_count += 1
 
                 except Exception as e:
-                    error_msg = f"Failed to delete {entity_type} {entity_id}: {str(e)}"
-                    cleanup_errors.append(error_msg)
-                    logger.warning(f"   ⚠️  {error_msg}")
+                    # Suppress known benign warning about non-existent user_configs relation
+                    msg = str(e)
+                    if entity_type == "user_config" and "relation \"user_configs\" does not exist" in msg:
+                        logger.info(
+                            "   ℹ️  Skipping user_config deletion (table missing in current environment)"
+                        )
+                    else:
+                        error_msg = f"Failed to delete {entity_type} {entity_id}: {msg}"
+                        cleanup_errors.append(error_msg)
+                        logger.warning(f"   ⚠️  {error_msg}")
 
             logger.info(f"   ✅ Cleanup completed: {cleaned_count} entities removed")
 
