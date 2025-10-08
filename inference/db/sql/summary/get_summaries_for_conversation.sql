@@ -3,8 +3,12 @@
 -- in the source_ids array of any higher-level summary for the same conversation.
 -- This yields the set of leaf (not yet compressed) summaries plus the highest-level summaries.
 WITH referencing AS (
-  SELECT DISTINCT unnest(s2.source_ids) AS ref_id
+  -- Expand jsonb array source_ids into scalar elements.
+  -- Assumes each element stores the UUID (or text identifier) of a lower-level summary.
+  SELECT DISTINCT
+    (elem)::uuid AS ref_id
   FROM summaries s2
+  CROSS JOIN LATERAL jsonb_array_elements_text(s2.source_ids) AS elem
   WHERE s2.conversation_id = $1
     AND s2.source_ids IS NOT NULL
 )
@@ -15,8 +19,10 @@ SELECT
   s.level,
   s.source_ids,
   s.created_at
-FROM summaries s
-WHERE s.conversation_id = $1
+FROM
+  summaries s
+WHERE
+  s.conversation_id = $1
   AND NOT EXISTS (
     SELECT 1 FROM referencing r WHERE r.ref_id = s.id
   )
