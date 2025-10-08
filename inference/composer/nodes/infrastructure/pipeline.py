@@ -170,7 +170,7 @@ class PipelineNode:
                                     type=MessageContentType.TEXT, text=final_content
                                 )
                             ],
-                            tool_calls=tool_calls,
+                            tool_calls=tool_calls if tool_calls else None,
                         ),
                         finish_reason="stop",
                     )
@@ -190,7 +190,7 @@ class PipelineNode:
                     for content_item in response.message.content:
                         if hasattr(content_item, "text") and content_item.text:
                             content_text += content_item.text
-
+                # Preserve tool calls: message_to_langchain_message now copies tool_calls
                 assistant_message = message_to_langchain_message(response.message)
             else:
                 # Fallback message
