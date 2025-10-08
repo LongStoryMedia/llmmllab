@@ -183,9 +183,11 @@ class IntentClassifierAgent:
 
         class _Intnts(BaseModel):
             intents: List[IntentAnalysis]
+
         # NOTE: Do NOT embed the raw JSON *schema* in the prompt (the model then echoes the schema
         # which breaks validation). Provide a clear natural language spec + minimal exemplar instead.
-        analysis_prompt = f"""
+        analysis_prompt = (
+            f"""
 You are an expert intent classification system. Analyze the user request and output ONLY JSON.
 
 Enumerations (must use exactly these values where applicable):
@@ -195,17 +197,17 @@ Enumerations (must use exactly these values where applicable):
     computational_requirements (array, choose relevant): high_memory, gpu_acceleration, parallel_processing, real_time_processing, large_data_handling, complex_reasoning, multi_modal_processing, external_api_calls, file_operations, database_operations
 
 Instructions:
-1. Decompose the request into logical sub-tasks ONLY if that materially helps execution; otherwise produce a single intent.
-2. Produce one object per sub-task in the intents array.
-3. domain_specificity, reusability_potential, confidence are floats 0.0–1.0.
+1. Decompose only if there are clearly separable sub-tasks; else one intent.
+2. Each element in intents must follow the enumerations exactly.
+3. domain_specificity, reusability_potential, confidence are floats 0.0-1.0.
 4. Omit response_format / technical_domain unless clearly implied.
-5. Output strictly valid JSON. No prose, no markdown.
+5. Output strictly valid JSON. No prose, no markdown, no comments.
 
 User Request: {user_query}
 
-Return JSON with this top-level structure ONLY:
-{"intents": [
-    {
+Return JSON ONLY in this structure (example values shown):
+{{"intents": [
+    {{
         "primary_intent": "research",
         "complexity_level": "MODERATE",
         "required_capabilities": ["web_search", "reasoning"],
@@ -213,24 +215,40 @@ Return JSON with this top-level structure ONLY:
         "domain_specificity": 0.4,
         "reusability_potential": 0.7,
         "confidence": 0.8
-    }
-]}
+    }}
+]}}
 
 If multiple intents are needed, include additional objects in the intents array.
 """
-
-        result = await run_pipeline(
-            messages=analysis_prompt,
-            pipeline=pipeline,
-            tools=None,
-            grammar=_Intnts,
         )
 
-        txt = extract_message_text(result.message) if result and result.message else ""
+        try:
+            result = await run_pipeline(
+                messages=analysis_prompt,
+                pipeline=pipeline,
+                tools=None,
+                grammar=_Intnts,
+            )
+        except Exception as e:  # pragma: no cover - pipeline invocation failure
+            composer_logger.logger.warning(
+                "Intent analysis pipeline execution failed, using fallback",
+                extra={"error": str(e)},
+            )
+            return [self._fallback_heuristic_analysis(user_query)]
 
-        intents = parse_structured_output(txt, _Intnts)
-        # Extract text from ChatResponse
-        return intents.intents
+        txt = extract_message_text(result.message) if result and result.message else ""
+        if not txt.strip():
+            return [self._fallback_heuristic_analysis(user_query)]
+
+        try:
+            intents = parse_structured_output(txt, _Intnts)
+            return intents.intents
+        except Exception as e:  # pragma: no cover - parsing failure
+            composer_logger.logger.warning(
+                "Structured intent parsing failed, using fallback",
+                extra={"error": str(e), "raw": txt[:300]},
+            )
+            return [self._fallback_heuristic_analysis(user_query)]
 
     def _augment_with_statistics(
         self, intent_analysis: IntentAnalysis, user_query: str
