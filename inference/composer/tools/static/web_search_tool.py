@@ -47,8 +47,16 @@ from typing import Optional, List, Dict, Any
 
 from langchain_core.tools import BaseTool
 
-# Optional langchain_classic import with fallback (moved from langchain_community in v1.0)
-from langchain_classic.utilities.searx_search import SearxSearchWrapper
+# Attempt import from langchain_classic (newer split) then fallback to langchain_community
+try:  # pragma: no cover - import resolution
+    from langchain_classic.utilities.searx_search import SearxSearchWrapper  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - environment variability
+    try:
+        from langchain_community.utilities.searx_search import SearxSearchWrapper  # type: ignore
+    except ModuleNotFoundError as e:  # pragma: no cover
+        raise ModuleNotFoundError(
+            "Neither langchain_classic nor langchain_community SearxSearchWrapper available. Install langchain-community >=0.2.0."
+        ) from e
 
 
 from models import SearchResult, SearchResultContent, WebSearchConfig

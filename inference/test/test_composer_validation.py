@@ -151,7 +151,7 @@ class TestComposerCoreImplementation:
         # Test correct signature - should not raise signature errors
         try:
             await create_initial_state(
-                user_id="test_user", messages=messages, workflow_type=WorkflowType.CHAT
+                user_id="test_user", workflow_type=WorkflowType.CHAT
             )
         except Exception as e:
             # We expect some errors due to missing dependencies

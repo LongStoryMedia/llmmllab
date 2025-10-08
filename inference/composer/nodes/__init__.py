@@ -4,7 +4,7 @@
 from .base_node import BaseNode
 
 # Infrastructure nodes (core workflow components)
-from .infrastructure import PipelineNode, ToolExecutorNode, CircuitProtectedNode
+from .infrastructure import PipelineNode, CircuitProtectedNode
 
 # Memory and knowledge nodes
 from .memory import MemorySearchNode, MemoryStorageNode
@@ -30,13 +30,24 @@ from .research import (
     ComprehensiveResearchExecutor,
 )
 
+from .tools import (
+    ToolExecutorNode,
+    ToolComposerNode,
+    StaticToolCollectionNode,
+    DynamicToolCreationNode,
+)
+
 # Note: TitleGenerationNode moved to agents directory
 
 __all__ = [
     # Infrastructure
     "PipelineNode",
-    "ToolExecutorNode",
     "CircuitProtectedNode",
+    # Tools
+    "ToolExecutorNode",
+    "ToolComposerNode",
+    "StaticToolCollectionNode",
+    "DynamicToolCreationNode",
     # Memory & Knowledge
     "MemorySearchNode",
     "MemoryStorageNode",

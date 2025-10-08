@@ -45,6 +45,10 @@ class SummaryStorage:
     async def get_summaries_for_conversation(
         self, conversation_id: int
     ) -> List[Summary]:
+        """
+        Retrieve all summaries for a given conversation, using cache if available.
+        This method excludes summaries that have been consolidated into higher-level summaries.
+        """
         # First try to get from cache
         cached_summaries = cache_storage.get_summaries_by_conversation_id_from_cache(
             conversation_id

@@ -95,7 +95,6 @@ async def compose_workflow(user_id: str) -> "CompiledStateGraph":
 async def create_initial_state(
     user_id: str,
     conversation_id: int,
-    messages: List[Message],
 ):
     """Create initial workflow state from user messages and configuration.
 
@@ -113,7 +112,7 @@ async def create_initial_state(
         No configuration objects should be passed as arguments (architectural rule).
     """
     service = get_composer_service()
-    return await service.create_initial_state(user_id, messages, conversation_id)
+    return await service.create_initial_state(user_id, conversation_id)
 
 
 async def execute_workflow(

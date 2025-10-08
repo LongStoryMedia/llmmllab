@@ -93,21 +93,29 @@ class NomicEmbedTextPipe(SimpleEmbeddingPipeline):
             raise
 
     def _get_gguf_path(self) -> str:
-        """Resolve GGUF path from model.details.gguf_file or model.model."""
-        # Prefer explicit gguf_file in model details (populated from .models.json)
-        if self.model and getattr(self.model, "details", None):
-            details = self.model.details
-            candidate = getattr(details, "gguf_file", None)
-            if candidate and os.path.exists(candidate):
-                return candidate
-        # Fallback to model.model path from config
-        if self.model and getattr(self.model, "model", None):
-            candidate = self.model.model
-            if candidate and os.path.exists(candidate):
-                return candidate
-        raise FileNotFoundError(
-            "Nomic GGUF file not found via details.gguf_file or model.model path"
-        )
+        """Get the GGUF file path for Nomic Embed Text v2."""
+        # Default root (matches .models.json entries). Can override via MODEL_PATH.
+        base_path = os.getenv("MODEL_PATH", "/models")
+        # Allow override for filename/relative path
+        model_filename_env = os.getenv("NOMIC_EMBED_MODEL_FILENAME")
+        if model_filename_env:
+            model_path_candidate = model_filename_env
+        else:
+            # Default relative path under base_path
+            model_path_candidate = "nomic-embed-text-v2-moe/nomic-embed-text-v2-moe.f16.gguf"
+
+        if model_path_candidate.startswith("/"):
+            gguf_path = model_path_candidate
+        else:
+            gguf_path = os.path.join(base_path, model_path_candidate)
+
+        if not os.path.isfile(gguf_path):
+            raise FileNotFoundError(
+                "Nomic embedding model missing: {} (MODEL_PATH='{}', NOMIC_EMBED_MODEL_FILENAME='{}').".format(
+                    gguf_path, base_path, model_filename_env or ""
+                )
+            )
+        return gguf_path
 
     def _init_text_splitter(self) -> RecursiveCharacterTextSplitter:
         """Initialize text splitter for handling long texts."""
@@ -192,9 +200,10 @@ class NomicEmbedTextPipe(SimpleEmbeddingPipeline):
                         chunk_emb = await self.llm.aembed_query(chunk)
                         chunk_embeddings.append(chunk_emb)
 
-                    # Average the chunk embeddings (lazy import numpy)
-                    import numpy as np  # type: ignore
-                    avg_embedding = np.mean(chunk_embeddings, axis=0).tolist()  # type: ignore
+                    # Average the chunk embeddings
+                    import numpy as np
+
+                    avg_embedding = np.mean(chunk_embeddings, axis=0).tolist()
                     embeddings.append(avg_embedding)
 
             return embeddings

@@ -126,8 +126,7 @@ class ComposerService:
     async def create_initial_state(
         self,
         user_id: str,
-        messages: List[Message],
-        conversation_id: int = 0,
+        conversation_id: int,
     ) -> WorkflowState:
         """Create initial workflow state from messages."""
 
@@ -137,6 +136,15 @@ class ComposerService:
         user_config = await storage.get_service(storage.user_config).get_user_config(
             user_id
         )
+
+        messages = await storage.get_service(storage.message).get_conversation_history(
+            conversation_id
+        )
+
+        summaries = await storage.get_service(
+            storage.summary
+        ).get_summaries_for_conversation(conversation_id)
+
         langchain_messages = convert_messages_to_langchain(messages)
 
         current_user_message = message_to_langchain_message(
@@ -164,6 +172,7 @@ class ComposerService:
         # Create the state with centralized user configuration
         state = WorkflowState(
             messages=langchain_messages,
+            summaries=summaries,
             current_user_message=current_user_message,
             user_id=user_id,
             user_config=user_config,

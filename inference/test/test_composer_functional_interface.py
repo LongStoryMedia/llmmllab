@@ -159,7 +159,7 @@ class TestComposerFunctionalInterface:
             user_id = mock_conversation_ctx.conversation.user_id
             messages = mock_conversation_ctx.messages
             result = await create_initial_state(
-                user_id=user_id, messages=messages, workflow_type=WorkflowType.CHAT
+                user_id=user_id, workflow_type=WorkflowType.CHAT
             )
 
             # Verify result is returned

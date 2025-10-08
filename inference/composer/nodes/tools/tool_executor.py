@@ -6,7 +6,6 @@ Wraps LangChain v1.0 ToolNode for reliable tool execution within workflows.
 from typing import List, cast
 
 from langchain_core.tools import BaseTool
-from langchain.agents import ToolNode
 
 from models import LangChainMessage
 from composer.graph.state import WorkflowState
@@ -17,7 +16,7 @@ class ToolExecutorNode:
     """
     Executes tool calls produced by the previous agent or tool node.
 
-    Uses LangChain v1.0 ToolNode for reliable tool execution with proper error handling.
+    Executes tool calls directly without relying on LangChain ToolNode (removed dependency).
     """
 
     def __init__(self):
@@ -49,25 +48,19 @@ class ToolExecutorNode:
             if not (hasattr(last_message, "tool_calls") and last_message.tool_calls):
                 return state
 
-            # Get tools to use - either from initialization or state
+            tools_to_use: List[BaseTool] = []
             if state.available_tools:
-                # Convert Tool objects to BaseTool for LangChain compatibility
-                tools_to_use: List[BaseTool] = []
                 for tool in state.available_tools:
                     tools_to_use.append(cast(BaseTool, tool))
 
-                # Create ToolNode dynamically if we don't have one
-                if tools_to_use and self.tool_node is None:
-                    self.tool_node = ToolNode(tools_to_use, handle_tool_errors=True)
-                    self.tools = {tool.name: tool for tool in tools_to_use}
-
-            if not tools_to_use or self.tool_node is None:
-                self.logger.warning(
-                    "No compatible tools available for execution",
+            if not tools_to_use:
+                msg = "No compatible tools available for execution"
+                self.logger.error(
+                    msg,
                     user_id=getattr(state, "user_id", "unknown"),
-                    state_tools=len(getattr(state, "required_tools", [])),
+                    state_tools=len(getattr(state, "available_tools", []) or []),
                 )
-                return state
+                raise RuntimeError(msg)
 
             self.logger.info(
                 "Executing tool calls",
@@ -77,15 +70,34 @@ class ToolExecutorNode:
                 available_tool_count=len(tools_to_use),
             )
 
-            # Execute tools using LangChain v1.0 ToolNode
-            tool_results = await self.tool_node.ainvoke({"messages": [last_message]})
+            # Direct execution: each tool call maps name->tool; pass arguments if present
+            name_to_tool = {t.name: t for t in tools_to_use}
+            for call in last_message.tool_calls:
+                tool_name = call.get("name")
+                args = call.get("args") or call.get("arguments") or {}
+                if tool_name not in name_to_tool:
+                    raise RuntimeError(f"Requested tool '{tool_name}' not available")
+                tool = name_to_tool[tool_name]
+                try:
+                    if hasattr(tool, "_arun"):
+                        result = await tool._arun(**args)  # type: ignore
+                    else:
+                        # Some community tools expose arun
+                        arun = getattr(tool, "arun", None)
+                        if arun:
+                            result = await arun(**args)
+                        else:
+                            # Fallback to sync _run executed in threadpool? For now invoke directly
+                            run_fn = getattr(tool, "_run", None) or getattr(tool, "run", None)
+                            if run_fn is None:
+                                raise RuntimeError(f"Tool '{tool_name}' has no runnable method")
+                            result = run_fn(**args)
+                except Exception as te:
+                    raise RuntimeError(f"Tool '{tool_name}' execution failed: {te}") from te
 
-            # Add tool results to state messages (v1.0 compatible)
-            if "messages" in tool_results:
-                state.messages.extend(tool_results["messages"])
-            elif hasattr(tool_results, "messages"):
-                # Handle alternative response format
-                state.messages.extend(tool_results.messages)
+                # Append tool result as assistant message for downstream consumption
+                tool_message = LangChainMessage(type="tool", content=str(result))
+                state.messages.append(tool_message)
 
             # Log tool execution completion
             self.logger.info(
@@ -103,13 +115,8 @@ class ToolExecutorNode:
                 "Tool execution failed",
                 user_id=getattr(state, "user_id", "unknown"),
                 error=str(e),
-                tools=list(self.tools.keys()),
             )
-
-            # Add error message to state
-            error_message = LangChainMessage(
-                type="ai", content=f"Tool execution failed: {str(e)}"
-            )
-            state.messages.append(error_message)
-
-            return state
+            # Record failure in execution metadata if available then raise
+            if hasattr(state, "execution_metadata"):
+                state.execution_metadata.add_error(f"Tool execution failed: {e}")
+            raise
