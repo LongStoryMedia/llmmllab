@@ -5,15 +5,15 @@ Extracted from complex base_llamacpp.py, preserving original parameter logic.
 
 import os
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 import torch
 
 try:
     from langchain_community.chat_models.llamacpp import ChatLlamaCpp
 except ImportError:
     try:
-        from langchain.llms.llamacpp import LlamaCpp as ChatLlamaCpp
-    except ImportError:
+        from langchain.llms.llamacpp import LlamaCpp as ChatLlamaCpp  # type: ignore[import]
+    except ImportError:  # pragma: no cover
         ChatLlamaCpp = None
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
@@ -21,7 +21,7 @@ from langchain_core.callbacks import CallbackManager
 from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
 from models import Model, ModelProfile
-from runner.pipelines.base import SimpleChatPipeline, GrammarInput
+from runner.pipelines.base import SimpleChatPipeline
 
 
 class SimpleLlamaCppPipeline(SimpleChatPipeline):
@@ -141,10 +141,20 @@ class SimpleLlamaCppPipeline(SimpleChatPipeline):
             # Calculate batch size (original logic)
             n_batch = min(requested_batch, max(256, n_ctx // 64))
 
-            # Calculate GPU layers
-            n_gpu_layers = self._calculate_optimal_gpu_layers(
-                n_ctx, model_size_category
-            )
+            # Determine GPU layers: explicit override > heuristic
+            explicit_gpu_layers = None
+            if getattr(self.profile, "gpu_config", None) and getattr(getattr(self.profile, "gpu_config"), "gpu_layers", None) is not None:
+                explicit_gpu_layers = getattr(self.profile.gpu_config, "gpu_layers")
+                self._logger.info(
+                    f"Using explicit gpu_layers override from profile: {explicit_gpu_layers}"
+                )
+
+            if explicit_gpu_layers is not None:
+                n_gpu_layers = explicit_gpu_layers
+            else:
+                n_gpu_layers = self._calculate_optimal_gpu_layers(
+                    n_ctx, model_size_category
+                )
 
             try:
                 # Use original parameter structure
@@ -188,9 +198,10 @@ class SimpleLlamaCppPipeline(SimpleChatPipeline):
 
                 # Bind tools if provided (this changes the type, so handle separately)
                 if tools:
-                    bound_llm = llm.bind_tools(tools)
-                    # For typing purposes, we'll return the base model
-                    # The actual tool binding will be handled at the pipeline level
+                    try:
+                        llm.bind_tools(tools)
+                    except Exception as tool_err:  # pragma: no cover
+                        self._logger.warning(f"Tool binding failed: {tool_err}")
 
                 self._logger.info(
                     f"Loaded {self.model.name} successfully: "

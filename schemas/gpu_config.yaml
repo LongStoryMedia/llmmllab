@@ -7,6 +7,10 @@ properties:
     type: boolean
     description: Force KV cache to CPU instead of GPU (saves VRAM)
     default: false
+  gpu_layers:
+    type: integer
+    description: Explicit number of model layers to place on GPU (-1 means all layers). If unset, heuristic allocation/backoff is used.
+    nullable: true
   main_gpu:
     type: integer
     minimum: -1

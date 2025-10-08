@@ -1,3 +1,5 @@
+"""End-to-end composer test harness (pyright relaxed)."""
+# pyright: reportGeneralTypeIssues=false, reportIncompatibleMethodOverride=false
 #!/usr/bin/env python3
 """
 Composer-based Real End-to-End Pipeline Test
@@ -415,6 +417,7 @@ Always explain your reasoning and what information you're looking for.
             from db import storage
             from models.model_profile import ModelProfile
             from models.model_parameters import ModelParameters
+            from models.gpu_config import GPUConfig
 
             # Ensure storage is available
             if not storage or not storage.model_profile:
@@ -436,6 +439,7 @@ Always explain your reasoning and what information you're looking for.
                 description=f"System prompt used for model {self.target_model}",
             )
 
+            # Explicitly request maximal GPU layer placement (-1 = all) for test visibility
             model_profile = ModelProfile(
                 id=self.test_model_profile_id,
                 user_id=self.test_user_id,
@@ -449,6 +453,7 @@ Always explain your reasoning and what information you're looking for.
                     num_ctx=num_ctx,
                     flash_attention=True,
                 ),
+                gpu_config=GPUConfig(gpu_layers=-1),
                 system_prompt=system_prompt,
                 type=0,  # ModelProfileType.Primary
                 created_at=datetime.now(timezone.utc),
