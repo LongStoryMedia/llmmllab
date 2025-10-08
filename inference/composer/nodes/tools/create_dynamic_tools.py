@@ -61,19 +61,41 @@ class DynamicToolCreationNode:
                     )
                     raw = extract_message_text(res.message) if res.message else ""
                     dt = DynamicTool(**json.loads(raw))
-                    
-                    # Convert DynamicTool to Tool for WorkflowState compatibility
-                    tool_data = dt.model_dump()
-                    # Remove DynamicTool-specific fields
-                    tool_fields_to_remove = ['id', 'user_id', 'embedding', 'code', 'function_name', 'created_at', 'updated_at']
-                    for field in tool_fields_to_remove:
-                        tool_data.pop(field, None)
-                    
-                    t = Tool(**tool_data)
-                    state.dynamic_tools.append(t)
+
+                    # Ensure user_id is set for persistence
+                    if not dt.user_id:
+                        dt.user_id = state.user_id  # type: ignore
+
+                    # Persist the full dynamic tool immediately (strict failure semantics)
+                    try:
+                        from db import storage  # pylint: disable=import-outside-toplevel
+
+                        tool_svc = storage.get_service(storage.dynamic_tool)
+                        await tool_svc.create_tool(dt)
+                    except Exception as pe:  # Persistence error -> hard fail path requirement
+                        self.logger.error(f"Dynamic tool persistence failed: {pe}")
+                        state.execution_metadata.add_error(
+                            f"Dynamic tool persistence failed: {pe}"
+                        )
+                        raise
+
+                    # Convert to generic Tool (agent only needs invocation metadata)
+                    minimized_fields = {
+                        "name": dt.name,
+                        "description": dt.description,
+                        "args_schema": dt.args_schema,
+                        "return_direct": dt.return_direct,
+                        "verbose": dt.verbose,
+                        "tags": dt.tags,
+                        "metadata": dt.metadata,
+                        "handle_tool_error": dt.handle_tool_error,
+                        "handle_validation_error": dt.handle_validation_error,
+                        "response_format": dt.response_format,
+                    }
+                    state.dynamic_tools.append(Tool(**minimized_fields))
 
                     self.logger.info(
-                        "Dynamic tool created and registered",
+                        "Dynamic tool created, persisted, and registered",
                         user_id=state.user_id,
                         tool_name=dt.name,
                     )

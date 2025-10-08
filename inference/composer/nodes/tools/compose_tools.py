@@ -1,6 +1,4 @@
-from typing import cast
-
-from models import DynamicTool
+"""Tool composition node (dynamic tools already persisted during creation)."""
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
 
@@ -49,24 +47,12 @@ class ToolComposerNode:
                     seen_names.add(tool_name)
                     deduplicated_tools.append(tool)
 
-            from db import storage  # pylint: disable=import-outside-toplevel
-
-            tool_svc = storage.get_service(storage.dynamic_tool)
-
+            # Dynamic tools have already been persisted at creation time; just include them
             for tool in state.dynamic_tools:
                 tool_name = getattr(tool, "name", str(tool))
                 if tool_name not in seen_names:
                     seen_names.add(tool_name)
                     deduplicated_tools.append(tool)
-                    # Safely persist only if required minimal fields exist
-                    try:
-                        await tool_svc.create_tool(cast(DynamicTool, tool))
-                    except AttributeError as ae:
-                        # Escalate: missing expected structure in generated tool
-                        msg = f"Dynamic tool persistence failed (structural issue): {ae}"
-                        self.logger.error(msg)
-                        state.execution_metadata.add_error(msg)
-                        raise
 
             state.available_tools = deduplicated_tools
 
