@@ -1,13 +1,21 @@
 """LangGraph workflow nodes organized by functional purpose."""
 
+# Base node for all workflow nodes
+from .base_node import BaseNode
+
 # Infrastructure nodes (core workflow components)
 from .infrastructure import PipelineNode, ToolExecutorNode, CircuitProtectedNode
 
-# Memory and knowledge nodes  
-from .memory import EmbeddingNode, MemoryNode
+# Memory and knowledge nodes
+from .memory import MemorySearchNode, MemoryStorageNode
 
-# Content processing nodes
-from .processing import SummarizationNode, WebSearchNode
+# Embedding nodes
+from .embeddings import EmbeddingGeneratorNode, SimilarityRankerNode
+
+# Web content retrieval nodes
+from .web import SingleSourceNode
+
+# Note: SummarizationNode removed - use dedicated nodes from .summary package
 
 # Routing nodes (workflow decision making)
 from .routing import IntentClassifierNode, WorkflowRouter
@@ -16,31 +24,35 @@ from .routing import IntentClassifierNode, WorkflowRouter
 from .agents import EngineeringAgentNode
 
 # Research nodes
-from .research import ResearchRouter, QuickResearchExecutor, ComprehensiveResearchExecutor
+from .research import (
+    ResearchRouter,
+    QuickResearchExecutor,
+    ComprehensiveResearchExecutor,
+)
 
-# Import TitleGenerationNode from processing
-from .processing import TitleGenerationNode
+# Note: TitleGenerationNode moved to agents directory
 
 __all__ = [
-    # Infrastructure 
+    # Infrastructure
     "PipelineNode",
-    "ToolExecutorNode", 
+    "ToolExecutorNode",
     "CircuitProtectedNode",
     # Memory & Knowledge
-    "EmbeddingNode",
-    "MemoryNode",
-    # Content Processing
-    "SummarizationNode",
-    "WebSearchNode",
+    "MemorySearchNode",
+    "MemoryStorageNode",
+    # Embeddings
+    "EmbeddingGeneratorNode",
+    "SimilarityRankerNode",
+    # Web Content Processing
+    "SingleSourceNode",
     # Routing
-    "IntentClassifierNode", 
+    "IntentClassifierNode",
     "WorkflowRouter",
     # Agents
     "EngineeringAgentNode",
     # Research
     "ResearchRouter",
-    "QuickResearchExecutor", 
+    "QuickResearchExecutor",
     "ComprehensiveResearchExecutor",
-    # Processing (includes TitleGenerationNode)
-    "TitleGenerationNode",
+    # Note: TitleGenerationNode moved to agents
 ]

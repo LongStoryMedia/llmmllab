@@ -33,8 +33,6 @@ properties:
     $ref: circuit_breaker_config.yaml
   gpu_config:
     $ref: gpu_config.yaml
-  composer_service:
-    $ref: composer_service_config.yaml
   log_level:
     type: string
     description: Log level

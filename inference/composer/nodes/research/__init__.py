@@ -7,6 +7,6 @@ from .router import ResearchRouter, QuickResearchExecutor, ComprehensiveResearch
 
 __all__ = [
     "ResearchRouter",
-    "QuickResearchExecutor", 
+    "QuickResearchExecutor",
     "ComprehensiveResearchExecutor",
 ]

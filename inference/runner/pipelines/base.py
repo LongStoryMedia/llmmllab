@@ -1,21 +1,18 @@
 """
-Enhanced pipeline architecture with full LangGraph integration and improved type safety.
-Removes all AgentExecutor dependencies and strengthens the abstraction layer.
+Simplified pipeline architecture without LangGraph - pure LLM interface.
+Clean, focused pipeline abstractions for direct model interactions.
 """
 
 from abc import ABC, abstractmethod
 import logging
 from typing import (
-    Generic,
     List,
     Any,
-    TypeVar,
     Optional,
-    Dict,
-    Protocol,
-    runtime_checkable,
     Union,
     Type,
+    TypeVar,
+    Generic,
 )
 from pathlib import Path
 
@@ -24,20 +21,12 @@ from datetime import datetime
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import BaseTool
-from langchain_core.messages import AIMessage
-from langchain_core.callbacks import CallbackManager, StreamingStdOutCallbackHandler
-
-from langgraph.graph.state import CompiledStateGraph
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolNode
 
 from models import (
     Message,
     ModelProfile,
     Model,
     ChatResponse,
-    LangGraphState,
     MessageRole,
     MessageContent,
     MessageContentType,
@@ -49,36 +38,31 @@ GrammarInput = Union[str, Path, Type[BaseModel], None]
 
 logger = logging.getLogger(__name__)
 
-# Define the return types clearly
-PipeType = TypeVar("PipeType", bound=PipeReturn)
+
+# Type variable for return types
+T = TypeVar("T")
+PipeReturn = TypeVar("PipeReturn")
 
 
-@runtime_checkable
-class LangGraphCapable(Protocol):
-    """Protocol for pipelines that support LangGraph workflows."""
-
-    def create_graph(
-        self,
-        tools: Optional[List[BaseTool]] = None,
-        grammar: Optional[GrammarInput] = None,
-    ) -> CompiledStateGraph:
-        """Create a LangGraph workflow for this pipeline."""
-        ...  # pylint: disable=unnecessary-ellipsis
-
-    async def agent_node(self, state: LangGraphState) -> Dict[str, Any]:
-        """Process agent node in the graph."""
-        ...  # pylint: disable=unnecessary-ellipsis
-
-
-class BasePipelineCore(ABC, Generic[PipeType]):
+class SimplePipelineCore(ABC, Generic[T]):
     """
-    Core pipeline functionality with mandatory LangGraph support.
-    Simplified to remove complex generics that were causing type issues.
+    Simplified pipeline core - pure LLM interface without orchestration.
+
+    Responsibilities:
+    - Direct model interaction
+    - Grammar-constrained generation
+    - Streaming support
+    - Type safety
+
+    Does NOT handle:
+    - Graph construction
+    - Complex orchestration
+    - Multi-step workflows
+    - State management beyond single calls
     """
 
     # Subclasses should override to restrict supported return types
     allowed_return_types: tuple[type, ...] = (str, ChatResponse, list)
-    # Optional subclass default; if provided, will be used when expected_return_type not passed
     default_return_type: Optional[type] = None
 
     def __init__(
@@ -90,14 +74,15 @@ class BasePipelineCore(ABC, Generic[PipeType]):
         """Initialize the pipeline with model definition and parameters."""
         self.model = model
         self.profile = profile
-        self.memory = MemorySaver()
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+
         # Resolve expected type and validate against allowed types
         self.expected_return_type: Optional[type] = (
             expected_return_type
             if expected_return_type is not None
             else self.default_return_type
         )
+
         if self.expected_return_type is not None and not self._allows_return_type(
             self.expected_return_type
         ):
@@ -108,8 +93,8 @@ class BasePipelineCore(ABC, Generic[PipeType]):
                 f"Allowed: {allowed}"
             )
 
-    # ---- Return-type enforcement helpers ----
     def _allows_return_type(self, t: type) -> bool:
+        """Check if pipeline supports this return type."""
         return t in self.allowed_return_types
 
     def allows_return_type(self, t: type) -> bool:
@@ -117,11 +102,7 @@ class BasePipelineCore(ABC, Generic[PipeType]):
         return self._allows_return_type(t)
 
     def validate_return_value(self, value: Any) -> None:
-        """Validate that a produced value matches the configured expected return type.
-
-        - If expected_return_type is set, enforce it strictly.
-        - If not set, ensure the value matches one of the allowed types.
-        """
+        """Validate that a produced value matches the configured expected return type."""
 
         def _is_embeddings(v: Any) -> bool:
             # A very light structural check: list of lists of floats (or empty)
@@ -163,280 +144,159 @@ class BasePipelineCore(ABC, Generic[PipeType]):
                 )
 
     @abstractmethod
-    def create_graph(
+    async def invoke(
         self,
+        messages: List[Message],
         tools: Optional[List[BaseTool]] = None,
         grammar: Optional[GrammarInput] = None,
-    ) -> CompiledStateGraph[LangGraphState, None, LangGraphState, LangGraphState]:
-        """Create LangGraph workflow. Must be implemented by subclasses.
+        **kwargs,
+    ) -> PipeReturn:
+        """
+        Direct pipeline invocation - single call interface.
 
         Args:
-            tools: Optional tools for the pipeline
-            grammar: Optional grammar constraint (GBNF string, file path, or Pydantic model class)
+            messages: Input messages
+            tools: Optional tools (implementation-specific handling)
+            grammar: Optional grammar constraint
+            **kwargs: Additional pipeline-specific parameters
+
+        Returns:
+            Pipeline result based on expected_return_type
         """
+
+    async def stream(
+        self,
+        messages: List[Message],
+        tools: Optional[List[BaseTool]] = None,
+        grammar: Optional[GrammarInput] = None,
+        **kwargs,
+    ) -> Any:
+        """
+        Stream pipeline execution (optional, not all pipelines support streaming).
+
+        Args:
+            messages: Input messages
+            tools: Optional tools
+            grammar: Optional grammar constraint
+            **kwargs: Additional parameters
+
+        Returns:
+            AsyncIterator of streaming chunks
+        """
+        # Default implementation falls back to invoke
+        result = await self.invoke(messages, tools, grammar, **kwargs)
+        yield result
 
     def cleanup(self) -> None:
         """Clean up pipeline resources."""
         try:
-            if hasattr(self, "memory"):
-                # Clean up memory checkpointer
-                self.memory = MemorySaver()
-
             # Subclasses should override to add specific cleanup
             self._cleanup_resources()
-
         except Exception as e:
             self.logger.error(f"Error during cleanup: {e}")
 
     def _cleanup_resources(self) -> None:
         """Subclass-specific cleanup. Override as needed."""
+        pass
 
-    # def get_common_args(self):
-    #     """Get common arguments for the pipeline."""
-    #     # Calculate optimal context size
-    #     size_map = {
-    #         "0.5b": 32768,
-    #         "1.5b": 32768,
-    #         "3b": 32768,
-    #         "7b": 32768,
-    #         "14b": 65536,
-    #         "30b": 131072,
-    #         "72b": 131072,
-    #     }
-    #     model_name = self.model.name.lower()
-    #     context_size = next(
-    #         (size for key, size in size_map.items() if key in model_name), 32768
-    #     )
-    # return context_size
-
-    def get_common_args(self):
+    def get_common_args(self) -> dict:
         """Return common arguments for this pipeline."""
         return {
             "model": self.model.model_dump() if self.model else None,
             "profile": self.profile.model_dump() if self.profile else None,
         }
 
-    # ---- Token-level post-processing hooks ----
-    def process_streaming_token(self, content: str) -> Optional["ChatResponse"]:
-        """
-        Process a single streaming token and return appropriately formatted ChatResponse.
 
-        This method should be overridden by pipelines that need custom token-level processing.
-        For example:
-        - GPT-OSS pipeline can track harmony channels and route to thinking/content fields
-        - Qwen3MoE pipeline can track <think> tags and route accordingly
-
-        Args:
-            content: The raw token/content from the LLM
-
-        Returns:
-            ChatResponse with content routed to appropriate fields, or None to suppress
-        """
-        # Default implementation: route all content to message content
-        # if not content.strip():
-        #     return None
-
-        message = Message(
-            role=MessageRole.ASSISTANT,
-            content=[MessageContent(type=MessageContentType.TEXT, text=content)],
-        )
-
-        return ChatResponse(done=False, message=message, created_at=datetime.now())
-
-    def reset_streaming_state(self) -> None:
-        """
-        Reset any internal state used for streaming token processing.
-        Called at the start of each streaming session.
-
-        Pipelines should override this to reset their token processing state.
-        """
-        pass
-
-    def finalize_streaming(self) -> Optional["ChatResponse"]:
-        """
-        Called when streaming is complete to allow final processing.
-
-        Returns:
-            Optional final ChatResponse with any remaining content or metadata
-        """
-        return None
-
-    def _create_streaming_response(self, content: str) -> ChatResponse:
-        """Create a streaming response with content."""
-        message = Message(
-            role=MessageRole.ASSISTANT,
-            content=[MessageContent(type=MessageContentType.TEXT, text=content)],
-        )
-        return ChatResponse(message=message, done=False)
-
-    def _create_thinking_response(self, thinking_content: str) -> ChatResponse:
-        """Create a response with thinking content."""
-        message = Message(
-            role=MessageRole.ASSISTANT,
-            thinking=thinking_content,
-            content=[],  # Empty content for thinking-only response
-        )
-        return ChatResponse(message=message, done=False)
-
-
-class ChatPipeline(BasePipelineCore, LangGraphCapable):
+class SimpleChatPipeline(SimplePipelineCore):
     """
-    Base class for chat pipelines with LangGraph support.
+    Simple chat pipeline - direct chat model interface.
     """
 
-    # Chat pipelines must return ChatResponse
+    # Chat pipelines return ChatResponse
     allowed_return_types: tuple[type, ...] = (ChatResponse,)
     default_return_type: Optional[type] = ChatResponse
 
     def __init__(self, model: Model, profile: ModelProfile):
         super().__init__(model, profile, expected_return_type=ChatResponse)
-        self.graph_cache: Dict[
-            str,
-            CompiledStateGraph[LangGraphState, None, LangGraphState, LangGraphState],
-        ] = {}
         self.llm: Optional[BaseChatModel] = None
 
     @abstractmethod
     def _initialize_llm(self) -> BaseChatModel:
         """Initialize the underlying LLM. Must be implemented by subclasses."""
 
-    def create_graph(
-        self, tools: Optional[List[BaseTool]] = None
-    ) -> CompiledStateGraph[LangGraphState, None, LangGraphState, LangGraphState]:
-        """Create LangGraph workflow with caching."""
-
-        # Create cache key
-        tool_signature = hash(tuple(tool.name for tool in (tools or [])))
-        cache_key = f"{self.model.id}_{tool_signature}"
-
-        if cache_key in self.graph_cache:
-            return self.graph_cache[cache_key]
-
-        # Initialize LLM if needed
-        if not self.llm:
-            self.llm = self._initialize_llm()
-
-        # Build graph
-        workflow = StateGraph(LangGraphState)
-        workflow.add_node("agent", self.agent_node)
-
-        if tools:
-            workflow.add_node("tools", ToolNode(tools))
-            workflow.add_conditional_edges(
-                "agent", tools_condition, {"tools": "tools", END: END}
-            )
-            workflow.add_edge("tools", "agent")
-        else:
-            workflow.add_edge("agent", END)
-
-        workflow.add_edge(START, "agent")
-
-        compiled_graph = workflow.compile(checkpointer=self.memory)
-        self.graph_cache[cache_key] = compiled_graph
-        return compiled_graph
-
-    async def agent_node(self, state: LangGraphState) -> Dict[str, Any]:
-        """Default agent node implementation."""
-
-        if not self.llm:
-            self.llm = self._initialize_llm()
-
-        # Check iteration limits
-        if state.current_iteration >= state.max_iterations:
-            return {
-                "messages": [AIMessage(content="Maximum iterations reached.")],
-                "current_iteration": state.current_iteration + 1,
-            }
-
-        if state.error_count >= 3:
-            return {
-                "messages": [AIMessage(content="Too many errors encountered.")],
-                "error_count": state.error_count + 1,
-            }
-
-        try:
-            messages = list(state.messages)
-            response = await self.llm.ainvoke(messages)  # type: ignore
-
-            return {
-                "messages": [response],
-                "current_iteration": state.current_iteration + 1,
-            }
-
-        except Exception as e:
-            self.logger.error(f"Agent node error: {e}")
-            return {
-                "messages": [AIMessage(content=f"Error: {str(e)[:100]}...")],
-                "error_count": state.error_count + 1,
-                "current_iteration": state.current_iteration + 1,
-            }
-
-    def as_chat_model(self) -> BaseChatModel:
-        """Get LangChain chat model interface."""
+    def get_llm(self) -> BaseChatModel:
+        """Get or initialize the LLM."""
         if not self.llm:
             self.llm = self._initialize_llm()
         return self.llm
 
+    async def invoke(
+        self,
+        messages: List[Message],
+        tools: Optional[List[BaseTool]] = None,
+        grammar: Optional[GrammarInput] = None,
+        **kwargs,
+    ) -> ChatResponse:
+        """Direct chat invocation."""
+        # Convert messages to LangChain format and invoke
+        # Implementation varies by pipeline type
+        raise NotImplementedError("Subclasses must implement invoke")
+
     def _cleanup_resources(self) -> None:
         """Clean up chat pipeline specific resources."""
         try:
-            # Clear graph cache
-            self.graph_cache.clear()
-
-            # Clean up LLM
             if self.llm:
                 if hasattr(self.llm, "cleanup"):
                     self.llm.cleanup()  # type: ignore
                 self.llm = None
-
         except Exception as e:
             self.logger.error(f"Error cleaning up chat pipeline resources: {e}")
 
 
-class EmbeddingPipeline(BasePipelineCore):
-    """Base class for embedding pipelines."""
+class SimpleEmbeddingPipeline(SimplePipelineCore):
+    """Simple embedding pipeline - direct embedding interface."""
 
-    # Embedding pipelines must return embeddings (list[list[float]])
+    # Embedding pipelines return embeddings (list[list[float]])
     allowed_return_types: tuple[type, ...] = (list,)
     default_return_type: Optional[type] = list
 
     def __init__(self, model: Model, profile: ModelProfile):
         super().__init__(model, profile, expected_return_type=list)
 
-    @abstractmethod
-    async def process_messages(
+    async def invoke(
         self,
         messages: List[Message],
         tools: Optional[List[BaseTool]] = None,
-        is_tool_generation: bool = False,
+        grammar: Optional[GrammarInput] = None,
+        **kwargs,
     ) -> List[List[float]]:
-        """Process messages and return embeddings."""
-        # To be implemented by subclasses
-        raise NotImplementedError("Embedding pipelines must implement process_messages")
-
-    @abstractmethod
-    def create_graph(
-        self, tools: Optional[List[BaseTool]] = None
-    ) -> CompiledStateGraph:
-        """Embeddings don't need graphs typically."""
-        raise NotImplementedError("Embedding pipelines don't use graphs")
+        """Generate embeddings for input messages."""
+        # Implementation varies by embedding model
+        raise NotImplementedError("Subclasses must implement invoke")
 
 
-class TextPipeline(BasePipelineCore):
-    """Base class for text-only pipelines (summarization, etc.)."""
+class SimpleTextPipeline(SimplePipelineCore):
+    """Base class for simple text completion pipelines."""
 
-    # Text pipelines must return plain text (str)
-    allowed_return_types: tuple[type, ...] = (str,)
-    default_return_type: Optional[type] = str
+    allowed_return_types = (str,)
+    default_return_type = str
 
     def __init__(self, model: Model, profile: ModelProfile):
         super().__init__(model, profile, expected_return_type=str)
 
-    @abstractmethod
-    def create_graph(
-        self, tools: Optional[List[BaseTool]] = None
-    ) -> CompiledStateGraph:
-        """Text pipelines may or may not need graphs."""
-        raise NotImplementedError(
-            "Text pipelines should implement create_graph if needed"
-        )
+    async def invoke(
+        self,
+        messages: List[Message],
+        tools: Optional[List[BaseTool]] = None,
+        grammar: Optional[GrammarInput] = None,
+        **kwargs,
+    ) -> str:
+        """Generate text response."""
+        # Implementation varies by text model
+        raise NotImplementedError("Subclasses must implement invoke")
+
+
+# Backwards compatibility aliases for old pipeline_factory
+BasePipelineCore = SimplePipelineCore
+EmbeddingPipeline = SimpleEmbeddingPipeline
+PipeReturn = Any

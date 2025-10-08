@@ -646,27 +646,19 @@ class PipelineFactory:
             self.logger.info(
                 f"Creating Qwen pipeline, prefer_langgraph={self.prefer_langgraph}"
             )
-            from .pipelines.txt2txt.qwen3moe import QwenLangGraphPipe
+            from .pipelines.txt2txt.qwen3moe import QwenSimplePipeline
 
-            self.logger.info("Attempting to create QwenLangGraphPipe v2")
+            self.logger.info("Attempting to create QwenSimplePipeline")
             try:
                 # Try with expected_return_type first (preferred)
-                pipeline = QwenLangGraphPipe(
+                pipeline = QwenSimplePipeline(
                     model,
                     profile,
-                    expected_return_type=expected_type,
-                    circuit_config=circuit_config,
                 )
             except TypeError as e:
-                if "unexpected keyword argument" in str(e):
-                    self.logger.warning(
-                        f"QwenLangGraphPipe doesn't accept expected_return_type or circuit_config, falling back: {e}"
-                    )
-                    # Fallback for older signature
-                    pipeline = QwenLangGraphPipe(model, profile)
-                else:
-                    raise
-            self.logger.info("Successfully created QwenLangGraphPipe v2")
+                self.logger.warning(f"QwenSimplePipeline creation failed: {e}")
+                raise
+            self.logger.info("Successfully created QwenSimplePipeline")
             return pipeline
 
         if model.pipeline == "Qwen25VLGGUFPipeline":
@@ -681,8 +673,6 @@ class PipelineFactory:
             return LlamaChatSummPipe(
                 model,
                 profile,
-                return_type=expected_type or ChatResponse,
-                circuit_config=circuit_config,
             )
 
         if model.pipeline == "OpenAiGptOssPipe":

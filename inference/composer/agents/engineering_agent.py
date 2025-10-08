@@ -1,196 +1,394 @@
 """
-Engineering Agent for dynamic tool generation and orchestration.
-Provides core business logic for tool specification, generation, and management.
+Engineering Agent for generating technical and engineering responses.
+Provides core business logic for technical analysis, code generation, and engineering guidance.
 """
 
-from typing import Optional, Any, List
+from typing import List, Optional, Dict, Any
 
-from models.intent_analysis import IntentAnalysis
-from models.dynamic_tool import DynamicTool
+from models import ModelProfileType, PipelinePriority, TechnicalDomain, ResponseFormat
 from composer.monitoring.logging import composer_logger
-from composer.tools.registry import ToolRegistry
-from utils.grammar_generator import get_grammar_for_model
+from composer.core.errors import NodeExecutionError
+from utils.model_profile import get_model_profile_for_task
+from utils.message import extract_message_text
+
+from runner import PipelineFactory
 
 
 class EngineeringAgent:
     """
-    Engineering Agent for dynamic tool generation with grammar-constrained structured output.
+    Engineering Agent for generating technical responses with grammar-constrained output.
 
-    Provides core business logic for tool generation, retrieval, and composition.
-    Implements the three-tier decision process: Use Existing -> Modify/Compose -> Create New.
+    Provides core business logic for technical analysis, code generation, system design,
+    and engineering guidance using configured engineering models. Supports tool integration
+    and grammar constraints for structured outputs.
     """
 
-    def __init__(self, pipeline_factory):
+    def __init__(self, pipeline_factory: PipelineFactory):
         """
         Initialize engineering agent.
 
         Args:
-            pipeline_factory: Factory for creating structured pipelines
+            pipeline_factory: Factory for creating engineering pipelines
         """
         self.pipeline_factory = pipeline_factory
-        self.tool_registry = ToolRegistry()
-        self.logger = composer_logger.logger
+        self.logger = composer_logger.logger.bind(component="EngineeringAgent")
 
-    async def orchestrate_tools(
-        self, intent: IntentAnalysis, user_id: str, user_query: str = ""
-    ) -> List[Any]:
+    async def generate_technical_response(
+        self,
+        query: str,
+        user_id: str,
+        domain: TechnicalDomain = TechnicalDomain.GENERAL_ENGINEERING,
+        response_format: ResponseFormat = ResponseFormat.DETAILED_ANALYSIS,
+        tools: Optional[List[Any]] = None,
+        grammar: Optional[Any] = None,
+    ) -> str:
         """
-        Orchestrate tool selection and generation based on intent analysis.
+        Generate technical engineering response using configured engineering model.
 
         Args:
-            intent: Intent analysis results
-            user_id: User identifier
-            user_query: Original user query for context
+            query: Technical query or problem statement
+            user_id: User identifier for model profile retrieval
+            domain: Technical domain specialization
+            response_format: Desired response format and structure
+            tools: Optional tools available to the agent for enhanced capabilities
+            grammar: Optional grammar constraints for structured output
 
         Returns:
-            List of available tools (static and dynamic)
+            Technical response content
+        """
+        # Lazy imports to avoid circular dependency
+        from runner import run_pipeline  # pylint: disable=import-outside-toplevel
+        from db import storage  # pylint: disable=import-outside-toplevel
+
+        try:
+            self.logger.info(
+                "Generating technical response",
+                user_id=user_id,
+                query_length=len(query),
+                domain=domain,
+                response_format=response_format,
+                has_tools=bool(tools),
+                has_grammar=bool(grammar),
+            )
+
+            uc = await storage.get_service(storage.user_config).get_user_config(user_id)
+            # Get engineering model profile
+            model_profile = await get_model_profile_for_task(
+                uc.model_profiles, ModelProfileType.Engineering, user_id
+            )
+            circuit_breaker = model_profile.circuit_breaker or uc.circuit_breaker
+
+            # Create engineering prompt based on domain and format
+            prompt = await self._create_engineering_prompt(
+                query=query, domain=domain, response_format=response_format
+            )
+
+            # Use standard pipeline factory context manager pattern with optional tools/grammar
+            with self.pipeline_factory.pipeline(
+                model_profile, str, PipelinePriority.NORMAL, circuit_breaker
+            ) as pipeline:
+                res = await run_pipeline(prompt, pipeline, tools=tools, grammar=grammar)
+                response = (
+                    extract_message_text(res.message) if res and res.message else ""
+                )
+
+                self.logger.info(
+                    "Technical response generated successfully",
+                    user_id=user_id,
+                    response_length=len(response),
+                    domain=domain,
+                )
+
+                return response
+
+        except Exception as e:
+            self.logger.error(
+                "Technical response generation failed",
+                user_id=user_id,
+                error=str(e),
+                domain=domain,
+            )
+            raise NodeExecutionError(
+                f"Technical response generation failed: {e}"
+            ) from e
+
+    async def analyze_system_architecture(
+        self,
+        system_description: str,
+        user_id: str,
+        analysis_focus: Optional[List[str]] = None,
+        tools: Optional[List[Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Analyze system architecture and provide recommendations.
+
+        Args:
+            system_description: Description of the system to analyze
+            user_id: User identifier
+            analysis_focus: Specific areas to focus analysis on
+            tools: Optional tools for enhanced analysis capabilities
+
+        Returns:
+            Structured analysis results
         """
         try:
             self.logger.info(
-                "Engineering agent processing tool requirements",
-                extra={
-                    "user_id": user_id,
-                    "primary_intent": intent.primary_intent,
-                    "required_capabilities": [
-                        str(cap) for cap in intent.required_capabilities
-                    ],
-                },
+                "Analyzing system architecture",
+                user_id=user_id,
+                description_length=len(system_description),
+                focus_areas=analysis_focus or [],
             )
 
-            # Get standard tools based on intent
-            tools = await self.tool_registry.get_tools_for_context(intent, user_id)
-
-            # Check if dynamic tool generation is needed based on capabilities
-            needs_dynamic_tools = any(
-                "DYNAMIC" in str(cap) or "SPECIALIZED" in str(cap)
-                for cap in intent.required_capabilities
+            # Create architecture analysis prompt
+            analysis_prompt = await self._create_architecture_analysis_prompt(
+                system_description, analysis_focus or []
             )
 
-            if needs_dynamic_tools:
-                dynamic_tool = await self.generate_or_retrieve_dynamic_tool(
-                    user_query, intent, user_id
-                )
-                if dynamic_tool:
-                    tools.append(dynamic_tool)
+            # Generate analysis using technical response method
+            analysis = await self.generate_technical_response(
+                query=analysis_prompt,
+                user_id=user_id,
+                domain=TechnicalDomain.SYSTEM_ARCHITECTURE,
+                response_format=ResponseFormat.DETAILED_ANALYSIS,
+                tools=tools,
+            )
+
+            # Structure the analysis results
+            structured_analysis = {
+                "analysis": analysis,
+                "system_description": system_description,
+                "focus_areas": analysis_focus or [],
+                "analysis_length": len(analysis),
+                "recommendations": await self._extract_recommendations(analysis),
+                "potential_issues": await self._extract_potential_issues(analysis),
+            }
 
             self.logger.info(
-                "Tool orchestration completed",
-                extra={"user_id": user_id, "tool_count": len(tools)},
+                "System architecture analysis completed",
+                user_id=user_id,
+                analysis_length=len(analysis),
             )
 
-            return tools
+            return structured_analysis
 
         except Exception as e:
             self.logger.error(
-                "Engineering agent tool orchestration failed",
-                extra={"user_id": user_id, "error": str(e)},
+                "System architecture analysis failed", user_id=user_id, error=str(e)
             )
-            return []
+            raise NodeExecutionError(f"System architecture analysis failed: {e}") from e
 
-    async def generate_or_retrieve_dynamic_tool(
-        self, user_query: str, intent: IntentAnalysis, user_id: str
-    ) -> Optional[Any]:
+    async def generate_code_solution(
+        self,
+        problem_statement: str,
+        user_id: str,
+        programming_language: Optional[str] = None,
+        constraints: Optional[List[str]] = None,
+        tools: Optional[List[Any]] = None,
+        grammar: Optional[Any] = None,
+    ) -> Dict[str, Any]:
         """
-        Generate or retrieve dynamic tool based on requirements.
+        Generate code solution for engineering problem.
 
         Args:
-            user_query: User's original query
-            intent: Intent analysis results
+            problem_statement: Description of the problem to solve
             user_id: User identifier
+            programming_language: Preferred programming language
+            constraints: Optional constraints for the solution
+            tools: Optional tools for enhanced code generation
+            grammar: Optional grammar for structured code output
 
         Returns:
-            Dynamic tool instance or None
+            Code solution with explanation and metadata
         """
         try:
-            # Create tool specification using Engineering Agent
-            tool_spec = await self.generate_tool_specification(
-                user_query, intent, user_id
+            self.logger.info(
+                "Generating code solution",
+                user_id=user_id,
+                problem_length=len(problem_statement),
+                language=programming_language,
+                has_constraints=bool(constraints),
             )
 
-            if not tool_spec:
-                return None
-
-            # Use ToolRegistry's public dynamic tool generation method
-            dynamic_tool = await self.tool_registry.generate_dynamic_tool(
-                tool_spec, user_id
+            # Create code generation prompt
+            code_prompt = await self._create_code_generation_prompt(
+                problem_statement, programming_language, constraints or []
             )
 
-            return dynamic_tool
+            # Generate code solution
+            solution = await self.generate_technical_response(
+                query=code_prompt,
+                user_id=user_id,
+                domain=TechnicalDomain.SOFTWARE_DEVELOPMENT,
+                response_format=ResponseFormat.CODE_SOLUTION,
+                tools=tools,
+                grammar=grammar,
+            )
+
+            # Structure the code solution
+            code_solution = {
+                "solution": solution,
+                "problem_statement": problem_statement,
+                "programming_language": programming_language,
+                "constraints": constraints or [],
+                "solution_length": len(solution),
+                "code_blocks": await self._extract_code_blocks(solution),
+                "explanation": await self._extract_explanation(solution),
+            }
+
+            self.logger.info(
+                "Code solution generated successfully",
+                user_id=user_id,
+                solution_length=len(solution),
+            )
+
+            return code_solution
 
         except Exception as e:
             self.logger.error(
-                "Dynamic tool generation failed",
-                extra={"user_id": user_id, "error": str(e)},
+                "Code solution generation failed", user_id=user_id, error=str(e)
             )
-            return None
+            raise NodeExecutionError(f"Code solution generation failed: {e}") from e
 
-    async def generate_tool_specification(
-        self, user_query: str, intent: IntentAnalysis, user_id: str
-    ) -> Optional[DynamicTool]:
-        """
-        Generate structured tool specification using Engineering Agent with grammar constraints.
+    async def _create_engineering_prompt(
+        self, query: str, domain: TechnicalDomain, response_format: ResponseFormat
+    ) -> str:
+        """Create engineering prompt based on domain and format."""
 
-        Args:
-            user_query: User's original query
-            intent: Intent analysis results
-            user_id: User identifier
+        domain_contexts = {
+            TechnicalDomain.SOFTWARE_DEVELOPMENT: "As a software engineering expert, focus on code quality, design patterns, and best practices.",
+            TechnicalDomain.SYSTEM_ARCHITECTURE: "As a system architecture expert, focus on scalability, reliability, and system design principles.",
+            TechnicalDomain.DATA_ENGINEERING: "As a data engineering expert, focus on data pipelines, processing efficiency, and data quality.",
+            TechnicalDomain.DEVOPS_INFRASTRUCTURE: "As a DevOps expert, focus on deployment, automation, monitoring, and infrastructure as code.",
+            TechnicalDomain.SECURITY_ENGINEERING: "As a security engineering expert, focus on threat modeling, secure design, and security best practices.",
+            TechnicalDomain.MACHINE_LEARNING: "As a machine learning engineering expert, focus on model design, data preprocessing, and ML pipelines.",
+            TechnicalDomain.GENERAL_ENGINEERING: "As a general engineering expert, provide comprehensive technical guidance.",
+        }
 
-        Returns:
-            Structured tool specification
-        """
-        try:
-            # Create grammar-constrained Engineering Agent pipeline
-            engineering_pipeline = (
-                await self.pipeline_factory.create_structured_pipeline(
-                    prompt_template=self._get_engineering_agent_prompt(),
-                    output_schema=DynamicTool,
-                    grammar=get_grammar_for_model(DynamicTool),
-                    enable_fallback=True,
-                )
+        format_instructions = {
+            ResponseFormat.DETAILED_ANALYSIS: "Provide a detailed technical analysis with thorough explanations and context.",
+            ResponseFormat.CODE_SOLUTION: "Provide working code with clear comments and explanations.",
+            ResponseFormat.STEP_BY_STEP_GUIDE: "Provide a clear step-by-step guide with actionable instructions.",
+            ResponseFormat.BEST_PRACTICES: "Focus on best practices, patterns, and recommended approaches.",
+            ResponseFormat.TROUBLESHOOTING: "Provide systematic troubleshooting steps and diagnostic approaches.",
+        }
+
+        domain_context = domain_contexts.get(
+            domain, domain_contexts[TechnicalDomain.GENERAL_ENGINEERING]
+        )
+        format_instruction = format_instructions.get(
+            response_format, format_instructions[ResponseFormat.DETAILED_ANALYSIS]
+        )
+
+        prompt = f"""{domain_context}
+
+{format_instruction}
+
+Technical Query:
+{query}
+
+Please provide a comprehensive technical response addressing the query above. Include relevant technical details, examples where appropriate, and practical guidance."""
+
+        return prompt
+
+    async def _create_architecture_analysis_prompt(
+        self, system_description: str, focus_areas: List[str]
+    ) -> str:
+        """Create system architecture analysis prompt."""
+
+        focus_text = ""
+        if focus_areas:
+            focus_text = f" Pay special attention to: {', '.join(focus_areas)}."
+
+        prompt = f"""Please analyze the following system architecture and provide detailed technical insights.{focus_text}
+
+System Description:
+{system_description}
+
+Please provide:
+1. Architectural strengths and weaknesses
+2. Scalability considerations
+3. Security implications
+4. Performance characteristics
+5. Maintenance and operational concerns
+6. Recommended improvements
+
+Analysis:"""
+
+        return prompt
+
+    async def _create_code_generation_prompt(
+        self, problem_statement: str, language: Optional[str], constraints: List[str]
+    ) -> str:
+        """Create code generation prompt."""
+
+        language_text = f" in {language}" if language else ""
+        constraints_text = ""
+        if constraints:
+            constraints_text = "\n\nConstraints:\n" + "\n".join(
+                f"- {constraint}" for constraint in constraints
             )
 
-            # Generate structured tool specification
-            tool_spec = await engineering_pipeline.execute(
-                {
-                    "user_query": user_query,
-                    "primary_intent": intent.primary_intent,
-                    "required_capabilities": [
-                        str(cap) for cap in intent.required_capabilities
-                    ],
-                    "complexity": intent.complexity_level.value,
-                }
-            )
+        prompt = f"""Generate a complete code solution{language_text} for the following problem:
 
-            return tool_spec
+Problem Statement:
+{problem_statement}{constraints_text}
 
-        except Exception as e:
-            self.logger.error(
-                "Tool spec generation failed",
-                extra={"user_id": user_id, "error": str(e)},
-            )
-            return None
+Please provide:
+1. Working code with clear comments
+2. Explanation of the approach
+3. Time and space complexity analysis (if applicable)
+4. Usage examples
+5. Potential optimizations or alternatives
 
-    def _get_engineering_agent_prompt(self) -> str:
-        """Get the Engineering Agent prompt template."""
-        return """As an Engineering Agent, analyze the user's request and generate a tool specification.
+Code Solution:"""
 
-User Query: {user_query}
-Primary Intent: {primary_intent}
-Required Capabilities: {required_capabilities}
-Complexity Level: {complexity}
+        return prompt
 
-Create a tool specification that:
-1. Defines the tool's purpose and functionality
-2. Specifies input parameters and their types
-3. Describes the expected output format
-4. Includes implementation approach (API calls, calculations, etc.)
-5. Considers security and validation requirements
+    async def _extract_recommendations(self, analysis: str) -> List[str]:
+        """Extract recommendations from analysis text."""
+        # Simple extraction - look for recommendation patterns
+        lines = analysis.split("\n")
+        recommendations = []
 
-Tool Requirements:
-- Must be composable using LangChain LCEL patterns
-- Should have clear input/output schema
-- Must include proper error handling
-- Should be efficient and focused on single responsibility
+        for line in lines:
+            line = line.strip()
+            if any(
+                keyword in line.lower()
+                for keyword in ["recommend", "suggest", "should", "consider"]
+            ):
+                if len(line) > 10 and len(line) < 200:
+                    recommendations.append(line)
 
-Generate a structured tool specification that can be compiled into a working tool.
-Respond with valid JSON matching the DynamicTool schema."""
+        return recommendations[:5]  # Limit to top 5
+
+    async def _extract_potential_issues(self, analysis: str) -> List[str]:
+        """Extract potential issues from analysis text."""
+        lines = analysis.split("\n")
+        issues = []
+
+        for line in lines:
+            line = line.strip()
+            if any(
+                keyword in line.lower()
+                for keyword in ["issue", "problem", "concern", "weakness", "limitation"]
+            ):
+                if len(line) > 10 and len(line) < 200:
+                    issues.append(line)
+
+        return issues[:5]  # Limit to top 5
+
+    async def _extract_code_blocks(self, solution: str) -> List[str]:
+        """Extract code blocks from solution text."""
+        # Simple extraction - look for code block patterns
+        import re
+
+        code_blocks = re.findall(r"```[\w]*\n(.*?)\n```", solution, re.DOTALL)
+        return code_blocks
+
+    async def _extract_explanation(self, solution: str) -> str:
+        """Extract explanation text from solution (non-code parts)."""
+        # Remove code blocks and return remaining text
+        import re
+
+        explanation = re.sub(r"```[\w]*\n.*?\n```", "", solution, flags=re.DOTALL)
+        return explanation.strip()

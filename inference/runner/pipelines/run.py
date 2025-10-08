@@ -25,7 +25,6 @@ from models import (
     MessageContentType,
     EventStreamConfig,
 )
-from composer.utils.langgraph import build_langgraph_state
 from utils.grammar_generator import (
     get_grammar_for_model,
     parse_structured_output,
@@ -532,7 +531,32 @@ async def stream_pipeline(
             yield create_streaming_chunk("No valid messages to process", done=True)
             return
 
-        # Create graph
+        # Check if this is a simple pipeline without create_graph method
+        if not hasattr(pipeline, "create_graph"):
+            logger.info(
+                f"Using direct invocation for simple pipeline: {type(pipeline).__name__}"
+            )
+            try:
+                # For simple pipelines, use direct invocation
+                result = await pipeline.invoke(
+                    normalized_messages, tools=tools, grammar=grammar
+                )
+
+                # Convert result to streaming format
+                if hasattr(result, "message") and result.message:
+                    text = extract_message_text(result.message)
+                    yield create_streaming_chunk(text, done=True)
+                else:
+                    yield create_streaming_chunk(str(result), done=True)
+                return
+            except Exception as e:
+                logger.error(f"Error invoking simple pipeline: {e}")
+                yield create_streaming_chunk(
+                    f"Error executing pipeline: {str(e)}", done=True
+                )
+                return
+
+        # Create graph for full pipelines
         try:
             graph = pipeline.create_graph(tools, grammar=grammar)
         except Exception as e:
@@ -561,6 +585,10 @@ async def stream_pipeline(
             user_input = extract_message_text(latest_message)
 
         # Create initial state via builder to decouple from generated model
+        from composer.utils.state import (
+            build_langgraph_state,
+        )  # Lazy import to avoid circular dependency
+
         initial_state = build_langgraph_state(lc_messages, user_input)
 
         # Initialize processor

@@ -16,7 +16,6 @@ These settings are managed at the infrastructure level and cannot be modified by
 - **Circuit Breaker Settings**: Failure thresholds, recovery timeouts
 
 **Configuration Files:**
-- `schemas/composer_service_config.yaml` - Composer service configuration
 - `schemas/server_config.yaml` - Server configuration  
 - `schemas/database_config.yaml` - Database configuration
 - `inference/composer/config.py` - Environment variable loading

@@ -7,7 +7,7 @@ properties:
     type: string
     description: User ID
   summarization:
-    $ref: summarization_config.yaml
+    $ref: summarization_config.yamls
   memory:
     $ref: memory_config.yaml
   web_search:
@@ -30,6 +30,8 @@ properties:
     $ref: tool_config.yaml
   event_stream:
     $ref: event_stream_config.yaml
+  context_window:
+    $ref: context_window_config.yaml
 required:
   - user_id
   - summarization
@@ -43,3 +45,4 @@ required:
   - gpu_config
   - workflow
   - tool
+  - context_window

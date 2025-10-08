@@ -25,7 +25,11 @@ from models import (
     ToolAnalysisResponse,
     ToolGenerationResult,
 )
-from .rag_tools import WebSearchTool, MemoryRetrievalTool, SummarizationTool
+from .rag_tools import (
+    ComposerWebSearchTool as WebSearchTool,
+    ComposerMemoryTool as MemoryRetrievalTool,
+    ComposerSummarizationTool as SummarizationTool,
+)
 from .smart_analysis import SmartIntentAnalyzer, ComplexityLevel
 from .deduplication import AdvancedToolDeduplicator
 from runner.pipeline_lifecycle import managed_pipeline_execution
@@ -184,10 +188,12 @@ class StandardToolProvider:
     @staticmethod
     def get_standard_tools(conversation_ctx: ConversationContext) -> List[BaseTool]:
         """Get the standard set of RAG tools."""
+        # Temporarily disabled due to dependency injection requirements
+        # TODO: Implement proper dependency injection for ComposerWebSearchTool, ComposerMemoryTool, ComposerSummarizationTool
         tools: List[BaseTool] = [
-            MemoryRetrievalTool(conversation_ctx=conversation_ctx),
-            WebSearchTool(conversation_ctx=conversation_ctx),
-            SummarizationTool(conversation_ctx=conversation_ctx),
+            # MemoryRetrievalTool(memory_store=..., conversation_ctx=conversation_ctx),
+            # WebSearchTool(search_provider=..., conversation_ctx=conversation_ctx),
+            # SummarizationTool(pipeline=..., conversation_ctx=conversation_ctx),
         ]
         return tools
 

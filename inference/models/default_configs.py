@@ -17,6 +17,12 @@ from .gpu_config import GPUConfig
 from .user_config import UserConfig
 from .workflow_config import WorkflowConfig
 from .tool_config import ToolConfig
+from .context_window_config import (
+    ContextWindowConfig,
+    WindowConfig,
+    Prioritization,
+    Optimization,
+)
 
 from .default_model_profiles import DEFAULT_MODEL_PROFILE_CONFIG
 
@@ -149,6 +155,32 @@ DEFAULT_TOOL_CONFIG = ToolConfig(
     search_top_k=10,
 )
 
+DEFAULT_CONTEXT_WINDOW_CONFIG = ContextWindowConfig(
+    enabled=True,
+    window_config=WindowConfig(
+        max_tokens=8192, reserve_tokens=1024, overflow_strategy="truncate_oldest"
+    ),
+    prioritization=Prioritization(
+        priority_order=[
+            "recent_messages",
+            "retrieved_memories",
+            "summaries",
+            "search_results",
+            "tool_results",
+        ],
+        recent_messages_count=5,
+        memory_allocation=0.3,
+        summary_allocation=0.2,
+    ),
+    optimization=Optimization(
+        enable_compression=True,
+        deduplication=True,
+        smart_truncation=True,
+        cache_optimized_context=True,
+        token_counting_method="approximate",
+    ),
+)
+
 
 # Function to create a default user config
 def create_default_user_config(user_id: str) -> UserConfig:
@@ -166,4 +198,5 @@ def create_default_user_config(user_id: str) -> UserConfig:
         gpu_config=DEFAULT_GPU_CONFIG,
         workflow=DEFAULT_WORKFLOW_CONFIG,
         tool=DEFAULT_TOOL_CONFIG,
+        context_window=DEFAULT_CONTEXT_WINDOW_CONFIG,
     )

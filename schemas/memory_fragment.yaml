@@ -12,7 +12,13 @@ properties:
   content:
     type: string
     description: Content of the message
+  embeddings:
+    type: array
+    items:
+      type: array
+      items:
+        type: number
+    description: Embedding vector representing the memory
 required:
   - id
   - role
-  - content

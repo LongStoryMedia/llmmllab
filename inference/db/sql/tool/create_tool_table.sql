@@ -7,24 +7,20 @@ CREATE TABLE IF NOT EXISTS dynamic_tools(
     code text NOT NULL,
     function_name text NOT NULL,
     embedding vector(768), -- Add embedding vector for semantic search (768 dimensions)
-    
     -- LangChain BaseTool interface fields
     args_schema jsonb, -- JSON schema dict, Pydantic model reference, or null
-    return_direct boolean DEFAULT false,
-    verbose boolean DEFAULT false,
+    return_direct boolean DEFAULT FALSE,
+    verbose boolean DEFAULT FALSE,
     tags text[], -- Array of tag strings
     metadata jsonb DEFAULT '{}', -- Flexible metadata object
     handle_tool_error text, -- Can store boolean, string, or null (serialized)
     handle_validation_error text, -- Can store boolean, string, or null (serialized)
     response_format text DEFAULT 'content' CHECK (response_format IN ('content', 'content_and_artifact')),
-    
     -- Legacy field (kept for backward compatibility)
     parameters jsonb,
-    
     -- Timestamps
     created_at timestamp with time zone DEFAULT NOW(),
     updated_at timestamp with time zone DEFAULT NOW(),
-    
     CONSTRAINT fk_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 

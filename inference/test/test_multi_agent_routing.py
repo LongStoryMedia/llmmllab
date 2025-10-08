@@ -9,15 +9,15 @@ from enum import Enum
 
 # Mock the enums and models to test the routing logic without circular imports
 class RequiredCapability(str, Enum):
-    DATA_PROCESSING = 'data_processing'
-    INFORMATION_RETRIEVAL = 'information_retrieval'
-    WEB_SEARCH = 'web_search'
-    SUMMARIZATION = 'summarization'
-    REASONING = 'reasoning'
-    DATABASE_ACCESS = 'database_access'
-    API_INTEGRATION = 'api_integration'
-    TEXT_PROCESSING = 'text_processing'
-    GENERAL_KNOWLEDGE = 'general_knowledge'
+    DATA_PROCESSING = "data_processing"
+    INFORMATION_RETRIEVAL = "information_retrieval"
+    WEB_SEARCH = "web_search"
+    SUMMARIZATION = "summarization"
+    REASONING = "reasoning"
+    DATABASE_ACCESS = "database_access"
+    API_INTEGRATION = "api_integration"
+    TEXT_PROCESSING = "text_processing"
+    GENERAL_KNOWLEDGE = "general_knowledge"
 
 
 class AgentSpecialization(str, Enum):
@@ -45,9 +45,9 @@ def route_to_specialists_logic(state):
     if not state.intent_classification:
         # Default to content generation if no intent analysis available
         return AgentSpecialization.CONTENT_GENERATION.value
-    
+
     intent = state.intent_classification
-    
+
     # Route based on required capabilities from intent analysis
     analysis_capabilities = {
         RequiredCapability.DATA_PROCESSING,
@@ -58,20 +58,26 @@ def route_to_specialists_logic(state):
         RequiredCapability.DATABASE_ACCESS,
         RequiredCapability.API_INTEGRATION,
     }
-    
+
     # Check if any required capabilities match analysis specialization
     if any(cap in analysis_capabilities for cap in intent.required_capabilities):
         return AgentSpecialization.ANALYSIS.value
-    
+
     # Route based on primary intent patterns
     analysis_intents = {
-        "research", "analyze", "investigate", "summarize", 
-        "compare", "evaluate", "calculate", "process"
+        "research",
+        "analyze",
+        "investigate",
+        "summarize",
+        "compare",
+        "evaluate",
+        "calculate",
+        "process",
     }
-    
+
     if any(keyword in intent.primary_intent.lower() for keyword in analysis_intents):
         return AgentSpecialization.ANALYSIS.value
-    
+
     # Default to content generation for creative, general, and conversational tasks
     return AgentSpecialization.CONTENT_GENERATION.value
 
@@ -89,7 +95,7 @@ class TestMultiAgentRouting(unittest.TestCase):
         # Test data processing capability
         state = self.create_test_state(
             "Process this dataset",
-            [RequiredCapability.DATA_PROCESSING, RequiredCapability.REASONING]
+            [RequiredCapability.DATA_PROCESSING, RequiredCapability.REASONING],
         )
 
         result = route_to_specialists_logic(state)
@@ -99,7 +105,7 @@ class TestMultiAgentRouting(unittest.TestCase):
         """Test routing to content generation agent for creative tasks."""
         state = self.create_test_state(
             "Write a creative story",
-            [RequiredCapability.TEXT_PROCESSING, RequiredCapability.GENERAL_KNOWLEDGE]
+            [RequiredCapability.TEXT_PROCESSING, RequiredCapability.GENERAL_KNOWLEDGE],
         )
 
         result = route_to_specialists_logic(state)
@@ -109,7 +115,7 @@ class TestMultiAgentRouting(unittest.TestCase):
         """Test routing to analysis agent based on primary intent keywords."""
         test_cases = [
             "research the latest AI developments",
-            "analyze this data pattern", 
+            "analyze this data pattern",
             "investigate the root cause",
             "summarize the key findings",
             "compare these two approaches",
@@ -117,8 +123,14 @@ class TestMultiAgentRouting(unittest.TestCase):
         ]
 
         analysis_intents = {
-            "research", "analyze", "investigate", "summarize", 
-            "compare", "evaluate", "calculate", "process"
+            "research",
+            "analyze",
+            "investigate",
+            "summarize",
+            "compare",
+            "evaluate",
+            "calculate",
+            "process",
         }
 
         for intent in test_cases:
@@ -127,7 +139,7 @@ class TestMultiAgentRouting(unittest.TestCase):
             )
             self.assertTrue(
                 should_route_to_analysis,
-                f"Intent '{intent}' should route to analysis agent"
+                f"Intent '{intent}' should route to analysis agent",
             )
 
     def test_content_generation_routing_by_intent_patterns(self):
@@ -141,8 +153,14 @@ class TestMultiAgentRouting(unittest.TestCase):
         ]
 
         analysis_intents = {
-            "research", "analyze", "investigate", "summarize", 
-            "compare", "evaluate", "calculate", "process"
+            "research",
+            "analyze",
+            "investigate",
+            "summarize",
+            "compare",
+            "evaluate",
+            "calculate",
+            "process",
         }
 
         for intent in test_cases:
@@ -151,20 +169,22 @@ class TestMultiAgentRouting(unittest.TestCase):
             )
             self.assertFalse(
                 should_route_to_analysis,
-                f"Intent '{intent}' should route to content generation agent"
+                f"Intent '{intent}' should route to content generation agent",
             )
 
     def test_no_intent_classification_fallback(self):
         """Test fallback behavior when no intent classification is available."""
         state = MockWorkflowState()  # No intent_classification
-        
+
         result = route_to_specialists_logic(state)
         self.assertEqual(result, AgentSpecialization.CONTENT_GENERATION.value)
 
     def test_enum_values_are_consistent(self):
         """Test that enum values match the expected node names."""
         self.assertEqual(AgentSpecialization.ANALYSIS.value, "analysis_agent")
-        self.assertEqual(AgentSpecialization.CONTENT_GENERATION.value, "content_generation_agent")
+        self.assertEqual(
+            AgentSpecialization.CONTENT_GENERATION.value, "content_generation_agent"
+        )
 
 
 if __name__ == "__main__":

@@ -15,13 +15,23 @@ from typing import Dict, Any, Optional, List
 
 from langgraph.graph.state import CompiledStateGraph
 
-from models import Message, LangChainMessage
-from models.workflow_type import WorkflowType
+from models import (
+    Message,
+    LangChainMessage,
+    MessageRole,
+    WorkflowType,
+    MessageContent,
+    MessageContentType,
+)
 
-from composer.graph.state import WorkflowState
+from composer.graph.state import WorkflowState, ExecutionMetadata
 from composer.graph.builder import GraphBuilder
 from composer.graph.cache import WorkflowCache
 from composer.monitoring.logging import composer_logger
+from composer.utils.conversion import (
+    convert_messages_to_langchain,
+    message_to_langchain_message,
+)
 
 
 class ComposerService:
@@ -51,7 +61,6 @@ class ComposerService:
     async def compose_workflow(
         self,
         user_id: str,
-        workflow_type: Optional["WorkflowType"] = None,
     ) -> CompiledStateGraph:
         """
         Construct or retrieve a master workflow with intelligent routing.
@@ -93,9 +102,7 @@ class ComposerService:
 
             # 3. Build master workflow with intelligent routing or explicit type
             # Intent analysis and tool selection happen inside the graph now
-            builder_fn = lambda: self.graph_builder.build_master_workflow(
-                user_id, workflow_type
-            )
+            builder_fn = lambda: self.graph_builder.build_workflow(user_id)
 
             if user_cache:
                 workflow = await user_cache.get_or_create(cache_key, builder_fn)
@@ -116,12 +123,11 @@ class ComposerService:
             )
             raise
 
-    # Intent analysis now handled within the master workflow graph
-
     async def create_initial_state(
         self,
         user_id: str,
         messages: List[Message],
+        conversation_id: int = 0,
     ) -> WorkflowState:
         """Create initial workflow state from messages."""
 
@@ -131,20 +137,38 @@ class ComposerService:
         user_config = await storage.get_service(storage.user_config).get_user_config(
             user_id
         )
+        langchain_messages = convert_messages_to_langchain(messages)
 
-        # Use centralized utility to build workflow state
-        # Import here to avoid circular dependency (utils imports WorkflowState)
-        from composer.utils.langgraph import (
-            build_workflow_state,
-        )  # pylint: disable=import-outside-toplevel
+        current_user_message = message_to_langchain_message(
+            next(
+                (msg for msg in reversed(messages) if msg.role == MessageRole.USER),
+                Message(
+                    content=[
+                        MessageContent(type=MessageContentType.TEXT, text="", url=None)
+                    ],
+                    role=MessageRole.USER,
+                ),
+            )
+        )
 
-        state = build_workflow_state(
+        execution_metadata = ExecutionMetadata(
+            created_at=asyncio.get_event_loop().time(),
+            composer_version="0.1.0",
+            streaming_enabled=(
+                getattr(user_config.workflow, "enable_streaming", True)
+                if hasattr(user_config, "workflow")
+                else True
+            ),
+        )
+
+        # Create the state with centralized user configuration
+        state = WorkflowState(
+            messages=langchain_messages,
+            current_user_message=current_user_message,
             user_id=user_id,
-            messages=messages,
             user_config=user_config,
-            additional_context={
-                "service_version": "composer-0.1.0",
-            },
+            conversation_id=conversation_id,
+            execution_metadata=execution_metadata,
         )
 
         return state
@@ -162,9 +186,7 @@ class ComposerService:
         """
         try:
             # Check if streaming is enabled (use user's workflow preference from state metadata)
-            streaming_enabled = initial_state.execution_metadata.get(
-                "streaming_enabled", True  # Default to True if not specified
-            )
+            streaming_enabled = initial_state.execution_metadata.streaming_enabled
             if stream and streaming_enabled:
                 # Stream execution events
                 async for event in workflow.astream_events(

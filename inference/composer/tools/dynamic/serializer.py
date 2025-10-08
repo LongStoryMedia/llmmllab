@@ -6,8 +6,9 @@ Implements abstraction through LCEL RunnableSequence composition.
 from typing import Any, Callable, Dict, List, Optional
 from langchain_core.tools import BaseTool
 
-from ...monitoring.logging import composer_logger
-from ..registry import ToolRegistry
+from models import Tool
+from composer.monitoring.logging import composer_logger
+from composer.tools.registry import ToolRegistry
 
 
 class RunnableToolComposer:

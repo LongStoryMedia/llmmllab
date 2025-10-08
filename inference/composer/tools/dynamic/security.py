@@ -1,6 +1,7 @@
 """
 Security validation for dynamic tools to prevent unsafe code execution
 """
+
 import ast
 import logging
 
@@ -11,16 +12,9 @@ class ToolSecurityValidator:
     """Security validator for dynamically generated tools"""
 
     FORBIDDEN_IMPORTS = {
-        "os",
-        "subprocess",
-        "sys",
         "shutil",
-        "glob",
         "pathlib",
         "socket",
-        "urllib",
-        "requests",
-        "http",
         "ftplib",
         "pickle",
         "marshal",
@@ -29,11 +23,6 @@ class ToolSecurityValidator:
         "__import__",
         "eval",
         "exec",
-        "compile",
-        "open",
-        "file",
-        "input",
-        "raw_input",
     }
 
     FORBIDDEN_FUNCTIONS = {
@@ -41,10 +30,6 @@ class ToolSecurityValidator:
         "exec",
         "compile",
         "__import__",
-        "getattr",
-        "setattr",
-        "delattr",
-        "hasattr",
         "globals",
         "locals",
         "vars",

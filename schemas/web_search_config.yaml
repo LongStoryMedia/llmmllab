@@ -101,6 +101,12 @@ properties:
     default: 300
     minimum: 60
     maximum: 3600
+  max_content_length:
+    type: integer
+    description: Maximum content length to fetch from URLs (in characters)
+    default: 5000
+    minimum: 1000
+    maximum: 100000
 required:
   - enabled
   - auto_detect

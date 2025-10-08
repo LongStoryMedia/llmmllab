@@ -54,7 +54,8 @@ async def build_enhanced_engineering_workflow(
 
         # Add tool orchestration as a subgraph
         tool_orchestration_subgraph = await create_tool_orchestration_subgraph(
-            pipeline_factory=pipeline_factory, tool_registry=ToolRegistry(pipeline_factory)
+            pipeline_factory=pipeline_factory,
+            tool_registry=ToolRegistry(pipeline_factory),
         )
 
         # Create a bridge node to convert between state types
@@ -203,7 +204,8 @@ async def build_simple_tool_orchestration_workflow(
 
         # Add tool orchestration bridge
         tool_orchestration_subgraph = await create_tool_orchestration_subgraph(
-            pipeline_factory=pipeline_factory, tool_registry=ToolRegistry(pipeline_factory)
+            pipeline_factory=pipeline_factory,
+            tool_registry=ToolRegistry(pipeline_factory),
         )
 
         workflow.add_node(

@@ -105,14 +105,12 @@ class ComposerLogger:
         self,
         intent_result: Dict[str, Any],
         confidence: float,
-        processing_time_ms: float,
     ):
         """Log intent analysis results."""
         self.logger.debug(
             "Intent analysis completed",
             intent_result=intent_result,
             confidence=confidence,
-            processing_time_ms=processing_time_ms,
             timestamp=datetime.now().isoformat(),
         )
 
@@ -134,7 +132,6 @@ class ComposerLogger:
     def log_error(self, error: Exception, context: Optional[Dict[str, Any]] = None):
         """Log errors with structured context."""
         error_context = {
-            "event": "error",
             "error_type": type(error).__name__,
             "error_message": str(error),
             "timestamp": datetime.now().isoformat(),
@@ -142,7 +139,7 @@ class ComposerLogger:
         if context:
             error_context.update(context)
 
-        self.logger.error("Composer error", **error_context, exc_info=True)
+        self.logger.error("Composer error occurred", extra=error_context, exc_info=True)
 
 
 # Global logger instance

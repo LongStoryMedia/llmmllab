@@ -7,6 +7,8 @@ BEGIN
   WHERE conversation_id = OLD.id;
   DELETE FROM summaries
   WHERE conversation_id = OLD.id;
+  DELETE FROM search_topic_syntheses
+  WHERE conversation_id = OLD.id;
   RETURN OLD;
 END;
 $$

@@ -35,9 +35,11 @@ from server.auth import get_request_id, get_user_id
 from server.config import logger
 
 from .intent import IntentCtx
-from ..db import storage
 from .search import SearchContext
 from .memory import MemoryContext
+
+# Import storage from the main db package, not server.db
+from db import storage
 from .summary import SummaryContext
 
 

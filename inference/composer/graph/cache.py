@@ -10,7 +10,7 @@ import time
 from typing import Dict, Any, Optional, Callable, List
 
 from models import Tool, WorkflowType
-from composer.config import config
+from models.config import Config as config
 from composer.monitoring.logging import composer_logger
 
 
@@ -44,7 +44,7 @@ class WorkflowCache:
 
     def __init__(self, max_size: int = 1000, default_ttl: Optional[int] = None):
         self.max_size = max_size
-        self.default_ttl = default_ttl or config.default_workflow.workflow_cache_ttl
+        self.default_ttl = default_ttl or 300  # 5 minutes default TTL
         self.cache: Dict[str, CacheEntry] = {}
         self._lock = asyncio.Lock()
 

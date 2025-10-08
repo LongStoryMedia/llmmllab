@@ -1,5 +1,11 @@
 """
 Dynamic tool management for composer workflows.
+from composer.tools.dynamic.deduplication import AdvancedToolDeduplicator
+
+from composer.monitoring.logging import composer_logger composer.agents.intent_classifier import IntentClassifierAgent
+from composer.tools.dynamic.deduplication import AdvancedToolDeduplicator
+
+from composer.monitoring.logging import composer_loggert for composer workflows.
 Handles tool generation, analysis, and deduplication.
 """
 
@@ -25,8 +31,7 @@ from runner.pipelines.run import run_pipeline
 
 from composer.agents.intent_classifier import IntentClassifierAgent
 from composer.tools.dynamic.deduplication import AdvancedToolDeduplicator
-
-from ...monitoring.logging import composer_logger
+from composer.monitoring.logging import composer_logger
 
 logger = composer_logger.logger
 

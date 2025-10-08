@@ -42,7 +42,7 @@ from db import storage
 from models.memory_config import MemoryConfig
 from models.model_profile_type import ModelProfileType
 from models.default_configs import DEFAULT_MEMORY_CONFIG
-from utils import get_model_profile
+from utils.model_profile import get_model_profile
 
 
 class MemoryRetrievalTool(BaseTool):
@@ -54,12 +54,15 @@ class MemoryRetrievalTool(BaseTool):
         "with configurable cross-user/conversation settings and similarity thresholds."
     )
 
-    def __init__(self, user_id: str, **kwargs):
+    def __init__(self, user_id: str, conversation_id: int, **kwargs):
         super().__init__(**kwargs)
         self.user_id = user_id
+        self._conversation_id = conversation_id
         self.logger = logging.getLogger(self.__class__.__name__)
 
-        self.logger.debug(f"MemoryRetrievalTool initialized for user: {user_id}")
+        self.logger.debug(
+            f"MemoryRetrievalTool initialized for user: {user_id}, conversation: {conversation_id}"
+        )
 
     async def _get_memory_config(self) -> MemoryConfig:
         """Get memory configuration from user config via shared data layer."""
@@ -136,8 +139,10 @@ class MemoryRetrievalTool(BaseTool):
             # Configure user and conversation filtering based on memory config
             user_filter = None if memory_config.enable_cross_user else self.user_id
             conversation_filter = (
-                None if memory_config.enable_cross_conversation else None
-            )  # TODO: Get from execution context
+                None
+                if memory_config.enable_cross_conversation
+                else getattr(self, "_conversation_id", None)
+            )
 
             memories = await memory_service.search_similarity(
                 embeddings=query_embeddings,
@@ -197,17 +202,20 @@ class MemoryRetrievalTool(BaseTool):
 # Factory functions for creating memory retrieval tools
 
 
-def create_memory_retrieval_tool(user_id: str) -> MemoryRetrievalTool:
+def create_memory_retrieval_tool(
+    user_id: str, conversation_id: int
+) -> MemoryRetrievalTool:
     """
-    Create a memory retrieval tool that uses user configuration from data layer.
+    Create memory retrieval tool for user with configuration from shared data layer.
 
     Args:
-        user_id: User ID for configuration retrieval
+        user_id: User identifier for configuration retrieval
+        conversation_id: Optional conversation identifier for context filtering
 
     Returns:
         Configured MemoryRetrievalTool instance
     """
-    return MemoryRetrievalTool(user_id=user_id)
+    return MemoryRetrievalTool(user_id=user_id, conversation_id=conversation_id)
 
 
 # Note: Specialized memory behavior should be configured through user preferences

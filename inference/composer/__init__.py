@@ -20,14 +20,15 @@ Architectural Role:
 - Maintains Protocol-based decoupling requirements
 """
 
-from typing import Dict, Any, Optional, AsyncGenerator, Union, List
-from .core.service import ComposerService
-from .config import config
-from .monitoring.logging import composer_logger
-from models.message import Message
-from models.workflow_type import WorkflowType
+from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
 from langchain_core.runnables.schema import StreamEvent
+
+from models import Message, WorkflowType
+
+
+from .core.service import CompiledStateGraph, ComposerService
+from .monitoring.logging import composer_logger
 
 # Global service instance
 _composer_service: Optional[ComposerService] = None
@@ -65,12 +66,11 @@ async def get_or_init_composer_service() -> ComposerService:
     global _composer_service  # noqa: PLW0603
     if _composer_service is None:
         await initialize_composer()
+    assert _composer_service is not None
     return _composer_service
 
 
-async def compose_workflow(
-    user_id: str,
-):
+async def compose_workflow(user_id: str) -> "CompiledStateGraph":
     """
     Compose a workflow for the given user and conversation messages.
 
@@ -94,9 +94,8 @@ async def compose_workflow(
 
 async def create_initial_state(
     user_id: str,
+    conversation_id: int,
     messages: List[Message],
-    workflow_type: WorkflowType,
-    additional_context: Optional[Dict[str, Any]] = None,
 ):
     """Create initial workflow state from user messages and configuration.
 
@@ -114,9 +113,7 @@ async def create_initial_state(
         No configuration objects should be passed as arguments (architectural rule).
     """
     service = get_composer_service()
-    return await service.create_initial_state(
-        user_id, messages, workflow_type, additional_context
-    )
+    return await service.create_initial_state(user_id, messages, conversation_id)
 
 
 async def execute_workflow(
@@ -138,24 +135,6 @@ async def execute_workflow(
         yield event
 
 
-def get_composer_config():
-    """Get current composer configuration."""
-    if _composer_service is None:
-        raise RuntimeError(
-            "Composer service not initialized. Call initialize_composer() first."
-        )
-    return {
-        "service": "composer",
-        "caching_enabled": config.default_workflow.enable_workflow_caching,
-        "streaming_enabled": config.default_workflow.enable_streaming,
-        "multi_agent_enabled": config.default_workflow.enable_multi_agent,
-        "tool_generation_enabled": config.default_tool.enable_tool_generation,
-        "cache_ttl": config.default_workflow.workflow_cache_ttl,
-        "max_context_length": config.default_workflow.max_context_length,
-        "tool_similarity_threshold": config.default_tool.tool_similarity_threshold,
-    }
-
-
 # Convenience exports for direct usage
 __all__ = [
     "initialize_composer",
@@ -164,5 +143,4 @@ __all__ = [
     "compose_workflow",
     "create_initial_state",
     "execute_workflow",
-    "get_composer_config",
 ]

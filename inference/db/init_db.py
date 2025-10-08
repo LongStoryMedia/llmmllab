@@ -48,6 +48,7 @@ async def initialize_database(connection_pool: Any) -> bool:
                     [
                         ("user.create_users_table", []),
                         ("user.create_user_check_trigger", []),
+                        ("user.user_delete_cascade", []),
                     ],
                 ),
                 # Step 2: Create model tables

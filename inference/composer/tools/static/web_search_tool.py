@@ -46,11 +46,14 @@ import os
 from typing import Optional, List, Dict, Any
 
 from langchain_core.tools import BaseTool
-from langchain_community.utilities.searx_search import SearxSearchWrapper
+
+# Optional langchain_classic import with fallback (moved from langchain_community in v1.0)
+from langchain_classic.utilities.searx_search import SearxSearchWrapper
+
 
 from models import SearchResult, SearchResultContent, WebSearchConfig
 
-from ...monitoring.logging import composer_logger
+from composer.monitoring.logging import composer_logger
 
 
 class SearxNG:
@@ -165,12 +168,16 @@ class WebSearchTool(BaseTool):
     def __init__(self, user_id: str):
         super().__init__()
         self.user_id = user_id
+        self.logger = composer_logger.logger.bind(component="WebSearchTool")
 
     async def _get_web_search_config(self) -> WebSearchConfig:
         """Get web search configuration from user config via shared data layer."""
+        from db import storage  # pylint: disable=import-outside-toplevel
+        from models.default_configs import (  # pylint: disable=import-outside-toplevel
+            DEFAULT_WEB_SEARCH_CONFIG,
+        )
+
         try:
-            from db import storage
-            from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
 
             # Get complete user config with defaults merged at data layer
             user_config = await storage.get_service(
@@ -180,7 +187,11 @@ class WebSearchTool(BaseTool):
                 return DEFAULT_WEB_SEARCH_CONFIG
             return user_config.web_search
         except Exception as e:
-            from models.default_configs import DEFAULT_WEB_SEARCH_CONFIG
+            self.logger.error(
+                "Failed to retrieve user web search config",
+                user_id=self.user_id,
+                error=str(e),
+            )
 
             return DEFAULT_WEB_SEARCH_CONFIG
 

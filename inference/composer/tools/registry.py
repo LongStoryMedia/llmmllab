@@ -19,7 +19,10 @@ import numpy as np
 
 from langchain.tools import BaseTool
 
-from models import Tool, IntentAnalysis  # DynamicTool intentionally unused pending implementation
+from models import (
+    Tool,
+    IntentAnalysis,
+)  # DynamicTool intentionally unused pending implementation
 
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import ToolGenerationError
@@ -30,6 +33,8 @@ from composer.tools.static import (
 )
 from composer.agents.embedding_agent import EmbeddingAgent
 
+from runner import PipelineFactory
+
 
 class ToolRegistry:
     """Registry & semantic selector for static + dynamic tools.
@@ -39,7 +44,10 @@ class ToolRegistry:
       - Stored per tool_id for cosine similarity reuse
     """
 
-    def __init__(self, pipeline_factory=None, embedding_agent: Optional[EmbeddingAgent] = None):
+    def __init__(
+        self,
+        pipeline_factory: PipelineFactory,
+    ):
         # Static tool definitions (pre-defined tool classes for instantiation)
         self.static_tools: Dict[str, type[BaseTool]] = {}
         # Dynamic tool instances (id -> Tool model instances)
@@ -48,9 +56,7 @@ class ToolRegistry:
         self.tool_embeddings: Dict[str, np.ndarray] = {}
 
         self.pipeline_factory = pipeline_factory
-        self.embedding_agent = embedding_agent or (
-            EmbeddingAgent(pipeline_factory) if pipeline_factory else None
-        )
+        self.embedding_agent = EmbeddingAgent(pipeline_factory)
         self._lock = asyncio.Lock()
 
         self._load_static_tools()
@@ -160,7 +166,9 @@ class ToolRegistry:
             # Compute & store embedding for semantic reuse if possible
             if self.embedding_agent and user_id:
                 try:
-                    emb = await self._compute_embedding(tool_instance.description or tool_instance.name, user_id)
+                    emb = await self._compute_embedding(
+                        tool_instance.description or tool_instance.name, user_id
+                    )
                     if emb is not None:
                         self.tool_embeddings[tool_id] = emb
                 except Exception as e:  # pragma: no cover - defensive
@@ -230,7 +238,9 @@ class ToolRegistry:
             # For now, return all dynamic tools. In the future, could filter by user_id
             return list(self.dynamic_tools.values())
 
-    def _create_tool_instance(self, tool_cls: Any, _user_id: str) -> Optional[Tool]:  # user_id reserved for future personalization
+    def _create_tool_instance(
+        self, tool_cls: Any, _user_id: str
+    ) -> Optional[Tool]:  # user_id reserved for future personalization
         """Create tool instance from tool class with user configuration."""
         # PLACEHOLDER: Use user_id to configure tool instances when needed
         try:
@@ -367,7 +377,7 @@ class ToolRegistry:
             return None
 
     async def _modify_or_compose_tool(
-    self, base_tool_id: str, _intent: IntentAnalysis
+        self, base_tool_id: str, _intent: IntentAnalysis
     ) -> Optional[Tool]:  # pragma: no cover - placeholder
         """Placeholder for modification/composition path.
 
@@ -383,7 +393,7 @@ class ToolRegistry:
         return await self._use_existing_tool(base_tool_id)
 
     async def _create_new_tool(
-    self, _intent: IntentAnalysis, spec_description: str
+        self, _intent: IntentAnalysis, spec_description: str
     ) -> Optional[Tool]:  # pragma: no cover - placeholder
         """Placeholder for future dynamic tool creation via LLM code generation."""
         composer_logger.log_tool_generation(
@@ -392,7 +402,9 @@ class ToolRegistry:
             success=False,
             additional_context={"reason": "creation_not_implemented"},
         )
-        composer_logger.logger.warning("Dynamic tool creation disabled (pending implementation)")
+        composer_logger.logger.warning(
+            "Dynamic tool creation disabled (pending implementation)"
+        )
         return None
 
     async def get_tool_stats(self) -> Dict[str, Any]:

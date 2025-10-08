@@ -3,10 +3,10 @@ Simplified GraphBuilder - Focused coordinator using composition.
 Uses clean factories and strategies instead of monolithic implementation.
 """
 
-from typing import Dict, Any
+import datetime
 from langgraph.graph.state import CompiledStateGraph, StateGraph, END, START
 
-from models import WorkflowType, ModelProfileType
+from models import ModelProfileType
 from runner import PipelineFactory
 
 from composer.nodes.routing import IntentClassifierNode
@@ -22,15 +22,12 @@ from composer.nodes.memory import (
     MemoryCreationNode,
     MemoryStorageNode,
 )
-# Summary nodes not used in simplified builder
 
 from composer.tools.registry import ToolRegistry
 
 from composer.monitoring.logging import composer_logger
-from composer.core.errors import WorkflowConstructionError
-from .cached_workflow_factory import CachedWorkflowFactory
+
 from .state import WorkflowState
-import datetime
 
 
 class GraphBuilder:
@@ -50,18 +47,13 @@ class GraphBuilder:
     """
 
     def __init__(self, pipeline_factory: PipelineFactory):
-        if not pipeline_factory:
-            raise ValueError("pipeline_factory is required")
-
-        self.workflow_factory = CachedWorkflowFactory(pipeline_factory)
         # Keep direct reference for node construction and registry usage
         self.pipeline_factory = pipeline_factory
         self.logger = composer_logger.logger.bind(component="GraphBuilder")
 
     async def build_workflow(
-    self,
-    user_id: str,
-    use_cache: bool = True,  # noqa: ARG002
+        self,
+        user_id: str,
     ) -> CompiledStateGraph:
         """
         Build a workflow of the specified type.
@@ -88,7 +80,9 @@ class GraphBuilder:
 
             # Memory
             workflow.add_node("memory_search", MemorySearchNode(self.pipeline_factory))
-            workflow.add_node("memory_creation", MemoryCreationNode(self.pipeline_factory))
+            workflow.add_node(
+                "memory_creation", MemoryCreationNode(self.pipeline_factory)
+            )
             workflow.add_node("memory_storage", MemoryStorageNode())
 
             # Tools
@@ -105,7 +99,9 @@ class GraphBuilder:
             # Primary chat agent with streaming enabled
             workflow.add_node(
                 "chat_agent",
-                PipelineNode(self.pipeline_factory, ModelProfileType.Primary, stream=True),
+                PipelineNode(
+                    self.pipeline_factory, ModelProfileType.Primary, stream=True
+                ),
             )
 
             workflow.add_edge(START, "intent_analysis")
@@ -138,37 +134,4 @@ class GraphBuilder:
                 error=str(e),
             )
             # Try to create fallback chat workflow
-            return await self._create_fallback_workflow(user_id)
-
-    async def _create_fallback_workflow(self, user_id: str) -> CompiledStateGraph:
-        """Create minimal fallback workflow when everything else fails."""
-        try:
-            self.logger.warning("Creating fallback workflow", user_id=user_id)
-            return await self.workflow_factory.create_workflow(
-                WorkflowType.CHAT, user_id, use_cache=False
-            )
-        except Exception as e:
-            self.logger.error(
-                "Fallback workflow creation failed", user_id=user_id, error=str(e)
-            )
-            raise WorkflowConstructionError(
-                f"Cannot create any workflow, including fallback: {e}"
-            ) from e
-
-    # Cache management methods (delegate to factory)
-    async def get_cache_stats(self) -> Dict[str, Any]:
-        """Get cache statistics."""
-        return await self.workflow_factory.get_cache_stats()
-
-    async def clear_cache(self) -> None:
-        """Clear workflow cache."""
-        await self.workflow_factory.invalidate_cache()
-
-    async def invalidate_user_workflows(self, user_id: str) -> None:
-        """Invalidate workflows for specific user."""
-        await self.workflow_factory.invalidate_cache(user_id)
-
-    async def close(self) -> None:
-        """Clean up resources."""
-        await self.workflow_factory.close()
-        self.logger.info("GraphBuilder closed")
+            raise

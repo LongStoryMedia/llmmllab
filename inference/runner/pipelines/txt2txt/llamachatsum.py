@@ -1,19 +1,19 @@
 """
-Optimized summarization pipeline for Llama-Chat-Summary-3.2-3B model with performance enhancements.
+Simplified Llama Chat Summary pipeline - pure LLM interface, no orchestration.
+Replaced 641 lines of complex LangGraph orchestration with direct LLM calls.
 """
 
-import datetime
+import os
 import logging
-import hashlib
-from typing import AsyncGenerator, List, cast, Optional, Dict, Any, TypeVar, Union
-import torch
-from transformers import AutoTokenizer
-from langchain_community.chat_models.llamacpp import ChatLlamaCpp
-from langchain_core.prompts import ChatPromptTemplate
+import asyncio
+from typing import List, Optional, AsyncIterator
 
-from langgraph.graph import StateGraph, START, END
-from langgraph.graph.state import CompiledStateGraph
+from langchain_community.chat_models.llamacpp import ChatLlamaCpp
+from langchain_core.messages import HumanMessage
+from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
+from langchain_core.callbacks import CallbackManager
+from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
 from models import (
     MessageContent,
@@ -23,618 +23,212 @@ from models import (
     Message,
     ChatResponse,
     ModelProfile,
-    CircuitBreakerConfig,
 )
+from runner.pipelines.base import GrammarInput
+from runner.pipelines.llamacpp.simple_base import SimpleLlamaCppPipeline
 from utils.message import extract_message_text
-from utils.response import create_streaming_chunk, create_error_response
-from ..base_langgraph import CircuitBreakerConfig
-from ..llamacpp.base_llamacpp import BaseLlamaCppPipeline
-from ..context_manager import ContextManager
-
-# Define generic return type for text pipelines
-T = TypeVar("T", bound=Union[str, ChatResponse])
-
-# Type hints for factory usage
-LlamaChatSummarizationChatPipe = "LlamaChatSummPipe[ChatResponse]"
-LlamaChatSummarizationTextPipe = "LlamaChatSummPipe[str]"
 
 
-logger = logging.getLogger(__name__)
-
-
-class LlamaChatSummPipe(BaseLlamaCppPipeline):
+class LlamaChatSummPipe(SimpleLlamaCppPipeline):
     """
-    Optimized pipeline for Llama-Chat-Summary-3.2-3B model with enhanced performance.
+    Simplified Llama Chat Summary pipeline - direct LLM calls for summarization.
 
-    Key optimizations:
-    - Smart text preprocessing and chunking
-    - Adaptive summary length based on input size
-    - Enhanced prompt engineering optimized for Llama
-    - Performance monitoring and caching
-    - Memory-efficient processing
-    - Quality scoring for summary validation
+    Features:
+    - Direct LlamaCpp initialization for summarization models
+    - Clean prompt formatting optimized for summary generation
+    - Automatic text preprocessing for better summaries
+    - Hardware optimization for Llama 3.2 3B models
     """
 
-    llm: ChatLlamaCpp
-    tokenizer: Optional[AutoTokenizer]
-    _summary_cache: Dict[str, str] = {}
-    _performance_metrics: dict
-    # Only str or ChatResponse supported
-    allowed_return_types = (str, ChatResponse)
+    def __init__(self, model: Model, profile: ModelProfile):
+        super().__init__(model, profile)
+        self._logger = logging.getLogger(self.__class__.__name__)
 
-    def __init__(
-        self,
-        model: Model,
-        profile: ModelProfile,
-        return_type: type = ChatResponse,
-        circuit_config: Optional[CircuitBreakerConfig] = None,
-    ):
-        """Initialize optimized LlamaChatSummPipe instance."""
-        # Initialize with small model size category for summarization
-        # Circuit breaker config fallback is handled by BaseLangGraphPipeline
-        super().__init__(model, profile, return_type, circuit_config, "small")
-        self._return_type = return_type
+    def _preprocess_text(self, text: str) -> str:
+        """Preprocess text for better summarization."""
+        # Remove excessive whitespace
+        text = " ".join(text.split())
 
-        # Initialize performance tracking
-        self._performance_metrics = {
-            "summaries_generated": 0,
-            "cache_hits": 0,
-            "average_input_length": 0,
-            "average_summary_length": 0,
-            "average_compression_ratio": 0.0,
-        }
+        # Remove very short lines that are likely formatting artifacts
+        lines = text.split("\n")
+        filtered_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if len(stripped) > 10:  # Keep lines with substance
+                filtered_lines.append(stripped)
 
-        # Validate model requirements - Llama models need GGUF file
-        if not (model.details and model.model):
-            raise ValueError(
-                "Model definition for LlamaChatSummPipe must include model path or details.gguf_file"
-            )
+        return "\n".join(filtered_lines) if filtered_lines else text
 
-        self.logger.info(
-            f"Initializing optimized LlamaChatSummPipe for model: {model.id}"
-        )
+    def _create_summary_prompt(self, text: str, summary_type: str = "concise") -> str:
+        """Create an optimized prompt for summarization."""
+        preprocessed_text = self._preprocess_text(text)
 
-        # Initialize context manager with dynamic context for summarization
-        context_tokens = (
-            self.profile.parameters.num_ctx or 8192
-        )  # Context size for summarization
-        self.context_manager = ContextManager(max_context_tokens=context_tokens)
+        # Determine summary style based on text length
+        word_count = len(preprocessed_text.split())
 
-    def _get_gguf_path(self) -> str:
-        """Get the GGUF file path with fallback logic."""
-        return (
-            self.model.details.gguf_file
-            if self.model.details.gguf_file
-            else self.model.model
-        )
+        if word_count < 200:
+            instruction = "Provide a brief 2-3 sentence summary of the following text:"
+        elif word_count < 1000:
+            instruction = "Provide a concise summary in 3-5 sentences highlighting the key points:"
+        else:
+            instruction = "Provide a comprehensive summary in 5-8 sentences covering the main topics and important details:"
+
+        return f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+
+You are an expert text summarizer. Your task is to create clear, accurate, and informative summaries that capture the essence of the original content.
+
+Guidelines:
+- Focus on main ideas and key information
+- Use clear, concise language
+- Maintain objectivity and accuracy
+- Preserve important context and details
+
+<|eot_id|><|start_header_id|>user<|end_header_id|>
+
+{instruction}
+
+{preprocessed_text}
+
+<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+"""
 
     async def _create_system_prompt(
         self, tools: Optional[List[BaseTool]] = None
     ) -> str:
-        """Create system prompt for Llama-Chat-Summary."""
-        base_prompt = (
-            self.profile.system_prompt
-            or """You are an expert summarization assistant. Create concise, accurate summaries that capture the main points and key information from the provided text.
+        """Create system prompt for Llama Chat Summary."""
+        base_prompt = "You are an expert summarization assistant. Provide clear, accurate, and concise summaries."
 
-SUMMARIZATION GUIDELINES:
-- Focus on the most important points and key information
-- Maintain the original meaning and context
-- Use clear, direct language
-- Avoid unnecessary repetition
-- Preserve critical details while removing redundancy
+        if not tools:
+            return base_prompt
 
-Create a well-structured summary that helps the reader understand the essential content."""
-        )
+        # Add tool descriptions if provided
+        tool_descriptions = []
+        for tool in tools:
+            tool_desc = f"- {tool.name}: {tool.description}"
+            tool_descriptions.append(tool_desc)
 
-        # Add tool information if available
-        if tools:
-            tool_descriptions = []
-            for tool in tools:
-                tool_descriptions.append(f"- {tool.name}: {tool.description}")
+        tools_section = "Available tools:\n" + "\n".join(tool_descriptions)
+        return f"{base_prompt}\n\n{tools_section}"
 
-            tool_info = "\n".join(tool_descriptions)
-            base_prompt += f"\n\nAvailable tools:\n{tool_info}\n\nUse tools when appropriate to enhance the summary."
-
-        return base_prompt
-
-    def _get_summarization_stop_tokens(self) -> List[str]:
-        """Get stop tokens optimized for Llama summarization."""
-        return self.profile.parameters.stop or [
-            "</s>",  # Llama's primary EOS token
-            "<|endoftext|>",  # Alternative EOS
-            "<|end|>",  # Llama-2 style EOS
-            "[/INST]",  # Llama instruction format
-            "</tool_call>",  # Tool boundaries
-            "</tool_response>",
-            "</think>",
-            "\n\nSummary:",  # Prevent summary repetition
-            "\n\nText:",  # Prevent text repetition
-            "Human:",  # Prevent role bleeding
-            "Assistant:",
-            "User:",  # Llama chat format
-            "Original text:",  # Prevent confusion
-            "Summary:",
-            "SUMMARY:",
-            "\n\n\n",  # Multiple newlines often indicate repetition
-            "The user",  # Prevent meta-commentary
-            "In this",  # Common repetitive phrase starter
-            "Additionally,",  # Common repetitive connector
-            "Furthermore,",  # Common repetitive connector
-            "Moreover,",  # Common repetitive connector
-        ]
-
-    def _preprocess_text(self, text: str) -> str:
-        """Preprocess text for optimal summarization."""
-        # Remove excessive whitespace
-        text = " ".join(text.split())
-
-        # Remove very short paragraphs that might be noise
-        paragraphs = text.split("\n")
-        filtered_paragraphs = [p.strip() for p in paragraphs if len(p.strip()) > 20]
-
-        return "\n".join(filtered_paragraphs) if filtered_paragraphs else text
-
-    def _calculate_optimal_summary_length(self, input_text: str) -> int:
-        """Calculate optimal summary length based on input characteristics."""
-        input_length = len(input_text.split())
-
-        # Adaptive summary length based on input size
-        if input_length < 100:
-            return min(50, input_length // 2)
-        elif input_length < 500:
-            return min(150, input_length // 4)
-        elif input_length < 2000:
-            return min(300, input_length // 6)
-        else:
-            return min(500, input_length // 8)
-
-    def _create_optimized_summary_prompt(
-        self, text: str, max_length: Optional[int] = None
+    def _format_messages(
+        self, messages: List[Message], tools: Optional[List[BaseTool]] = None
     ) -> str:
-        """Create an optimized prompt for Llama-Chat-Summary."""
-        processed_text = self._preprocess_text(text)
-        optimal_length = max_length or self._calculate_optimal_summary_length(
-            processed_text
-        )
+        """Format messages for Llama Chat Summary format."""
+        # Extract text to summarize
+        texts_to_summarize = []
 
-        # Use Llama-style instruction format for better performance
-        return f"""<s>[INST] Please provide a concise and accurate summary of the following text. Focus on the key points and main ideas. Keep the summary to approximately {optimal_length} words.
+        for msg in messages:
+            if msg.role == MessageRole.SYSTEM:
+                continue  # Skip system messages for summarization
 
-Text to summarize:
-{processed_text}
+            content_text = ""
+            for content in msg.content:
+                if content.type == MessageContentType.TEXT and content.text:
+                    content_text += content.text
 
-Summary: [/INST]"""
+            if content_text:
+                texts_to_summarize.append(content_text)
 
-    def _generate_cache_key(self, text: str) -> str:
-        """Generate a cache key for the input text."""
-        # Use first 100 and last 100 chars plus length for cache key
-        key_text = (
-            text[:100] + str(len(text)) + text[-100:] if len(text) > 200 else text
-        )
-        return hashlib.md5(key_text.encode()).hexdigest()
+        # Combine all texts to summarize
+        combined_text = "\n\n".join(texts_to_summarize)
 
-    def _score_summary_quality(self, original: str, summary: str) -> float:
-        """Score the quality of a summary (0.0 to 1.0)."""
-        try:
-            # Basic quality metrics
-            original_words = set(original.lower().split())
-            summary_words = set(summary.lower().split())
+        # Create summary prompt
+        return self._create_summary_prompt(combined_text)
 
-            # Coverage: how many important words are preserved
-            coverage = len(original_words.intersection(summary_words)) / len(
-                original_words
-            )
-
-            # Compression ratio
-            compression = len(summary.split()) / len(original.split())
-
-            # Length appropriateness (penalize too short or too long)
-            optimal_compression = 0.3  # 30% of original
-            compression_score = 1.0 - abs(compression - optimal_compression)
-
-            # Combined score
-            quality = (coverage * 0.6) + (compression_score * 0.4)
-            return min(max(quality, 0.0), 1.0)
-
-        except Exception:
-            return 0.5  # Neutral score on error
-
-    def create_graph(
-        self, _tools: Optional[List[BaseTool]] = None
-    ) -> CompiledStateGraph:
-        """Create a simple LangGraph for BART summarization."""
-        from models import LangGraphState
-
-        # Simple state graph that just processes the input
-        workflow = StateGraph(LangGraphState)
-
-        async def summarize_node(state: LangGraphState) -> Dict[str, Any]:
-            """Node that performs summarization."""
-            try:
-                # Extract text from messages
-                combined_text = ""
-                for msg in state.messages:
-                    if hasattr(msg, "content") and msg.content:
-                        combined_text += str(msg.content) + "\n"
-
-                # Generate summary
-                summary = await self._direct_summarization_simple(combined_text)
-
-                # Return as a message
-                from langchain_core.messages import AIMessage
-
-                return {"messages": [AIMessage(content=summary)]}
-            except Exception as e:
-                from langchain_core.messages import AIMessage
-
-                return {"messages": [AIMessage(content=f"Error: {str(e)}")]}
-
-        workflow.add_node("summarize", summarize_node)
-        workflow.add_edge(START, "summarize")
-        workflow.add_edge("summarize", END)
-
-        return workflow.compile()
-
-    async def _direct_summarization_simple(self, text: str) -> str:
-        """Simple direct summarization optimized for Llama-Chat-Summary."""
-        try:
-            # Initialize LLM if not done yet
-            if self.llm is None:
-                gguf_path = self._get_gguf_path()
-                await self._initialize_llm(gguf_path)
-
-            # Ensure LLM is properly initialized after the initialization call
-            if self.llm is None:
-                raise RuntimeError(
-                    "Failed to initialize LLM - llm is still None after initialization"
-                )
-
-            # Preprocess text
-            cleaned_text = self._preprocess_text(text)
-            summary_length = self._calculate_optimal_summary_length(cleaned_text)
-
-            # Create Llama-optimized prompt with instruction format
-            prompt = f"""<s>[INST] Summarize the following text in about {summary_length} words. Be concise and capture the key points:
-
-{cleaned_text[:6000]}
-
-Provide only the summary without any additional text. [/INST]
-
-Summary: """
-
-            # Direct LLM call
-            from langchain_core.messages import HumanMessage
-
-            response = await self.llm.ainvoke([HumanMessage(content=prompt)])
-
-            summary = ""
-            if response.content:
-                if isinstance(response.content, str):
-                    summary = response.content
-                elif isinstance(response.content, list):
-                    for content in response.content:
-                        if isinstance(content, str):
-                            summary += content + " "
-                        elif hasattr(content, "text"):
-                            summary += content.text + " "  # type: ignore
-                        elif isinstance(content, dict) and "text" in content:
-                            summary += content["text"] + " "
-
-            # Clean up Llama response artifacts
-            summary = summary.strip()
-            if summary.startswith("Summary:"):
-                summary = summary[8:].strip()
-
-            return summary
-
-        except Exception as e:
-            self.logger.error(f"Error in direct summarization: {e}")
-            return f"Error generating summary: {str(e)[:100]}..."
-
-    async def run(
-        self, messages: List[Message], prompt: ChatPromptTemplate, tools: List[BaseTool]
-    ) -> AsyncGenerator[ChatResponse, None]:
-        """
-        Enhanced summarization processing with caching and quality control.
-        """
-        start_time = datetime.datetime.now(datetime.timezone.utc)
-
-        try:
-            # Extract and preprocess text
-            input_texts = []
-            for message in messages:
-                text = extract_message_text(message)
-                if text:
-                    input_texts.append(text)
-
-            if not input_texts:
-                yield create_error_response("No text content found to summarize")
-                return
-
-            combined_text = "\n\n".join(input_texts)
-
-            # Check cache first
-            cache_key = self._generate_cache_key(combined_text)
-            if cache_key in self._summary_cache:
-                self._performance_metrics["cache_hits"] += 1
-                self.logger.info("Using cached summary")
-
-                cached_summary = self._summary_cache[cache_key]
-                yield self._create_summary_response(cached_summary, from_cache=True)
-                return
-
-            # Generate new summary
-            if tools:
-                # Use agent-based summarization for complex tasks
-                async for response in self._agent_summarization(
-                    messages, prompt, tools
-                ):
-                    yield response
-            else:
-                # Use direct summarization for simple tasks
-                async for response in self._direct_summarization(combined_text):
-                    # Cache the result if it's a final response
-                    if response.done and response.message:
-                        summary_text = extract_message_text(response.message)
-                        if summary_text:
-                            quality = self._score_summary_quality(
-                                combined_text, summary_text
-                            )
-                            if quality > 0.6:  # Only cache high-quality summaries
-                                self._summary_cache[cache_key] = summary_text
-                                self.logger.debug(
-                                    f"Cached summary with quality score: {quality:.2f}"
-                                )
-
-                    yield response
-
-            # Update metrics
-            self._update_performance_metrics(combined_text, start_time)
-
-        except Exception as e:
-            self.logger.error(f"Error in BART summarization: {e}", exc_info=True)
-            yield create_error_response(f"Summarization error: {str(e)}")
-
-    async def _agent_summarization(
+    async def invoke(
         self,
         messages: List[Message],
-        _prompt: ChatPromptTemplate,
-        _tools: List[BaseTool],
-    ) -> AsyncGenerator[ChatResponse, None]:
-        """Simple agent-based summarization replacement."""
-        try:
-            # Convert to simple text processing since we removed AgentExecutor
-            combined_text = ""
-            for message in messages:
-                text = extract_message_text(message)
-                if text:
-                    combined_text += text + "\n"
-
-            # Generate summary using direct method
-            summary = await self._direct_summarization_simple(combined_text)
-
-            # Yield as ChatResponse
-            yield ChatResponse(
-                done=True,
-                message=Message(
-                    role=MessageRole.ASSISTANT,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=summary,
-                        )
-                    ],
-                ),
-                created_at=datetime.datetime.now(datetime.timezone.utc),
-                finish_reason="stop",
-            )
-
-        except Exception as e:
-            self.logger.error(f"Error in agent summarization: {e}")
-            yield create_error_response(f"Agent summarization error: {str(e)}")
-
-    async def _direct_summarization(
-        self, text: str
-    ) -> AsyncGenerator[ChatResponse, None]:
-        """Direct summarization without agents."""
-        try:
-            # Initialize LLM if not done yet
-            if self.llm is None:
-                gguf_path = self._get_gguf_path()
-                await self._initialize_llm(gguf_path)
-
-            # Ensure LLM is properly initialized after the initialization call
-            if self.llm is None:
-                raise RuntimeError(
-                    "Failed to initialize LLM - llm is still None after initialization"
-                )
-
-            # Create optimized prompt
-            summary_prompt = self._create_optimized_summary_prompt(text)
-
-            yield create_streaming_chunk("📄 Generating optimized summary...\n\n")
-
-            # Stream the summarization
-            response_chunks = []
-            async for chunk in self.llm.astream(summary_prompt):
-                if hasattr(chunk, "content") and chunk.content:
-                    chunk_content = chunk.content
-                    response_chunks.append(chunk_content)
-
-                    if isinstance(chunk_content, str):
-                        yield create_streaming_chunk(chunk_content)
-                    elif isinstance(chunk_content, list):
-                        for item in chunk_content:
-                            if isinstance(item, str):
-                                yield create_streaming_chunk(item)
-
-            # Validate and finalize
-            full_summary = "".join(response_chunks).strip()
-            if full_summary:
-                quality = self._score_summary_quality(text, full_summary)
-                self.logger.info(f"Generated summary with quality score: {quality:.2f}")
-                yield create_streaming_chunk("", done=True)
-            else:
-                yield create_streaming_chunk("Failed to generate summary", done=True)
-
-        except Exception as e:
-            self.logger.error(f"Error in direct summarization: {e}")
-            yield create_streaming_chunk(
-                f"Direct summarization error: {str(e)}", done=True
-            )
-
-    def _create_summary_response(
-        self, summary_text: str, from_cache: bool = False
+        tools: Optional[List[BaseTool]] = None,
+        grammar: Optional[GrammarInput] = None,
+        **kwargs,
     ) -> ChatResponse:
-        """Create a standardized summary response."""
-        prefix = "📋 (Cached) " if from_cache else "📋 "
+        """Invoke the Llama Chat Summary LLM directly."""
+        _ = grammar, kwargs  # Suppress unused warnings
 
-        return ChatResponse(
-            done=True,
-            message=Message(
+        # Initialize LLM if needed
+        if self.llm is None:
+            self.llm = self._initialize_llm()
+
+        try:
+            # Format conversation
+            formatted_prompt = self._format_messages(messages, tools)
+
+            # Invoke LLM directly
+            if self.llm is None:
+                raise RuntimeError("LLM not initialized")
+            response = await self.llm.ainvoke([HumanMessage(content=formatted_prompt)])
+
+            # Extract content
+            content = str(response.content) if response.content else ""
+
+            # Create response message
+            result_message = Message(
                 role=MessageRole.ASSISTANT,
-                content=[
-                    MessageContent(
-                        type=MessageContentType.TEXT,
-                        text=f"{prefix}{summary_text}",
-                    )
-                ],
-            ),
-            created_at=datetime.datetime.now(datetime.timezone.utc),
-            finish_reason="stop",
-        )
-
-    def _update_performance_metrics(
-        self, input_text: str, _start_time: datetime.datetime
-    ) -> None:
-        """Update performance tracking metrics."""
-        input_length = len(input_text.split())
-
-        # Update running averages
-        count = self._performance_metrics["summaries_generated"]
-        current_avg_input = self._performance_metrics["average_input_length"]
-
-        self._performance_metrics["summaries_generated"] += 1
-        self._performance_metrics["average_input_length"] = (
-            current_avg_input * count + input_length
-        ) / (count + 1)
-
-    async def summarize_text(
-        self, text: str, max_length: Optional[int] = None, style: str = "balanced"
-    ) -> str:
-        """
-        Convenience method for direct text summarization with style options.
-
-        Args:
-            text: Text to summarize
-            max_length: Maximum summary length in words
-            style: Summary style ("brief", "balanced", "detailed")
-        """
-        try:
-            # Initialize LLM if not done yet
-            if self.llm is None:
-                gguf_path = self._get_gguf_path()
-                await self._initialize_llm(gguf_path)
-
-            # Ensure LLM is properly initialized after the initialization call
-            if self.llm is None:
-                raise RuntimeError(
-                    "Failed to initialize LLM - llm is still None after initialization"
-                )
-
-            # Adjust prompt based on style
-            style_prompts = {
-                "brief": "Provide a very concise summary focusing only on the most essential points.",
-                "balanced": "Provide a well-balanced summary covering the key points and main ideas.",
-                "detailed": "Provide a comprehensive summary that covers all important aspects while remaining concise.",
-            }
-
-            style_instruction = style_prompts.get(style, style_prompts["balanced"])
-
-            # Create styled prompt with Llama instruction format
-            processed_text = self._preprocess_text(text)
-            optimal_length = max_length or self._calculate_optimal_summary_length(
-                processed_text
+                content=[MessageContent(type=MessageContentType.TEXT, text=content)],
             )
 
-            summary_prompt = f"""<s>[INST] {style_instruction}
-Keep the summary to approximately {optimal_length} words.
+            return ChatResponse(done=True, message=result_message)
 
-Text to summarize:
-{processed_text}
+        except Exception as e:
+            self._logger.error(f"Llama Chat Summary invocation failed: {e}")
+            error_msg = f"Summarization error: {str(e)}"
+            error_message = Message(
+                role=MessageRole.ASSISTANT,
+                content=[MessageContent(type=MessageContentType.TEXT, text=error_msg)],
+            )
+            return ChatResponse(done=True, message=error_message)
 
-Provide only the summary without any additional text. [/INST]
+    async def stream(
+        self,
+        messages: List[Message],
+        tools: Optional[List[BaseTool]] = None,
+        grammar: Optional[GrammarInput] = None,
+        **kwargs,
+    ) -> AsyncIterator[ChatResponse]:
+        """Stream responses from Llama Chat Summary LLM."""
+        _ = grammar, kwargs  # Suppress unused warnings
 
-Summary: """
+        # Initialize LLM if needed
+        if self.llm is None:
+            self.llm = self._initialize_llm()
 
-            # Generate summary
-            summary_chunks = []
-            async for chunk in self.llm.astream(summary_prompt):
+        try:
+            # Format conversation
+            formatted_prompt = self._format_messages(messages, tools)
+
+            # Stream from LLM
+            if self.llm is None:
+                raise RuntimeError("LLM not initialized")
+
+            async for chunk in self.llm.astream(
+                [HumanMessage(content=formatted_prompt)]
+            ):
                 if hasattr(chunk, "content") and chunk.content:
-                    if isinstance(chunk.content, str):
-                        summary_chunks.append(chunk.content)
+                    chunk_text = str(chunk.content)
 
-            return "".join(summary_chunks).strip()
+                    chunk_message = Message(
+                        role=MessageRole.ASSISTANT,
+                        content=[
+                            MessageContent(
+                                type=MessageContentType.TEXT, text=chunk_text
+                            )
+                        ],
+                    )
+                    yield ChatResponse(done=False, message=chunk_message)
 
-        except Exception as e:
-            self.logger.error(f"Error generating summary: {e}")
-            return f"Error: {str(e)}"
-
-    def clear_cache(self) -> None:
-        """Clear the summary cache."""
-        self._summary_cache.clear()
-        self.logger.info("Summary cache cleared")
-
-    def get_cache_stats(self) -> Dict[str, Any]:
-        """Get cache statistics."""
-        return {
-            "cache_size": len(self._summary_cache),
-            "cache_hits": self._performance_metrics["cache_hits"],
-            "hit_rate": (
-                self._performance_metrics["cache_hits"]
-                / max(self._performance_metrics["summaries_generated"], 1)
-            ),
-        }
-
-    def get_performance_metrics(self) -> dict:
-        """Get current performance metrics."""
-        return {**self._performance_metrics, "cache_stats": self.get_cache_stats()}
-
-    def __del__(self) -> None:
-        """Enhanced cleanup with performance logging."""
-        try:
-            model_name = (
-                getattr(self.model, "name", "unknown")
-                if hasattr(self, "model")
-                else "unknown"
+            # Final chunk to indicate completion
+            final_message = Message(
+                role=MessageRole.ASSISTANT,
+                content=[MessageContent(type=MessageContentType.TEXT, text="")],
             )
-
-            # Log final performance metrics
-            if hasattr(self, "_performance_metrics"):
-                metrics = self._performance_metrics
-                cache_stats = (
-                    self.get_cache_stats() if hasattr(self, "_summary_cache") else {}
-                )
-                self.logger.info(
-                    f"LlamaChatSummPipe {model_name} final metrics: "
-                    f"summaries={metrics['summaries_generated']}, "
-                    f"cache_hits={metrics['cache_hits']}, "
-                    f"avg_input_length={metrics['average_input_length']:.1f}, "
-                    f"cache_size={cache_stats.get('cache_size', 0)}"
-                )
-
-            # Clean up resources
-            if hasattr(self, "_summary_cache"):
-                self._summary_cache.clear()
-            if hasattr(self, "tokenizer") and self.tokenizer:
-                del self.tokenizer
-            if hasattr(self, "llm"):
-                del self.llm
-
-            # Clear CUDA cache
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
+            yield ChatResponse(done=True, message=final_message)
 
         except Exception as e:
-            logger.error(f"Error cleaning up LlamaChatSummPipe: {e}")
+            self._logger.error(f"Llama Chat Summary streaming failed: {e}")
+            error_msg = f"Summarization error: {str(e)}"
+            error_message = Message(
+                role=MessageRole.ASSISTANT,
+                content=[MessageContent(type=MessageContentType.TEXT, text=error_msg)],
+            )
+            yield ChatResponse(done=True, message=error_message)

@@ -10,19 +10,45 @@ import re
 from typing import Optional, cast
 from abc import ABC, abstractmethod
 
-from langchain_community.utilities.brave_search import BraveSearchWrapper
-from langchain_community.utilities.duckduckgo_search import DuckDuckGoSearchAPIWrapper
-from langchain_community.utilities.google_serper import GoogleSerperAPIWrapper
+# LangChain search utilities - try langchain_classic first (v1.0+), fallback to langchain_community
+try:
+    from langchain_classic.utilities.brave_search import BraveSearchWrapper
+    from langchain_classic.utilities.duckduckgo_search import DuckDuckGoSearchAPIWrapper
+    from langchain_classic.utilities.google_serper import GoogleSerperAPIWrapper
+    from langchain_classic.utilities.searx_search import SearxSearchWrapper
 
-# Prefer the new package if available; fall back to community package
+    LANGCHAIN_SEARCH_AVAILABLE = True
+except ImportError:
+    try:
+        from langchain_community.utilities.brave_search import BraveSearchWrapper
+        from langchain_community.utilities.duckduckgo_search import (
+            DuckDuckGoSearchAPIWrapper,
+        )
+        from langchain_community.utilities.google_serper import GoogleSerperAPIWrapper
+        from langchain_community.utilities.searx_search import SearxSearchWrapper
+
+        LANGCHAIN_SEARCH_AVAILABLE = True
+    except ImportError:
+        BraveSearchWrapper = None
+        DuckDuckGoSearchAPIWrapper = None
+        GoogleSerperAPIWrapper = None
+        SearxSearchWrapper = None
+        LANGCHAIN_SEARCH_AVAILABLE = False
+
+# Prefer the new package if available; fall back to community/classic package
 try:
     # New recommended location
     from langchain_google_community import GoogleSearchAPIWrapper  # type: ignore
 except Exception:  # noqa: BLE001
-    from langchain_community.utilities.google_search import (  # type: ignore
-        GoogleSearchAPIWrapper,
-    )
-from langchain_community.utilities.searx_search import SearxSearchWrapper
+    try:
+        from langchain_classic.utilities.google_search import GoogleSearchAPIWrapper  # type: ignore
+    except ImportError:
+        try:
+            from langchain_community.utilities.google_search import (  # type: ignore
+                GoogleSearchAPIWrapper,
+            )
+        except ImportError:
+            GoogleSearchAPIWrapper = None
 
 from models import SearchResult, SearchResultContent
 from models.web_search_providers import WebSearchProviders

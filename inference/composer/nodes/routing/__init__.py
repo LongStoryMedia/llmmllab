@@ -4,6 +4,6 @@ from .intent import IntentClassifierNode
 from .router import WorkflowRouter
 
 __all__ = [
-    "IntentClassifierNode", 
+    "IntentClassifierNode",
     "WorkflowRouter",
 ]

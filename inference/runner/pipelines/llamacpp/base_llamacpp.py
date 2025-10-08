@@ -21,16 +21,21 @@ from langchain_core.tools import BaseTool
 from langchain_core.messages import AIMessage
 from langchain_core.language_models import BaseChatModel
 
-from langchain_community.chat_models.llamacpp import ChatLlamaCpp
+try:
+    from langchain_community.chat_models.llamacpp import ChatLlamaCpp
+except ImportError:
+    try:
+        from langchain.llms.llamacpp import LlamaCpp as ChatLlamaCpp
+    except ImportError:
+        ChatLlamaCpp = None
+
 from langchain_core.callbacks import CallbackManager
 from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
 from .utils import calculate_optimal_gpu_layers
 
-from runner.pipelines.base_langgraph import (
-    BaseLangGraphPipeline,
-    CircuitBreakerConfig,
-)
+from runner.pipelines.base import SimpleChatPipeline
+from models import CircuitBreakerConfig
 from models import Model, ModelProfile
 from runner.pipelines.base import GrammarInput
 
@@ -57,7 +62,7 @@ class LlamaLoadAttempt:
         }
 
 
-class BaseLlamaCppPipeline(BaseLangGraphPipeline):
+class BaseLlamaCppPipeline(SimpleChatPipeline):
     """Base class encapsulating llama.cpp loading heuristics.
 
     Subclasses MUST implement:
@@ -73,7 +78,7 @@ class BaseLlamaCppPipeline(BaseLangGraphPipeline):
         circuit_config: Optional[CircuitBreakerConfig] = None,
         model_size_category: str = "large",
     ):
-        super().__init__(model, profile, expected_return_type, circuit_config)
+        super().__init__(model, profile)
         self._logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self._model_size_category = model_size_category
         self._grammar_constraint: Optional[str] = (

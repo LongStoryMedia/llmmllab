@@ -70,7 +70,7 @@ if [ ! -d "$VENV_PATH" ]; then
 fi
 
 # Set up environment variables for cross-module access
-export PYTHONPATH="/app/runner:/app/server:/app/evaluation:/app/composer:$PYTHONPATH"
+export PYTHONPATH="/app/runner:/app/server:/app/evaluation:/app/composer:/app/utils:/app:$PYTHONPATH"
 
 echo -e "${GREEN}Activating $ENVIRONMENT environment...${NC}"
 echo -e "${BLUE}Virtual environment: $VENV_PATH${NC}"

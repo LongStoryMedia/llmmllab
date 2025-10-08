@@ -75,7 +75,9 @@ async def build_creative_workflow(
     )
 
     # Tool execution node - tools populated at runtime
-    workflow.add_node("tool_executor", ToolExecutorNode([]))  # Tools populated at runtime
+    workflow.add_node(
+        "tool_executor", ToolExecutorNode([])
+    )  # Tools populated at runtime
 
     # Set workflow entry point
     workflow.set_entry_point("intent_classifier")
@@ -112,7 +114,8 @@ async def build_creative_workflow(
             state.messages
             and hasattr(state.messages[-1], "tool_calls")
             and state.messages[-1].tool_calls
-            and hasattr(state, 'required_tools') and state.required_tools
+            and hasattr(state, "required_tools")
+            and state.required_tools
         ):
             return "tool_executor"
         return END

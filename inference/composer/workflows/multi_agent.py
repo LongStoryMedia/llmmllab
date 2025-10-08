@@ -11,12 +11,11 @@ from langgraph.graph.state import CompiledStateGraph
 from models import ModelProfileType
 from runner import PipelineFactory
 
-from composer.graph.state import WorkflowState, AgentSpecialization
+from composer.graph.state import WorkflowState
 from composer.nodes import PipelineNode, ToolExecutorNode
 from composer.nodes.routing import IntentClassifierNode
 from composer.nodes.agents import EngineeringAgentNode
 from composer.monitoring.logging import composer_logger
-from composer.graph.state import AgentSpecialization
 from models.required_capability import RequiredCapability
 
 
@@ -108,25 +107,9 @@ async def build_multi_agent_workflow(
         # Use actual intent classification from state
         if not state.intent_classification:
             # Default to content generation if no intent analysis available
-            return AgentSpecialization.CONTENT_GENERATION.value
+            return "content_generation"
 
         intent = state.intent_classification
-
-        # Route based on required capabilities from intent analysis
-        analysis_capabilities = {
-            RequiredCapability.DATA_PROCESSING,
-            RequiredCapability.INFORMATION_RETRIEVAL,
-            RequiredCapability.WEB_SEARCH,
-            RequiredCapability.SUMMARIZATION,
-            RequiredCapability.REASONING,
-            RequiredCapability.DATABASE_ACCESS,
-            RequiredCapability.API_INTEGRATION,
-        }
-
-        # Check if any required capabilities match analysis specialization
-        if any(cap in analysis_capabilities for cap in intent.required_capabilities):
-            return AgentSpecialization.ANALYSIS.value
-
         # Route based on primary intent patterns
         analysis_intents = {
             "research",
@@ -139,20 +122,26 @@ async def build_multi_agent_workflow(
             "process",
         }
 
-        if any(
-            keyword in intent.primary_intent.lower() for keyword in analysis_intents
-        ):
-            return AgentSpecialization.ANALYSIS.value
+        # Check primary intent (handle list case)
+        primary_intent_text = ""
+        if isinstance(intent, list):
+            if intent and hasattr(intent[0], "primary_intent"):
+                primary_intent_text = intent[0].primary_intent.lower()
+        elif hasattr(intent, "primary_intent"):
+            primary_intent_text = intent.primary_intent.lower()
+
+        if any(keyword in primary_intent_text for keyword in analysis_intents):
+            return "analysis"
 
         # Default to content generation for creative, general, and conversational tasks
-        return AgentSpecialization.CONTENT_GENERATION.value
+        return "content_generation"
 
     workflow.add_conditional_edges(
         "agent_router",
         route_to_specialists,
         {
-            AgentSpecialization.ANALYSIS.value: "analysis_agent",
-            AgentSpecialization.CONTENT_GENERATION.value: "content_generation_agent",
+            "analysis": "analysis_agent",
+            "content_generation": "content_generation_agent",
         },
     )
 
@@ -170,8 +159,7 @@ async def build_multi_agent_workflow(
             state.messages
             and hasattr(state.messages[-1], "tool_calls")
             and state.messages[-1].tool_calls
-            and hasattr(state, "required_tools")
-            and state.required_tools
+            and state.available_tools
         ):
             return "tool_executor"
         return END

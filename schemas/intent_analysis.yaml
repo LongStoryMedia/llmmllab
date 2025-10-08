@@ -45,6 +45,12 @@ properties:
     minimum: 0.0
     maximum: 1.0
     description: "Confidence in the analysis (0-1)"
+  response_format:
+    $ref: "response_format.yaml"
+    description: "Suggested response format for the user"
+  technical_domain:
+    $ref: "technical_domain.yaml"
+    description: "Identified technical domain if applicable"
 required:
   - primary_intent
   - complexity_level

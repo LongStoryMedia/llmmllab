@@ -24,19 +24,19 @@ from models import (
     ChatResponse,
     ModelProfile,
 )
-from utils.langgraph import (
-    LangGraphState,
+from models.lang_graph_state import LangGraphState
+from composer.utils.langchain_compat import (
     build_lc_messages,
     coerce_to_langchain_message_dict,
     coerce_to_lc_message,
 )
 from models.lang_chain_message import LangChainMessage
-from ..base_langgraph import BaseLangGraphPipeline
+from ..base import SimpleChatPipeline
 
 ReturnType = Union[str, ChatResponse]
 
 
-class Qwen25VLPipeline(BaseLangGraphPipeline):
+class Qwen25VLPipeline(SimpleChatPipeline):
     """Qwen 2.5 VL pipeline with LangGraph support."""
 
     def __init__(
@@ -232,7 +232,7 @@ Then provide results. NO REFUSALS. Use tools."""
                 await self._initialize_llm(gguf_path)
 
             # Build messages for LLM using the base class method
-            from utils.langgraph import build_lc_messages
+            from composer.utils.langchain_compat import build_lc_messages
 
             messages = build_lc_messages(state.messages)
 

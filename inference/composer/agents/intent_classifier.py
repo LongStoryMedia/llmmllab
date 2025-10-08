@@ -9,6 +9,8 @@ import json
 
 from typing import List
 
+from pydantic import BaseModel
+
 from models import (
     IntentAnalysis,
     ComplexityLevel,
@@ -20,7 +22,9 @@ from models.model_profile_type import ModelProfileType
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import IntentAnalysisError
 from runner.pipelines.run import run_pipeline
-from utils import extract_message_text, parse_structured_output, get_model_profile
+from utils.message import extract_message_text
+from utils.grammar_generator import parse_structured_output
+from utils.model_profile import get_model_profile
 
 
 class IntentClassifierAgent:
@@ -79,7 +83,9 @@ class IntentClassifierAgent:
         else:
             return "shallow"
 
-    async def analyze(self, user_id: str, messages: List[Message]) -> IntentAnalysis:
+    async def analyze(
+        self, user_id: str, current_user_message: Message
+    ) -> List[IntentAnalysis]:
         """
         Perform grammar-constrained intent analysis using structured LLM output.
 
@@ -102,29 +108,6 @@ class IntentClassifierAgent:
             IntentAnalysisError: When analysis fails or user message unavailable
         """
         try:
-            start_time = asyncio.get_event_loop().time()
-
-            # Extract current user message from messages list
-            current_user_message = None
-            if messages:
-                # Get the last user message from the conversation
-                for message in reversed(messages):
-                    if (
-                        hasattr(message, "role")
-                        and hasattr(message.role, "value")
-                        and message.role.value == "user"
-                    ):
-                        current_user_message = message
-                        break
-                    elif hasattr(message, "content") and isinstance(
-                        message.content, str
-                    ):
-                        # Assume it's a user message if it's just content
-                        current_user_message = message
-                        break
-
-            if not current_user_message:
-                raise ValueError("No user message found in conversation history")
 
             # Extract user message text
             user_query = extract_message_text(current_user_message)
@@ -142,50 +125,50 @@ class IntentClassifierAgent:
                     },
                 )
                 # Return fallback intent analysis when model profile unavailable
-                return IntentAnalysis(
-                    primary_intent="chat",
-                    complexity_level=ComplexityLevel.SIMPLE,
-                    required_capabilities=[RequiredCapability.TEXT_PROCESSING],
-                    computational_requirements=[
-                        ComputationalRequirement.COMPLEX_REASONING
-                    ],
-                    domain_specificity=0.3,
-                    reusability_potential=0.7,
-                    confidence=0.6,
-                )
+                return [
+                    IntentAnalysis(
+                        primary_intent="chat",
+                        complexity_level=ComplexityLevel.SIMPLE,
+                        required_capabilities=[RequiredCapability.TEXT_PROCESSING],
+                        computational_requirements=[
+                            ComputationalRequirement.COMPLEX_REASONING
+                        ],
+                        domain_specificity=0.3,
+                        reusability_potential=0.7,
+                        confidence=0.6,
+                    )
+                ]
 
             # Use LLM for comprehensive intent analysis
             from runner import pipeline_factory
 
             # Use pipeline with default priority for intent analysis
             with pipeline_factory.pipeline(mp, str) as pipeline:
-                intent_analysis = await self._llm_analyze_intent(pipeline, user_query)
+                intent_analyses = await self._llm_analyze_intent(pipeline, user_query)
                 # Apply any statistical augmentations
-                intent_analysis = self._augment_with_statistics(
-                    intent_analysis, user_query
-                )
+                for intent_analysis in intent_analyses:
+                    self._augment_with_statistics(intent_analysis, user_query)
 
-                processing_time = (asyncio.get_event_loop().time() - start_time) * 1000
+                    composer_logger.log_intent_analysis(
+                        intent_result={
+                            "primary_intent": intent_analysis.primary_intent,
+                            "complexity": intent_analysis.complexity_level,
+                            "capabilities_count": len(
+                                intent_analysis.required_capabilities
+                            ),
+                        },
+                        confidence=intent_analysis.confidence,
+                    )
 
-                composer_logger.log_intent_analysis(
-                    intent_result={
-                        "primary_intent": intent_analysis.primary_intent,
-                        "complexity": intent_analysis.complexity_level,
-                        "capabilities_count": len(
-                            intent_analysis.required_capabilities
-                        ),
-                    },
-                    confidence=intent_analysis.confidence,
-                    processing_time_ms=processing_time,
-                )
-
-                return intent_analysis
+                return intent_analyses
 
         except Exception as e:
             composer_logger.log_error(e, {"context": "intent_analysis"})
             raise IntentAnalysisError(f"Intent analysis failed: {e}") from e
 
-    async def _llm_analyze_intent(self, pipeline, user_query: str) -> IntentAnalysis:
+    async def _llm_analyze_intent(
+        self, pipeline, user_query: str
+    ) -> List[IntentAnalysis]:
         """
         Execute grammar-constrained LLM analysis with structured output.
 
@@ -199,6 +182,10 @@ class IntentClassifierAgent:
         Returns:
             str: LLM response (should be grammar-constrained JSON)
         """
+
+        class _Intnts(BaseModel):
+            intents: List[IntentAnalysis]
+
         analysis_prompt = f"""
 You are an expert intent classification system. Analyze the user request and provide a structured JSON response.
 
@@ -207,13 +194,18 @@ Available complexity levels: TRIVIAL, SIMPLE, MODERATE, COMPLEX, SPECIALIZED
 Available capabilities: basic_math, text_processing, information_retrieval, conversation_memory, web_search, summarization, reasoning, general_knowledge, api_integration, async_processing, file_manipulation, data_processing, image_processing, audio_processing, database_access, network_communication
 Available computational requirements: high_memory, gpu_acceleration, parallel_processing, real_time_processing, large_data_handling, complex_reasoning, multi_modal_processing, external_api_calls, file_operations, database_operations
 
+Break down the request into sub-tasks, and for each sub-task identify the intent.
+If multiple sub-tasks are identified, provide an IntentAnalysis for each.
+If the request is simple enough to be handled as a single task, provide one IntentAnalysis.
+
 User Request: {user_query}
 
 Analyze this request and respond with ONLY a JSON object in this exact format:
-{json.dumps(IntentAnalysis.model_json_schema())}
+{json.dumps(_Intnts.model_json_schema())}
+Each `IntentAnalysis` in the `intents` list should correspond to a distinct sub-task identified in the user request.
 
-Consider:
-1. What is the primary intent of this request?
+Consider for each sub-task:
+1. What is the primary intent of each task?
 2. How complex is the task (technical sophistication, domain expertise required)?
 3. What capabilities are needed to fulfill this request?
 4. What computational resources might be required?
@@ -226,56 +218,18 @@ Consider:
             messages=analysis_prompt,
             pipeline=pipeline,
             tools=None,
-            grammar=IntentAnalysis,
+            grammar=_Intnts,
         )
 
         txt = extract_message_text(result.message) if result and result.message else ""
+
+        intents = parse_structured_output(txt, _Intnts)
         # Extract text from ChatResponse
-        return parse_structured_output(txt, IntentAnalysis)
-
-    def _parse_llm_response(self, llm_response: str) -> IntentAnalysis:
-        """Parse LLM JSON response into IntentAnalysis object."""
-        try:
-            # Extract JSON from response (in case there's extra text)
-            json_start = llm_response.find("{")
-            json_end = llm_response.rfind("}") + 1
-            if json_start != -1 and json_end != -1:
-                json_str = llm_response[json_start:json_end]
-                analysis_data = json.loads(json_str)
-            else:
-                raise ValueError("No JSON found in LLM response")
-
-            # Convert string enums to proper enum objects
-            complexity_level = ComplexityLevel(analysis_data["complexity_level"])
-            required_capabilities = [
-                RequiredCapability(cap)
-                for cap in analysis_data["required_capabilities"]
-            ]
-            computational_requirements = [
-                ComputationalRequirement(req)
-                for req in analysis_data["computational_requirements"]
-            ]
-
-            return IntentAnalysis(
-                primary_intent=analysis_data["primary_intent"],
-                complexity_level=complexity_level,
-                required_capabilities=required_capabilities,
-                computational_requirements=computational_requirements,
-                domain_specificity=float(analysis_data["domain_specificity"]),
-                reusability_potential=float(analysis_data["reusability_potential"]),
-                confidence=float(analysis_data["confidence"]),
-            )
-
-        except (json.JSONDecodeError, KeyError, ValueError) as e:
-            composer_logger.log_error(
-                e, {"context": "llm_response_parsing", "response": llm_response}
-            )
-            # Fallback to heuristic analysis if LLM parsing fails
-            return self._fallback_heuristic_analysis(llm_response)
+        return intents.intents
 
     def _augment_with_statistics(
         self, intent_analysis: IntentAnalysis, user_query: str
-    ) -> IntentAnalysis:
+    ):
         """Augment LLM analysis with statistical insights where beneficial."""
         # Apply query length adjustments to confidence
         query_length = len(user_query)
@@ -302,15 +256,7 @@ Consider:
             0.1, min(1.0, intent_analysis.confidence + confidence_adjustment)
         )
 
-        return IntentAnalysis(
-            primary_intent=intent_analysis.primary_intent,
-            complexity_level=intent_analysis.complexity_level,
-            required_capabilities=intent_analysis.required_capabilities,
-            computational_requirements=intent_analysis.computational_requirements,
-            domain_specificity=intent_analysis.domain_specificity,
-            reusability_potential=intent_analysis.reusability_potential,
-            confidence=adjusted_confidence,
-        )
+        intent_analysis.confidence = adjusted_confidence
 
     def _fallback_heuristic_analysis(self, user_query: str) -> IntentAnalysis:
         """

@@ -1,0 +1,122 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ContextWindowConfig
+description: Configuration for context window management and optimization
+type: object
+properties:
+  enabled:
+    type: boolean
+    description: Enable intelligent context window management
+    default: true
+
+  window_config:
+    type: object
+    description: Context window size and management settings
+    properties:
+      max_tokens:
+        type: integer
+        description: Maximum context window size in tokens
+        default: 8192
+        minimum: 1024
+        maximum: 32768
+      reserve_tokens:
+        type: integer
+        description: Tokens to reserve for response generation
+        default: 1024
+        minimum: 256
+        maximum: 4096
+      overflow_strategy:
+        type: string
+        description: Strategy when context exceeds max_tokens
+        enum: ["truncate_oldest", "truncate_middle", "compress", "error"]
+        default: "truncate_oldest"
+    required:
+      - max_tokens
+      - reserve_tokens
+      - overflow_strategy
+
+  prioritization:
+    type: object
+    description: Content prioritization for context assembly
+    properties:
+      priority_order:
+        type: array
+        description: Priority order for context sources (highest to lowest)
+        items:
+          type: string
+          enum:
+            [
+              "recent_messages",
+              "retrieved_memories",
+              "summaries",
+              "search_results",
+              "tool_results",
+            ]
+        default:
+          [
+            "recent_messages",
+            "retrieved_memories",
+            "summaries",
+            "search_results",
+            "tool_results",
+          ]
+      recent_messages_count:
+        type: integer
+        description: Number of recent messages to always include
+        default: 5
+        minimum: 1
+        maximum: 20
+      memory_allocation:
+        type: number
+        description: Fraction of context window allocated to memories
+        default: 0.3
+        minimum: 0.1
+        maximum: 0.7
+      summary_allocation:
+        type: number
+        description: Fraction of context window allocated to summaries
+        default: 0.2
+        minimum: 0.1
+        maximum: 0.5
+    required:
+      - priority_order
+      - recent_messages_count
+      - memory_allocation
+      - summary_allocation
+
+  optimization:
+    type: object
+    description: Context optimization and efficiency settings
+    properties:
+      enable_compression:
+        type: boolean
+        description: Enable content compression for efficiency
+        default: true
+      deduplication:
+        type: boolean
+        description: Remove duplicate content across sources
+        default: true
+      smart_truncation:
+        type: boolean
+        description: Use intelligent truncation preserving key content
+        default: true
+      cache_optimized_context:
+        type: boolean
+        description: Cache optimized context for reuse
+        default: true
+      token_counting_method:
+        type: string
+        description: Method for counting tokens
+        enum: ["approximate", "precise", "model_specific"]
+        default: "approximate"
+    required:
+      - enable_compression
+      - deduplication
+      - smart_truncation
+      - cache_optimized_context
+      - token_counting_method
+
+required:
+  - enabled
+  - window_config
+  - prioritization
+  - optimization

@@ -21,30 +21,30 @@ class DynamicToolStorage:
         self.pool = pool
         self.typed_pool = typed_pool(pool)
         self.get_query = get_query
-        
+
     def _parse_tool_from_row(self, row) -> DynamicTool:
         """Parse a DynamicTool from database row data with proper field handling"""
         tool_data = dict(row)
-        
+
         # Parse JSON fields
         if isinstance(tool_data.get("parameters"), str):
             try:
                 tool_data["parameters"] = json.loads(tool_data["parameters"])
             except (json.JSONDecodeError, TypeError):
                 tool_data["parameters"] = None
-                
+
         if isinstance(tool_data.get("args_schema"), str):
             try:
                 tool_data["args_schema"] = json.loads(tool_data["args_schema"])
             except (json.JSONDecodeError, TypeError):
                 tool_data["args_schema"] = None
-                
+
         if isinstance(tool_data.get("metadata"), str):
             try:
                 tool_data["metadata"] = json.loads(tool_data["metadata"])
             except (json.JSONDecodeError, TypeError):
                 tool_data["metadata"] = {}
-                
+
         # Parse error handler fields (convert back from string to appropriate type)
         for field in ["handle_tool_error", "handle_validation_error"]:
             value = tool_data.get(field)
@@ -54,14 +54,14 @@ class DynamicToolStorage:
                 elif value.lower() == "none":
                     tool_data[field] = None
                 # Otherwise keep as string
-                
+
         # Ensure default values for optional fields
         tool_data.setdefault("tags", [])
         tool_data.setdefault("metadata", {})
         tool_data.setdefault("return_direct", False)
         tool_data.setdefault("verbose", False)
         tool_data.setdefault("response_format", "content")
-        
+
         return DynamicTool(**tool_data)
 
     async def get_tool_by_id(
@@ -168,34 +168,42 @@ class DynamicToolStorage:
         """Create a new dynamic tool with LangChain BaseTool interface support"""
         # Serialize complex fields to JSON if needed
         params_json = serialize_to_json(tool.parameters) if tool.parameters else None
-        args_schema_json = serialize_to_json(tool.args_schema) if tool.args_schema else None
+        args_schema_json = (
+            serialize_to_json(tool.args_schema) if tool.args_schema else None
+        )
         metadata_json = serialize_to_json(tool.metadata) if tool.metadata else "{}"
-        
+
         # Convert embedding to database format if provided
         embedding = tool.embedding if tool.embedding is not None else None
-        
+
         # Handle error handler fields (can be boolean, string, or None)
-        handle_tool_error = str(tool.handle_tool_error) if tool.handle_tool_error is not None else None
-        handle_validation_error = str(tool.handle_validation_error) if tool.handle_validation_error is not None else None
+        handle_tool_error = (
+            str(tool.handle_tool_error) if tool.handle_tool_error is not None else None
+        )
+        handle_validation_error = (
+            str(tool.handle_validation_error)
+            if tool.handle_validation_error is not None
+            else None
+        )
 
         async with self.typed_pool.acquire() as conn:
             row = await conn.fetchrow(
                 self.get_query("tool.create_tool"),
-                tool.user_id,                    # $1
-                tool.name,                       # $2
-                tool.description,                # $3
-                tool.code,                       # $4
-                tool.function_name,              # $5
-                embedding,                       # $6
-                args_schema_json,                # $7
-                tool.return_direct,              # $8
-                tool.verbose,                    # $9
-                tool.tags or [],                 # $10
-                metadata_json,                   # $11
-                handle_tool_error,               # $12
-                handle_validation_error,         # $13
-                tool.response_format,            # $14
-                params_json,                     # $15
+                tool.user_id,  # $1
+                tool.name,  # $2
+                tool.description,  # $3
+                tool.code,  # $4
+                tool.function_name,  # $5
+                embedding,  # $6
+                args_schema_json,  # $7
+                tool.return_direct,  # $8
+                tool.verbose,  # $9
+                tool.tags or [],  # $10
+                metadata_json,  # $11
+                handle_tool_error,  # $12
+                handle_validation_error,  # $13
+                tool.response_format,  # $14
+                params_json,  # $15
             )
 
             # Update the tool with the generated ID and timestamps
@@ -211,12 +219,20 @@ class DynamicToolStorage:
         """Update an existing dynamic tool with LangChain BaseTool interface support"""
         # Serialize complex fields to JSON if needed
         params_json = serialize_to_json(tool.parameters) if tool.parameters else None
-        args_schema_json = serialize_to_json(tool.args_schema) if tool.args_schema else None
+        args_schema_json = (
+            serialize_to_json(tool.args_schema) if tool.args_schema else None
+        )
         metadata_json = serialize_to_json(tool.metadata) if tool.metadata else "{}"
-        
+
         # Handle error handler fields (can be boolean, string, or None)
-        handle_tool_error = str(tool.handle_tool_error) if tool.handle_tool_error is not None else None
-        handle_validation_error = str(tool.handle_validation_error) if tool.handle_validation_error is not None else None
+        handle_tool_error = (
+            str(tool.handle_tool_error) if tool.handle_tool_error is not None else None
+        )
+        handle_validation_error = (
+            str(tool.handle_validation_error)
+            if tool.handle_validation_error is not None
+            else None
+        )
 
         # Convert embedding to database format if provided
         embedding = tool.embedding if tool.embedding is not None else None
@@ -224,22 +240,22 @@ class DynamicToolStorage:
         async with self.typed_pool.acquire() as conn:
             row = await conn.fetchrow(
                 self.get_query("tool.update_tool"),
-                tool.id,                         # $1
-                tool.user_id,                    # $2
-                tool.name,                       # $3
-                tool.description,                # $4
-                tool.code,                       # $5
-                tool.function_name,              # $6
-                embedding,                       # $7
-                args_schema_json,                # $8
-                tool.return_direct,              # $9
-                tool.verbose,                    # $10
-                tool.tags or [],                 # $11
-                metadata_json,                   # $12
-                handle_tool_error,               # $13
-                handle_validation_error,         # $14
-                tool.response_format,            # $15
-                params_json,                     # $16
+                tool.id,  # $1
+                tool.user_id,  # $2
+                tool.name,  # $3
+                tool.description,  # $4
+                tool.code,  # $5
+                tool.function_name,  # $6
+                embedding,  # $7
+                args_schema_json,  # $8
+                tool.return_direct,  # $9
+                tool.verbose,  # $10
+                tool.tags or [],  # $11
+                metadata_json,  # $12
+                handle_tool_error,  # $13
+                handle_validation_error,  # $14
+                tool.response_format,  # $15
+                params_json,  # $16
             )
 
             if not row:
@@ -306,7 +322,7 @@ class DynamicToolStorage:
                     # Store the similarity score separately before parsing
                     row_dict = dict(row)
                     similarity_score = row_dict.pop("similarity_score", None)
-                    
+
                     # Create the tool and add similarity score as an attribute
                     tool = self._parse_tool_from_row(row_dict)
                     setattr(tool, "similarity_score", similarity_score)
