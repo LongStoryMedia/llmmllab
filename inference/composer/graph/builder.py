@@ -141,10 +141,11 @@ class GraphBuilder:
             workflow.add_edge("intent_analysis", "dynamic_tool_collection")
             workflow.add_edge("static_tool_collection", "tool_composer")
             workflow.add_edge("dynamic_tool_collection", "tool_composer")
-            workflow.add_edge("tool_composer", "tool_executor")
-            workflow.add_edge("tool_executor", "chat_agent")
-            workflow.add_edge("chat_agent", "memory_creation")
-            workflow.add_edge("chat_agent", "title_generation")
+            # Reorder: allow chat_agent to emit tool call markup first, then execute
+            workflow.add_edge("tool_composer", "chat_agent")
+            workflow.add_edge("chat_agent", "tool_executor")
+            workflow.add_edge("tool_executor", "memory_creation")
+            workflow.add_edge("tool_executor", "title_generation")
             workflow.add_edge("memory_creation", "memory_storage")
             workflow.add_edge("memory_storage", END)
 
