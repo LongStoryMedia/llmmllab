@@ -230,25 +230,37 @@ If multiple intents are needed, include additional objects in the intents array.
                 grammar=_Intnts,
             )
         except Exception as e:  # pragma: no cover - pipeline invocation failure
-            composer_logger.logger.warning(
-                "Intent analysis pipeline execution failed, using fallback",
-                extra={"error": str(e)},
-            )
-            return [self._fallback_heuristic_analysis(user_query)]
+            # Treat failure as hard error (no silent fallback) so tests catch it
+            raise IntentAnalysisError(
+                f"Intent analysis model invocation failed: {e}"
+            ) from e
 
         txt = extract_message_text(result.message) if result and result.message else ""
         if not txt.strip():
-            return [self._fallback_heuristic_analysis(user_query)]
+            raise IntentAnalysisError("Empty intent analysis response")
 
+        # Attempt structured parse with minimal JSON repair before giving up
         try:
             intents = parse_structured_output(txt, _Intnts)
             return intents.intents
-        except Exception as e:  # pragma: no cover - parsing failure
-            composer_logger.logger.warning(
-                "Structured intent parsing failed, using fallback",
-                extra={"error": str(e), "raw": txt[:300]},
-            )
-            return [self._fallback_heuristic_analysis(user_query)]
+        except Exception as e:
+            # Attempt lightweight repair: truncate to last complete object and close array/object
+            repaired = self._attempt_json_repair(txt)
+            if repaired and repaired != txt:
+                try:
+                    intents = parse_structured_output(repaired, _Intnts)
+                    composer_logger.logger.info(
+                        "Intent JSON repaired successfully", extra={"original_len": len(txt), "repaired_len": len(repaired)}
+                    )
+                    return intents.intents
+                except Exception as e2:  # still failing
+                    raise IntentAnalysisError(
+                        f"Intent parsing failed after repair: {e2} (original error: {e})"
+                    ) from e2
+            # No repair success
+            raise IntentAnalysisError(
+                f"Intent parsing failed: {e}. Raw (truncated): {txt[:200]}"
+            ) from e
 
     def _augment_with_statistics(
         self, intent_analysis: IntentAnalysis, user_query: str
@@ -281,59 +293,39 @@ If multiple intents are needed, include additional objects in the intents array.
 
         intent_analysis.confidence = adjusted_confidence
 
-    def _fallback_heuristic_analysis(self, user_query: str) -> IntentAnalysis:
+    def _attempt_json_repair(self, raw: str) -> str:
+        """Attempt minimal JSON repair for truncated intents array.
+
+        Strategy: Find the last complete object terminator '}' before any dangling comma,
+        ensure the prefix up to that brace is kept, then close the intents array and root object.
+        Only applied if raw starts with '{' and contains '"intents"'.
         """
-        Fallback heuristic analysis when grammar-constrained LLM fails.
+        import re
 
-        Provides basic intent classification using keyword matching when:
-        - Grammar-constrained LLM analysis fails
-        - Model profile unavailable
-        - JSON parsing errors occur
-
-        Args:
-            user_query: User message text for heuristic analysis
-
-        Returns:
-            IntentAnalysis: Basic intent analysis with lower confidence scores
-        """
-        query_lower = user_query.lower()
-
-        # Simple heuristic classification
-        if any(kw in query_lower for kw in ["research", "investigate", "study"]):
-            primary_intent = "research"
-            capabilities = [RequiredCapability.WEB_SEARCH, RequiredCapability.REASONING]
-        elif any(kw in query_lower for kw in ["create", "generate", "write"]):
-            primary_intent = "creative"
-            capabilities = [
-                RequiredCapability.TEXT_PROCESSING,
-                RequiredCapability.REASONING,
-            ]
-        elif any(kw in query_lower for kw in ["code", "program", "debug"]):
-            primary_intent = "technical"
-            capabilities = [
-                RequiredCapability.REASONING,
-                RequiredCapability.TEXT_PROCESSING,
-            ]
-        else:
-            primary_intent = "chat"
-            capabilities = [RequiredCapability.TEXT_PROCESSING]
-
-        # Simple complexity assessment
-        if len(user_query) > 200:
-            complexity = ComplexityLevel.COMPLEX
-        elif len(user_query) > 100:
-            complexity = ComplexityLevel.MODERATE
-        else:
-            complexity = ComplexityLevel.SIMPLE
-
-        return IntentAnalysis(
-            primary_intent=primary_intent,
-            complexity_level=complexity,
-            required_capabilities=capabilities,
-            computational_requirements=[],
-            domain_specificity=0.3,
-            reusability_potential=0.5,
-            confidence=0.6,  # Lower confidence for heuristic fallback
-        )
+        if not raw.startswith('{') or '"intents"' not in raw:
+            return raw
+        # Remove any trailing non-JSON characters
+        trimmed = raw.strip()
+        # If already ends properly, return as-is
+        if trimmed.endswith('}'):  # might already be valid
+            return trimmed
+        # Find last complete object '}'
+        last_obj = trimmed.rfind('}')
+        if last_obj == -1:
+            return raw
+        candidate = trimmed[: last_obj + 1]
+        # Remove trailing comma if present
+        candidate = re.sub(r',\s*$', '', candidate)
+        # Ensure intents array closure
+        if '"intents"' in candidate and not candidate.rstrip().endswith('}]}'):
+            # If array not closed, append ]}
+            # Detect if we are inside array (presence of '[{' without closing ])
+            if '[{' in candidate and not re.search(r'\}\s*\]', candidate):
+                candidate = candidate + ']}'
+            elif candidate.count('{') > candidate.count('}'):
+                # Balance braces crudely
+                missing = candidate.count('{') - candidate.count('}')
+                candidate = candidate + ('}' * missing)
+        return candidate
 
     # All classification methods are now handled by LLM analysis above

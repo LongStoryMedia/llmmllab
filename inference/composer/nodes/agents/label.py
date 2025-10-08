@@ -19,12 +19,7 @@ class TitleGenerationNode:
     """
 
     def __init__(self, pipeline_factory):
-        """
-        Initialize title generation node.
-        
-        Args:
-            pipeline_factory: Factory for creating structured pipelines
-        """
+        """Initialize title generation node with existing pipeline factory."""
         self.pipeline_factory = pipeline_factory
         self.logger = composer_logger.logger
 
@@ -65,20 +60,34 @@ class TitleGenerationNode:
                 }
             )
 
-            # Create title generation pipeline with grammar constraints
-            title_pipeline = await self.pipeline_factory.create_structured_pipeline(
-                prompt_template=self._get_title_prompt(),
-                output_schema=str,  # Simple string output
-                enable_fallback=True
+            # Build prompt directly and invoke a lightweight summarization model
+            from utils.model_profile import get_model_profile_for_task
+            from models import ModelProfileType, Message, MessageContent, MessageContentType, MessageRole
+            from runner import pipeline_factory as pf
+            prompt_template = self._get_title_prompt()
+            conversation_context = self._format_conversation_context(state.messages)
+            full_prompt = prompt_template.format(conversation=conversation_context)
+
+            if not state.user_config:
+                raise RuntimeError("User config missing for title generation")
+            profile = await get_model_profile_for_task(
+                state.user_config.model_profiles, ModelProfileType.PrimarySummary, user_id
             )
 
-            # Format conversation context
-            conversation_context = self._format_conversation_context(state.messages)
-
-            # Generate title
-            title = await title_pipeline.execute({
-                "conversation": conversation_context
-            })
+            # Use existing text pipeline
+            from runner.pipelines.run import run_pipeline
+            msg = Message(
+                role=MessageRole.USER,
+                content=[
+                    MessageContent(
+                        type=MessageContentType.TEXT,
+                        text=full_prompt,
+                    )
+                ],
+            )
+            with pf.pipeline(profile, str) as pipe:
+                resp = await run_pipeline(messages=[msg], pipeline=pipe, tools=None)
+            title = resp.message.content[0].text if resp and resp.message else "Untitled Conversation"
 
             # Update state with generated title via progress updates
             generated_title = title.strip() if isinstance(title, str) else "Untitled Conversation"
@@ -106,12 +115,8 @@ class TitleGenerationNode:
                     "error": str(e)
                 }
             )
-            
-            # Continue without title on error
-            if not hasattr(state, 'progress_updates'):
-                state.progress_updates = []
-            state.progress_updates.append("Generated title: Untitled Conversation")
-            return state
+            # Escalate by raising so tests fail visibly
+            raise
 
     def _get_title_prompt(self) -> str:
         """Get the title generation prompt template."""

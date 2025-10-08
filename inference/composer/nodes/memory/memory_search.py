@@ -71,6 +71,12 @@ class MemorySearchNode:
                     cast(EmbeddingPipeline, pipe),
                 )
 
+                if not embeddings:
+                    err = "Embedding generation failed or returned empty result"
+                    self.logger.error(err, user_id=user_id)
+                    state.execution_metadata.add_error(err)
+                    raise RuntimeError(err)
+
                 self.logger.info(
                     "Searching for similar memories",
                     user_id=user_id,
@@ -114,7 +120,7 @@ class MemorySearchNode:
                 user_id=getattr(state, "user_id", "unknown"),
                 error=str(e),
             )
-            # Don't raise - add error to state and continue workflow
-            state.error_details.append(f"Memory search failed: {str(e)}")
+            # Escalate by recording in execution metadata and re-raising so test fails
+            state.execution_metadata.add_error(f"Memory search failed: {str(e)}")
             state.execution_metadata.has_memory_context = False
-            return state
+            raise

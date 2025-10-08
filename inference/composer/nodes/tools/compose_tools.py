@@ -1,6 +1,6 @@
-from typing import List, cast
+from typing import cast
 
-from models import Tool, IntentAnalysis, DynamicTool
+from models import DynamicTool
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
 
@@ -58,7 +58,15 @@ class ToolComposerNode:
                 if tool_name not in seen_names:
                     seen_names.add(tool_name)
                     deduplicated_tools.append(tool)
-                    await tool_svc.create_tool(cast(DynamicTool, tool))
+                    # Safely persist only if required minimal fields exist
+                    try:
+                        await tool_svc.create_tool(cast(DynamicTool, tool))
+                    except AttributeError as ae:
+                        # Escalate: missing expected structure in generated tool
+                        msg = f"Dynamic tool persistence failed (structural issue): {ae}"
+                        self.logger.error(msg)
+                        state.execution_metadata.add_error(msg)
+                        raise
 
             state.available_tools = deduplicated_tools
 
@@ -71,10 +79,7 @@ class ToolComposerNode:
             return state
 
         except Exception as e:
+            # Record error and re-raise so test framework captures failure
             self.logger.error(f"Tool composition failed: {e}")
-            # Fallback to simple combination - ensure type consistency
-            combined_tools = []
-            combined_tools.extend(state.static_tools or [])
-            combined_tools.extend(state.dynamic_tools or [])
-            state.available_tools = combined_tools
-            return state
+            state.execution_metadata.add_error(f"Tool composition failed: {e}")
+            raise
