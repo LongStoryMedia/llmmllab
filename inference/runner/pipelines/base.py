@@ -17,7 +17,6 @@ from typing import (
 from pathlib import Path
 
 from pydantic import BaseModel
-from datetime import datetime
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import BaseTool
@@ -27,9 +26,6 @@ from models import (
     ModelProfile,
     Model,
     ChatResponse,
-    MessageRole,
-    MessageContent,
-    MessageContentType,
 )
 
 Embeddings = List[List[float]]
@@ -150,7 +146,7 @@ class SimplePipelineCore(ABC, Generic[T]):
         tools: Optional[List[BaseTool]] = None,
         grammar: Optional[GrammarInput] = None,
         **kwargs,
-    ) -> PipeReturn:
+    ) -> Any:
         """
         Direct pipeline invocation - single call interface.
 
@@ -197,7 +193,7 @@ class SimplePipelineCore(ABC, Generic[T]):
 
     def _cleanup_resources(self) -> None:
         """Subclass-specific cleanup. Override as needed."""
-        pass
+        # Default does nothing
 
     def get_common_args(self) -> dict:
         """Return common arguments for this pipeline."""
@@ -273,6 +269,18 @@ class SimpleEmbeddingPipeline(SimplePipelineCore):
         """Generate embeddings for input messages."""
         # Implementation varies by embedding model
         raise NotImplementedError("Subclasses must implement invoke")
+
+    # Many callers (e.g., embed_pipeline helper) expect embedding pipelines to
+    # expose a process_messages method mirroring older orchestration-era APIs.
+    # Provide a default passthrough to maintain compatibility.
+    async def process_messages(  # type: ignore[override]
+        self,
+        messages: List[Message],
+        tools: Optional[List[BaseTool]] = None,
+        grammar: Optional[GrammarInput] = None,
+        **kwargs,
+    ) -> List[List[float]]:
+        return await self.invoke(messages, tools=tools, grammar=grammar, **kwargs)
 
 
 class SimpleTextPipeline(SimplePipelineCore):

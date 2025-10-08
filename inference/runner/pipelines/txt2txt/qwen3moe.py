@@ -213,3 +213,19 @@ class Qwen3Moe(SimpleLlamaCppPipeline):
                 content=[MessageContent(type=MessageContentType.TEXT, text=error_msg)],
             )
             yield ChatResponse(done=True, message=error_message)
+
+
+# ---------------------------------------------------------------------------
+# Backward compatibility alias expected by pipeline_factory & simple_factory
+# The factories import QwenSimplePipeline; original refactor renamed the class
+# to Qwen3Moe causing ImportError and pipeline creation failure. We provide a
+# thin alias to restore compatibility without altering external references.
+# ---------------------------------------------------------------------------
+class QwenSimplePipeline(Qwen3Moe):  # type: ignore
+    """Backward compatible alias for Qwen3 MoE text generation pipeline."""
+    pass
+
+__all__ = [
+    "Qwen3Moe",
+    "QwenSimplePipeline",
+]
