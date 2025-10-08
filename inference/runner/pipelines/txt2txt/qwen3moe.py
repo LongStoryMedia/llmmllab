@@ -6,7 +6,7 @@ Replaced 1020 lines of LangGraph complexity with direct LLM calls.
 import os
 import logging
 import asyncio
-from typing import List, Optional, AsyncIterator
+from typing import List, Optional, AsyncIterator, Dict, Any, Tuple
 
 from langchain_core.tools import BaseTool
 from langchain_core.messages import HumanMessage
@@ -97,19 +97,48 @@ class Qwen3Moe(SimpleLlamaCppPipeline):
 
         return "\n".join(formatted_parts)
 
-    def _extract_response_content(self, raw_response: str) -> str:
-        """Extract response content and handle <think> tags."""
-        # Remove <think>...</think> blocks for cleaner output
+    def _parse_tool_calls(self, content: str) -> Tuple[str, List[Dict[str, Any]]]:
+        """Extract <tool_call> JSON blocks and return remaining content + parsed calls.
+
+        Expected pattern:
+        <tool_call>\n{"name": "web_search", "arguments": {...}}\n</tool_call>
+        Multiple blocks allowed.
+        """
+        import re, json
+
+        tool_calls: List[Dict[str, Any]] = []
+
+        def repl(match: re.Match) -> str:
+            block = match.group(1).strip()
+            try:
+                # Some models may wrap code fences; strip them
+                block_stripped = block.strip('`')
+                parsed = json.loads(block_stripped)
+                # Normalize keys
+                name = parsed.get("name") or parsed.get("tool")
+                args = parsed.get("arguments") or parsed.get("args") or {}
+                if name:
+                    tool_calls.append({"name": name, "arguments": args})
+            except Exception:
+                pass  # Silently ignore malformed tool JSON in this pass
+            return ""  # Remove the block from assistant visible content
+
+        # Capture blocks between tags (non-greedy)
+        pattern = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.DOTALL)
+        remaining = re.sub(pattern, repl, content)
+        return remaining, tool_calls
+
+    def _extract_response_content(self, raw_response: str) -> Tuple[str, List[Dict[str, Any]]]:
+        """Extract response content, parse tool calls, and handle <think> tags."""
         import re
 
+        # First parse tool calls so think tag removal doesn't disturb JSON
+        without_tools, tool_calls = self._parse_tool_calls(raw_response)
+
         # Remove think tags and their content
-        cleaned = re.sub(r"<think>.*?</think>", "", raw_response, flags=re.DOTALL)
-
-        # Clean up extra whitespace
-        cleaned = re.sub(r"\n\s*\n", "\n", cleaned)
-        cleaned = cleaned.strip()
-
-        return cleaned or raw_response  # Fallback to original if nothing left
+        cleaned = re.sub(r"<think>.*?</think>", "", without_tools, flags=re.DOTALL)
+        cleaned = re.sub(r"\n\s*\n", "\n", cleaned).strip()
+        return (cleaned or raw_response, tool_calls)
 
     async def invoke(
         self,
@@ -136,7 +165,7 @@ class Qwen3Moe(SimpleLlamaCppPipeline):
 
             # Extract and clean content
             raw_content = str(response.content) if response.content else ""
-            cleaned_content = self._extract_response_content(raw_content)
+            cleaned_content, tool_calls = self._extract_response_content(raw_content)
 
             # Create response message
             result_message = Message(
@@ -144,6 +173,7 @@ class Qwen3Moe(SimpleLlamaCppPipeline):
                 content=[
                     MessageContent(type=MessageContentType.TEXT, text=cleaned_content)
                 ],
+                tool_calls=tool_calls if tool_calls else None,
             )
 
             return ChatResponse(done=True, message=result_message)
@@ -180,9 +210,7 @@ class Qwen3Moe(SimpleLlamaCppPipeline):
                 raise RuntimeError("LLM not initialized")
 
             accumulated_content = ""
-            async for chunk in self.llm.astream(
-                [HumanMessage(content=formatted_prompt)]
-            ):
+            async for chunk in self.llm.astream([HumanMessage(content=formatted_prompt)]):
                 if hasattr(chunk, "content") and chunk.content:
                     chunk_text = str(chunk.content)
                     accumulated_content += chunk_text
@@ -199,9 +227,12 @@ class Qwen3Moe(SimpleLlamaCppPipeline):
                     yield ChatResponse(done=False, message=chunk_message)
 
             # Final chunk to indicate completion
+            # On completion parse accumulated content for tool calls
+            cleaned_content, tool_calls = self._extract_response_content(accumulated_content)
             final_message = Message(
                 role=MessageRole.ASSISTANT,
-                content=[MessageContent(type=MessageContentType.TEXT, text="")],
+                content=[MessageContent(type=MessageContentType.TEXT, text=cleaned_content)],
+                tool_calls=tool_calls if tool_calls else None,
             )
             yield ChatResponse(done=True, message=final_message)
 

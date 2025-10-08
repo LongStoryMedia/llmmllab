@@ -12,7 +12,13 @@ from .extraction import (
 
 
 def message_to_langchain_message(msg: Message) -> LangChainMessage:
-    """Convert a Message object to a LangChainMessage object."""
+    """Convert a Message object to a LangChainMessage object.
+
+    IMPORTANT: Preserve tool_calls so downstream ToolExecutorNode
+    can detect and execute them. Previous implementation dropped
+    tool_calls resulting in zero execution even when the model
+    emitted <tool_call> markup.
+    """
     content_text = extract_content_from_message(msg)
 
     # Determine message type from role
@@ -27,6 +33,7 @@ def message_to_langchain_message(msg: Message) -> LangChainMessage:
     return LangChainMessage(
         content=content_text,
         type=message_type,
+        tool_calls=getattr(msg, "tool_calls", None),
     )
 
 
@@ -60,6 +67,7 @@ def langchain_message_to_message(
         content=_text_to_message_content_list(content_text),
         role=role,
         conversation_id=conversation_id,
+        tool_calls=getattr(lc_msg, "tool_calls", None),
     )
 
 
