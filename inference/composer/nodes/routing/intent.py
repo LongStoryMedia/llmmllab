@@ -69,8 +69,8 @@ class IntentClassifierNode:
                 langchain_message_to_message(state.current_user_message),
             )
 
-            # Update workflow state with analysis results
-            state.intent_classification = intent_analyses
+            # Extend workflow state with analysis results (list reducer)
+            state.intent_classification.extend(intent_analyses)
 
             self.logger.info("Intent classification completed")
 

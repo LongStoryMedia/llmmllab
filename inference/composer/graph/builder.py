@@ -10,6 +10,7 @@ from models import ModelProfileType
 from runner import PipelineFactory
 
 from composer.nodes.routing import IntentClassifierNode
+from composer.nodes.routing.router import WorkflowRouter
 from composer.nodes.tools import (
     StaticToolCollectionNode,
     DynamicToolCreationNode,
@@ -22,6 +23,8 @@ from composer.nodes.memory import (
     MemoryCreationNode,
     MemoryStorageNode,
 )
+from composer.nodes.agents import TitleGenerationNode
+from composer.nodes.agents.engineering import EngineeringAgentNode
 
 from composer.tools.registry import ToolRegistry
 
@@ -75,8 +78,18 @@ class GraphBuilder:
             workflow = StateGraph(WorkflowState)
             tool_registry = ToolRegistry(self.pipeline_factory)
 
-            # Add intent analysis node (always present for context enrichment)
+            # Intent analysis -> router -> (optional specialized agents) pattern
             workflow.add_node("intent_analysis", IntentClassifierNode())
+            workflow.add_node("workflow_router", WorkflowRouter(user_id))
+            # Engineering agent (invoked only when routing selects engineering)
+            workflow.add_node(
+                "engineering_agent", EngineeringAgentNode(self.pipeline_factory)
+            )
+
+            # Title generation (if no title exists)
+            workflow.add_node(
+                "title_generation", TitleGenerationNode(self.pipeline_factory)
+            )
 
             # Memory
             workflow.add_node("memory_search", MemorySearchNode(self.pipeline_factory))
@@ -105,7 +118,25 @@ class GraphBuilder:
             )
 
             workflow.add_edge(START, "intent_analysis")
-            workflow.add_edge(START, "memory_search")
+            workflow.add_edge("intent_analysis", "workflow_router")
+            # Conditional routing: router decides if engineering_agent should run or skip to memory/tool collection
+            def route_post_router(state: WorkflowState):
+                # If engineering selected among workflows and no engineering response yet, go there first
+                if state.selected_workflows and "engineering" in state.selected_workflows:
+                    return "engineering_agent"
+                return "memory_search"  # fallthrough primary path
+
+            workflow.add_conditional_edges(
+                "workflow_router",
+                route_post_router,
+                {
+                    "engineering_agent": "engineering_agent",
+                    "memory_search": "memory_search",
+                },
+            )
+            # After engineering agent, continue normal path
+            workflow.add_edge("engineering_agent", "memory_search")
+            workflow.add_edge(START, "memory_search")  # parallel memory search kickoff
             workflow.add_edge("intent_analysis", "static_tool_collection")
             workflow.add_edge("intent_analysis", "dynamic_tool_collection")
             workflow.add_edge("static_tool_collection", "tool_composer")
@@ -113,6 +144,7 @@ class GraphBuilder:
             workflow.add_edge("tool_composer", "tool_executor")
             workflow.add_edge("tool_executor", "chat_agent")
             workflow.add_edge("chat_agent", "memory_creation")
+            workflow.add_edge("chat_agent", "title_generation")
             workflow.add_edge("memory_creation", "memory_storage")
             workflow.add_edge("memory_storage", END)
 

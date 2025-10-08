@@ -4,8 +4,6 @@ Performs comprehensive intent analysis following the capability-driven architect
 Maps user requests to RequiredCapabilities and assesses computational complexity.
 """
 
-import asyncio
-import json
 
 from typing import List
 
@@ -185,33 +183,40 @@ class IntentClassifierAgent:
 
         class _Intnts(BaseModel):
             intents: List[IntentAnalysis]
-
+        # NOTE: Do NOT embed the raw JSON *schema* in the prompt (the model then echoes the schema
+        # which breaks validation). Provide a clear natural language spec + minimal exemplar instead.
         analysis_prompt = f"""
-You are an expert intent classification system. Analyze the user request and provide a structured JSON response.
+You are an expert intent classification system. Analyze the user request and output ONLY JSON.
 
-Available intent types: chat, research, creative, technical, summarization, analysis, tool_use
-Available complexity levels: TRIVIAL, SIMPLE, MODERATE, COMPLEX, SPECIALIZED
-Available capabilities: basic_math, text_processing, information_retrieval, conversation_memory, web_search, summarization, reasoning, general_knowledge, api_integration, async_processing, file_manipulation, data_processing, image_processing, audio_processing, database_access, network_communication
-Available computational requirements: high_memory, gpu_acceleration, parallel_processing, real_time_processing, large_data_handling, complex_reasoning, multi_modal_processing, external_api_calls, file_operations, database_operations
+Enumerations (must use exactly these values where applicable):
+    primary_intent: chat | research | creative | technical | summarization | analysis | tool_use | memory | embedding
+    complexity_level: TRIVIAL | SIMPLE | MODERATE | COMPLEX | SPECIALIZED
+    required_capabilities (array, choose relevant): basic_math, text_processing, information_retrieval, conversation_memory, web_search, summarization, reasoning, general_knowledge, api_integration, async_processing, file_manipulation, data_processing, image_processing, audio_processing, database_access, network_communication
+    computational_requirements (array, choose relevant): high_memory, gpu_acceleration, parallel_processing, real_time_processing, large_data_handling, complex_reasoning, multi_modal_processing, external_api_calls, file_operations, database_operations
 
-Break down the request into sub-tasks, and for each sub-task identify the intent.
-If multiple sub-tasks are identified, provide an IntentAnalysis for each.
-If the request is simple enough to be handled as a single task, provide one IntentAnalysis.
+Instructions:
+1. Decompose the request into logical sub-tasks ONLY if that materially helps execution; otherwise produce a single intent.
+2. Produce one object per sub-task in the intents array.
+3. domain_specificity, reusability_potential, confidence are floats 0.0–1.0.
+4. Omit response_format / technical_domain unless clearly implied.
+5. Output strictly valid JSON. No prose, no markdown.
 
 User Request: {user_query}
 
-Analyze this request and respond with ONLY a JSON object in this exact format:
-{json.dumps(_Intnts.model_json_schema())}
-Each `IntentAnalysis` in the `intents` list should correspond to a distinct sub-task identified in the user request.
+Return JSON with this top-level structure ONLY:
+{"intents": [
+    {
+        "primary_intent": "research",
+        "complexity_level": "MODERATE",
+        "required_capabilities": ["web_search", "reasoning"],
+        "computational_requirements": ["complex_reasoning"],
+        "domain_specificity": 0.4,
+        "reusability_potential": 0.7,
+        "confidence": 0.8
+    }
+]}
 
-Consider for each sub-task:
-1. What is the primary intent of each task?
-2. How complex is the task (technical sophistication, domain expertise required)?
-3. What capabilities are needed to fulfill this request?
-4. What computational resources might be required?
-5. How domain-specific vs general is this request? (0.0 = very general, 1.0 = highly specialized)
-6. How reusable would the approach be for similar requests? (0.0 = very specific, 1.0 = highly reusable)
-7. How confident are you in this analysis? (0.0 = uncertain, 1.0 = very confident)
+If multiple intents are needed, include additional objects in the intents array.
 """
 
         result = await run_pipeline(
