@@ -5,8 +5,7 @@ Replaced 777 lines of complex LangGraph orchestration with direct embedding call
 
 import os
 import logging
-import asyncio
-from typing import List, Optional, AsyncIterator
+from typing import List, Optional
 
 from langchain_community.embeddings import LlamaCppEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -63,7 +62,6 @@ class NomicEmbedTextPipe(SimpleEmbeddingPipeline):
 
         try:
             import torch
-            import os
 
             gguf_path = self._get_gguf_path()
 
@@ -95,15 +93,21 @@ class NomicEmbedTextPipe(SimpleEmbeddingPipeline):
             raise
 
     def _get_gguf_path(self) -> str:
-        """Get the GGUF file path for Nomic Embed Text v2."""
-        base_path = os.getenv("MODEL_PATH", "/app/models")
-        model_filename = "nomic-embed-text-v1.5.Q4_K_M.gguf"  # Adjust as needed
-        gguf_path = os.path.join(base_path, model_filename)
-
-        if not os.path.exists(gguf_path):
-            raise FileNotFoundError(f"Nomic GGUF file not found: {gguf_path}")
-
-        return gguf_path
+        """Resolve GGUF path from model.details.gguf_file or model.model."""
+        # Prefer explicit gguf_file in model details (populated from .models.json)
+        if self.model and getattr(self.model, "details", None):
+            details = self.model.details
+            candidate = getattr(details, "gguf_file", None)
+            if candidate and os.path.exists(candidate):
+                return candidate
+        # Fallback to model.model path from config
+        if self.model and getattr(self.model, "model", None):
+            candidate = self.model.model
+            if candidate and os.path.exists(candidate):
+                return candidate
+        raise FileNotFoundError(
+            "Nomic GGUF file not found via details.gguf_file or model.model path"
+        )
 
     def _init_text_splitter(self) -> RecursiveCharacterTextSplitter:
         """Initialize text splitter for handling long texts."""
@@ -188,10 +192,9 @@ class NomicEmbedTextPipe(SimpleEmbeddingPipeline):
                         chunk_emb = await self.llm.aembed_query(chunk)
                         chunk_embeddings.append(chunk_emb)
 
-                    # Average the chunk embeddings
-                    import numpy as np
-
-                    avg_embedding = np.mean(chunk_embeddings, axis=0).tolist()
+                    # Average the chunk embeddings (lazy import numpy)
+                    import numpy as np  # type: ignore
+                    avg_embedding = np.mean(chunk_embeddings, axis=0).tolist()  # type: ignore
                     embeddings.append(avg_embedding)
 
             return embeddings
