@@ -1065,6 +1065,11 @@ Please search for the most recent information and provide a comprehensive summar
                 success = False
                 validation_errors.append("No response chunks captured from workflow")
 
+            # Check 2a: Must have at least one tool call (strict requirement)
+            if not tool_calls_detected:
+                success = False
+                validation_errors.append("No tool calls were executed during workflow (strict failure)")
+
             # Check 3: Response length should be reasonable for a real LLM interaction
             if len(full_response) < 10:  # Very short responses likely indicate issues
                 success = False
