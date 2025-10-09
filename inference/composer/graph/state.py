@@ -235,23 +235,23 @@ class WorkflowState(BaseModel):
     )
 
     # Structured output from Intent Agent - directs subsequent search and tool decisions
-    intent_classification: Annotated[List[IntentAnalysis], operator.add] = Field(
+    intent_classification: Annotated[List[IntentAnalysis], lambda x, y: y if y is not None else x] = Field(
         default_factory=list,
         description="Intent analysis results for routing decisions",
     )
 
     # Curated list of tools collected for current execution phase
-    available_tools: Annotated[List[Tool], operator.add] = Field(
+    available_tools: Annotated[List[Tool], lambda x, y: y if y is not None else x] = Field(
         default_factory=list,
         description="Dynamic and static tools selected for this workflow",
     )
 
-    dynamic_tools: Annotated[List[Tool], operator.add] = Field(
+    dynamic_tools: Annotated[List[Tool], lambda x, y: y if y is not None else x] = Field(
         default_factory=list,
         description="Dynamic tools created during this workflow",
     )
 
-    static_tools: Annotated[List[Tool], operator.add] = Field(
+    static_tools: Annotated[List[Tool], lambda x, y: y if y is not None else x] = Field(
         default_factory=list,
         description="Static tools available for this workflow",
     )
@@ -327,7 +327,7 @@ class WorkflowState(BaseModel):
         Field(default=None, description="Search query used for web search")
     )
 
-    selected_workflows: Annotated[List[str], operator.add] = Field(
+    selected_workflows: Annotated[List[str], lambda x, y: y if y is not None else x] = Field(
         default_factory=list, description="List of workflows selected for execution"
     )
 
