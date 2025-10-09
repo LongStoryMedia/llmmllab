@@ -128,10 +128,7 @@ class SimpleLlamaCppPipeline(SimpleChatPipeline):
 
             # Determine GPU layers: explicit override > heuristic
             explicit_gpu_layers: Optional[int] = None
-            if (
-                getattr(self.profile, "gpu_config", None) is not None
-                and getattr(self.profile.gpu_config, "gpu_layers", None) is not None
-            ):
+            if self.profile.gpu_config is not None and self.profile.gpu_config.gpu_layers is not None:  # type: ignore[attr-defined]
                 explicit_gpu_layers = self.profile.gpu_config.gpu_layers  # type: ignore[attr-defined]
                 self._logger.info(
                     f"Explicit gpu_layers from profile: {explicit_gpu_layers}"

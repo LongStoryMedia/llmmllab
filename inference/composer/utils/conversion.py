@@ -33,7 +33,7 @@ def message_to_langchain_message(msg: Message) -> LangChainMessage:
     return LangChainMessage(
         content=content_text,
         type=message_type,
-        tool_calls=getattr(msg, "tool_calls", None),
+        tool_calls=msg.tool_calls,
     )
 
 
@@ -67,7 +67,7 @@ def langchain_message_to_message(
         content=_text_to_message_content_list(content_text),
         role=role,
         conversation_id=conversation_id,
-        tool_calls=getattr(lc_msg, "tool_calls", None),
+        tool_calls=lc_msg.tool_calls,
     )
 
 
