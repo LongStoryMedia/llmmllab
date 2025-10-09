@@ -201,7 +201,26 @@ class ComposerService:
                 async for event in workflow.astream_events(
                     initial_state.model_dump(), version="v2"
                 ):
-                    yield event
+                    try:
+                        # Inject tool_calls into event data if present in state but missing in event
+                        if isinstance(event, dict):
+                            data = event.get("data")
+                            # Events that carry a full state snapshot expose 'values'; prefer that
+                            if data and isinstance(data, dict):
+                                # If state serialization present
+                                state_values = data.get("values") or data.get("state")
+                                if state_values and isinstance(state_values, dict):
+                                    tc = state_values.get("tool_calls")
+                                    if tc and "tool_calls" not in data:
+                                        # Create a shallow copy to avoid mutating a typed dict structure
+                                        new_data = dict(data)
+                                        new_data["tool_calls"] = tc
+                                        event["data"] = new_data  # type: ignore[index]
+                                # Else if top-level tool_calls already emitted by node update, keep as-is
+                        yield event
+                    except Exception:
+                        # On any injection error, still yield original event to avoid stream disruption
+                        yield event
             else:
                 # Batch execution
                 result = await workflow.ainvoke(initial_state.model_dump())
