@@ -6,7 +6,6 @@ Extracted from complex base_llamacpp.py, preserving original parameter logic.
 import os
 import logging
 from typing import Optional, List
-import torch
 
 try:
     from langchain_community.chat_models.llamacpp import ChatLlamaCpp
@@ -22,21 +21,26 @@ from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHan
 
 from models import Model, ModelProfile
 from .utils import calculate_optimal_gpu_layers  # Reuse aggressive heuristic
-from runner.pipelines.base import SimpleChatPipeline
+from runner.pipelines.base import SimpleChatPipeline, GrammarInput
 
 
-class SimpleLlamaCppPipeline(SimpleChatPipeline):
-    """
-    Simplified LlamaCpp pipeline base with original parameter calculation.
+class BaseLlamaCppPipeline(SimpleChatPipeline):  # pyright: ignore[reportIncompatibleMethodOverride]
+    """Unified llama.cpp pipeline base combining simple fast path with full feature support.
 
-    Preserves the essential parameter calculation logic from BaseLlamaCppPipeline
-    but removes LangGraph orchestration complexity.
+    Features merged from legacy advanced base:
+    - Heuristic backoff across (n_batch, n_gpu_layers, n_ctx)
+    - Perplexity guard toggling logits/logprobs
+    - Grammar (GBNF/Pydantic) preparation hooks (stored for later validation)
+    - Explicit gpu_layers override + -1 full offload first strategy
+    - n_cpu_moe, flash_attention, seed, stop sequence handling
+    - Structured, progressive logging of attempts / fallbacks
     """
 
     def __init__(self, model: Model, profile: ModelProfile):
         super().__init__(model, profile)
         self.llm: Optional[BaseChatModel] = None
         self._logger = logging.getLogger(self.__class__.__name__)
+        self._grammar_model_class: Optional[type] = None
 
     def _get_gguf_path(self) -> str:
         """Get the GGUF file path from model definition."""
@@ -104,12 +108,35 @@ class SimpleLlamaCppPipeline(SimpleChatPipeline):
         # Sort in descending order (try largest first)
         return sorted(list(set(candidates)), reverse=True)
 
+    # ---------- Optional grammar (store only; actual enforcement delegated elsewhere) ----------
+    def _process_grammar_input(self, grammar: Optional[GrammarInput]) -> Optional[str]:
+        if grammar is None:
+            return None
+        try:
+            from utils.grammar_generator import (
+                get_grammar_for_model,
+                load_grammar_from_file,
+            )
+            from pydantic import BaseModel
+            from pathlib import Path
+            if isinstance(grammar, str):
+                return grammar
+            if isinstance(grammar, Path):
+                return load_grammar_from_file(grammar)
+            if isinstance(grammar, type) and issubclass(grammar, BaseModel):
+                self._grammar_model_class = grammar  # store for potential validation
+                return get_grammar_for_model(grammar)
+        except Exception as e:  # pragma: no cover
+            self._logger.warning(f"Grammar processing failed: {e}")
+        return None
+
     def _initialize_llamacpp_with_fallback(
         self,
         gguf_path: str,
         tools: Optional[List[BaseTool]] = None,
+        grammar: Optional[GrammarInput] = None,
     ) -> BaseChatModel:
-        """Initialize ChatLlamaCpp with simplified fallback logic."""
+        """Full feature initialization with heuristic backoff across context/batch/gpu layers."""
 
         # Get base parameters from profile
         requested_ctx = self.profile.parameters.num_ctx or 4096
@@ -121,19 +148,51 @@ class SimpleLlamaCppPipeline(SimpleChatPipeline):
         # Build context candidates
         context_candidates = self._build_context_candidates(requested_ctx)
 
-        # Try context sizes in order
-        for n_ctx in context_candidates:
-            # Calculate batch size (original logic)
-            n_batch = min(requested_batch, max(256, n_ctx // 64))
+        # Perplexity / logits guard (mirrors advanced base logic simplified)
+        perplexity_enabled = bool(
+            getattr(self.profile.parameters, "enable_perplexity_guard", False)
+        )
+        logits_all_enabled = perplexity_enabled
+        logprobs = 1 if perplexity_enabled else 0
+        if perplexity_enabled:
+            self._logger.info(
+                "Perplexity guard enabled -> logits_all=True logprobs=1 (memory heavier)"
+            )
+        else:
+            self._logger.info(
+                "Perplexity guard disabled -> logits_all=False logprobs=0 (memory optimized)"
+            )
+
+        # Pre-compute grammar string (best effort)
+        grammar_string = None
+        if grammar is not None:
+            grammar_string = self._process_grammar_input(grammar)
+            if grammar_string:
+                self._logger.info(
+                    f"Grammar prepared ({len(grammar_string)} chars). Passing if supported."
+                )
+
+        for n_ctx in context_candidates:  # outer loop: context last to reduce
+            n_batch_base = min(requested_batch, max(256, n_ctx // 64))
+            batch_candidates = sorted(
+                {n_batch_base, max(256, n_batch_base // 2), 256}, reverse=True
+            )
 
             # Determine GPU layers: explicit override > heuristic
             explicit_gpu_layers: Optional[int] = None
-            if self.profile.gpu_config is not None and self.profile.gpu_config.gpu_layers is not None:  # type: ignore[attr-defined]
-                explicit_gpu_layers = self.profile.gpu_config.gpu_layers  # type: ignore[attr-defined]
+            if (
+                self.profile.gpu_config is not None
+                and self.profile.gpu_config.gpu_layers is not None
+            ):
+                explicit_gpu_layers = self.profile.gpu_config.gpu_layers
                 self._logger.info(
                     f"Explicit gpu_layers from profile: {explicit_gpu_layers}"
                 )
-            force_full_env = os.getenv("FORCE_FULL_GPU", "false").lower() in {"1", "true", "yes"}
+            force_full_env = os.getenv("FORCE_FULL_GPU", "false").lower() in {
+                "1",
+                "true",
+                "yes",
+            }
 
             # Build candidate list: ALWAYS try -1 first unless explicit override is non -1
             gpu_layer_candidates: List[int] = []
@@ -143,7 +202,9 @@ class SimpleLlamaCppPipeline(SimpleChatPipeline):
                 else:
                     # Explicit numeric override first, then a conservative fallback (2/3) then heuristic
                     conservative = max(1, int(explicit_gpu_layers * 2 / 3))
-                    heuristic = self._calculate_optimal_gpu_layers(n_ctx, model_size_category)
+                    heuristic = self._calculate_optimal_gpu_layers(
+                        n_ctx, model_size_category
+                    )
                     gpu_layer_candidates = [explicit_gpu_layers]
                     if conservative != explicit_gpu_layers:
                         gpu_layer_candidates.append(conservative)
@@ -151,8 +212,14 @@ class SimpleLlamaCppPipeline(SimpleChatPipeline):
                         gpu_layer_candidates.append(heuristic)
             else:
                 # No explicit override: attempt full offload first (-1), unless user disables via env (they can set DISABLE_FULL_GPU=1 hypothetically)
-                disable_full = os.getenv("DISABLE_FULL_GPU", "false").lower() in {"1", "true", "yes"}
-                heuristic = self._calculate_optimal_gpu_layers(n_ctx, model_size_category)
+                disable_full = os.getenv("DISABLE_FULL_GPU", "false").lower() in {
+                    "1",
+                    "true",
+                    "yes",
+                }
+                heuristic = self._calculate_optimal_gpu_layers(
+                    n_ctx, model_size_category
+                )
                 fallback2 = int(heuristic * 0.9)
                 fallback3 = int(heuristic * 0.8)
                 if not disable_full or force_full_env:
@@ -179,58 +246,82 @@ class SimpleLlamaCppPipeline(SimpleChatPipeline):
             )
 
             # Iterate GPU layer candidates for this context until one works
-            for n_gpu_layers in gpu_layer_candidates:
-                try:
-                    kwargs = {
-                        "model_path": gguf_path,
-                        "n_ctx": n_ctx,
-                        "n_gpu_layers": n_gpu_layers,
-                        "n_threads": self._get_optimal_threads(),
-                        "f16_kv": True,
-                        "verbose": os.getenv("LOG_LEVEL", "WARNING").lower() == "debug",
-                        "n_batch": n_batch,
-                        "n_parts": -1,
-                        "seed": self.profile.parameters.seed or -1,
-                        "logits_all": False,
-                        "vocab_only": False,
-                        "use_mlock": False,
-                        "device": "cuda" if torch.cuda.is_available() else "cpu",
-                        "streaming": True,
-                        "callback_manager": CallbackManager([StreamingStdOutCallbackHandler()]),
-                        "temperature": self.profile.parameters.temperature or 0.7,
-                        "max_tokens": self.profile.parameters.max_tokens or 4096,
-                        "top_p": self.profile.parameters.top_p or 0.8,
-                        "top_k": self.profile.parameters.top_k or 20,
-                        "repeat_penalty": self.profile.parameters.repeat_penalty or 1.05,
-                        "stop": self.profile.parameters.stop or [],
-                    }
-                    if ChatLlamaCpp is None:
-                        raise ImportError("ChatLlamaCpp not available - langchain_community required")
-                    llm = ChatLlamaCpp(**kwargs)
-                    base_llm = llm
-                    if tools:
-                        try:
-                            llm.bind_tools(tools)
-                        except Exception as tool_err:  # pragma: no cover
-                            self._logger.warning(f"Tool binding failed (gpu_layers={n_gpu_layers}): {tool_err}")
-                    self._logger.info(
-                        f"Loaded {self.model.name} successfully: ctx={n_ctx}, batch={n_batch}, gpu_layers={n_gpu_layers}"
-                    )
-                    if n_gpu_layers == -1:
-                        self._logger.info(
-                            "All model layers scheduled for GPU. Monitor VRAM to ensure allocation succeeded."
+            for n_batch in batch_candidates:  # inner first axis
+                for n_gpu_layers in gpu_layer_candidates:  # second axis
+                    try:
+                        kwargs = {
+                            "model_path": gguf_path,
+                            "f16_kv": True,
+                            "n_parts": -1,
+                            "n_gpu_layers": n_gpu_layers,
+                            "n_ctx": n_ctx,
+                            "n_batch": n_batch,
+                            "use_mmap": True,
+                            "use_mlock": False,
+                            "seed": self.profile.parameters.seed or -1,
+                            "temperature": self.profile.parameters.temperature or 0.7,
+                            "max_tokens": self.profile.parameters.max_tokens or 4096,
+                            "top_p": self.profile.parameters.top_p or 0.8,
+                            "top_k": self.profile.parameters.top_k or 20,
+                            "repeat_penalty": self.profile.parameters.repeat_penalty
+                            or 1.05,
+                            "stop": self.profile.parameters.stop or [],
+                            "streaming": True,
+                            "verbose": os.getenv("LOG_LEVEL", "WARNING").lower()
+                            == "debug",
+                            "logits_all": logits_all_enabled,
+                            "logprobs": logprobs,
+                            "n_cpu_moe": getattr(self.profile.parameters, "n_cpu_moe", 0),
+                            "flash_attention": getattr(
+                                self.profile.parameters, "flash_attention", True
+                            ),
+                            "callback_manager": CallbackManager(
+                                [StreamingStdOutCallbackHandler()]
+                            ),
+                        }
+                        if grammar_string:
+                            kwargs["grammar"] = grammar_string
+                        if ChatLlamaCpp is None:
+                            raise ImportError(
+                                "ChatLlamaCpp not available - langchain_community required"
+                            )
+                        llm = ChatLlamaCpp(
+                            **{k: v for k, v in kwargs.items() if v is not None}
                         )
-                    else:
+                        if tools:
+                            try:
+                                llm = llm.bind_tools(tools)  # type: ignore[assignment]
+                            except Exception as tool_err:  # pragma: no cover
+                                self._logger.warning(
+                                    f"Tool binding failed (gpu_layers={n_gpu_layers}): {tool_err}"
+                                )
                         self._logger.info(
-                            "Partial layer offload (n_gpu_layers=%d). Set gpu_layers=-1 or FORCE_FULL_GPU=1 for full offload.",
+                            "Loaded llama.cpp model ctx=%d batch=%d gpu_layers=%d logits_all=%s logprobs=%d",
+                            n_ctx,
+                            n_batch,
                             n_gpu_layers,
+                            logits_all_enabled,
+                            logprobs,
                         )
-                    return base_llm
-                except Exception as e:  # noqa: BLE001
-                    self._logger.warning(
-                        f"Failed load attempt (ctx={n_ctx}, batch={n_batch}, gpu_layers={n_gpu_layers}): {e}"
-                    )
-                    continue  # try next candidate
+                        if n_gpu_layers == -1:
+                            self._logger.info(
+                                "All layers scheduled for GPU (-1). Monitor VRAM for confirmation."
+                            )
+                        else:
+                            self._logger.debug(
+                                "Partial offload n_gpu_layers=%d (set -1 or profile override for full).",
+                                n_gpu_layers,
+                            )
+                        return llm  # type: ignore[return-value]
+                    except Exception as e:  # noqa: BLE001
+                        self._logger.warning(
+                            "Load attempt failed ctx=%d batch=%d gpu_layers=%d: %s",
+                            n_ctx,
+                            n_batch,
+                            n_gpu_layers,
+                            e,
+                        )
+                        continue
 
         # If all attempts failed, raise the last error
         raise RuntimeError(
@@ -241,10 +332,14 @@ class SimpleLlamaCppPipeline(SimpleChatPipeline):
         self,
         tools: Optional[List[BaseTool]] = None,
     ) -> BaseChatModel:
-        """Initialize LLM using original parameter calculation logic."""
+        """Initialize LLM using full heuristic backoff."""
         if self.llm is not None:
             return self.llm
-
         gguf_path = self._get_gguf_path()
         self.llm = self._initialize_llamacpp_with_fallback(gguf_path, tools)
         return self.llm
+
+# Backwards compatibility alias
+SimpleLlamaCppPipeline = BaseLlamaCppPipeline
+
+__all__ = ["BaseLlamaCppPipeline", "SimpleLlamaCppPipeline"]

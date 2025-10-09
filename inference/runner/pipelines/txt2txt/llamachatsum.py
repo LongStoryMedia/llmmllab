@@ -25,7 +25,7 @@ from models import (
     ModelProfile,
 )
 from runner.pipelines.base import GrammarInput
-from runner.pipelines.llamacpp.simple_base import SimpleLlamaCppPipeline
+from runner.pipelines.llamacpp.simple_base import BaseLlamaCppPipeline as SimpleLlamaCppPipeline
 from utils.message import extract_message_text
 
 

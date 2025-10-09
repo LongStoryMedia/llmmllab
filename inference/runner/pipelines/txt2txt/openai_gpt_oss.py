@@ -29,7 +29,7 @@ from models import (
     ModelProfile,
 )
 from runner.pipelines.base import GrammarInput
-from runner.pipelines.llamacpp.simple_base import SimpleLlamaCppPipeline
+from runner.pipelines.llamacpp.simple_base import BaseLlamaCppPipeline as SimpleLlamaCppPipeline
 
 
 class OpenAIGptOssPipeline(SimpleLlamaCppPipeline):
