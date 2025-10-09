@@ -162,16 +162,6 @@ class PipelineNode:
                         ),
                     )
 
-                    # NOTE: Do NOT parse model-specific tool call markup here.
-                    # Responsibility moved to runner pipelines so composer remains model-agnostic.
-                    # If we see tool markup without structured tool_calls, log a warning for visibility.
-                    if not tool_calls and final_content and "<tool_call>" in final_content:
-                        self.logger.warning(
-                            "Tool call markup detected in assistant text but no structured tool_calls provided by runner",
-                            user_id=state.user_id,
-                            hint="Runner pipeline should parse and populate message.tool_calls",
-                        )
-
                     # Create final response from accumulated content
                     response = ChatResponse(
                         done=True,
@@ -202,6 +192,13 @@ class PipelineNode:
                     for content_item in response.message.content:
                         if hasattr(content_item, "text") and content_item.text:
                             content_text += content_item.text
+                # Debug: log raw tool_calls on response.message before conversion
+                self.logger.info(
+                    "PipelineNode: raw response.message tool_calls",
+                    user_id=state.user_id,
+                    tool_calls_present=bool(getattr(response.message, "tool_calls", None)),
+                    tool_calls=getattr(response.message, "tool_calls", None),
+                )
                 # Preserve tool calls: message_to_langchain_message now copies tool_calls
                 assistant_message = message_to_langchain_message(response.message)
             else:
@@ -212,19 +209,16 @@ class PipelineNode:
                 )
 
             # Add the response to state messages
+            tool_calls = getattr(assistant_message, "tool_calls", None)
             self.logger.info(
                 "Appending assistant message",
                 user_id=state.user_id,
-                tool_calls_present=bool(getattr(assistant_message, "tool_calls", None)),
-                tool_call_names=[c.get("name") for c in getattr(assistant_message, "tool_calls", [])] if getattr(assistant_message, "tool_calls", None) else [],
+                tool_calls_present=bool(tool_calls),
+                tool_calls=tool_calls,
             )
             state.messages.append(assistant_message)
             # Surface tool calls in state for downstream nodes & streaming events
-            try:
-                state.tool_calls = getattr(assistant_message, "tool_calls", None)
-            except Exception:
-                # Non-fatal; leave tool_calls as-is
-                pass
+            state.tool_calls = tool_calls
 
             return state
 

@@ -335,6 +335,12 @@ class Qwen3Moe(SimpleLlamaCppPipeline):
             # Extract and clean content
             raw_content = str(response.content) if response.content else ""
             cleaned_content, tool_calls = self._extract_response_content(raw_content)
+            if tool_calls:
+                self._logger.info(
+                    f"QwenSimplePipeline.invoke: parsed {len(tool_calls)} tool_call(s): {[c['name'] for c in tool_calls]}"
+                )
+            else:
+                self._logger.info("QwenSimplePipeline.invoke: no tool calls parsed")
 
             # Create response message
             result_message = Message(
@@ -344,7 +350,10 @@ class Qwen3Moe(SimpleLlamaCppPipeline):
                 ],
                 tool_calls=tool_calls if tool_calls else None,
             )
-
+            self._logger.info(
+                "QwenSimplePipeline.invoke: returning ChatResponse with tool_calls_present=%s",
+                bool(result_message.tool_calls),
+            )
             return ChatResponse(done=True, message=result_message)
 
         except Exception as e:
