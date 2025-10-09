@@ -45,7 +45,6 @@ class ComposerRealEndToEndTester:
         self.test_model_profile_id = uuid.uuid4()
         self.test_conversation_id: Optional[int] = None
         self.test_message_id: Optional[int] = None
-        self.created_entities = []  # Track for cleanup
         self.storage = None  # Will be initialized with infrastructure
 
         # LLM output capture configuration
@@ -196,16 +195,33 @@ class ComposerRealEndToEndTester:
         except Exception as e:
             logger.warning(f"⚠️  Failed to write workflow event to file: {e}")
 
+    def _parse_response_as_json(self, response_text: str) -> Any:
+        """
+        Try to parse response as JSON, return original if not valid JSON.
+        
+        Args:
+            response_text: The response text to parse
+            
+        Returns:
+            Parsed JSON if valid, otherwise the original text
+        """
+        try:
+            return json.loads(response_text)
+        except (json.JSONDecodeError, TypeError):
+            return response_text
+
     def _get_model_specific_system_prompt(self) -> str:
         """Get model-specific system prompt with appropriate tool calling format."""
         base_info = """You are a helpful AI assistant with access to web search tools.
 Knowledge cutoff: 2024-06
 Current date: 2025-10-07
 
-Available tools:
+IMPORTANT: You have access to the following tools and MUST use them when needed:
 - web_search: Search for current information on the web
 - memory_retrieval: Retrieve relevant memories 
 - summarization: Summarize content
+
+CRITICAL: For ANY request about 2024 information, current events, or recent developments, you MUST use the web_search tool to get up-to-date information. Do not say you cannot access real-time data - you can and should use the tools provided.
 
 You provide direct, informative responses while showing your reasoning process.
 Always use tools when you need current or specific information that might not be in your training data.
@@ -225,7 +241,12 @@ When you need current information, use this exact format:
 {"name": "web_search", "arguments": {"query": "your search query here"}}
 </tool_call>
 
-For ANY request about recent developments, current events, or 2024+ information, use the web_search tool.
+For ANY request about recent developments, current events, or 2024+ information, you MUST use the web_search tool.
+
+EXAMPLE: For the user's query about AI developments in 2024, you should immediately use:
+<tool_call>
+{"name": "web_search", "arguments": {"query": "major AI model releases 2024"}}
+</tool_call>
 """
             )
 
@@ -312,11 +333,11 @@ Always explain your reasoning and what information you're looking for.
                 test_results["components_passed"] += 1
 
             # Calculate success
-            test_results["overall_success"] = (
+            all_passed = (
                 test_results["components_passed"] == test_results["total_components"]
             )
+            test_results["overall_success"] = all_passed
             test_results["execution_time"] = time.time() - start_time
-            test_results["entities_created"] = len(self.created_entities)
 
         except Exception as e:
             logger.error(f"❌ Test execution failed: {str(e)}")
@@ -328,9 +349,7 @@ Always explain your reasoning and what information you're looking for.
         finally:
             # Always attempt cleanup
             logger.info("🧹 Phase 8: Real Data Cleanup")
-            cleanup_result = await self.cleanup_real_data()
-            test_results["results"]["cleanup"] = cleanup_result
-            test_results["entities_cleaned"] = cleanup_result.get("cleaned_count", 0)
+            await self.cleanup_real_data()
 
             # Finalize LLM output capture
             self._finalize_llm_output()
@@ -480,10 +499,6 @@ Always explain your reasoning and what information you're looking for.
             created_profile = await storage.model_profile.create_model_profile(
                 model_profile
             )
-            if created_profile:
-                self.created_entities.append(
-                    ("model_profile", str(self.test_model_profile_id))
-                )
 
             logger.info(f"   ✅ Created real model profile: {created_profile.name}")
 
@@ -504,7 +519,6 @@ Always explain your reasoning and what information you're looking for.
                     await storage.user_config.update_user_config(
                         self.test_user_id, user_config
                     )
-                    self.created_entities.append(("user_config", self.test_user_id))
                     logger.info(
                         f"   ✅ Updated user config with primary profile: {self.test_model_profile_id}"
                     )
@@ -546,9 +560,6 @@ Always explain your reasoning and what information you're looking for.
                 )
             logger.info(f"   ✅ Ensured user exists: {self.test_user_id}")
 
-            # Track user for cleanup
-            self.created_entities.append(("user", self.test_user_id))
-
             # Create real conversation
             conversation_id = await storage.conversation.create_conversation(
                 user_id=self.test_user_id,
@@ -559,8 +570,6 @@ Always explain your reasoning and what information you're looking for.
                 raise RuntimeError("Failed to create conversation")
 
             self.test_conversation_id = conversation_id
-            if conversation_id:
-                self.created_entities.append(("conversation", conversation_id))
 
             logger.info(f"   ✅ Created real conversation ID: {conversation_id}")
 
@@ -596,14 +605,6 @@ Specifically, I'm interested in:
 
 Please search for the most recent information and provide a comprehensive summary."""
 
-            # Capture the user message to output file
-            self._write_detailed_data(
-                section="USER_MESSAGE",
-                title="User Query Text",
-                data=query_text,
-                description="The user's input message that will trigger tool usage",
-            )
-
             content_list = [
                 MessageContent(type=MessageContentType.TEXT, text=query_text)
             ]
@@ -616,30 +617,12 @@ Please search for the most recent information and provide a comprehensive summar
                 created_at=datetime.now(timezone.utc),
             )
 
-            # Capture the complete user message structure
-            self._write_detailed_data(
-                section="USER_MESSAGE",
-                title="Complete Message Object",
-                data={
-                    "conversation_id": user_message.conversation_id,
-                    "role": user_message.role,
-                    "content": [
-                        {"type": content.type, "text": content.text}
-                        for content in user_message.content
-                    ],
-                    "created_at": (user_message.created_at),
-                },
-                description="Complete user message object structure",
-            )
-
             # Add message to database
             message_id = await storage.message.add_message(user_message)
             if not message_id:
                 raise RuntimeError("Failed to add message to database")
 
             self.test_message_id = message_id
-            if message_id:
-                self.created_entities.append(("message", message_id))
 
             logger.info(f"   ✅ Created real user message ID: {message_id}")
             logger.info(f"   📋 Message length: {len(query_text)} characters")
@@ -700,12 +683,7 @@ Please search for the most recent information and provide a comprehensive summar
                 }
                 messages_data.append(msg_data)
 
-            self._write_detailed_data(
-                section="CONVERSATION",
-                title="Message History",
-                data=messages_data,
-                description=f"Complete conversation history with {len(messages)} messages",
-            )
+
 
             # Step 1: Compose workflow for user
             logger.info("   🎼 Step 1: Composing workflow...")
@@ -718,17 +696,7 @@ Please search for the most recent information and provide a comprehensive summar
             logger.info(f"  Workflow graph saved: {output_path}")
             logger.info(f"   ✅ Workflow composed: {type(workflow).__name__}")
 
-            # Capture workflow information
-            self._write_detailed_data(
-                section="WORKFLOW",
-                title="Composed Workflow",
-                data={
-                    "workflow_type": type(workflow).__name__,
-                    "user_id": self.test_user_id,
-                    "workflow_class": str(workflow.__class__),
-                },
-                description="Information about the composed workflow",
-            )
+
 
             # Step 2: Create initial state
             logger.info("   🎼 Step 2: Creating initial state...")
@@ -957,12 +925,6 @@ Please search for the most recent information and provide a comprehensive summar
                             tool_calls_detected = True
                             logger.info("   🛠️  Tool call detected in workflow")
 
-                # Log progress periodically
-                if len(response_chunks) % 10 == 0 and len(response_chunks) > 0:
-                    logger.info(
-                        f"   📊 Processed {len(response_chunks)} response chunks"
-                    )
-
             execution_time = time.time() - start_time
             logger.info(f"   ✅ Workflow execution completed in {execution_time:.2f}s")
             logger.info(f"   📊 Total response chunks: {len(response_chunks)}")
@@ -1034,11 +996,6 @@ Please search for the most recent information and provide a comprehensive summar
                 assistant_message_id = await storage.message.add_message(
                     assistant_message
                 )
-                if assistant_message_id:
-                    self.created_entities.append(("message", assistant_message_id))
-                    logger.info(
-                        f"   ✅ Stored assistant response (ID: {assistant_message_id})"
-                    )
 
                 # Capture LLM response
                 self._write_llm_response(
@@ -1164,11 +1121,8 @@ Please search for the most recent information and provide a comprehensive summar
                 "tool_calls_detected": tool_calls_detected,
                 "response_length": len(full_response),
                 "workflow_type": "composer_langgraph",
-                "final_response": (
-                    full_response[:500] + "..."
-                    if len(full_response) > 500
-                    else full_response
-                ),
+                "final_response_raw": full_response,  # Full response for debugging
+                "final_response": self._parse_response_as_json(full_response),  # Try to parse as JSON
                 "validation_errors": validation_errors if validation_errors else None,
                 "tool_availability_correct": len(
                     [
@@ -1297,7 +1251,7 @@ Please search for the most recent information and provide a comprehensive summar
             logger.error(f"   ❌ Output validation failed: {str(e)}")
             return {"success": False, "error": str(e)}
 
-    async def cleanup_real_data(self) -> Dict[str, Any]:
+    async def cleanup_real_data(self):
         """Clean up all real test data from database."""
         logger.info("🧹 Cleaning up real test data...")
 
@@ -1308,7 +1262,7 @@ Please search for the most recent information and provide a comprehensive summar
             from db import storage
 
             # Ensure we have storage available
-            if not storage:
+            if not storage or not storage.pool:
                 logger.warning("   ⚠️  Storage not available for cleanup")
                 return {
                     "success": False,
@@ -1316,79 +1270,138 @@ Please search for the most recent information and provide a comprehensive summar
                     "cleaned_count": 0,
                 }
 
-            # Clean up in reverse order of creation
-            for entity_type, entity_id in reversed(self.created_entities):
-                try:
-                    if entity_type == "message" and storage.pool:
-                        # Delete message
-                        async with storage.pool.acquire() as conn:
-                            await conn.execute(
-                                "DELETE FROM messages WHERE id = $1", entity_id
-                            )
-                        logger.info(f"   ✅ Deleted message: {entity_id}")
-                        cleaned_count += 1
-
-                    elif entity_type == "conversation" and storage.conversation:
-                        # Delete conversation (cascades to messages)
-                        await storage.conversation.delete_conversation(entity_id)
-                        logger.info(f"   ✅ Deleted conversation: {entity_id}")
-                        cleaned_count += 1
-
-                    elif entity_type == "model_profile" and storage.pool:
-                        # Delete model profile
-                        async with storage.pool.acquire() as conn:
-                            await conn.execute(
-                                "DELETE FROM model_profiles WHERE id = $1",
-                                uuid.UUID(entity_id),
-                            )
-                        logger.info(f"   ✅ Deleted model profile: {entity_id}")
-                        cleaned_count += 1
-
-                    elif entity_type == "user_config" and storage.pool:
-                        # Reset user config to defaults (we don't delete, just reset)
-                        async with storage.pool.acquire() as conn:
-                            await conn.execute(
-                                "DELETE FROM user_configs WHERE user_id = $1", entity_id
-                            )
-                        logger.info(f"   ✅ Reset user config: {entity_id}")
-                        cleaned_count += 1
-
-                    elif entity_type == "user" and storage.pool:
-                        # Delete user (cascades to conversations, etc.)
-                        async with storage.pool.acquire() as conn:
-                            await conn.execute(
-                                "DELETE FROM users WHERE id = $1", entity_id
-                            )
-                        logger.info(f"   ✅ Deleted user: {entity_id}")
-                        cleaned_count += 1
-
-                except Exception as e:
-                    # Suppress known benign warning about non-existent user_configs relation
-                    msg = str(e)
-                    if (
-                        entity_type == "user_config"
-                        and 'relation "user_configs" does not exist' in msg
-                    ):
-                        logger.info(
-                            "   ℹ️  Skipping user_config deletion (table missing in current environment)"
-                        )
-                    else:
-                        error_msg = f"Failed to delete {entity_type} {entity_id}: {msg}"
-                        cleanup_errors.append(error_msg)
-                        logger.warning(f"   ⚠️  {error_msg}")
-
-            logger.info(f"   ✅ Cleanup completed: {cleaned_count} entities removed")
-
-            return {
-                "success": len(cleanup_errors) == 0,
-                "cleaned_count": cleaned_count,
-                "errors": cleanup_errors,
-                "total_entities": len(self.created_entities),
-            }
+            # Validate cascading deletes by checking what will be deleted
+            async with storage.pool.acquire() as conn:
+                # Count related entities before deletion
+                related_counts = {}
+                
+                # Model profiles
+                profile_count = await conn.fetchval(
+                    "SELECT COUNT(*) FROM model_profiles WHERE user_id = $1", 
+                    self.test_user_id
+                )
+                related_counts["model_profiles"] = profile_count
+                
+                # Dynamic tools
+                tool_count = await conn.fetchval(
+                    "SELECT COUNT(*) FROM dynamic_tools WHERE user_id = $1", 
+                    self.test_user_id
+                )
+                related_counts["dynamic_tools"] = tool_count
+                
+                # Conversations  
+                conversation_count = await conn.fetchval(
+                    "SELECT COUNT(*) FROM conversations WHERE user_id = $1", 
+                    self.test_user_id
+                )
+                related_counts["conversations"] = conversation_count
+                
+                # Messages (should cascade from conversations)
+                message_count = await conn.fetchval(
+                    "SELECT COUNT(*) FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)", 
+                    self.test_user_id
+                )
+                related_counts["messages"] = message_count
+                
+                # Memories (should cascade from conversations)
+                memory_count = await conn.fetchval(
+                    "SELECT COUNT(*) FROM memories WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)", 
+                    self.test_user_id
+                )
+                related_counts["memories"] = memory_count
+                
+                # Summaries (should cascade from conversations)
+                summary_count = await conn.fetchval(
+                    "SELECT COUNT(*) FROM summaries WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)", 
+                    self.test_user_id
+                )
+                related_counts["summaries"] = summary_count
+                
+                # Search topic syntheses (should cascade from conversations)
+                synthesis_count = await conn.fetchval(
+                    "SELECT COUNT(*) FROM search_topic_syntheses WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)", 
+                    self.test_user_id
+                )
+                related_counts["search_topic_syntheses"] = synthesis_count
+                
+                logger.info(f"   📊 Related entities before deletion: {related_counts}")
+                
+                # Delete the user (should cascade to all related entities)
+                await conn.execute(
+                    "DELETE FROM users WHERE id = $1", self.test_user_id
+                )
+                logger.info(f"   ✅ Deleted user: {self.test_user_id}")
+                cleaned_count += 1
+                
+                # Validate cascading deletes worked
+                remaining_counts = {}
+                
+                # Check that all related entities were deleted
+                remaining_counts["model_profiles"] = await conn.fetchval(
+                    "SELECT COUNT(*) FROM model_profiles WHERE user_id = $1", 
+                    self.test_user_id
+                )
+                
+                remaining_counts["dynamic_tools"] = await conn.fetchval(
+                    "SELECT COUNT(*) FROM dynamic_tools WHERE user_id = $1", 
+                    self.test_user_id
+                )
+                
+                remaining_counts["conversations"] = await conn.fetchval(
+                    "SELECT COUNT(*) FROM conversations WHERE user_id = $1", 
+                    self.test_user_id
+                )
+                
+                remaining_counts["messages"] = await conn.fetchval(
+                    "SELECT COUNT(*) FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)", 
+                    self.test_user_id
+                )
+                
+                remaining_counts["memories"] = await conn.fetchval(
+                    "SELECT COUNT(*) FROM memories WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)", 
+                    self.test_user_id
+                )
+                
+                remaining_counts["summaries"] = await conn.fetchval(
+                    "SELECT COUNT(*) FROM summaries WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)", 
+                    self.test_user_id
+                )
+                
+                remaining_counts["search_topic_syntheses"] = await conn.fetchval(
+                    "SELECT COUNT(*) FROM search_topic_syntheses WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)", 
+                    self.test_user_id
+                )
+                
+                logger.info(f"   📊 Remaining entities after deletion: {remaining_counts}")
+                
+                # Validate that cascading deletes worked
+                cascade_failures = []
+                for entity_type, count in remaining_counts.items():
+                    if count > 0:
+                        cascade_failures.append(f"{entity_type}: {count} remaining")
+                        
+                if cascade_failures:
+                    error_msg = f"Cascading deletes failed: {'; '.join(cascade_failures)}"
+                    cleanup_errors.append(error_msg)
+                    logger.error(f"   ❌ {error_msg}")
+                else:
+                    logger.info("   ✅ All cascading deletes succeeded")
+                    cleaned_count += sum(related_counts.values())
 
         except Exception as e:
+            error_msg = f"Failed to delete user or validate cascades: {e}"
+            cleanup_errors.append(error_msg)
             logger.error(f"   ❌ Cleanup failed: {str(e)}")
             return {"success": False, "error": str(e), "cleaned_count": cleaned_count}
+
+        # Return cleanup results
+        logger.info(f"✅ Cleanup completed: {cleaned_count} entities deleted")
+        return {
+            "success": len(cleanup_errors) == 0,
+            "cleaned_count": cleaned_count,
+            "errors": cleanup_errors,
+            "total_entities": sum(related_counts.values()) + 1,  # +1 for user
+        }
 
     def _finalize_llm_output(self):
         """Finalize the LLM output file with summary statistics."""

@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 # Type variable for return types
 T = TypeVar("T")
-PipeReturn = TypeVar("PipeReturn")
+# PipeReturn = TypeVar("PipeReturn")
 
 
 class SimplePipelineCore(ABC, Generic[T]):
@@ -307,4 +307,3 @@ class SimpleTextPipeline(SimplePipelineCore):
 # Backwards compatibility aliases for old pipeline_factory
 BasePipelineCore = SimplePipelineCore
 EmbeddingPipeline = SimpleEmbeddingPipeline
-PipeReturn = Any

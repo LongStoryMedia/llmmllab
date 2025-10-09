@@ -210,15 +210,33 @@ class PipelineNode:
                     content="No response generated from pipeline",
                 )
 
-            # Add the response to state messages
+            # Add the response to state messages (avoid duplicates)
             tool_calls = getattr(assistant_message, "tool_calls", None)
-            self.logger.info(
-                "Appending assistant message",
-                user_id=state.user_id,
-                tool_calls_present=bool(tool_calls),
-                tool_calls=tool_calls,
-            )
-            state.messages.append(assistant_message)
+            
+            # Check if this is a duplicate message by comparing with the last message
+            should_append = True
+            if state.messages:
+                last_msg = state.messages[-1]
+                if (
+                    hasattr(last_msg, "type") and last_msg.type == "ai" 
+                    and hasattr(last_msg, "content") and last_msg.content == assistant_message.content
+                ):
+                    self.logger.info(
+                        "Skipping duplicate assistant message",
+                        user_id=state.user_id,
+                        content_preview=str(assistant_message.content)[:100],
+                    )
+                    should_append = False
+            
+            if should_append:
+                self.logger.info(
+                    "Appending assistant message",
+                    user_id=state.user_id,
+                    tool_calls_present=bool(tool_calls),
+                    tool_calls=tool_calls,
+                )
+                state.messages.append(assistant_message)
+                
             # Surface tool calls in state for downstream nodes & streaming events
             state.tool_calls = tool_calls
 

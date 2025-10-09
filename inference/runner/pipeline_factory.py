@@ -8,11 +8,11 @@ import logging
 import os
 import time
 import threading
-from typing import Any, Dict, List, Optional, Type, cast, TypeVar
+from typing import Any, Dict, List, Optional, Type, cast, TypeVar, Union
 from contextlib import contextmanager
 
-from .pipeline_cache import LocalPipelineCacheManager
 
+from utils.hardware_manager import hardware_manager
 from models import (
     Model,
     LoraWeight,
@@ -25,10 +25,8 @@ from models import (
 )
 from models.default_configs import DEFAULT_CIRCUIT_BREAKER_CONFIG
 from .pipelines.base import BasePipelineCore, PipeReturn, EmbeddingPipeline
-
+from .pipeline_cache import LocalPipelineCacheManager
 from .pipelines.llamacpp.base_llamacpp import BaseLlamaCppPipeline
-from utils.hardware_manager import hardware_manager
-
 
 T = TypeVar("T", bound=PipeReturn)
 
@@ -66,9 +64,11 @@ class PipelineFactory:
 
         # Load available models from config file
         self._load_available_models()
-        
+
         # Set self.models to the loaded models, with models_map as fallback
-        self.models: Dict[str, Model] = self._available_models if self._available_models else (models_map or {})
+        self.models: Dict[str, Model] = (
+            self._available_models if self._available_models else (models_map or {})
+        )
 
         self.logger.info("PipelineFactory initialized with LocalPipelineCacheManager")
 
@@ -678,13 +678,11 @@ class PipelineFactory:
             )
 
         if model.pipeline == "OpenAiGptOssPipe":
-            from .pipelines.txt2txt.openai_gpt_oss import OpenAiGptOssPipe
+            from .pipelines.txt2txt.openai_gpt_oss import OpenAIGptOssPipeline
 
-            return OpenAiGptOssPipe(
+            return OpenAIGptOssPipeline(
                 model,
                 profile,
-                expected_return_type=expected_type,
-                circuit_config=circuit_config,
             )
 
         return None

@@ -247,6 +247,7 @@ rsync -avzru \
     --include='*.json' \
     --include='*.txt' \
     --include='*.log' \
+    --include='*.png' \
     --include='*/' \
     --exclude='*' \
     "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/debug/out/" "${SCRIPT_DIR}/debug/out/" 2>/dev/null || echo "   (No debug output files found on server yet)"

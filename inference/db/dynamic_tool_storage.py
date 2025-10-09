@@ -197,13 +197,12 @@ class DynamicToolStorage:
                 embedding,  # $6
                 args_schema_json,  # $7
                 tool.return_direct,  # $8
-                tool.verbose,  # $9
-                tool.tags or [],  # $10
-                metadata_json,  # $11
-                handle_tool_error,  # $12
-                handle_validation_error,  # $13
-                tool.response_format,  # $14
-                params_json,  # $15
+                tool.tags or [],  # $9
+                metadata_json,  # $10
+                handle_tool_error,  # $11
+                handle_validation_error,  # $12
+                tool.response_format,  # $13
+                params_json,  # $14
             )
 
             # Update the tool with the generated ID and timestamps

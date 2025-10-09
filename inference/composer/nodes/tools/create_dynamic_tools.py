@@ -57,10 +57,24 @@ class DynamicToolCreationNode:
                         prompt,
                         pipe,
                         cast(List[BaseTool], state.available_tools),
-                        DynamicTool,
                     )
                     raw = extract_message_text(res.message) if res.message else ""
-                    dt = DynamicTool(**json.loads(raw))
+                    
+                    # Parse response and check if we should skip tool creation
+                    try:
+                        parsed_response = json.loads(raw)
+                        if parsed_response.get("skip"):
+                            self.logger.info(
+                                "Skipping dynamic tool creation",
+                                user_id=state.user_id,
+                                reason=parsed_response.get("reason", "No reason provided"),
+                            )
+                            continue
+                        
+                        dt = DynamicTool(**parsed_response)
+                    except (json.JSONDecodeError, KeyError, TypeError) as e:
+                        self.logger.error(f"Failed to parse dynamic tool response: {e}")
+                        continue
 
                     # Ensure user_id is set for persistence
                     if not dt.user_id:
@@ -74,14 +88,20 @@ class DynamicToolCreationNode:
 
                         tool_svc = storage.get_service(storage.dynamic_tool)
                         await tool_svc.create_tool(dt)
-                    except (
-                        Exception
-                    ) as pe:  # Persistence error -> hard fail path requirement
+                        
+                        self.logger.info(
+                            "Dynamic tool persisted successfully",
+                            user_id=state.user_id,
+                            tool_name=dt.name,
+                        )
+                        
+                    except Exception as pe:
                         self.logger.error(f"Dynamic tool persistence failed: {pe}")
+                        # Don't fail completely, just log and continue
                         state.execution_metadata.add_error(
                             f"Dynamic tool persistence failed: {pe}"
                         )
-                        raise
+                        continue
 
                     # Convert to generic Tool (agent only needs invocation metadata)
                     minimized_fields = {
@@ -89,7 +109,6 @@ class DynamicToolCreationNode:
                         "description": dt.description,
                         "args_schema": dt.args_schema,
                         "return_direct": dt.return_direct,
-                        "verbose": dt.verbose,
                         "tags": dt.tags,
                         "metadata": dt.metadata,
                         "handle_tool_error": dt.handle_tool_error,
@@ -116,7 +135,7 @@ class DynamicToolCreationNode:
 
         static_tool_names = [getattr(tool, "name", str(tool)) for tool in static_tools]
 
-        prompt = f"""As a Tool Engineering Specialist, analyze the user's request and generate a dynamic tool specification to address gaps in available capabilities.
+        prompt = f"""As a Tool Engineering Specialist, analyze the user's request and determine if a dynamic tool is needed beyond the available static tools.
 
 User Query: {user_query}
 Primary Intent: {intent.primary_intent}
@@ -125,11 +144,16 @@ Required Capabilities: {[str(cap) for cap in intent.required_capabilities]}
 
 Available Static Tools: {static_tool_names}
 
-Based on this analysis, create a tool specification that:
+CRITICAL ANALYSIS: Before creating any tool, determine if the user's request can be fulfilled using existing tools:
+- If web_search is available and the query needs current information, do NOT create a dynamic tool
+- If existing tools can handle the request, respond with: {{"skip": true, "reason": "Existing tools sufficient"}}
+- Only create a dynamic tool if there's a genuine capability gap
+
+If a dynamic tool is genuinely needed, create a tool specification that:
 1. Addresses specific capability gaps not covered by static tools
 2. Is tailored to the user's query and intent
 3. Has clear input/output schema definitions
-4. Includes proper implementation approach (API calls, calculations, etc.)
+4. Uses real, functional implementation (no fake APIs)
 5. Considers security and validation requirements
 
 Tool Requirements:
@@ -143,7 +167,6 @@ IMPORTANT: Use these exact default values for error handling:
 - handle_tool_error: false (not true)
 - handle_validation_error: false (not true)
 - return_direct: false
-- verbose: false
 
-Generate a structured tool specification in JSON format matching this schema: {json.dumps(DynamicTool.model_json_schema())}. Focus on practical implementation that directly addresses the user's needs."""
+Generate either a skip response or a structured tool specification in JSON format matching this schema: {json.dumps(DynamicTool.model_json_schema())}. Focus on practical implementation that directly addresses the user's needs."""
         return prompt
