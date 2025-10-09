@@ -2,21 +2,55 @@
 
 set -e
 
+# ---------------------------------------------
+# Enhanced sync script
+# Features added:
+# 1. Propagate deletions from local debug/out to remote (without wiping new remote files)
+# 2. Optional remote directory prune (--prune) to remove directories deleted locally even if they contained excluded files
+# 3. Support multiple flags simultaneously (previous version only inspected $1)
+# 4. Implement pull-only mode (-p / --pull-output)
+# ---------------------------------------------
+
 # Show help if requested
-if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+SHOW_HELP=0
+WATCH_MODE=0
+RESTART=0
+PULL_ONLY=0
+PRUNE_DIRS=0
+
+for arg in "$@"; do
+    case "$arg" in
+        -w|--watch) WATCH_MODE=1 ;;
+        -r|--restart) RESTART=1 ;;
+        -p|--pull-output) PULL_ONLY=1 ;;
+        -P|--prune) PRUNE_DIRS=1 ;;
+        -h|--help) SHOW_HELP=1 ;;
+        *) echo "Unknown option: $arg"; SHOW_HELP=1 ;;
+    esac
+done
+
+if [ "$SHOW_HELP" = "1" ]; then
     echo "LLM ML Lab Code Sync Script"
-    echo "Usage: $0 [option]"
+    echo "Usage: $0 [options]"
     echo ""
     echo "Options:"
-    echo "  (no args)        Full sync: pull benchmark data + debug output, then push code"
-    echo "  -w, --watch      Watch for local changes and sync continuously" 
-    echo "  -r, --restart    Restart the ollama deployment after sync"
-    echo "  -p, --pull-output Pull only output files (benchmark data + debug output)"
-    echo "  -h, --help       Show this help message"
+    echo "  (no args)          Full sync: pull benchmark data + debug output, propagate deletions, then push code"
+    echo "  -p, --pull-output  Pull only benchmark + debug output (no code push)"
+    echo "  -w, --watch        Watch for local changes and sync continuously"
+    echo "  -r, --restart      Restart the ollama deployment after sync"
+    echo "  -P, --prune        Prune remote directories deleted locally (force delete, even if non-empty)"
+    echo "  -h, --help         Show this help message"
     echo ""
-    echo "Environment variables:"
-    echo "  REMOTE_NODE_HOST Override default node host (default: lsnode-3)"
-    echo "  REMOTE_NODE_USER Override default node user (default: root)"
+    echo "Deletion Propagation (debug/out):" 
+    echo "  Local deletions in debug/out are detected via a manifest and removed remotely BEFORE pulling fresh output."
+    echo "  New remote files are preserved (they are pulled down after deletions)."
+    echo ""
+    echo "Environment variables:" 
+    echo "  REMOTE_NODE_HOST   Override default node host (default: lsnode-3)"
+    echo "  REMOTE_NODE_USER   Override default node user (default: root)"
+    echo ""
+    echo "Advanced notes:" 
+    echo "  --prune will compare directory trees and force remove remote directories not present locally (excluding safe list)."
     exit 0
 fi
 
@@ -40,7 +74,82 @@ fi
 
 echo "Syncing code to ${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}..."
 
-# Pull benchmark data from server
+DEBUG_OUT_LOCAL="${SCRIPT_DIR}/debug/out"
+DEBUG_OUT_REMOTE="${NODE_CODE_PATH}/debug/out"
+DEBUG_MANIFEST="${DEBUG_OUT_LOCAL}/.manifest"
+
+# Function: propagate deletions from local debug/out to remote BEFORE pulling remote changes
+propagate_debug_out_deletions() {
+    [ -d "${DEBUG_OUT_LOCAL}" ] || return 0
+    if [ ! -f "${DEBUG_MANIFEST}" ]; then
+        # No manifest yet – create initial one (after first pull) later
+        return 0
+    fi
+    # Build current local list (excluding manifest)
+        local tmp_manifest deleted_list
+    tmp_manifest=$(mktemp)
+    (cd "${DEBUG_OUT_LOCAL}" && find . -mindepth 1 ! -name '.manifest' -print | sort > "${tmp_manifest}")
+    # Compare with previous manifest to find deletions
+    deleted_list=$(comm -23 <(sort "${DEBUG_MANIFEST}") <(cat "${tmp_manifest}"))
+    if [ -n "${deleted_list}" ]; then
+        echo "🗑  Propagating deletions to remote debug/out:" 
+        # Delete each path remotely using rm -rf (covers files & dirs)
+        while IFS= read -r rel; do
+            [ -z "$rel" ] && continue
+            # Strip leading ./
+            rel_clean="${rel#./}"
+            echo "   - deleting ${rel_clean}"
+            ssh -o BatchMode=yes "${NODE_USER}@${NODE_HOST}" "rm -rf '${DEBUG_OUT_REMOTE}/${rel_clean}'" || echo "     (warn) failed to delete ${rel_clean}"
+        done <<< "${deleted_list}"
+    fi
+    rm -f "${tmp_manifest}"
+}
+
+# Function: update manifest after pulling remote debug/out
+update_debug_manifest() {
+    [ -d "${DEBUG_OUT_LOCAL}" ] || return 0
+    (cd "${DEBUG_OUT_LOCAL}" && find . -mindepth 1 -print | sort > "${DEBUG_MANIFEST}")
+}
+
+# Function: prune remote directories removed locally (force delete non-empty)
+prune_remote_directories() {
+    echo "🌲 Pruning remote directories deleted locally..."
+    local local_dirs_file remote_dirs_file prune_list
+    local_dirs_file=$(mktemp)
+    remote_dirs_file=$(mktemp)
+    # Safe excludes (patterns relative to project root)
+    local safe_prune_excludes=( './.git' './benchmark_data' './llama.cpp' )
+    # Build local directory list
+    ( cd "${SCRIPT_DIR}" && find . -type d | sort > "${local_dirs_file}" )
+    # Build remote directory list
+    ssh -o BatchMode=yes "${NODE_USER}@${NODE_HOST}" "cd '${NODE_CODE_PATH}' && find . -type d | sort" > "${remote_dirs_file}" || { echo "   (warn) could not list remote dirs"; return; }
+    # Build prune list = remote minus local, excluding safe list
+    prune_list=$(comm -23 "${remote_dirs_file}" "${local_dirs_file}")
+    if [ -z "${prune_list}" ]; then
+        echo "   No directories to prune"
+    else
+        while IFS= read -r dir; do
+            [ -z "$dir" ] && continue
+            skip=0
+            for ex in "${safe_prune_excludes[@]}"; do
+                if [ "$dir" = "$ex" ]; then
+                    skip=1; break
+                fi
+            done
+            [ $skip -eq 1 ] && continue
+            echo "   - removing remote directory ${dir}"
+            ssh -o BatchMode=yes "${NODE_USER}@${NODE_HOST}" "rm -rf '${NODE_CODE_PATH}/${dir#./}'" || echo "     (warn) failed to remove ${dir}"
+        done <<< "${prune_list}"
+    fi
+    rm -f "${local_dirs_file}" "${remote_dirs_file}"
+}
+
+# 1. Propagate any deletions for debug/out BEFORE pulling (only on full sync path)
+if [ "$PULL_ONLY" = "0" ]; then
+    propagate_debug_out_deletions
+fi
+
+# Pull benchmark data from server (always, unless directory missing remotely)
 echo "📊 Pulling benchmark data from server..."
 rsync -avzru \
     --exclude='.git/' \
@@ -49,35 +158,45 @@ rsync -avzru \
     --exclude='__pycache__/' \
     --exclude='*.pyc' \
     --exclude='llama.cpp/' \
-    "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/benchmark_data/" "${SCRIPT_DIR}/benchmark_data/"
+    "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/benchmark_data/" "${SCRIPT_DIR}/benchmark_data/" 2>/dev/null || echo "   (No remote benchmark_data yet)"
 
-# Pull debug output files from server
+# Pull debug output files from server (after deletion propagation)
 echo "🔍 Pulling debug output files from server..."
 rsync -avzru \
     --include='*.json' \
     --include='*.txt' \
     --include='*.log' \
+    --include='*/' \
     --exclude='*' \
     "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/debug/out/" "${SCRIPT_DIR}/debug/out/" 2>/dev/null || echo "   (No debug output files found on server yet)"
 
-# Use rsync to sync the local code to the remote node
-echo "📤 Pushing code changes to server..."
-rsync -avzru --delete \
-    --exclude='.git/' \
-    --exclude='.venv/' \
-    --exclude='venv/' \
-    --exclude='__pycache__/' \
-    --exclude='*.pyc' \
-    --exclude='llama.cpp/' \
-    --exclude='benchmark_data/' \
-    --exclude='.pytest_cache/' \
-    --exclude='.DS_Store' \
-    "${SCRIPT_DIR}/" "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/"
+# Update manifest (captures new remote state)
+update_debug_manifest
 
-echo "✅ Code synced successfully"
+if [ "$PULL_ONLY" = "0" ]; then
+    echo "📤 Pushing code changes to server..."
+    rsync -avzru --delete \
+        --exclude='.git/' \
+        --exclude='.venv/' \
+        --exclude='venv/' \
+        --exclude='__pycache__/' \
+        --exclude='*.pyc' \
+        --exclude='llama.cpp/' \
+        --exclude='benchmark_data/' \
+        --exclude='debug/out/' \
+        --exclude='.pytest_cache/' \
+        --exclude='.DS_Store' \
+        "${SCRIPT_DIR}/" "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/"
+    echo "✅ Code synced successfully"
+    if [ "$PRUNE_DIRS" = "1" ]; then
+        prune_remote_directories
+    fi
+else
+    echo "ℹ️  Pull-only mode: skipping code push"
+fi
 
-# Check if we should watch for changes and continuously sync
-if [ "$1" = "--watch" ] || [ "$1" = "-w" ]; then
+# Check if we should watch for changes and continuously sync (full sync only)
+if [ "$WATCH_MODE" = "1" ] && [ "$PULL_ONLY" = "0" ]; then
     echo "Watching for changes and syncing continuously. Press Ctrl+C to stop."
 
     # Check if fswatch is installed
@@ -105,7 +224,7 @@ if [ "$1" = "--watch" ] || [ "$1" = "-w" ]; then
 fi
 
 # Optionally restart the deployment
-if [ "$1" = "--restart" ] || [ "$1" = "-r" ]; then
+if [ "$RESTART" = "1" ]; then
     echo "Restarting ollama deployment..."
     kubectl rollout restart deployment ollama -n ollama
     echo "Deployment restarted. It may take a moment to become available."
