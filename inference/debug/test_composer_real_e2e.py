@@ -690,13 +690,14 @@ Please search for the most recent information and provide a comprehensive summar
             workflow = await compose_workflow(self.test_user_id)
             try:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                output_path = f"{self.output_dir}/workflow_graph_{timestamp}.png"
-                bts = workflow.get_graph().draw_mermaid_png(
-                    retry_delay=2.0,
-                    max_retries=5,
+                output_path = f"{self.output_dir}/workflow_graph_{timestamp}.md"
+                doc = workflow.get_graph().draw_mermaid(
+                    with_styles=True,
                 )
-                with open(output_path, "wb") as f:
-                    f.write(bts)
+                with open(output_path, "w", encoding="utf-8") as f:
+                    f.write("```mermaid\n")
+                    f.write(doc)
+                    f.write("\n```\n")
                 logger.info(f"  Workflow graph saved: {output_path}")
                 logger.info(f"   ✅ Workflow composed: {type(workflow).__name__}")
             except Exception as e:
