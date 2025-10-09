@@ -1,4 +1,4 @@
--- Search dynamic tools by semantic similarity for a specific user
+-- Search dynamic tools by semantic similarity for a specific user (basic columns only)
 -- $1: user_id
 -- $2: query embedding vector
 -- $3: similarity threshold (optional, default 0.7)
@@ -13,14 +13,6 @@ SELECT
     code,
     function_name,
     embedding,
-    args_schema,
-    return_direct,
-    verbose,
-    tags,
-    metadata,
-    handle_tool_error,
-    handle_validation_error,
-    response_format,
     parameters,
     created_at,
     updated_at,
