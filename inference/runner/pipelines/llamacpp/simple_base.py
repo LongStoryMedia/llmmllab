@@ -64,7 +64,9 @@ class SimpleLlamaCppPipeline(SimpleChatPipeline):
             )
             return 4
 
-    def _calculate_optimal_gpu_layers(self, n_ctx: int, model_size_category: str) -> int:
+    def _calculate_optimal_gpu_layers(
+        self, n_ctx: int, model_size_category: str
+    ) -> int:
         """Delegate to shared aggressive heuristic for consistency with advanced pipelines."""
         return calculate_optimal_gpu_layers(n_ctx, model_size_category)
 
@@ -125,111 +127,113 @@ class SimpleLlamaCppPipeline(SimpleChatPipeline):
             n_batch = min(requested_batch, max(256, n_ctx // 64))
 
             # Determine GPU layers: explicit override > heuristic
-            explicit_gpu_layers = None
-            if getattr(self.profile, "gpu_config", None) and getattr(getattr(self.profile, "gpu_config"), "gpu_layers", None) is not None:
-                explicit_gpu_layers = getattr(self.profile.gpu_config, "gpu_layers")
+            explicit_gpu_layers: Optional[int] = None
+            if (
+                getattr(self.profile, "gpu_config", None) is not None
+                and getattr(self.profile.gpu_config, "gpu_layers", None) is not None
+            ):
+                explicit_gpu_layers = self.profile.gpu_config.gpu_layers  # type: ignore[attr-defined]
                 self._logger.info(
-                    f"Using explicit gpu_layers override from profile: {explicit_gpu_layers}"
+                    f"Explicit gpu_layers from profile: {explicit_gpu_layers}"
                 )
-
             force_full_env = os.getenv("FORCE_FULL_GPU", "false").lower() in {"1", "true", "yes"}
 
+            # Build candidate list: ALWAYS try -1 first unless explicit override is non -1
+            gpu_layer_candidates: List[int] = []
             if explicit_gpu_layers is not None:
-                # Honor sentinel -1 (all layers) explicitly, never mutate
                 if explicit_gpu_layers == -1:
-                    self._logger.info(
-                        "Full GPU offload requested via profile (gpu_layers=-1). Passing through to llama.cpp."
-                    )
-                    n_gpu_layers = -1
+                    gpu_layer_candidates = [-1]
                 else:
-                    n_gpu_layers = explicit_gpu_layers
-            elif force_full_env:
-                self._logger.info(
-                    "FORCE_FULL_GPU environment variable set – using n_gpu_layers=-1 (all layers)."
-                )
-                n_gpu_layers = -1
+                    # Explicit numeric override first, then a conservative fallback (2/3) then heuristic
+                    conservative = max(1, int(explicit_gpu_layers * 2 / 3))
+                    heuristic = self._calculate_optimal_gpu_layers(n_ctx, model_size_category)
+                    gpu_layer_candidates = [explicit_gpu_layers]
+                    if conservative != explicit_gpu_layers:
+                        gpu_layer_candidates.append(conservative)
+                    if heuristic not in gpu_layer_candidates:
+                        gpu_layer_candidates.append(heuristic)
             else:
-                # Use aggressive heuristic, then clamp to at least 1. If heuristic returns > 0 we keep it.
-                heuristic_layers = self._calculate_optimal_gpu_layers(n_ctx, model_size_category)
-                n_gpu_layers = heuristic_layers if heuristic_layers > 0 else 1
-                # Warn if heuristic result seems suspiciously low (e.g., < 24 for medium/large models at modest context)
-                if n_gpu_layers < 24 and model_size_category in {"medium", "large", "xlarge"} and n_ctx <= 32768:
+                # No explicit override: attempt full offload first (-1), unless user disables via env (they can set DISABLE_FULL_GPU=1 hypothetically)
+                disable_full = os.getenv("DISABLE_FULL_GPU", "false").lower() in {"1", "true", "yes"}
+                heuristic = self._calculate_optimal_gpu_layers(n_ctx, model_size_category)
+                fallback2 = int(heuristic * 0.9)
+                fallback3 = int(heuristic * 0.8)
+                if not disable_full or force_full_env:
+                    gpu_layer_candidates.append(-1)
+                # Add heuristic + fallbacks ensuring uniqueness & positivity
+                for cand in [heuristic, fallback2, fallback3]:
+                    if cand > 0 and cand not in gpu_layer_candidates:
+                        gpu_layer_candidates.append(cand)
+                # Ensure a minimal floor candidate
+                if 16 not in gpu_layer_candidates:
+                    gpu_layer_candidates.append(16)
+
+            # If FORCE_FULL_GPU set and -1 not present (e.g., explicit override path) prepend -1
+            if force_full_env and -1 not in gpu_layer_candidates:
+                gpu_layer_candidates.insert(0, -1)
+
+            self._logger.info(
+                "GPU layer candidate sequence",
+                extra={
+                    "context": n_ctx,
+                    "candidates": gpu_layer_candidates,
+                    "model_size": model_size_category,
+                },
+            )
+
+            # Iterate GPU layer candidates for this context until one works
+            for n_gpu_layers in gpu_layer_candidates:
+                try:
+                    kwargs = {
+                        "model_path": gguf_path,
+                        "n_ctx": n_ctx,
+                        "n_gpu_layers": n_gpu_layers,
+                        "n_threads": self._get_optimal_threads(),
+                        "f16_kv": True,
+                        "verbose": os.getenv("LOG_LEVEL", "WARNING").lower() == "debug",
+                        "n_batch": n_batch,
+                        "n_parts": -1,
+                        "seed": self.profile.parameters.seed or -1,
+                        "logits_all": False,
+                        "vocab_only": False,
+                        "use_mlock": False,
+                        "device": "cuda" if torch.cuda.is_available() else "cpu",
+                        "streaming": True,
+                        "callback_manager": CallbackManager([StreamingStdOutCallbackHandler()]),
+                        "temperature": self.profile.parameters.temperature or 0.7,
+                        "max_tokens": self.profile.parameters.max_tokens or 4096,
+                        "top_p": self.profile.parameters.top_p or 0.8,
+                        "top_k": self.profile.parameters.top_k or 20,
+                        "repeat_penalty": self.profile.parameters.repeat_penalty or 1.05,
+                        "stop": self.profile.parameters.stop or [],
+                    }
+                    if ChatLlamaCpp is None:
+                        raise ImportError("ChatLlamaCpp not available - langchain_community required")
+                    llm = ChatLlamaCpp(**kwargs)
+                    base_llm = llm
+                    if tools:
+                        try:
+                            llm.bind_tools(tools)
+                        except Exception as tool_err:  # pragma: no cover
+                            self._logger.warning(f"Tool binding failed (gpu_layers={n_gpu_layers}): {tool_err}")
+                    self._logger.info(
+                        f"Loaded {self.model.name} successfully: ctx={n_ctx}, batch={n_batch}, gpu_layers={n_gpu_layers}"
+                    )
+                    if n_gpu_layers == -1:
+                        self._logger.info(
+                            "All model layers scheduled for GPU. Monitor VRAM to ensure allocation succeeded."
+                        )
+                    else:
+                        self._logger.info(
+                            "Partial layer offload (n_gpu_layers=%d). Set gpu_layers=-1 or FORCE_FULL_GPU=1 for full offload.",
+                            n_gpu_layers,
+                        )
+                    return base_llm
+                except Exception as e:  # noqa: BLE001
                     self._logger.warning(
-                        "Heuristic GPU layer allocation appears low (n_gpu_layers=%d, ctx=%d, size=%s). "
-                        "Consider setting gpu_layers=-1 in profile or FORCE_FULL_GPU=1 for full offload.",
-                        n_gpu_layers,
-                        n_ctx,
-                        model_size_category,
+                        f"Failed load attempt (ctx={n_ctx}, batch={n_batch}, gpu_layers={n_gpu_layers}): {e}"
                     )
-
-            try:
-                # Use original parameter structure
-                kwargs = {
-                    "model_path": gguf_path,
-                    "n_ctx": n_ctx,
-                    "n_gpu_layers": n_gpu_layers,
-                    "n_threads": self._get_optimal_threads(),
-                    "f16_kv": True,
-                    "verbose": os.getenv("LOG_LEVEL", "WARNING").lower() == "debug",
-                    "n_batch": n_batch,
-                    "n_parts": -1,
-                    "seed": self.profile.parameters.seed or -1,
-                    "logits_all": False,  # Simplified: no perplexity guard
-                    "vocab_only": False,
-                    "use_mlock": False,
-                    "device": "cuda" if torch.cuda.is_available() else "cpu",
-                    # Add streaming parameters
-                    "streaming": True,
-                    "callback_manager": CallbackManager(
-                        [StreamingStdOutCallbackHandler()]
-                    ),
-                    # Add generation parameters from profile
-                    "temperature": self.profile.parameters.temperature or 0.7,
-                    "max_tokens": self.profile.parameters.max_tokens or 4096,
-                    "top_p": self.profile.parameters.top_p or 0.8,
-                    "top_k": self.profile.parameters.top_k or 20,
-                    "repeat_penalty": self.profile.parameters.repeat_penalty or 1.05,
-                    "stop": self.profile.parameters.stop or [],
-                }
-
-                # Try to initialize
-                if ChatLlamaCpp is None:
-                    raise ImportError(
-                        "ChatLlamaCpp not available - langchain_community required"
-                    )
-                llm = ChatLlamaCpp(**kwargs)
-
-                # Store the base LLM
-                base_llm = llm
-
-                # Bind tools if provided (this changes the type, so handle separately)
-                if tools:
-                    try:
-                        llm.bind_tools(tools)
-                    except Exception as tool_err:  # pragma: no cover
-                        self._logger.warning(f"Tool binding failed: {tool_err}")
-
-                self._logger.info(
-                    f"Loaded {self.model.name} successfully: "
-                    f"ctx={n_ctx}, batch={n_batch}, gpu_layers={n_gpu_layers}"
-                )
-                if n_gpu_layers == -1:
-                    self._logger.info(
-                        "All model layers scheduled for GPU. Monitor VRAM to ensure allocation succeeded."
-                    )
-                else:
-                    self._logger.info(
-                        "Partial layer offload (n_gpu_layers=%d). Set gpu_layers=-1 or FORCE_FULL_GPU=1 for full offload.",
-                        n_gpu_layers,
-                    )
-
-                return base_llm
-
-            except Exception as e:
-                self._logger.warning(
-                    f"Failed to load with ctx={n_ctx}, batch={n_batch}, gpu_layers={n_gpu_layers}: {e}"
-                )
-                continue
+                    continue  # try next candidate
 
         # If all attempts failed, raise the last error
         raise RuntimeError(
