@@ -113,7 +113,7 @@ class PipelineNode:
                 mp, ChatResponse, self.priority, cb
             ) as pipe:
                 if self.stream:
-                    # For streaming: collect all chunks into final response
+                    # For streaming: collect all chunks into final response (accumulate, do not overwrite)
                     # LangGraph streaming is handled at graph level, not node level
                     final_content = ""
                     tool_calls = []
@@ -145,7 +145,9 @@ class PipelineNode:
                         )
 
                         if chunk.message:
-                            final_content = extract_message_text(chunk.message)
+                            # Append new text instead of replacing so earlier segments (possibly containing tool call JSON)
+                            # are retained for later inline extraction if needed.
+                            final_content += extract_message_text(chunk.message)
                             tool_calls.extend(chunk.message.tool_calls or [])
                             if chunk.done:
                                 break
@@ -226,6 +228,12 @@ class PipelineNode:
                 )
 
             # Add the response to state messages
+            self.logger.info(
+                "Appending assistant message",
+                user_id=state.user_id,
+                tool_calls_present=bool(getattr(assistant_message, "tool_calls", None)),
+                tool_call_names=[c.get("name") for c in getattr(assistant_message, "tool_calls", [])] if getattr(assistant_message, "tool_calls", None) else [],
+            )
             state.messages.append(assistant_message)
             # Surface tool calls in state for downstream nodes & streaming events
             try:
