@@ -227,6 +227,12 @@ class PipelineNode:
 
             # Add the response to state messages
             state.messages.append(assistant_message)
+            # Surface tool calls in state for downstream nodes & streaming events
+            try:
+                state.tool_calls = getattr(assistant_message, "tool_calls", None)
+            except Exception:
+                # Non-fatal; leave tool_calls as-is
+                pass
 
             return state
 

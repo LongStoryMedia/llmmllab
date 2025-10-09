@@ -272,6 +272,18 @@ class WorkflowState(BaseModel):
         description="All summaries relevant to this workflow execution",
     )
 
+    # Ephemeral structured tool calls from the latest assistant message.
+    # This is surfaced explicitly so streaming state events include a
+    # 'tool_calls' key allowing external harnesses to detect tool usage
+    # without parsing raw assistant content. Replaced (not concatenated)
+    # each time a new assistant message is produced.
+    tool_calls: Annotated[
+        Optional[List[Dict[str, Any]]], lambda current, new: new if new is not None else current
+    ] = Field(
+        default=None,
+        description="Structured tool calls from the most recent assistant generation",
+    )
+
     # Routing and execution control fields (referenced by builder.py)
     next_node: Annotated[Optional[str], lambda x, y: y if y is not None else x] = Field(
         default=None,

@@ -46,6 +46,11 @@ class ToolExecutorNode:
 
             # Check if last message has tool calls
             if not (hasattr(last_message, "tool_calls") and last_message.tool_calls):
+                self.logger.info(
+                    "No tool calls found on last message - skipping execution",
+                    user_id=getattr(state, "user_id", "unknown"),
+                    last_message_type=getattr(last_message, "type", "unknown"),
+                )
                 return state
 
             tools_to_use: List[BaseTool] = []
