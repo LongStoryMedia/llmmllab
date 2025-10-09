@@ -662,15 +662,31 @@ async def run_pipeline(
 
     try:
         chunks: List[str] = []
+        collected_tool_calls: List[Dict[str, Any]] = []
 
         async for chunk in stream_pipeline(messages, pipeline, tools, grammar):
             if chunk and chunk.message:
+                # Aggregate text
                 text = extract_message_text(chunk.message)
                 if text:
                     chunks.append(text)
+                # Preserve first occurrence of tool calls from any chunk
+                if getattr(chunk.message, "tool_calls", None):
+                    from copy import deepcopy
+                    if not collected_tool_calls:
+                        collected_tool_calls = deepcopy(chunk.message.tool_calls)  # type: ignore[arg-type]
 
         # Combine all chunks
         full_text = "".join(chunks)
+
+        logger.info(
+            "run_pipeline aggregation complete",
+            extra={
+                "text_length": len(full_text),
+                "tool_calls_present": bool(collected_tool_calls),
+                "tool_calls": collected_tool_calls,
+            },
+        )
 
         return ChatResponse(
             done=True,
@@ -682,6 +698,7 @@ async def run_pipeline(
                         text=full_text,
                     )
                 ],
+                tool_calls=collected_tool_calls if collected_tool_calls else None,
             ),
             created_at=datetime.now(timezone.utc),
             finish_reason="stop",

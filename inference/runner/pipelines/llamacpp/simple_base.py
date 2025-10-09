@@ -21,6 +21,7 @@ from langchain_core.callbacks import CallbackManager
 from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
 from models import Model, ModelProfile
+from .utils import calculate_optimal_gpu_layers  # Reuse aggressive heuristic
 from runner.pipelines.base import SimpleChatPipeline
 
 
@@ -63,27 +64,9 @@ class SimpleLlamaCppPipeline(SimpleChatPipeline):
             )
             return 4
 
-    def _calculate_optimal_gpu_layers(
-        self, n_ctx: int, model_size_category: str
-    ) -> int:
-        """Calculate optimal GPU layers based on context and model size."""
-        # Simplified version of the original calculate_optimal_gpu_layers logic
-        base_layers = {
-            "small": 20,  # < 7B parameters
-            "medium": 35,  # 7B-13B parameters
-            "large": 45,  # 13B-30B parameters
-            "xlarge": 60,  # > 30B parameters
-        }
-
-        base = base_layers.get(model_size_category, 35)
-
-        # Adjust based on context size
-        if n_ctx > 8192:
-            base = int(base * 0.9)  # Reduce for large context
-        elif n_ctx > 4096:
-            base = int(base * 0.95)
-
-        return max(1, base)
+    def _calculate_optimal_gpu_layers(self, n_ctx: int, model_size_category: str) -> int:
+        """Delegate to shared aggressive heuristic for consistency with advanced pipelines."""
+        return calculate_optimal_gpu_layers(n_ctx, model_size_category)
 
     def _get_model_size_category(self) -> str:
         """Determine model size category from model name."""
@@ -149,12 +132,35 @@ class SimpleLlamaCppPipeline(SimpleChatPipeline):
                     f"Using explicit gpu_layers override from profile: {explicit_gpu_layers}"
                 )
 
+            force_full_env = os.getenv("FORCE_FULL_GPU", "false").lower() in {"1", "true", "yes"}
+
             if explicit_gpu_layers is not None:
-                n_gpu_layers = explicit_gpu_layers
-            else:
-                n_gpu_layers = self._calculate_optimal_gpu_layers(
-                    n_ctx, model_size_category
+                # Honor sentinel -1 (all layers) explicitly, never mutate
+                if explicit_gpu_layers == -1:
+                    self._logger.info(
+                        "Full GPU offload requested via profile (gpu_layers=-1). Passing through to llama.cpp."
+                    )
+                    n_gpu_layers = -1
+                else:
+                    n_gpu_layers = explicit_gpu_layers
+            elif force_full_env:
+                self._logger.info(
+                    "FORCE_FULL_GPU environment variable set – using n_gpu_layers=-1 (all layers)."
                 )
+                n_gpu_layers = -1
+            else:
+                # Use aggressive heuristic, then clamp to at least 1. If heuristic returns > 0 we keep it.
+                heuristic_layers = self._calculate_optimal_gpu_layers(n_ctx, model_size_category)
+                n_gpu_layers = heuristic_layers if heuristic_layers > 0 else 1
+                # Warn if heuristic result seems suspiciously low (e.g., < 24 for medium/large models at modest context)
+                if n_gpu_layers < 24 and model_size_category in {"medium", "large", "xlarge"} and n_ctx <= 32768:
+                    self._logger.warning(
+                        "Heuristic GPU layer allocation appears low (n_gpu_layers=%d, ctx=%d, size=%s). "
+                        "Consider setting gpu_layers=-1 in profile or FORCE_FULL_GPU=1 for full offload.",
+                        n_gpu_layers,
+                        n_ctx,
+                        model_size_category,
+                    )
 
             try:
                 # Use original parameter structure
@@ -207,6 +213,15 @@ class SimpleLlamaCppPipeline(SimpleChatPipeline):
                     f"Loaded {self.model.name} successfully: "
                     f"ctx={n_ctx}, batch={n_batch}, gpu_layers={n_gpu_layers}"
                 )
+                if n_gpu_layers == -1:
+                    self._logger.info(
+                        "All model layers scheduled for GPU. Monitor VRAM to ensure allocation succeeded."
+                    )
+                else:
+                    self._logger.info(
+                        "Partial layer offload (n_gpu_layers=%d). Set gpu_layers=-1 or FORCE_FULL_GPU=1 for full offload.",
+                        n_gpu_layers,
+                    )
 
                 return base_llm
 
