@@ -17,6 +17,7 @@ WATCH_MODE=0
 RESTART=0
 PULL_ONLY=0
 PRUNE_DIRS=0
+RESET_DEBUG_OUT=0
 
 for arg in "$@"; do
     case "$arg" in
@@ -24,7 +25,8 @@ for arg in "$@"; do
         -r|--restart) RESTART=1 ;;
         -p|--pull-output) PULL_ONLY=1 ;;
         -P|--prune) PRUNE_DIRS=1 ;;
-        -h|--help) SHOW_HELP=1 ;;
+    -R|--reset-debug-out) RESET_DEBUG_OUT=1 ;;
+    -h|--help) SHOW_HELP=1 ;;
         *) echo "Unknown option: $arg"; SHOW_HELP=1 ;;
     esac
 done
@@ -39,7 +41,8 @@ if [ "$SHOW_HELP" = "1" ]; then
     echo "  -w, --watch        Watch for local changes and sync continuously"
     echo "  -r, --restart      Restart the ollama deployment after sync"
     echo "  -P, --prune        Prune remote directories deleted locally (force delete, even if non-empty)"
-    echo "  -h, --help         Show this help message"
+    echo "  -R, --reset-debug-out  Force remote debug/out to be fully cleared before pull"
+    echo "  -h, --help             Show this help message"
     echo ""
     echo "Deletion Propagation (debug/out):" 
     echo "  Local deletions in debug/out are detected via a manifest and removed remotely BEFORE pulling fresh output."
@@ -92,41 +95,61 @@ propagate_debug_out_deletions() {
     fi
     [ -n "${prev_manifest_path}" ] || return 0
 
-    # Build current list (empty if directory missing)
-    local tmp_current
-    tmp_current=$(mktemp)
-    if [ -d "${DEBUG_OUT_LOCAL}" ]; then
-        (cd "${DEBUG_OUT_LOCAL}" && find . -mindepth 1 ! -name '.manifest' ! -name 'debug_out.manifest.last' ! -name '.manifest.last' -print | sort > "${tmp_current}")
-    else
-        : > "${tmp_current}"
+    # If explicit reset flag, nuke remote dir except .gitignore and return
+    if [ "${RESET_DEBUG_OUT}" = "1" ]; then
+        echo "🧨 Resetting remote debug/out (full wipe)"
+        ssh -o BatchMode=yes "${NODE_USER}@${NODE_HOST}" "rm -rf '${DEBUG_OUT_REMOTE}' && mkdir -p '${DEBUG_OUT_REMOTE}'" || echo "   (warn) remote reset failed"
+        return 0
     fi
 
-    # Normalize previous manifest (strip any legacy manifest/self entries)
-    local tmp_prev
-    tmp_prev=$(mktemp)
-    grep -vE '^\./?\.manifest(\.last)?$' "${prev_manifest_path}" | grep -vE 'debug_out.manifest.last$' | sort > "${tmp_prev}" || true
+    # Build deletion list by walking previous manifest and checking local existence
+    local to_delete_file line rel_clean local_path had_prev=0 del_count=0 keep_count=0
+    to_delete_file=$(mktemp)
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        # Skip manifest bookkeeping entries
+        if [[ "$line" =~ \\.manifest ]]; then
+            continue
+        fi
+        had_prev=1
+        rel_clean="${line#./}"
+        local_path="${DEBUG_OUT_LOCAL}/${rel_clean}"
+        if [ ! -e "${local_path}" ]; then
+            echo "${rel_clean}" >> "${to_delete_file}"
+            del_count=$((del_count+1))
+        else
+            keep_count=$((keep_count+1))
+        fi
+    done < "${prev_manifest_path}"
 
-    # Determine deletions = prev - current
-    local deleted_list
-    deleted_list=$(comm -23 "${tmp_prev}" "${tmp_current}")
-
-    # If current is empty and previous had entries -> full wipe requested
-    if [ ! -s "${tmp_current}" ] && [ -s "${tmp_prev}" ]; then
-        deleted_list=$(cat "${tmp_prev}")
+    # Full wipe heuristic: local directory missing OR only .gitignore present and deletions less than 80% of previous -> treat as full wipe
+    if [ "$had_prev" = "1" ]; then
+        local total_prev=$((del_count+keep_count))
+        if { [ ! -d "${DEBUG_OUT_LOCAL}" ] || [ "$keep_count" -le 1 ]; } && [ "$total_prev" -gt 0 ] && [ $del_count -lt $total_prev ]; then
+            # Rebuild deletion list as everything
+            cat /dev/null > "${to_delete_file}"
+            while IFS= read -r line; do
+                [ -z "$line" ] && continue
+                if [[ "$line" =~ \\.manifest ]]; then
+                    continue
+                fi
+                echo "${line#./}" >> "${to_delete_file}"
+            done < "${prev_manifest_path}"
+            del_count=$total_prev
+            keep_count=0
+        fi
     fi
 
-    if [ -n "${deleted_list}" ]; then
-        echo "🗑  Propagating deletions to remote debug/out:" 
-        while IFS= read -r rel; do
-            [ -z "$rel" ] && continue
-            rel_clean="${rel#./}"
+    if [ "$del_count" -gt 0 ]; then
+        echo "🗑  Propagating deletions to remote debug/out (${del_count} files)..."
+        while IFS= read -r rel_clean; do
+            [ -z "$rel_clean" ] && continue
             echo "   - deleting ${rel_clean}"
             ssh -o BatchMode=yes "${NODE_USER}@${NODE_HOST}" "rm -rf '${DEBUG_OUT_REMOTE}/${rel_clean}'" || echo "     (warn) failed to delete ${rel_clean}"
-        done <<< "${deleted_list}"
+        done < "${to_delete_file}"
     fi
-
-    # Clean up
-    rm -f "${tmp_current}" "${tmp_prev}"
+    [ -n "${SYNC_DEBUG}" ] && echo "   (debug) deletions=${del_count} kept=${keep_count}"
+    rm -f "${to_delete_file}"
 }
 
 # Function: update manifest after pulling remote debug/out
