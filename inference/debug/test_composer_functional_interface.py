@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-Test script to validate the composer functional interface.
+Test scrip        print("\n2. Service access...")
+        service = get_composer_service()
+        print(f"✅ Service retrieved: {type(service).__name__}")
+
+        # Test 3: Workflow composition (mock data)validate the composer functional interface.
 """
 
 import sys
@@ -11,7 +15,6 @@ from composer import (
     initialize_composer,
     shutdown_composer,
     compose_workflow,
-    get_composer_config,
     get_composer_service,
 )
 from models.default_configs import create_default_user_config
@@ -35,14 +38,7 @@ async def test_functional_interface():
         await initialize_composer()
         print("✅ Composer initialized successfully")
 
-        # Test 2: Configuration access
-        print("\n2. Testing configuration access...")
-        config = get_composer_config()
-        print(
-            f"✅ Config retrieved: caching={config['caching_enabled']}, streaming={config['streaming_enabled']}"
-        )
-
-        # Test 3: Service access
+        # Test 2: Service access
         print("\n3. Testing service access...")
         service = get_composer_service()
         print(f"✅ Service retrieved: {type(service).__name__}")
@@ -77,19 +73,16 @@ async def test_functional_interface():
         )
 
         try:
-            # Extract user_id and messages for the new interface (architectural compliance)
+            # Extract user_id for the new interface (architectural compliance)
             user_id = conversation_ctx.conversation.user_id
-            messages = conversation_ctx.messages
-            workflow = await compose_workflow(
-                user_id=user_id, messages=messages, workflow_type=WorkflowType.CHAT
-            )
+            workflow = await compose_workflow(user_id=user_id)
             print("✅ Workflow composed successfully (mock)")
             print(f"   Workflow type: {type(workflow)}")
         except Exception as e:
             print(f"⚠️  Workflow composition failed (expected in test): {e}")
             print("   This is normal since we don't have full LangGraph setup")
 
-        # Test 5: Shutdown
+        # Test 4: Shutdown
         print("\n5. Testing shutdown...")
         await shutdown_composer()
         print("✅ Composer shutdown successfully")

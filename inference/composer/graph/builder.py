@@ -133,7 +133,8 @@ class GraphBuilder:
             # 4. Intent Analysis -> Router for workflow selection
             workflow.add_edge("intent_analysis", "workflow_router")
 
-            workflow.add_edge("tool_composer", "chat_agent")
+            workflow.add_edge("tool_composer", "workflow_router")
+            workflow.add_edge("memory_search", "workflow_router")
 
             # 5. Conditional routing: router decides next step based on complexity
             def route_post_router(state: WorkflowState):
@@ -179,8 +180,8 @@ class GraphBuilder:
                 },
             )
 
-            # 8. Tool executor -> Back to chat agent (for response with tool results)
-            workflow.add_edge("tool_executor", "chat_agent")
+            # 8. Tool executor -> Memory creation (tools executed, proceed to completion)
+            workflow.add_edge("tool_executor", "memory_creation")
 
             # 9. Memory and title generation happen after final response
             workflow.add_edge("memory_creation", "title_generation")
