@@ -258,6 +258,12 @@ class Qwen3Moe(BaseLlamaCppPipeline):
                 content=[MessageContent(type=MessageContentType.TEXT, text=cleaned_content)],
                 tool_calls=tool_calls,
             )
+            
+            # Debug: Log final message tool calls
+            self._logger.info(
+                f"QWEN3MOE STREAM: Final message created with tool_calls={len(final_message.tool_calls) if final_message.tool_calls else 0}"
+            )
+            
             yield ChatResponse(done=True, message=final_message)
 
         except Exception as e:

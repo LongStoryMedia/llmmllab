@@ -19,13 +19,14 @@ class ToolExecutorNode:
     Executes tool calls directly without relying on LangChain ToolNode (removed dependency).
     """
 
-    def __init__(self):
+    def __init__(self, tool_registry=None):
         """
         Initialize tool executor node.
 
         Args:
-            tools: List of available tools for execution. If empty, will use state.required_tools at runtime.
+            tool_registry: Registry containing executable tool instances
         """
+        self.tool_registry = tool_registry
         self.logger = composer_logger.logger.bind(component="ToolExecutorNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
@@ -53,17 +54,17 @@ class ToolExecutorNode:
                 )
                 return state
 
-            tools_to_use: List[BaseTool] = []
-            if state.available_tools:
-                for tool in state.available_tools:
-                    tools_to_use.append(cast(BaseTool, tool))
-
-            if not tools_to_use:
-                msg = "No compatible tools available for execution"
+            # Get executable tools from registry instead of state
+            executable_tools = {}
+            if self.tool_registry:
+                executable_tools = self.tool_registry.get_all_executable_tools()
+            
+            if not executable_tools:
+                msg = "No executable tools available from registry"
                 self.logger.error(
                     msg,
                     user_id=getattr(state, "user_id", "unknown"),
-                    state_tools=len(getattr(state, "available_tools", []) or []),
+                    registry_available=bool(self.tool_registry),
                 )
                 raise RuntimeError(msg)
 
@@ -72,15 +73,29 @@ class ToolExecutorNode:
                 user_id=getattr(state, "user_id", "unknown"),
                 tool_count=len(last_message.tool_calls),
                 tools=[call.get("name", "unknown") for call in last_message.tool_calls],
-                available_tool_count=len(tools_to_use),
+                available_tool_count=len(executable_tools),
             )
 
-            # Direct execution: each tool call maps name->tool; pass arguments if present
-            name_to_tool = {t.name: t for t in tools_to_use}
+            # Use executable tools from registry
+            name_to_tool = executable_tools  # This is already a name->BaseTool mapping
+            self.logger.info(
+                "Available tools debugging",
+                user_id=getattr(state, "user_id", "unknown"),
+                available_tools=list(name_to_tool.keys())[:10],  # Show first 10 for debugging
+                total_available=len(name_to_tool),
+                raw_tool_classes=[type(t).__name__ for t in name_to_tool.values()][:5],  # Show class names for debugging
+                raw_tool_names=[getattr(t, 'name', 'NO_NAME') for t in name_to_tool.values()][:5],  # Show .name attrs
+            )
             for call in last_message.tool_calls:
                 tool_name = call.get("name")
                 args = call.get("args") or call.get("arguments") or {}
                 if tool_name not in name_to_tool:
+                    self.logger.error(
+                        "Tool not found debugging",
+                        user_id=getattr(state, "user_id", "unknown"),
+                        requested_tool=tool_name,
+                        available_tools=sorted(list(name_to_tool.keys())),
+                    )
                     raise RuntimeError(f"Requested tool '{tool_name}' not available")
                 tool = name_to_tool[tool_name]
                 try:

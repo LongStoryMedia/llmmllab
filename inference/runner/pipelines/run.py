@@ -537,10 +537,16 @@ async def stream_pipeline(
                     normalized_messages, tools=tools, grammar=grammar
                 )
 
-                # Convert result to streaming format
+                # Convert result to streaming format, preserving tool calls
                 if hasattr(result, "message") and result.message:
                     text = extract_message_text(result.message)
-                    yield create_streaming_chunk(text, done=True)
+                    # Create streaming chunk that preserves tool calls
+                    streaming_message = Message(
+                        role=result.message.role,
+                        content=[MessageContent(type=MessageContentType.TEXT, text=text)] if text else [],
+                        tool_calls=result.message.tool_calls,  # Preserve tool calls!
+                    )
+                    yield ChatResponse(done=True, message=streaming_message)
                 else:
                     yield create_streaming_chunk(str(result), done=True)
                 return

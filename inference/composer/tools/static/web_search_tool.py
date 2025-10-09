@@ -172,11 +172,19 @@ class WebSearchTool(BaseTool):
         "Configurable search engines, categories, and parameters for optimal results. "
         "Returns formatted search results with titles, URLs, and content snippets."
     )
+    
+    # Declare user_id as a proper Pydantic field
+    user_id: str
 
     def __init__(self, user_id: str):
-        super().__init__()
-        self.user_id = user_id
-        self.logger = composer_logger.logger.bind(component="WebSearchTool")
+        super().__init__(user_id=user_id)
+        # Create logger without assigning to self (Pydantic doesn't allow it)
+        # Use it directly when needed
+    
+    @property
+    def logger(self):
+        """Get logger for this tool instance."""
+        return composer_logger.logger.bind(component="WebSearchTool")
 
     async def _get_web_search_config(self) -> WebSearchConfig:
         """Get web search configuration from user config via shared data layer."""

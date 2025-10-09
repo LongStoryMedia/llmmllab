@@ -107,7 +107,7 @@ class GraphBuilder:
                 DynamicToolCreationNode(tool_registry, self.pipeline_factory),
             )
             workflow.add_node("tool_composer", ToolComposerNode())
-            workflow.add_node("tool_executor", ToolExecutorNode())
+            workflow.add_node("tool_executor", ToolExecutorNode(tool_registry))
 
             # Primary chat agent with streaming enabled
             workflow.add_node(
@@ -121,19 +121,13 @@ class GraphBuilder:
             # 1. Start -> Intent Analysis
             workflow.add_edge(START, "intent_analysis")
 
-            # 2. Intent Analysis -> Parallel tool collection and memory search
+            # 2. Intent Analysis -> Sequential tool collection and memory search
             workflow.add_edge("intent_analysis", "static_tool_collection")
-            workflow.add_edge("intent_analysis", "dynamic_tool_collection")
-            workflow.add_edge("intent_analysis", "memory_search")
-
-            # 3. Tool collection -> Tool composer
-            workflow.add_edge("static_tool_collection", "tool_composer")
+            workflow.add_edge("static_tool_collection", "dynamic_tool_collection")
             workflow.add_edge("dynamic_tool_collection", "tool_composer")
-
-            # 4. Intent Analysis -> Router for workflow selection
-            workflow.add_edge("intent_analysis", "workflow_router")
-
-            workflow.add_edge("tool_composer", "workflow_router")
+            workflow.add_edge("tool_composer", "memory_search")
+            
+            # 3. Memory search -> Router for workflow selection
             workflow.add_edge("memory_search", "workflow_router")
 
             # 5. Conditional routing: router decides next step based on complexity
@@ -161,13 +155,22 @@ class GraphBuilder:
 
             # 7. Conditional routing from chat agent based on tool calls
             def should_execute_tools(state: WorkflowState):
-                # Check if the last message from chat agent has tool calls
+                if not state.messages:
+                    return "memory_creation"
+                    
+                last_message = state.messages[-1]
+                
+                # If last message is a tool result, continue to memory creation
+                if hasattr(last_message, "type") and last_message.type == "tool":
+                    return "memory_creation"
+                
+                # If last message has tool calls, execute tools
                 if (
-                    state.messages
-                    and hasattr(state.messages[-1], "tool_calls")
-                    and state.messages[-1].tool_calls
+                    hasattr(last_message, "tool_calls")
+                    and last_message.tool_calls
                 ):
                     return "tool_executor"
+                    
                 # No tool calls, go to memory creation
                 return "memory_creation"
 
@@ -180,8 +183,8 @@ class GraphBuilder:
                 },
             )
 
-            # 8. Tool executor -> Memory creation (tools executed, proceed to completion)
-            workflow.add_edge("tool_executor", "memory_creation")
+            # 8. Tool executor -> Chat agent (for final response with tool results)
+            workflow.add_edge("tool_executor", "chat_agent")
 
             # 9. Memory and title generation happen after final response
             workflow.add_edge("memory_creation", "title_generation")

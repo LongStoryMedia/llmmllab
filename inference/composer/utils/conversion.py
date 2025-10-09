@@ -30,11 +30,30 @@ def message_to_langchain_message(msg: Message) -> LangChainMessage:
                 "ai" if role_value.lower() in ("assistant", "ai") else "system"
             )
 
-    return LangChainMessage(
+    # Debug logging for tool calls conversion
+    from composer.monitoring.logging import composer_logger
+    logger = composer_logger.logger.bind(component="message_conversion")
+    
+    logger.info(
+        "Converting Message to LangChainMessage",
+        has_tool_calls=hasattr(msg, 'tool_calls') and msg.tool_calls is not None,
+        tool_calls_count=len(msg.tool_calls) if hasattr(msg, 'tool_calls') and msg.tool_calls else 0,
+        tool_calls_preview=str(msg.tool_calls)[:200] if hasattr(msg, 'tool_calls') and msg.tool_calls else "None",
+    )
+
+    langchain_msg = LangChainMessage(
         content=content_text,
         type=message_type,
         tool_calls=msg.tool_calls,
     )
+    
+    logger.info(
+        "Created LangChainMessage",
+        lc_has_tool_calls=hasattr(langchain_msg, 'tool_calls') and langchain_msg.tool_calls is not None,
+        lc_tool_calls_count=len(langchain_msg.tool_calls) if hasattr(langchain_msg, 'tool_calls') and langchain_msg.tool_calls else 0,
+    )
+    
+    return langchain_msg
 
 
 def langchain_message_to_message(

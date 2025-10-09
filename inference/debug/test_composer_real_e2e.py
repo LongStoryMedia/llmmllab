@@ -24,6 +24,8 @@ import sys
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
+from langchain_core.runnables.graph import MermaidDrawMethod
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -198,10 +200,10 @@ class ComposerRealEndToEndTester:
     def _parse_response_as_json(self, response_text: str) -> Any:
         """
         Try to parse response as JSON, return original if not valid JSON.
-        
+
         Args:
             response_text: The response text to parse
-            
+
         Returns:
             Parsed JSON if valid, otherwise the original text
         """
@@ -683,20 +685,23 @@ Please search for the most recent information and provide a comprehensive summar
                 }
                 messages_data.append(msg_data)
 
-
-
             # Step 1: Compose workflow for user
             logger.info("   🎼 Step 1: Composing workflow...")
             workflow = await compose_workflow(self.test_user_id)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = f"{self.output_dir}/workflow_graph_{timestamp}.png"
-            bts = workflow.get_graph().draw_mermaid_png()
-            with open(output_path, "wb") as f:
-                f.write(bts)
-            logger.info(f"  Workflow graph saved: {output_path}")
-            logger.info(f"   ✅ Workflow composed: {type(workflow).__name__}")
-
-
+            try:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_path = f"{self.output_dir}/workflow_graph_{timestamp}.png"
+                bts = workflow.get_graph().draw_mermaid_png(
+                    retry_delay=2.0,
+                    max_retries=5,
+                )
+                with open(output_path, "wb") as f:
+                    f.write(bts)
+                logger.info(f"  Workflow graph saved: {output_path}")
+                logger.info(f"   ✅ Workflow composed: {type(workflow).__name__}")
+            except Exception as e:
+                logger.warning(f"   ⚠️ Could not generate workflow graph image: {e}")
+                pass
 
             # Step 2: Create initial state
             logger.info("   🎼 Step 2: Creating initial state...")
@@ -1122,7 +1127,9 @@ Please search for the most recent information and provide a comprehensive summar
                 "response_length": len(full_response),
                 "workflow_type": "composer_langgraph",
                 "final_response_raw": full_response,  # Full response for debugging
-                "final_response": self._parse_response_as_json(full_response),  # Try to parse as JSON
+                "final_response": self._parse_response_as_json(
+                    full_response
+                ),  # Try to parse as JSON
                 "validation_errors": validation_errors if validation_errors else None,
                 "tool_availability_correct": len(
                     [
@@ -1274,114 +1281,116 @@ Please search for the most recent information and provide a comprehensive summar
             async with storage.pool.acquire() as conn:
                 # Count related entities before deletion
                 related_counts = {}
-                
+
                 # Model profiles
                 profile_count = await conn.fetchval(
-                    "SELECT COUNT(*) FROM model_profiles WHERE user_id = $1", 
-                    self.test_user_id
+                    "SELECT COUNT(*) FROM model_profiles WHERE user_id = $1",
+                    self.test_user_id,
                 )
                 related_counts["model_profiles"] = profile_count
-                
+
                 # Dynamic tools
                 tool_count = await conn.fetchval(
-                    "SELECT COUNT(*) FROM dynamic_tools WHERE user_id = $1", 
-                    self.test_user_id
+                    "SELECT COUNT(*) FROM dynamic_tools WHERE user_id = $1",
+                    self.test_user_id,
                 )
                 related_counts["dynamic_tools"] = tool_count
-                
-                # Conversations  
+
+                # Conversations
                 conversation_count = await conn.fetchval(
-                    "SELECT COUNT(*) FROM conversations WHERE user_id = $1", 
-                    self.test_user_id
+                    "SELECT COUNT(*) FROM conversations WHERE user_id = $1",
+                    self.test_user_id,
                 )
                 related_counts["conversations"] = conversation_count
-                
+
                 # Messages (should cascade from conversations)
                 message_count = await conn.fetchval(
-                    "SELECT COUNT(*) FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)", 
-                    self.test_user_id
+                    "SELECT COUNT(*) FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)",
+                    self.test_user_id,
                 )
                 related_counts["messages"] = message_count
-                
+
                 # Memories (should cascade from conversations)
                 memory_count = await conn.fetchval(
-                    "SELECT COUNT(*) FROM memories WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)", 
-                    self.test_user_id
+                    "SELECT COUNT(*) FROM memories WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)",
+                    self.test_user_id,
                 )
                 related_counts["memories"] = memory_count
-                
+
                 # Summaries (should cascade from conversations)
                 summary_count = await conn.fetchval(
-                    "SELECT COUNT(*) FROM summaries WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)", 
-                    self.test_user_id
+                    "SELECT COUNT(*) FROM summaries WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)",
+                    self.test_user_id,
                 )
                 related_counts["summaries"] = summary_count
-                
+
                 # Search topic syntheses (should cascade from conversations)
                 synthesis_count = await conn.fetchval(
-                    "SELECT COUNT(*) FROM search_topic_syntheses WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)", 
-                    self.test_user_id
+                    "SELECT COUNT(*) FROM search_topic_syntheses WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)",
+                    self.test_user_id,
                 )
                 related_counts["search_topic_syntheses"] = synthesis_count
-                
+
                 logger.info(f"   📊 Related entities before deletion: {related_counts}")
-                
+
                 # Delete the user (should cascade to all related entities)
-                await conn.execute(
-                    "DELETE FROM users WHERE id = $1", self.test_user_id
-                )
+                await conn.execute("DELETE FROM users WHERE id = $1", self.test_user_id)
                 logger.info(f"   ✅ Deleted user: {self.test_user_id}")
                 cleaned_count += 1
-                
+
                 # Validate cascading deletes worked
                 remaining_counts = {}
-                
+
                 # Check that all related entities were deleted
                 remaining_counts["model_profiles"] = await conn.fetchval(
-                    "SELECT COUNT(*) FROM model_profiles WHERE user_id = $1", 
-                    self.test_user_id
+                    "SELECT COUNT(*) FROM model_profiles WHERE user_id = $1",
+                    self.test_user_id,
                 )
-                
+
                 remaining_counts["dynamic_tools"] = await conn.fetchval(
-                    "SELECT COUNT(*) FROM dynamic_tools WHERE user_id = $1", 
-                    self.test_user_id
+                    "SELECT COUNT(*) FROM dynamic_tools WHERE user_id = $1",
+                    self.test_user_id,
                 )
-                
+
                 remaining_counts["conversations"] = await conn.fetchval(
-                    "SELECT COUNT(*) FROM conversations WHERE user_id = $1", 
-                    self.test_user_id
+                    "SELECT COUNT(*) FROM conversations WHERE user_id = $1",
+                    self.test_user_id,
                 )
-                
+
                 remaining_counts["messages"] = await conn.fetchval(
-                    "SELECT COUNT(*) FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)", 
-                    self.test_user_id
+                    "SELECT COUNT(*) FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)",
+                    self.test_user_id,
                 )
-                
+
                 remaining_counts["memories"] = await conn.fetchval(
-                    "SELECT COUNT(*) FROM memories WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)", 
-                    self.test_user_id
+                    "SELECT COUNT(*) FROM memories WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)",
+                    self.test_user_id,
                 )
-                
+
                 remaining_counts["summaries"] = await conn.fetchval(
-                    "SELECT COUNT(*) FROM summaries WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)", 
-                    self.test_user_id
+                    "SELECT COUNT(*) FROM summaries WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)",
+                    self.test_user_id,
                 )
-                
+
                 remaining_counts["search_topic_syntheses"] = await conn.fetchval(
-                    "SELECT COUNT(*) FROM search_topic_syntheses WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)", 
-                    self.test_user_id
+                    "SELECT COUNT(*) FROM search_topic_syntheses WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)",
+                    self.test_user_id,
                 )
-                
-                logger.info(f"   📊 Remaining entities after deletion: {remaining_counts}")
-                
+
+                logger.info(
+                    f"   📊 Remaining entities after deletion: {remaining_counts}"
+                )
+
                 # Validate that cascading deletes worked
                 cascade_failures = []
                 for entity_type, count in remaining_counts.items():
                     if count > 0:
                         cascade_failures.append(f"{entity_type}: {count} remaining")
-                        
+
                 if cascade_failures:
-                    error_msg = f"Cascading deletes failed: {'; '.join(cascade_failures)}"
+                    error_msg = (
+                        f"Cascading deletes failed: {'; '.join(cascade_failures)}"
+                    )
                     cleanup_errors.append(error_msg)
                     logger.error(f"   ❌ {error_msg}")
                 else:

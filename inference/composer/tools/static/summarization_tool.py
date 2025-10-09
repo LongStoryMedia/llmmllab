@@ -22,10 +22,12 @@ class SummarizationTool(BaseTool):
     description: str = (
         "Summarize content using basic text processing. Takes text content and returns a concise summary."
     )
+    
+    # Declare user_id as a proper Pydantic field
+    user_id: str
 
     def __init__(self, user_id: str, **kwargs):
-        super().__init__(**kwargs)
-        self.user_id = user_id
+        super().__init__(user_id=user_id, **kwargs)
 
     async def _arun(self, content: str) -> str:
         """Async implementation of content summarization."""

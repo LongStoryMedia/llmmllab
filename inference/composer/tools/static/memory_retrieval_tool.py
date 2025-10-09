@@ -53,16 +53,23 @@ class MemoryRetrievalTool(BaseTool):
         "Retrieve relevant memories based on text query. Uses embeddings and similarity search "
         "with configurable cross-user/conversation settings and similarity thresholds."
     )
+    
+    # Declare fields as proper Pydantic fields
+    user_id: str
+    conversation_id: int
 
     def __init__(self, user_id: str, conversation_id: int, **kwargs):
-        super().__init__(**kwargs)
-        self.user_id = user_id
-        self._conversation_id = conversation_id
-        self.logger = logging.getLogger(self.__class__.__name__)
-
-        self.logger.debug(
+        super().__init__(user_id=user_id, conversation_id=conversation_id, **kwargs)
+        # Create logger without assigning to self (Pydantic doesn't allow it)
+        logger = logging.getLogger(self.__class__.__name__)
+        logger.debug(
             f"MemoryRetrievalTool initialized for user: {user_id}, conversation: {conversation_id}"
         )
+    
+    @property
+    def logger(self):
+        """Get logger for this tool instance."""
+        return logging.getLogger(self.__class__.__name__)
 
     async def _get_memory_config(self) -> MemoryConfig:
         """Get memory configuration from user config via shared data layer."""
@@ -141,7 +148,7 @@ class MemoryRetrievalTool(BaseTool):
             conversation_filter = (
                 None
                 if memory_config.enable_cross_conversation
-                else getattr(self, "_conversation_id", None)
+                else getattr(self, "conversation_id", None)
             )
 
             memories = await memory_service.search_similarity(

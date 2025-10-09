@@ -148,7 +148,22 @@ class PipelineNode:
                             # Append new text instead of replacing so earlier segments (possibly containing tool call JSON)
                             # are retained for later inline extraction if needed.
                             final_content += extract_message_text(chunk.message)
-                            tool_calls.extend(chunk.message.tool_calls or [])
+                            
+                            # Debug: Log tool calls in each chunk
+                            chunk_tool_calls = chunk.message.tool_calls or []
+                            
+                            # Always log final chunks and chunks with tool calls
+                            if chunk_tool_calls or chunk.done:
+                                self.logger.info(
+                                    "Streaming chunk details",
+                                    user_id=state.user_id,
+                                    chunk_tool_calls_count=len(chunk_tool_calls),
+                                    chunk_done=chunk.done,
+                                    chunk_has_tool_calls=bool(chunk_tool_calls),
+                                    tool_calls_preview=str(chunk_tool_calls)[:200] if chunk_tool_calls else "None",
+                                )
+                            
+                            tool_calls.extend(chunk_tool_calls)
                             if chunk.done:
                                 break
 
@@ -163,6 +178,14 @@ class PipelineNode:
                     )
 
                     # Create final response from accumulated content
+                    self.logger.info(
+                        "Creating final streaming response",
+                        user_id=state.user_id,
+                        accumulated_tool_calls=len(tool_calls),
+                        final_content_length=len(final_content),
+                        tool_calls_preview=str(tool_calls)[:200] if tool_calls else "None",
+                    )
+                    
                     response = ChatResponse(
                         done=True,
                         message=Message(

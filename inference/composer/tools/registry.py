@@ -52,6 +52,8 @@ class ToolRegistry:
         self.static_tools: Dict[str, type[BaseTool]] = {}
         # Dynamic tool instances (id -> Tool model instances)
         self.dynamic_tools: Dict[str, Tool] = {}
+        # Mapping from tool names to actual BaseTool instances for execution
+        self.executable_tools: Dict[str, Any] = {}  # tool_name -> BaseTool instance
         # Semantic vectors (tool_id -> np.ndarray)
         self.tool_embeddings: Dict[str, np.ndarray] = {}
 
@@ -239,24 +241,60 @@ class ToolRegistry:
             return list(self.dynamic_tools.values())
 
     def _create_tool_instance(
-        self, tool_cls: Any, _user_id: str
-    ) -> Optional[Tool]:  # user_id reserved for future personalization
+        self, tool_cls: Any, user_id: str
+    ) -> Optional[Tool]:
         """Create tool instance from tool class with user configuration."""
-        # PLACEHOLDER: Use user_id to configure tool instances when needed
+        from models import Tool as ModelTool  # Import our generic Tool model
+        
         try:
-            # Tool instantiation logic depends on tool class interface
-            # This is a simplified version - actual implementation depends on tool class structure
-            return Tool(
-                name=tool_cls.__name__,
-                description=getattr(
-                    tool_cls, "description", f"{tool_cls.__name__} tool"
-                ),
+            # Handle different constructor signatures for BaseTool instances
+            if tool_cls.__name__ == "MemoryRetrievalTool":
+                # MemoryRetrievalTool needs both user_id and conversation_id
+                # Use a default conversation_id for registry - tools will be re-created with actual conversation_id at runtime
+                base_tool = tool_cls(user_id=user_id, conversation_id=0)  # Default conversation_id
+            else:
+                # WebSearchTool and SummarizationTool need only user_id
+                base_tool = tool_cls(user_id=user_id)
+            
+            tool_name = getattr(base_tool, 'name', tool_cls.__name__)
+            
+            # Store the actual BaseTool instance for execution
+            self.executable_tools[tool_name] = base_tool
+            
+            # Convert BaseTool instance to our generic Tool model for WorkflowState compatibility
+            tool_instance = ModelTool(
+                name=tool_name,
+                description=getattr(base_tool, 'description', f"{tool_cls.__name__} tool"),
+                args_schema=getattr(base_tool, 'args_schema', None),
+                return_direct=getattr(base_tool, 'return_direct', False),
+                tags=getattr(base_tool, 'tags', None),
+                metadata=getattr(base_tool, 'metadata', None),
+                handle_tool_error=getattr(base_tool, 'handle_tool_error', False),
+                handle_validation_error=getattr(base_tool, 'handle_validation_error', False),
+                response_format=getattr(base_tool, 'response_format', 'content'),
             )
+            
+            composer_logger.logger.debug(
+                "Created tool instance",
+                tool_class=tool_cls.__name__,
+                tool_name=tool_name,
+                user_id=user_id,
+                stored_executable=True,
+            )
+            return tool_instance
         except Exception as e:
             composer_logger.log_error(
-                e, {"context": "tool_instantiation", "tool_class": str(tool_cls)}
+                e, {"context": "tool_instantiation", "tool_class": str(tool_cls), "user_id": user_id}
             )
             return None
+
+    def get_executable_tool(self, tool_name: str) -> Optional[Any]:
+        """Get the actual BaseTool instance for execution by tool name."""
+        return self.executable_tools.get(tool_name)
+
+    def get_all_executable_tools(self) -> Dict[str, Any]:
+        """Get all executable BaseTool instances mapped by name."""
+        return self.executable_tools.copy()
 
     async def _generate_or_retrieve_dynamic_tool(
         self, user_id: str, intent: IntentAnalysis
