@@ -156,7 +156,9 @@ class WorkflowRouter:
         """
         # STRICT: ignore explicit overrides; routing is intent-driven only
         if explicit_workflow_type is not None:
-            raise RuntimeError("Explicit workflow overrides are disabled in strict mode")
+            raise RuntimeError(
+                "Explicit workflow overrides are disabled in strict mode"
+            )
         analyses = getattr(state, "intent_classification", None)
         if not analyses:
             raise RuntimeError("Intent classification unavailable for routing")
@@ -184,7 +186,11 @@ class WorkflowRouter:
         for a in analyses:
             try:
                 primary_intents.append(a.primary_intent.lower())
-                complexities.append(getattr(a.complexity_level, "value", str(a.complexity_level)).lower())
+                complexities.append(
+                    getattr(
+                        a.complexity_level, "value", str(a.complexity_level)
+                    ).lower()
+                )
             except Exception:  # pragma: no cover - defensive
                 continue
 
@@ -198,7 +204,11 @@ class WorkflowRouter:
         complexity_order = ["trivial", "simple", "moderate", "complex", "specialized"]
         complexity_rank = {c: i for i, c in enumerate(complexity_order)}
         complexities = [c for c in complexities if c in complexity_rank]
-        selected_complexity = max(complexities, key=lambda c: complexity_rank[c]) if complexities else "simple"
+        selected_complexity = (
+            max(complexities, key=lambda c: complexity_rank[c])
+            if complexities
+            else "simple"
+        )
 
         # Use registry to get intent-to-workflow mapping
         intent_map = _InlineWorkflowRegistry.get_intent_to_workflow_map()
@@ -211,11 +221,18 @@ class WorkflowRouter:
                     matched_workflows.add(workflow_name)
 
         # Engineering heuristic: if any intent contains technical/code keywords route engineering
-        if any(x in intent for intent in primary_intents for x in ["code", "debug", "implement", "technical", "refactor"]):
+        if any(
+            x in intent
+            for intent in primary_intents
+            for x in ["code", "debug", "implement", "technical", "refactor"]
+        ):
             matched_workflows.add("engineering")
 
         # Complex routing logic with workflow validation
-        if selected_complexity in ["complex", "specialized"] and "research" in matched_workflows:
+        if (
+            selected_complexity in ["complex", "specialized"]
+            and "research" in matched_workflows
+        ):
             # Deep research may pair with creative (synthesis) or engineering (if technical)
             candidate = ["research"]
             if "engineering" in matched_workflows:

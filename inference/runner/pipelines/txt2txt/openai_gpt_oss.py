@@ -29,10 +29,10 @@ from models import (
     ModelProfile,
 )
 from runner.pipelines.base import GrammarInput
-from runner.pipelines.llamacpp.simple_base import BaseLlamaCppPipeline as SimpleLlamaCppPipeline
+from runner.pipelines.llamacpp import BaseLlamaCppPipeline
 
 
-class OpenAIGptOssPipeline(SimpleLlamaCppPipeline):
+class OpenAIGptOssPipeline(BaseLlamaCppPipeline):
     """
     Simplified OpenAI GPT OSS pipeline - pure LLM interface.
 

@@ -93,12 +93,18 @@ class ToolExecutorNode:
                             result = await arun(**args)
                         else:
                             # Fallback to sync _run executed in threadpool? For now invoke directly
-                            run_fn = getattr(tool, "_run", None) or getattr(tool, "run", None)
+                            run_fn = getattr(tool, "_run", None) or getattr(
+                                tool, "run", None
+                            )
                             if run_fn is None:
-                                raise RuntimeError(f"Tool '{tool_name}' has no runnable method")
+                                raise RuntimeError(
+                                    f"Tool '{tool_name}' has no runnable method"
+                                )
                             result = run_fn(**args)
                 except Exception as te:
-                    raise RuntimeError(f"Tool '{tool_name}' execution failed: {te}") from te
+                    raise RuntimeError(
+                        f"Tool '{tool_name}' execution failed: {te}"
+                    ) from te
 
                 # Append tool result as assistant message for downstream consumption
                 tool_message = LangChainMessage(type="tool", content=str(result))

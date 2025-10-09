@@ -278,7 +278,8 @@ class WorkflowState(BaseModel):
     # without parsing raw assistant content. Replaced (not concatenated)
     # each time a new assistant message is produced.
     tool_calls: Annotated[
-        Optional[List[Dict[str, Any]]], lambda current, new: new if new is not None else current
+        Optional[List[Dict[str, Any]]],
+        lambda current, new: new if new is not None else current,
     ] = Field(
         default=None,
         description="Structured tool calls from the most recent assistant generation",

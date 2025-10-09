@@ -63,7 +63,7 @@ class NomicEmbedTextPipe(SimpleEmbeddingPipeline):
         try:
             import torch
 
-            gguf_path = self._get_gguf_path()
+            gguf_path = self.model.details.gguf_file or self.model.model
 
             # Use the same context size as the model's maximum (512 for Nomic)
             context_size = min(self.profile.parameters.num_ctx or 512, 512)
@@ -91,31 +91,6 @@ class NomicEmbedTextPipe(SimpleEmbeddingPipeline):
         except Exception as e:
             self._logger.error(f"Failed to initialize Nomic embeddings: {e}")
             raise
-
-    def _get_gguf_path(self) -> str:
-        """Get the GGUF file path for Nomic Embed Text v2."""
-        # Default root (matches .models.json entries). Can override via MODEL_PATH.
-        base_path = os.getenv("MODEL_PATH", "/models")
-        # Allow override for filename/relative path
-        model_filename_env = os.getenv("NOMIC_EMBED_MODEL_FILENAME")
-        if model_filename_env:
-            model_path_candidate = model_filename_env
-        else:
-            # Default relative path under base_path
-            model_path_candidate = "nomic-embed-text-v2-moe/nomic-embed-text-v2-moe.f16.gguf"
-
-        if model_path_candidate.startswith("/"):
-            gguf_path = model_path_candidate
-        else:
-            gguf_path = os.path.join(base_path, model_path_candidate)
-
-        if not os.path.isfile(gguf_path):
-            raise FileNotFoundError(
-                "Nomic embedding model missing: {} (MODEL_PATH='{}', NOMIC_EMBED_MODEL_FILENAME='{}').".format(
-                    gguf_path, base_path, model_filename_env or ""
-                )
-            )
-        return gguf_path
 
     def _init_text_splitter(self) -> RecursiveCharacterTextSplitter:
         """Initialize text splitter for handling long texts."""

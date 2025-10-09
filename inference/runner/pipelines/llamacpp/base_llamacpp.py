@@ -24,7 +24,9 @@ from .utils import calculate_optimal_gpu_layers  # Reuse aggressive heuristic
 from runner.pipelines.base import SimpleChatPipeline, GrammarInput
 
 
-class BaseLlamaCppPipeline(SimpleChatPipeline):  # pyright: ignore[reportIncompatibleMethodOverride]
+class BaseLlamaCppPipeline(
+    SimpleChatPipeline
+):  # pyright: ignore[reportIncompatibleMethodOverride]
     """Unified llama.cpp pipeline base combining simple fast path with full feature support.
 
     Features merged from legacy advanced base:
@@ -119,6 +121,7 @@ class BaseLlamaCppPipeline(SimpleChatPipeline):  # pyright: ignore[reportIncompa
             )
             from pydantic import BaseModel
             from pathlib import Path
+
             if isinstance(grammar, str):
                 return grammar
             if isinstance(grammar, Path):
@@ -271,7 +274,9 @@ class BaseLlamaCppPipeline(SimpleChatPipeline):  # pyright: ignore[reportIncompa
                             == "debug",
                             "logits_all": logits_all_enabled,
                             "logprobs": logprobs,
-                            "n_cpu_moe": getattr(self.profile.parameters, "n_cpu_moe", 0),
+                            "n_cpu_moe": getattr(
+                                self.profile.parameters, "n_cpu_moe", 0
+                            ),
                             "flash_attention": getattr(
                                 self.profile.parameters, "flash_attention", True
                             ),
@@ -338,6 +343,7 @@ class BaseLlamaCppPipeline(SimpleChatPipeline):  # pyright: ignore[reportIncompa
         gguf_path = self._get_gguf_path()
         self.llm = self._initialize_llamacpp_with_fallback(gguf_path, tools)
         return self.llm
+
 
 # Backwards compatibility alias
 SimpleLlamaCppPipeline = BaseLlamaCppPipeline

@@ -4,7 +4,6 @@ Performs comprehensive intent analysis following the capability-driven architect
 Maps user requests to RequiredCapabilities and assesses computational complexity.
 """
 
-
 from typing import List
 
 from pydantic import BaseModel
@@ -186,8 +185,7 @@ class IntentClassifierAgent:
 
         # NOTE: Do NOT embed the raw JSON *schema* in the prompt (the model then echoes the schema
         # which breaks validation). Provide a clear natural language spec + minimal exemplar instead.
-        analysis_prompt = (
-            f"""
+        analysis_prompt = f"""
 You are an expert intent classification system. Analyze the user request and output ONLY JSON.
 
 Enumerations (must use exactly these values where applicable):
@@ -220,7 +218,6 @@ Return JSON ONLY in this structure (example values shown):
 
 If multiple intents are needed, include additional objects in the intents array.
 """
-        )
 
         try:
             result = await run_pipeline(
@@ -250,7 +247,8 @@ If multiple intents are needed, include additional objects in the intents array.
                 try:
                     intents = parse_structured_output(repaired, _Intnts)
                     composer_logger.logger.info(
-                        "Intent JSON repaired successfully", extra={"original_len": len(txt), "repaired_len": len(repaired)}
+                        "Intent JSON repaired successfully",
+                        extra={"original_len": len(txt), "repaired_len": len(repaired)},
                     )
                     return intents.intents
                 except Exception as e2:  # still failing
@@ -302,30 +300,30 @@ If multiple intents are needed, include additional objects in the intents array.
         """
         import re
 
-        if not raw.startswith('{') or '"intents"' not in raw:
+        if not raw.startswith("{") or '"intents"' not in raw:
             return raw
         # Remove any trailing non-JSON characters
         trimmed = raw.strip()
         # If already ends properly, return as-is
-        if trimmed.endswith('}'):  # might already be valid
+        if trimmed.endswith("}"):  # might already be valid
             return trimmed
         # Find last complete object '}'
-        last_obj = trimmed.rfind('}')
+        last_obj = trimmed.rfind("}")
         if last_obj == -1:
             return raw
         candidate = trimmed[: last_obj + 1]
         # Remove trailing comma if present
-        candidate = re.sub(r',\s*$', '', candidate)
+        candidate = re.sub(r",\s*$", "", candidate)
         # Ensure intents array closure
-        if '"intents"' in candidate and not candidate.rstrip().endswith('}]}'):
+        if '"intents"' in candidate and not candidate.rstrip().endswith("}]}"):
             # If array not closed, append ]}
             # Detect if we are inside array (presence of '[{' without closing ])
-            if '[{' in candidate and not re.search(r'\}\s*\]', candidate):
-                candidate = candidate + ']}'
-            elif candidate.count('{') > candidate.count('}'):
+            if "[{" in candidate and not re.search(r"\}\s*\]", candidate):
+                candidate = candidate + "]}"
+            elif candidate.count("{") > candidate.count("}"):
                 # Balance braces crudely
-                missing = candidate.count('{') - candidate.count('}')
-                candidate = candidate + ('}' * missing)
+                missing = candidate.count("{") - candidate.count("}")
+                candidate = candidate + ("}" * missing)
         return candidate
 
     # All classification methods are now handled by LLM analysis above

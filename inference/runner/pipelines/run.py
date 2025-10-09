@@ -6,6 +6,7 @@ Fixes critical issues with the current streaming architecture.
 import hashlib
 import uuid
 import logging
+from copy import deepcopy
 from typing import Any, Dict, Optional, List, AsyncIterator, cast, Union, Type
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,12 +26,6 @@ from models import (
     MessageContentType,
     EventStreamConfig,
 )
-from utils.grammar_generator import (
-    get_grammar_for_model,
-    parse_structured_output,
-    StructuredOutputError,
-)
-
 from utils.message import (
     to_lc_message,
     extract_message_text,
@@ -672,9 +667,12 @@ async def run_pipeline(
                     chunks.append(text)
                 # Preserve first occurrence of tool calls from any chunk
                 if getattr(chunk.message, "tool_calls", None):
-                    from copy import deepcopy
                     if not collected_tool_calls:
-                        collected_tool_calls = deepcopy(chunk.message.tool_calls)  # type: ignore[arg-type]
+                        collected_tool_calls = (
+                            deepcopy(chunk.message.tool_calls)
+                            if chunk.message.tool_calls
+                            else []
+                        )
 
         # Combine all chunks
         full_text = "".join(chunks)

@@ -3,6 +3,7 @@
 NO GUESSWORK!
 ALWAYS be certain and check the codebase!
 ALWAYS create a git commit with a descriptive message after making changes.
+ALWAYS sync code after making changes.
 
 ## Architecture Overview
 
@@ -138,6 +139,23 @@ kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}'
 kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh server python -m debug.test
 ```
 
+## Python Module Execution Rules
+
+**ALWAYS run Python files as modules using -m flag:**
+```bash
+# ✅ CORRECT - Run as module with proper import resolution
+kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh runner python -m debug.test_qwen3_pipeline_creation
+
+# ❌ WRONG - Direct file execution causes import issues
+kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh runner python debug/test_qwen3_pipeline_creation.py
+```
+
+**Module execution benefits:**
+- Proper PYTHONPATH resolution
+- Correct relative imports
+- Avoids "No module named" errors
+- Follows Python best practices
+
 ## Schema-Driven Development
 1. Update YAML schema in `schemas/`
 2. Run `./regenerate_models.sh` 
@@ -154,3 +172,4 @@ kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh server python -m debug.test
 NO GUESSWORK!
 ALWAYS be certain and check the codebase!
 ALWAYS create a git commit with a descriptive message after making changes.
+ALWAYS sync code after making changes.

@@ -119,10 +119,14 @@ class GraphBuilder:
 
             workflow.add_edge(START, "intent_analysis")
             workflow.add_edge("intent_analysis", "workflow_router")
+
             # Conditional routing: router decides if engineering_agent should run or skip to memory/tool collection
             def route_post_router(state: WorkflowState):
                 # If engineering selected among workflows and no engineering response yet, go there first
-                if state.selected_workflows and "engineering" in state.selected_workflows:
+                if (
+                    state.selected_workflows
+                    and "engineering" in state.selected_workflows
+                ):
                     return "engineering_agent"
                 return "memory_search"  # fallthrough primary path
 
@@ -149,17 +153,7 @@ class GraphBuilder:
             workflow.add_edge("memory_creation", "memory_storage")
             workflow.add_edge("memory_storage", END)
 
-            csg = workflow.compile()
-
-            # if os.getenv("DEBUG_MODE", "0") == "1":
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = f"/app/workflow_graph_{timestamp}.png"
-            bts = csg.get_graph().draw_mermaid_png()
-            with open(output_path, "wb") as f:
-                f.write(bts)
-            self.logger.info("Workflow graph saved", path=output_path)
-
-            return csg
+            return workflow.compile()
         except Exception as e:
             self.logger.error(
                 "Failed to build workflow",

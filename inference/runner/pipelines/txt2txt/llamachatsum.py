@@ -25,11 +25,11 @@ from models import (
     ModelProfile,
 )
 from runner.pipelines.base import GrammarInput
-from runner.pipelines.llamacpp.simple_base import BaseLlamaCppPipeline as SimpleLlamaCppPipeline
+from runner.pipelines.llamacpp import BaseLlamaCppPipeline
 from utils.message import extract_message_text
 
 
-class LlamaChatSummPipe(SimpleLlamaCppPipeline):
+class LlamaChatSummPipe(BaseLlamaCppPipeline):
     """
     Simplified Llama Chat Summary pipeline - direct LLM calls for summarization.
 

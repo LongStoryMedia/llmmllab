@@ -200,9 +200,9 @@ except ImportError as e:
     logger.warning(f"Could not register openai_gpt_oss pipeline: {e}")
 
 try:
-    from runner.pipelines.txt2txt.qwen3moe import QwenSimplePipeline
+    from runner.pipelines.txt2txt.qwen3moe import Qwen3Moe
 
-    default_factory.register_pipeline("qwen_moe", QwenSimplePipeline)
+    default_factory.register_pipeline("qwen_moe", Qwen3Moe)
 except ImportError as e:
     logger.warning(f"Could not register qwen_moe pipeline: {e}")
 

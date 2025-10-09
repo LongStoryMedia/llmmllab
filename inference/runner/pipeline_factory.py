@@ -44,7 +44,6 @@ class PipelineFactory:
     """
 
     def __init__(self, models_map: Dict[str, Model]):
-        self.models: Dict[str, Model] = models_map or {}
         self.logger = logging.getLogger(__name__)
 
         # Initialize attributes that were removed but are still used
@@ -65,8 +64,11 @@ class PipelineFactory:
             {}
         )  # model_id -> Event to wait for loading completion
 
-        # Load available models
+        # Load available models from config file
         self._load_available_models()
+        
+        # Set self.models to the loaded models, with models_map as fallback
+        self.models: Dict[str, Model] = self._available_models if self._available_models else (models_map or {})
 
         self.logger.info("PipelineFactory initialized with LocalPipelineCacheManager")
 
@@ -646,19 +648,19 @@ class PipelineFactory:
             self.logger.info(
                 f"Creating Qwen pipeline, prefer_langgraph={self.prefer_langgraph}"
             )
-            from .pipelines.txt2txt.qwen3moe import QwenSimplePipeline
+            from .pipelines.txt2txt.qwen3moe import Qwen3Moe
 
-            self.logger.info("Attempting to create QwenSimplePipeline")
+            self.logger.info("Attempting to create Qwen3Moe")
             try:
                 # Try with expected_return_type first (preferred)
-                pipeline = QwenSimplePipeline(
+                pipeline = Qwen3Moe(
                     model,
                     profile,
                 )
             except TypeError as e:
-                self.logger.warning(f"QwenSimplePipeline creation failed: {e}")
+                self.logger.warning(f"Qwen3Moe creation failed: {e}")
                 raise
-            self.logger.info("Successfully created QwenSimplePipeline")
+            self.logger.info("Successfully created Qwen3Moe")
             return pipeline
 
         if model.pipeline == "Qwen25VLGGUFPipeline":

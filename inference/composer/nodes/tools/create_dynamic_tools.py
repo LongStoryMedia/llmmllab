@@ -68,11 +68,15 @@ class DynamicToolCreationNode:
 
                     # Persist the full dynamic tool immediately (strict failure semantics)
                     try:
-                        from db import storage  # pylint: disable=import-outside-toplevel
+                        from db import (
+                            storage,
+                        )  # pylint: disable=import-outside-toplevel
 
                         tool_svc = storage.get_service(storage.dynamic_tool)
                         await tool_svc.create_tool(dt)
-                    except Exception as pe:  # Persistence error -> hard fail path requirement
+                    except (
+                        Exception
+                    ) as pe:  # Persistence error -> hard fail path requirement
                         self.logger.error(f"Dynamic tool persistence failed: {pe}")
                         state.execution_metadata.add_error(
                             f"Dynamic tool persistence failed: {pe}"

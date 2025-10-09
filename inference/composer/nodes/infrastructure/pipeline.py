@@ -196,7 +196,9 @@ class PipelineNode:
                 self.logger.info(
                     "PipelineNode: raw response.message tool_calls",
                     user_id=state.user_id,
-                    tool_calls_present=bool(getattr(response.message, "tool_calls", None)),
+                    tool_calls_present=bool(
+                        getattr(response.message, "tool_calls", None)
+                    ),
                     tool_calls=getattr(response.message, "tool_calls", None),
                 )
                 # Preserve tool calls: message_to_langchain_message now copies tool_calls

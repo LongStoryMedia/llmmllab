@@ -5,24 +5,45 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
-
 class GPUConfig(BaseModel):
     """Configuration for GPU memory management and device allocation"""
-    no_kv_offload: Optional[bool] = Field(default=False, description="Force KV cache to CPU instead of GPU (saves VRAM)")
+
+    no_kv_offload: Optional[bool] = Field(
+        default=False, description="Force KV cache to CPU instead of GPU (saves VRAM)"
+    )
     """Force KV cache to CPU instead of GPU (saves VRAM)"""
-    gpu_layers: Optional[int] = Field(default=None, description="Explicit number of model layers to place on GPU (-1 means all layers). If unset, heuristic allocation/backoff is used.")
+    gpu_layers: Optional[int] = Field(
+        default=None,
+        description="Explicit number of model layers to place on GPU (-1 means all layers). If unset, heuristic allocation/backoff is used.",
+    )
     """Explicit number of model layers to place on GPU (-1 means all layers). If unset, heuristic allocation/backoff is used."""
-    main_gpu: Optional[int] = Field(default=-1, description="Main GPU device index (-1 for auto-selection)", ge=-1)
+    main_gpu: Optional[int] = Field(
+        default=-1, description="Main GPU device index (-1 for auto-selection)", ge=-1
+    )
     """Main GPU device index (-1 for auto-selection)"""
-    main_gpu_device_id: Optional[str] = Field(default=None, description="Device ID/name for main GPU (overrides main_gpu index)")
+    main_gpu_device_id: Optional[str] = Field(
+        default=None,
+        description="Device ID/name for main GPU (overrides main_gpu index)",
+    )
     """Device ID/name for main GPU (overrides main_gpu index)"""
-    tensor_split: Optional[List[float]] = Field(default=None, description="Fraction of model to put on each GPU (must sum to 1.0)")
+    tensor_split: Optional[List[float]] = Field(
+        default=None,
+        description="Fraction of model to put on each GPU (must sum to 1.0)",
+    )
     """Fraction of model to put on each GPU (must sum to 1.0)"""
-    tensor_split_devices: Optional[List[str]] = Field(default=None, description="Device IDs/names corresponding to tensor_split fractions")
+    tensor_split_devices: Optional[List[str]] = Field(
+        default=None,
+        description="Device IDs/names corresponding to tensor_split fractions",
+    )
     """Device IDs/names corresponding to tensor_split fractions"""
-    split_mode: Optional[str] = Field(default='layer', description="How to split model across devices")
+    split_mode: Optional[str] = Field(
+        default="layer", description="How to split model across devices"
+    )
     """How to split model across devices"""
-    offload_kqv: Optional[bool] = Field(default=True, description="Offload key/query/value tensors to GPU (opposite of no_kv_offload)")
+    offload_kqv: Optional[bool] = Field(
+        default=True,
+        description="Offload key/query/value tensors to GPU (opposite of no_kv_offload)",
+    )
     """Offload key/query/value tensors to GPU (opposite of no_kv_offload)"""
 
     class Config:

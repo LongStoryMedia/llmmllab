@@ -5,7 +5,15 @@ Generates concise, descriptive titles based on conversation content.
 
 from typing import List
 
-from models.lang_chain_message import LangChainMessage
+from utils.model_profile import get_model_profile_for_task
+from models import (
+    ModelProfileType,
+    Message,
+    MessageContent,
+    MessageContentType,
+    MessageRole,
+    LangChainMessage,
+)
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
 
@@ -13,7 +21,7 @@ from composer.monitoring.logging import composer_logger
 class TitleGenerationNode:
     """
     Generates a conversation title if none exists.
-    
+
     Uses grammar-constrained LLM to generate concise, descriptive titles
     based on conversation content.
     """
@@ -26,18 +34,18 @@ class TitleGenerationNode:
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
         Generate conversation title if needed.
-        
+
         Args:
             state: Current workflow state
-            
+
         Returns:
             Updated workflow state with title
         """
         try:
             # Skip if title already exists (check progress_updates for title info)
             title_exists = any(
-                "title" in str(update).lower() 
-                for update in getattr(state, 'progress_updates', [])
+                "title" in str(update).lower()
+                for update in getattr(state, "progress_updates", [])
             )
             if title_exists:
                 return state
@@ -46,7 +54,7 @@ class TitleGenerationNode:
             if len(state.messages) < 2:
                 return state
 
-            user_id = getattr(state, 'user_id', None)
+            user_id = getattr(state, "user_id", None)
             if not user_id:
                 return state
 
@@ -54,16 +62,12 @@ class TitleGenerationNode:
 
             self.logger.info(
                 "Generating conversation title",
-                extra={
-                    "user_id": user_id,
-                    "message_count": len(state.messages)
-                }
+                extra={"user_id": user_id, "message_count": len(state.messages)},
             )
 
             # Build prompt directly and invoke a lightweight summarization model
-            from utils.model_profile import get_model_profile_for_task
-            from models import ModelProfileType, Message, MessageContent, MessageContentType, MessageRole
             from runner import pipeline_factory as pf
+
             prompt_template = self._get_title_prompt()
             conversation_context = self._format_conversation_context(state.messages)
             full_prompt = prompt_template.format(conversation=conversation_context)
@@ -71,11 +75,14 @@ class TitleGenerationNode:
             if not state.user_config:
                 raise RuntimeError("User config missing for title generation")
             profile = await get_model_profile_for_task(
-                state.user_config.model_profiles, ModelProfileType.PrimarySummary, user_id
+                state.user_config.model_profiles,
+                ModelProfileType.PrimarySummary,
+                user_id,
             )
 
             # Use existing text pipeline
             from runner.pipelines.run import run_pipeline
+
             msg = Message(
                 role=MessageRole.USER,
                 content=[
@@ -87,22 +94,25 @@ class TitleGenerationNode:
             )
             with pf.pipeline(profile, str) as pipe:
                 resp = await run_pipeline(messages=[msg], pipeline=pipe, tools=None)
-            title = resp.message.content[0].text if resp and resp.message else "Untitled Conversation"
+            title = (
+                resp.message.content[0].text
+                if resp and resp.message
+                else "Untitled Conversation"
+            )
 
             # Update state with generated title via progress updates
-            generated_title = title.strip() if isinstance(title, str) else "Untitled Conversation"
-            
+            generated_title = (
+                title.strip() if isinstance(title, str) else "Untitled Conversation"
+            )
+
             # Add title to progress updates since WorkflowState doesn't have conversation_title field
-            if not hasattr(state, 'progress_updates'):
+            if not hasattr(state, "progress_updates"):
                 state.progress_updates = []
             state.progress_updates.append(f"Generated title: {generated_title}")
-            
+
             self.logger.info(
                 "Title generated successfully",
-                extra={
-                    "user_id": user_id,
-                    "title": generated_title
-                }
+                extra={"user_id": user_id, "title": generated_title},
             )
 
             return state
@@ -111,9 +121,9 @@ class TitleGenerationNode:
             self.logger.error(
                 "Title generation failed",
                 extra={
-                    "user_id": getattr(state, 'user_id', 'unknown'),
-                    "error": str(e)
-                }
+                    "user_id": getattr(state, "user_id", "unknown"),
+                    "error": str(e),
+                },
             )
             # Escalate by raising so tests fail visibly
             raise
@@ -136,10 +146,10 @@ Title:"""
     def _format_conversation_context(self, messages: List[LangChainMessage]) -> str:
         """Format messages for title generation context."""
         context_lines = []
-        
+
         for message in messages[:6]:  # Use first 6 messages
-            role = "User" if getattr(message, 'role', 'user') == "user" else "Assistant"
-            content = getattr(message, 'content', '')[:200]  # Truncate long messages
+            role = "User" if getattr(message, "role", "user") == "user" else "Assistant"
+            content = getattr(message, "content", "")[:200]  # Truncate long messages
             context_lines.append(f"{role}: {content}")
-        
+
         return "\n".join(context_lines)

@@ -1,6 +1,3 @@
-"""End-to-end composer test harness (pyright relaxed)."""
-# pyright: reportGeneralTypeIssues=false, reportIncompatibleMethodOverride=false
-#!/usr/bin/env python3
 """
 Composer-based Real End-to-End Pipeline Test
 
@@ -25,7 +22,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 # Configure logging
 logging.basicConfig(
@@ -55,6 +52,7 @@ class ComposerRealEndToEndTester:
         self.capture_llm_output = capture_llm_output
         self.print_output = print_output
         self.llm_output_file = None
+        self.output_dir = "debug/out"
         self.llm_responses = []  # Store all LLM responses for analysis
 
         # Support multiple models for comprehensive testing
@@ -79,11 +77,10 @@ class ComposerRealEndToEndTester:
         )
 
         # Ensure debug/out directory exists
-        output_dir = "debug/out"
-        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(self.output_dir, exist_ok=True)
 
         self.llm_output_file = (
-            f"{output_dir}/composer_llm_output_{model_safe}_{timestamp}.txt"
+            f"{self.output_dir}/composer_llm_output_{model_safe}_{timestamp}.txt"
         )
 
         # Create the file with header
@@ -713,6 +710,12 @@ Please search for the most recent information and provide a comprehensive summar
             # Step 1: Compose workflow for user
             logger.info("   🎼 Step 1: Composing workflow...")
             workflow = await compose_workflow(self.test_user_id)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path = f"{self.output_dir}/workflow_graph_{timestamp}.png"
+            bts = workflow.get_graph().draw_mermaid_png()
+            with open(output_path, "wb") as f:
+                f.write(bts)
+            logger.info(f"  Workflow graph saved: {output_path}")
             logger.info(f"   ✅ Workflow composed: {type(workflow).__name__}")
 
             # Capture workflow information
@@ -791,7 +794,10 @@ Please search for the most recent information and provide a comprehensive summar
                 if "event" in event_dict:
                     event_type = event_dict["event"]
                     # Capture explicit error events (LangGraph may surface as on_chain_error / on_tool_error etc.)
-                    if event_type.lower().endswith("error") or "error" in event_type.lower():
+                    if (
+                        event_type.lower().endswith("error")
+                        or "error" in event_type.lower()
+                    ):
                         error_events.append(event_dict)
 
                     # Log significant events to output file
@@ -962,7 +968,9 @@ Please search for the most recent information and provide a comprehensive summar
             logger.info(f"   📊 Total response chunks: {len(response_chunks)}")
             logger.info(f"   🛠️  Tool calls detected: {tool_calls_detected}")
             if error_events:
-                logger.error(f"   🚫 Captured {len(error_events)} workflow error events; marking execution as failed")
+                logger.error(
+                    f"   🚫 Captured {len(error_events)} workflow error events; marking execution as failed"
+                )
 
             # Write execution summary
             execution_summary = {
@@ -1068,7 +1076,9 @@ Please search for the most recent information and provide a comprehensive summar
             # Check 2a: Must have at least one tool call (strict requirement)
             if not tool_calls_detected:
                 success = False
-                validation_errors.append("No tool calls were executed during workflow (strict failure)")
+                validation_errors.append(
+                    "No tool calls were executed during workflow (strict failure)"
+                )
 
             # Check 3: Response length should be reasonable for a real LLM interaction
             if len(full_response) < 10:  # Very short responses likely indicate issues
@@ -1355,7 +1365,10 @@ Please search for the most recent information and provide a comprehensive summar
                 except Exception as e:
                     # Suppress known benign warning about non-existent user_configs relation
                     msg = str(e)
-                    if entity_type == "user_config" and "relation \"user_configs\" does not exist" in msg:
+                    if (
+                        entity_type == "user_config"
+                        and 'relation "user_configs" does not exist' in msg
+                    ):
                         logger.info(
                             "   ℹ️  Skipping user_config deletion (table missing in current environment)"
                         )
