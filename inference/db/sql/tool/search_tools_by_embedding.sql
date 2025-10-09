@@ -14,7 +14,7 @@ SELECT
     embedding,
     args_schema,
     return_direct,
-    VERBOSE,
+    verbose,
     tags,
     metadata,
     handle_tool_error,
