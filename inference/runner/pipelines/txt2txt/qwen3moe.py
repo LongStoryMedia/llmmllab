@@ -398,6 +398,14 @@ class Qwen3Moe(SimpleLlamaCppPipeline):
             # Final chunk to indicate completion
             # On completion parse accumulated content for tool calls
             cleaned_content, tool_calls = self._extract_response_content(accumulated_content)
+            if tool_calls:
+                self._logger.info(
+                    f"QwenSimplePipeline.stream: attaching {len(tool_calls)} tool_call(s) to final message: {[c['name'] for c in tool_calls]}"
+                )
+            else:
+                self._logger.info(
+                    "QwenSimplePipeline.stream: no tool calls parsed in final accumulated content"
+                )
             final_message = Message(
                 role=MessageRole.ASSISTANT,
                 content=[MessageContent(type=MessageContentType.TEXT, text=cleaned_content)],
