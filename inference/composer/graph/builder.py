@@ -120,18 +120,20 @@ class GraphBuilder:
             # Build a logical workflow graph structure:
             # 1. Start -> Intent Analysis
             workflow.add_edge(START, "intent_analysis")
-            
+
             # 2. Intent Analysis -> Parallel tool collection and memory search
             workflow.add_edge("intent_analysis", "static_tool_collection")
-            workflow.add_edge("intent_analysis", "dynamic_tool_collection") 
+            workflow.add_edge("intent_analysis", "dynamic_tool_collection")
             workflow.add_edge("intent_analysis", "memory_search")
-            
+
             # 3. Tool collection -> Tool composer
             workflow.add_edge("static_tool_collection", "tool_composer")
             workflow.add_edge("dynamic_tool_collection", "tool_composer")
-            
+
             # 4. Intent Analysis -> Router for workflow selection
             workflow.add_edge("intent_analysis", "workflow_router")
+
+            workflow.add_edge("tool_composer", "chat_agent")
 
             # 5. Conditional routing: router decides next step based on complexity
             def route_post_router(state: WorkflowState):
@@ -152,22 +154,22 @@ class GraphBuilder:
                     "chat_agent": "chat_agent",
                 },
             )
-            
+
             # 6. Engineering agent -> Chat agent (for final response)
             workflow.add_edge("engineering_agent", "chat_agent")
-            
+
             # 7. Conditional routing from chat agent based on tool calls
             def should_execute_tools(state: WorkflowState):
                 # Check if the last message from chat agent has tool calls
                 if (
-                    state.messages 
-                    and hasattr(state.messages[-1], "tool_calls") 
+                    state.messages
+                    and hasattr(state.messages[-1], "tool_calls")
                     and state.messages[-1].tool_calls
                 ):
                     return "tool_executor"
                 # No tool calls, go to memory creation
                 return "memory_creation"
-            
+
             workflow.add_conditional_edges(
                 "chat_agent",
                 should_execute_tools,
@@ -176,13 +178,13 @@ class GraphBuilder:
                     "memory_creation": "memory_creation",
                 },
             )
-            
-            # 8. Tool executor -> Back to chat agent (for response with tool results)  
+
+            # 8. Tool executor -> Back to chat agent (for response with tool results)
             workflow.add_edge("tool_executor", "chat_agent")
-            
+
             # 9. Memory and title generation happen after final response
             workflow.add_edge("memory_creation", "title_generation")
-            
+
             # 10. Title generation -> Memory storage -> End
             workflow.add_edge("title_generation", "memory_storage")
             workflow.add_edge("memory_storage", END)

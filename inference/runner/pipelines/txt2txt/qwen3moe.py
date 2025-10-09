@@ -109,6 +109,48 @@ class Qwen3Moe(BaseLlamaCppPipeline):
 
         return cleaned or raw_response  # Fallback to original if nothing left
 
+    def _parse_tool_calls(self, content: str) -> List[dict]:
+        """Parse tool calls from XML format."""
+        import json
+        import re
+        
+        tool_calls = []
+        
+        # Look for <tool_call> XML tags - handle multiline JSON
+        tool_call_pattern = r"<tool_call>\s*(\{[^<]*?\})\s*</tool_call>"
+        matches = re.findall(tool_call_pattern, content, re.DOTALL | re.IGNORECASE)
+        
+        self._logger.debug(f"Parsing tool calls from content: {content[:500]}...")
+        self._logger.debug(f"Found {len(matches)} potential tool call matches")
+
+        for i, match in enumerate(matches):
+            try:
+                # Parse the JSON content
+                tool_data = json.loads(match)
+
+                if "name" in tool_data:
+                    formatted_call = {
+                        "name": tool_data["name"],
+                        "args": tool_data.get("arguments", {}),
+                        "id": f"call_{i}_{tool_data['name']}",
+                        "type": "tool_call",
+                    }
+                    tool_calls.append(formatted_call)
+                    self._logger.debug(f"Parsed XML tool call: {formatted_call}")
+                else:
+                    self._logger.warning(
+                        f"Tool call missing 'name' field: {match[:100]}..."
+                    )
+
+            except (json.JSONDecodeError, KeyError) as e:
+                self._logger.warning(
+                    f"Failed to parse XML tool call from: {match[:100]}... Error: {e}"
+                )
+                continue
+
+        self._logger.debug(f"Returning {len(tool_calls)} parsed tool calls")
+        return tool_calls
+
     async def invoke(
         self,
         messages: List[Message],
@@ -135,6 +177,12 @@ class Qwen3Moe(BaseLlamaCppPipeline):
             # Extract and clean content
             raw_content = str(response.content) if response.content else ""
             cleaned_content = self._extract_response_content(raw_content)
+            
+            # Parse tool calls from raw content
+            self._logger.info(f"QWEN3MOE INVOKE: tools param = {len(tools) if tools else 'None'}")
+            self._logger.info(f"QWEN3MOE INVOKE: raw_content preview = {raw_content[:200]}...")
+            tool_calls = self._parse_tool_calls(raw_content) if tools else None
+            self._logger.info(f"QWEN3MOE INVOKE: parsed tool_calls = {len(tool_calls) if tool_calls else 'None'}")
 
             # Create response message
             result_message = Message(
@@ -142,6 +190,7 @@ class Qwen3Moe(BaseLlamaCppPipeline):
                 content=[
                     MessageContent(type=MessageContentType.TEXT, text=cleaned_content)
                 ],
+                tool_calls=tool_calls,
             )
             return ChatResponse(done=True, message=result_message)
 
@@ -163,6 +212,8 @@ class Qwen3Moe(BaseLlamaCppPipeline):
     ) -> AsyncIterator[ChatResponse]:
         """Stream responses from Qwen LLM."""
         _ = grammar, kwargs  # Suppress unused warnings
+        
+        self._logger.info(f"QWEN3MOE STREAM START: tools param = {len(tools) if tools else 'None'}")
 
         # Initialize LLM if needed
         if self.llm is None:
@@ -195,10 +246,17 @@ class Qwen3Moe(BaseLlamaCppPipeline):
                     )
                     yield ChatResponse(done=False, message=chunk_message)
 
-            # Final chunk to indicate completion
+            # Final chunk to indicate completion with tool calls
+            cleaned_content = self._extract_response_content(accumulated_content)
+            self._logger.info(f"QWEN3MOE STREAM: tools param = {len(tools) if tools else 'None'}")
+            self._logger.info(f"QWEN3MOE STREAM: accumulated_content preview = {accumulated_content[:200]}...")
+            tool_calls = self._parse_tool_calls(accumulated_content) if tools else None
+            self._logger.info(f"QWEN3MOE STREAM: parsed tool_calls = {len(tool_calls) if tool_calls else 'None'}")
+            
             final_message = Message(
                 role=MessageRole.ASSISTANT,
-                content=[MessageContent(type=MessageContentType.TEXT, text="")],
+                content=[MessageContent(type=MessageContentType.TEXT, text=cleaned_content)],
+                tool_calls=tool_calls,
             )
             yield ChatResponse(done=True, message=final_message)
 
