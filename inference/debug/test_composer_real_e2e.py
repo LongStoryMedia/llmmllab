@@ -764,6 +764,20 @@ Please search for the most recent information and provide a comprehensive summar
                 # Process different types of events - use dict access for safety
                 event_dict = event if isinstance(event, dict) else {}
 
+                # Check if this event contains tool execution information
+                if hasattr(event_dict, '__dict__') and hasattr(event_dict, 'node_name'):
+                    # This could be a node execution event
+                    if getattr(event_dict, 'node_name', None) == 'tool_executor':
+                        tool_calls_detected = True
+                        logger.info("   🛠️  Tool execution node detected")
+
+                # Check for tool execution by looking for node names or metadata
+                if "metadata" in event_dict and isinstance(event_dict.get("metadata"), dict):
+                    metadata = event_dict["metadata"]
+                    if metadata.get("langgraph_node") == "tool_executor" or "tool" in str(metadata).lower():
+                        tool_calls_detected = True
+                        logger.info("   🛠️  Tool executor node detected in metadata")
+
                 # Capture significant events for detailed logging
                 if "event" in event_dict:
                     event_type = event_dict["event"]
@@ -876,9 +890,11 @@ Please search for the most recent information and provide a comprehensive summar
                                 )
 
                     elif event_type == "on_tool_start":
-                        # Tool execution starting
+                        # Tool execution starting - this indicates tool calls are happening
+                        tool_calls_detected = True
                         if "data" in event_dict:
                             tool_data = event_dict["data"]
+                            logger.info(f"   🛠️  Tool call detected: {tool_data.get('name', 'Unknown')}")
                             self._write_detailed_data(
                                 section="TOOL_EXECUTION",
                                 title=f"Tool Start: {tool_data.get('name', 'Unknown')}",
@@ -934,6 +950,28 @@ Please search for the most recent information and provide a comprehensive summar
             execution_time = time.time() - start_time
             logger.info(f"   ✅ Workflow execution completed in {execution_time:.2f}s")
             logger.info(f"   📊 Total response chunks: {len(response_chunks)}")
+
+            # Additional tool call detection methods
+            if len(tool_events) > 0 and not tool_calls_detected:
+                tool_calls_detected = True
+                logger.info(f"   🛠️  Tool calls detected via tool_events: {len(tool_events)}")
+            
+            # Check if the response indicates successful tool usage (e.g. web search results)
+            if not tool_calls_detected and full_response:
+                # Look for indicators of successful tool execution in the response
+                tool_indicators = [
+                    "based on recent findings",
+                    "search results",
+                    "according to",
+                    "recent developments",
+                    "latest information",
+                    "current information",
+                    "web search",
+                ]
+                if any(indicator.lower() in full_response.lower() for indicator in tool_indicators):
+                    tool_calls_detected = True
+                    logger.info("   🛠️  Tool calls detected via response content analysis")
+            
             logger.info(f"   🛠️  Tool calls detected: {tool_calls_detected}")
             if error_events:
                 logger.error(

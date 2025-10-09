@@ -230,7 +230,7 @@ class WorkflowState(BaseModel):
     )
 
     # Conversation history and final outputs - essential for context and token streaming
-    messages: Annotated[List[LangChainMessage], operator.add] = Field(
+    messages: Annotated[List[LangChainMessage], lambda x, y: y if y is not None else x] = Field(
         default_factory=list, description="Conversation history and LLM outputs"
     )
 
