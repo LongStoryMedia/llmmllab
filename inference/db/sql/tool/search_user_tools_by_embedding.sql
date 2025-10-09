@@ -34,4 +34,3 @@ WHERE
 ORDER BY
     similarity_score DESC -- Higher similarity first
 LIMIT $4 OFFSET $5;
-
