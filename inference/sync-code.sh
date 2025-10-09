@@ -168,29 +168,59 @@ prune_remote_directories() {
     local local_dirs_file remote_dirs_file prune_list
     local_dirs_file=$(mktemp)
     remote_dirs_file=$(mktemp)
-    # Safe excludes (patterns relative to project root)
-    local safe_prune_excludes=( './.git' './benchmark_data' './llama.cpp' )
-    # Build local directory list
+
+    # Safe excludes (exact or prefix). These should NEVER be pruned.
+    local safe_prune_excludes=( './.git' './benchmark_data' './llama.cpp' './.venv' './venv' './env' './envs' )
+
+    # Helper: return 0 (true) if path should be skipped (env / internal / python runtime)
+    should_skip_dir() {
+        local d="$1"
+        # Direct match or prefix of safe dirs
+        for ex in "${safe_prune_excludes[@]}"; do
+            if [ "$d" = "$ex" ] || [[ "$d" == $ex/* ]]; then
+                return 0
+            fi
+        done
+        # Python virtual environment heuristics
+        if [[ "$d" =~ (^|/)(\.venv|venv|env|envs)(/|$) ]]; then
+            return 0
+        fi
+        # site-packages or pycache should remain (they may belong to runtime env)
+        if [[ "$d" == *site-packages* ]] || [[ "$d" == *dist-packages* ]]; then
+            return 0
+        fi
+        if [[ "$d" == *__pycache__* ]]; then
+            return 0
+        fi
+        # Skip typical venv subfolders if somehow outside root markers
+        case "$d" in
+            */bin|*/bin/*|*/lib|*/lib/*|*/include|*/include/*) return 0 ;;
+        esac
+        return 1
+    }
+
+    # Build local directory list (repository tracked tree)
     ( cd "${SCRIPT_DIR}" && find . -type d | sort > "${local_dirs_file}" )
     # Build remote directory list
     ssh -o BatchMode=yes "${NODE_USER}@${NODE_HOST}" "cd '${NODE_CODE_PATH}' && find . -type d | sort" > "${remote_dirs_file}" || { echo "   (warn) could not list remote dirs"; return; }
-    # Build prune list = remote minus local, excluding safe list
+
+    # Build prune list = remote minus local
     prune_list=$(comm -23 "${remote_dirs_file}" "${local_dirs_file}")
     if [ -z "${prune_list}" ]; then
         echo "   No directories to prune"
     else
+        local removed=0 skipped=0
         while IFS= read -r dir; do
             [ -z "$dir" ] && continue
-            skip=0
-            for ex in "${safe_prune_excludes[@]}"; do
-                if [ "$dir" = "$ex" ]; then
-                    skip=1; break
-                fi
-            done
-            [ $skip -eq 1 ] && continue
+            if should_skip_dir "$dir"; then
+                skipped=$((skipped+1))
+                continue
+            fi
             echo "   - removing remote directory ${dir}"
             ssh -o BatchMode=yes "${NODE_USER}@${NODE_HOST}" "rm -rf '${NODE_CODE_PATH}/${dir#./}'" || echo "     (warn) failed to remove ${dir}"
+            removed=$((removed+1))
         done <<< "${prune_list}"
+        echo "   Prune summary: removed=${removed} skipped=${skipped}"
     fi
     rm -f "${local_dirs_file}" "${remote_dirs_file}"
 }
