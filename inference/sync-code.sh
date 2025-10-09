@@ -77,26 +77,44 @@ echo "Syncing code to ${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}..."
 DEBUG_OUT_LOCAL="${SCRIPT_DIR}/debug/out"
 DEBUG_OUT_REMOTE="${NODE_CODE_PATH}/debug/out"
 DEBUG_MANIFEST="${DEBUG_OUT_LOCAL}/.manifest"
-DEBUG_MANIFEST_BACKUP="${DEBUG_MANIFEST}.last"
+# Persist backup outside the debug/out tree so a local wipe keeps history
+SYNC_STATE_DIR="${SCRIPT_DIR}/.sync_state"
+mkdir -p "${SYNC_STATE_DIR}" 2>/dev/null || true
+DEBUG_MANIFEST_BACKUP="${SYNC_STATE_DIR}/debug_out.manifest.last"
 
 # Function: propagate deletions from local debug/out to remote BEFORE pulling remote changes
 propagate_debug_out_deletions() {
-    [ -d "${DEBUG_OUT_LOCAL}" ] || return 0
-    local prev_manifest_path="${DEBUG_MANIFEST}"
-    # If primary manifest missing but backup exists, use backup (user may have deleted manifest inadvertently)
-    if [ ! -f "${prev_manifest_path}" ] && [ -f "${DEBUG_MANIFEST_BACKUP}" ]; then
+    local prev_manifest_path=""
+    if [ -f "${DEBUG_MANIFEST}" ]; then
+        prev_manifest_path="${DEBUG_MANIFEST}"
+    elif [ -f "${DEBUG_MANIFEST_BACKUP}" ]; then
         prev_manifest_path="${DEBUG_MANIFEST_BACKUP}"
     fi
-    if [ ! -f "${prev_manifest_path}" ]; then
-        # No historical state -> nothing to delete safely
-        return 0
+    [ -n "${prev_manifest_path}" ] || return 0
+
+    # Build current list (empty if directory missing)
+    local tmp_current
+    tmp_current=$(mktemp)
+    if [ -d "${DEBUG_OUT_LOCAL}" ]; then
+        (cd "${DEBUG_OUT_LOCAL}" && find . -mindepth 1 ! -name '.manifest' ! -name 'debug_out.manifest.last' ! -name '.manifest.last' -print | sort > "${tmp_current}")
+    else
+        : > "${tmp_current}"
     fi
-    local tmp_manifest deleted_list
-    tmp_manifest=$(mktemp)
-    # Current local tracked entries (exclude manifest files)
-    (cd "${DEBUG_OUT_LOCAL}" && find . -mindepth 1 ! -name '.manifest' ! -name '.manifest.last' -print | sort > "${tmp_manifest}")
-    # Compare with previous manifest to find deletions
-    deleted_list=$(comm -23 <(sort "${prev_manifest_path}") <(cat "${tmp_manifest}"))
+
+    # Normalize previous manifest (strip any legacy manifest/self entries)
+    local tmp_prev
+    tmp_prev=$(mktemp)
+    grep -vE '^\./?\.manifest(\.last)?$' "${prev_manifest_path}" | grep -vE 'debug_out.manifest.last$' | sort > "${tmp_prev}" || true
+
+    # Determine deletions = prev - current
+    local deleted_list
+    deleted_list=$(comm -23 "${tmp_prev}" "${tmp_current}")
+
+    # If current is empty and previous had entries -> full wipe requested
+    if [ ! -s "${tmp_current}" ] && [ -s "${tmp_prev}" ]; then
+        deleted_list=$(cat "${tmp_prev}")
+    fi
+
     if [ -n "${deleted_list}" ]; then
         echo "🗑  Propagating deletions to remote debug/out:" 
         while IFS= read -r rel; do
@@ -106,15 +124,17 @@ propagate_debug_out_deletions() {
             ssh -o BatchMode=yes "${NODE_USER}@${NODE_HOST}" "rm -rf '${DEBUG_OUT_REMOTE}/${rel_clean}'" || echo "     (warn) failed to delete ${rel_clean}"
         done <<< "${deleted_list}"
     fi
-    rm -f "${tmp_manifest}"
+
+    # Clean up
+    rm -f "${tmp_current}" "${tmp_prev}"
 }
 
 # Function: update manifest after pulling remote debug/out
 update_debug_manifest() {
-    [ -d "${DEBUG_OUT_LOCAL}" ] || return 0
+    [ -d "${DEBUG_OUT_LOCAL}" ] || { rm -f "${DEBUG_MANIFEST}"; return 0; }
     local tmp_manifest
     tmp_manifest=$(mktemp)
-    (cd "${DEBUG_OUT_LOCAL}" && find . -mindepth 1 ! -name '.manifest' ! -name '.manifest.last' -print | sort > "${tmp_manifest}")
+    (cd "${DEBUG_OUT_LOCAL}" && find . -mindepth 1 ! -name '.manifest' ! -name '.manifest.last' ! -name 'debug_out.manifest.last' -print | sort > "${tmp_manifest}")
     mv "${tmp_manifest}" "${DEBUG_MANIFEST}"
     cp -f "${DEBUG_MANIFEST}" "${DEBUG_MANIFEST_BACKUP}" 2>/dev/null || true
 }
