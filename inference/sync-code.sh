@@ -77,26 +77,30 @@ echo "Syncing code to ${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}..."
 DEBUG_OUT_LOCAL="${SCRIPT_DIR}/debug/out"
 DEBUG_OUT_REMOTE="${NODE_CODE_PATH}/debug/out"
 DEBUG_MANIFEST="${DEBUG_OUT_LOCAL}/.manifest"
+DEBUG_MANIFEST_BACKUP="${DEBUG_MANIFEST}.last"
 
 # Function: propagate deletions from local debug/out to remote BEFORE pulling remote changes
 propagate_debug_out_deletions() {
     [ -d "${DEBUG_OUT_LOCAL}" ] || return 0
-    if [ ! -f "${DEBUG_MANIFEST}" ]; then
-        # No manifest yet – create initial one (after first pull) later
+    local prev_manifest_path="${DEBUG_MANIFEST}"
+    # If primary manifest missing but backup exists, use backup (user may have deleted manifest inadvertently)
+    if [ ! -f "${prev_manifest_path}" ] && [ -f "${DEBUG_MANIFEST_BACKUP}" ]; then
+        prev_manifest_path="${DEBUG_MANIFEST_BACKUP}"
+    fi
+    if [ ! -f "${prev_manifest_path}" ]; then
+        # No historical state -> nothing to delete safely
         return 0
     fi
-    # Build current local list (excluding manifest)
-        local tmp_manifest deleted_list
+    local tmp_manifest deleted_list
     tmp_manifest=$(mktemp)
-    (cd "${DEBUG_OUT_LOCAL}" && find . -mindepth 1 ! -name '.manifest' -print | sort > "${tmp_manifest}")
+    # Current local tracked entries (exclude manifest files)
+    (cd "${DEBUG_OUT_LOCAL}" && find . -mindepth 1 ! -name '.manifest' ! -name '.manifest.last' -print | sort > "${tmp_manifest}")
     # Compare with previous manifest to find deletions
-    deleted_list=$(comm -23 <(sort "${DEBUG_MANIFEST}") <(cat "${tmp_manifest}"))
+    deleted_list=$(comm -23 <(sort "${prev_manifest_path}") <(cat "${tmp_manifest}"))
     if [ -n "${deleted_list}" ]; then
         echo "🗑  Propagating deletions to remote debug/out:" 
-        # Delete each path remotely using rm -rf (covers files & dirs)
         while IFS= read -r rel; do
             [ -z "$rel" ] && continue
-            # Strip leading ./
             rel_clean="${rel#./}"
             echo "   - deleting ${rel_clean}"
             ssh -o BatchMode=yes "${NODE_USER}@${NODE_HOST}" "rm -rf '${DEBUG_OUT_REMOTE}/${rel_clean}'" || echo "     (warn) failed to delete ${rel_clean}"
@@ -108,7 +112,11 @@ propagate_debug_out_deletions() {
 # Function: update manifest after pulling remote debug/out
 update_debug_manifest() {
     [ -d "${DEBUG_OUT_LOCAL}" ] || return 0
-    (cd "${DEBUG_OUT_LOCAL}" && find . -mindepth 1 -print | sort > "${DEBUG_MANIFEST}")
+    local tmp_manifest
+    tmp_manifest=$(mktemp)
+    (cd "${DEBUG_OUT_LOCAL}" && find . -mindepth 1 ! -name '.manifest' ! -name '.manifest.last' -print | sort > "${tmp_manifest}")
+    mv "${tmp_manifest}" "${DEBUG_MANIFEST}"
+    cp -f "${DEBUG_MANIFEST}" "${DEBUG_MANIFEST_BACKUP}" 2>/dev/null || true
 }
 
 # Function: prune remote directories removed locally (force delete non-empty)
@@ -175,18 +183,34 @@ update_debug_manifest
 
 if [ "$PULL_ONLY" = "0" ]; then
     echo "📤 Pushing code changes to server..."
-    rsync -avzru --delete \
-        --exclude='.git/' \
-        --exclude='.venv/' \
-        --exclude='venv/' \
-        --exclude='__pycache__/' \
-        --exclude='*.pyc' \
-        --exclude='llama.cpp/' \
-        --exclude='benchmark_data/' \
-        --exclude='debug/out/' \
-        --exclude='.pytest_cache/' \
-        --exclude='.DS_Store' \
-        "${SCRIPT_DIR}/" "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/"
+    if [ "$PRUNE_DIRS" = "1" ]; then
+        # Without --delete; prune handles removals
+        rsync -avzru \
+            --exclude='.git/' \
+            --exclude='.venv/' \
+            --exclude='venv/' \
+            --exclude='__pycache__/' \
+            --exclude='*.pyc' \
+            --exclude='llama.cpp/' \
+            --exclude='benchmark_data/' \
+            --exclude='debug/out/' \
+            --exclude='.pytest_cache/' \
+            --exclude='.DS_Store' \
+            "${SCRIPT_DIR}/" "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/"
+    else
+        rsync -avzru --delete \
+            --exclude='.git/' \
+            --exclude='.venv/' \
+            --exclude='venv/' \
+            --exclude='__pycache__/' \
+            --exclude='*.pyc' \
+            --exclude='llama.cpp/' \
+            --exclude='benchmark_data/' \
+            --exclude='debug/out/' \
+            --exclude='.pytest_cache/' \
+            --exclude='.DS_Store' \
+            "${SCRIPT_DIR}/" "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/"
+    fi
     echo "✅ Code synced successfully"
     if [ "$PRUNE_DIRS" = "1" ]; then
         prune_remote_directories
