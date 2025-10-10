@@ -48,7 +48,7 @@ from typing import Optional, List, Dict, Any, Annotated
 from langchain_core.tools import BaseTool, tool, InjectedToolCallId
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
-from langgraph.prebuilt import InjectedState
+from langchain.agents.tool_node import InjectedState
 
 # Attempt import from langchain_classic (newer split) then fallback to langchain_community
 try:  # pragma: no cover - import resolution
@@ -175,30 +175,38 @@ class WebSearchTool(BaseTool):
         "Configurable search engines, categories, and parameters for optimal results. "
         "Returns formatted search results with titles, URLs, and content snippets."
     )
-    
+
     # Declare user_id as a proper Pydantic field
     user_id: str
+    # Optional user_config to avoid database retrieval
+    user_config: Optional[Any] = None
 
-    def __init__(self, user_id: str):
-        super().__init__(user_id=user_id)
+    def __init__(self, user_id: str, user_config: Optional[Any] = None):
+        super().__init__(user_id=user_id, user_config=user_config)
         # Create logger without assigning to self (Pydantic doesn't allow it)
         # Use it directly when needed
-    
+
     @property
     def logger(self):
         """Get logger for this tool instance."""
         return composer_logger.logger.bind(component="WebSearchTool")
 
     async def _get_web_search_config(self) -> WebSearchConfig:
-        """Get web search configuration from user config via shared data layer."""
-        from db import storage  # pylint: disable=import-outside-toplevel
+        """Get web search configuration from provided user_config or fall back to database."""
         from models.default_configs import (  # pylint: disable=import-outside-toplevel
             DEFAULT_WEB_SEARCH_CONFIG,
         )
 
-        try:
+        # Use provided user_config if available (more efficient)
+        if self.user_config and hasattr(self.user_config, 'web_search'):
+            self.logger.debug("Using provided user_config for web search")
+            return self.user_config.web_search
 
-            # Get complete user config with defaults merged at data layer
+        # Fall back to database retrieval if no user_config provided
+        try:
+            from db import storage  # pylint: disable=import-outside-toplevel
+            
+            self.logger.debug("Retrieving user_config from database")
             user_config = await storage.get_service(
                 storage.user_config
             ).get_user_config(self.user_id)
@@ -214,18 +222,14 @@ class WebSearchTool(BaseTool):
 
             return DEFAULT_WEB_SEARCH_CONFIG
 
-    async def _arun(
-        self, 
-        query: str,
-        **kwargs: Any
-    ) -> Command:
+    async def _arun(self, query: str, **kwargs: Any) -> Command:
         """Async implementation of web search using SearxNG provider.
-        
+
         Returns a Command that updates the WorkflowState with search results.
         """
         # Get tool_call_id from kwargs or use a default
-        tool_call_id = kwargs.get('tool_call_id', 'web_search_call')
-        
+        tool_call_id = kwargs.get("tool_call_id", "web_search_call")
+
         try:
             # Get web search configuration from user config
             web_config = await self._get_web_search_config()
@@ -262,13 +266,15 @@ class WebSearchTool(BaseTool):
                 )
 
                 # Return Command that updates state with search results
-                return Command(update={
-                    "web_search_results": [search_result],
-                    "search_query": query,
-                    "messages": [
-                        ToolMessage(response_message, tool_call_id=tool_call_id)
-                    ]
-                })
+                return Command(
+                    update={
+                        "web_search_results": [search_result],
+                        "search_query": query,
+                        "messages": [
+                            ToolMessage(response_message, tool_call_id=tool_call_id)
+                        ],
+                    }
+                )
 
             # No results case
             response_message = json.dumps(
@@ -281,24 +287,26 @@ class WebSearchTool(BaseTool):
                 indent=2,
             )
 
-            return Command(update={
-                "search_query": query,
-                "messages": [
-                    ToolMessage(response_message, tool_call_id=tool_call_id)
-                ]
-            })
+            return Command(
+                update={
+                    "search_query": query,
+                    "messages": [
+                        ToolMessage(response_message, tool_call_id=tool_call_id)
+                    ],
+                }
+            )
 
         except Exception as e:
             error_message = json.dumps(
                 {"status": "error", "error": str(e), "query": query}, indent=2
             )
-            
-            return Command(update={
-                "search_query": query,
-                "messages": [
-                    ToolMessage(error_message, tool_call_id=tool_call_id)
-                ]
-            })
+
+            return Command(
+                update={
+                    "search_query": query,
+                    "messages": [ToolMessage(error_message, tool_call_id=tool_call_id)],
+                }
+            )
 
     def _run(self, query: str, **kwargs) -> Command:
         """Sync implementation using async."""
@@ -310,22 +318,24 @@ class WebSearchTool(BaseTool):
 
 def create_web_search_tool(
     user_id: str,
+    user_config: Optional[Any] = None,
 ) -> WebSearchTool:
     """Create a WebSearchTool that uses user configuration from data layer.
 
     Args:
         user_id: User ID for configuration retrieval
+        user_config: Optional user config to avoid database retrieval (more efficient)
 
     Returns:
         Configured WebSearchTool instance
     """
-    return WebSearchTool(user_id=user_id)
+    return WebSearchTool(user_id=user_id, user_config=user_config)
 
 
 # Convenience factory functions for specialized search configurations
 
 
-def create_academic_search_tool(user_id: str) -> WebSearchTool:
+def create_academic_search_tool(user_id: str, user_config: Optional[Any] = None) -> WebSearchTool:
     """Create a WebSearchTool that uses user configuration from data layer.
 
     Note: Academic search behavior should be configured through user preferences
@@ -334,82 +344,82 @@ def create_academic_search_tool(user_id: str) -> WebSearchTool:
 
     Args:
         user_id: User ID for configuration retrieval
+        user_config: Optional user config to avoid database retrieval (more efficient)
 
     Returns:
         WebSearchTool using user's web search configuration
     """
-    return WebSearchTool(user_id=user_id)
+    return WebSearchTool(user_id=user_id, user_config=user_config)
 
 
-def create_news_search_tool(user_id: str) -> WebSearchTool:
+def create_news_search_tool(user_id: str, user_config: Optional[Any] = None) -> WebSearchTool:
     """Create a WebSearchTool that uses user configuration from data layer.
 
     Note: News search behavior should be configured through user preferences.
     """
-    return WebSearchTool(user_id=user_id)
+    return WebSearchTool(user_id=user_id, user_config=user_config)
 
 
-def create_technical_search_tool(user_id: str) -> WebSearchTool:
+def create_technical_search_tool(user_id: str, user_config: Optional[Any] = None) -> WebSearchTool:
     """Create a WebSearchTool that uses user configuration from data layer.
 
     Note: Technical search behavior should be configured through user preferences.
     """
-    return WebSearchTool(user_id=user_id)
+    return WebSearchTool(user_id=user_id, user_config=user_config)
 
 
-def create_shopping_search_tool(user_id: str) -> WebSearchTool:
+def create_shopping_search_tool(user_id: str, user_config: Optional[Any] = None) -> WebSearchTool:
     """Create a WebSearchTool that uses user configuration from data layer.
 
     Note: Shopping search behavior should be configured through user preferences.
     """
-    return WebSearchTool(user_id=user_id)
+    return WebSearchTool(user_id=user_id, user_config=user_config)
 
 
 # Function-based tool using Command pattern (preferred approach)
+# Optimized to use InjectedState for user_config access instead of database retrieval
 @tool
 async def web_search_with_state_update(
     query: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
-    state: Annotated[Dict[str, Any], InjectedState]
+    state: Annotated[Dict[str, Any], InjectedState],
 ) -> Command:
     """
     Search the web for information and automatically add results to workflow state.
-    
+
     This tool performs web searches using SearxNG and returns a Command that updates
-    the WorkflowState with search results, enabling automatic routing to search 
+    the WorkflowState with search results, enabling automatic routing to search
     synthesis nodes.
-    
+
     Uses the official LangGraph Command pattern for state updates as documented in:
     https://langchain-ai.github.io/langgraph/how-tos/tool-calling/#short-term-memory
     
+    Efficiently accesses user_config directly from injected state instead of 
+    database retrieval, as recommended in the LangGraph documentation.
+
     Args:
         query: The search query to execute
         tool_call_id: Injected tool call ID for message tracking (auto-injected by LangGraph)
-        state: Injected workflow state for accessing user context (auto-injected by LangGraph)
-        
+        state: Injected workflow state for accessing user_config and context (auto-injected by LangGraph)
+
     Returns:
         Command object that updates state with search results
     """
-    from db import storage  # pylint: disable=import-outside-toplevel
     from models.default_configs import (  # pylint: disable=import-outside-toplevel
         DEFAULT_WEB_SEARCH_CONFIG,
     )
-    
+
     logger = composer_logger.logger.bind(component="WebSearchWithStateUpdate")
-    
+
     try:
-        # Get user_id from injected state
-        user_id = state.get("user_id", "default_user")
-        
-        # Get web search configuration from user config
-        try:
-            user_config = await storage.get_service(
-                storage.user_config
-            ).get_user_config(user_id)
-            web_config = user_config.web_search if user_config else DEFAULT_WEB_SEARCH_CONFIG
-        except Exception as e:
-            logger.warning(f"Failed to get user config, using defaults: {e}")
+        # Get user_config directly from injected state (much more efficient!)
+        user_config = state.get("user_config")
+        if user_config and hasattr(user_config, 'web_search'):
+            web_config = user_config.web_search
+            logger.debug("Using web search config from injected state")
+        else:
             web_config = DEFAULT_WEB_SEARCH_CONFIG
+            logger.debug("Using default web search config - no user_config in state")
 
         # Use SearxNG provider with WebSearchConfig
         provider = SearxNG(web_config=web_config)
@@ -445,17 +455,19 @@ async def web_search_with_state_update(
             logger.info(
                 f"Web search completed successfully with {len(formatted_results)} results",
                 query=query[:100],
-                result_count=len(formatted_results)
+                result_count=len(formatted_results),
             )
 
             # Return Command that updates state with search results
-            return Command(update={
-                "web_search_results": [search_result],
-                "search_query": query,
-                "messages": [
-                    ToolMessage(response_message, tool_call_id=tool_call_id)
-                ]
-            })
+            return Command(
+                update={
+                    "web_search_results": [search_result],
+                    "search_query": query,
+                    "messages": [
+                        ToolMessage(response_message, tool_call_id=tool_call_id)
+                    ],
+                }
+            )
 
         # No results case
         response_message = json.dumps(
@@ -470,23 +482,23 @@ async def web_search_with_state_update(
 
         logger.info("Web search completed with no results", query=query[:100])
 
-        return Command(update={
-            "search_query": query,
-            "messages": [
-                ToolMessage(response_message, tool_call_id=tool_call_id)
-            ]
-        })
+        return Command(
+            update={
+                "search_query": query,
+                "messages": [ToolMessage(response_message, tool_call_id=tool_call_id)],
+            }
+        )
 
     except Exception as e:
         error_message = json.dumps(
             {"status": "error", "error": str(e), "query": query}, indent=2
         )
-        
+
         logger.error(f"Web search failed: {e}", query=query[:100])
-        
-        return Command(update={
-            "search_query": query,
-            "messages": [
-                ToolMessage(error_message, tool_call_id=tool_call_id)
-            ]
-        })
+
+        return Command(
+            update={
+                "search_query": query,
+                "messages": [ToolMessage(error_message, tool_call_id=tool_call_id)],
+            }
+        )
