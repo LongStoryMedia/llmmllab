@@ -17,9 +17,15 @@ class MemoryStorageNode:
     and stores them using the memory agent.
     """
 
-    def __init__(self):
-        """Initialize memory storage node."""
-        self.agent = MemoryAgent()
+    def __init__(self, memory_agent=None, storage=None):
+        """Initialize memory storage node with dependency injection.
+        
+        Args:
+            memory_agent: Injected MemoryAgent instance
+            storage: Injected Storage instance
+        """
+        self.agent = memory_agent if memory_agent is not None else MemoryAgent()
+        self.storage = storage  # For future use
         self.logger = composer_logger.logger.bind(component="MemoryStorageNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:

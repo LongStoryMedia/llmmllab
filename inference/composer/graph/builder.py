@@ -1,14 +1,24 @@
 """
-Simplified GraphBuilder - Focused coordinator using composition.
-Uses clean factories and strategies instead of monolithic implementation.
+Simplified GraphBuilder with Dependency Injection - Focused coordinator using composition.
+Uses clean factories and strategies with proper dependency injection pattern.
+All agents, storage services, and model profiles are instantiated upfront and injected.
 """
 
-# Datetime not used in this module
 from langgraph.graph.state import CompiledStateGraph, StateGraph, END, START
 
 from models import ModelProfileType
 from runner import PipelineFactory
+from db import storage
 
+# Import all agents
+from composer.agents.intent_classifier import IntentClassifierAgent
+from composer.agents.engineering_agent import EngineeringAgent
+from composer.agents.memory_agent import MemoryAgent
+from composer.agents.embedding_agent import EmbeddingAgent
+from composer.agents.summarization_agent import SummarizationAgent
+from composer.agents.single_source_agent import SingleSourceAgent
+
+# Import all nodes
 from composer.nodes.routing import IntentClassifierNode
 from composer.nodes.routing.router import WorkflowRouter
 from composer.nodes.tools import (
@@ -27,7 +37,6 @@ from composer.nodes.agents import TitleGenerationNode
 from composer.nodes.agents.engineering import EngineeringAgentNode
 
 from composer.tools.registry import ToolRegistry
-
 from composer.monitoring.logging import composer_logger
 
 from .state import WorkflowState
@@ -35,9 +44,11 @@ from .state import WorkflowState
 
 class GraphBuilder:
     """
-    Clean, focused GraphBuilder using composition over inheritance.
+    Clean, focused GraphBuilder using dependency injection and composition.
 
     Responsibilities:
+    - Create all agent and storage service instances upfront
+    - Inject dependencies into nodes for proper separation of concerns
     - Coordinate workflow creation using factories
     - Provide simple public interface
     - Handle errors gracefully
@@ -50,9 +61,25 @@ class GraphBuilder:
     """
 
     def __init__(self, pipeline_factory: PipelineFactory):
-        # Keep direct reference for node construction and registry usage
+        # Core dependencies
         self.pipeline_factory = pipeline_factory
+        self.storage = storage
         self.logger = composer_logger.logger.bind(component="GraphBuilder")
+        
+        # Create all agents upfront for dependency injection
+        self._create_agents()
+
+    def _create_agents(self):
+        """Create all agent instances for dependency injection."""
+        self.intent_classifier_agent = IntentClassifierAgent()
+        self.engineering_agent = EngineeringAgent(self.pipeline_factory)
+        self.memory_agent = MemoryAgent()
+        self.embedding_agent = EmbeddingAgent(self.pipeline_factory)
+        self.summarization_agent = SummarizationAgent(self.pipeline_factory)
+        self.single_source_agent = SingleSourceAgent()
+        
+        # Create tool registry (also depends on embedding agent)
+        self.tool_registry = ToolRegistry(self.pipeline_factory)
 
     async def build_workflow(
         self,
@@ -73,41 +100,74 @@ class GraphBuilder:
             Compiled workflow ready for execution
         """
         try:
-            self.logger.info("Building workflow", user_id=user_id)
+            self.logger.info("Building workflow with dependency injection", user_id=user_id)
             # Create master workflow graph
             workflow = StateGraph(WorkflowState)
-            tool_registry = ToolRegistry(self.pipeline_factory)
 
+            # Create nodes with injected dependencies
             # Intent analysis -> router -> (optional specialized agents) pattern
-            workflow.add_node("intent_analysis", IntentClassifierNode())
+            workflow.add_node(
+                "intent_analysis", 
+                IntentClassifierNode(intent_classifier_agent=self.intent_classifier_agent)
+            )
             workflow.add_node("workflow_router", WorkflowRouter(user_id))
+            
             # Engineering agent (invoked only when routing selects engineering)
             workflow.add_node(
-                "engineering_agent", EngineeringAgentNode(self.pipeline_factory)
+                "engineering_agent", 
+                EngineeringAgentNode(engineering_agent=self.engineering_agent)
             )
 
             # Title generation (if no title exists)
             workflow.add_node(
-                "title_generation", TitleGenerationNode(self.pipeline_factory)
+                "title_generation", 
+                TitleGenerationNode(self.pipeline_factory, summarization_agent=self.summarization_agent)
             )
 
-            # Memory
-            workflow.add_node("memory_search", MemorySearchNode(self.pipeline_factory))
+            # Memory nodes with injected agents and storage
             workflow.add_node(
-                "memory_creation", MemoryCreationNode(self.pipeline_factory)
+                "memory_search", 
+                MemorySearchNode(
+                    pipeline_factory=self.pipeline_factory,
+                    memory_agent=self.memory_agent,
+                    embedding_agent=self.embedding_agent,
+                    storage=self.storage
+                )
             )
-            workflow.add_node("memory_storage", MemoryStorageNode())
-
-            # Tools
             workflow.add_node(
-                "static_tool_collection", StaticToolCollectionNode(tool_registry)
+                "memory_creation", 
+                MemoryCreationNode(
+                    pipeline_factory=self.pipeline_factory,
+                    embedding_agent=self.embedding_agent,
+                    storage=self.storage
+                )
+            )
+            workflow.add_node(
+                "memory_storage", 
+                MemoryStorageNode(
+                    memory_agent=self.memory_agent,
+                    storage=self.storage
+                )
+            )
+
+            # Tool nodes with injected dependencies
+            workflow.add_node(
+                "static_tool_collection", 
+                StaticToolCollectionNode(self.tool_registry)
             )
             workflow.add_node(
                 "dynamic_tool_collection",
-                DynamicToolCreationNode(tool_registry, self.pipeline_factory),
+                DynamicToolCreationNode(
+                    tool_registry=self.tool_registry, 
+                    pipeline_factory=self.pipeline_factory,
+                    storage=self.storage
+                ),
             )
             workflow.add_node("tool_composer", ToolComposerNode())
-            workflow.add_node("tool_executor", ToolExecutorNode(tool_registry))
+            workflow.add_node(
+                "tool_executor", 
+                ToolExecutorNode(self.tool_registry)
+            )
 
             # Primary chat agent with streaming enabled
             workflow.add_node(
