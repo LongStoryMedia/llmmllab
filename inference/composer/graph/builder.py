@@ -126,7 +126,7 @@ class GraphBuilder:
             workflow.add_edge("static_tool_collection", "dynamic_tool_collection")
             workflow.add_edge("dynamic_tool_collection", "tool_composer")
             workflow.add_edge("tool_composer", "memory_search")
-            
+
             # 3. Memory search -> Router for workflow selection
             workflow.add_edge("memory_search", "workflow_router")
 
@@ -157,20 +157,17 @@ class GraphBuilder:
             def should_execute_tools(state: WorkflowState):
                 if not state.messages:
                     return "memory_creation"
-                    
+
                 last_message = state.messages[-1]
-                
+
                 # If last message is a tool result, continue to memory creation
                 if hasattr(last_message, "type") and last_message.type == "tool":
                     return "memory_creation"
-                
+
                 # If last message has tool calls, execute tools
-                if (
-                    hasattr(last_message, "tool_calls")
-                    and last_message.tool_calls
-                ):
+                if hasattr(last_message, "tool_calls") and last_message.tool_calls:
                     return "tool_executor"
-                    
+
                 # No tool calls, go to memory creation
                 return "memory_creation"
 

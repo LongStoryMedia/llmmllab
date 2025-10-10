@@ -10,9 +10,9 @@ import json
 
 from langchain_core.tools import BaseTool
 from runner import run_pipeline, pipeline_factory
-from runner.pipeline_factory import PipelinePriority
-from models import ModelProfileType
-from utils import get_model_profile, extract_message_text
+from models import ModelProfileType, PipelinePriority
+from utils.message import extract_message_text
+from utils.model_profile import get_model_profile
 
 
 class SummarizationTool(BaseTool):
@@ -22,7 +22,7 @@ class SummarizationTool(BaseTool):
     description: str = (
         "Summarize content using basic text processing. Takes text content and returns a concise summary."
     )
-    
+
     # Declare user_id as a proper Pydantic field
     user_id: str
 

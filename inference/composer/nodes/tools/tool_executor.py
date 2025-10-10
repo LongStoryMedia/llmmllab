@@ -8,6 +8,7 @@ Wraps LangChain v1.0 ToolNode for reliable tool execution within workflows.
 from models import LangChainMessage
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
+from composer.tools.registry import ToolRegistry
 
 
 class ToolExecutorNode:
@@ -17,7 +18,7 @@ class ToolExecutorNode:
     Executes tool calls directly without relying on LangChain ToolNode (removed dependency).
     """
 
-    def __init__(self, tool_registry=None):
+    def __init__(self, tool_registry: "ToolRegistry"):
         """
         Initialize tool executor node.
 
@@ -56,7 +57,7 @@ class ToolExecutorNode:
             executable_tools = {}
             if self.tool_registry:
                 executable_tools = self.tool_registry.get_all_executable_tools()
-            
+
             if not executable_tools:
                 msg = "No executable tools available from registry"
                 self.logger.error(
@@ -79,10 +80,18 @@ class ToolExecutorNode:
             self.logger.info(
                 "Available tools debugging",
                 user_id=getattr(state, "user_id", "unknown"),
-                available_tools=list(name_to_tool.keys())[:10],  # Show first 10 for debugging
+                available_tools=list(name_to_tool.keys())[
+                    :10
+                ],  # Show first 10 for debugging
                 total_available=len(name_to_tool),
-                raw_tool_classes=[type(t).__name__ for t in name_to_tool.values()][:5],  # Show class names for debugging
-                raw_tool_names=[getattr(t, 'name', 'NO_NAME') for t in name_to_tool.values()][:5],  # Show .name attrs
+                raw_tool_classes=[type(t).__name__ for t in name_to_tool.values()][
+                    :5
+                ],  # Show class names for debugging
+                raw_tool_names=[
+                    getattr(t, "name", "NO_NAME") for t in name_to_tool.values()
+                ][
+                    :5
+                ],  # Show .name attrs
             )
             for call in last_message.tool_calls:
                 tool_name = call.get("name")

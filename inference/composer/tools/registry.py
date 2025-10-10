@@ -240,40 +240,42 @@ class ToolRegistry:
             # For now, return all dynamic tools. In the future, could filter by user_id
             return list(self.dynamic_tools.values())
 
-    def _create_tool_instance(
-        self, tool_cls: Any, user_id: str
-    ) -> Optional[Tool]:
+    def _create_tool_instance(self, tool_cls: Any, user_id: str) -> Optional[Tool]:
         """Create tool instance from tool class with user configuration."""
-        from models import Tool as ModelTool  # Import our generic Tool model
-        
         try:
             # Handle different constructor signatures for BaseTool instances
             if tool_cls.__name__ == "MemoryRetrievalTool":
                 # MemoryRetrievalTool needs both user_id and conversation_id
                 # Use a default conversation_id for registry - tools will be re-created with actual conversation_id at runtime
-                base_tool = tool_cls(user_id=user_id, conversation_id=0)  # Default conversation_id
+                base_tool = tool_cls(
+                    user_id=user_id, conversation_id=0
+                )  # Default conversation_id
             else:
                 # WebSearchTool and SummarizationTool need only user_id
                 base_tool = tool_cls(user_id=user_id)
-            
-            tool_name = getattr(base_tool, 'name', tool_cls.__name__)
-            
+
+            tool_name = getattr(base_tool, "name", tool_cls.__name__)
+
             # Store the actual BaseTool instance for execution
             self.executable_tools[tool_name] = base_tool
-            
+
             # Convert BaseTool instance to our generic Tool model for WorkflowState compatibility
-            tool_instance = ModelTool(
+            tool_instance = Tool(
                 name=tool_name,
-                description=getattr(base_tool, 'description', f"{tool_cls.__name__} tool"),
-                args_schema=getattr(base_tool, 'args_schema', None),
-                return_direct=getattr(base_tool, 'return_direct', False),
-                tags=getattr(base_tool, 'tags', None),
-                metadata=getattr(base_tool, 'metadata', None),
-                handle_tool_error=getattr(base_tool, 'handle_tool_error', False),
-                handle_validation_error=getattr(base_tool, 'handle_validation_error', False),
-                response_format=getattr(base_tool, 'response_format', 'content'),
+                description=getattr(
+                    base_tool, "description", f"{tool_cls.__name__} tool"
+                ),
+                args_schema=getattr(base_tool, "args_schema", None),
+                return_direct=getattr(base_tool, "return_direct", False),
+                tags=getattr(base_tool, "tags", None),
+                metadata=getattr(base_tool, "metadata", None),
+                handle_tool_error=getattr(base_tool, "handle_tool_error", False),
+                handle_validation_error=getattr(
+                    base_tool, "handle_validation_error", False
+                ),
+                response_format=getattr(base_tool, "response_format", "content"),
             )
-            
+
             composer_logger.logger.debug(
                 "Created tool instance",
                 tool_class=tool_cls.__name__,
@@ -284,7 +286,12 @@ class ToolRegistry:
             return tool_instance
         except Exception as e:
             composer_logger.log_error(
-                e, {"context": "tool_instantiation", "tool_class": str(tool_cls), "user_id": user_id}
+                e,
+                {
+                    "context": "tool_instantiation",
+                    "tool_class": str(tool_cls),
+                    "user_id": user_id,
+                },
             )
             return None
 

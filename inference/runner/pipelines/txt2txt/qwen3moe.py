@@ -113,13 +113,13 @@ class Qwen3Moe(BaseLlamaCppPipeline):
         """Parse tool calls from XML format."""
         import json
         import re
-        
+
         tool_calls = []
-        
+
         # Look for <tool_call> XML tags - handle multiline JSON
         tool_call_pattern = r"<tool_call>\s*(\{[^<]*?\})\s*</tool_call>"
         matches = re.findall(tool_call_pattern, content, re.DOTALL | re.IGNORECASE)
-        
+
         self._logger.debug(f"Parsing tool calls from content: {content[:500]}...")
         self._logger.debug(f"Found {len(matches)} potential tool call matches")
 
@@ -177,12 +177,18 @@ class Qwen3Moe(BaseLlamaCppPipeline):
             # Extract and clean content
             raw_content = str(response.content) if response.content else ""
             cleaned_content = self._extract_response_content(raw_content)
-            
+
             # Parse tool calls from raw content
-            self._logger.info(f"QWEN3MOE INVOKE: tools param = {len(tools) if tools else 'None'}")
-            self._logger.info(f"QWEN3MOE INVOKE: raw_content preview = {raw_content[:200]}...")
+            self._logger.info(
+                f"QWEN3MOE INVOKE: tools param = {len(tools) if tools else 'None'}"
+            )
+            self._logger.info(
+                f"QWEN3MOE INVOKE: raw_content preview = {raw_content[:200]}..."
+            )
             tool_calls = self._parse_tool_calls(raw_content) if tools else None
-            self._logger.info(f"QWEN3MOE INVOKE: parsed tool_calls = {len(tool_calls) if tool_calls else 'None'}")
+            self._logger.info(
+                f"QWEN3MOE INVOKE: parsed tool_calls = {len(tool_calls) if tool_calls else 'None'}"
+            )
 
             # Create response message
             result_message = Message(
@@ -212,8 +218,10 @@ class Qwen3Moe(BaseLlamaCppPipeline):
     ) -> AsyncIterator[ChatResponse]:
         """Stream responses from Qwen LLM."""
         _ = grammar, kwargs  # Suppress unused warnings
-        
-        self._logger.info(f"QWEN3MOE STREAM START: tools param = {len(tools) if tools else 'None'}")
+
+        self._logger.info(
+            f"QWEN3MOE STREAM START: tools param = {len(tools) if tools else 'None'}"
+        )
 
         # Initialize LLM if needed
         if self.llm is None:
@@ -248,22 +256,30 @@ class Qwen3Moe(BaseLlamaCppPipeline):
 
             # Final chunk to indicate completion with tool calls
             cleaned_content = self._extract_response_content(accumulated_content)
-            self._logger.info(f"QWEN3MOE STREAM: tools param = {len(tools) if tools else 'None'}")
-            self._logger.info(f"QWEN3MOE STREAM: accumulated_content preview = {accumulated_content[:200]}...")
+            self._logger.info(
+                f"QWEN3MOE STREAM: tools param = {len(tools) if tools else 'None'}"
+            )
+            self._logger.info(
+                f"QWEN3MOE STREAM: accumulated_content preview = {accumulated_content[:200]}..."
+            )
             tool_calls = self._parse_tool_calls(accumulated_content) if tools else None
-            self._logger.info(f"QWEN3MOE STREAM: parsed tool_calls = {len(tool_calls) if tool_calls else 'None'}")
-            
+            self._logger.info(
+                f"QWEN3MOE STREAM: parsed tool_calls = {len(tool_calls) if tool_calls else 'None'}"
+            )
+
             final_message = Message(
                 role=MessageRole.ASSISTANT,
-                content=[MessageContent(type=MessageContentType.TEXT, text=cleaned_content)],
+                content=[
+                    MessageContent(type=MessageContentType.TEXT, text=cleaned_content)
+                ],
                 tool_calls=tool_calls,
             )
-            
+
             # Debug: Log final message tool calls
             self._logger.info(
                 f"QWEN3MOE STREAM: Final message created with tool_calls={len(final_message.tool_calls) if final_message.tool_calls else 0}"
             )
-            
+
             yield ChatResponse(done=True, message=final_message)
 
         except Exception as e:

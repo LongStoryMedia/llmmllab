@@ -543,7 +543,11 @@ async def stream_pipeline(
                     # Create streaming chunk that preserves tool calls
                     streaming_message = Message(
                         role=result.message.role,
-                        content=[MessageContent(type=MessageContentType.TEXT, text=text)] if text else [],
+                        content=(
+                            [MessageContent(type=MessageContentType.TEXT, text=text)]
+                            if text
+                            else []
+                        ),
                         tool_calls=result.message.tool_calls,  # Preserve tool calls!
                     )
                     yield ChatResponse(done=True, message=streaming_message)

@@ -59,7 +59,7 @@ class DynamicToolCreationNode:
                         cast(List[BaseTool], state.available_tools),
                     )
                     raw = extract_message_text(res.message) if res.message else ""
-                    
+
                     # Parse response and check if we should skip tool creation
                     try:
                         parsed_response = json.loads(raw)
@@ -67,10 +67,12 @@ class DynamicToolCreationNode:
                             self.logger.info(
                                 "Skipping dynamic tool creation",
                                 user_id=state.user_id,
-                                reason=parsed_response.get("reason", "No reason provided"),
+                                reason=parsed_response.get(
+                                    "reason", "No reason provided"
+                                ),
                             )
                             continue
-                        
+
                         dt = DynamicTool(**parsed_response)
                     except (json.JSONDecodeError, KeyError, TypeError) as e:
                         self.logger.error(f"Failed to parse dynamic tool response: {e}")
@@ -88,13 +90,13 @@ class DynamicToolCreationNode:
 
                         tool_svc = storage.get_service(storage.dynamic_tool)
                         await tool_svc.create_tool(dt)
-                        
+
                         self.logger.info(
                             "Dynamic tool persisted successfully",
                             user_id=state.user_id,
                             tool_name=dt.name,
                         )
-                        
+
                     except Exception as pe:
                         self.logger.error(f"Dynamic tool persistence failed: {pe}")
                         # Don't fail completely, just log and continue

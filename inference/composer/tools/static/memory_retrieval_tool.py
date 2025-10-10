@@ -39,10 +39,11 @@ from langchain_core.tools import BaseTool
 from runner import embed_pipeline, pipeline_factory, EmbeddingPipeline
 
 from db import storage
-from models.memory_config import MemoryConfig
-from models.model_profile_type import ModelProfileType
+from models import MemoryConfig, ModelProfileType
 from models.default_configs import DEFAULT_MEMORY_CONFIG
 from utils.model_profile import get_model_profile
+
+from composer.monitoring.logging import composer_logger
 
 
 class MemoryRetrievalTool(BaseTool):
@@ -53,23 +54,18 @@ class MemoryRetrievalTool(BaseTool):
         "Retrieve relevant memories based on text query. Uses embeddings and similarity search "
         "with configurable cross-user/conversation settings and similarity thresholds."
     )
-    
+
     # Declare fields as proper Pydantic fields
     user_id: str
     conversation_id: int
 
     def __init__(self, user_id: str, conversation_id: int, **kwargs):
         super().__init__(user_id=user_id, conversation_id=conversation_id, **kwargs)
-        # Create logger without assigning to self (Pydantic doesn't allow it)
-        logger = logging.getLogger(self.__class__.__name__)
-        logger.debug(
-            f"MemoryRetrievalTool initialized for user: {user_id}, conversation: {conversation_id}"
-        )
-    
+
     @property
     def logger(self):
         """Get logger for this tool instance."""
-        return logging.getLogger(self.__class__.__name__)
+        return composer_logger.logger.bind(component=self.__class__.__name__)
 
     async def _get_memory_config(self) -> MemoryConfig:
         """Get memory configuration from user config via shared data layer."""
@@ -163,7 +159,7 @@ class MemoryRetrievalTool(BaseTool):
             formatted_memories = [
                 {
                     "content": (
-                        "\n".join([f.content for f in memory.fragments])
+                        "\n".join([f.content for f in memory.fragments if f.content])
                         if hasattr(memory, "fragments")
                         else str(memory)
                     ),

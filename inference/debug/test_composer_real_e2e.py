@@ -785,16 +785,21 @@ Please search for the most recent information and provide a comprehensive summar
                 event_dict = event if isinstance(event, dict) else {}
 
                 # Check if this event contains tool execution information
-                if hasattr(event_dict, '__dict__') and hasattr(event_dict, 'node_name'):
+                if hasattr(event_dict, "__dict__") and hasattr(event_dict, "node_name"):
                     # This could be a node execution event
-                    if getattr(event_dict, 'node_name', None) == 'tool_executor':
+                    if getattr(event_dict, "node_name", None) == "tool_executor":
                         tool_calls_detected = True
                         logger.info("   🛠️  Tool execution node detected")
 
                 # Check for tool execution by looking for node names or metadata
-                if "metadata" in event_dict and isinstance(event_dict.get("metadata"), dict):
+                if "metadata" in event_dict and isinstance(
+                    event_dict.get("metadata"), dict
+                ):
                     metadata = event_dict["metadata"]
-                    if metadata.get("langgraph_node") == "tool_executor" or "tool" in str(metadata).lower():
+                    if (
+                        metadata.get("langgraph_node") == "tool_executor"
+                        or "tool" in str(metadata).lower()
+                    ):
                         tool_calls_detected = True
                         logger.info("   🛠️  Tool executor node detected in metadata")
 
@@ -914,7 +919,9 @@ Please search for the most recent information and provide a comprehensive summar
                         tool_calls_detected = True
                         if "data" in event_dict:
                             tool_data = event_dict["data"]
-                            logger.info(f"   🛠️  Tool call detected: {tool_data.get('name', 'Unknown')}")
+                            logger.info(
+                                f"   🛠️  Tool call detected: {tool_data.get('name', 'Unknown')}"
+                            )
                             self._write_detailed_data(
                                 section="TOOL_EXECUTION",
                                 title=f"Tool Start: {tool_data.get('name', 'Unknown')}",
@@ -974,8 +981,10 @@ Please search for the most recent information and provide a comprehensive summar
             # Additional tool call detection methods
             if len(tool_events) > 0 and not tool_calls_detected:
                 tool_calls_detected = True
-                logger.info(f"   🛠️  Tool calls detected via tool_events: {len(tool_events)}")
-            
+                logger.info(
+                    f"   🛠️  Tool calls detected via tool_events: {len(tool_events)}"
+                )
+
             # Check if the response indicates successful tool usage (e.g. web search results)
             if not tool_calls_detected and full_response:
                 # Look for indicators of successful tool execution in the response
@@ -988,10 +997,15 @@ Please search for the most recent information and provide a comprehensive summar
                     "current information",
                     "web search",
                 ]
-                if any(indicator.lower() in full_response.lower() for indicator in tool_indicators):
+                if any(
+                    indicator.lower() in full_response.lower()
+                    for indicator in tool_indicators
+                ):
                     tool_calls_detected = True
-                    logger.info("   🛠️  Tool calls detected via response content analysis")
-            
+                    logger.info(
+                        "   🛠️  Tool calls detected via response content analysis"
+                    )
+
             logger.info(f"   🛠️  Tool calls detected: {tool_calls_detected}")
             if error_events:
                 logger.error(
@@ -1143,8 +1157,11 @@ Please search for the most recent information and provide a comprehensive summar
             if not tool_calls_detected:
                 # Extract user-facing content by removing <think> tags and their content
                 import re
-                user_facing_content = re.sub(r'<think>.*?</think>', '', full_response, flags=re.DOTALL)
-                
+
+                user_facing_content = re.sub(
+                    r"<think>.*?</think>", "", full_response, flags=re.DOTALL
+                )
+
                 if "can't perform actual searches" in user_facing_content.lower():
                     tool_availability_issues.append(
                         "Model believes it cannot perform web searches without using tools"
@@ -1309,6 +1326,9 @@ Please search for the most recent information and provide a comprehensive summar
                     f"   📊 Response quality score: {response_quality_score}/100"
                 )
 
+            # Validate conversation title if generated
+            title_validation = await self._validate_conversation_title()
+
             return {
                 "success": True,
                 "conversation_valid": True,
@@ -1316,11 +1336,72 @@ Please search for the most recent information and provide a comprehensive summar
                 "message_count": len(messages),
                 "assistant_messages": len(assistant_messages),
                 "response_quality_score": response_quality_score,
+                "title_validation": title_validation,
             }
 
         except Exception as e:
             logger.error(f"   ❌ Output validation failed: {str(e)}")
             return {"success": False, "error": str(e)}
+
+    async def _validate_conversation_title(self) -> Dict[str, Any]:
+        """Validate the generated conversation title meets requirements."""
+        try:
+            from db import storage
+
+            if not storage or not storage.conversation or not self.test_conversation_id:
+                return {"valid": False, "error": "Missing storage or conversation ID"}
+
+            # Get conversation to check for title
+            conversation = await storage.conversation.get_conversation(
+                self.test_conversation_id
+            )
+
+            if not conversation:
+                return {"valid": False, "error": "Conversation not found"}
+
+            title = getattr(conversation, "title", None)
+
+            if not title or title.strip() == "":
+                return {"valid": False, "error": "No title generated"}
+
+            # Clean and validate title
+            title = title.strip()
+            word_count = len(title.split())
+
+            # Check title requirements
+            validation_results = {
+                "valid": True,
+                "title": title,
+                "word_count": word_count,
+                "meets_word_limit": word_count <= 5,
+                "has_content": len(title) > 0,
+                "no_quotes": not (title.startswith('"') and title.endswith('"')),
+                "properly_capitalized": title[0].isupper() if title else False,
+            }
+
+            # Overall validation
+            validation_results["valid"] = all(
+                [
+                    validation_results["meets_word_limit"],
+                    validation_results["has_content"],
+                    validation_results["no_quotes"],
+                ]
+            )
+
+            if validation_results["valid"]:
+                logger.info(
+                    f"   ✅ Title validation passed: '{title}' ({word_count} words)"
+                )
+            else:
+                logger.error(
+                    f"   ❌ Title validation failed: '{title}' ({word_count} words)"
+                )
+
+            return validation_results
+
+        except Exception as e:
+            logger.error(f"   ❌ Title validation error: {str(e)}")
+            return {"valid": False, "error": str(e)}
 
     async def cleanup_real_data(self):
         """Clean up all real test data from database."""
@@ -1577,6 +1658,12 @@ Please search for the most recent information and provide a comprehensive summar
         )
         dynamic_tool_error_free = workflow_result.get("dynamic_tool_error_free", True)
 
+        # Extract title validation information
+        title_validation = validation_result.get("title_validation", {})
+        title_valid = title_validation.get("valid", False)
+        title_word_count = title_validation.get("word_count", "Unknown")
+        title_text = title_validation.get("title", "Not generated")
+
         logger.info(f"🤖 Model Used: {model_name}")
         logger.info(f"🛠️  Tool Calls Detected: {'YES' if tool_calls else 'NO'}")
         logger.info(
@@ -1586,6 +1673,11 @@ Please search for the most recent information and provide a comprehensive summar
             f"⚙️  Dynamic Tool Error-Free: {'YES' if dynamic_tool_error_free else 'NO'}"
         )
         logger.info(f"📊 Response Quality Score: {quality_score}/100")
+        logger.info(
+            f"🏷️  Title Generated: {'YES' if title_valid else 'NO'} ({title_word_count} words)"
+        )
+        if title_valid:
+            logger.info(f"    Title: '{title_text}'")
         logger.info(f"🎼 Architecture: Composer + LangGraph")
 
         logger.info("\n📋 Component Results:")

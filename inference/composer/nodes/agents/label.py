@@ -101,9 +101,12 @@ class TitleGenerationNode:
             )
 
             # Update state with generated title via progress updates
-            generated_title = (
+            raw_title = (
                 title.strip() if isinstance(title, str) else "Untitled Conversation"
             )
+
+            # Validate and clean up the title
+            generated_title = self._validate_and_clean_title(raw_title)
 
             # Add title to progress updates since WorkflowState doesn't have conversation_title field
             if not hasattr(state, "progress_updates"):
@@ -112,7 +115,11 @@ class TitleGenerationNode:
 
             self.logger.info(
                 "Title generated successfully",
-                extra={"user_id": user_id, "title": generated_title},
+                extra={
+                    "user_id": user_id,
+                    "title": generated_title,
+                    "word_count": len(generated_title.split()),
+                },
             )
 
             return state
@@ -136,12 +143,49 @@ Conversation:
 {conversation}
 
 Requirements:
-- Maximum 8 words
+- Maximum 5 words only
 - Capture the main topic or question
 - Use clear, simple language
 - No quotes or special characters
+- Examples: "Workout Tips", "Tech News Summary"
 
 Title:"""
+
+    def _validate_and_clean_title(self, title: str) -> str:
+        """Validate and clean up the generated title to meet requirements."""
+        if not title or not title.strip():
+            return "Untitled Conversation"
+
+        # Clean up the title
+        cleaned = title.strip()
+
+        # Remove quotes and common prefixes
+        cleaned = cleaned.strip("\"'")
+        prefixes_to_remove = [
+            "Title:",
+            "title:",
+            "TITLE:",
+            "Generated title:",
+            "Conversation title:",
+        ]
+        for prefix in prefixes_to_remove:
+            if cleaned.startswith(prefix):
+                cleaned = cleaned[len(prefix) :].strip()
+
+        # Split into words and enforce 5-word limit
+        words = cleaned.split()
+        if len(words) > 5:
+            words = words[:5]
+            cleaned = " ".join(words)
+
+        # Fallback if empty after cleaning
+        if not cleaned or len(words) == 0:
+            return "AI Discussion"
+
+        # Capitalize properly
+        cleaned = " ".join(word.capitalize() for word in cleaned.split())
+
+        return cleaned
 
     def _format_conversation_context(self, messages: List[LangChainMessage]) -> str:
         """Format messages for title generation context."""

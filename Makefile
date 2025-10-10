@@ -73,5 +73,11 @@ validate:
 e2e-%:
 	kubectl exec -it -n ollama $$(kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}') -- /app/v.sh server python -m debug.test_real_end_to_end_pipeline $*
 
+clear-debug:
+	rm ./inference/debug/out/*.txt 
+	rm ./inference/debug/out/*.json
+	rm ./inference/debug/out/*.md
+	./inference/sync-code.sh -R
+
 .PHONY: inference maistro ui validate
 
