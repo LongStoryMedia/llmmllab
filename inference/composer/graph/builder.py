@@ -131,17 +131,35 @@ class GraphBuilder:
         # otherwise fall back to direct access for test environments
         try:
             # Use storage.get_service for type safety and linter warnings avoidance
-            self.user_config_storage: Optional['UserConfigStorage'] = self.storage.get_service(self.storage.user_config)
-            self.conversation_storage: Optional['ConversationStorage'] = self.storage.get_service(self.storage.conversation)
-            self.message_storage: Optional['MessageStorage'] = self.storage.get_service(self.storage.message)
-            self.model_profile_storage: Optional['ModelProfileStorage'] = self.storage.get_service(self.storage.model_profile)
-            self.memory_storage: Optional['MemoryStorage'] = self.storage.get_service(self.storage.memory)
-            self.summary_storage: Optional['SummaryStorage'] = self.storage.get_service(self.storage.summary)
-            self.search_storage: Optional['SearchStorage'] = self.storage.get_service(self.storage.search)
-            self.dynamic_tool_storage: Optional['DynamicToolStorage'] = self.storage.get_service(self.storage.dynamic_tool)
+            self.user_config_storage: 'UserConfigStorage' = self.storage.get_service(self.storage.user_config)
+            self.conversation_storage: 'ConversationStorage' = self.storage.get_service(self.storage.conversation)
+            self.message_storage: 'MessageStorage' = self.storage.get_service(self.storage.message)
+            self.model_profile_storage: 'ModelProfileStorage' = self.storage.get_service(self.storage.model_profile)
+            self.memory_storage: 'MemoryStorage' = self.storage.get_service(self.storage.memory)
+            self.summary_storage: 'SummaryStorage' = self.storage.get_service(self.storage.summary)
+            self.search_storage: 'SearchStorage' = self.storage.get_service(self.storage.search)
+            self.dynamic_tool_storage: 'DynamicToolStorage' = self.storage.get_service(self.storage.dynamic_tool)
         except ValueError as e:
             if "Storage not initialized" in str(e):
                 # Fallback for test environments where storage may not be initialized
+                # Check that storage services are available, otherwise raise an exception
+                if self.storage.user_config is None:
+                    raise ValueError("UserConfigStorage is required but not available")
+                if self.storage.conversation is None:
+                    raise ValueError("ConversationStorage is required but not available") 
+                if self.storage.message is None:
+                    raise ValueError("MessageStorage is required but not available")
+                if self.storage.model_profile is None:
+                    raise ValueError("ModelProfileStorage is required but not available")
+                if self.storage.memory is None:
+                    raise ValueError("MemoryStorage is required but not available")
+                if self.storage.summary is None:
+                    raise ValueError("SummaryStorage is required but not available")
+                if self.storage.search is None:
+                    raise ValueError("SearchStorage is required but not available")
+                if self.storage.dynamic_tool is None:
+                    raise ValueError("DynamicToolStorage is required but not available")
+                    
                 self.user_config_storage = self.storage.user_config
                 self.conversation_storage = self.storage.conversation
                 self.message_storage = self.storage.message

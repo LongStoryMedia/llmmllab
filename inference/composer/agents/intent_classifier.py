@@ -48,12 +48,12 @@ class IntentClassifierAgent:
     intent classification that eliminates JSON parsing errors.
     """
 
-    def __init__(self, user_config_storage: Optional['UserConfigStorage'] = None):
+    def __init__(self, user_config_storage: 'UserConfigStorage'):
         """
         Initialize the intent classification agent.
         
         Args:
-            user_config_storage: Injected user config storage service (optional, fallback to import)
+            user_config_storage: Injected user config storage service
         """
         self.user_config_storage = user_config_storage
         composer_logger.logger.info(

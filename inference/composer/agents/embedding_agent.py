@@ -23,7 +23,7 @@ class EmbeddingAgent:
     Supports both single text and batch text embedding generation.
     """
 
-    def __init__(self, pipeline_factory, user_config_storage: Optional['UserConfigStorage'] = None):
+    def __init__(self, pipeline_factory, user_config_storage: 'UserConfigStorage'):
         """
         Initialize embedding agent with dependency injection.
 
@@ -55,12 +55,8 @@ class EmbeddingAgent:
                 text_count=len(texts),
             )
 
-            # Use injected storage or fallback to import
-            if self.user_config_storage:
-                user_config_svc = self.user_config_storage
-            else:
-                from db import storage  # pylint: disable=import-outside-toplevel
-                user_config_svc = storage.get_service(storage.user_config)
+            # Use injected storage service
+            user_config_svc = self.user_config_storage
                 
             # Lazy imports to avoid circular dependency
             from utils.model_profile import (  # pylint: disable=import-outside-toplevel

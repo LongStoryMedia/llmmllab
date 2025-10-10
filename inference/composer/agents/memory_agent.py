@@ -26,7 +26,7 @@ class MemoryAgent:
     Embedding operations are handled by separate embedding nodes in workflows.
     """
 
-    def __init__(self, memory_storage: Optional['MemoryStorage'] = None):
+    def __init__(self, memory_storage: 'MemoryStorage'):
         """Initialize memory agent with dependency injection.
         
         Args:
@@ -54,12 +54,8 @@ class MemoryAgent:
             True if storage succeeded, False otherwise
         """
         try:
-            # Use injected storage or fallback to import
-            if self.memory_storage:
-                memory_svc = self.memory_storage
-            else:
-                from db import storage  # pylint: disable=import-outside-toplevel
-                memory_svc = storage.get_service(storage.memory)
+            # Use injected storage service
+            memory_svc = self.memory_storage
 
             # Store each message with its embedding
             success_count = 0
@@ -136,12 +132,8 @@ class MemoryAgent:
             List of Memory objects with similarity scores and paired content
         """
         try:
-            # Use injected storage or fallback to import
-            if self.memory_storage:
-                memory_svc = self.memory_storage
-            else:
-                from db import storage  # pylint: disable=import-outside-toplevel
-                memory_svc = storage.get_service(storage.memory)
+            # Use injected storage service
+            memory_svc = self.memory_storage
 
             self.logger.info(
                 "Starting memory search with embeddings",

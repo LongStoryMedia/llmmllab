@@ -26,7 +26,7 @@ class EngineeringAgent:
     and grammar constraints for structured outputs.
     """
 
-    def __init__(self, pipeline_factory: PipelineFactory, user_config_storage: Optional['UserConfigStorage'] = None):
+    def __init__(self, pipeline_factory: PipelineFactory, user_config_storage: 'UserConfigStorage'):
         """
         Initialize engineering agent with dependency injection.
 
@@ -63,12 +63,8 @@ class EngineeringAgent:
         """
         # Lazy imports to avoid circular dependency
         from runner import run_pipeline  # pylint: disable=import-outside-toplevel
-        # Use injected storage or fallback to import
-        if self.user_config_storage:
-            user_config_svc = self.user_config_storage
-        else:
-            from db import storage  # pylint: disable=import-outside-toplevel
-            user_config_svc = storage.get_service(storage.user_config)
+        # Use injected storage service
+        user_config_svc = self.user_config_storage
 
         try:
             self.logger.info(

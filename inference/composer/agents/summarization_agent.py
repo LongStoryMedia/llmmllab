@@ -41,17 +41,17 @@ class SummarizationAgent:
 
     def __init__(self, 
                  pipeline_factory: PipelineFactory, 
-                 summary_storage: Optional['SummaryStorage'] = None, 
-                 search_storage: Optional['SearchStorage'] = None, 
-                 user_config_storage: Optional['UserConfigStorage'] = None):
+                 summary_storage: 'SummaryStorage', 
+                 search_storage: 'SearchStorage', 
+                 user_config_storage: 'UserConfigStorage'):
         """
         Initialize summarization agent.
 
         Args:
             pipeline_factory: Factory for creating summarization pipelines
-            summary_storage: Injected summary storage service (optional, fallback to import)
-            search_storage: Injected search storage service (optional, fallback to import)
-            user_config_storage: Injected user config storage service (optional, fallback to import)
+            summary_storage: Injected summary storage service
+            search_storage: Injected search storage service
+            user_config_storage: Injected user config storage service
         """
         self.pipeline_factory = pipeline_factory
         self.summary_storage = summary_storage
@@ -185,12 +185,8 @@ class SummarizationAgent:
                 conversation_id=conversation_id,
             )
 
-            # Use injected storage or fallback to import
-            if self.search_storage:
-                search_svc = self.search_storage
-            else:
-                from db import storage  # pylint: disable=import-outside-toplevel
-                search_svc = storage.get_service(storage.search)
+            # Use injected storage service
+            search_svc = self.search_storage
 
             synth.id = await search_svc.create(synth)
 
@@ -245,12 +241,8 @@ class SummarizationAgent:
                 },
             )
 
-            # Use injected storage or fallback to import
-            if self.summary_storage:
-                summary_svc = self.summary_storage
-            else:
-                from db import storage  # pylint: disable=import-outside-toplevel
-                summary_svc = storage.get_service(storage.summary)
+            # Use injected storage service
+            summary_svc = self.summary_storage
 
             summ = Summary(
                 content=summary,
@@ -349,12 +341,8 @@ class SummarizationAgent:
                 target_level=target_level,
             )
 
-            # Use injected storage or fallback to import
-            if self.summary_storage:
-                summary_svc = self.summary_storage
-            else:
-                from db import storage  # pylint: disable=import-outside-toplevel
-                summary_svc = storage.get_service(storage.summary)
+            # Use injected storage service
+            summary_svc = self.summary_storage
 
             summ = Summary(
                 content=consolidated_summary,
@@ -773,12 +761,8 @@ Action items and next steps:"""
         }
 
         # Single database access for user configuration
-        # Use injected storage or fallback to import
-        if self.user_config_storage:
-            user_config_svc = self.user_config_storage
-        else:
-            from db import storage  # pylint: disable=import-outside-toplevel
-            user_config_svc = storage.get_service(storage.user_config)
+        # Use injected storage service
+        user_config_svc = self.user_config_storage
 
         uc = await user_config_svc.get_user_config(user_id)
 
