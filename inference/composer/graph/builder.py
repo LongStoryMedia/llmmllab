@@ -122,7 +122,7 @@ class GraphBuilder:
         self.single_source_agent = SingleSourceAgent()
         
         # Create tool registry (also depends on embedding agent)
-        self.tool_registry = ToolRegistry(self.pipeline_factory)
+        self.tool_registry = ToolRegistry(self.pipeline_factory, self.user_config_storage)
 
     def _create_storage_services(self) -> None:
         """Create storage service instances for dependency injection."""

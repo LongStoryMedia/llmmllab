@@ -34,6 +34,10 @@ from composer.tools.static import (
 from composer.agents.embedding_agent import EmbeddingAgent
 
 from runner import PipelineFactory
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from db.userconfig_storage import UserConfigStorage
 
 
 class ToolRegistry:
@@ -47,6 +51,7 @@ class ToolRegistry:
     def __init__(
         self,
         pipeline_factory: PipelineFactory,
+        user_config_storage: 'UserConfigStorage'
     ):
         # Static tool definitions (pre-defined tool classes for instantiation)
         self.static_tools: Dict[str, type[BaseTool]] = {}
@@ -58,7 +63,8 @@ class ToolRegistry:
         self.tool_embeddings: Dict[str, np.ndarray] = {}
 
         self.pipeline_factory = pipeline_factory
-        self.embedding_agent = EmbeddingAgent(pipeline_factory)
+        self.user_config_storage = user_config_storage
+        self.embedding_agent = EmbeddingAgent(pipeline_factory, user_config_storage)
         self._lock = asyncio.Lock()
 
         self._load_static_tools()
