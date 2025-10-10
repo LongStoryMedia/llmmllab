@@ -20,14 +20,16 @@ class EmbeddingAgent:
     Supports both single text and batch text embedding generation.
     """
 
-    def __init__(self, pipeline_factory):
+    def __init__(self, pipeline_factory, user_config_storage=None):
         """
-        Initialize embedding agent.
+        Initialize embedding agent with dependency injection.
 
         Args:
             pipeline_factory: Factory for creating embedding pipelines
+            user_config_storage: Injected UserConfigStorage service
         """
         self.pipeline_factory = pipeline_factory
+        self.user_config_storage = user_config_storage
         self.logger = composer_logger.logger.bind(component="EmbeddingAgent")
 
     async def generate_embeddings(
@@ -50,8 +52,14 @@ class EmbeddingAgent:
                 text_count=len(texts),
             )
 
-            # Lazy import to avoid circular dependency
-            from db import storage  # pylint: disable=import-outside-toplevel
+            # Use injected storage or fallback to import
+            if self.user_config_storage:
+                user_config_svc = self.user_config_storage
+            else:
+                from db import storage  # pylint: disable=import-outside-toplevel
+                user_config_svc = storage.get_service(storage.user_config)
+                
+            # Lazy imports to avoid circular dependency
             from utils.model_profile import (  # pylint: disable=import-outside-toplevel
                 get_model_profile_for_task,
             )
@@ -60,7 +68,7 @@ class EmbeddingAgent:
                 EmbeddingPipeline,
             )
 
-            uc = await storage.get_service(storage.user_config).get_user_config(user_id)
+            uc = await user_config_svc.get_user_config(user_id)
             # Get embedding model profile using standard pattern
             model_profile = await get_model_profile_for_task(
                 uc.model_profiles, ModelProfileType.Embedding, user_id

@@ -71,15 +71,46 @@ class GraphBuilder:
 
     def _create_agents(self):
         """Create all agent instances for dependency injection."""
-        self.intent_classifier_agent = IntentClassifierAgent()
-        self.engineering_agent = EngineeringAgent(self.pipeline_factory)
-        self.memory_agent = MemoryAgent()
-        self.embedding_agent = EmbeddingAgent(self.pipeline_factory)
-        self.summarization_agent = SummarizationAgent(self.pipeline_factory)
+        # Get storage services needed by agents
+        self._create_storage_services()
+        
+        # Create agents with injected dependencies
+        self.intent_classifier_agent = IntentClassifierAgent(
+            user_config_storage=self.user_config_storage
+        )
+        self.engineering_agent = EngineeringAgent(
+            pipeline_factory=self.pipeline_factory,
+            user_config_storage=self.user_config_storage
+        )
+        self.memory_agent = MemoryAgent(
+            memory_storage=self.memory_storage
+        )
+        self.embedding_agent = EmbeddingAgent(
+            pipeline_factory=self.pipeline_factory,
+            user_config_storage=self.user_config_storage
+        )
+        self.summarization_agent = SummarizationAgent(
+            pipeline_factory=self.pipeline_factory,
+            summary_storage=self.summary_storage,
+            search_storage=self.search_storage,
+            user_config_storage=self.user_config_storage
+        )
         self.single_source_agent = SingleSourceAgent()
         
         # Create tool registry (also depends on embedding agent)
         self.tool_registry = ToolRegistry(self.pipeline_factory)
+
+    def _create_storage_services(self):
+        """Create storage service instances for dependency injection."""
+        # Extract specific storage services that agents and nodes need
+        self.user_config_storage = self.storage.user_config
+        self.conversation_storage = self.storage.conversation
+        self.message_storage = self.storage.message
+        self.model_profile_storage = self.storage.model_profile
+        self.memory_storage = self.storage.memory
+        self.summary_storage = self.storage.summary
+        self.search_storage = self.storage.search
+        self.dynamic_tool_storage = self.storage.dynamic_tool
 
     async def build_workflow(
         self,

@@ -23,8 +23,13 @@ class MemoryAgent:
     Embedding operations are handled by separate embedding nodes in workflows.
     """
 
-    def __init__(self):
-        """Initialize memory agent."""
+    def __init__(self, memory_storage=None):
+        """Initialize memory agent with dependency injection.
+        
+        Args:
+            memory_storage: Injected MemoryStorage service
+        """
+        self.memory_storage = memory_storage
         self.logger = composer_logger.logger.bind(component="MemoryAgent")
 
     async def store_memories(
@@ -46,8 +51,12 @@ class MemoryAgent:
             True if storage succeeded, False otherwise
         """
         try:
-
-            from db import storage  # pylint: disable=import-outside-toplevel
+            # Use injected storage or fallback to import
+            if self.memory_storage:
+                memory_svc = self.memory_storage
+            else:
+                from db import storage  # pylint: disable=import-outside-toplevel
+                memory_svc = storage.get_service(storage.memory)
 
             # Store each message with its embedding
             success_count = 0
@@ -61,7 +70,7 @@ class MemoryAgent:
                                 fragment_id=frag.id,
                             )
                             continue
-                        await storage.get_service(storage.memory).store_memory(
+                        await memory_svc.store_memory(
                             user_id=user_id,
                             source=mem.source,
                             role=frag.role,
@@ -124,7 +133,12 @@ class MemoryAgent:
             List of Memory objects with similarity scores and paired content
         """
         try:
-            from db import storage  # pylint: disable=import-outside-toplevel
+            # Use injected storage or fallback to import
+            if self.memory_storage:
+                memory_svc = self.memory_storage
+            else:
+                from db import storage  # pylint: disable=import-outside-toplevel
+                memory_svc = storage.get_service(storage.memory)
 
             self.logger.info(
                 "Starting memory search with embeddings",
@@ -137,7 +151,7 @@ class MemoryAgent:
             )
 
             # Use storage layer for similarity search
-            memories = await storage.get_service(storage.memory).search_similarity(
+            memories = await memory_svc.search_similarity(
                 embeddings=query_embeddings,
                 min_similarity=similarity_threshold,
                 limit=max_results,

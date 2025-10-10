@@ -34,14 +34,20 @@ class SummarizationAgent:
     and search results using configured summarization models.
     """
 
-    def __init__(self, pipeline_factory: PipelineFactory):
+    def __init__(self, pipeline_factory: PipelineFactory, summary_storage=None, search_storage=None, user_config_storage=None):
         """
         Initialize summarization agent.
 
         Args:
             pipeline_factory: Factory for creating summarization pipelines
+            summary_storage: Injected summary storage service (optional, fallback to import)
+            search_storage: Injected search storage service (optional, fallback to import)
+            user_config_storage: Injected user config storage service (optional, fallback to import)
         """
         self.pipeline_factory = pipeline_factory
+        self.summary_storage = summary_storage
+        self.search_storage = search_storage
+        self.user_config_storage = user_config_storage
         self.logger = composer_logger.logger.bind(component="SummarizationAgent")
 
     async def summarize_text(
@@ -170,9 +176,14 @@ class SummarizationAgent:
                 conversation_id=conversation_id,
             )
 
-            from db import storage  # pylint: disable=import-outside-toplevel
+            # Use injected storage or fallback to import
+            if self.search_storage:
+                search_svc = self.search_storage
+            else:
+                from db import storage  # pylint: disable=import-outside-toplevel
+                search_svc = storage.get_service(storage.search)
 
-            synth.id = await storage.get_service(storage.search).create(synth)
+            synth.id = await search_svc.create(synth)
 
             return synth
 
@@ -225,7 +236,12 @@ class SummarizationAgent:
                 },
             )
 
-            from db import storage  # pylint: disable=import-outside-toplevel
+            # Use injected storage or fallback to import
+            if self.summary_storage:
+                summary_svc = self.summary_storage
+            else:
+                from db import storage  # pylint: disable=import-outside-toplevel
+                summary_svc = storage.get_service(storage.summary)
 
             summ = Summary(
                 content=summary,
@@ -236,7 +252,7 @@ class SummarizationAgent:
                 created_at=datetime.datetime.now(datetime.timezone.utc),
             )
             # Extract structured elements
-            id = await storage.get_service(storage.summary).create_summary(summ)
+            id = await summary_svc.create_summary(summ)
             assert id is not None
             summ.id = id
 
@@ -324,7 +340,12 @@ class SummarizationAgent:
                 target_level=target_level,
             )
 
-            from db import storage  # pylint: disable=import-outside-toplevel
+            # Use injected storage or fallback to import
+            if self.summary_storage:
+                summary_svc = self.summary_storage
+            else:
+                from db import storage  # pylint: disable=import-outside-toplevel
+                summary_svc = storage.get_service(storage.summary)
 
             summ = Summary(
                 content=consolidated_summary,
@@ -335,7 +356,7 @@ class SummarizationAgent:
                 created_at=datetime.datetime.now(datetime.timezone.utc),
             )
             # Extract structured elements
-            sumid = await storage.get_service(storage.summary).create_summary(summ)
+            sumid = await summary_svc.create_summary(summ)
             assert sumid is not None
             summ.id = sumid
 
@@ -743,10 +764,14 @@ Action items and next steps:"""
         }
 
         # Single database access for user configuration
-        # Lazy import to avoid circular dependency
-        from db import storage  # pylint: disable=import-outside-toplevel
+        # Use injected storage or fallback to import
+        if self.user_config_storage:
+            user_config_svc = self.user_config_storage
+        else:
+            from db import storage  # pylint: disable=import-outside-toplevel
+            user_config_svc = storage.get_service(storage.user_config)
 
-        uc = await storage.get_service(storage.user_config).get_user_config(user_id)
+        uc = await user_config_svc.get_user_config(user_id)
 
         # Get model profile for the specified type
         model_profile = await get_model_profile_for_task(

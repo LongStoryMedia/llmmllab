@@ -23,14 +23,16 @@ class EngineeringAgent:
     and grammar constraints for structured outputs.
     """
 
-    def __init__(self, pipeline_factory: PipelineFactory):
+    def __init__(self, pipeline_factory: PipelineFactory, user_config_storage=None):
         """
-        Initialize engineering agent.
+        Initialize engineering agent with dependency injection.
 
         Args:
             pipeline_factory: Factory for creating engineering pipelines
+            user_config_storage: Injected UserConfigStorage service
         """
         self.pipeline_factory = pipeline_factory
+        self.user_config_storage = user_config_storage
         self.logger = composer_logger.logger.bind(component="EngineeringAgent")
 
     async def generate_technical_response(
@@ -58,7 +60,12 @@ class EngineeringAgent:
         """
         # Lazy imports to avoid circular dependency
         from runner import run_pipeline  # pylint: disable=import-outside-toplevel
-        from db import storage  # pylint: disable=import-outside-toplevel
+        # Use injected storage or fallback to import
+        if self.user_config_storage:
+            user_config_svc = self.user_config_storage
+        else:
+            from db import storage  # pylint: disable=import-outside-toplevel
+            user_config_svc = storage.get_service(storage.user_config)
 
         try:
             self.logger.info(
@@ -71,7 +78,7 @@ class EngineeringAgent:
                 has_grammar=bool(grammar),
             )
 
-            uc = await storage.get_service(storage.user_config).get_user_config(user_id)
+            uc = await user_config_svc.get_user_config(user_id)
             # Get engineering model profile
             model_profile = await get_model_profile_for_task(
                 uc.model_profiles, ModelProfileType.Engineering, user_id
