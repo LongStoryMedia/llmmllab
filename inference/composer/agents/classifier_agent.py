@@ -4,30 +4,30 @@ Performs comprehensive intent analysis following the capability-driven architect
 Maps user requests to RequiredCapabilities and assesses computational complexity.
 """
 
-from typing import List, Optional, TYPE_CHECKING
+import json
+from typing import List, TYPE_CHECKING, Optional
 
 from pydantic import BaseModel
 
-if TYPE_CHECKING:
-    from db.userconfig_storage import UserConfigStorage
-
 from models import (
+    CircuitBreakerConfig,
     IntentAnalysis,
     ComplexityLevel,
-    RequiredCapability,
-    ComputationalRequirement,
+    ModelProfile,
+    PipelinePriority,
     Message,
+    MessageRole,
 )
-from models.model_profile_type import ModelProfileType
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import IntentAnalysisError
-from runner.pipelines.run import run_pipeline
 from utils.message import extract_message_text
 from utils.grammar_generator import parse_structured_output
-from utils.model_profile import get_model_profile
+
+if TYPE_CHECKING:
+    from runner import PipelineFactory
 
 
-class IntentClassifierAgent:
+class ClassifierAgent:
     """
     Grammar-constrained LLM intent analysis agent for workflow routing and tool selection.
 
@@ -48,14 +48,17 @@ class IntentClassifierAgent:
     intent classification that eliminates JSON parsing errors.
     """
 
-    def __init__(self, user_config_storage: 'UserConfigStorage'):
+    def __init__(
+        self,
+        pipeline_factory: "PipelineFactory",
+        profile: ModelProfile,
+    ):
         """
         Initialize the intent classification agent.
-        
-        Args:
-            user_config_storage: Injected user config storage service
+
         """
-        self.user_config_storage = user_config_storage
+        self.pipeline_factory = pipeline_factory
+        self.profile = profile
         composer_logger.logger.info(
             "Intent classifier initialized with analysis model profile"
         )
@@ -90,7 +93,9 @@ class IntentClassifierAgent:
             return "shallow"
 
     async def analyze(
-        self, user_id: str, current_user_message: Message
+        self,
+        current_user_message: Message,
+        circuit_breaker: Optional[CircuitBreakerConfig] = None,
     ) -> List[IntentAnalysis]:
         """
         Perform grammar-constrained intent analysis using structured LLM output.
@@ -118,38 +123,10 @@ class IntentClassifierAgent:
             # Extract user message text
             user_query = extract_message_text(current_user_message)
 
-            # Get analysis model profile using shared utility (handles caching and user config access)
-            try:
-                mp = await get_model_profile(user_id, ModelProfileType.Analysis)
-            except (ValueError, AssertionError) as e:
-                composer_logger.logger.warning(
-                    "Failed to get analysis model profile, using fallback",
-                    extra={
-                        "user_id": user_id,
-                        "error": str(e),
-                        "component": "intent_classifier",
-                    },
-                )
-                # Return fallback intent analysis when model profile unavailable
-                return [
-                    IntentAnalysis(
-                        primary_intent="chat",
-                        complexity_level=ComplexityLevel.SIMPLE,
-                        required_capabilities=[RequiredCapability.TEXT_PROCESSING],
-                        computational_requirements=[
-                            ComputationalRequirement.COMPLEX_REASONING
-                        ],
-                        domain_specificity=0.3,
-                        reusability_potential=0.7,
-                        confidence=0.6,
-                    )
-                ]
-
-            # Use LLM for comprehensive intent analysis
-            from runner import pipeline_factory
-
             # Use pipeline with default priority for intent analysis
-            with pipeline_factory.pipeline(mp, str) as pipeline:
+            with self.pipeline_factory.pipeline(
+                self.profile, str, PipelinePriority.HIGH, circuit_breaker
+            ) as pipeline:
                 intent_analyses = await self._llm_analyze_intent(pipeline, user_query)
                 # Apply any statistical augmentations
                 for intent_analysis in intent_analyses:
@@ -192,8 +169,6 @@ class IntentClassifierAgent:
         class _Intnts(BaseModel):
             intents: List[IntentAnalysis]
 
-        # NOTE: Do NOT embed the raw JSON *schema* in the prompt (the model then echoes the schema
-        # which breaks validation). Provide a clear natural language spec + minimal exemplar instead.
         analysis_prompt = f"""
 You are an expert intent classification system. Analyze the user request and output ONLY JSON.
 
@@ -212,21 +187,12 @@ Instructions:
 
 User Request: {user_query}
 
-Return JSON ONLY in this structure (example values shown):
-{{"intents": [
-    {{
-        "primary_intent": "research",
-        "complexity_level": "MODERATE",
-        "required_capabilities": ["web_search", "reasoning"],
-        "computational_requirements": ["complex_reasoning"],
-        "domain_specificity": 0.4,
-        "reusability_potential": 0.7,
-        "confidence": 0.8
-    }}
-]}}
+Return JSON that is valid against this schema:
+{json.dumps(_Intnts.model_json_schema())}
 
 If multiple intents are needed, include additional objects in the intents array.
 """
+        from runner import run_pipeline  # pylint: disable=import-outside-toplevel
 
         try:
             result = await run_pipeline(
@@ -334,5 +300,96 @@ If multiple intents are needed, include additional objects in the intents array.
                 missing = candidate.count("{") - candidate.count("}")
                 candidate = candidate + ("}" * missing)
         return candidate
+
+    async def generate_title(
+        self,
+        messages: List[Message],
+        circuit_breaker: Optional[CircuitBreakerConfig] = None,
+    ) -> str:
+        """
+        Generate a concise, descriptive title for a conversation based on its messages.
+
+        Args:
+            messages: List of conversation messages to analyze
+            circuit_breaker: Optional circuit breaker configuration
+
+        Returns:
+            str: Generated conversation title (2-6 words)
+
+        Raises:
+            IntentAnalysisError: When title generation fails
+        """
+        try:
+            # Extract text from all messages for context
+            conversation_text = ""
+            for message in messages[-5:]:  # Use last 5 messages for context
+                text = extract_message_text(message)
+                if text.strip():
+                    role = "User" if message.role.value == "user" else "Assistant"
+                    conversation_text += f"{role}: {text}\n"
+
+            if not conversation_text.strip():
+                return "New Conversation"
+
+            title_prompt = f"""
+Generate a concise, descriptive title for this conversation. The title should:
+- Be 2-6 words maximum
+- Capture the main topic or purpose
+- Be clear and professional
+- Not include quotes or special characters
+- Be suitable as a conversation label
+
+Conversation:
+{conversation_text}
+
+Title:"""
+
+            # Use pipeline with title generation
+            with self.pipeline_factory.pipeline(
+                self.profile, str, PipelinePriority.MEDIUM, circuit_breaker
+            ) as pipeline:
+                from runner import (  # pylint: disable=import-outside-toplevel
+                    run_pipeline,
+                )
+
+                result = await run_pipeline(
+                    messages=title_prompt,
+                    pipeline=pipeline,
+                    tools=None,
+                    grammar=None,
+                )
+
+                if not result or not result.message:
+                    return "Untitled Conversation"
+
+                title = extract_message_text(result.message).strip()
+
+                # Clean up the title
+                title = title.replace('"', "").replace("'", "").strip()
+
+                # Ensure it's not too long
+                words = title.split()
+                if len(words) > 6:
+                    title = " ".join(words[:6])
+
+                # Fallback if empty
+                if not title:
+                    title = "New Conversation"
+
+                composer_logger.logger.info(
+                    "Title generated successfully",
+                    extra={
+                        "title": title,
+                        "word_count": len(title.split()),
+                        "message_count": len(messages),
+                    },
+                )
+
+                return title
+
+        except Exception as e:
+            composer_logger.log_error(e, {"context": "title_generation"})
+            # Provide fallback title instead of raising error
+            return "Conversation"
 
     # All classification methods are now handled by LLM analysis above

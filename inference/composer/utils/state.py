@@ -19,7 +19,7 @@ from models import (
     MessageContentType,
     LangGraphState,
 )
-from composer.graph.state import WorkflowState, ExecutionMetadata
+from composer.graph.state import WorkflowState
 from .conversion import (
     convert_messages_to_langchain,
     convert_langchain_messages_to_messages,

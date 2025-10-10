@@ -308,7 +308,7 @@ This addresses the need for configurable knowledge retrieval, moving away from a
 
 #### 3.3.1 The Intent Agent's Role in RAG Depth Selection
 
-The `IntentClassifierAgent` is mandated to execute early in the graph flow using **grammar-constrained structured output**. A node within this agent, `decide_search_depth`, analyzes the initial user message using llamacpp grammars derived from the `intent_analysis.yaml` schema. The grammar ensures the LLM output is guaranteed to match the `IntentAnalysis` Pydantic model.
+The `ClassifierAgent` is mandated to execute early in the graph flow using **grammar-constrained structured output**. A node within this agent, `decide_search_depth`, analyzes the initial user message using llamacpp grammars derived from the `intent_analysis.yaml` schema. The grammar ensures the LLM output is guaranteed to match the `IntentAnalysis` Pydantic model.
 
 #### 3.3.2 Defining RAG Complexity Levels
 
@@ -317,7 +317,7 @@ The `IntentClassifierAgent` is mandated to execute early in the graph flow using
 
 #### 3.3.3 Graph Topology for Adaptive Search Routing
 
-After the `IntentClassifierAgent` completes, the flow routes to a designated `Router_RAG` node. This router node reads the `rag_depth_config` field from the state. If the state dictates `'SHALLOW'`, the conditional edge directs the flow to the `execute_shallow_search` node. If `'DEEP'`, the edge directs execution to the `execute_deep_crawl_and_synthesize` node. This conditional routing is vital for resource optimization. Both RAG paths conclude by routing to a common merge point for subsequent tool orchestration.
+After the `ClassifierAgent` completes, the flow routes to a designated `Router_RAG` node. This router node reads the `rag_depth_config` field from the state. If the state dictates `'SHALLOW'`, the conditional edge directs the flow to the `execute_shallow_search` node. If `'DEEP'`, the edge directs execution to the `execute_deep_crawl_and_synthesize` node. This conditional routing is vital for resource optimization. Both RAG paths conclude by routing to a common merge point for subsequent tool orchestration.
 
 ### 3.4 Intent-Driven Dynamic Tool Discovery and Composability
 
@@ -326,7 +326,7 @@ This demands a high degree of agent intelligence to select, modify, compose, and
 #### 3.4.0 Structured Intent Analysis Implementation
 
 ```python
-# composer/nodes/intent_classifier.py
+# composer/nodes/classifier_agent.py
 from models.intent_analysis import IntentAnalysis
 from utils.grammar_generator import GrammarGenerator
 
@@ -379,7 +379,7 @@ class IntentClassifierNode:
 
 #### 3.4.1 Phase 1: Intent Discovery and Conditional Standard Tool Collection
 
-The `IntentClassifierAgent` serves as the initial tool requirement analyzer using **grammar-constrained output**. It generates a type-safe `IntentAnalysis` model detailing functional needs with guaranteed structure validation. Based on this structured analysis, **Conditional Standard Tool Collection** occurs: pre-defined, standard tools are registered and conditionally included in the `required_tools` list in the GraphState. When dynamic tool generation is required, the **Engineering Agent** is invoked with grammar constraints to ensure predictable, structured tool creation. The grammar constraints ensure tool requirements are properly validated and formatted.
+The `ClassifierAgent` serves as the initial tool requirement analyzer using **grammar-constrained output**. It generates a type-safe `IntentAnalysis` model detailing functional needs with guaranteed structure validation. Based on this structured analysis, **Conditional Standard Tool Collection** occurs: pre-defined, standard tools are registered and conditionally included in the `required_tools` list in the GraphState. When dynamic tool generation is required, the **Engineering Agent** is invoked with grammar constraints to ensure predictable, structured tool creation. The grammar constraints ensure tool requirements are properly validated and formatted.
 
 #### 3.4.2 Phase 2: Dynamic Tool Assessment and Creation Logic
 
@@ -835,7 +835,7 @@ composer/
 
 ├── agents/
 │   ├── __init__.py
-│   ├── intent_classifier.py   # Intent analysis and classification
+│   ├── classifier_agent.py   # Intent analysis and classification
 │   ├── engineering_agent.py   # Dynamic tool generation with grammar constraints
 │   └── tool_orchestrator.py   # Tool discovery and composition coordination
 
@@ -886,7 +886,7 @@ composer/
 **Specialized Nodes:**
 
 - [ ] Create `TitleGenerationNode` from server logic
-- [ ] Build `IntentClassifierAgent` with structured output schema
+- [ ] Build `ClassifierAgent` with structured output schema
 - [ ] Implement `EngineeringAgentNode` with grammar-constrained tool generation
 - [ ] Integrate Engineering Agent with ToolRegistry for dynamic tool creation
 
@@ -1256,7 +1256,7 @@ async def test_composer_orchestration_migration():
     
     # Verify agent nodes are in composer, not runner
     node_names = list(workflow_def.nodes.keys())
-    assert "intent_classifier" in node_names
+    assert "classifier_agent" in node_names
     assert "tool_orchestrator" in node_names
     assert "rag_executor" in node_names
 

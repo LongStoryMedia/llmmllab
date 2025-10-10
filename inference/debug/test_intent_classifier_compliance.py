@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script to validate IntentClassifierAgent architectural compliance.
+Test script to validate ClassifierAgent architectural compliance.
 Verifies the agent produces valid IntentAnalysis objects matching schema contracts.
 """
 
@@ -18,7 +18,7 @@ from models.message_content_type import MessageContentType
 from models.complexity_level import ComplexityLevel
 from models.required_capability import RequiredCapability
 from models.computational_requirement import ComputationalRequirement
-from composer.agents.intent_classifier import IntentClassifierAgent
+from composer.agents.classifier_agent import ClassifierAgent
 
 
 def create_test_conversation(user_query: str) -> ConversationCtx:
@@ -42,8 +42,8 @@ def create_test_conversation(user_query: str) -> ConversationCtx:
 
 
 async def test_intent_analysis():
-    """Test the IntentClassifierAgent with various query types."""
-    agent = IntentClassifierAgent()
+    """Test the ClassifierAgent with various query types."""
+    agent = ClassifierAgent()
 
     test_cases = [
         {
@@ -73,7 +73,7 @@ async def test_intent_analysis():
         },
     ]
 
-    print("🧪 Testing IntentClassifierAgent Architectural Compliance\n")
+    print("🧪 Testing ClassifierAgent Architectural Compliance\n")
 
     for i, test_case in enumerate(test_cases, 1):
         print(f"Test {i}: {test_case['query']}")
@@ -139,7 +139,7 @@ async def test_intent_analysis():
 
         print()
 
-    print("🎯 IntentClassifierAgent Compliance Test Complete")
+    print("🎯 ClassifierAgent Compliance Test Complete")
 
 
 if __name__ == "__main__":

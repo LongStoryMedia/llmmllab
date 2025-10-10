@@ -22,6 +22,7 @@ from langchain.tools import BaseTool
 from models import (
     Tool,
     IntentAnalysis,
+    UserConfig,
 )  # DynamicTool intentionally unused pending implementation
 
 from composer.monitoring.logging import composer_logger
@@ -51,7 +52,7 @@ class ToolRegistry:
     def __init__(
         self,
         pipeline_factory: PipelineFactory,
-        user_config_storage: 'UserConfigStorage'
+        ebmedding_agent: EmbeddingAgent,
     ):
         # Static tool definitions (pre-defined tool classes for instantiation)
         self.static_tools: Dict[str, type[BaseTool]] = {}
@@ -63,8 +64,7 @@ class ToolRegistry:
         self.tool_embeddings: Dict[str, np.ndarray] = {}
 
         self.pipeline_factory = pipeline_factory
-        self.user_config_storage = user_config_storage
-        self.embedding_agent = EmbeddingAgent(pipeline_factory, user_config_storage)
+        self.embedding_agent = ebmedding_agent
         self._lock = asyncio.Lock()
 
         self._load_static_tools()
@@ -88,7 +88,10 @@ class ToolRegistry:
             composer_logger.log_error(e, {"context": "static_tools_loading"})
 
     async def get_tools_for_context(
-        self, intent: IntentAnalysis, user_id: str
+        self,
+        intent: IntentAnalysis,
+        user_id: str,
+        user_config: UserConfig,
     ) -> List[Tool]:
         """
         Select applicable tools based on intent and user configuration.
@@ -100,7 +103,6 @@ class ToolRegistry:
 
         try:
             # Get user configuration from shared data layer
-            user_config = await self._get_user_config(user_id)
             tool_config = user_config.tool if user_config else None
             # Phase 1: Conditional Standard Tool Collection
             for _, tool_cls in self.static_tools.items():
@@ -118,7 +120,9 @@ class ToolRegistry:
             )
             if tool_generation_enabled:
                 dynamic_tool = await self._generate_or_retrieve_dynamic_tool(
-                    user_id, intent
+                    user_id,
+                    intent,
+                    user_config,
                 )
                 if dynamic_tool:
                     tools.append(dynamic_tool)
@@ -140,7 +144,10 @@ class ToolRegistry:
             return []
 
     async def generate_dynamic_tool(
-        self, tool_spec: Any, user_id: str
+        self,
+        tool_spec: Any,
+        user_id: str,
+        user_config: UserConfig,
     ) -> Optional[Any]:
         """
         Public interface for dynamic tool generation.
@@ -152,7 +159,9 @@ class ToolRegistry:
         Returns:
             Generated tool instance or None
         """
-        return await self._generate_or_retrieve_dynamic_tool(user_id, tool_spec)
+        return await self._generate_or_retrieve_dynamic_tool(
+            user_id, tool_spec, user_config
+        )
 
     async def register_dynamic_tool_instance(
         self, tool_id: str, tool_instance: Tool, user_id: Optional[str] = None
@@ -181,36 +190,6 @@ class ToolRegistry:
                         self.tool_embeddings[tool_id] = emb
                 except Exception as e:  # pragma: no cover - defensive
                     composer_logger.log_error(e, {"context": "dynamic_tool_embedding"})
-
-    async def _get_user_config(self, user_id: str):
-        """Get user configuration from shared data layer."""
-        try:
-            # avoid circular import
-            from db import storage  # pylint: disable=import-outside-toplevel
-
-            # from models.default_configs import DEFAULT_TOOL_CONFIG  # Currently unused
-
-            # Initialize storage if not done
-            if not storage.pool:
-                composer_logger.logger.warning(
-                    "Database not initialized, using default tool config"
-                )
-                return None
-
-            user_config = await storage.get_service(
-                storage.user_config
-            ).get_user_config(user_id)
-            if not user_config:
-                composer_logger.logger.warning(
-                    f"No user config found for {user_id}, using default tool config"
-                )
-                return None
-            return user_config
-        except Exception as e:
-            composer_logger.logger.error(
-                f"Failed to get user config for {user_id}: {e}, using default tool config"
-            )
-            return None
 
     async def get_static_tool_instances(self, user_id: str) -> List[Tool]:
         """
@@ -310,7 +289,7 @@ class ToolRegistry:
         return self.executable_tools.copy()
 
     async def _generate_or_retrieve_dynamic_tool(
-        self, user_id: str, intent: IntentAnalysis
+        self, user_id: str, intent: IntentAnalysis, user_config: UserConfig
     ) -> Optional[Tool]:
         """
         Implement the three-tier dynamic tool decision process:
@@ -343,7 +322,6 @@ class ToolRegistry:
             )
 
             # Decision logic based on similarity thresholds
-            user_config = await self._get_user_config(user_id)
             tool_similarity_threshold = 0.9  # Default threshold
             tool_modification_threshold = 0.6  # Default threshold
 

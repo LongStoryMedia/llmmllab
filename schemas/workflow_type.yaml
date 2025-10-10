@@ -2,14 +2,11 @@ $schema: http://json-schema.org/draft-07/schema#
 title: WorkflowType
 type: string
 enum:
-  - CHAT
-  - RESEARCH
-  - MULTI_AGENT
-  - CREATIVE
+  - general
+  - research
+  - engineering
+  - creative
+  - image_generation
+  - image_refinement
 description: |
   Supported workflow types for composer orchestration.
-  
-  - CHAT: Standard conversational workflow with RAG and tool support
-  - RESEARCH: Research workflow with configurable RAG depth and synthesis
-  - MULTI_AGENT: Multi-agent orchestration workflow with handoffs
-  - CREATIVE: Creative content generation workflow with refinement

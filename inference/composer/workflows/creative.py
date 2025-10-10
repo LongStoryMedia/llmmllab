@@ -47,7 +47,7 @@ async def build_creative_workflow(
     workflow = StateGraph(WorkflowState)
 
     # Add workflow nodes
-    workflow.add_node("intent_classifier", IntentClassifierNode())
+    workflow.add_node("classifier_agent", IntentClassifierNode())
     workflow.add_node("engineering_agent", EngineeringAgentNode(pipeline_factory))
 
     # Creative planning phase
@@ -80,10 +80,10 @@ async def build_creative_workflow(
     )  # Tools populated at runtime
 
     # Set workflow entry point
-    workflow.set_entry_point("intent_classifier")
+    workflow.set_entry_point("classifier_agent")
 
     # Linear creative workflow progression
-    workflow.add_edge("intent_classifier", "engineering_agent")
+    workflow.add_edge("classifier_agent", "engineering_agent")
     workflow.add_edge("engineering_agent", "creative_planning")
     workflow.add_edge("creative_planning", "content_generation")
 

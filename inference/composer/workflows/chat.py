@@ -48,7 +48,7 @@ async def build_chat_workflow(
     workflow = StateGraph(WorkflowState)
 
     # Add workflow nodes
-    workflow.add_node("intent_classifier", IntentClassifierNode())
+    workflow.add_node("classifier_agent", IntentClassifierNode())
     workflow.add_node("engineering_agent", EngineeringAgentNode(pipeline_factory))
     workflow.add_node("execute_quick_research", QuickResearchExecutor(user_id))
     workflow.add_node(
@@ -67,10 +67,10 @@ async def build_chat_workflow(
     )  # Tools populated at runtime
 
     # Set workflow entry point
-    workflow.set_entry_point("intent_classifier")
+    workflow.set_entry_point("classifier_agent")
 
     # Linear flow to engineering agent
-    workflow.add_edge("intent_classifier", "engineering_agent")
+    workflow.add_edge("classifier_agent", "engineering_agent")
 
     # Conditional search routing based on intent analysis
     def route_search_depth(state: WorkflowState) -> str:

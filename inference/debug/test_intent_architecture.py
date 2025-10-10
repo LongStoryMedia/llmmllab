@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Lightweight test for IntentClassifierAgent architectural changes.
+Lightweight test for ClassifierAgent architectural changes.
 Tests the core architectural improvements without heavy infrastructure dependencies.
 """
 
@@ -21,10 +21,10 @@ except ImportError as e:
     print(f"❌ Core model import failed: {e}")
     sys.exit(1)
 
-# Test that we can read the updated IntentClassifierAgent source
+# Test that we can read the updated ClassifierAgent source
 try:
     with open(
-        "/Users/lons7862/workspace/llmmllab/inference/composer/agents/intent_classifier.py",
+        "/Users/lons7862/workspace/llmmllab/inference/composer/agents/classifier_agent.py",
         "r",
     ) as f:
         agent_source = f.read()
@@ -122,7 +122,7 @@ try:
 
     if all_passed:
         print(
-            "\n🚀 IntentClassifierAgent successfully transformed to LLM-driven architecture!"
+            "\n🚀 ClassifierAgent successfully transformed to LLM-driven architecture!"
         )
     else:
         print("\n⚠️  Some validation issues found - review needed")

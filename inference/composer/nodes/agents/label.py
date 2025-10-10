@@ -3,10 +3,8 @@ Title generation node for conversation titles.
 Generates concise, descriptive titles based on conversation content.
 """
 
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from composer.agents.summarization_agent import SummarizationAgent
 
 from runner import PipelineFactory
 from utils.model_profile import get_model_profile_for_task
@@ -21,6 +19,9 @@ from models import (
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
 
+if TYPE_CHECKING:
+    from composer.agents.classifier_agent import ClassifierAgent
+
 
 class TitleGenerationNode:
     """
@@ -30,15 +31,19 @@ class TitleGenerationNode:
     based on conversation content.
     """
 
-    def __init__(self, pipeline_factory: PipelineFactory, summarization_agent: 'SummarizationAgent'):
+    def __init__(
+        self,
+        pipeline_factory: PipelineFactory,
+        analysis_agent: "ClassifierAgent",
+    ):
         """Initialize title generation node with dependency injection.
-        
+
         Args:
             pipeline_factory: Factory for creating pipelines
             summarization_agent: Required SummarizationAgent instance
         """
         self.pipeline_factory = pipeline_factory
-        self.summarization_agent = summarization_agent
+        self.classifier_agent = analysis_agent
         self.logger = composer_logger.logger
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
@@ -75,9 +80,6 @@ class TitleGenerationNode:
                 extra={"user_id": user_id, "message_count": len(state.messages)},
             )
 
-            # Build prompt directly and invoke a lightweight summarization model
-            from runner import pipeline_factory as pf
-
             prompt_template = self._get_title_prompt()
             conversation_context = self._format_conversation_context(state.messages)
             full_prompt = prompt_template.format(conversation=conversation_context)
@@ -91,7 +93,7 @@ class TitleGenerationNode:
             )
 
             # Use existing text pipeline
-            from runner.pipelines.run import run_pipeline
+            from runner import run_pipeline  # pylint: disable=import-outside-toplevel
 
             msg = Message(
                 role=MessageRole.USER,
@@ -102,7 +104,7 @@ class TitleGenerationNode:
                     )
                 ],
             )
-            with pf.pipeline(profile, str) as pipe:
+            with self.pipeline_factory.pipeline(profile, str) as pipe:
                 resp = await run_pipeline(messages=[msg], pipeline=pipe, tools=None)
             title = (
                 resp.message.content[0].text

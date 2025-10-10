@@ -3,15 +3,17 @@ Engineering Agent for generating technical and engineering responses.
 Provides core business logic for technical analysis, code generation, and engineering guidance.
 """
 
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import List, Optional, Dict, Any
 
-if TYPE_CHECKING:
-    from db.userconfig_storage import UserConfigStorage
-
-from models import ModelProfileType, PipelinePriority, TechnicalDomain, ResponseFormat
+from models import (
+    CircuitBreakerConfig,
+    ModelProfile,
+    PipelinePriority,
+    TechnicalDomain,
+    ResponseFormat,
+)
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import NodeExecutionError
-from utils.model_profile import get_model_profile_for_task
 from utils.message import extract_message_text
 
 from runner import PipelineFactory
@@ -26,7 +28,11 @@ class EngineeringAgent:
     and grammar constraints for structured outputs.
     """
 
-    def __init__(self, pipeline_factory: PipelineFactory, user_config_storage: 'UserConfigStorage'):
+    def __init__(
+        self,
+        pipeline_factory: PipelineFactory,
+        profile: ModelProfile,
+    ):
         """
         Initialize engineering agent with dependency injection.
 
@@ -35,8 +41,8 @@ class EngineeringAgent:
             user_config_storage: Injected UserConfigStorage service
         """
         self.pipeline_factory = pipeline_factory
-        self.user_config_storage = user_config_storage
         self.logger = composer_logger.logger.bind(component="EngineeringAgent")
+        self.profile = profile
 
     async def generate_technical_response(
         self,
@@ -46,6 +52,7 @@ class EngineeringAgent:
         response_format: ResponseFormat = ResponseFormat.DETAILED_ANALYSIS,
         tools: Optional[List[Any]] = None,
         grammar: Optional[Any] = None,
+        circuit_breaker: Optional[CircuitBreakerConfig] = None,
     ) -> str:
         """
         Generate technical engineering response using configured engineering model.
@@ -63,8 +70,6 @@ class EngineeringAgent:
         """
         # Lazy imports to avoid circular dependency
         from runner import run_pipeline  # pylint: disable=import-outside-toplevel
-        # Use injected storage service
-        user_config_svc = self.user_config_storage
 
         try:
             self.logger.info(
@@ -77,13 +82,6 @@ class EngineeringAgent:
                 has_grammar=bool(grammar),
             )
 
-            uc = await user_config_svc.get_user_config(user_id)
-            # Get engineering model profile
-            model_profile = await get_model_profile_for_task(
-                uc.model_profiles, ModelProfileType.Engineering, user_id
-            )
-            circuit_breaker = model_profile.circuit_breaker or uc.circuit_breaker
-
             # Create engineering prompt based on domain and format
             prompt = await self._create_engineering_prompt(
                 query=query, domain=domain, response_format=response_format
@@ -91,7 +89,7 @@ class EngineeringAgent:
 
             # Use standard pipeline factory context manager pattern with optional tools/grammar
             with self.pipeline_factory.pipeline(
-                model_profile, str, PipelinePriority.NORMAL, circuit_breaker
+                self.profile, str, PipelinePriority.NORMAL, circuit_breaker
             ) as pipeline:
                 res = await run_pipeline(prompt, pipeline, tools=tools, grammar=grammar)
                 response = (

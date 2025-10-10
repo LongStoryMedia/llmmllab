@@ -2,7 +2,7 @@
 Dynamic tool management for composer workflows.
 from composer.tools.dynamic.deduplication import AdvancedToolDeduplicator
 
-from composer.monitoring.logging import composer_logger composer.agents.intent_classifier import IntentClassifierAgent
+from composer.monitoring.logging import composer_logger composer.agents.classifier_agent import ClassifierAgent
 from composer.tools.dynamic.deduplication import AdvancedToolDeduplicator
 
 from composer.monitoring.logging import composer_loggert for composer workflows.
@@ -29,7 +29,7 @@ from runner import pipeline_factory
 from runner.pipeline_factory import PipelinePriority
 from runner.pipelines.run import run_pipeline
 
-from composer.agents.intent_classifier import IntentClassifierAgent
+from composer.agents.classifier_agent import ClassifierAgent
 from composer.tools.dynamic.deduplication import AdvancedToolDeduplicator
 from composer.monitoring.logging import composer_logger
 
@@ -41,7 +41,7 @@ class DynamicToolManager:
 
     def __init__(self):
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.intent_classifier = IntentClassifierAgent()
+        self.classifier_agent = ClassifierAgent()
         # Initialize deduplicator lazily to avoid import issues
         self._deduplicator = None
 
@@ -59,7 +59,7 @@ class DynamicToolManager:
         """
         Analyze if a dynamic tool is needed for the user request using intent analysis.
 
-        Uses the IntentClassifierAgent to make intelligent decisions about tool creation
+        Uses the ClassifierAgent to make intelligent decisions about tool creation
         based on complexity, reusability, and computational requirements.
 
         Args:

@@ -3,18 +3,14 @@ Memory Agent for semantic memory storage and retrieval.
 Provides core business logic for memory operations and similarity search.
 """
 
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
-from datetime import datetime
+from typing import List, Optional, TYPE_CHECKING
+
+from models import Memory
+from composer.monitoring.logging import composer_logger
+from composer.core.errors import NodeExecutionError
 
 if TYPE_CHECKING:
     from db.memory_storage import MemoryStorage
-
-from models import Memory
-from models.message_role import MessageRole
-from composer.graph.state import WorkflowState
-from composer.monitoring.logging import composer_logger
-from composer.core.errors import NodeExecutionError
-from utils.token_estimation import estimate_memory_tokens
 
 
 class MemoryAgent:
@@ -26,9 +22,9 @@ class MemoryAgent:
     Embedding operations are handled by separate embedding nodes in workflows.
     """
 
-    def __init__(self, memory_storage: 'MemoryStorage'):
+    def __init__(self, memory_storage: "MemoryStorage"):
         """Initialize memory agent with dependency injection.
-        
+
         Args:
             memory_storage: Injected MemoryStorage service
         """

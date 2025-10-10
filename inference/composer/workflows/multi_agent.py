@@ -51,7 +51,7 @@ async def build_multi_agent_workflow(
     workflow = StateGraph(WorkflowState)
 
     # Add workflow nodes
-    workflow.add_node("intent_classifier", IntentClassifierNode())
+    workflow.add_node("classifier_agent", IntentClassifierNode())
     workflow.add_node("engineering_agent", EngineeringAgentNode(pipeline_factory))
 
     # Agent router for specialist selection
@@ -94,10 +94,10 @@ async def build_multi_agent_workflow(
     )  # Tools populated at runtime
 
     # Set workflow entry point
-    workflow.set_entry_point("intent_classifier")
+    workflow.set_entry_point("classifier_agent")
 
     # Linear flow for multi-agent coordination
-    workflow.add_edge("intent_classifier", "engineering_agent")
+    workflow.add_edge("classifier_agent", "engineering_agent")
     workflow.add_edge("engineering_agent", "agent_router")
 
     # Conditional routing to specialists based on intent analysis

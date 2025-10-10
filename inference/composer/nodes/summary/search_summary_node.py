@@ -5,15 +5,18 @@ Encapsulates search result processing with synthesis quality assessment,
 key point extraction, and source attribution.
 """
 
-from typing import Optional, List, Dict, Any
+from typing import TYPE_CHECKING
 
 from composer.graph.state import WorkflowState
 from composer.utils.extraction import extract_content_from_langchain_message
-from runner import PipelineFactory
-from .base_summary_node import BaseSummaryNode
+from composer.monitoring.logging import composer_logger
 
 
-class SearchSummaryNode(BaseSummaryNode):
+if TYPE_CHECKING:
+    from composer.agents.summarization_agent import SummarizationAgent
+
+
+class SearchSummaryNode:
     """
     Node for synthesizing web search results into coherent responses.
 
@@ -21,8 +24,9 @@ class SearchSummaryNode(BaseSummaryNode):
     key point extraction, and source attribution.
     """
 
-    def __init__(self, pipeline_factory: PipelineFactory):
-        super().__init__("SearchSummaryNode", pipeline_factory=pipeline_factory)
+    def __init__(self, summarization_agent: "SummarizationAgent"):
+        self.agent = summarization_agent
+        self.logger = composer_logger.logger.bind(component="SearchSummaryNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
@@ -35,12 +39,11 @@ class SearchSummaryNode(BaseSummaryNode):
             Updated state with synthesized search summary and metadata
         """
         try:
-            user_id = self._validate_user_id(state)
-
-            # Extract consolidation parameters from user config or use defaults
+            assert state.user_id
             assert state.user_config
             assert state.user_config.web_search
             wsc = state.user_config.web_search
+            user_id = state.user_id
 
             # Extract search results and query
             search_results = state.web_search_results
@@ -55,7 +58,7 @@ class SearchSummaryNode(BaseSummaryNode):
                 self.logger.info(
                     "No search results found for summarization", user_id=user_id
                 )
-                state.execution_metadata.search_summary_completed = True
+
                 return state
 
             self.logger.info(
@@ -75,8 +78,7 @@ class SearchSummaryNode(BaseSummaryNode):
             )
 
             # Store comprehensive synthesis in state
-            state.search_synthesis = synthesis_result
-            state.execution_metadata.search_summary_completed = True
+            state.search_syntheses.append(synthesis_result)
 
             self.logger.info(
                 "Search result synthesis completed",
@@ -92,4 +94,5 @@ class SearchSummaryNode(BaseSummaryNode):
             return state
 
         except Exception as e:
-            return self._handle_error(state, e, "Search result synthesis")
+            self.logger.error(f"Search synthesis failed: {e}")
+            return state

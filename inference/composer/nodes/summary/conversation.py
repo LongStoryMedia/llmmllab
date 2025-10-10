@@ -5,16 +5,18 @@ Encapsulates the consolidation capability for Level 2+ summarization,
 combining multiple summaries into higher-level abstractions.
 """
 
-from typing import List
+from typing import List, TYPE_CHECKING
 
 from models import SummaryType
-from runner import PipelineFactory
+from composer.monitoring.logging import composer_logger
 from composer.graph.state import WorkflowState
 from composer.utils.conversion import convert_langchain_messages_to_messages
-from .base_summary_node import BaseSummaryNode
+
+if TYPE_CHECKING:
+    from composer.agents.summarization_agent import SummarizationAgent
 
 
-class ConsolidationNode(BaseSummaryNode):
+class ConsolidationNode:
     """
     Node for hierarchical summary consolidation.
 
@@ -22,8 +24,9 @@ class ConsolidationNode(BaseSummaryNode):
     combining multiple summaries into higher-level abstractions.
     """
 
-    def __init__(self, pipeline_factory: PipelineFactory):
-        super().__init__("ConsolidationNode", pipeline_factory=pipeline_factory)
+    def __init__(self, summarization_agent: "SummarizationAgent"):
+        self.summarization_agent = summarization_agent
+        self.logger = composer_logger.logger.bind(component="ConsolidationNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
@@ -36,9 +39,7 @@ class ConsolidationNode(BaseSummaryNode):
             Updated state with consolidated summary
         """
         try:
-            user_id = self._validate_user_id(state)
-
-            # Extract consolidation parameters from user config or use defaults
+            assert state.user_id
             assert state.user_config
             assert state.user_config.summarization
             sc = state.user_config.summarization
@@ -50,7 +51,7 @@ class ConsolidationNode(BaseSummaryNode):
             if len(unsummarized_messages) < sc.messages_before_summary:
                 self.logger.info(
                     "Not enough new messages for summarization",
-                    user_id=user_id,
+                    user_id=state.user_id,
                     unsummarized_count=len(unsummarized_messages),
                     threshold=sc.messages_before_summary,
                 )
@@ -59,13 +60,13 @@ class ConsolidationNode(BaseSummaryNode):
             if len(unsummarized_messages) >= sc.messages_before_summary:
                 self.logger.info(
                     "Performing primary summarization of new messages",
-                    user_id=user_id,
+                    user_id=state.user_id,
                     unsummarized_count=len(unsummarized_messages),
                 )
                 state.summaries.append(
-                    await self.agent.summarize_conversation(
+                    await self.summarization_agent.summarize_conversation(
                         convert_langchain_messages_to_messages(unsummarized_messages),
-                        user_id,
+                        state.user_id,
                         state.conversation_id or 0,
                         SummaryType.PRIMARY,
                     )
@@ -77,14 +78,14 @@ class ConsolidationNode(BaseSummaryNode):
                 if len(lvl_summaries) >= sc.summaries_before_consolidation:
                     self.logger.info(
                         "Consolidating summaries",
-                        user_id=user_id,
+                        user_id=state.user_id,
                         level=lvl,
                         summary_count=len(lvl_summaries),
                     )
                     state.summaries.append(
-                        await self.agent.consolidate_summaries(
+                        await self.summarization_agent.consolidate_summaries(
                             lvl_summaries,
-                            user_id,
+                            state.user_id,
                             state.conversation_id or 0,
                             SummaryType.MASTER,
                             lvl,
@@ -97,4 +98,5 @@ class ConsolidationNode(BaseSummaryNode):
             return state
 
         except Exception as e:
-            return self._handle_error(state, e, "Summary consolidation")
+            self.logger.error(f"Summary consolidation failed: {e}")
+            return state

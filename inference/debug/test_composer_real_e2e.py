@@ -736,7 +736,7 @@ Please search for the most recent information and provide a comprehensive summar
             initial_state_data = {
                 "state_type": type(initial_state).__name__,
                 "user_id": self.test_user_id,
-                "workflow_type": WorkflowType.CHAT.value,
+                "workflow_type": WorkflowType.GENERAL,
                 "message_count": len(messages),
             }
 

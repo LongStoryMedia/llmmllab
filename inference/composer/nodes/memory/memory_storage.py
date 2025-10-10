@@ -3,16 +3,9 @@ Memory Storage Node for LangGraph workflows.
 Stores messages as memories with their embeddings.
 """
 
-from typing import Optional, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from composer.agents.memory_agent import MemoryAgent
-    from db import Storage
-
 from composer.agents.memory_agent import MemoryAgent
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
-from composer.core.errors import NodeExecutionError
 
 
 class MemoryStorageNode:
@@ -23,15 +16,17 @@ class MemoryStorageNode:
     and stores them using the memory agent.
     """
 
-    def __init__(self, memory_agent: 'MemoryAgent', storage: 'Storage'):
+    def __init__(
+        self,
+        memory_agent: "MemoryAgent",
+    ):
         """Initialize memory storage node with dependency injection.
-        
+
         Args:
             memory_agent: Required MemoryAgent instance
             storage: Required Storage instance
         """
         self.agent = memory_agent
-        self.storage = storage
         self.logger = composer_logger.logger.bind(component="MemoryStorageNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
@@ -50,7 +45,6 @@ class MemoryStorageNode:
 
             if not state.created_memories:
                 self.logger.info("No new memories to store", user_id=state.user_id)
-                state.execution_metadata.memories_stored = True
                 return state
 
             self.logger.info(
@@ -67,9 +61,6 @@ class MemoryStorageNode:
                 memories=state.created_memories,
             )
 
-            # Store result in state metadata
-            state.execution_metadata.memories_stored = success
-
             if success:
                 self.logger.info("Successfully stored memories", user_id=state.user_id)
             else:
@@ -85,5 +76,4 @@ class MemoryStorageNode:
             )
             # Don't raise - add error to state and continue workflow
             state.error_details.append(f"Memory storage failed: {str(e)}")
-            state.execution_metadata.memories_stored = False
             return state

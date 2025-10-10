@@ -128,11 +128,6 @@ class BaseNode(ABC):
         # Add error to state for circuit breaker and recovery
         state.error_details.append(error_message)
 
-        # Set node-specific failure flag if available in ExecutionMetadata
-        failure_flag = f"{self.node_name.lower().replace('node', '')}_failed"
-        if hasattr(state.execution_metadata, failure_flag):
-            setattr(state.execution_metadata, failure_flag, True)
-
         if fail_workflow:
             raise NodeExecutionError(f"{self.node_name}: {operation} failed", error)
 

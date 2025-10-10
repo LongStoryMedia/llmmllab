@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script for the updated LLM-driven IntentClassifierAgent.
+Test script for the updated LLM-driven ClassifierAgent.
 Validates that it uses the analysis model profile and produces valid IntentAnalysis objects.
 """
 
@@ -17,7 +17,7 @@ from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
 from models.user_config import UserConfig
 from models.model_profile_config import ModelProfileConfig
-from composer.agents.intent_classifier import IntentClassifierAgent
+from composer.agents.classifier_agent import ClassifierAgent
 
 
 def create_test_conversation_ctx(user_query: str) -> ConversationCtx:
@@ -52,11 +52,11 @@ def create_test_conversation_ctx(user_query: str) -> ConversationCtx:
 
 
 async def test_llm_driven_intent_analysis():
-    """Test the LLM-driven IntentClassifierAgent."""
+    """Test the LLM-driven ClassifierAgent."""
 
-    print("🧪 Testing LLM-driven IntentClassifierAgent\n")
+    print("🧪 Testing LLM-driven ClassifierAgent\n")
 
-    agent = IntentClassifierAgent()
+    agent = ClassifierAgent()
 
     test_cases = [
         {
@@ -136,7 +136,7 @@ async def test_llm_driven_intent_analysis():
 
         print()
 
-    print("🎯 LLM-driven IntentClassifierAgent Architecture Test Complete")
+    print("🎯 LLM-driven ClassifierAgent Architecture Test Complete")
     print("\n📋 Key Improvements Verified:")
     print("  ✅ Uses analysis model profile instead of heuristics")
     print("  ✅ Properly validates current_user_message assertion")

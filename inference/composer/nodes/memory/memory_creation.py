@@ -3,11 +3,8 @@ Memory Creation Node for LangGraph workflows.
 Creates Memory objects from summaries, messages, or search topic synthesis.
 """
 
-from typing import List, Optional, cast, Union, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from composer.agents.embedding_agent import EmbeddingAgent
-    from db import Storage
+import asyncio
+from typing import List, Union, TYPE_CHECKING
 from datetime import datetime, timezone
 
 from models import (
@@ -16,24 +13,18 @@ from models import (
     LangChainMessage,
     Summary,
     SearchTopicSynthesis,
-    ModelProfile,
     MemorySource,
     MessageRole,
-    PipelinePriority,
-    CircuitBreakerConfig,
-    ModelProfileType,
     Message,
 )
-from models.default_configs import DEFAULT_CIRCUIT_BREAKER_CONFIG
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
 from composer.utils.conversion import langchain_message_to_message
-from composer.agents.embedding_agent import EmbeddingAgent
-from runner import PipelineFactory, EmbeddingPipeline
-import runner
-from utils.model_profile import get_model_profile_for_task
 from utils.message import extract_message_text
-import asyncio
+
+
+if TYPE_CHECKING:
+    from composer.agents.embedding_agent import EmbeddingAgent
 
 
 class MemoryCreationNode:
@@ -44,18 +35,18 @@ class MemoryCreationNode:
     and converts them into Memory objects that can be stored later.
     """
 
-    def __init__(self, pipeline_factory: PipelineFactory, embedding_agent: 'EmbeddingAgent', storage: 'Storage'):
+    def __init__(
+        self,
+        embedding_agent: "EmbeddingAgent",
+    ):
         """Initialize memory creation node with dependency injection.
-        
+
         Args:
-            pipeline_factory: Required factory for creating pipelines
             embedding_agent: Required EmbeddingAgent instance
             storage: Required Storage instance
         """
         self.logger = composer_logger.logger.bind(component="MemoryCreationNode")
-        self.pipeline_factory = pipeline_factory
         self.embedding_agent = embedding_agent
-        self.storage = storage
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
@@ -72,18 +63,10 @@ class MemoryCreationNode:
             assert state.user_config
             assert state.user_id
 
-            cbc = state.user_config.circuit_breaker or DEFAULT_CIRCUIT_BREAKER_CONFIG
-            profile = await get_model_profile_for_task(
-                state.user_config.model_profiles,
-                ModelProfileType.Embedding,
-                state.user_id,
-            )
-
             if state.things_to_remember:
                 memories_from_things = await self._create_memories(
                     state.things_to_remember,
-                    profile,
-                    cbc,
+                    state.user_id,
                 )
                 created_memories.extend(memories_from_things)
                 self.logger.info(
@@ -114,8 +97,6 @@ class MemoryCreationNode:
             # Don't raise - add error to state and continue workflow
             if hasattr(state, "error_details"):
                 state.error_details.append(f"Memory creation failed: {str(e)}")
-            elif hasattr(state, "execution_metadata"):
-                state.execution_metadata.add_error(f"Memory creation failed: {str(e)}")
             return state
 
     async def _create_memories(
@@ -123,14 +104,14 @@ class MemoryCreationNode:
         things_to_remember: List[
             Union[Message, LangChainMessage, Summary, SearchTopicSynthesis]
         ],
-        profile: ModelProfile,
-        cbc: CircuitBreakerConfig,
+        user_id: str,
     ) -> List[Memory]:
         """
         Create Memory objects from a mixed list of content sources.
 
         Args:
             things_to_remember: List of Message, LangChainMessage, Summary, or SearchTopicSynthesis objects
+            user_id: User identifier for embedding generation
 
         Returns:
             List of Memory objects created from the input content sources
@@ -158,8 +139,7 @@ class MemoryCreationNode:
                 self._create_memories_from_summaries(
                     summaries,
                     conversation_id=0,
-                    profile=profile,
-                    cbc=cbc,
+                    user_id=user_id,
                 )
             )
 
@@ -168,8 +148,7 @@ class MemoryCreationNode:
                 self._create_memories_from_messages(
                     messages,
                     conversation_id=0,
-                    profile=profile,
-                    cbc=cbc,
+                    user_id=user_id,
                 )
             )
 
@@ -178,8 +157,7 @@ class MemoryCreationNode:
                 self._create_memories_from_search_syntheses(
                     search_syntheses,
                     conversation_id=0,
-                    profile=profile,
-                    cbc=cbc,
+                    user_id=user_id,
                 )
             )
 
@@ -202,8 +180,7 @@ class MemoryCreationNode:
         self,
         summaries: List[Summary],
         conversation_id: int,
-        profile: ModelProfile,
-        cbc: CircuitBreakerConfig,
+        user_id: str,
     ) -> List[Memory]:
         """
         Create Memory objects from Summary objects.
@@ -211,6 +188,7 @@ class MemoryCreationNode:
         Args:
             summaries: List of Summary objects
             conversation_id: Current conversation ID
+            user_id: User identifier for embedding generation
 
         Returns:
             List of Memory objects created from summaries
@@ -218,32 +196,29 @@ class MemoryCreationNode:
         memories = []
 
         for summary in summaries:
-            # Create a memory fragment from the summary content
-            with self.pipeline_factory.pipeline(
-                profile, List[List[float]], PipelinePriority.NORMAL, cbc
-            ) as pipe:
-                embeddings = await runner.embed_pipeline(
-                    summary.content, cast(EmbeddingPipeline, pipe)
-                )
+            # Generate embeddings using the injected EmbeddingAgent
+            embeddings = await self.embedding_agent.generate_embeddings(
+                [summary.content], user_id
+            )
 
-                fragment = MemoryFragment(
-                    id=summary.id,
-                    role=MessageRole.SYSTEM,  # Summaries are generated content
-                    content=summary.content,
-                    embeddings=embeddings,
-                )
+            fragment = MemoryFragment(
+                id=summary.id,
+                role=MessageRole.SYSTEM,  # Summaries are generated content
+                content=summary.content,
+                embeddings=[embeddings[0]],  # Wrap single embedding in list
+            )
 
-                # Create memory object
-                memory = Memory(
-                    fragments=[fragment],
-                    source=MemorySource.SUMMARY,
-                    created_at=summary.created_at,
-                    similarity=1.0,  # Not applicable for new memories
-                    source_id=summary.id,
-                    conversation_id=conversation_id,
-                )
+            # Create memory object
+            memory = Memory(
+                fragments=[fragment],
+                source=MemorySource.SUMMARY,
+                created_at=summary.created_at,
+                similarity=1.0,  # Not applicable for new memories
+                source_id=summary.id,
+                conversation_id=conversation_id,
+            )
 
-                memories.append(memory)
+            memories.append(memory)
 
         return memories
 
@@ -251,15 +226,15 @@ class MemoryCreationNode:
         self,
         messages: List[Message],
         conversation_id: int,
-        profile: ModelProfile,
-        cbc: CircuitBreakerConfig,
+        user_id: str,
     ) -> List[Memory]:
         """
-        Create Memory objects from LangChainMessage objects.
+        Create Memory objects from Message objects.
 
         Args:
-            messages: List of LangChainMessage objects
+            messages: List of Message objects
             conversation_id: Current conversation ID
+            user_id: User identifier for embedding generation
 
         Returns:
             List of Memory objects created from messages
@@ -267,31 +242,30 @@ class MemoryCreationNode:
         memories = []
 
         for msg in messages:
-            with self.pipeline_factory.pipeline(
-                profile, List[List[float]], PipelinePriority.NORMAL, cbc
-            ) as pipe:
-                embeddings = await runner.embed_pipeline(
-                    extract_message_text(msg),
-                    cast(EmbeddingPipeline, pipe),
-                )
+            # Generate embeddings using the injected EmbeddingAgent
+            message_text = extract_message_text(msg)
+            embeddings = await self.embedding_agent.generate_embeddings(
+                [message_text], user_id
+            )
 
-                fragment = MemoryFragment(
-                    id=msg.id or 0,
-                    role=msg.role,
-                    embeddings=embeddings,
-                )
+            fragment = MemoryFragment(
+                id=msg.id or 0,
+                role=msg.role,
+                content=message_text,
+                embeddings=[embeddings[0]],  # Wrap single embedding in list
+            )
 
-                # Create memory object
-                memory = Memory(
-                    fragments=[fragment],
-                    source=MemorySource.MESSAGE,
-                    created_at=datetime.now(timezone.utc),
-                    similarity=1.0,  # Not applicable for new memories
-                    source_id=msg.id or 0,
-                    conversation_id=conversation_id,
-                )
+            # Create memory object
+            memory = Memory(
+                fragments=[fragment],
+                source=MemorySource.MESSAGE,
+                created_at=datetime.now(timezone.utc),
+                similarity=1.0,  # Not applicable for new memories
+                source_id=msg.id or 0,
+                conversation_id=conversation_id,
+            )
 
-                memories.append(memory)
+            memories.append(memory)
 
         return memories
 
@@ -299,33 +273,32 @@ class MemoryCreationNode:
         self,
         search_syntheses: List[SearchTopicSynthesis],
         conversation_id: int,
-        profile: ModelProfile,
-        cbc: CircuitBreakerConfig,
+        user_id: str,
     ) -> List[Memory]:
         """
-        Create Memory object from SearchTopicSynthesis.
+        Create Memory objects from SearchTopicSynthesis objects.
 
         Args:
-            search_synthesis: SearchTopicSynthesis object
+            search_syntheses: List of SearchTopicSynthesis objects
             conversation_id: Current conversation ID
+            user_id: User identifier for embedding generation
 
         Returns:
-            Memory object created from search synthesis, or None if no content
+            List of Memory objects created from search syntheses
         """
         memories = []
         for synthesis in search_syntheses:
-            with self.pipeline_factory.pipeline(
-                profile, List[List[float]], PipelinePriority.NORMAL, cbc
-            ) as pipe:
-                embeddings = await runner.embed_pipeline(
-                    synthesis.synthesis,
-                    cast(EmbeddingPipeline, pipe),
-                )
+            # Generate embeddings using the injected EmbeddingAgent
+            embeddings = await self.embedding_agent.generate_embeddings(
+                [synthesis.synthesis], user_id
+            )
+
             # Create a memory fragment from the synthesis content
             fragment = MemoryFragment(
                 id=synthesis.id or 0,
                 role=MessageRole.SYSTEM,  # Search synthesis is generated content
-                embeddings=embeddings,
+                content=synthesis.synthesis,
+                embeddings=[embeddings[0]],  # Wrap single embedding in list
             )
 
             # Create memory object

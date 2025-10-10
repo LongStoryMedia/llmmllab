@@ -1619,7 +1619,7 @@ self.research_task = None
 
 1. Create `composer/agents/analysis/` directory
 2. Implement `BaseAnalysisAgent` class
-3. Refactor existing `IntentClassifierAgent` to extend base class
+3. Refactor existing `ClassifierAgent` to extend base class
 4. Implement new `ResearchTaskAgent`
 5. Update imports and dependencies
 

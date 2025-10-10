@@ -1,13 +1,13 @@
-# IntentClassifierAgent Architecture
+# ClassifierAgent Architecture
 
 ## Overview
 
-The IntentClassifierAgent is an LLM-driven graph node that uses the "analysis" model profile for sophisticated intent classification. It provides comprehensive intent analysis as part of the workflow orchestration system.
+The ClassifierAgent is an LLM-driven graph node that uses the "analysis" model profile for sophisticated intent classification. It provides comprehensive intent analysis as part of the workflow orchestration system.
 
 ## Current Architecture
 
 ### LLM-Driven Classification
-The IntentClassifierAgent uses the analysis model profile to perform comprehensive intent analysis via LLM. This provides sophisticated and context-aware classification that understands nuanced user requests beyond simple keyword matching.
+The ClassifierAgent uses the analysis model profile to perform comprehensive intent analysis via LLM. This provides sophisticated and context-aware classification that understands nuanced user requests beyond simple keyword matching.
 
 ### Graph Node Architecture
 The agent functions as a proper graph node that uses the `current_user_message` field with assertion validation. It is designed for seamless integration into LangGraph workflow orchestration.
@@ -130,7 +130,7 @@ The LLM receives a comprehensive prompt requesting:
 ### Integration Testing
 Created comprehensive test suites:
 - `test_intent_architecture.py` - Validates architectural changes
-- `test_llm_intent_classifier.py` - Tests full integration (requires infrastructure)
+- `test_llm_classifier_agent.py` - Tests full integration (requires infrastructure)
 
 ## System Requirements
 
@@ -162,7 +162,7 @@ The agent maintains the same `analyze()` method signature and returns the same `
 
 ## Summary
 
-The IntentClassifierAgent is an LLM-driven graph node that provides AI-powered intent analysis. The agent:
+The ClassifierAgent is an LLM-driven graph node that provides AI-powered intent analysis. The agent:
 
 1. **Leverages LLM Intelligence**: Uses analysis model profile for sophisticated classification
 2. **Integrates with Graph Architecture**: Proper current_user_message usage and assertions

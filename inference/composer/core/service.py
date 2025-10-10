@@ -11,23 +11,19 @@ Configuration Management:
 """
 
 import asyncio
-from typing import Dict, Any, Optional, List, TYPE_CHECKING
+from typing import Dict, Optional, TYPE_CHECKING
 
 from langgraph.graph.state import CompiledStateGraph
 
-if TYPE_CHECKING:
-    from composer.graph.builder import GraphBuilder
-
 from models import (
     Message,
-    LangChainMessage,
     MessageRole,
-    WorkflowType,
+    UserConfig,
     MessageContent,
     MessageContentType,
 )
 
-from composer.graph.state import WorkflowState, ExecutionMetadata
+from composer.graph.state import WorkflowState
 from composer.graph.builder import GraphBuilder
 from composer.graph.cache import WorkflowCache
 from composer.monitoring.logging import composer_logger
@@ -35,6 +31,10 @@ from composer.utils.conversion import (
     convert_messages_to_langchain,
     message_to_langchain_message,
 )
+
+
+if TYPE_CHECKING:
+    from composer.graph.builder import GraphBuilder
 
 
 class ComposerService:
@@ -61,7 +61,7 @@ class ComposerService:
         # Workflow cache is now created per-user during workflow composition
         self.workflow_caches: Dict[str, WorkflowCache] = {}
 
-    def _ensure_graph_builder(self) -> None:
+    def _ensure_graph_builder(self, user_config: UserConfig) -> None:
         """Lazily create GraphBuilder when needed, ensuring storage is available."""
         if self.graph_builder is None:
             from db import storage  # pylint: disable=import-outside-toplevel
@@ -72,7 +72,11 @@ class ComposerService:
                 )
 
             self.storage = storage
-            self.graph_builder = GraphBuilder(storage, self.pipeline_factory)
+            self.graph_builder = GraphBuilder(
+                storage,
+                self.pipeline_factory,
+                user_config,
+            )
 
         # Assert for type checking that graph_builder is not None after this call
         assert self.graph_builder is not None
@@ -121,7 +125,7 @@ class ComposerService:
 
             # 3. Build master workflow with intelligent routing or explicit type
             # Intent analysis and tool selection happen inside the graph now
-            self._ensure_graph_builder()
+            self._ensure_graph_builder(user_config)
 
             # Type guard: assert graph_builder is available after _ensure_graph_builder
             graph_builder = self.graph_builder
@@ -184,16 +188,6 @@ class ComposerService:
             )
         )
 
-        execution_metadata = ExecutionMetadata(
-            created_at=asyncio.get_event_loop().time(),
-            composer_version="0.1.0",
-            streaming_enabled=(
-                getattr(user_config.workflow, "enable_streaming", True)
-                if hasattr(user_config, "workflow")
-                else True
-            ),
-        )
-
         # Create the state with centralized user configuration
         state = WorkflowState(
             messages=langchain_messages,
@@ -202,7 +196,6 @@ class ComposerService:
             user_id=user_id,
             user_config=user_config,
             conversation_id=conversation_id,
-            execution_metadata=execution_metadata,
         )
 
         return state
@@ -219,37 +212,29 @@ class ComposerService:
         Supports both streaming and batch execution modes.
         """
         try:
-            # Check if streaming is enabled (use user's workflow preference from state metadata)
-            streaming_enabled = initial_state.execution_metadata.streaming_enabled
-            if stream and streaming_enabled:
-                # Stream execution events
-                async for event in workflow.astream_events(
-                    initial_state.model_dump(), version="v2"
-                ):
-                    try:
-                        # Inject tool_calls into event data if present in state but missing in event
-                        if isinstance(event, dict):
-                            data = event.get("data")
-                            # Events that carry a full state snapshot expose 'values'; prefer that
-                            if data and isinstance(data, dict):
-                                # If state serialization present
-                                state_values = data.get("values") or data.get("state")
-                                if state_values and isinstance(state_values, dict):
-                                    tc = state_values.get("tool_calls")
-                                    if tc and "tool_calls" not in data:
-                                        # Create a shallow copy to avoid mutating a typed dict structure
-                                        new_data = dict(data)
-                                        new_data["tool_calls"] = tc
-                                        event["data"] = new_data  # type: ignore[index]
-                                # Else if top-level tool_calls already emitted by node update, keep as-is
-                        yield event
-                    except Exception:
-                        # On any injection error, still yield original event to avoid stream disruption
-                        yield event
-            else:
-                # Batch execution
-                result = await workflow.ainvoke(initial_state.model_dump())
-                yield {"event": "workflow_complete", "data": result}
+            async for event in workflow.astream_events(
+                initial_state.model_dump(), version="v2"
+            ):
+                try:
+                    # Inject tool_calls into event data if present in state but missing in event
+                    if isinstance(event, dict):
+                        data = event.get("data")
+                        # Events that carry a full state snapshot expose 'values'; prefer that
+                        if data and isinstance(data, dict):
+                            # If state serialization present
+                            state_values = data.get("values") or data.get("state")
+                            if state_values and isinstance(state_values, dict):
+                                tc = state_values.get("tool_calls")
+                                if tc and "tool_calls" not in data:
+                                    # Create a shallow copy to avoid mutating a typed dict structure
+                                    new_data = dict(data)
+                                    new_data["tool_calls"] = tc
+                                    event["data"] = new_data  # type: ignore[index]
+                            # Else if top-level tool_calls already emitted by node update, keep as-is
+                    yield event
+                except Exception:
+                    # On any injection error, still yield original event to avoid stream disruption
+                    yield event
 
         except Exception as e:
             self.logger.error(

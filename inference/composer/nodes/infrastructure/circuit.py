@@ -4,9 +4,9 @@ Provides circuit breaker protection wrapper for any node with fault tolerance.
 """
 
 import asyncio
-from typing import Any, Optional, Dict
+from typing import Any
 
-from models import LangChainMessage
+from models import CircuitBreakerConfig, LangChainMessage
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
 
@@ -18,7 +18,7 @@ class CircuitProtectedNode:
     Implements fault tolerance and graceful degradation patterns per Phase 2 requirements.
     """
 
-    def __init__(self, wrapped_node: Any, circuit_config: Dict):
+    def __init__(self, wrapped_node: Any, circuit_config: CircuitBreakerConfig):
         """
         Initialize circuit protected node.
 
@@ -69,7 +69,7 @@ class CircuitProtectedNode:
         except Exception as e:
             self._record_failure()
 
-            if self.failure_count >= self.circuit_config["failure_threshold"]:
+            if self.failure_count >= (self.circuit_config.max_retries or 1):
                 self.circuit_open = True
                 self.logger.warning(
                     "Circuit breaker opened",
@@ -84,7 +84,7 @@ class CircuitProtectedNode:
         if not self.last_failure_time:
             return True
 
-        recovery_timeout = self.circuit_config["recovery_timeout"]
+        recovery_timeout = self.circuit_config.base_timeout or 60
         return (
             asyncio.get_event_loop().time() - self.last_failure_time
         ) > recovery_timeout

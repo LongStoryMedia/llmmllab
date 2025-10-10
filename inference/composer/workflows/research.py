@@ -47,7 +47,7 @@ async def build_research_workflow(
     workflow.add_node("config_setup", _create_config_setup_node(user_id))
 
     # Add research-specific nodes
-    workflow.add_node("intent_classifier", IntentClassifierNode())
+    workflow.add_node("classifier_agent", IntentClassifierNode())
 
     # Query expansion for comprehensive research
     workflow.add_node(
@@ -91,8 +91,8 @@ async def build_research_workflow(
 
     # Set research workflow flow - linear progression for thorough analysis
     workflow.set_entry_point("config_setup")
-    workflow.add_edge("config_setup", "intent_classifier")
-    workflow.add_edge("intent_classifier", "query_expansion")
+    workflow.add_edge("config_setup", "classifier_agent")
+    workflow.add_edge("classifier_agent", "query_expansion")
     # Query expansion edges are handled above based on orchestration choice
     workflow.add_edge("comprehensive_research", "synthesis_agent")
     workflow.add_edge("synthesis_agent", END)

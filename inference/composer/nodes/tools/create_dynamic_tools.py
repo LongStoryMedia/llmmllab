@@ -1,8 +1,5 @@
 import json
-from typing import List, cast, Optional, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from db import Storage
+from typing import List, cast
 
 from langchain.tools import BaseTool
 
@@ -21,10 +18,13 @@ class DynamicToolCreationNode:
     Node responsible for creating dynamic tool specifications based on user queries and intent analysis.
     """
 
-    def __init__(self, tool_registry: ToolRegistry, pipeline_factory: PipelineFactory, storage: 'Storage'):
+    def __init__(
+        self,
+        tool_registry: ToolRegistry,
+        pipeline_factory: PipelineFactory,
+    ):
         self.tool_registry = tool_registry
         self.pipeline_factory = pipeline_factory
-        self.storage = storage
         self.logger = composer_logger.logger.bind(component="DynamicToolCreationNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
@@ -103,10 +103,6 @@ class DynamicToolCreationNode:
 
                     except Exception as pe:
                         self.logger.error(f"Dynamic tool persistence failed: {pe}")
-                        # Don't fail completely, just log and continue
-                        state.execution_metadata.add_error(
-                            f"Dynamic tool persistence failed: {pe}"
-                        )
                         continue
 
                     # Convert to generic Tool (agent only needs invocation metadata)

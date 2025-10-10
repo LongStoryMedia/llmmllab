@@ -4,14 +4,7 @@ Provides core business logic for text summarization and content processing.
 """
 
 import datetime
-from email.mime import message
-from re import S
 from typing import List, Optional, Dict, Any, Callable, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from db.summary_storage import SummaryStorage
-    from db.search_storage import SearchStorage  
-    from db.userconfig_storage import UserConfigStorage
 
 from models import (
     ModelProfileType,
@@ -23,12 +16,18 @@ from models import (
     Summary,
     SearchTopicSynthesis,
     SearchResult,
+    UserConfig,
 )
 from runner import PipelineFactory, run_pipeline
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import NodeExecutionError
 from utils.model_profile import get_model_profile_for_task
 from utils.message import extract_message_text
+
+if TYPE_CHECKING:
+    from db.summary_storage import SummaryStorage
+    from db.search_storage import SearchStorage
+    from db.userconfig_storage import UserConfigStorage
 
 
 class SummarizationAgent:
@@ -39,11 +38,13 @@ class SummarizationAgent:
     and search results using configured summarization models.
     """
 
-    def __init__(self, 
-                 pipeline_factory: PipelineFactory, 
-                 summary_storage: 'SummaryStorage', 
-                 search_storage: 'SearchStorage', 
-                 user_config_storage: 'UserConfigStorage'):
+    def __init__(
+        self,
+        pipeline_factory: PipelineFactory,
+        summary_storage: "SummaryStorage",
+        search_storage: "SearchStorage",
+        user_config: UserConfig,
+    ):
         """
         Initialize summarization agent.
 
@@ -56,7 +57,7 @@ class SummarizationAgent:
         self.pipeline_factory = pipeline_factory
         self.summary_storage = summary_storage
         self.search_storage = search_storage
-        self.user_config_storage = user_config_storage
+        self.user_config = user_config
         self.logger = composer_logger.logger.bind(component="SummarizationAgent")
 
     async def summarize_text(
@@ -760,17 +761,13 @@ Action items and next steps:"""
             SummaryType.KEY_POINTS: ModelProfileType.KeyPoints,
         }
 
-        # Single database access for user configuration
-        # Use injected storage service
-        user_config_svc = self.user_config_storage
-
-        uc = await user_config_svc.get_user_config(user_id)
-
         # Get model profile for the specified type
         model_profile = await get_model_profile_for_task(
-            uc.model_profiles, profile_type_map[summary_type], user_id
+            self.user_config.model_profiles, profile_type_map[summary_type], user_id
         )
-        circuit_breaker = model_profile.circuit_breaker or uc.circuit_breaker
+        circuit_breaker = (
+            model_profile.circuit_breaker or self.user_config.circuit_breaker
+        )
 
         # Create prompt using the provided prompt creator with model profile
         prompt_args["model_profile"] = model_profile

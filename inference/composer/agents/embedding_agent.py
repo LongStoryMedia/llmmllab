@@ -3,15 +3,12 @@ Embedding Agent for generating semantic embeddings from text input.
 Provides core business logic for embedding generation and vector operations.
 """
 
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, cast
 
 import numpy as np
 
-if TYPE_CHECKING:
-    from db.userconfig_storage import UserConfigStorage
-
 from runner import PipelineFactory
-from models import ModelProfileType, PipelinePriority
+from models import ModelProfile, PipelinePriority
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import NodeExecutionError
 
@@ -24,7 +21,11 @@ class EmbeddingAgent:
     Supports both single text and batch text embedding generation.
     """
 
-    def __init__(self, pipeline_factory: PipelineFactory, user_config_storage: 'UserConfigStorage'):
+    def __init__(
+        self,
+        pipeline_factory: PipelineFactory,
+        profile: ModelProfile,
+    ):
         """
         Initialize embedding agent with dependency injection.
 
@@ -33,11 +34,13 @@ class EmbeddingAgent:
             user_config_storage: Injected UserConfigStorage service
         """
         self.pipeline_factory = pipeline_factory
-        self.user_config_storage = user_config_storage
         self.logger = composer_logger.logger.bind(component="EmbeddingAgent")
+        self.profile = profile
 
     async def generate_embeddings(
-        self, texts: List[str], user_id: str
+        self,
+        texts: List[str],
+        user_id: str,
     ) -> List[List[float]]:
         """
         Generate embeddings for input texts using configured embedding model.
@@ -57,36 +60,22 @@ class EmbeddingAgent:
             )
 
             # Use injected storage service
-            user_config_svc = self.user_config_storage
-                
-            # Lazy imports to avoid circular dependency
-            from utils.model_profile import (  # pylint: disable=import-outside-toplevel
-                get_model_profile_for_task,
-            )
             from runner import (  # pylint: disable=import-outside-toplevel
                 embed_pipeline,
                 EmbeddingPipeline,
             )
 
-            uc = await user_config_svc.get_user_config(user_id)
-            # Get embedding model profile using standard pattern
-            model_profile = await get_model_profile_for_task(
-                uc.model_profiles, ModelProfileType.Embedding, user_id
-            )
-            circuit_breaker = model_profile.circuit_breaker or uc.circuit_breaker
-
             # Get embedding pipeline - embeddings need specialized pipeline
             pipeline = self.pipeline_factory.get_pipeline(
-                model_profile,
-                EmbeddingPipeline,
+                self.profile,
+                List[List[float]],
                 PipelinePriority.NORMAL,
-                circuit_breaker,
             )
 
             # Generate embeddings using specialized embed_pipeline function
             embeddings = await embed_pipeline(
                 messages=texts,  # embed_pipeline accepts text directly
-                pipeline=pipeline,
+                pipeline=cast(EmbeddingPipeline, pipeline),
             )
 
             if embeddings:

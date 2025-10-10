@@ -248,7 +248,6 @@ class DynamicToolStorage:
                 embedding,  # $7
                 args_schema_json,  # $8
                 tool.return_direct,  # $9
-                tool.verbose,  # $10
                 tool.tags or [],  # $11
                 metadata_json,  # $12
                 handle_tool_error,  # $13

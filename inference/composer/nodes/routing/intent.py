@@ -1,36 +1,37 @@
 """
 Intent classification node for workflow routing.
-Wraps the IntentClassifierAgent to provide LangGraph workflow integration.
+Wraps the ClassifierAgent to provide LangGraph workflow integration.
 """
 
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from composer.agents.intent_classifier import IntentClassifierAgent
 
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import NodeExecutionError
 from composer.utils.conversion import langchain_message_to_message
 
+if TYPE_CHECKING:
+    from composer.agents.classifier_agent import ClassifierAgent
+
 
 class IntentClassifierNode:
     """
     LangGraph node wrapper for intent classification.
 
-    Wraps the IntentClassifierAgent to provide workflow state integration and
+    Wraps the ClassifierAgent to provide workflow state integration and
     proper LangGraph node interface. Handles state updates and RAG routing configuration.
     """
 
-    def __init__(self, intent_classifier_agent: 'IntentClassifierAgent'):
+    def __init__(self, classifier_agent: "ClassifierAgent"):
         """
         Initialize intent classifier node with dependency injection.
-        
+
         Args:
-            intent_classifier_agent: Required IntentClassifierAgent instance
+            classifier_agent: Required ClassifierAgent instance
         """
-        self.agent = intent_classifier_agent
-            
+        self.agent = classifier_agent
+
         self.logger = composer_logger.logger
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
@@ -43,22 +44,16 @@ class IntentClassifierNode:
         Returns:
             Updated workflow state with intent classification and RAG config
         """
+        assert state.user_config
+        assert state.user_id
+        assert state.current_user_message
         try:
-            user_id = getattr(state, "user_id", None)
-            if not user_id:
-                raise NodeExecutionError(
-                    "intent_classifier",
-                    Exception("User ID required for intent classification"),
-                )
-
             if not state.messages:
                 return state
 
-            assert state.current_user_message
-
             self.logger.info(
                 "Intent classifier node executing",
-                extra={"user_id": user_id, "message_count": len(state.messages)},
+                extra={"user_id": state.user_id, "message_count": len(state.messages)},
             )
 
             # Convert WorkflowState messages to Message format expected by agent
@@ -69,8 +64,8 @@ class IntentClassifierNode:
 
             # Delegate to the specialized intent classifier agent
             intent_analyses = await self.agent.analyze(
-                user_id,
                 langchain_message_to_message(state.current_user_message),
+                state.user_config.circuit_breaker,
             )
 
             # Extend workflow state with analysis results (list reducer)

@@ -4,18 +4,7 @@ title: IntentAnalysis
 description: "Detailed analysis of user intent for smart tool generation"
 properties:
   primary_intent:
-    type: string
-    enum:
-      - chat
-      - research
-      - creative
-      - technical
-      - analysis
-      - summarization
-      - memory_retrieval
-      - web_search
-      - image_generation
-      - data_processing
+    $ref: "workflow_type.yaml"
     description: "Primary intent category identified from the user message"
   complexity_level:
     $ref: "complexity_level.yaml"

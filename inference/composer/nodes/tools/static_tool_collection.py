@@ -25,6 +25,7 @@ class StaticToolCollectionNode:
         try:
             assert state.user_id
             assert state.intent_classification
+            assert state.user_config
             intent = state.intent_classification
 
             self.logger.info(
@@ -36,7 +37,9 @@ class StaticToolCollectionNode:
             for intent in state.intent_classification:
                 # Get static tools from registry based on intent
                 tools_for_intent = await self.tool_registry.get_tools_for_context(
-                    intent, state.user_id
+                    intent,
+                    state.user_id,
+                    state.user_config,
                 )
                 static_tools.extend(tools_for_intent)
 
