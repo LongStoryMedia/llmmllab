@@ -24,8 +24,6 @@ import sys
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
-from langchain_core.runnables.graph import MermaidDrawMethod
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -87,13 +85,13 @@ class ComposerRealEndToEndTester:
         # Create the file with header
         try:
             with open(self.llm_output_file, "w", encoding="utf-8") as f:
-                f.write(f"Composer LLM Output Capture - Real End-to-End Test\n")
-                f.write(f"{'='*60}\n")
+                f.write("Composer LLM Output Capture - Real End-to-End Test\n")
+                f.write("=" * 60 + "\n")
                 f.write(f"Model: {self.target_model}\n")
                 f.write(f"Test User: {self.test_user_id}\n")
-                f.write(f"Architecture: Composer + LangGraph\n")
+                f.write("Architecture: Composer + LangGraph\n")
                 f.write(f"Timestamp: {datetime.now(timezone.utc).isoformat()}\n")
-                f.write(f"{'='*60}\n\n")
+                f.write("=" * 60 + "\n\n")
             logger.info(f"📝 LLM output will be captured to: {self.llm_output_file}")
         except Exception as e:
             logger.warning(f"⚠️  Failed to initialize LLM output file: {e}")
@@ -225,6 +223,12 @@ IMPORTANT: You have access to the following tools and MUST use them when needed:
 
 CRITICAL: For ANY request about 2024 information, current events, or recent developments, you MUST use the web_search tool to get up-to-date information. Do not say you cannot access real-time data - you can and should use the tools provided.
 
+TOOL CALLING CAPABILITIES:
+- You can make MULTIPLE tool calls in a single response (call multiple tools simultaneously)
+- You can make SEQUENTIAL tool calls (call a tool, analyze results, then call more tools)
+- You should use tools iteratively to gather comprehensive information
+- For complex queries, break them into multiple searches and use multiple tools
+
 You provide direct, informative responses while showing your reasoning process.
 Always use tools when you need current or specific information that might not be in your training data.
 """
@@ -243,12 +247,28 @@ When you need current information, use this exact format:
 {"name": "web_search", "arguments": {"query": "your search query here"}}
 </tool_call>
 
-For ANY request about recent developments, current events, or 2024+ information, you MUST use the web_search tool.
+For comprehensive responses, you can make MULTIPLE tool calls:
 
-EXAMPLE: For the user's query about AI developments in 2024, you should immediately use:
 <tool_call>
 {"name": "web_search", "arguments": {"query": "major AI model releases 2024"}}
 </tool_call>
+
+<tool_call>
+{"name": "web_search", "arguments": {"query": "AI safety developments 2024"}}
+</tool_call>
+
+<tool_call>
+{"name": "web_search", "arguments": {"query": "AI research breakthroughs 2024"}}
+</tool_call>
+
+For ANY request about recent developments, current events, or 2024+ information, you MUST use the web_search tool.
+If a query has multiple aspects (like the example above), use MULTIPLE SEARCHES to be comprehensive.
+
+EXAMPLE: For the user's query about AI developments in 2024, you should use multiple searches:
+1. Search for major AI model releases
+2. Search for AI safety developments  
+3. Search for recent research breakthroughs
+4. Optionally summarize the combined results
 """
             )
 
@@ -1118,20 +1138,25 @@ Please search for the most recent information and provide a comprehensive summar
                     f"Workflow ran for {execution_time:.1f}s but generated no output (likely internal error)"
                 )
 
-            # Check 6: Validate tool availability awareness
+            # Check 6: Validate tool availability awareness (only flag as issue if no tools were used)
             tool_availability_issues = []
-            if "can't perform actual searches" in full_response.lower():
-                tool_availability_issues.append(
-                    "Model believes it cannot perform web searches"
-                )
-            if "system can't perform" in full_response.lower():
-                tool_availability_issues.append(
-                    "Model believes system lacks tool capabilities"
-                )
-            if "cannot access real-time" in full_response.lower():
-                tool_availability_issues.append(
-                    "Model believes it cannot access real-time data"
-                )
+            if not tool_calls_detected:
+                # Extract user-facing content by removing <think> tags and their content
+                import re
+                user_facing_content = re.sub(r'<think>.*?</think>', '', full_response, flags=re.DOTALL)
+                
+                if "can't perform actual searches" in user_facing_content.lower():
+                    tool_availability_issues.append(
+                        "Model believes it cannot perform web searches without using tools"
+                    )
+                if "system can't perform" in user_facing_content.lower():
+                    tool_availability_issues.append(
+                        "Model believes system lacks tool capabilities without using tools"
+                    )
+                if "cannot access real-time" in user_facing_content.lower():
+                    tool_availability_issues.append(
+                        "Model believes it cannot access real-time data without using tools"
+                    )
 
             if tool_availability_issues:
                 success = False
@@ -1349,9 +1374,9 @@ Please search for the most recent information and provide a comprehensive summar
                 )
                 related_counts["messages"] = message_count
 
-                # Memories (should cascade from conversations)
+                # Memories (cascade through user_id, not conversation_id)
                 memory_count = await conn.fetchval(
-                    "SELECT COUNT(*) FROM memories WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)",
+                    "SELECT COUNT(*) FROM memories WHERE user_id = $1",
                     self.test_user_id,
                 )
                 related_counts["memories"] = memory_count
@@ -1402,7 +1427,7 @@ Please search for the most recent information and provide a comprehensive summar
                 )
 
                 remaining_counts["memories"] = await conn.fetchval(
-                    "SELECT COUNT(*) FROM memories WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = $1)",
+                    "SELECT COUNT(*) FROM memories WHERE user_id = $1",
                     self.test_user_id,
                 )
 

@@ -3,9 +3,7 @@ Tool Executor Node for LangGraph workflows.
 Wraps LangChain v1.0 ToolNode for reliable tool execution within workflows.
 """
 
-from typing import List, cast
-
-from langchain_core.tools import BaseTool
+# No additional imports needed - using LangChain message types and registry tools
 
 from models import LangChainMessage
 from composer.graph.state import WorkflowState
