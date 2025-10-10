@@ -20,10 +20,10 @@ Configuration:
 Usage in LangGraph workflows:
     # Tool is automatically available when registered in tool registry
     # LangGraph handles injection of tool_call_id and WorkflowState
-    
+
 Available Engines (see https://docs.searxng.org/dev/engines/index.html):
 - Web: google, bing, duckduckgo, startpage, yahoo, yandex
-- Academic: google_scholar, arxiv, crossref, semantic_scholar  
+- Academic: google_scholar, arxiv, crossref, semantic_scholar
 - News: google_news, bing_news, yahoo_news, reddit
 - Technical: github, stackoverflow, gitlab
 - Shopping: google_shopping, bing_shopping, amazon, ebay
@@ -32,29 +32,26 @@ Available Engines (see https://docs.searxng.org/dev/engines/index.html):
 
 import json
 import os
-from typing import Optional, List, Annotated
+from typing import Annotated
 
 from langchain_core.tools import tool, InjectedToolCallId
 from langchain_core.messages import ToolMessage
+from langchain_community.tools import InjectedState
 from langgraph.types import Command
-from langgraph.prebuilt import InjectedState
 from composer.graph.state import WorkflowState
-
-# Attempt import from langchain_classic (newer split) then fallback to langchain_community
-try:  # pragma: no cover - import resolution
-    from langchain_classic.utilities.searx_search import SearxSearchWrapper  # type: ignore
-except ModuleNotFoundError:  # pragma: no cover - environment variability
-    try:
-        from langchain_community.utilities.searx_search import SearxSearchWrapper  # type: ignore
-    except ModuleNotFoundError as e:  # pragma: no cover
-        raise ModuleNotFoundError(
-            "Neither langchain_classic nor langchain_community SearxSearchWrapper available. Install langchain-community >=0.2.0."
-        ) from e
-
-
+from composer.monitoring.logging import composer_logger
 from models import SearchResult, SearchResultContent, WebSearchConfig
 
-from composer.monitoring.logging import composer_logger
+# Import from langchain_community (preferred) then fallback to langchain_classic
+try:  # pragma: no cover - import resolution
+    from langchain_community.utilities.searx_search import SearxSearchWrapper  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - environment variability
+    try:
+        from langchain_classic.utilities.searx_search import SearxSearchWrapper  # type: ignore
+    except ModuleNotFoundError as e:  # pragma: no cover
+        raise ModuleNotFoundError(
+            "Neither langchain_community nor langchain_classic SearxSearchWrapper available. Install langchain-community >=0.2.0."
+        ) from e
 
 
 class SearxNG:
@@ -162,8 +159,8 @@ async def web_search(
     """
     Search the web for information and automatically add results to workflow state.
 
-    This is the single, streamlined web search tool that performs searches using SearxNG 
-    and returns a Command that updates the WorkflowState with search results, enabling 
+    This is the single, streamlined web search tool that performs searches using SearxNG
+    and returns a Command that updates the WorkflowState with search results, enabling
     automatic routing to search synthesis nodes.
 
     Uses the official LangGraph Command pattern for state updates and strong typing
@@ -186,7 +183,7 @@ async def web_search(
 
     try:
         # Get user_config directly from injected state (much more efficient!)
-        if state.user_config and hasattr(state.user_config, 'web_search'):
+        if state.user_config and hasattr(state.user_config, "web_search"):
             web_config = state.user_config.web_search
             logger.debug("Using web search config from injected state")
         else:

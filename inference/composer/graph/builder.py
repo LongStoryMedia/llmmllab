@@ -293,8 +293,8 @@ class GraphBuilder:
                 ):
                     return "tool_executor"
 
-                # Otherwise, proceed to memory creation (this includes tool results)
-                return "memory_creation"
+                # Otherwise, proceed to chat summary
+                return "chat_summary"
 
             workflow.add_conditional_edges(
                 "chat_agent",
@@ -318,17 +318,19 @@ class GraphBuilder:
                 {
                     "search_summary": "search_summary",
                     "chat_agent": "chat_agent",
-                }
+                },
             )
 
             # 8b. Search summary -> Chat agent (for final response with synthesized search results)
             workflow.add_edge("search_summary", "chat_agent")
 
+            workflow.add_edge("chat_summary", "title_generation")
+
             # 9. Memory and title generation happen after final response
-            workflow.add_edge("memory_creation", "title_generation")
+            workflow.add_edge("title_generation", "memory_creation")
 
             # 10. Title generation -> Memory storage -> End
-            workflow.add_edge("title_generation", "memory_storage")
+            workflow.add_edge("memory_creation", "memory_storage")
             workflow.add_edge("memory_storage", END)
 
             return workflow.compile()

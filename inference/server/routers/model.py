@@ -13,7 +13,6 @@ import time
 import json
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field, validator
 
 import server.config as config
 from server.auth import get_user_id, is_admin

@@ -1,0 +1,39 @@
+{
+  "overall_success": false,
+  "execution_time": 4.43590521812439,
+  "workflow_time": 0,
+  "components_passed": 0,
+  "total_components": 7,
+  "results": {
+    "infrastructure_setup": {
+      "success": false,
+      "error": "Multiple exceptions: [Errno 61] Connect call failed ('127.0.0.1', 5432), [Errno 61] Connect call failed ('::1', 5432, 0, 0)"
+    },
+    "composer_initialization": {
+      "success": false,
+      "error": "cannot import name 'InjectedState' from 'langchain.tools' (/Users/lons7862/workspace/schema2code/.venv/lib/python3.12/site-packages/langchain/tools/__init__.py)"
+    },
+    "user_profile_creation": {
+      "success": false,
+      "error": "Storage or model_profile service not available"
+    },
+    "conversation_creation": {
+      "success": false,
+      "error": "Storage components not available"
+    },
+    "message_creation": {
+      "success": false,
+      "error": "Storage message service not available"
+    },
+    "workflow_execution": {
+      "success": false,
+      "error": "cannot import name 'InjectedState' from 'langchain.tools' (/Users/lons7862/workspace/schema2code/.venv/lib/python3.12/site-packages/langchain/tools/__init__.py)"
+    },
+    "output_validation": {
+      "success": false,
+      "error": "Missing required storage components or conversation ID"
+    }
+  },
+  "entities_created": 0,
+  "entities_cleaned": 0
+}

@@ -1,7 +1,6 @@
 # Multi-stage build to minimize final image size
 # Build stage - includes full CUDA toolkit for compilation
-FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04 
-# FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
+FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04 as builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -19,8 +18,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     ccache \
     && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean \
     && ln -sf /usr/bin/python3 /usr/bin/python
-
 
 # Set up CUDA library paths for building
 ENV CUDA_HOME=/usr/local/cuda \
@@ -29,55 +28,38 @@ ENV CUDA_HOME=/usr/local/cuda \
 # Create symlink for CUDA driver stub (needed for linking during build)
 RUN ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
 
-# Build llama.cpp with compatible version (commented out - let llama-cpp-python build its own)
-# RUN cd / && git clone https://github.com/ggerganov/llama.cpp.git && \
-#     cd llama.cpp && \
-#     # Use a more recent version with better gpt-oss support
-#     # git checkout ab14019 && \
-# 
-#     git checkout tags/b6451 && \
-#     git checkout -b llmmll
-# 
-# WORKDIR /llama.cpp
-# RUN if ! grep -q "gpt-oss" ./src/llama-arch.cpp; then exit 1; fi
-# 
-# RUN cmake -B build \
-#     -DGGML_CUDA=ON \
-#     -DCMAKE_CUDA_ARCHITECTURES="75;86" \
-#     -DCMAKE_BUILD_TYPE=Release && \
-#     cmake --build build --config Release -j$(nproc)
+# Create wheels directory
+RUN mkdir -p /opt/wheels
 
-# Create shared pip cache and install packages that need compilation
-RUN mkdir -p /opt/pip-cache /opt/wheels
-
-# Install PyTorch and other packages that need CUDA compilation
+# Build only packages that need CUDA compilation - avoid PyTorch wheels in builder
 RUN python3 -m venv /tmp/build_venv && \
     . /tmp/build_venv/bin/activate && \
     pip install --upgrade pip setuptools wheel && \
-    pip wheel --wheel-dir /opt/wheels torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cu128 
+    # Install llama-cpp-python dependencies first
+    pip install --no-cache-dir diskcache>=5.6.1 typing-extensions>=4.5.0 numpy>=1.20.0 jinja2>=2.11.3 && \
+    # Only build llama-cpp-python with CUDA (the main package that needs compilation)
+    CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86" \
+    pip wheel --wheel-dir /opt/wheels git+https://github.com/LongStoryMedia/llama-cpp-python.git@feature/b6482 --no-deps -vvv && \
+    # Clean up immediately to reduce layer size
+    deactivate && \
+    rm -rf /tmp/build_venv /root/.cache /tmp/*
 
-# RUN CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_PATH=/llama.cpp/build/bin" \
-#     LLAMA_CPP_LIB_PATH=/llama.cpp/build/bin \
-#     pip wheel --wheel-dir /opt/wheels llama-cpp-python==0.3.16 -vvv
-# RUN CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86" \
-# pip wheel --wheel-dir /opt/wheels llama-cpp-python==0.3.16 -vvv
-
-RUN CMAKE_ARGS="-DGGML_CUDA=ON -DCMAsKE_CUDA_ARCHITECTURES=75;86" \
-    pip wheel --wheel-dir /opt/wheels git+https://github.com/LongStoryMedia/llama-cpp-python.git@feature/b6482 -vvv
 # Runtime stage - minimal CUDA runtime
-# FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
+FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
 
-# Set environment variables
+# Set environment variables - using shared environment approach
 ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH="/app" \
     RUNNER_DIR="/app/runner" \
     SERVER_DIR="/app/server" \
     EVALUATION_DIR="/app/evaluation" \
-    EVALUATION_VENV="/opt/venv/evaluation" \
-    SERVER_VENV="/opt/venv/server" \
-    RUNNER_VENV="/opt/venv/runner" \
-    COMPOSER_VENV="/opt/venv/composer" \
-    # Let llama-cpp-python manage its own library paths, only set essential system paths
+    COMPOSER_DIR="/app/composer" \
+    SHARED_VENV="/opt/venv/shared" \
+    # Set all service environments to use shared venv
+    EVALUATION_VENV="/opt/venv/shared" \
+    SERVER_VENV="/opt/venv/shared" \
+    RUNNER_VENV="/opt/venv/shared" \
+    COMPOSER_VENV="/opt/venv/shared" \
     LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/lib:/usr/local/cuda/lib64" \
     DEBIAN_FRONTEND=noninteractive \
     NVIDIA_VISIBLE_DEVICES=all \
@@ -87,20 +69,15 @@ ENV PYTHONUNBUFFERED=1 \
     TOKENIZERS_PARALLELISM=true \
     PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
     TORCH_CUDA_ARCH_LIST="7.5;8.6" \
-    # CUDA runtime setup (remove stubs from path)
     CUDA_DEVICE_ORDER=PCI_BUS_ID \
     CUDA_CACHE_PATH=/tmp/cuda_cache \
     CUDA_LAUNCH_BLOCKING=0 \
-    # Default values for configurable environment variables
     LOG_LEVEL="debug" \
-    # Server configuration
     PORT=8000 \
-    # Image generation configuration
     IMAGE_DIR="/root/images" \
     IMAGE_GENERATION_ENABLED="true" \
     MAX_IMAGE_SIZE="2048" \
     IMAGE_RETENTION_HOURS="24" \
-    # GRPC configuration
     INFERENCE_SERVICES_HOST="0.0.0.0" \
     INFERENCE_SERVICES_PORT="50051" \
     GRPC_MAX_WORKERS=10 \
@@ -110,7 +87,7 @@ ENV PYTHONUNBUFFERED=1 \
     GRPC_SECURITY_ENABLED=false \
     GRPC_USE_TLS=false
 
-# Install only runtime dependencies (no build tools!) and create python symlink
+# Install only runtime dependencies (no build tools!)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
@@ -124,46 +101,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && ln -sf /usr/bin/python3 /usr/bin/python
 
-# Copy pre-built artifacts from builder stage
-# COPY --from=builder /tmp/llama.cpp /llama.cpp
-# COPY --from=builder /opt/wheels /opt/wheels
-
-# llama-cpp-python will manage its own llama.cpp libraries, no manual linking needed
+# Copy only the compiled llama-cpp-python wheel from builder
+COPY --from=builder /opt/wheels /opt/wheels
 
 # Set working directory and copy application code
 WORKDIR /app
 COPY . .
 
-# Create virtual environments
-RUN python3 -m venv ${RUNNER_VENV} && \
-    python3 -m venv ${SERVER_VENV} && \
-    python3 -m venv ${EVALUATION_VENV} && \
-    python3 -m venv ${COMPOSER_VENV}
+# Create single shared virtual environment instead of 4 separate ones
+RUN python3 -m venv ${SHARED_VENV}
 
-# Install dependencies in a single layer to reduce image layers
-RUN for venv in ${RUNNER_VENV} ${SERVER_VENV} ${EVALUATION_VENV} ${COMPOSER_VENV}; do \
-    . $venv/bin/activate && \
+# Install all dependencies in shared environment to avoid duplication
+RUN . ${SHARED_VENV}/bin/activate && \
     pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir --find-links /opt/wheels --no-index torch torchaudio torchvision llama-cpp-python && \
-    deactivate; \
-    done && \
-    . ${RUNNER_VENV}/bin/activate && \
-    pip install --no-cache-dir -e /app/runner && \
-    deactivate && \
-    . ${SERVER_VENV}/bin/activate && \
-    pip install --no-cache-dir -e /app/server && \
-    deactivate && \
-    . ${EVALUATION_VENV}/bin/activate && \
-    pip install --no-cache-dir -e /app/evaluation && \
-    deactivate && \
-    . ${COMPOSER_VENV}/bin/activate && \
-    pip install --no-cache-dir -e /app/composer && \
+    # Install PyTorch runtime directly (much smaller than pre-built wheels)
+    pip install --no-cache-dir torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cu121 && \
+    # Install llama-cpp-python dependencies first
+    pip install --no-cache-dir diskcache>=5.6.1 typing-extensions>=4.5.0 numpy>=1.20.0 jinja2>=2.11.3 && \
+    # Install our custom llama-cpp-python from wheels
+    pip install --no-cache-dir --find-links /opt/wheels --no-index llama-cpp-python && \
     deactivate
-
-# Let llama-cpp-python handle its own library management
-
-# Install Ollama
-RUN curl -fsSL https://ollama.com/install.sh | sh
+# Install all service packages in shared environment
+RUN . ${SHARED_VENV}/bin/activate && \
+    pip install --no-cache-dir -e /app/runner -e /app/server -e /app/evaluation -e /app/composer && \
+    # Immediate cleanup to reduce layer size
+    rm -rf /opt/wheels /root/.cache/pip && \
+    deactivate
 
 # Setup cross-environment access
 RUN python3 /app/setup_cross_env_access.py
@@ -172,19 +135,21 @@ RUN python3 /app/setup_cross_env_access.py
 RUN chmod +x /app/startup.sh /app/run_with_env.sh /app/run.sh /app/setup_cuda_runtime.sh && \
     mkdir -p /tmp/cuda_cache
 
-# Final cleanup - remove build artifacts and caches
-RUN rm -rf /opt/wheels \
-    && find /opt/venv -name "*.pyc" -delete \
-    && find /opt/venv -name "__pycache__" -delete \
-    && rm -rf /root/.cache/pip \
-    && echo "# Auto-source run_with_env.sh" >> /root/.bashrc \
-    && echo "source /app/run_with_env.sh" >> /root/.bashrc \
-    && echo 'echo -e "\033[1;32m=== Inference Environment Ready ===\033[0m"' >> /root/.bashrc \
-    && echo 'echo -e "\033[1;33mAvailable environments: runner, composer, server, evaluation\033[0m"' >> /root/.bashrc \
-    && echo 'echo "Use: v <environment> <command>"' >> /root/.bashrc
+# Final cleanup - comprehensive cleanup to minimize image size
+RUN find ${SHARED_VENV} -name "*.pyc" -delete && \
+    find ${SHARED_VENV} -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true && \
+    find ${SHARED_VENV} -name "*.pyo" -delete && \
+    find ${SHARED_VENV} -name "tests" -type d -exec rm -rf {} + 2>/dev/null || true && \
+    find ${SHARED_VENV} -name "test" -type d -exec rm -rf {} + 2>/dev/null || true && \
+    rm -rf /tmp/* /var/tmp/* && \
+    echo "# Auto-source run_with_env.sh" >> /root/.bashrc && \
+    echo "source /app/run_with_env.sh" >> /root/.bashrc && \
+    echo 'echo -e "\033[1;32m=== Inference Environment Ready (Shared) ===\033[0m"' >> /root/.bashrc && \
+    echo 'echo -e "\033[1;33mUsing shared environment for all services\033[0m"' >> /root/.bashrc && \
+    echo 'echo "Use: v <environment> <command>"' >> /root/.bashrc
 
 # Expose ports  
-EXPOSE 11434 8000 50051
+EXPOSE 8000 50051
 
 # Default command
 CMD ["/app/startup.sh"]

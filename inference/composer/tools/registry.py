@@ -14,7 +14,7 @@ NOTE: Dynamic tool modification and creation are still placeholders; only
 """
 
 import asyncio
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING
 import numpy as np
 
 from langchain.tools import BaseTool
@@ -28,18 +28,14 @@ from models import (
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import ToolGenerationError
 from composer.tools.static import (
-    WebSearchTool,
     MemoryRetrievalTool,
     SummarizationTool,
 )
-from composer.tools.static.web_search_tool import web_search_with_state_update
+from composer.tools.static.web_search_tool import web_search
 from composer.agents.embedding_agent import EmbeddingAgent
 
-from runner import PipelineFactory
-from typing import TYPE_CHECKING
-
 if TYPE_CHECKING:
-    from db.userconfig_storage import UserConfigStorage
+    from runner import PipelineFactory
 
 
 class ToolRegistry:
@@ -52,7 +48,7 @@ class ToolRegistry:
 
     def __init__(
         self,
-        pipeline_factory: PipelineFactory,
+        pipeline_factory: "PipelineFactory",
         ebmedding_agent: EmbeddingAgent,
     ):
         # Static tool definitions (pre-defined tool classes for instantiation)
@@ -75,15 +71,14 @@ class ToolRegistry:
         try:
             self.static_tools.update(
                 {
-                    "web_search": WebSearchTool,
                     "summarization": SummarizationTool,
                     "memory_retrieval": MemoryRetrievalTool,
                 }
             )
-            
+
             # Add function-based tools directly to executable_tools
             # These are already instances, not classes that need instantiation
-            self.executable_tools["web_search_with_state_update"] = web_search_with_state_update
+            self.executable_tools["web_search"] = web_search
 
             composer_logger.logger.info(
                 "Loaded static tools", extra={"tool_count": len(self.static_tools)}

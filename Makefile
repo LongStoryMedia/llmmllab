@@ -7,19 +7,11 @@ inference:
 	@echo "Deploying inference service..."
 	$(eval BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD | tr '/' '.'))
 	@echo "Using branch: $(BRANCH_NAME) for image tag"
-	rsync -avzru --delete --exclude="venv" ./inference/* lsm@lsnode-3:~/inference
-	ssh lsm@lsnode-3 "cd ~/inference && docker build -t 192.168.0.71:31500/inference:$(BRANCH_NAME) . --push"
+	inference/sync-code.sh
+	ssh root@lsnode-3 "cd /data/code-base && docker build -t 192.168.0.71:31500/inference:$(BRANCH_NAME) . --push"
 	chmod +x ./inference/k8s/apply.sh
 	DOCKER_TAG=$(BRANCH_NAME) ./inference/k8s/apply.sh
 	kubectl rollout restart deployment ollama -n ollama
-
-maistro:
-	@echo "Deploying maistro service..."
-	# rsync -avzru --delete --exclude="venv" ./maistro/* lsm@lsnode-1.local:~/maistro
-	# ssh lsm@lsnode-1.local "mkdir -p ~/maistro && cd ~/maistro && docker build -t 192.168.0.71:31500/maistro:latest . --push"
-	chmod +x ./maistro/deploy.sh
-	./maistro/deploy.sh
-	kubectl rollout restart deployment maistro -n maistro
 
 ui:
 	@echo "Deploying UI service..."
@@ -50,11 +42,6 @@ gen:
 	@echo "generating models..."
 	chmod +x ./regenerate_models.sh
 	./regenerate_models.sh
-
-sync-inference:
-	@echo "Syncing inference service..."
-	rsync -avzr --exclude="venv" root@lsnode-3:/data/code-base/config ./inference/s-config
-	rsync -avzru --delete --exclude="venv" ./inference/* root@lsnode-3:/data/code-base
 
 validate:
 	@echo "Validating TypeScript in UI project..."

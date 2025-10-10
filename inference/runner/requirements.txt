@@ -16,3 +16,4 @@ ninja==1.13.0  # For building C++ extensions
 packaging==25.0
 tiktoken==0.11.0
 openai-harmony==0.0.4
+nvsmi==0.4.2
