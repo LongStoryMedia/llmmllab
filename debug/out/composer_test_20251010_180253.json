@@ -1,0 +1,58 @@
+{
+  "overall_success": false,
+  "execution_time": 3.53310489654541,
+  "workflow_time": 0,
+  "components_passed": 5,
+  "total_components": 7,
+  "results": {
+    "infrastructure_setup": {
+      "success": true,
+      "database_connected": false,
+      "mock_mode": true,
+      "target_model": "qwen3-30b-a3b-q4-k-m"
+    },
+    "composer_initialization": {
+      "success": false,
+      "error": "cannot import name 'InjectedState' from 'langchain_community.tools' (/Users/lons7862/workspace/schema2code/.venv/lib/python3.12/site-packages/langchain_community/tools/__init__.py)"
+    },
+    "user_profile_creation": {
+      "success": true,
+      "user_id": "test_composer_user_4e445f38",
+      "model_profile_id": "b4814857-8f23-4ae9-a4ec-86b0769a2bb8",
+      "model_name": "qwen3-30b-a3b-q4-k-m",
+      "mock_mode": true
+    },
+    "conversation_creation": {
+      "success": true,
+      "conversation_id": 12345,
+      "mock_mode": true
+    },
+    "message_creation": {
+      "success": true,
+      "message_id": 67890,
+      "message_length": 318,
+      "mock_mode": true
+    },
+    "workflow_execution": {
+      "success": false,
+      "error": "cannot import name 'InjectedState' from 'langchain_community.tools' (/Users/lons7862/workspace/schema2code/.venv/lib/python3.12/site-packages/langchain_community/tools/__init__.py)"
+    },
+    "output_validation": {
+      "success": true,
+      "conversation_valid": true,
+      "model_profile_valid": true,
+      "message_count": 2,
+      "assistant_messages": 1,
+      "response_quality_score": 85,
+      "mock_mode": true,
+      "title_validation": {
+        "valid": true,
+        "title": "AI Developments 2024",
+        "word_count": 3,
+        "mock_mode": true
+      }
+    }
+  },
+  "entities_created": 0,
+  "entities_cleaned": 0
+}

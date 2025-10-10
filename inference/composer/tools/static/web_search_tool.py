@@ -36,7 +36,7 @@ from typing import Annotated
 
 from langchain_core.tools import tool, InjectedToolCallId
 from langchain_core.messages import ToolMessage
-from langchain_community.tools import InjectedState
+from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger

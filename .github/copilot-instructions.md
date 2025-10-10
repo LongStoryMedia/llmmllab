@@ -8,7 +8,7 @@ ALWAYS sync code after making changes.
 ## Architecture Overview
 
 **Core Services:**
-- **inference/**: Python services with isolated virtual environments
+- **inference/**: Python services running in unified container environment
   - **server/**: FastAPI REST services  
   - **runner/**: Pure LLM interface (simplified from orchestration component)
   - **composer/**: LangGraph workflow orchestration and agentic system runtime
@@ -27,8 +27,8 @@ ALWAYS sync code after making changes.
 
 ### Environment Setup
 ```bash
-# Production/staging commands
-kubectl exec -it -n ollama $(kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}') -- /app/v.sh [service] python [command]
+# Container commands (no separate virtual environments)
+kubectl exec -it -n ollama $(kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}') -- /app/v.sh python [command]
 
 # Code sync (use this, not manual rsync/cp)
 inference/sync-code.sh
@@ -89,7 +89,7 @@ kubectl exec -n ollama $POD_NAME -- python3 -c "import ast; ast.parse(open('file
 kubectl exec -it psql-0 -n psql -- psql -h localhost -U lsm -d llmmll -c "SELECT 1"
 
 # Validate environment
-kubectl exec -n ollama $POD_NAME -- /app/v.sh composer python -c "from composer.config import config; print('✅ Config loaded')"
+kubectl exec -n ollama $POD_NAME -- /app/v.sh python -c "from composer.config import config; print('✅ Config loaded')"
 ```
 
 ## Testing Strategy
