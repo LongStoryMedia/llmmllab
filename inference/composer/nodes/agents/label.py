@@ -30,15 +30,15 @@ class TitleGenerationNode:
     based on conversation content.
     """
 
-    def __init__(self, pipeline_factory: PipelineFactory, summarization_agent: Optional['SummarizationAgent'] = None):
+    def __init__(self, pipeline_factory: PipelineFactory, summarization_agent: 'SummarizationAgent'):
         """Initialize title generation node with dependency injection.
         
         Args:
             pipeline_factory: Factory for creating pipelines
-            summarization_agent: Optional injected SummarizationAgent (for future use)
+            summarization_agent: Required SummarizationAgent instance
         """
         self.pipeline_factory = pipeline_factory
-        self.summarization_agent = summarization_agent  # For future enhancement
+        self.summarization_agent = summarization_agent
         self.logger = composer_logger.logger
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:

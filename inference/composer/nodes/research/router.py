@@ -89,13 +89,13 @@ class QuickResearchExecutor:
     over comprehensiveness.
     """
 
-    def __init__(self, user_id: str, pipeline_factory: Optional[PipelineFactory] = None):
+    def __init__(self, user_id: str, pipeline_factory: PipelineFactory):
         """
         Initialize quick research executor.
 
         Args:
             user_id: User identifier for configuration and context
-            pipeline_factory: Factory for creating embedding pipelines (optional)
+            pipeline_factory: Required factory for creating embedding pipelines
         """
         self.user_id = user_id
         self.pipeline_factory = pipeline_factory
@@ -243,13 +243,13 @@ class ComprehensiveResearchExecutor:
     comprehensive analysis from internal knowledge, external sources, and synthesis.
     """
 
-    def __init__(self, user_id: str, pipeline_factory: Optional[PipelineFactory] = None):
+    def __init__(self, user_id: str, pipeline_factory: PipelineFactory):
         """
         Initialize deep search executor.
 
         Args:
             user_id: User identifier for configuration and context
-            pipeline_factory: Factory for creating embedding pipelines (optional)
+            pipeline_factory: Required factory for creating embedding pipelines
         """
         self.user_id = user_id
         self.pipeline_factory = pipeline_factory

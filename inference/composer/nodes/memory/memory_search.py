@@ -27,18 +27,18 @@ class MemorySearchNode:
     similar memories using the memory agent.
     """
 
-    def __init__(self, pipeline_factory: Optional[PipelineFactory] = None, memory_agent: Optional['MemoryAgent'] = None, embedding_agent: Optional['EmbeddingAgent'] = None, storage: Optional['Storage'] = None):
+    def __init__(self, pipeline_factory: PipelineFactory, memory_agent: 'MemoryAgent', embedding_agent: 'EmbeddingAgent', storage: 'Storage'):
         """Initialize memory search node with dependency injection.
         
         Args:
-            pipeline_factory: Factory for creating pipelines
-            memory_agent: Injected MemoryAgent instance
-            embedding_agent: Injected EmbeddingAgent instance
-            storage: Injected Storage instance
+            pipeline_factory: Required factory for creating pipelines
+            memory_agent: Required MemoryAgent instance
+            embedding_agent: Required EmbeddingAgent instance
+            storage: Required Storage instance
         """
-        self.agent = memory_agent if memory_agent is not None else MemoryAgent()
-        self.embedding_agent = embedding_agent  # For future use
-        self.storage = storage  # For future use
+        self.agent = memory_agent
+        self.embedding_agent = embedding_agent
+        self.storage = storage
         self.logger = composer_logger.logger.bind(component="MemorySearchNode")
         self.pipeline_factory = pipeline_factory
 

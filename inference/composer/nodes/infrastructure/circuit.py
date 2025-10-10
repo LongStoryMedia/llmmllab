@@ -18,20 +18,16 @@ class CircuitProtectedNode:
     Implements fault tolerance and graceful degradation patterns per Phase 2 requirements.
     """
 
-    def __init__(self, wrapped_node: Any, circuit_config: Optional[Dict] = None):
+    def __init__(self, wrapped_node: Any, circuit_config: Dict):
         """
         Initialize circuit protected node.
 
         Args:
             wrapped_node: The node to wrap with circuit breaker protection
-            circuit_config: Circuit breaker configuration
+            circuit_config: Required circuit breaker configuration
         """
         self.wrapped_node = wrapped_node
-        self.circuit_config = circuit_config or {
-            "failure_threshold": 5,
-            "recovery_timeout": 30,
-            "success_threshold": 2,
-        }
+        self.circuit_config = circuit_config
 
         # Circuit breaker state
         self.failure_count = 0

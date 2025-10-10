@@ -27,23 +27,15 @@ class EngineeringAgentNode:
     tool orchestration (which is handled by ToolOrchestrationSubgraph).
     """
 
-    def __init__(self, engineering_agent: Optional['EngineeringAgent'] = None, pipeline_factory: Optional[PipelineFactory] = None):
+    def __init__(self, engineering_agent: 'EngineeringAgent', pipeline_factory: PipelineFactory):
         """
         Initialize engineering agent node with dependency injection.
 
         Args:
-            engineering_agent: Injected EngineeringAgent instance
-            pipeline_factory: Factory for creating structured pipelines (fallback)
+            engineering_agent: Required EngineeringAgent instance
+            pipeline_factory: Factory for creating structured pipelines
         """
-        if engineering_agent is None:
-            # Fallback for backward compatibility
-            from composer.agents.engineering_agent import (  # pylint: disable=import-outside-toplevel
-                EngineeringAgent,
-            )
-            assert pipeline_factory is not None, "pipeline_factory required when engineering_agent not provided"
-            self.agent = EngineeringAgent(pipeline_factory)
-        else:
-            self.agent = engineering_agent
+        self.agent = engineering_agent
             
         self.logger = composer_logger.logger
 

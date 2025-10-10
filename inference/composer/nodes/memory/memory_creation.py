@@ -44,18 +44,18 @@ class MemoryCreationNode:
     and converts them into Memory objects that can be stored later.
     """
 
-    def __init__(self, pipeline_factory: Optional[PipelineFactory] = None, embedding_agent: Optional['EmbeddingAgent'] = None, storage: Optional['Storage'] = None):
+    def __init__(self, pipeline_factory: PipelineFactory, embedding_agent: 'EmbeddingAgent', storage: 'Storage'):
         """Initialize memory creation node with dependency injection.
         
         Args:
-            pipeline_factory: Factory for creating pipelines
-            embedding_agent: Injected EmbeddingAgent instance
-            storage: Injected Storage instance
+            pipeline_factory: Required factory for creating pipelines
+            embedding_agent: Required EmbeddingAgent instance
+            storage: Required Storage instance
         """
         self.logger = composer_logger.logger.bind(component="MemoryCreationNode")
         self.pipeline_factory = pipeline_factory
-        self.embedding_agent = embedding_agent  # For future use
-        self.storage = storage  # For future use
+        self.embedding_agent = embedding_agent
+        self.storage = storage
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

@@ -21,10 +21,10 @@ class DynamicToolCreationNode:
     Node responsible for creating dynamic tool specifications based on user queries and intent analysis.
     """
 
-    def __init__(self, tool_registry: ToolRegistry, pipeline_factory: PipelineFactory, storage: Optional['Storage'] = None):
+    def __init__(self, tool_registry: ToolRegistry, pipeline_factory: PipelineFactory, storage: 'Storage'):
         self.tool_registry = tool_registry
         self.pipeline_factory = pipeline_factory
-        self.storage = storage  # For future use
+        self.storage = storage
         self.logger = composer_logger.logger.bind(component="DynamicToolCreationNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:

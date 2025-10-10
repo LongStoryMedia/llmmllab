@@ -3,10 +3,12 @@ Embedding Generator Node for LangGraph workflows.
 Generates embeddings from text using the embedding agent.
 """
 
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from composer.agents.embedding_agent import EmbeddingAgent
 
 from runner import PipelineFactory
-from composer.agents.embedding_agent import EmbeddingAgent
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import NodeExecutionError
@@ -21,15 +23,16 @@ class EmbeddingGeneratorNode:
     the embedding agent, storing results back in state for other nodes.
     """
 
-    def __init__(self, pipeline_factory: PipelineFactory, model_name: Optional[str] = None):
+    def __init__(self, pipeline_factory: PipelineFactory, embedding_agent: 'EmbeddingAgent', model_name: str):
         """
         Initialize embedding generator node.
 
         Args:
             pipeline_factory: Factory for creating embedding pipelines
-            model_name: Optional specific embedding model to use
+            embedding_agent: Required EmbeddingAgent instance
+            model_name: Required specific embedding model to use
         """
-        self.agent = EmbeddingAgent(pipeline_factory)
+        self.agent = embedding_agent
         self.model_name = model_name
         self.logger = composer_logger.logger.bind(component="EmbeddingGeneratorNode")
 

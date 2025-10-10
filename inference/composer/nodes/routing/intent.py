@@ -22,21 +22,14 @@ class IntentClassifierNode:
     proper LangGraph node interface. Handles state updates and RAG routing configuration.
     """
 
-    def __init__(self, intent_classifier_agent: Optional['IntentClassifierAgent'] = None):
+    def __init__(self, intent_classifier_agent: 'IntentClassifierAgent'):
         """
         Initialize intent classifier node with dependency injection.
         
         Args:
-            intent_classifier_agent: Injected IntentClassifierAgent instance
+            intent_classifier_agent: Required IntentClassifierAgent instance
         """
-        if intent_classifier_agent is None:
-            # Fallback for backward compatibility - lazy import to avoid circular dependencies
-            from composer.agents.intent_classifier import (  # pylint: disable=import-outside-toplevel
-                IntentClassifierAgent,
-            )
-            self.agent = IntentClassifierAgent()
-        else:
-            self.agent = intent_classifier_agent
+        self.agent = intent_classifier_agent
             
         self.logger = composer_logger.logger
 
