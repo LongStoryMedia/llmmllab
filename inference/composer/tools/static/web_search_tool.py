@@ -43,9 +43,11 @@ Available Engines (see https://docs.searxng.org/dev/engines/index.html and https
 import asyncio
 import json
 import os
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Annotated
 
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, InjectedToolCallId, tool
+from langchain_core.messages import ToolMessage
+from langgraph.types import Command
 
 # Attempt import from langchain_classic (newer split) then fallback to langchain_community
 try:  # pragma: no cover - import resolution
@@ -211,8 +213,18 @@ class WebSearchTool(BaseTool):
 
             return DEFAULT_WEB_SEARCH_CONFIG
 
-    async def _arun(self, query: str, **kwargs: Any) -> str:
-        """Async implementation of web search using SearxNG provider."""
+    async def _arun(
+        self, 
+        query: str,
+        **kwargs: Any
+    ) -> Command:
+        """Async implementation of web search using SearxNG provider.
+        
+        Returns a Command that updates the WorkflowState with search results.
+        """
+        # Get tool_call_id from kwargs or use a default
+        tool_call_id = kwargs.get('tool_call_id', 'web_search_call')
+        
         try:
             # Get web search configuration from user config
             web_config = await self._get_web_search_config()
@@ -222,6 +234,7 @@ class WebSearchTool(BaseTool):
             search_result = await provider.search(query, web_config.max_results)
 
             if search_result and search_result.contents:
+                # Format results for display
                 formatted_results = [
                     {
                         "title": content.title,
@@ -236,7 +249,8 @@ class WebSearchTool(BaseTool):
                     for content in search_result.contents
                 ]
 
-                return json.dumps(
+                # Create response message for the conversation
+                response_message = json.dumps(
                     {
                         "status": "success",
                         "results": formatted_results,
@@ -246,7 +260,17 @@ class WebSearchTool(BaseTool):
                     indent=2,
                 )
 
-            return json.dumps(
+                # Return Command that updates state with search results
+                return Command(update={
+                    "web_search_results": [search_result],
+                    "search_query": query,
+                    "messages": [
+                        ToolMessage(response_message, tool_call_id=tool_call_id)
+                    ]
+                })
+
+            # No results case
+            response_message = json.dumps(
                 {
                     "status": "success",
                     "results": [],
@@ -256,14 +280,28 @@ class WebSearchTool(BaseTool):
                 indent=2,
             )
 
+            return Command(update={
+                "search_query": query,
+                "messages": [
+                    ToolMessage(response_message, tool_call_id=tool_call_id)
+                ]
+            })
+
         except Exception as e:
-            return json.dumps(
+            error_message = json.dumps(
                 {"status": "error", "error": str(e), "query": query}, indent=2
             )
+            
+            return Command(update={
+                "search_query": query,
+                "messages": [
+                    ToolMessage(error_message, tool_call_id=tool_call_id)
+                ]
+            })
 
-    def _run(self, query: str, **kwargs) -> str:
+    def _run(self, query: str, **kwargs) -> Command:
         """Sync implementation using async."""
-        return asyncio.run(self._arun(query))
+        return asyncio.run(self._arun(query, **kwargs))
 
 
 # Factory functions for creating WebSearchTool instances
@@ -324,3 +362,126 @@ def create_shopping_search_tool(user_id: str) -> WebSearchTool:
     Note: Shopping search behavior should be configured through user preferences.
     """
     return WebSearchTool(user_id=user_id)
+
+
+# Function-based tool using Command pattern (preferred approach)
+@tool
+async def web_search_with_state_update(
+    query: str,
+    tool_call_id: Annotated[str, InjectedToolCallId],
+) -> Command:
+    """
+    Search the web for information and automatically add results to workflow state.
+    
+    This tool performs web searches using SearxNG and returns a Command that updates
+    the WorkflowState with search results, enabling automatic routing to search 
+    synthesis nodes.
+    
+    Args:
+        query: The search query to execute
+        tool_call_id: Injected tool call ID for message tracking
+        
+    Returns:
+        Command object that updates state with search results
+    """
+    from db import storage  # pylint: disable=import-outside-toplevel
+    from models.default_configs import (  # pylint: disable=import-outside-toplevel
+        DEFAULT_WEB_SEARCH_CONFIG,
+    )
+    
+    logger = composer_logger.logger.bind(component="WebSearchWithStateUpdate")
+    
+    try:
+        # For now, use default user_id - in practice this would come from context
+        # TODO: Get user_id from RunnableConfig or InjectedState
+        user_id = "default_user"
+        
+        # Get web search configuration from user config
+        try:
+            user_config = await storage.get_service(
+                storage.user_config
+            ).get_user_config(user_id)
+            web_config = user_config.web_search if user_config else DEFAULT_WEB_SEARCH_CONFIG
+        except Exception as e:
+            logger.warning(f"Failed to get user config, using defaults: {e}")
+            web_config = DEFAULT_WEB_SEARCH_CONFIG
+
+        # Use SearxNG provider with WebSearchConfig
+        provider = SearxNG(web_config=web_config)
+        search_result = await provider.search(query, web_config.max_results)
+
+        if search_result and search_result.contents:
+            # Format results for display
+            formatted_results = [
+                {
+                    "title": content.title,
+                    "url": content.url,
+                    "content": (
+                        content.content[:300] + "..."
+                        if len(content.content) > 300
+                        else content.content
+                    ),
+                    "relevance": content.relevance,
+                }
+                for content in search_result.contents
+            ]
+
+            # Create response message for the conversation
+            response_message = json.dumps(
+                {
+                    "status": "success",
+                    "results": formatted_results,
+                    "query": query,
+                    "count": len(formatted_results),
+                },
+                indent=2,
+            )
+
+            logger.info(
+                f"Web search completed successfully with {len(formatted_results)} results",
+                query=query[:100],
+                result_count=len(formatted_results)
+            )
+
+            # Return Command that updates state with search results
+            return Command(update={
+                "web_search_results": [search_result],
+                "search_query": query,
+                "messages": [
+                    ToolMessage(response_message, tool_call_id=tool_call_id)
+                ]
+            })
+
+        # No results case
+        response_message = json.dumps(
+            {
+                "status": "success",
+                "results": [],
+                "query": query,
+                "message": "No search results found",
+            },
+            indent=2,
+        )
+
+        logger.info("Web search completed with no results", query=query[:100])
+
+        return Command(update={
+            "search_query": query,
+            "messages": [
+                ToolMessage(response_message, tool_call_id=tool_call_id)
+            ]
+        })
+
+    except Exception as e:
+        error_message = json.dumps(
+            {"status": "error", "error": str(e), "query": query}, indent=2
+        )
+        
+        logger.error(f"Web search failed: {e}", query=query[:100])
+        
+        return Command(update={
+            "search_query": query,
+            "messages": [
+                ToolMessage(error_message, tool_call_id=tool_call_id)
+            ]
+        })

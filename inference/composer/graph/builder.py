@@ -305,22 +305,23 @@ class GraphBuilder:
                 },
             )
 
-            # 8. Conditional routing from tool executor - check for search results
-            def should_summarize_search(state: WorkflowState):
+            # 8. Conditional routing from tool executor - check if web search added results to state
+            def should_synthesize_search_results(state: WorkflowState):
+                # Check if any search results were added to state (by Command from web search tool)
                 if state.web_search_results:
                     return "search_summary"
                 return "chat_agent"
 
             workflow.add_conditional_edges(
                 "tool_executor",
-                should_summarize_search,
+                should_synthesize_search_results,
                 {
                     "search_summary": "search_summary",
                     "chat_agent": "chat_agent",
                 }
             )
 
-            # 8b. Search summary -> Chat agent (for final response with search synthesis)
+            # 8b. Search summary -> Chat agent (for final response with synthesized search results)
             workflow.add_edge("search_summary", "chat_agent")
 
             # 9. Memory and title generation happen after final response

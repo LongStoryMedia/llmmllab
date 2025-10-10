@@ -32,6 +32,7 @@ from composer.tools.static import (
     MemoryRetrievalTool,
     SummarizationTool,
 )
+from composer.tools.static.web_search_tool import web_search_with_state_update
 from composer.agents.embedding_agent import EmbeddingAgent
 
 from runner import PipelineFactory
@@ -79,6 +80,10 @@ class ToolRegistry:
                     "memory_retrieval": MemoryRetrievalTool,
                 }
             )
+            
+            # Add function-based tools directly to executable_tools
+            # These are already instances, not classes that need instantiation
+            self.executable_tools["web_search_with_state_update"] = web_search_with_state_update
 
             composer_logger.logger.info(
                 "Loaded static tools", extra={"tool_count": len(self.static_tools)}
