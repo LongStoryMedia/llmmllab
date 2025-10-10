@@ -4,11 +4,23 @@ Uses clean factories and strategies with proper dependency injection pattern.
 All agents, storage services, and model profiles are instantiated upfront and injected.
 """
 
+from typing import TYPE_CHECKING, Optional
+
 from langgraph.graph.state import CompiledStateGraph, StateGraph, END, START
 
 from models import ModelProfileType
 from runner import PipelineFactory
-from db import storage
+
+if TYPE_CHECKING:
+    from db import Storage
+    from db.userconfig_storage import UserConfigStorage
+    from db.conversation_storage import ConversationStorage
+    from db.message_storage import MessageStorage
+    from db.model_profile_storage import ModelProfileStorage
+    from db.memory_storage import MemoryStorage
+    from db.summary_storage import SummaryStorage
+    from db.search_storage import SearchStorage
+    from db.dynamic_tool_storage import DynamicToolStorage
 
 # Import all agents
 from composer.agents.intent_classifier import IntentClassifierAgent
@@ -60,7 +72,19 @@ class GraphBuilder:
     - Tool orchestration (separate nodes)
     """
 
-    def __init__(self, pipeline_factory: PipelineFactory):
+    def __init__(self, storage: 'Storage', pipeline_factory: Optional[PipelineFactory] = None):
+        """
+        Initialize GraphBuilder with dependency injection.
+        
+        Args:
+            storage: Storage instance for dependency injection
+            pipeline_factory: Pipeline factory (optional, will import if None)
+        """
+        # Import pipeline_factory if not provided to maintain backward compatibility
+        if pipeline_factory is None:
+            from runner import pipeline_factory as default_pipeline_factory  # pylint: disable=import-outside-toplevel
+            pipeline_factory = default_pipeline_factory
+        
         # Core dependencies
         self.pipeline_factory = pipeline_factory
         self.storage = storage
@@ -100,17 +124,34 @@ class GraphBuilder:
         # Create tool registry (also depends on embedding agent)
         self.tool_registry = ToolRegistry(self.pipeline_factory)
 
-    def _create_storage_services(self):
+    def _create_storage_services(self) -> None:
         """Create storage service instances for dependency injection."""
         # Extract specific storage services that agents and nodes need
-        self.user_config_storage = self.storage.user_config
-        self.conversation_storage = self.storage.conversation
-        self.message_storage = self.storage.message
-        self.model_profile_storage = self.storage.model_profile
-        self.memory_storage = self.storage.memory
-        self.summary_storage = self.storage.summary
-        self.search_storage = self.storage.search
-        self.dynamic_tool_storage = self.storage.dynamic_tool
+        # Use storage.get_service for type safety when storage is initialized, 
+        # otherwise fall back to direct access for test environments
+        try:
+            # Use storage.get_service for type safety and linter warnings avoidance
+            self.user_config_storage: Optional['UserConfigStorage'] = self.storage.get_service(self.storage.user_config)
+            self.conversation_storage: Optional['ConversationStorage'] = self.storage.get_service(self.storage.conversation)
+            self.message_storage: Optional['MessageStorage'] = self.storage.get_service(self.storage.message)
+            self.model_profile_storage: Optional['ModelProfileStorage'] = self.storage.get_service(self.storage.model_profile)
+            self.memory_storage: Optional['MemoryStorage'] = self.storage.get_service(self.storage.memory)
+            self.summary_storage: Optional['SummaryStorage'] = self.storage.get_service(self.storage.summary)
+            self.search_storage: Optional['SearchStorage'] = self.storage.get_service(self.storage.search)
+            self.dynamic_tool_storage: Optional['DynamicToolStorage'] = self.storage.get_service(self.storage.dynamic_tool)
+        except ValueError as e:
+            if "Storage not initialized" in str(e):
+                # Fallback for test environments where storage may not be initialized
+                self.user_config_storage = self.storage.user_config
+                self.conversation_storage = self.storage.conversation
+                self.message_storage = self.storage.message
+                self.model_profile_storage = self.storage.model_profile
+                self.memory_storage = self.storage.memory
+                self.summary_storage = self.storage.summary
+                self.search_storage = self.storage.search
+                self.dynamic_tool_storage = self.storage.dynamic_tool
+            else:
+                raise
 
     async def build_workflow(
         self,

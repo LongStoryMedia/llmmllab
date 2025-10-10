@@ -3,8 +3,11 @@ Memory Agent for semantic memory storage and retrieval.
 Provides core business logic for memory operations and similarity search.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 from datetime import datetime
+
+if TYPE_CHECKING:
+    from db.memory_storage import MemoryStorage
 
 from models import Memory
 from models.message_role import MessageRole
@@ -23,7 +26,7 @@ class MemoryAgent:
     Embedding operations are handled by separate embedding nodes in workflows.
     """
 
-    def __init__(self, memory_storage=None):
+    def __init__(self, memory_storage: Optional['MemoryStorage'] = None):
         """Initialize memory agent with dependency injection.
         
         Args:

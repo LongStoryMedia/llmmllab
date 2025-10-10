@@ -3,7 +3,10 @@ Engineering Agent for generating technical and engineering responses.
 Provides core business logic for technical analysis, code generation, and engineering guidance.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from db.userconfig_storage import UserConfigStorage
 
 from models import ModelProfileType, PipelinePriority, TechnicalDomain, ResponseFormat
 from composer.monitoring.logging import composer_logger
@@ -23,7 +26,7 @@ class EngineeringAgent:
     and grammar constraints for structured outputs.
     """
 
-    def __init__(self, pipeline_factory: PipelineFactory, user_config_storage=None):
+    def __init__(self, pipeline_factory: PipelineFactory, user_config_storage: Optional['UserConfigStorage'] = None):
         """
         Initialize engineering agent with dependency injection.
 

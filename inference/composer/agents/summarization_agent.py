@@ -6,7 +6,12 @@ Provides core business logic for text summarization and content processing.
 import datetime
 from email.mime import message
 from re import S
-from typing import List, Optional, Dict, Any, Callable
+from typing import List, Optional, Dict, Any, Callable, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from db.summary_storage import SummaryStorage
+    from db.search_storage import SearchStorage  
+    from db.userconfig_storage import UserConfigStorage
 
 from models import (
     ModelProfileType,
@@ -34,7 +39,11 @@ class SummarizationAgent:
     and search results using configured summarization models.
     """
 
-    def __init__(self, pipeline_factory: PipelineFactory, summary_storage=None, search_storage=None, user_config_storage=None):
+    def __init__(self, 
+                 pipeline_factory: PipelineFactory, 
+                 summary_storage: Optional['SummaryStorage'] = None, 
+                 search_storage: Optional['SearchStorage'] = None, 
+                 user_config_storage: Optional['UserConfigStorage'] = None):
         """
         Initialize summarization agent.
 

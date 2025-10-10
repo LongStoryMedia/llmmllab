@@ -4,9 +4,12 @@ Performs comprehensive intent analysis following the capability-driven architect
 Maps user requests to RequiredCapabilities and assesses computational complexity.
 """
 
-from typing import List
+from typing import List, Optional, TYPE_CHECKING
 
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from db.userconfig_storage import UserConfigStorage
 
 from models import (
     IntentAnalysis,
@@ -45,7 +48,7 @@ class IntentClassifierAgent:
     intent classification that eliminates JSON parsing errors.
     """
 
-    def __init__(self, user_config_storage=None):
+    def __init__(self, user_config_storage: Optional['UserConfigStorage'] = None):
         """
         Initialize the intent classification agent.
         

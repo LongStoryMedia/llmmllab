@@ -3,9 +3,12 @@ Embedding Agent for generating semantic embeddings from text input.
 Provides core business logic for embedding generation and vector operations.
 """
 
-from typing import List
+from typing import List, Optional, TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from db.userconfig_storage import UserConfigStorage
 
 from models import ModelProfileType, PipelinePriority
 from composer.monitoring.logging import composer_logger
@@ -20,7 +23,7 @@ class EmbeddingAgent:
     Supports both single text and batch text embedding generation.
     """
 
-    def __init__(self, pipeline_factory, user_config_storage=None):
+    def __init__(self, pipeline_factory, user_config_storage: Optional['UserConfigStorage'] = None):
         """
         Initialize embedding agent with dependency injection.
 
