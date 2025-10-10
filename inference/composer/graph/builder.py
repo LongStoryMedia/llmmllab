@@ -160,15 +160,16 @@ class GraphBuilder:
 
                 last_message = state.messages[-1]
 
-                # If last message is a tool result, continue to memory creation
-                if hasattr(last_message, "type") and last_message.type == "tool":
-                    return "memory_creation"
-
-                # If last message has tool calls, execute tools
-                if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+                # If last message is from assistant and has tool calls, execute tools
+                if (
+                    hasattr(last_message, "type")
+                    and last_message.type == "ai"
+                    and hasattr(last_message, "tool_calls")
+                    and last_message.tool_calls
+                ):
                     return "tool_executor"
 
-                # No tool calls, go to memory creation
+                # Otherwise, proceed to memory creation (this includes tool results)
                 return "memory_creation"
 
             workflow.add_conditional_edges(
