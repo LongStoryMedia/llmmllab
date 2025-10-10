@@ -45,9 +45,10 @@ import json
 import os
 from typing import Optional, List, Dict, Any, Annotated
 
-from langchain_core.tools import BaseTool, InjectedToolCallId, tool
+from langchain_core.tools import BaseTool, tool, InjectedToolCallId
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
+from langgraph.prebuilt import InjectedState
 
 # Attempt import from langchain_classic (newer split) then fallback to langchain_community
 try:  # pragma: no cover - import resolution
@@ -369,6 +370,7 @@ def create_shopping_search_tool(user_id: str) -> WebSearchTool:
 async def web_search_with_state_update(
     query: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
+    state: Annotated[Dict[str, Any], InjectedState]
 ) -> Command:
     """
     Search the web for information and automatically add results to workflow state.
@@ -377,9 +379,13 @@ async def web_search_with_state_update(
     the WorkflowState with search results, enabling automatic routing to search 
     synthesis nodes.
     
+    Uses the official LangGraph Command pattern for state updates as documented in:
+    https://langchain-ai.github.io/langgraph/how-tos/tool-calling/#short-term-memory
+    
     Args:
         query: The search query to execute
-        tool_call_id: Injected tool call ID for message tracking
+        tool_call_id: Injected tool call ID for message tracking (auto-injected by LangGraph)
+        state: Injected workflow state for accessing user context (auto-injected by LangGraph)
         
     Returns:
         Command object that updates state with search results
@@ -392,9 +398,8 @@ async def web_search_with_state_update(
     logger = composer_logger.logger.bind(component="WebSearchWithStateUpdate")
     
     try:
-        # For now, use default user_id - in practice this would come from context
-        # TODO: Get user_id from RunnableConfig or InjectedState
-        user_id = "default_user"
+        # Get user_id from injected state
+        user_id = state.get("user_id", "default_user")
         
         # Get web search configuration from user config
         try:
