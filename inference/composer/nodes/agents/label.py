@@ -3,8 +3,12 @@ Title generation node for conversation titles.
 Generates concise, descriptive titles based on conversation content.
 """
 
-from typing import List
+from typing import List, Optional, TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from composer.agents.summarization_agent import SummarizationAgent
+
+from runner import PipelineFactory
 from utils.model_profile import get_model_profile_for_task
 from models import (
     ModelProfileType,
@@ -26,7 +30,7 @@ class TitleGenerationNode:
     based on conversation content.
     """
 
-    def __init__(self, pipeline_factory, summarization_agent=None):
+    def __init__(self, pipeline_factory: PipelineFactory, summarization_agent: Optional['SummarizationAgent'] = None):
         """Initialize title generation node with dependency injection.
         
         Args:

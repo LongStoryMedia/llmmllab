@@ -10,6 +10,7 @@ import numpy as np
 if TYPE_CHECKING:
     from db.userconfig_storage import UserConfigStorage
 
+from runner import PipelineFactory
 from models import ModelProfileType, PipelinePriority
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import NodeExecutionError
@@ -23,7 +24,7 @@ class EmbeddingAgent:
     Supports both single text and batch text embedding generation.
     """
 
-    def __init__(self, pipeline_factory, user_config_storage: 'UserConfigStorage'):
+    def __init__(self, pipeline_factory: PipelineFactory, user_config_storage: 'UserConfigStorage'):
         """
         Initialize embedding agent with dependency injection.
 

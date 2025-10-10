@@ -3,6 +3,11 @@ Intent classification node for workflow routing.
 Wraps the IntentClassifierAgent to provide LangGraph workflow integration.
 """
 
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from composer.agents.intent_classifier import IntentClassifierAgent
+
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
 from composer.core.errors import NodeExecutionError
@@ -17,7 +22,7 @@ class IntentClassifierNode:
     proper LangGraph node interface. Handles state updates and RAG routing configuration.
     """
 
-    def __init__(self, intent_classifier_agent=None):
+    def __init__(self, intent_classifier_agent: Optional['IntentClassifierAgent'] = None):
         """
         Initialize intent classifier node with dependency injection.
         

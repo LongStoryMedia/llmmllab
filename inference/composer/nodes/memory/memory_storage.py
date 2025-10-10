@@ -3,6 +3,12 @@ Memory Storage Node for LangGraph workflows.
 Stores messages as memories with their embeddings.
 """
 
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from composer.agents.memory_agent import MemoryAgent
+    from db import Storage
+
 from composer.agents.memory_agent import MemoryAgent
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
@@ -17,7 +23,7 @@ class MemoryStorageNode:
     and stores them using the memory agent.
     """
 
-    def __init__(self, memory_agent=None, storage=None):
+    def __init__(self, memory_agent: Optional['MemoryAgent'] = None, storage: Optional['Storage'] = None):
         """Initialize memory storage node with dependency injection.
         
         Args:

@@ -3,7 +3,12 @@ Memory Search Node for LangGraph workflows.
 Searches for similar memories using embeddings.
 """
 
-from typing import cast
+from typing import cast, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from composer.agents.memory_agent import MemoryAgent
+    from composer.agents.embedding_agent import EmbeddingAgent
+    from db import Storage
 
 from composer.agents.memory_agent import MemoryAgent
 from composer.graph.state import WorkflowState
@@ -22,7 +27,7 @@ class MemorySearchNode:
     similar memories using the memory agent.
     """
 
-    def __init__(self, pipeline_factory: PipelineFactory = None, memory_agent=None, embedding_agent=None, storage=None):
+    def __init__(self, pipeline_factory: Optional[PipelineFactory] = None, memory_agent: Optional['MemoryAgent'] = None, embedding_agent: Optional['EmbeddingAgent'] = None, storage: Optional['Storage'] = None):
         """Initialize memory search node with dependency injection.
         
         Args:

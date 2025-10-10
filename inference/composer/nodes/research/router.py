@@ -5,6 +5,7 @@ Implements shallow/deep search routing based on query complexity and intent clas
 
 from typing import List, Dict, Any, Optional
 
+from runner import PipelineFactory
 from models import LangChainMessage, ModelProfileType
 
 # Database imports moved to method level to avoid circular dependencies
@@ -88,7 +89,7 @@ class QuickResearchExecutor:
     over comprehensiveness.
     """
 
-    def __init__(self, user_id: str, pipeline_factory=None):
+    def __init__(self, user_id: str, pipeline_factory: Optional[PipelineFactory] = None):
         """
         Initialize quick research executor.
 
@@ -242,7 +243,7 @@ class ComprehensiveResearchExecutor:
     comprehensive analysis from internal knowledge, external sources, and synthesis.
     """
 
-    def __init__(self, user_id: str, pipeline_factory=None):
+    def __init__(self, user_id: str, pipeline_factory: Optional[PipelineFactory] = None):
         """
         Initialize deep search executor.
 

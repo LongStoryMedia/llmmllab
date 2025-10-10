@@ -3,7 +3,11 @@ Memory Creation Node for LangGraph workflows.
 Creates Memory objects from summaries, messages, or search topic synthesis.
 """
 
-from typing import List, Optional, cast, Union
+from typing import List, Optional, cast, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from composer.agents.embedding_agent import EmbeddingAgent
+    from db import Storage
 from datetime import datetime, timezone
 
 from models import (
@@ -40,7 +44,7 @@ class MemoryCreationNode:
     and converts them into Memory objects that can be stored later.
     """
 
-    def __init__(self, pipeline_factory: PipelineFactory = None, embedding_agent=None, storage=None):
+    def __init__(self, pipeline_factory: Optional[PipelineFactory] = None, embedding_agent: Optional['EmbeddingAgent'] = None, storage: Optional['Storage'] = None):
         """Initialize memory creation node with dependency injection.
         
         Args:

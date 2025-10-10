@@ -3,6 +3,12 @@ Engineering Agent Node for LangGraph workflow integration.
 Provides LangGraph node wrapper for technical engineering response generation.
 """
 
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from composer.agents.engineering_agent import EngineeringAgent
+
+from runner import PipelineFactory
 from models import LangChainMessage
 
 from composer.graph.state import WorkflowState
@@ -21,7 +27,7 @@ class EngineeringAgentNode:
     tool orchestration (which is handled by ToolOrchestrationSubgraph).
     """
 
-    def __init__(self, engineering_agent=None, pipeline_factory=None):
+    def __init__(self, engineering_agent: Optional['EngineeringAgent'] = None, pipeline_factory: Optional[PipelineFactory] = None):
         """
         Initialize engineering agent node with dependency injection.
 

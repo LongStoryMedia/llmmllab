@@ -57,7 +57,7 @@ class ComposerService:
 
         self.pipeline_factory = pipeline_factory
         self.storage = None
-        self.graph_builder: Optional['GraphBuilder'] = None
+        self.graph_builder: Optional["GraphBuilder"] = None
         # Workflow cache is now created per-user during workflow composition
         self.workflow_caches: Dict[str, WorkflowCache] = {}
 
@@ -65,13 +65,15 @@ class ComposerService:
         """Lazily create GraphBuilder when needed, ensuring storage is available."""
         if self.graph_builder is None:
             from db import storage  # pylint: disable=import-outside-toplevel
-            
+
             if not storage.initialized:
-                raise RuntimeError("Storage must be initialized before using ComposerService")
-            
+                raise RuntimeError(
+                    "Storage must be initialized before using ComposerService"
+                )
+
             self.storage = storage
             self.graph_builder = GraphBuilder(storage, self.pipeline_factory)
-            
+
         # Assert for type checking that graph_builder is not None after this call
         assert self.graph_builder is not None
 
@@ -120,11 +122,11 @@ class ComposerService:
             # 3. Build master workflow with intelligent routing or explicit type
             # Intent analysis and tool selection happen inside the graph now
             self._ensure_graph_builder()
-            
+
             # Type guard: assert graph_builder is available after _ensure_graph_builder
             graph_builder = self.graph_builder
             assert graph_builder is not None, "GraphBuilder should be initialized"
-            
+
             builder_fn = lambda: graph_builder.build_workflow(user_id)
 
             if user_cache:

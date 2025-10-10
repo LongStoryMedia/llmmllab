@@ -5,6 +5,7 @@ Generates embeddings from text using the embedding agent.
 
 from typing import Optional
 
+from runner import PipelineFactory
 from composer.agents.embedding_agent import EmbeddingAgent
 from composer.graph.state import WorkflowState
 from composer.monitoring.logging import composer_logger
@@ -20,7 +21,7 @@ class EmbeddingGeneratorNode:
     the embedding agent, storing results back in state for other nodes.
     """
 
-    def __init__(self, pipeline_factory, model_name: Optional[str] = None):
+    def __init__(self, pipeline_factory: PipelineFactory, model_name: Optional[str] = None):
         """
         Initialize embedding generator node.
 

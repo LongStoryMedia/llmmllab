@@ -1,5 +1,8 @@
 import json
-from typing import List, cast
+from typing import List, cast, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from db import Storage
 
 from langchain.tools import BaseTool
 
@@ -18,7 +21,7 @@ class DynamicToolCreationNode:
     Node responsible for creating dynamic tool specifications based on user queries and intent analysis.
     """
 
-    def __init__(self, tool_registry: ToolRegistry, pipeline_factory: PipelineFactory, storage=None):
+    def __init__(self, tool_registry: ToolRegistry, pipeline_factory: PipelineFactory, storage: Optional['Storage'] = None):
         self.tool_registry = tool_registry
         self.pipeline_factory = pipeline_factory
         self.storage = storage  # For future use
