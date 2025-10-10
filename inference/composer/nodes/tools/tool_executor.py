@@ -106,23 +106,33 @@ class ToolExecutorNode:
                     raise RuntimeError(f"Requested tool '{tool_name}' not available")
                 tool = name_to_tool[tool_name]
                 try:
-                    if hasattr(tool, "_arun"):
-                        result = await tool._arun(**args)  # type: ignore
+                    # Check if this is a LangGraph tool with injection (has coroutine attribute)
+                    if hasattr(tool, 'coroutine') and tool.coroutine:
+                        # This is a LangGraph @tool decorated function - call it directly with injected params
+                        tool_call_id = call.get("id", f"call_{tool_name}")
+                        result = await tool.coroutine(tool_call_id=tool_call_id, state=state, **args)
                     else:
-                        # Some community tools expose arun
-                        arun = getattr(tool, "arun", None)
-                        if arun:
-                            result = await arun(**args)
+                        # Regular LangChain tool - use the standard execution pattern
+                        from langchain_core.runnables import RunnableConfig
+                        tool_config = RunnableConfig()
+                        
+                        if hasattr(tool, "_arun"):
+                            result = await tool._arun(config=tool_config, **args)  # type: ignore
                         else:
-                            # Fallback to sync _run executed in threadpool? For now invoke directly
-                            run_fn = getattr(tool, "_run", None) or getattr(
-                                tool, "run", None
-                            )
-                            if run_fn is None:
-                                raise RuntimeError(
-                                    f"Tool '{tool_name}' has no runnable method"
+                            # Some community tools expose arun
+                            arun = getattr(tool, "arun", None)
+                            if arun:
+                                result = await arun(config=tool_config, **args)
+                            else:
+                                # Fallback to sync _run executed in threadpool? For now invoke directly
+                                run_fn = getattr(tool, "_run", None) or getattr(
+                                    tool, "run", None
                                 )
-                            result = run_fn(**args)
+                                if run_fn is None:
+                                    raise RuntimeError(
+                                        f"Tool '{tool_name}' has no runnable method"
+                                    )
+                                result = run_fn(**args)
                 except Exception as te:
                     raise RuntimeError(
                         f"Tool '{tool_name}' execution failed: {te}"

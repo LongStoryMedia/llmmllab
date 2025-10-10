@@ -387,31 +387,6 @@ Always explain your reasoning and what information you're looking for.
         logger.info("🏗️  Setting up real infrastructure...")
 
         try:
-            # Check if we're in mock mode for testing without database
-            mock_mode = os.getenv("COMPOSER_TEST_MOCK_DB", "").lower() in ("1", "true", "yes")
-            
-            if mock_mode:
-                logger.info("   🧪 Running in mock mode - skipping real database connection")
-                # Create a mock storage object for testing
-                class MockStorage:
-                    def __init__(self):
-                        self.initialized = True
-                        self.pool = None
-                        self.user_config = None
-                        self.conversation = None
-                        self.message = None
-                        self.model_profile = None
-                
-                self.storage = MockStorage()
-                logger.info("   ✅ Mock infrastructure initialized")
-                
-                return {
-                    "success": True,
-                    "database_connected": False,
-                    "mock_mode": True,
-                    "target_model": self.target_model,
-                }
-
             # Initialize real database connection
             from db import storage
 
@@ -477,20 +452,6 @@ Always explain your reasoning and what information you're looking for.
         logger.info("👤 Creating real user and model profile...")
 
         try:
-            # Check if we're in mock mode
-            mock_mode = os.getenv("COMPOSER_TEST_MOCK_DB", "").lower() in ("1", "true", "yes")
-            
-            if mock_mode:
-                logger.info("   🧪 Mock mode - simulating user and profile creation")
-                
-                return {
-                    "success": True,
-                    "user_id": self.test_user_id,
-                    "model_profile_id": str(self.test_model_profile_id),
-                    "model_name": self.target_model,
-                    "mock_mode": True,
-                }
-            
             from db import storage
             from models.model_profile import ModelProfile
             from models.model_parameters import ModelParameters
@@ -607,19 +568,6 @@ Always explain your reasoning and what information you're looking for.
         logger.info("💬 Creating real conversation...")
 
         try:
-            # Check if we're in mock mode
-            mock_mode = os.getenv("COMPOSER_TEST_MOCK_DB", "").lower() in ("1", "true", "yes")
-            
-            if mock_mode:
-                logger.info("   🧪 Mock mode - simulating conversation creation")
-                self.test_conversation_id = 12345  # Mock conversation ID
-                
-                return {
-                    "success": True,
-                    "conversation_id": self.test_conversation_id,
-                    "mock_mode": True,
-                }
-            
             from db import storage
 
             # Ensure storage is available
@@ -661,28 +609,6 @@ Always explain your reasoning and what information you're looking for.
         logger.info("📝 Creating real message with tool context...")
 
         try:
-            # Check if we're in mock mode
-            mock_mode = os.getenv("COMPOSER_TEST_MOCK_DB", "").lower() in ("1", "true", "yes")
-            
-            if mock_mode:
-                logger.info("   🧪 Mock mode - simulating message creation")
-                self.test_message_id = 67890  # Mock message ID
-                
-                query_text = """I need current information about the latest developments in artificial intelligence in 2024. 
-Specifically, I'm interested in:
-1. Major AI model releases in 2024
-2. Recent breakthroughs in AI research
-3. Current AI safety developments
-
-Please search for the most recent information and provide a comprehensive summary."""
-                
-                return {
-                    "success": True,
-                    "message_id": self.test_message_id,
-                    "message_length": len(query_text),
-                    "mock_mode": True,
-                }
-            
             from db import storage
             from models.message import Message
             from models.message_role import MessageRole
@@ -750,48 +676,16 @@ Please search for the most recent information and provide a comprehensive summar
             from models import WorkflowType
             from db import storage
 
-            # Check if we're in mock mode
-            mock_mode = os.getenv("COMPOSER_TEST_MOCK_DB", "").lower() in ("1", "true", "yes")
-            
             # Ensure we have required IDs
-            if not self.test_conversation_id:
-                raise Exception("Missing conversation ID for workflow execution")
+            if not self.test_conversation_id or not storage or not storage.message:
+                raise Exception("Missing required components for workflow execution")
 
             # Get conversation messages for context
-            if mock_mode:
-                # Create mock messages for testing
-                from models.message import Message
-                from models.message_role import MessageRole
-                from models.message_content import MessageContent, MessageContentType
-                from datetime import datetime, timezone
-                
-                query_text = """I need current information about the latest developments in artificial intelligence in 2024. 
-Specifically, I'm interested in:
-1. Major AI model releases in 2024
-2. Recent breakthroughs in AI research  
-3. Current AI safety developments
-
-Please search for the most recent information and provide a comprehensive summary."""
-                
-                messages = [
-                    Message(
-                        id=self.test_message_id,
-                        conversation_id=self.test_conversation_id,
-                        role=MessageRole.USER,
-                        content=[MessageContent(type=MessageContentType.TEXT, text=query_text)],
-                        created_at=datetime.now(timezone.utc),
-                    )
-                ]
-                logger.info("   🧪 Using mock conversation messages")
-            else:
-                if not storage or not storage.message:
-                    raise Exception("Missing storage components for workflow execution")
-                
-                messages = await storage.message.get_conversation_history(
-                    self.test_conversation_id
-                )
-                if not messages:
-                    raise Exception("No messages found for conversation")
+            messages = await storage.message.get_conversation_history(
+                self.test_conversation_id
+            )
+            if not messages:
+                raise Exception("No messages found for conversation")
 
             logger.info(f"   📝 Processing {len(messages)} messages")
 
@@ -800,16 +694,14 @@ Please search for the most recent information and provide a comprehensive summar
             for msg in messages:
                 msg_data = {
                     "id": msg.id,
-                    "role": msg.role.value,
+                    "role": msg.role,
                     "content": [
                         {"type": content.type.value, "text": content.text}
                         for content in msg.content
                     ],
-                    "created_at": (
-                        msg.created_at.isoformat() if msg.created_at else None
-                    ),
+                    "created_at": (msg.created_at if msg.created_at else None),
                 }
-                messages_data.append(msg_data)
+                messages_data.append(msg.model_dump_json())
 
             # Step 1: Compose workflow for user
             logger.info("   🎼 Step 1: Composing workflow...")
@@ -1342,28 +1234,6 @@ Please search for the most recent information and provide a comprehensive summar
         logger.info("✅ Validating real outputs...")
 
         try:
-            # Check if we're in mock mode
-            mock_mode = os.getenv("COMPOSER_TEST_MOCK_DB", "").lower() in ("1", "true", "yes")
-            
-            if mock_mode:
-                logger.info("   🧪 Mock mode - simulating output validation")
-                
-                return {
-                    "success": True,
-                    "conversation_valid": True,
-                    "model_profile_valid": True,
-                    "message_count": 2,  # Mock: user + assistant
-                    "assistant_messages": 1,  # Mock: one assistant response
-                    "response_quality_score": 85,  # Mock: good quality score
-                    "mock_mode": True,
-                    "title_validation": {
-                        "valid": True,
-                        "title": "AI Developments 2024",
-                        "word_count": 3,
-                        "mock_mode": True,
-                    },
-                }
-            
             from db import storage
 
             # Ensure we have required components
@@ -1539,19 +1409,6 @@ Please search for the most recent information and provide a comprehensive summar
         cleanup_errors = []
 
         try:
-            # Check if we're in mock mode
-            mock_mode = os.getenv("COMPOSER_TEST_MOCK_DB", "").lower() in ("1", "true", "yes")
-            
-            if mock_mode:
-                logger.info("   🧪 Mock mode - simulating cleanup")
-                return {
-                    "success": True,
-                    "cleaned_count": 5,  # Mock: cleaned some entities
-                    "errors": [],
-                    "total_entities": 5,
-                    "mock_mode": True,
-                }
-            
             from db import storage
 
             # Ensure we have storage available

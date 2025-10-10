@@ -302,6 +302,7 @@ class GraphBuilder:
                 {
                     "tool_executor": "tool_executor",
                     "memory_creation": "memory_creation",
+                    "chat_summary": "chat_summary",
                 },
             )
 
