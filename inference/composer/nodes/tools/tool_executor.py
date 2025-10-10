@@ -107,15 +107,18 @@ class ToolExecutorNode:
                 tool = name_to_tool[tool_name]
                 try:
                     # Check if this is a LangGraph tool with injection (has coroutine attribute)
-                    if hasattr(tool, 'coroutine') and tool.coroutine:
+                    if hasattr(tool, "coroutine") and tool.coroutine:
                         # This is a LangGraph @tool decorated function - call it directly with injected params
                         tool_call_id = call.get("id", f"call_{tool_name}")
-                        result = await tool.coroutine(tool_call_id=tool_call_id, state=state, **args)
+                        result = await tool.coroutine(
+                            tool_call_id=tool_call_id, state=state, **args
+                        )
                     else:
                         # Regular LangChain tool - use the standard execution pattern
                         from langchain_core.runnables import RunnableConfig
+
                         tool_config = RunnableConfig()
-                        
+
                         if hasattr(tool, "_arun"):
                             result = await tool._arun(config=tool_config, **args)  # type: ignore
                         else:

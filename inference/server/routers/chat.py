@@ -1,16 +1,13 @@
 """
-Chat router for handling conversations and completions.
-This implementation uses LangChain for enhanced RAG capabilities.
-Updated to use pipeline factory and intent-based service instantiation.
+Simplified Chat router that delegates to composer interface.
+All chat logic has been moved to the composer module for clean architectural separation.
 
 Note: This router is included in app.py with both non-versioned and versioned paths:
 - Non-versioned: /chat/...
 - Versioned: /v1/chat/...
 """
 
-import asyncio
 from datetime import datetime as dt
-
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -18,8 +15,9 @@ from models import ChatResponse, Conversation, Message, MessageContentType, Mess
 from server.auth import get_request_id, get_user_id, is_admin
 from server.config import logger  # Import logger from config
 from db import storage  # Import database storage
-from server.handlers.completion import agent_chat_completion
-from server.services.context import get_conversation_context_from_request
+
+# Import composer interface
+import composer
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -29,17 +27,8 @@ async def chat_completion(
     msg: Message, request: Request, background_tasks: BackgroundTasks
 ):
     """
-    Handle chat completions by processing a single user message and generating a response.
-    This implementation uses LangChain for enhanced RAG capabilities including:
-
-    1. Document retrieval from PostgreSQL vector store
-    2. Web search integration (only when intent.web_search is True)
-    3. URL content extraction
-    4. Reranking of retrieved documents
-    5. Deduplication of information
-    6. Context-aware summarization
-    7. Enhanced prompt creation with retrieved contexts
-    8. Streaming or complete response generation
+    Handle chat completions with composer integration.
+    Uses composer workflow orchestration for enhanced AI capabilities.
     """
     # Early validation and setup
     user_id = get_user_id(request)
@@ -55,61 +44,79 @@ async def chat_completion(
 
     logger.info(f"Processing chat completion request {request_id} for user {user_id}")
 
-    # Load conversation context
-    conversation_ctx = await get_conversation_context_from_request(
-        request, msg.conversation_id
-    )
-
-    if conversation_ctx.conversation.id < 0:
-        raise HTTPException(status_code=400, detail="Invalid conversation ID")
-
-    # Process user message with enhanced RAG (user_config already loaded in conversation_ctx)
     try:
-        # Add message - also sets intent
-        embeddings, _ = await conversation_ctx.add_message(msg)
-        assert embeddings, "Embeddings not generated for user message"
+        # Store the user message in database first
+        if storage.message:
+            await storage.message.add_message(msg)
 
-        await conversation_ctx.process_rag_operations(embeddings)
-
-        # Title generation: run asynchronously so we don't block first-token streaming
-        title = conversation_ctx.conversation.title or ""
-        if (
-            len(conversation_ctx.messages) <= 1
-            or not title.strip()
-            or title.lower().startswith(("new conversation", "untitled"))
-        ):
-            background_tasks.add_task(conversation_ctx.generate_title)
-
-        # Use enhanced chat completion logic which determines whether to use agentic workflow
+        # Use composer-based workflow orchestration
+        from server.handlers.composer_completion import composer_chat_completion
+        
         return StreamingResponse(
-            agent_chat_completion(
-                conversation_ctx=conversation_ctx,
-                background_tasks=background_tasks,
-            ),
+            composer_chat_completion(user_id, msg.conversation_id, background_tasks),
             media_type="text/event-stream",
         )
 
     except Exception as e:  # noqa: BLE001
-        logger.error(f"Error in chat completion: {e}", exc_info=True)
+        logger.error(f"Error in composer chat completion: {e}", exc_info=True)
 
-        # Provide more specific error messages based on error type
+        # Provide specific error messages
         error_detail = f"Error in chat completion: {str(e)}"
-        if "unknown model architecture" in str(e):
-            error_detail = "Model architecture not supported. Please try a different model or contact support."
+        if "composer service not initialized" in str(e).lower():
+            error_detail = "AI service not ready. Please try again in a moment."
+        elif "workflow construction" in str(e).lower():
+            error_detail = "Unable to create AI workflow. Please check your configuration."
+        elif "unknown model architecture" in str(e):
+            error_detail = "Model architecture not supported. Please try a different model."
         elif "Failed to create llama_context" in str(e):
-            error_detail = "Model failed to load. This may be due to insufficient memory or model corruption."
-        elif "No valid model profile found" in str(e):
-            error_detail = (
-                "No compatible model available. Please check your model configuration."
-            )
-        elif "Tool generation failed" in str(e):
-            error_detail = (
-                "Dynamic tool creation failed. Continuing with basic functionality."
-            )
+            error_detail = "Model failed to load. This may be due to insufficient memory."
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=error_detail,
+        ) from e
+
+
+@router.post("/composer/completions", response_model=ChatResponse)
+async def composer_chat_completions(
+    msg: Message, request: Request, background_tasks: BackgroundTasks
+):
+    """
+    Composer-specific chat completion endpoint.
+    Direct delegation to composer interface with full workflow orchestration.
+    """
+    # Early validation and setup
+    user_id = get_user_id(request)
+    request_id = get_request_id(request)
+
+    # Validate inputs early
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User ID not found")
+    if not msg.conversation_id:
+        raise HTTPException(status_code=400, detail="Conversation ID not found")
+    if not msg or msg.role != MessageRole.USER:
+        raise HTTPException(status_code=400, detail="Invalid user message")
+
+    logger.info(f"Processing composer completion request {request_id} for user {user_id}")
+
+    try:
+        # Store the user message in database first
+        if storage.message:
+            await storage.message.add_message(msg)
+
+        # Direct composer workflow execution
+        from server.handlers.composer_completion import composer_chat_completion
+        
+        return StreamingResponse(
+            composer_chat_completion(user_id, msg.conversation_id, background_tasks),
+            media_type="text/event-stream",
+        )
+
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error in composer completion: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Composer workflow error: {str(e)}",
         ) from e
 
 
