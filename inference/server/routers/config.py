@@ -7,7 +7,7 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 """
 
 from fastapi import APIRouter, HTTPException, Request
-from server.auth import get_user_id
+from server.middleware.auth import get_user_id
 from server.config import logger
 
 # Import storage layer
@@ -31,7 +31,6 @@ async def get_user_config(request: Request) -> UserConfig:
     user_id = get_user_id(request)
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
-
     if not storage.initialized:
         raise HTTPException(status_code=503, detail="Database not initialized")
 

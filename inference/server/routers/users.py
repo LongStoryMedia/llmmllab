@@ -11,7 +11,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
 
 from db import storage
-from server.auth import get_user_id, is_admin
+from server.middleware.auth import get_user_id, is_admin
 
 from models.user import User
 from models.conversation import Conversation

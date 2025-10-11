@@ -13,8 +13,8 @@ import weakref
 from typing import Any, Callable, Dict, List, Optional, Type, cast
 
 from models import Model, ModelProfile, ModelProvider, PipelinePriority
-from .pipelines.base import BasePipelineCore, PipeReturn
 from utils.hardware_manager import hardware_manager
+from .pipelines.base import BasePipelineCore, PipeReturn
 
 
 class _PipelineCacheEntry:

@@ -22,7 +22,7 @@ import asyncio
 import time
 import uuid
 
-from server.auth import verify_token
+from server.middleware.auth import verify_token
 
 router = APIRouter(prefix="/ws", tags=["websockets"])
 

@@ -93,6 +93,7 @@ class NomicEmbedTextPipe(SimpleEmbeddingPipeline):
                             return [v / 255.0 for v in vec]
 
                     self.llm = _HashEmbeddingShim()  # type: ignore
+                    assert self.llm is not None
                     return self.llm
                 else:
                     raise FileNotFoundError(

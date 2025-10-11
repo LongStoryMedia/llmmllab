@@ -63,7 +63,7 @@ from jwt.api_jwk import PyJWK  # Used for JWT key processing
 from fastapi import HTTPException, Request, status
 from fastapi.security import HTTPBearer
 
-from . import config  # Import config for auth settings
+from server import config  # Import config for auth settings
 
 
 # Custom context keys (equivalent to Go's contextKey type)
@@ -279,6 +279,7 @@ class AuthMiddleware:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User ID not found in token",
             )
+
         return result.user_id
 
     async def authenticate(self, request: Request) -> TokenValidationResult:
@@ -286,6 +287,14 @@ class AuthMiddleware:
         Main authentication function
         Equivalent to WithAuth function in Go
         """
+        # Early validation and setup
+        user_id = get_user_id(request)
+        request_id = get_request_id(request)
+
+        # Validate inputs early
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found")
+
         # Get authorization header
         auth_header = request.headers.get("Authorization")
         self.logger.debug(f"Authorization header: {auth_header}")

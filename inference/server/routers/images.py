@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from PIL import Image
 
 from server.config import IMAGE_DIR, logger
-from server.auth import get_user_id, can_access
+from server.middleware.auth import get_user_id, can_access
 
 
 class ImageGenerationRequest(BaseModel):

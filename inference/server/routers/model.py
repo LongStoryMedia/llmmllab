@@ -15,7 +15,7 @@ import json
 from fastapi import APIRouter, HTTPException, Request
 
 import server.config as config
-from server.auth import get_user_id, is_admin
+from server.middleware.auth import get_user_id, is_admin
 from server.config import logger
 from db import storage
 

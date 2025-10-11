@@ -9,14 +9,14 @@ from typing import List, Optional, Tuple
 import torch
 import numpy as np
 from langchain_community.embeddings import LlamaCppEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from models import (
     Model,
     Message,
     ModelProfile,
 )
-from ..llamacpp.base_llamacpp import BaseLlamaCppCore
+from runner.pipelines.llamacpp.base_llamacpp import BaseLlamaCppPipeline
 from langchain_core.tools import BaseTool
 from utils.message import extract_message_text
 
@@ -24,7 +24,7 @@ from utils.message import extract_message_text
 logger = logging.getLogger(__name__)
 
 
-class Qwen3EmbeddingPipe(BaseLlamaCppCore):
+class Qwen3EmbeddingPipe(BaseLlamaCppPipeline):
     """Clean pipeline for Qwen3-Embedding-0.6B model with optimized implementation."""
 
     llm: LlamaCppEmbeddings
@@ -35,8 +35,6 @@ class Qwen3EmbeddingPipe(BaseLlamaCppCore):
         super().__init__(
             model,
             profile,
-            expected_return_type=list,
-            model_size_category="medium",
         )
 
         self.logger = logging.getLogger(__name__)

@@ -49,17 +49,15 @@ from server.routers import chat
 from server.config import CONFIG_DIR, IMAGE_DIR
 from server.routers import (
     images,
-    resources,
     config,
     static,
     websockets,
     users,
 )
-from server.auth import AuthMiddleware
+from server.middleware.auth import AuthMiddleware
 from server.config import API_VERSION
 from db.maintenance import maintenance_service
 from server.cleanup_service import cleanup_service
-from utils.hardware_manager import hardware_manager  # Import hardware manager
 
 # Create required directories if they don't exist
 os.makedirs(IMAGE_DIR, exist_ok=True)
@@ -86,7 +84,6 @@ else:
 async def lifespan(_: FastAPI):
     # Startup: initialize hardware monitoring and cleanup service
     print("Initializing services...")
-    hardware_manager.clear_memory()
     cleanup_service.start()
 
     # Auth middleware is already initialized and stored in app.state
@@ -274,7 +271,6 @@ async def lifespan(_: FastAPI):
             print(f"Error stopping vLLM service: {e}")
 
         cleanup_service.shutdown()
-        hardware_manager.clear_memory(aggressive=True)
 
 
 # Import logging for auth middleware debugging
@@ -402,7 +398,6 @@ app.middleware("http")(db_init_middleware)
 # Include non-versioned routers (for backward compatibility)
 app.include_router(images.router)
 app.include_router(model.router)
-app.include_router(resources.router)
 app.include_router(chat.router)
 app.include_router(config.router)
 app.include_router(static.router)
@@ -420,7 +415,6 @@ app.include_router(db_admin.router)
 version = API_VERSION
 app.include_router(images.router, prefix=f"/{version}")
 app.include_router(model.router, prefix=f"/{version}")
-app.include_router(resources.router, prefix=f"/{version}")
 app.include_router(chat.router, prefix=f"/{version}")
 app.include_router(config.router, prefix=f"/{version}")
 app.include_router(static.router, prefix=f"/{version}")
