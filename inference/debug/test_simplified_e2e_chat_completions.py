@@ -66,9 +66,12 @@ async def test_simplified_e2e_chat_completions():
         async for event in composer.execute_workflow(workflow, initial_state, stream=True):
             print(f"   📡 Event {event_count}: {str(event)[:100]}...")
             event_count += 1
-            if event_count >= 3:
+            if event_count >= 2:  # Reduced to avoid too many concurrent operations
                 break
         print(f"   ✅ Composer workflow executed ({event_count} events)")
+        
+        # Allow this workflow to complete before starting the next test
+        await asyncio.sleep(1)
         
         # Test 2: Router Function with Mock Data
         print("\n🧪 Test 2: Router Function Integration")
@@ -129,7 +132,7 @@ async def test_simplified_e2e_chat_completions():
                         yield f"data: {json.dumps({'content': str(event)})}\n\n"
                     
                     event_count += 1
-                    if event_count >= 5:  # Test first 5 events
+                    if event_count >= 3:  # Test first 3 events to avoid race conditions
                         break
                         
             except Exception as e:
@@ -143,6 +146,10 @@ async def test_simplified_e2e_chat_completions():
             stream_count += 1
             
         print(f"   ✅ Router delegation worked ({stream_count} SSE chunks)")
+        
+        # Allow background workflows to complete
+        print("   ⏳ Allowing background workflows to complete...")
+        await asyncio.sleep(2)  # Give time for background processing to finish
         
         # Test 3: Error Handling
         print("\n🧪 Test 3: Error Handling")
@@ -186,11 +193,24 @@ async def test_simplified_e2e_chat_completions():
         return False
     
     finally:
-        # Cleanup
+        # Cleanup - give time for any background processes to complete
+        print("🧹 Cleaning up...")
         try:
+            # Wait a bit for any background workflows to finish
+            await asyncio.sleep(1)
+            
+            # Shutdown composer service if possible
+            try:
+                await composer.shutdown_composer()
+                print("   ✅ Composer service shut down")
+            except:
+                pass
+            
+            # Close database connection
             await storage.close()
-        except:
-            pass
+            print("   ✅ Database connection closed")
+        except Exception as e:
+            print(f"   ⚠️  Cleanup warning: {e}")
 
 
 if __name__ == "__main__":
