@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS dynamic_tools(
     -- LangChain BaseTool interface fields
     args_schema jsonb, -- JSON schema dict, Pydantic model reference, or null
     return_direct boolean DEFAULT FALSE,
-    verbose boolean DEFAULT FALSE,
     tags text[], -- Array of tag strings
     metadata jsonb DEFAULT '{}', -- Flexible metadata object
     handle_tool_error text, -- Can store boolean, string, or null (serialized)

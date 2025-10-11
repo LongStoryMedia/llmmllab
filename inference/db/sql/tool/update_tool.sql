@@ -9,13 +9,12 @@ SET
     embedding = $7,
     args_schema = $8,
     return_direct = $9,
-    verbose = $10,
-    tags = $11,
-    metadata = $12,
-    handle_tool_error = $13,
-    handle_validation_error = $14,
-    response_format = $15,
-    parameters = $16
+    tags = $10,
+    metadata = $11,
+    handle_tool_error = $12,
+    handle_validation_error = $13,
+    response_format = $14,
+    parameters = $15
 WHERE
     id = $1
     AND user_id = $2
@@ -29,7 +28,6 @@ RETURNING
     embedding,
     args_schema,
     return_direct,
-    verbose,
     tags,
     metadata,
     handle_tool_error,

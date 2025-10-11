@@ -29,19 +29,7 @@ BEGIN
     END IF;
 END $$;
 
--- Add verbose column with default false  
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'dynamic_tools' AND column_name = 'verbose'
-    ) THEN
-        ALTER TABLE dynamic_tools ADD COLUMN verbose boolean DEFAULT false;
-        RAISE NOTICE 'Added verbose column to dynamic_tools table';
-    ELSE
-        RAISE NOTICE 'Column verbose already exists in dynamic_tools table';
-    END IF;
-END $$;
+
 
 -- Add tags column as text array
 DO $$
@@ -126,10 +114,6 @@ BEGIN
     SET return_direct = false 
     WHERE return_direct IS NULL;
     
-    UPDATE dynamic_tools 
-    SET verbose = false 
-    WHERE verbose IS NULL;
-    
     -- Update NULL values to defaults for JSON columns  
     UPDATE dynamic_tools 
     SET metadata = '{}'::jsonb 
@@ -147,11 +131,14 @@ END $$;
 COMMENT ON TABLE dynamic_tools IS 'Dynamic tools table supporting LangChain BaseTool interface with embedding-based semantic search';
 COMMENT ON COLUMN dynamic_tools.args_schema IS 'JSON schema for tool input validation (LangChain BaseTool interface)';
 COMMENT ON COLUMN dynamic_tools.return_direct IS 'Whether tool output should be returned directly to user (LangChain BaseTool interface)';
-COMMENT ON COLUMN dynamic_tools.verbose IS 'Whether tool should log progress information (LangChain BaseTool interface)';
 COMMENT ON COLUMN dynamic_tools.tags IS 'Array of tags for tool categorization (LangChain BaseTool interface)';
 COMMENT ON COLUMN dynamic_tools.metadata IS 'Flexible metadata object for tool information (LangChain BaseTool interface)';
 COMMENT ON COLUMN dynamic_tools.handle_tool_error IS 'Serialized error handling configuration (LangChain BaseTool interface)';
 COMMENT ON COLUMN dynamic_tools.handle_validation_error IS 'Serialized validation error handling configuration (LangChain BaseTool interface)';
 COMMENT ON COLUMN dynamic_tools.response_format IS 'Tool response format: content or content_and_artifact (LangChain BaseTool interface)';
 
-RAISE NOTICE 'Dynamic tools table successfully migrated to support LangChain BaseTool interface';
+-- Final success message
+DO $$
+BEGIN
+    RAISE NOTICE 'Dynamic tools table successfully migrated to support LangChain BaseTool interface';
+END $$;

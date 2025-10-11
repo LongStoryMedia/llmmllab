@@ -52,28 +52,12 @@ log "INFO" "-----------------------------------------------------------" "${GREE
 SERVICE_STATUS_FILE="/tmp/service_status"
 echo "# Service status file - $(date)" > $SERVICE_STATUS_FILE
 
-run_ollama() {
-    log "INFO" "Starting Ollama service..." "${BLUE}"
-    # Use unbuffer to ensure logs are line-buffered for streaming to stdout
-    # Redirect stderr to stdout for all logs to be captured
-    ollama serve 2>&1 | tee /var/log/ollama.log &
-    OLLAMA_PID=$!
-    if [ $? -eq 0 ]; then
-        log "INFO" "Ollama started with PID $OLLAMA_PID" "${GREEN}"
-        echo "ollama:running:$OLLAMA_PID" >> $SERVICE_STATUS_FILE
-        # Wait for Ollama to become available
-        wait_for_service "Ollama" "localhost" 11434 12 5
-    else
-        log "ERROR" "Failed to start Ollama service" "${RED}"
-        echo "ollama:failed:0" >> $SERVICE_STATUS_FILE
-    fi
-}
-
 run_server() {
     log "INFO" "Starting REST API server..." "${BLUE}"
     # This check can be improved to see if the port is already in use
     # Redirect stderr to stdout for all logs to be captured by Kubernetes
-    v "server" python -m uvicorn app:app --host 0.0.0.0 --port "${PORT:-8000}" --reload --timeout-graceful-shutdown 0 2>&1 | tee /var/log/server_api.log &
+    # Change to server directory before running uvicorn to find app.py
+    cd /app/server && v python -m uvicorn app:app --host 0.0.0.0 --port "${PORT:-8000}" --reload --timeout-graceful-shutdown 0 2>&1 | tee /var/log/server_api.log &
     SERVER_PID=$!
     if [ $? -eq 0 ]; then
         log "INFO" "REST API server started on port ${PORT:-8000} with PID $SERVER_PID" "${GREEN}"
@@ -85,20 +69,6 @@ run_server() {
         echo "rest_api:failed:0" >> $SERVICE_STATUS_FILE
     fi
 }
-
-# Start Ollama if not already running
-if curl --silent --output /dev/null "http://localhost:11434"; then
-    log "INFO" "Ollama is already running and available. Skipping startup." "${GREEN}"
-    OLLAMA_PID=$(pgrep -o ollama || echo "0")
-    echo "ollama:running:${OLLAMA_PID}" >> $SERVICE_STATUS_FILE
-else
-    if command -v ollama &> /dev/null; then
-        run_ollama
-    else
-        log "WARNING" "Ollama not installed, skipping Ollama service startup" "${YELLOW}"
-        echo "ollama:missing:0" >> $SERVICE_STATUS_FILE
-    fi
-fi
 
 # Start server if app.py exists
 if [ -f /app/server/app.py ]; then
@@ -151,10 +121,6 @@ monitor_services() {
                     if [ "$pid" -eq "$SERVER_PID" ]; then
                         log "INFO" "Restarting $service..." "${BLUE}"
                         run_server
-                    fi
-                    if [ "$pid" -eq "$OLLAMA_PID" ]; then
-                        log "INFO" "Restarting Ollama service..." "${BLUE}"
-                        run_ollama
                     fi
                 else
                     log "INFO" "$service (PID $pid) is running" "${GREEN}"

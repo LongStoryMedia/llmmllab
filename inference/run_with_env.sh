@@ -4,5 +4,6 @@
 set -e
 
 function v() {
-    ./v.sh "$@"
+    # Use absolute path since this script may be sourced
+    /app/v.sh "$@"
 }
