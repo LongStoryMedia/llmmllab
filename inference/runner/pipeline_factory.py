@@ -12,13 +12,11 @@ from typing import Any, Dict, List, Optional, Type, cast, TypeVar, Union
 from contextlib import contextmanager
 
 
-from utils.hardware_manager import hardware_manager
 from models import (
     Model,
     LoraWeight,
     ModelDetails,
     ModelProfile,
-    ChatResponse,
     ModelProvider,
     CircuitBreakerConfig,
     PipelinePriority,
@@ -27,6 +25,7 @@ from models.default_configs import DEFAULT_CIRCUIT_BREAKER_CONFIG
 from .pipelines.base import BasePipelineCore, PipeReturn, EmbeddingPipeline
 from .pipeline_cache import LocalPipelineCacheManager
 from .pipelines.llamacpp.base_llamacpp import BaseLlamaCppPipeline
+from .utils.hardware_manager import hardware_manager
 
 T = TypeVar("T", bound=PipeReturn)
 

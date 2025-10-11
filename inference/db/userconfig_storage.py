@@ -25,10 +25,10 @@ from models.default_configs import (
     create_default_user_config,
 )
 
-from utils.serialization import serialize_to_json
 
 from db.cache_storage import cache_storage
 from db.db_utils import typed_pool
+from .serialization import serialize_to_json
 
 logger = logging.getLogger(__name__)
 
