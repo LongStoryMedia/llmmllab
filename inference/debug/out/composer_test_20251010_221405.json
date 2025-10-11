@@ -1,0 +1,48 @@
+{
+  "overall_success": false,
+  "execution_time": 9.04591965675354,
+  "workflow_time": 0,
+  "components_passed": 4,
+  "total_components": 7,
+  "results": {
+    "infrastructure_setup": {
+      "success": true,
+      "database_connected": true,
+      "target_model": "qwen3-30b-a3b-q4-k-m"
+    },
+    "composer_initialization": {
+      "success": false,
+      "error": "Neither langchain_classic nor langchain_community SearxSearchWrapper available. Install langchain-community >=0.2.0."
+    },
+    "user_profile_creation": {
+      "success": true,
+      "user_id": "test_composer_user_4f216c7d",
+      "model_profile_id": "472e25b3-4590-447f-b2c9-a87b31c56056",
+      "model_name": "qwen3-30b-a3b-q4-k-m"
+    },
+    "conversation_creation": {
+      "success": true,
+      "conversation_id": 670
+    },
+    "message_creation": {
+      "success": true,
+      "message_id": 2428,
+      "message_length": 318
+    },
+    "workflow_execution": {
+      "success": false,
+      "error": "Neither langchain_classic nor langchain_community SearxSearchWrapper available. Install langchain-community >=0.2.0."
+    },
+    "output_validation": {
+      "success": false,
+      "error": "No assistant responses generated - workflow execution failed",
+      "conversation_valid": true,
+      "model_profile_valid": true,
+      "message_count": 1,
+      "assistant_messages": 0,
+      "response_quality_score": 0
+    }
+  },
+  "entities_created": 0,
+  "entities_cleaned": 0
+}

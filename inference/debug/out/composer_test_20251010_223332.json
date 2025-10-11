@@ -1,0 +1,48 @@
+{
+  "overall_success": false,
+  "execution_time": 6.308872938156128,
+  "workflow_time": 0,
+  "components_passed": 4,
+  "total_components": 7,
+  "results": {
+    "infrastructure_setup": {
+      "success": true,
+      "database_connected": true,
+      "target_model": "qwen3-30b-a3b-q4-k-m"
+    },
+    "composer_initialization": {
+      "success": false,
+      "error": "cannot import name 'WebSearchTool' from 'composer.tools.static.web_search_tool' (/app/composer/tools/static/web_search_tool.py)"
+    },
+    "user_profile_creation": {
+      "success": true,
+      "user_id": "test_composer_user_fbf71de0",
+      "model_profile_id": "7df973a7-0e3f-4a59-ab64-57974d4bbb72",
+      "model_name": "qwen3-30b-a3b-q4-k-m"
+    },
+    "conversation_creation": {
+      "success": true,
+      "conversation_id": 672
+    },
+    "message_creation": {
+      "success": true,
+      "message_id": 2430,
+      "message_length": 318
+    },
+    "workflow_execution": {
+      "success": false,
+      "error": "cannot import name 'WebSearchTool' from 'composer.tools.static.web_search_tool' (/app/composer/tools/static/web_search_tool.py)"
+    },
+    "output_validation": {
+      "success": false,
+      "error": "No assistant responses generated - workflow execution failed",
+      "conversation_valid": true,
+      "model_profile_valid": true,
+      "message_count": 1,
+      "assistant_messages": 0,
+      "response_quality_score": 0
+    }
+  },
+  "entities_created": 0,
+  "entities_cleaned": 0
+}

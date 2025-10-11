@@ -1,0 +1,66 @@
+{
+  "overall_success": false,
+  "execution_time": 15.281465530395508,
+  "workflow_time": 0,
+  "components_passed": 5,
+  "total_components": 7,
+  "results": {
+    "infrastructure_setup": {
+      "success": true,
+      "database_connected": true,
+      "target_model": "qwen3-30b-a3b-q4-k-m"
+    },
+    "composer_initialization": {
+      "success": true,
+      "service_initialized": true,
+      "service_type": "ComposerService"
+    },
+    "user_profile_creation": {
+      "success": true,
+      "user_id": "test_composer_user_baa5d76a",
+      "model_profile_id": "d74997c9-c230-4295-b780-7e40d0e08542",
+      "model_name": "qwen3-30b-a3b-q4-k-m"
+    },
+    "conversation_creation": {
+      "success": true,
+      "conversation_id": 674
+    },
+    "message_creation": {
+      "success": true,
+      "message_id": 2432,
+      "message_length": 318
+    },
+    "workflow_execution": {
+      "success": false,
+      "execution_time": 3.6198723316192627,
+      "response_chunks": 0,
+      "tool_calls_detected": false,
+      "response_length": 0,
+      "workflow_type": "composer_langgraph",
+      "final_response_raw": "",
+      "final_response": "",
+      "validation_errors": [
+        "Encountered 1 workflow error events (first type: workflow_error)",
+        "No response content generated",
+        "No response chunks captured from workflow",
+        "No tool calls were executed during workflow (strict failure)",
+        "Response too short (0 chars), likely incomplete",
+        "No output file path configured",
+        "Workflow ran for 3.6s but generated no output (likely internal error)"
+      ],
+      "tool_availability_correct": false,
+      "dynamic_tool_error_free": true
+    },
+    "output_validation": {
+      "success": false,
+      "error": "No assistant responses generated - workflow execution failed",
+      "conversation_valid": true,
+      "model_profile_valid": true,
+      "message_count": 1,
+      "assistant_messages": 0,
+      "response_quality_score": 0
+    }
+  },
+  "entities_created": 0,
+  "entities_cleaned": 0
+}
