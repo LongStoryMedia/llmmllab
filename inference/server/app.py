@@ -58,7 +58,7 @@ from server.routers import (
 from server.auth import AuthMiddleware
 from server.config import API_VERSION
 from db.maintenance import maintenance_service
-from server.services.cleanup_service import cleanup_service
+from server.cleanup_service import cleanup_service
 from utils.hardware_manager import hardware_manager  # Import hardware manager
 
 # Create required directories if they don't exist
