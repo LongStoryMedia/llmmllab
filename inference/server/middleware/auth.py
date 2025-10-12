@@ -369,11 +369,11 @@ async def get_current_user(request: Request) -> TokenValidationResult:
 # Utility functions for getting auth data from request
 def get_user_id(request: Request) -> Optional[str]:
     """Get user ID from request state"""
-    # If auth is disabled, return a default test user ID
+    # If auth is disabled, return the main user ID that owns existing conversations
     import os
 
     if os.environ.get("DISABLE_AUTH", "").lower() == "true":
-        return "test-user-auth-disabled"
+        return "CgNsc20SBGxkYXA"  # Use the actual user ID that owns existing conversations
 
     if hasattr(request.state, "auth"):
         return request.state.auth.get(ContextKey.USER_ID)

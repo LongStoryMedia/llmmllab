@@ -154,6 +154,20 @@ async def chat_completion(
                                 content = str(last_message.content)
                             
                             if content:
+                                # Save assistant response to database
+                                if storage.message:
+                                    try:
+                                        from models import MessageRole, MessageContent, MessageContentType
+                                        assistant_message = Message(
+                                            conversation_id=conversation_id,
+                                            role=MessageRole.ASSISTANT,
+                                            content=[MessageContent(type=MessageContentType.TEXT, text=content)]
+                                        )
+                                        await storage.message.add_message(assistant_message)
+                                        logger.debug(f"Assistant response stored for conversation {conversation_id}")
+                                    except Exception as storage_error:
+                                        logger.warning(f"Failed to store assistant response: {storage_error}")
+                                
                                 final_response = {
                                     "message": {
                                         "role": "assistant",
