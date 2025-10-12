@@ -93,34 +93,91 @@ async def chat_completion(
                 initial_state = await composer.create_initial_state(user_id, msg.conversation_id)  # type: ignore
 
                 # Execute workflow with streaming
+                response_content = ""
+                done = False
+                
                 async for event in composer.execute_workflow(
                     workflow, initial_state, stream=True
                 ):
-                    # Convert composer events to SSE format
                     if isinstance(event, dict):
-                        # Handle different event types
-                        event_type = event.get("event", "chunk")
-
-                        if event_type == "on_llm_stream":
-                            # Stream token from LLM
-                            chunk = event.get("data", {}).get("chunk", {})
-                            if chunk:
-                                content = (
-                                    chunk.get("content", "")
-                                    if isinstance(chunk, dict)
-                                    else str(chunk)
-                                )
-                                if content:
-                                    yield f"data: {safe_json_serialize({'content': content})}\n\n"
+                        event_type = event.get("event", "")
+                        event_data = event.get("data", {})
+                        
+                        # Handle LangGraph streaming events
+                        if event_type == "on_chat_model_stream":
+                            # Extract streaming content from chat model
+                            chunk = event_data.get("chunk", {})
+                            content = ""
+                            
+                            # Handle different chunk formats
+                            if isinstance(chunk, dict):
+                                content = chunk.get("content", "")
+                            elif hasattr(chunk, 'content'):
+                                content = str(chunk.content)
+                            else:
+                                content = str(chunk) if chunk else ""
+                            
+                            if content:
+                                response_content += content
+                                
+                                # Create ChatResponse format for UI
+                                chat_response = {
+                                    "message": {
+                                        "role": "assistant",
+                                        "content": [{"type": "text", "text": content}]
+                                    },
+                                    "done": False
+                                }
+                                yield f"data: {safe_json_serialize(chat_response)}\n\n"
+                                
                         elif event_type == "on_chain_end":
-                            # End of workflow
-                            yield f"data: {safe_json_serialize({'type': 'done'})}\n\n"
-                        else:
-                            # Other events - pass through (with safe serialization)
-                            yield f"data: {safe_json_serialize(event)}\n\n"
-                    else:
-                        # Handle raw string events
-                        yield f"data: {safe_json_serialize({'content': str(event)})}\n\n"
+                            # Workflow completed - send final response
+                            done = True
+                            
+                            # If we have accumulated content, send it as final message
+                            if response_content:
+                                final_response = {
+                                    "message": {
+                                        "role": "assistant", 
+                                        "content": [{"type": "text", "text": response_content}]
+                                    },
+                                    "done": True
+                                }
+                                yield f"data: {safe_json_serialize(final_response)}\n\n"
+                            
+                            # Check if the final state contains a response we haven't streamed
+                            output = event_data.get("output", {})
+                            if output and isinstance(output, dict) and not response_content:
+                                messages = output.get("messages", [])
+                                if messages and isinstance(messages, list):
+                                    last_message = messages[-1]
+                                    # Handle different message formats
+                                    final_content = ""
+                                    if isinstance(last_message, dict):
+                                        final_content = last_message.get("content", "")
+                                    elif hasattr(last_message, 'content'):
+                                        final_content = str(last_message.content)
+                                    
+                                    if final_content:
+                                        final_response = {
+                                            "message": {
+                                                "role": "assistant",
+                                                "content": [{"type": "text", "text": final_content}]
+                                            },
+                                            "done": True
+                                        }
+                                        yield f"data: {safe_json_serialize(final_response)}\n\n"
+                
+                # If we never got a proper end event, send one
+                if not done:
+                    final_response = {
+                        "message": {
+                            "role": "assistant",
+                            "content": [{"type": "text", "text": response_content or "Response completed."}]
+                        },
+                        "done": True
+                    }
+                    yield f"data: {safe_json_serialize(final_response)}\n\n"
 
             except Exception as e:
                 logger.error(f"Error in composer chat completion: {e}")

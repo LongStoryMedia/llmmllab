@@ -93,9 +93,14 @@ async def lifespan(_: FastAPI):
     print("Auth middleware already initialized and stored in app.state")
 
     # Initialize database connection
-    from db import storage
-    from server.config import DB_CONNECTION_STRING, logger
-    from db.init_db import initialize_database
+    from db import storage  # pylint: disable=import-outside-toplevel
+    from server.config import (  # pylint: disable=import-outside-toplevel
+        DB_CONNECTION_STRING,
+        logger,
+    )
+    from db.init_db import (  # pylint: disable=import-outside-toplevel
+        initialize_database,
+    )
 
     # Build connection string from individual environment variables if not already set
     connection_string = DB_CONNECTION_STRING

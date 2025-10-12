@@ -194,7 +194,6 @@ class ModelProfileStorage:
         async with self.typed_pool.acquire() as conn:
             await conn.execute(
                 self.get_query("modelprofile.create_profile"),
-                profile.id,
                 profile.user_id,
                 profile.name,
                 profile.description,
@@ -203,8 +202,6 @@ class ModelProfileStorage:
                 profile.system_prompt,
                 profile.model_version,
                 profile.type,
-                circuit_breaker_json,
-                gpu_config_json,
             )
 
             # Update the profile with current timestamps (which are set by the database)
@@ -292,7 +289,8 @@ class ModelProfileStorage:
                 else:
                     params_json = "{}"
                 await conn.execute(
-                    self.get_query("modelprofile.create_default_profile"),
+                    self.get_query("modelprofile.upsert_default_profile"),
+                    profile.id,
                     profile.user_id,
                     profile.name,
                     profile.description,
