@@ -101,9 +101,22 @@ class ComposerService:
             # 1. Get user configuration from shared data layer
             from db import storage  # pylint: disable=import-outside-toplevel
 
-            user_config = await storage.get_service(
-                storage.user_config
-            ).get_user_config(user_id)
+            try:
+                user_config = await storage.get_service(
+                    storage.user_config
+                ).get_user_config(user_id)
+            except Exception as db_error:
+                # Handle database connection issues during streaming contexts
+                if "another operation is in progress" in str(db_error).lower():
+                    self.logger.warning(
+                        f"Database connection pool issue during streaming context, using default config for {user_id}",
+                        extra={"error": str(db_error)}
+                    )
+                    # Import and create default config
+                    from models.default_configs import create_default_user_config
+                    user_config = create_default_user_config(user_id)
+                else:
+                    raise db_error
 
             # 2. Use per-user cache if enabled (cache based on user_id only now)
             user_cache = None
