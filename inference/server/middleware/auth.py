@@ -287,13 +287,7 @@ class AuthMiddleware:
         Main authentication function
         Equivalent to WithAuth function in Go
         """
-        # Early validation and setup
-        user_id = get_user_id(request)
-        request_id = get_request_id(request)
-
-        # Validate inputs early
-        if not user_id:
-            raise HTTPException(status_code=401, detail="User ID not found")
+        # Note: user_id will be available after token validation, not before
 
         # Get authorization header
         auth_header = request.headers.get("Authorization")

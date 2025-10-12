@@ -8,9 +8,28 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 """
 
 import json
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
+
+def safe_json_serialize(obj: Any) -> str:
+    """Safely serialize objects to JSON, handling non-serializable types."""
+    def json_serializer(obj):
+        if isinstance(obj, set):
+            return list(obj)  # Convert sets to lists
+        elif hasattr(obj, '__dict__'):
+            return obj.__dict__  # Convert objects to dicts
+        elif hasattr(obj, 'dict') and callable(obj.dict):
+            return obj.dict()  # Handle Pydantic models
+        else:
+            return str(obj)  # Fallback to string representation
+    
+    try:
+        return json.dumps(obj, default=json_serializer, ensure_ascii=False)
+    except Exception as e:
+        # If all else fails, return a safe error representation
+        return json.dumps({"error": f"Serialization failed: {str(e)}", "original_type": str(type(obj))})
+
+from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from models import ChatResponse, Message, MessageRole
 from server.middleware.auth import get_request_id, get_user_id, is_admin
@@ -83,25 +102,33 @@ async def chat_completion(
                                     else str(chunk)
                                 )
                                 if content:
-                                    yield f"data: {json.dumps({'content': content})}\n\n"
+                                    yield f"data: {safe_json_serialize({'content': content})}\n\n"
                         elif event_type == "on_chain_end":
                             # End of workflow
-                            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                            yield f"data: {safe_json_serialize({'type': 'done'})}\n\n"
                         else:
-                            # Other events - pass through
-                            yield f"data: {json.dumps(event)}\n\n"
+                            # Other events - pass through (with safe serialization)
+                            yield f"data: {safe_json_serialize(event)}\n\n"
                     else:
                         # Handle raw string events
-                        yield f"data: {json.dumps({'content': str(event)})}\n\n"
+                        yield f"data: {safe_json_serialize({'content': str(event)})}\n\n"
 
             except Exception as e:
                 logger.error(f"Error in composer chat completion: {e}")
-                error_data = json.dumps({"error": str(e), "type": "error"})
+                error_data = safe_json_serialize({"error": str(e), "type": "error"})
                 yield f"data: {error_data}\n\n"
+            finally:
+                # Always send a final done event to signal stream completion
+                yield f"data: {safe_json_serialize({'type': 'stream_end'})}\n\n"
 
         return StreamingResponse(
             composer_chat_completion(),
             media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # Disable nginx buffer
+            }
         )
 
     except Exception as e:  # noqa: BLE001

@@ -46,6 +46,9 @@ from huggingface_hub import login
 
 from server.routers import model
 from server.routers import chat
+from server.routers import (
+    conversation,
+)  # Import conversation router to register endpoints
 from server.config import CONFIG_DIR, IMAGE_DIR
 from server.routers import (
     images,
