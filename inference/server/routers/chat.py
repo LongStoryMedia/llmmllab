@@ -95,8 +95,7 @@ async def chat_completion(
                 # Create initial state (conversation_id is already validated)
                 initial_state = await composer.create_initial_state(user_id, conversation_id)
 
-                # Execute workflow - since LangGraph astream_events doesn't capture our pipeline streaming,
-                # we'll collect all events and extract the final response from the completed workflow state
+                # Execute workflow and stream events
                 final_state = None
                 async for event in composer.execute_workflow(
                     workflow, initial_state, stream=True
@@ -105,7 +104,10 @@ async def chat_completion(
                         event_type = event.get("event", "")
                         event_data = event.get("data", {})
                         
-                        # Try to capture streaming content if available
+                        # Log all events for debugging
+                        logger.debug(f"Received event: {event_type}, data keys: {list(event_data.keys()) if isinstance(event_data, dict) else type(event_data)}")
+                        
+                        # Try to capture streaming content from various event types
                         if event_type == "on_chat_model_stream":
                             chunk = event_data.get("chunk", {})
                             content = ""
@@ -128,6 +130,27 @@ async def chat_completion(
                         elif event_type == "on_chain_end":
                             # Capture final state for response extraction
                             final_state = event_data.get("output", {})
+                            
+                        # Also try to extract streaming content from other event types
+                        elif event_type in ["on_chain_stream", "on_tool_end", "on_chain_start"]:
+                            # Look for streaming content in various places
+                            output = event_data.get("output", {})
+                            if isinstance(output, dict):
+                                # Check for message content
+                                messages = output.get("messages", [])
+                                if messages and isinstance(messages, list):
+                                    for msg in messages:
+                                        if isinstance(msg, dict) and msg.get("type") == "ai":
+                                            content = msg.get("content", "")
+                                            if content and isinstance(content, str):
+                                                chat_response = {
+                                                    "message": {
+                                                        "role": "assistant",
+                                                        "content": [{"type": "text", "text": content}]
+                                                    },
+                                                    "done": False
+                                                }
+                                                yield f"data: {safe_json_serialize(chat_response)}\n\n"
                 
                 # Extract final response from workflow state
                 if final_state and isinstance(final_state, dict):
