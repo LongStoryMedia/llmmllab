@@ -399,6 +399,12 @@ def get_user_claims(request: Request) -> Optional[Dict[str, Any]]:
 
 def is_admin(request: Request) -> bool:
     """Check if current user is admin"""
+    # If auth is disabled, return True for admin access
+    import os
+
+    if os.environ.get("DISABLE_AUTH", "").lower() == "true":
+        return True
+
     if hasattr(request.state, "auth"):
         return request.state.auth.get(ContextKey.IS_ADMIN, False)
     return False
