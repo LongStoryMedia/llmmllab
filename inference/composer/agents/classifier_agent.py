@@ -173,7 +173,7 @@ class ClassifierAgent:
 You are an expert intent classification system. Analyze the user request and output ONLY JSON.
 
 Enumerations (must use exactly these values where applicable):
-    primary_intent: chat | research | creative | technical | summarization | analysis | tool_use | memory | embedding
+    primary_intent: general | research | engineering | creative | image_generation | image_refinement
     complexity_level: TRIVIAL | SIMPLE | MODERATE | COMPLEX | SPECIALIZED
     required_capabilities (array, choose relevant): basic_math, text_processing, information_retrieval, conversation_memory, web_search, summarization, reasoning, general_knowledge, api_integration, async_processing, file_manipulation, data_processing, image_processing, audio_processing, database_access, network_communication
     computational_requirements (array, choose relevant): high_memory, gpu_acceleration, parallel_processing, real_time_processing, large_data_handling, complex_reasoning, multi_modal_processing, external_api_calls, file_operations, database_operations

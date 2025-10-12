@@ -67,8 +67,9 @@ async def chat_completion(
 
     try:
         # Store the user message in database first
-        if storage.message:
-            await storage.message.add_message(msg)
+        # TODO: Fix connection pool concurrency issue
+        # if storage.message:
+        #     await storage.message.add_message(msg)
 
         # Direct composer workflow orchestration
         async def composer_chat_completion() -> AsyncGenerator[str, None]:

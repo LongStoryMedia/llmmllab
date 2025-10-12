@@ -24,6 +24,9 @@ class ConversationStorage:
         self, user_id: str, title: str = "New conversation"
     ) -> Optional[int]:
         async with self.typed_pool.acquire() as conn:
+            # Ensure the user exists before creating the conversation
+            await conn.execute(self.get_query("user.ensure_user"), user_id)
+            
             row = await conn.fetchrow(
                 self.get_query("conversation.create_conversation"), user_id, title
             )
