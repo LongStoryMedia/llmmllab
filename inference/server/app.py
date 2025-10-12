@@ -39,6 +39,8 @@ import os
 
 # Enable auth bypass for testing
 os.environ['DISABLE_AUTH'] = 'true'
+# Set test user ID to match existing conversation owner
+os.environ['TEST_USER_ID'] = 'CgNsc20SBGxkYXA'
 
 from contextlib import asynccontextmanager
 
