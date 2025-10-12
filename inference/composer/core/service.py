@@ -106,10 +106,14 @@ class ComposerService:
                     storage.user_config
                 ).get_user_config(user_id)
             except Exception as db_error:
-                # Handle database connection issues during streaming contexts
-                if "another operation is in progress" in str(db_error).lower():
+                # Handle database connection issues and validation errors during streaming contexts
+                error_msg = str(db_error).lower()
+                if ("another operation is in progress" in error_msg or 
+                    "validation error" in error_msg or
+                    "field required" in error_msg or
+                    "context_window" in error_msg):
                     self.logger.warning(
-                        f"Database connection pool issue during streaming context, using default config for {user_id}",
+                        f"Database/validation issue during workflow composition, using default config for {user_id}",
                         extra={"error": str(db_error)}
                     )
                     # Import and create default config

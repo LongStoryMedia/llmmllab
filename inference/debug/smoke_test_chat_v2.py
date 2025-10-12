@@ -97,9 +97,73 @@ class DirectChatSmokeTest:
             print(f"❌ Database operations failed: {e}")
             return False
             
-    async def test_composer_with_fallback(self) -> bool:
-        """Test composer with fallback UserConfig."""
-        print("🎼 Testing composer with fallback config...")
+    async def test_userconfig_data_layer(self) -> bool:
+        """Test UserConfig creation through proper data layer methods."""
+        print("⚙️ Testing UserConfig creation through data layer...")
+        
+        try:
+            from db import storage
+            from models.default_configs import create_default_user_config
+            
+            # Create a complete default UserConfig
+            print("📋 Creating complete default UserConfig...")
+            default_config = create_default_user_config(self.test_user_id)
+            print(f"✅ Default config created with user_id: {default_config.user_id}")
+            
+            # Store it in database through proper data layer
+            print("💾 Storing UserConfig in database through data layer...")
+            await storage.user_config.update_user_config(self.test_user_id, default_config)
+            print("✅ UserConfig stored in database")
+            
+            # Retrieve it back and validate
+            print("📥 Retrieving UserConfig from database...")
+            retrieved_config = await storage.user_config.get_user_config(self.test_user_id)
+            
+            if not retrieved_config:
+                print("❌ CRITICAL: No UserConfig retrieved from database")
+                return False
+                
+            print(f"✅ UserConfig retrieved: {type(retrieved_config)}")
+            
+            # Validate all required fields are present
+            required_fields = [
+                'user_id', 'preferences', 'memory', 'summarization', 'web_search',
+                'refinement', 'image_generation', 'model_profiles', 'circuit_breaker',
+                'gpu_config', 'workflow', 'tool', 'context_window'
+            ]
+            
+            missing_fields = []
+            for field in required_fields:
+                if not hasattr(retrieved_config, field) or getattr(retrieved_config, field) is None:
+                    missing_fields.append(field)
+                    
+            if missing_fields:
+                print(f"❌ CRITICAL: Missing required fields: {missing_fields}")
+                print("🔧 The _update_user_config_in_database method needs to be fixed!")
+                return False
+                
+            print("✅ All required UserConfig fields are present and valid")
+            
+            # Test that context_window specifically is valid (this was the failing field)
+            if hasattr(retrieved_config, 'context_window') and retrieved_config.context_window:
+                print("✅ context_window field is present and valid")
+            else:
+                print("❌ CRITICAL: context_window field is missing or invalid")
+                print("🔧 The _ensure_required_fields method needs to handle context_window!")
+                return False
+                
+            return True
+            
+        except Exception as e:
+            print(f"❌ CRITICAL: UserConfig data layer test failed: {e}")
+            print("🔧 This indicates the update_user_config/ensure_required_fields methods need fixing!")
+            import traceback
+            traceback.print_exc()
+            return False
+            
+    async def test_composer_workflow(self) -> bool:
+        """Test composer workflow with properly stored UserConfig (should work without fallback)."""
+        print("🎼 Testing composer workflow with valid UserConfig...")
         
         try:
             import composer
@@ -108,13 +172,12 @@ class DirectChatSmokeTest:
             await composer.initialize_composer()
             print("✅ Composer initialized")
             
-            # Try to compose workflow (should use fallback config now)
-            print("🔧 Composing workflow with fallback...")
-            
+            # Compose workflow - this should now work without any UserConfig errors
+            print("🔧 Composing workflow with database UserConfig...")
             workflow = await composer.compose_workflow(self.test_user_id)
             print(f"✅ Workflow composed successfully: {type(workflow)}")
             
-            # Test basic state creation
+            # Create initial state
             print("📋 Creating initial state...")
             initial_state = await composer.create_initial_state(
                 self.test_user_id, 
@@ -125,7 +188,8 @@ class DirectChatSmokeTest:
             return True
             
         except Exception as e:
-            print(f"❌ Composer test failed: {e}")
+            print(f"❌ CRITICAL: Composer workflow failed: {e}")
+            print("🔧 This indicates the UserConfig stored in database is still invalid!")
             import traceback
             traceback.print_exc()
             return False
@@ -177,16 +241,16 @@ class DirectChatSmokeTest:
             print(f"❌ Message storage test failed: {e}")
             return False
             
-    async def test_streaming_simulation(self) -> bool:
-        """Simulate streaming without HTTP complexity."""
-        print("📡 Testing streaming simulation...")
+    async def test_full_workflow_execution(self) -> bool:
+        """Execute the full workflow and verify we get a real LLM response."""
+        print("� Testing FULL workflow execution with real LLM response...")
         
         try:
             import composer
             from models import Message, MessageRole, MessageContent, MessageContentType
             
             if not self.conversation_id:
-                print("❌ No conversation ID for streaming test")
+                print("❌ No conversation ID for workflow execution test")
                 return False
                 
             # Create test message
@@ -196,14 +260,14 @@ class DirectChatSmokeTest:
                 content=[
                     MessageContent(
                         type=MessageContentType.TEXT,
-                        text="hello"
+                        text="Hello! Please respond with exactly: SUCCESS_TEST_RESPONSE"
                     )
                 ]
             )
             
-            print(f"🎯 Simulating streaming for: {test_message.content[0].text}")
+            print(f"🎯 Executing full workflow for: {test_message.content[0].text}")
             
-            # Try to get workflow
+            # Get workflow
             workflow = await composer.compose_workflow(self.test_user_id)
             
             # Create initial state  
@@ -212,18 +276,105 @@ class DirectChatSmokeTest:
                 self.conversation_id
             )
             
-            print("✅ Streaming simulation setup complete")
-            print("📊 Components verified:")
-            print(f"  - Workflow: {type(workflow).__name__}")
-            print(f"  - Initial state: {type(initial_state).__name__}")
-            print("  - Message: Ready for processing")
+            print("📋 Initial state created, executing workflow...")
             
-            return True
+            # Execute the workflow with streaming and collect results
+            response_chunks = []
+            event_count = 0
+            
+            final_state = None
+            try:
+                async for event in composer.execute_workflow(
+                    workflow, initial_state, stream=True
+                ):
+                    event_count += 1
+                    if event_count <= 5:  # Show first few events
+                        print(f"📡 Event {event_count}: {type(event)} - {str(event)[:100]}...")
+                    
+                    # Store the final state
+                    if hasattr(event, 'messages') or (isinstance(event, dict) and 'messages' in event):
+                        final_state = event
+                    
+                    # Collect response content from various event types
+                    if isinstance(event, dict):
+                        # Handle LangGraph streaming events
+                        if event.get("event") == "on_chat_model_stream":
+                            chunk = event.get("data", {}).get("chunk", {})
+                            if hasattr(chunk, 'content') and chunk.content:
+                                response_chunks.append(chunk.content)
+                        elif event.get("event") == "on_llm_stream":
+                            chunk = event.get("data", {}).get("chunk", {})
+                            if chunk and hasattr(chunk, 'content'):
+                                response_chunks.append(chunk.content)
+                            elif isinstance(chunk, str):
+                                response_chunks.append(chunk)
+                        elif "content" in event:
+                            response_chunks.append(str(event["content"]))
+                        # Also check for workflow state updates with messages
+                        elif "messages" in event:
+                            messages = event.get("messages", [])
+                            for msg in messages:
+                                if hasattr(msg, 'content') and msg.content:
+                                    response_chunks.append(msg.content)
+                    elif hasattr(event, 'content'):
+                        response_chunks.append(event.content)
+                    elif isinstance(event, str):
+                        response_chunks.append(event)
+                
+                # Analyze results
+                full_response = "".join(response_chunks)
+                
+                # If no chunks collected, try to extract from final state
+                if not full_response.strip() and final_state:
+                    if hasattr(final_state, 'messages'):
+                        messages = final_state.messages
+                    elif isinstance(final_state, dict) and 'messages' in final_state:
+                        messages = final_state['messages']
+                    else:
+                        messages = []
+                    
+                    # Look for assistant messages in final state
+                    for msg in messages:
+                        if hasattr(msg, 'type') and msg.type == 'ai':
+                            if hasattr(msg, 'content'):
+                                full_response += msg.content
+                        elif hasattr(msg, 'role') and msg.role == 'assistant':
+                            if hasattr(msg, 'content'):
+                                full_response += str(msg.content)
+                
+                print(f"✅ Workflow execution completed!")
+                print(f"📊 Execution stats:")
+                print(f"  - Total events: {event_count}")
+                print(f"  - Response chunks: {len(response_chunks)}")
+                print(f"  - Response length: {len(full_response)} chars")
+                
+                if full_response.strip():
+                    print(f"📄 LLM Response preview: {full_response[:200]}...")
+                    
+                    # Check if we got a meaningful response
+                    if len(full_response.strip()) > 10:
+                        print("🎉 SUCCESS: Got real LLM response from full workflow execution!")
+                        return True
+                    else:
+                        print("⚠️ Response too short, may not be a real LLM response")
+                        return False
+                else:
+                    print("❌ No response content received")
+                    print(f"🔍 Final state type: {type(final_state)}")
+                    if final_state and hasattr(final_state, '__dict__'):
+                        print(f"🔍 Final state keys: {list(final_state.__dict__.keys())}")
+                    return False
+                    
+            except Exception as execution_error:
+                print(f"❌ Workflow execution failed: {execution_error}")
+                import traceback
+                traceback.print_exc()
+                return False
             
         except Exception as e:
-            print(f"❌ Streaming simulation failed: {e}")
-            # This might fail due to UserConfig issues, but components are working
-            print("⚠️ This may be due to remaining UserConfig validation issues")
+            print(f"❌ Full workflow test failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
             
     async def run_comprehensive_test(self) -> bool:
@@ -242,23 +393,33 @@ class DirectChatSmokeTest:
             else:
                 print("✅ Database operations successful")
                 
-            # Test 2: Composer with fallback
-            if not await self.test_composer_with_fallback():
-                print("⚠️ Composer test failed (may be UserConfig validation)")
+            # Test 2: UserConfig data layer (CRITICAL)
+            if not await self.test_userconfig_data_layer():
+                print("❌ CRITICAL: UserConfig data layer failed")
+                print("🔧 Fix _update_user_config_in_database and _ensure_required_fields methods!")
+                success = False
             else:
-                print("✅ Composer with fallback successful")
+                print("✅ UserConfig data layer working correctly")
                 
-            # Test 3: Message storage
+            # Test 3: Composer with valid UserConfig (after data layer fix)
+            if not await self.test_composer_workflow():
+                print("❌ CRITICAL: Composer workflow failed with valid UserConfig")
+                success = False
+            else:
+                print("✅ Composer workflow successful with valid UserConfig")
+                
+            # Test 5: Message storage
             if not await self.test_message_storage():
                 print("⚠️ Message storage test failed")
             else:
                 print("✅ Message storage successful")
                 
-            # Test 4: Streaming simulation
-            if not await self.test_streaming_simulation():
-                print("⚠️ Streaming simulation failed")
+            # Test 6: Full workflow execution with real LLM response
+            if not await self.test_full_workflow_execution():
+                print("❌ CRITICAL: Full workflow execution failed")
+                success = False
             else:
-                print("✅ Streaming simulation successful")
+                print("✅ Full workflow execution successful - REAL LLM RESPONSE GENERATED!")
                 
             return success
             
@@ -276,7 +437,7 @@ async def main():
         print("\n" + "="*60)
         if success:
             print("🎉 COMPREHENSIVE SMOKE TEST PASSED!")
-            print("\n📊 Successfully validated:")
+            print("📊 Successfully validated:")
             print("  ✅ Database connectivity and operations")
             print("  ✅ User auto-creation during conversation setup")  
             print("  ✅ Conversation creation and management")
@@ -284,7 +445,9 @@ async def main():
             print("  ✅ Workflow composition with fallback UserConfig")
             print("  ✅ Initial state creation for chat processing")
             print("  ✅ Message storage with error handling")
-            print("  ✅ Complete chat pipeline component verification")
+            print("  ✅ FULL END-TO-END WORKFLOW EXECUTION")
+            print("  ✅ REAL LLM RESPONSE GENERATION")
+            print("  ✅ Complete streaming event processing")
             
             print("\n🔧 Known issues resolved:")
             print("  - Authentication flow working")

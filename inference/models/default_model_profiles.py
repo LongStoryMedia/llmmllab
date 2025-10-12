@@ -65,6 +65,7 @@ DEFAULT_TEXT_TO_IMAGE_MODEL = "black-forest-labs-flux.1-dev"
 DEFAULT_IMAGE_TO_IMAGE_MODEL = "black-forest-labs-flux.1-kontext-dev"
 DEFAULT_TEXT_TO_EMBEDDINGS_MODEL = "nomic-embed-text-v2"
 DEFAULT_SUMMARIZATION_MODEL = "llama-chat-summary-3_2-3b-q5-k-m"
+DEFAULT_ANALYSIS_MODEL = "qwen3-4b-ud-q6-k-xl"
 
 # Define default model profiles
 DEFAULT_PRIMARY_PROFILE = ModelProfile(
@@ -304,7 +305,7 @@ DEFAULT_ANALYSIS_PROFILE = ModelProfile(
     name="Analysis (Default)",
     type=MODEL_PROFILE_TYPE_ANALYSIS,
     description="Profile for detailed analysis of text.",
-    model_name=DEFAULT_SUMMARIZATION_MODEL,
+    model_name=DEFAULT_ANALYSIS_MODEL,
     parameters=ModelParameters(
         num_ctx=40960,
         repeat_last_n=-1,
