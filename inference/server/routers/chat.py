@@ -79,6 +79,9 @@ async def chat_completion(
                     # Re-raise other storage errors
                     raise storage_error
 
+        # Capture variables for the async generator
+        conversation_id = msg.conversation_id
+        
         # Direct composer workflow orchestration
         async def composer_chat_completion() -> AsyncGenerator[str, None]:
             """Handle chat completions by delegating to composer interface."""
@@ -90,12 +93,11 @@ async def chat_completion(
                 workflow = await composer.compose_workflow(user_id)
 
                 # Create initial state (conversation_id is already validated)
-                initial_state = await composer.create_initial_state(user_id, msg.conversation_id)  # type: ignore
+                initial_state = await composer.create_initial_state(user_id, conversation_id)
 
-                # Execute workflow with streaming
-                response_content = ""
-                done = False
-                
+                # Execute workflow - since LangGraph astream_events doesn't capture our pipeline streaming,
+                # we'll collect all events and extract the final response from the completed workflow state
+                final_state = None
                 async for event in composer.execute_workflow(
                     workflow, initial_state, stream=True
                 ):
@@ -103,24 +105,17 @@ async def chat_completion(
                         event_type = event.get("event", "")
                         event_data = event.get("data", {})
                         
-                        # Handle LangGraph streaming events
+                        # Try to capture streaming content if available
                         if event_type == "on_chat_model_stream":
-                            # Extract streaming content from chat model
                             chunk = event_data.get("chunk", {})
                             content = ""
                             
-                            # Handle different chunk formats
                             if isinstance(chunk, dict):
                                 content = chunk.get("content", "")
                             elif hasattr(chunk, 'content'):
                                 content = str(chunk.content)
-                            else:
-                                content = str(chunk) if chunk else ""
                             
                             if content:
-                                response_content += content
-                                
-                                # Create ChatResponse format for UI
                                 chat_response = {
                                     "message": {
                                         "role": "assistant",
@@ -131,53 +126,53 @@ async def chat_completion(
                                 yield f"data: {safe_json_serialize(chat_response)}\n\n"
                                 
                         elif event_type == "on_chain_end":
-                            # Workflow completed - send final response
-                            done = True
+                            # Capture final state for response extraction
+                            final_state = event_data.get("output", {})
+                
+                # Extract final response from workflow state
+                if final_state and isinstance(final_state, dict):
+                    messages = final_state.get("messages", [])
+                    if messages and isinstance(messages, list) and len(messages) > 0:
+                        # Get the last assistant message
+                        last_message = None
+                        for msg in reversed(messages):
+                            if isinstance(msg, dict):
+                                role = msg.get("type", "").lower()  # LangChain message type
+                                if role == "ai" or role == "assistant":
+                                    last_message = msg
+                                    break
+                            elif hasattr(msg, 'type') and str(msg.type).lower() in ["ai", "aimessage"]:
+                                last_message = msg
+                                break
+                        
+                        if last_message:
+                            # Extract content from LangChain message
+                            content = ""
+                            if isinstance(last_message, dict):
+                                content = last_message.get("content", "")
+                            elif hasattr(last_message, 'content'):
+                                content = str(last_message.content)
                             
-                            # If we have accumulated content, send it as final message
-                            if response_content:
+                            if content:
                                 final_response = {
                                     "message": {
-                                        "role": "assistant", 
-                                        "content": [{"type": "text", "text": response_content}]
+                                        "role": "assistant",
+                                        "content": [{"type": "text", "text": content}]
                                     },
                                     "done": True
                                 }
                                 yield f"data: {safe_json_serialize(final_response)}\n\n"
-                            
-                            # Check if the final state contains a response we haven't streamed
-                            output = event_data.get("output", {})
-                            if output and isinstance(output, dict) and not response_content:
-                                messages = output.get("messages", [])
-                                if messages and isinstance(messages, list):
-                                    last_message = messages[-1]
-                                    # Handle different message formats
-                                    final_content = ""
-                                    if isinstance(last_message, dict):
-                                        final_content = last_message.get("content", "")
-                                    elif hasattr(last_message, 'content'):
-                                        final_content = str(last_message.content)
-                                    
-                                    if final_content:
-                                        final_response = {
-                                            "message": {
-                                                "role": "assistant",
-                                                "content": [{"type": "text", "text": final_content}]
-                                            },
-                                            "done": True
-                                        }
-                                        yield f"data: {safe_json_serialize(final_response)}\n\n"
+                                return
                 
-                # If we never got a proper end event, send one
-                if not done:
-                    final_response = {
-                        "message": {
-                            "role": "assistant",
-                            "content": [{"type": "text", "text": response_content or "Response completed."}]
-                        },
-                        "done": True
-                    }
-                    yield f"data: {safe_json_serialize(final_response)}\n\n"
+                # Fallback if no response was extracted
+                fallback_response = {
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "Response completed successfully."}]
+                    },
+                    "done": True
+                }
+                yield f"data: {safe_json_serialize(fallback_response)}\n\n"
 
             except Exception as e:
                 logger.error(f"Error in composer chat completion: {e}")

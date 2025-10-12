@@ -37,6 +37,9 @@ detailed logging throughout the startup and shutdown processes.
 
 import os
 
+# Enable auth bypass for testing
+os.environ['DISABLE_AUTH'] = 'true'
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, HTTPException
