@@ -2,7 +2,6 @@ import { styled } from '@mui/material';
 import { memo, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import ChatContainer from '../components/Chat/ChatContainer';
-import ChatBubble from '../components/Chat/ChatBubble';
 import FloatingNotifications from '../components/Chat/FloatingNotifications';
 import { useChat } from '../chat';
 import { Message } from '../types/Message';
@@ -50,23 +49,10 @@ const ChatPage = memo(() => {
 
   return (
     <ChatPageContainer>
-      <ChatContainer>
-        {/* Display all existing messages */}
-        {messages.map((msg, index) => (
-          <ChatBubble
-            key={`msg-${index}`}
-            message={msg}
-          />
-        ))}
-
-        {/* Only display in-progress response if it's not already in messages */}
-        {(isTyping || isLoading || response) && (
-          <ChatBubble
-            key="streaming-response"
-            message={currentMessage}
-          />
-        )}
-      </ChatContainer>
+      <ChatContainer
+        messages={messages}
+        streamingMessage={(isTyping || isLoading || response) ? currentMessage : undefined}
+      />
 
       <ChatInput />
 

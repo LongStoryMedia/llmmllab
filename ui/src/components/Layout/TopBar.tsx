@@ -39,7 +39,7 @@ const TopBar = ({ onMenuClick }: { onMenuClick?: () => void }) => {
               fontWeight: 300
             }}
           >
-            LLLab
+            llmmllab
           </Typography>
           {/* <Icon size={80}/>
           <Title speed={15} size={100}/> */}

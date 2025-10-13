@@ -7,6 +7,7 @@ import rehypeKatex from 'rehype-katex';
 import { Prism as SyntaxHighlighter, SyntaxHighlighterProps } from 'react-syntax-highlighter';
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import CopyButton from './CopyButton';
+import LazyImage from './LazyImage';
 import 'katex/dist/katex.min.css';
 import useColorMode from '../../hooks/useColorMode';
 
@@ -118,17 +119,14 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ children, sanitizeF
             </Box>
           );
         },
-        img({ node, alt, src, ...props }) {
+        img({ alt, src }) {
           return (
             <Box sx={{ textAlign: 'center', my: theme.spacing(2) }}>
-              <img
-                src={src}
-                alt={alt}
-                style={{
-                  maxWidth: '100%',
-                  borderRadius: theme.shape.borderRadius
-                }}
-                {...props}
+              <LazyImage
+                src={src || ''}
+                alt={alt || 'Image'}
+                maxWidth="100%"
+                maxHeight="400px"
               />
             </Box>
           );

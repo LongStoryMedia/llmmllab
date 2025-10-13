@@ -1,10 +1,13 @@
 import React, { useEffect, memo } from 'react';
 import { styled } from '@mui/material';
-import useScrollContainerRef from '../../hooks/useScrollContainerRef';
 import { useChat } from '../../chat';
+import { useContainerDimensions } from '../../hooks/useContainerDimensions';
+import VirtualizedChatList from './VirtualizedChatList';
+import { Message } from '../../types/Message';
 
 interface ChatContainerProps {
-  children: React.ReactNode;
+  messages: Message[];
+  streamingMessage?: Message;
 }
 
 const ChatContainerWrapper = styled('div')({
@@ -15,20 +18,9 @@ const ChatContainerWrapper = styled('div')({
   minHeight: 0 // Allow flex child to shrink
 });
 
-const ScrollableContent = styled('div')(({ theme }) => ({
-  flex: 1,
-  overflowY: 'auto',
-  overflowX: 'hidden',
-  padding: theme.spacing(2),
-  paddingBottom: '120px', // Space for fixed input
-  display: 'flex',
-  flexDirection: 'column',
-  gap: theme.spacing(1)
-}));
-
-const ChatContainer: React.FC<ChatContainerProps> = memo(({ children }) => {
+const ChatContainer: React.FC<ChatContainerProps> = memo(({ messages, streamingMessage }) => {
   const { isTyping, cancelRequest: abortGeneration } = useChat();
-  const scrollContainerRef = useScrollContainerRef();
+  const { ref: containerRef, height } = useContainerDimensions();
 
   useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
@@ -44,25 +36,15 @@ const ChatContainer: React.FC<ChatContainerProps> = memo(({ children }) => {
     };
   }, [isTyping, abortGeneration]);
 
-  // Auto-scroll when content changes
-  useEffect(() => {
-    if (scrollContainerRef.current) {
-      const scrollElement = scrollContainerRef.current;
-      const shouldScroll = scrollElement.scrollTop + scrollElement.clientHeight >= scrollElement.scrollHeight - 100;
-      
-      if (shouldScroll) {
-        setTimeout(() => {
-          scrollElement.scrollTop = scrollElement.scrollHeight;
-        }, 100);
-      }
-    }
-  }, [children, scrollContainerRef]);
-
   return (
-    <ChatContainerWrapper>
-      <ScrollableContent ref={scrollContainerRef}>
-        {children}
-      </ScrollableContent>
+    <ChatContainerWrapper ref={containerRef}>
+      {height > 0 && (
+        <VirtualizedChatList
+          messages={messages}
+          streamingMessage={streamingMessage}
+          containerHeight={height}
+        />
+      )}
     </ChatContainerWrapper>
   );
 });
