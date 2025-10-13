@@ -1,11 +1,30 @@
 import React, { useEffect, memo } from 'react';
-import { Box} from '@mui/material';
+import { styled } from '@mui/material';
 import useScrollContainerRef from '../../hooks/useScrollContainerRef';
 import { useChat } from '../../chat';
 
 interface ChatContainerProps {
   children: React.ReactNode;
 }
+
+const ChatContainerWrapper = styled('div')({
+  flex: 1,
+  display: 'flex',
+  flexDirection: 'column',
+  overflow: 'hidden',
+  minHeight: 0 // Allow flex child to shrink
+});
+
+const ScrollableContent = styled('div')(({ theme }) => ({
+  flex: 1,
+  overflowY: 'auto',
+  overflowX: 'hidden',
+  padding: theme.spacing(2),
+  paddingBottom: '120px', // Space for fixed input
+  display: 'flex',
+  flexDirection: 'column',
+  gap: theme.spacing(1)
+}));
 
 const ChatContainer: React.FC<ChatContainerProps> = memo(({ children }) => {
   const { isTyping, cancelRequest: abortGeneration } = useChat();
@@ -25,28 +44,26 @@ const ChatContainer: React.FC<ChatContainerProps> = memo(({ children }) => {
     };
   }, [isTyping, abortGeneration]);
 
+  // Auto-scroll when content changes
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      const scrollElement = scrollContainerRef.current;
+      const shouldScroll = scrollElement.scrollTop + scrollElement.clientHeight >= scrollElement.scrollHeight - 100;
+      
+      if (shouldScroll) {
+        setTimeout(() => {
+          scrollElement.scrollTop = scrollElement.scrollHeight;
+        }, 100);
+      }
+    }
+  }, [children, scrollContainerRef]);
+
   return (
-    <Box
-      sx={{
-        flexGrow: 1,
-        overflow: 'auto',
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%'
-      }} 
-    >
-      <Box 
-        sx={{
-          flex: 1, 
-          p: 2, 
-          overflowY: 'auto',
-          pb: 8 // Account for input area
-        }}
-        ref={scrollContainerRef}
-      >
+    <ChatContainerWrapper>
+      <ScrollableContent ref={scrollContainerRef}>
         {children}
-      </Box>
-    </Box>
+      </ScrollableContent>
+    </ChatContainerWrapper>
   );
 });
 

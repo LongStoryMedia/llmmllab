@@ -1,5 +1,5 @@
-import { Box } from '@mui/material';
-import { memo, useEffect, useRef, useLayoutEffect, useState } from 'react';
+import { styled } from '@mui/material';
+import { memo, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import ChatContainer from '../components/Chat/ChatContainer';
 import ChatBubble from '../components/Chat/ChatBubble';
@@ -8,31 +8,23 @@ import { useChat } from '../chat';
 import { Message } from '../types/Message';
 import ChatInput from '../components/Chat/ChatInput';
 
+const ChatPageContainer = styled('div')({
+  display: 'flex',
+  flexDirection: 'column',
+  height: '100vh',
+  position: 'relative',
+  overflow: 'hidden'
+});
+
 const ChatPage = memo(() => {
   const { messages, response, isTyping, isLoading, currentConversation, selectConversation, currentObserverMessages } = useChat();
   const { conversationId } = useParams();
-  const containerRef = useRef<HTMLBodyElement>(document.body as HTMLBodyElement);
-  const shouldScrollToBottom = useRef<boolean>(true);
-  const lastScrollTime = useRef<number>(0);
   const [currentMessage, setCurrentMessage] = useState<Message>({
     role: 'assistant' as const,
     content: response ? [{ type: 'text', text: response }] : [],
     id: (messages[messages.length - 1]?.id ?? 0) + 1,
     conversation_id: conversationId ? parseInt(conversationId, 10) : currentConversation?.id || 0
   });
-
-
-  // Throttle scroll events to improve performance
-  const handleScroll = () => {
-    const now = Date.now();
-    // Only process scroll events every 100ms
-    if (now - lastScrollTime.current > 250) {
-      // If user scrolls up more than 10px from bottom, disable auto-scrolling
-      const isAtBottom = containerRef.current.scrollHeight - (window.scrollY + window.innerHeight) < 20;
-      shouldScrollToBottom.current = isAtBottom;
-      lastScrollTime.current = now;
-    }
-  };
 
   // Load conversation from URL parameter when component mounts or conversationId changes
   useEffect(() => {
@@ -42,62 +34,21 @@ const ChatPage = memo(() => {
         // Only call selectConversation if the conversationId is different from the currentConversation.id
         if (!currentConversation || currentConversation.id !== numericId) {
           selectConversation(numericId);
-          shouldScrollToBottom.current = true;
         }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, currentConversation]);
 
-  // Track user scroll position
   useEffect(() => {
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  // Scroll to bottom whenever messages change or streaming occurs - with priority timing
-  useLayoutEffect(() => {
-    if (!shouldScrollToBottom.current) {
-      return;
-    }
-
-    const scrollToBottom = () => {
-      if (containerRef.current) {
-        window.scrollTo(0, containerRef.current.scrollHeight);
-      }
-    };
-
-    // Immediate scroll
-    scrollToBottom();
-
-    // Additional scroll after a short delay to ensure content is rendered
-    const timeoutId = setTimeout(() => {
-      scrollToBottom();
-    }, 250);
-
-    return () => clearTimeout(timeoutId);
-  }, [messages, response, isTyping]);
-
-  useEffect(() => {
-    // const handler = setTimeout(() => {
     setCurrentMessage(prev => ({
       ...prev,
       content: response ? [{ type: 'text', text: response }] : []
     }));
-    //   }, 250); // Delay in milliseconds
-
-    //   return () => clearTimeout(handler);
   }, [response]);
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        position: 'relative'
-      }}
-    >
+    <ChatPageContainer>
       <ChatContainer>
         {/* Display all existing messages */}
         {messages.map((msg, index) => (
@@ -114,13 +65,13 @@ const ChatPage = memo(() => {
             message={currentMessage}
           />
         )}
-
-        <ChatInput />
       </ChatContainer>
+
+      <ChatInput />
 
       {/* Floating notifications for observer messages */}
       <FloatingNotifications messages={currentObserverMessages} />
-    </Box>
+    </ChatPageContainer>
   );
 });
 

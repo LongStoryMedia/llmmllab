@@ -10,15 +10,21 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 import json
 from typing import AsyncGenerator, Any, Dict
 
-import db
 from langchain_core.runnables.schema import StandardStreamEvent, CustomStreamEvent
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
-from models import ChatResponse, Message, MessageRole
+
 from server.middleware.auth import get_request_id, get_user_id, is_admin
 from server.config import logger  # Import logger from config
 from db import storage  # Import database storage
+from models import (
+    MessageRole,
+    MessageContent,
+    MessageContentType,
+    ChatResponse,
+    Message,
+)
 
 # Import composer interface
 import composer
@@ -172,11 +178,6 @@ async def chat_completion(
                                 # Save assistant response to database
                                 if storage.message:
                                     try:
-                                        from models import (
-                                            MessageRole,
-                                            MessageContent,
-                                            MessageContentType,
-                                        )
 
                                         assistant_message = Message(
                                             conversation_id=conversation_id,
@@ -317,9 +318,10 @@ def safe_json_serialize(obj: Any) -> str:
 
 
 def dbg_evt(evt: StandardStreamEvent | CustomStreamEvent | Dict[str, Any]):
+    """Debug and log all events from the composer workflow."""
     if isinstance(evt, dict):
         event_type = evt.get("event", "")
         event_data = evt.get("data", {})
 
         for k, v in event_data.items():
-            logger.info(f"Event {event_type} - {k}: {safe_json_serialize(v)}")
+            logger.debug(f"Event {event_type} - {k}: {safe_json_serialize(v)}")

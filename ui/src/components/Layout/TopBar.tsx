@@ -11,7 +11,7 @@ const TopBar = ({ onMenuClick }: { onMenuClick?: () => void }) => {
   const theme = useTheme();
 
   return (
-    <AppBar position="sticky">
+    <AppBar>
       <Toolbar>
         {onMenuClick && (
           <IconButton
@@ -32,8 +32,8 @@ const TopBar = ({ onMenuClick }: { onMenuClick?: () => void }) => {
           <Typography
             variant="h1"
             component="div"
-            sx={{ 
-              ml: 2, 
+            sx={{
+              ml: 2,
               color: theme.palette.primary.light,
               alignSelf: 'center',
               fontWeight: 300

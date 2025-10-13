@@ -1,8 +1,36 @@
-import { Box, Typography, useTheme, FormControl, useMediaQuery } from '@mui/material';
+import { Typography, useTheme, FormControl, useMediaQuery, styled } from '@mui/material';
 import ChatInputForm from './ChatInputForm';
 import ChatOptionsToggle from './ChatOptionsToggle';
 import { useChat } from '../../chat';
 import useChatInput from './useChatInput';
+
+const InputContainer = styled('div')<{ isMobile: boolean }>(({ theme, isMobile }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  padding: theme.spacing(isMobile ? 1 : 2),
+  position: 'fixed',
+  bottom: 0,
+  left: 0,
+  right: 0,
+  zIndex: 1000,
+  backgroundColor: theme.palette.background.default,
+  borderTop: `1px solid ${theme.palette.divider}`,
+  backdropFilter: 'blur(8px)'
+}));
+
+const InputFormWrapper = styled(FormControl)<{ isMobile: boolean }>(({ theme, isMobile }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  width: '100%',
+  flexDirection: 'column',
+  backgroundColor: theme.palette.background.paper,
+  borderRadius: '28px',
+  padding: isMobile ? '6px 12px' : '8px 16px',
+  boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.15)',
+  border: `1px solid ${theme.palette.divider}`,
+  margin: '0 auto',
+  maxWidth: '1000px'
+}));
 
 const ChatInput = () => {
   const { currentConversation } = useChat();
@@ -13,15 +41,7 @@ const ChatInput = () => {
   const { handleToggleChange, input, setInput, selectedOptions, handleSend } = useChatInput();
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        p: theme.spacing(isMobile ? 1 : 2),
-        borderTop: `${theme.spacing(0.125)} solid`,
-        borderColor: theme.palette.divider
-      }}
-    >
+    <InputContainer isMobile={isMobile}>
       {!currentConversation && (
         <Typography
           variant="body2"
@@ -31,18 +51,7 @@ const ChatInput = () => {
           Start a new conversation to begin chatting
         </Typography>
       )}
-      <FormControl
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          width: '100%',
-          flexDirection: 'column',
-          backgroundColor: theme.palette.background.default,
-          borderRadius: '28px',
-          padding: isMobile ? '6px 12px' : '8px 16px',
-          boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.25)'
-        }}
-      >
+      <InputFormWrapper isMobile={isMobile}>
         <ChatInputForm
           input={input}
           setInput={setInput}
@@ -53,8 +62,8 @@ const ChatInput = () => {
           selectedOptions={selectedOptions}
           handleToggleChange={handleToggleChange}
         />
-      </FormControl>
-    </Box>
+      </InputFormWrapper>
+    </InputContainer>
   );
 };
 
