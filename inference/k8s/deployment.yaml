@@ -294,44 +294,8 @@ spec:
               value: "/opt/venv/composer"
             - name: BASE_VENV
               value: "/opt/venv/base"
-            # - name: CMAKE_ARGS
-            #   value: "-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_PATH=/llama.cpp/build/bin"
-            # - name: LLAMA_CPP_LIB_PATH
-            #   value: "/llama.cpp/build/bin"
             - name: LD_LIBRARY_PATH
               value: "/usr/local/lib:/usr/local/cuda/lib64:/opt/venv/runner/lib/python3.12/site-packages/llama_cpp/lib:/opt/venv/server/lib/python3.12/site-packages/llama_cpp/lib:/opt/venv/evaluation/lib/python3.12/site-packages/llama_cpp/lib"
-
-            # CUDA and Memory Optimization Configuration
-            # Comprehensive CUDA graphs disabling for stability
-            # - name: LLAMA_CUDA_USE_GRAPHS
-            #   value: "0"
-            # - name: GGML_CUDA_USE_GRAPHS
-            #   value: "0"
-            # - name: CUDA_USE_GRAPHS
-            #   value: "0"
-            # - name: LLAMA_GRAPH
-            #   value: "0"
-            # - name: GGML_GRAPH
-            #   value: "0"
-            # # Force basic CUBLAS instead of optimized routines
-            # - name: LLAMA_CUBLAS
-            #   value: "1"
-            # - name: GGML_CUDA_FORCE_CUBLAS
-            #   value: "1"
-            # - name: GGML_CUDA_FORCE_MMQ
-            #   value: "0"
-            # # Memory management optimizations for 3-GPU setup
-            # - name: GGML_CUDA_POOL_SIZE
-            #   value: "2147483648" # 2GB pool limit per GPU
-            # - name: LLAMA_CUDA_POOL_SIZE
-            #   value: "2147483648"
-            # - name: CUDA_MEMORY_FRACTION
-            #   value: "0.8" # Use max 80% of VRAM per device
-            # # Additional CUDA optimizations
-            # - name: GGML_USE_CUBLAS
-            #   value: "1"
-            # - name: GGML_CUDA_NO_PINNED
-            #   value: "1"
             - name: CUDA_VISIBLE_DEVICES
               value: "0,1,2" # Explicitly list available devices
             - name: CUDA_DEVICE_ORDER
@@ -346,28 +310,7 @@ spec:
               value: "2"
             - name: NVIDIA_VISIBLE_DEVICES
               value: "all"
-
             # Search API keys configuration
-            - name: GOOGLE_SEARCH_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: google-search-api-key
-                  key: google-search-api-key
-            - name: GOOGLE_SEARCH_CX
-              valueFrom:
-                secretKeyRef:
-                  name: google-search-cx
-                  key: google-search-cx
-            - name: BRAVE_SEARCH_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: brave-api-key
-                  key: brave-api-key
-            - name: SERPER_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: serper-api-key
-                  key: serper-api-key
             - name: SEARX_HOST
               value: "http://searxng.searxng.svc.cluster.local:8080"
 

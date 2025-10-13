@@ -5,13 +5,13 @@ Searches for similar memories using embeddings.
 
 from composer.agents.memory_agent import MemoryAgent
 from composer.graph.state import WorkflowState
-from utils.logging import llmmllogger
 from composer.utils.conversion import langchain_message_to_message
 from composer.agents.embedding_agent import EmbeddingAgent
 from utils.message import extract_message_text
+from composer.nodes.base_node import BaseNode
 
 
-class MemorySearchNode:
+class MemorySearchNode(BaseNode):
     """
     Node for searching memories relevant to the current user query by embedding similarity.
 
@@ -27,14 +27,15 @@ class MemorySearchNode:
         """Initialize memory search node with dependency injection.
 
         Args:
-            pipeline_factory: Required factory for creating pipelines
             memory_agent: Required MemoryAgent instance
             embedding_agent: Required EmbeddingAgent instance
-            storage: Required Storage instance
         """
-        self.agent = memory_agent
-        self.embedding_agent = embedding_agent
-        self.logger = llmmllogger.logger.bind(component="MemorySearchNode")
+        super().__init__("memory_search", memory_agent=memory_agent, embedding_agent=embedding_agent)
+        
+    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
+        """Initialize MemorySearchNode with dependency injection."""
+        self.agent = kwargs.get('memory_agent')
+        self.embedding_agent = kwargs.get('embedding_agent')
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

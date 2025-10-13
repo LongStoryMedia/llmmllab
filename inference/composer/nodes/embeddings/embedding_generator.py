@@ -6,15 +6,15 @@ Generates embeddings from text using the embedding agent.
 from typing import TYPE_CHECKING
 
 from composer.graph.state import WorkflowState
-from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
 from composer.utils.extraction import extract_content_from_langchain_message
+from composer.nodes.base_node import BaseNode
 
 if TYPE_CHECKING:
     from composer.agents.embedding_agent import EmbeddingAgent
 
 
-class EmbeddingGeneratorNode:
+class EmbeddingGeneratorNode(BaseNode):
     """
     Node for generating embeddings from text content in workflow state.
 
@@ -31,13 +31,15 @@ class EmbeddingGeneratorNode:
         Initialize embedding generator node.
 
         Args:
-            pipeline_factory: Factory for creating embedding pipelines
             embedding_agent: Required EmbeddingAgent instance
             model_name: Required specific embedding model to use
         """
-        self.agent = embedding_agent
-        self.model_name = model_name
-        self.logger = llmmllogger.logger.bind(component="EmbeddingGeneratorNode")
+        super().__init__("embedding_generator", embedding_agent=embedding_agent, model_name=model_name)
+        
+    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
+        """Initialize EmbeddingGeneratorNode with dependency injection."""
+        self.agent = kwargs.get('embedding_agent')
+        self.model_name = kwargs.get('model_name')
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

@@ -5,10 +5,10 @@ Stores messages as memories with their embeddings.
 
 from composer.agents.memory_agent import MemoryAgent
 from composer.graph.state import WorkflowState
-from utils.logging import llmmllogger
+from composer.nodes.base_node import BaseNode
 
 
-class MemoryStorageNode:
+class MemoryStorageNode(BaseNode):
     """
     Node for storing memories.
 
@@ -24,10 +24,12 @@ class MemoryStorageNode:
 
         Args:
             memory_agent: Required MemoryAgent instance
-            storage: Required Storage instance
         """
-        self.agent = memory_agent
-        self.logger = llmmllogger.logger.bind(component="MemoryStorageNode")
+        super().__init__("memory_storage", memory_agent=memory_agent)
+        
+    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
+        """Initialize MemoryStorageNode with dependency injection."""
+        self.agent = kwargs.get('memory_agent')
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

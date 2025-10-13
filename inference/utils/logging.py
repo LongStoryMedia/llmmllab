@@ -75,6 +75,13 @@ class LlmmlLogger:
             service_name
         )
 
+        self.logger.info(
+            "Logger initialized",
+            service=service_name,
+            log_lvl=log_level,
+            colors=use_colors,
+        )
+
     def log_workflow_start(
         self,
         workflow_id: str,

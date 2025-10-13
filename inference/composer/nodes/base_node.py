@@ -2,11 +2,13 @@
 Base node for all composer workflow nodes.
 
 Provides common functionality including user ID validation, logger initialization,
-user configuration access patterns, and standardized error handling.
+user configuration access patterns, standardized error handling, and metadata management.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Dict
+import uuid
+from datetime import datetime, timezone
 
 from composer.graph.state import WorkflowState
 from utils.logging import llmmllogger
@@ -21,7 +23,7 @@ class BaseNode(ABC):
     and error handling patterns that are common across all nodes.
     """
 
-    def __init__(self, node_name: str, **kwargs):
+    def __init__(self, node_name: str = None, **kwargs):
         """
         Initialize base node with common setup.
 
@@ -29,8 +31,13 @@ class BaseNode(ABC):
             node_name: Name of the node for logging and error reporting
             **kwargs: Additional initialization parameters for subclasses
         """
-        self.node_name = node_name
-        self.logger = llmmllogger.logger.bind(component=node_name)
+        # Use class name if no explicit node_name provided
+        self.node_name = node_name or self.__class__.__name__
+        self.node_id = str(uuid.uuid4())[:8]  # Unique ID for this node instance
+        self.logger = llmmllogger.logger.bind(
+            component=self.node_name,
+            node_id=self.node_id
+        )
 
         # Allow subclasses to handle additional initialization
         self._initialize_node(**kwargs)
@@ -203,3 +210,69 @@ class BaseNode(ABC):
         }
 
         self.logger.info(f"Completed {self.node_name} execution", **context)
+
+    def create_node_metadata(self, state: WorkflowState, **additional_metadata) -> Dict[str, Any]:
+        """
+        Create comprehensive metadata for this node execution.
+
+        Args:
+            state: Current workflow state
+            **additional_metadata: Additional metadata to include
+
+        Returns:
+            Dictionary containing node execution metadata
+        """
+        metadata = {
+            "node_name": self.node_name,
+            "node_id": self.node_id,
+            "node_type": self.__class__.__name__,
+            "execution_time": datetime.now(timezone.utc).isoformat(),
+            "user_id": getattr(state, 'user_id', None),
+            "conversation_id": getattr(state, 'conversation_id', None),
+        }
+        
+        # Add any additional metadata passed by subclasses
+        metadata.update(additional_metadata)
+        
+        return metadata
+
+    def store_node_metadata(self, state: WorkflowState, **additional_metadata) -> None:
+        """
+        Create and store node metadata in the workflow state.
+
+        Args:
+            state: Current workflow state  
+            **additional_metadata: Additional metadata to include
+        """
+        metadata = self.create_node_metadata(state, **additional_metadata)
+        
+        # Ensure node_metadata dict exists in state
+        if not hasattr(state, 'node_metadata'):
+            state.node_metadata = {}
+        
+        # Store metadata keyed by node_id
+        state.node_metadata[self.node_id] = metadata
+        
+        self.logger.debug(
+            "Stored node metadata",
+            user_id=getattr(state, 'user_id', 'unknown'),
+            node_metadata_keys=list(metadata.keys())
+        )
+
+    def enrich_with_node_metadata(self, obj: Any, state: WorkflowState, **additional_metadata) -> Any:
+        """
+        Enrich an object (like a response or chunk) with node metadata.
+
+        Args:
+            obj: Object to enrich (must have __dict__ attribute)
+            state: Current workflow state
+            **additional_metadata: Additional metadata to include
+
+        Returns:
+            The enriched object
+        """
+        if hasattr(obj, '__dict__'):
+            metadata = self.create_node_metadata(state, **additional_metadata)
+            obj.__dict__.setdefault('node_metadata', metadata)
+        
+        return obj

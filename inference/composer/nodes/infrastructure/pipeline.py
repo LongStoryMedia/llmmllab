@@ -4,8 +4,6 @@ Wraps LLM pipeline execution for chat model operations within workflows.
 """
 
 from typing import List, cast, Dict, Any
-import uuid
-from datetime import datetime, timezone
 
 from langchain.tools import BaseTool
 
@@ -24,19 +22,41 @@ from models.default_configs import DEFAULT_CIRCUIT_BREAKER_CONFIG
 from utils.model_profile import get_model_profile_for_task
 from utils.message import extract_message_text
 from composer.graph.state import WorkflowState
-from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
 from composer.utils.state import assemble_context_messages
 from composer.utils.conversion import message_to_langchain_message
+from composer.nodes.base_node import BaseNode
 
 
-class PipelineNode:
+class PipelineNode(BaseNode):
     """
     Wraps chat-model execution as a graph node.
 
     Handles both streaming and non-streaming execution based on configuration.
     Retrieves model profiles internally from shared data layer using user_id.
     """
+
+    def _initialize_node(
+        self,
+        pipeline_factory: PipelineFactory = None,
+        profile_type: ModelProfileType = None,
+        priority: PipelinePriority = PipelinePriority.MEDIUM,
+        stream: bool = False,
+        **kwargs
+    ) -> None:
+        """
+        Initialize pipeline-specific attributes.
+
+        Args:
+            pipeline_factory: Factory for creating pipeline instances
+            profile_type: Model profile type (Primary, Analysis, etc.)
+            priority: Pipeline execution priority
+            stream: Whether to enable streaming responses
+        """
+        self.pipeline_factory = pipeline_factory
+        self.profile_type = profile_type
+        self.stream = stream
+        self.priority = priority
 
     def __init__(
         self,
@@ -52,44 +72,39 @@ class PipelineNode:
         Args:
             pipeline_factory: Factory for creating pipeline instances
             profile_type: Model profile type (Primary, Analysis, etc.)
+            priority: Pipeline execution priority
             stream: Whether to enable streaming responses
             node_name: Optional custom name for this node (for metadata)
         """
-        self.pipeline_factory = pipeline_factory
-        self.profile_type = profile_type
-        self.stream = stream
-        self.priority = priority
-        self.node_name = node_name or f"PipelineNode-{profile_type.value}"
-        self.node_id = str(uuid.uuid4())[:8]  # Unique ID for this node instance
-        self.logger = llmmllogger.logger.bind(
-            component="PipelineNode", 
-            node_name=self.node_name,
-            node_id=self.node_id
+        # Use custom name or default based on profile type
+        node_name = node_name or f"PipelineNode-{profile_type.value}"
+        
+        # Initialize base node
+        super().__init__(
+            node_name=node_name,
+            pipeline_factory=pipeline_factory,
+            profile_type=profile_type,
+            priority=priority,
+            stream=stream
         )
 
-    def create_node_metadata(self, state: WorkflowState, pipeline=None) -> Dict[str, Any]:
-        """Create metadata for this node execution."""
-        metadata = {
-            "node_name": self.node_name,
-            "node_id": self.node_id,
-            "node_type": "PipelineNode",
+    def create_pipeline_metadata(self, pipeline=None) -> Dict[str, Any]:
+        """Create pipeline-specific metadata to add to base node metadata."""
+        pipeline_metadata = {
             "profile_type": self.profile_type.value,
             "priority": self.priority.value,
             "streaming": self.stream,
-            "execution_time": datetime.now(timezone.utc).isoformat(),
-            "user_id": state.user_id,
-            "conversation_id": getattr(state, 'conversation_id', None),
         }
         
         # Add pipeline-specific metadata if available
         if pipeline:
-            metadata.update({
+            pipeline_metadata.update({
                 "pipeline_type": type(pipeline).__name__,
                 "model_name": getattr(pipeline.model, 'name', 'unknown') if hasattr(pipeline, 'model') else 'unknown',
                 "model_provider": str(getattr(pipeline.model, 'provider', 'unknown')) if hasattr(pipeline, 'model') else 'unknown',
             })
             
-        return metadata
+        return pipeline_metadata
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
@@ -146,13 +161,9 @@ class PipelineNode:
             with self.pipeline_factory.pipeline(
                 mp, ChatResponse, self.priority, cb
             ) as pipe:
-                # Create comprehensive node metadata
-                node_metadata = self.create_node_metadata(state, pipe)
-                
-                # Store metadata in state for downstream access
-                if not hasattr(state, 'node_metadata'):
-                    state.node_metadata = {}
-                state.node_metadata[self.node_id] = node_metadata
+                # Create and store comprehensive node metadata
+                pipeline_metadata = self.create_pipeline_metadata(pipe)
+                self.store_node_metadata(state, **pipeline_metadata)
                 
                 if self.stream:
                     # For streaming: collect all chunks into final response (accumulate, do not overwrite)
@@ -165,7 +176,7 @@ class PipelineNode:
                         "Starting stream_pipeline execution",
                         user_id=state.user_id,
                         pipeline_type=type(pipe).__name__,
-                        node_metadata=node_metadata,
+                        node_id=self.node_id,
                     )
 
                     async for chunk in stream_pipeline(
@@ -176,8 +187,7 @@ class PipelineNode:
                         chunk_count += 1
                         
                         # Enrich chunk with node metadata for downstream processing
-                        if hasattr(chunk, '__dict__'):
-                            chunk.__dict__.setdefault('node_metadata', node_metadata)
+                        self.enrich_with_node_metadata(chunk, state, **pipeline_metadata)
                         
                         self.logger.info(
                             "Received pipeline chunk",
@@ -190,7 +200,7 @@ class PipelineNode:
                                 if chunk.message and chunk.message.content
                                 else "No content"
                             )[:100],
-                            node_metadata=node_metadata,
+                            node_id=self.node_id,
                         )
 
                         if chunk.message:
@@ -259,7 +269,7 @@ class PipelineNode:
                     self.logger.info(
                         "Starting run_pipeline execution",
                         user_id=state.user_id,
-                        node_metadata=node_metadata,
+                        node_id=self.node_id,
                     )
                     
                     response = await run_pipeline(
@@ -269,8 +279,7 @@ class PipelineNode:
                     )
                     
                     # Enrich response with node metadata
-                    if hasattr(response, '__dict__'):
-                        response.__dict__.setdefault('node_metadata', node_metadata)
+                    self.enrich_with_node_metadata(response, state, **pipeline_metadata)
 
             # Convert response to LangChainMessage and add to state
             if response and response.message:

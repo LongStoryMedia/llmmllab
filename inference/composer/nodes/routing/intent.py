@@ -7,15 +7,14 @@ from typing import TYPE_CHECKING
 
 
 from composer.graph.state import WorkflowState
-from utils.logging import llmmllogger
-from composer.core.errors import NodeExecutionError
 from composer.utils.conversion import langchain_message_to_message
+from composer.nodes.base_node import BaseNode
 
 if TYPE_CHECKING:
     from composer.agents.classifier_agent import ClassifierAgent
 
 
-class IntentClassifierNode:
+class IntentClassifierNode(BaseNode):
     """
     LangGraph node wrapper for intent classification.
 
@@ -30,9 +29,13 @@ class IntentClassifierNode:
         Args:
             classifier_agent: Required ClassifierAgent instance
         """
+        # Use a default name for now, could be made configurable later
+        super().__init__("intent_classifier", classifier_agent=classifier_agent)
+        
+    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
+        """Initialize IntentClassifierNode with dependency injection."""
+        classifier_agent = kwargs.get('classifier_agent')
         self.agent = classifier_agent
-
-        self.logger = llmmllogger.logger
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
