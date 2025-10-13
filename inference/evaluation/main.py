@@ -1,11 +1,11 @@
 # main.py
 import argparse
 import asyncio
-import logging
 import statistics
 from typing import List
 
 from evaluation.suite import AcademicBenchmarkSuite
+from utils.logging import llmmllogger
 
 
 async def main():
@@ -58,11 +58,7 @@ async def main():
     args = parser.parse_args()
 
     # Set up logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-    logger = logging.getLogger(__name__)
+    logger = llmmllogger.bind(component="evaluation_main")
 
     print("Academic LLM Benchmark Suite")
     print(f"Models to benchmark: {args.models}")

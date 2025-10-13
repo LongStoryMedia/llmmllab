@@ -40,7 +40,7 @@ from composer.nodes.agents.engineering import EngineeringAgentNode
 from composer.nodes.summary import ConsolidationNode, SearchSummaryNode
 
 from composer.tools.registry import ToolRegistry
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 
 from .state import WorkflowState
 
@@ -90,7 +90,7 @@ class GraphBuilder:
         # Core dependencies
         self.pipeline_factory = pipeline_factory
         self.user_config = user_config
-        self.logger = composer_logger.logger.bind(component="GraphBuilder")
+        self.logger = llmmllogger.logger.bind(component="GraphBuilder")
 
         # Use storage.get_service for type safety and linter warnings avoidance
         self.user_config_storage: "UserConfigStorage" = storage.get_service(

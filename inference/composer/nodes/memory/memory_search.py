@@ -5,7 +5,7 @@ Searches for similar memories using embeddings.
 
 from composer.agents.memory_agent import MemoryAgent
 from composer.graph.state import WorkflowState
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.utils.conversion import langchain_message_to_message
 from composer.agents.embedding_agent import EmbeddingAgent
 from utils.message import extract_message_text
@@ -34,7 +34,7 @@ class MemorySearchNode:
         """
         self.agent = memory_agent
         self.embedding_agent = embedding_agent
-        self.logger = composer_logger.logger.bind(component="MemorySearchNode")
+        self.logger = llmmllogger.logger.bind(component="MemorySearchNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

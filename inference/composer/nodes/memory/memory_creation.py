@@ -18,7 +18,7 @@ from models import (
     Message,
 )
 from composer.graph.state import WorkflowState
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.utils.conversion import langchain_message_to_message
 from utils.message import extract_message_text
 
@@ -45,7 +45,7 @@ class MemoryCreationNode:
             embedding_agent: Required EmbeddingAgent instance
             storage: Required Storage instance
         """
-        self.logger = composer_logger.logger.bind(component="MemoryCreationNode")
+        self.logger = llmmllogger.logger.bind(component="MemoryCreationNode")
         self.embedding_agent = embedding_agent
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:

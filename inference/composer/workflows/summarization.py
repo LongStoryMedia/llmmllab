@@ -15,7 +15,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from composer.graph.state import WorkflowState
 from composer.agents.summarization_agent import SummarizationAgent
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.nodes.summary import ConsolidationNode, SearchSummaryNode
 from composer.nodes.embeddings import EmbeddingGeneratorNode
 
@@ -40,7 +40,7 @@ class SummarizationWorkflow:
         self.conversation_node = ConsolidationNode(pipeline_factory)
         self.search_node = SearchSummaryNode(pipeline_factory)
 
-        self.logger = composer_logger.logger.bind(component="SummarizationWorkflow")
+        self.logger = llmmllogger.logger.bind(component="SummarizationWorkflow")
 
     def build_workflow(self) -> CompiledStateGraph:
         """

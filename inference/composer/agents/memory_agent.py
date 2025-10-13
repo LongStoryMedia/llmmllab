@@ -6,7 +6,7 @@ Provides core business logic for memory operations and similarity search.
 from typing import List, Optional, TYPE_CHECKING
 
 from models import Memory
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ class MemoryAgent:
             memory_storage: Injected MemoryStorage service
         """
         self.memory_storage = memory_storage
-        self.logger = composer_logger.logger.bind(component="MemoryAgent")
+        self.logger = llmmllogger.logger.bind(component="MemoryAgent")
 
     async def store_memories(
         self,

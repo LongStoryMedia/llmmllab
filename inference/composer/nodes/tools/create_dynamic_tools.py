@@ -5,7 +5,7 @@ from langchain.tools import BaseTool
 
 from models import IntentAnalysis, Tool, DynamicTool, ModelProfileType
 from composer.graph.state import WorkflowState
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.tools.registry import ToolRegistry
 from composer.utils.extraction import extract_content_from_langchain_message
 from runner import PipelineFactory, run_pipeline
@@ -25,7 +25,7 @@ class DynamicToolCreationNode:
     ):
         self.tool_registry = tool_registry
         self.pipeline_factory = pipeline_factory
-        self.logger = composer_logger.logger.bind(component="DynamicToolCreationNode")
+        self.logger = llmmllogger.logger.bind(component="DynamicToolCreationNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

@@ -15,7 +15,7 @@ from composer.graph.state import WorkflowState
 from composer.nodes import PipelineNode, ToolExecutorNode
 from composer.nodes.routing import IntentClassifierNode
 from composer.nodes.agents import EngineeringAgentNode
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from models.required_capability import RequiredCapability
 
 
@@ -42,7 +42,7 @@ async def build_multi_agent_workflow(
     Returns:
         Compiled LangGraph workflow
     """
-    composer_logger.logger.info(
+    llmmllogger.logger.info(
         "Building multi-agent workflow",
         extra={"user_id": user_id},
     )
@@ -170,7 +170,7 @@ async def build_multi_agent_workflow(
     # Compile and return workflow
     compiled_workflow = workflow.compile()
 
-    composer_logger.logger.info(
+    llmmllogger.logger.info(
         "Multi-agent workflow built successfully",
         extra={"user_id": user_id, "node_count": len(workflow.nodes)},
     )

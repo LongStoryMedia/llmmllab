@@ -39,7 +39,7 @@ from langchain_core.messages import ToolMessage
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
 from composer.graph.state import WorkflowState
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from models import SearchResult, SearchResultContent, WebSearchConfig
 
 # Import from langchain_community (preferred) then fallback to langchain_classic
@@ -81,7 +81,7 @@ class SearxNG:
             headers=headers,
             categories=web_config.categories,
         )
-        self.logger = composer_logger.logger
+        self.logger = llmmllogger.logger
 
         self.logger.debug(f"SearxNG initialized with engines: {web_config.engines}")
 
@@ -179,7 +179,7 @@ async def web_search(
         DEFAULT_WEB_SEARCH_CONFIG,
     )
 
-    logger = composer_logger.logger.bind(component="WebSearch")
+    logger = llmmllogger.logger.bind(component="WebSearch")
 
     try:
         # Get user_config directly from injected state (much more efficient!)

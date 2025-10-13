@@ -51,7 +51,6 @@ async def get_user_data(request: Request, target_user_id: str):
 ```
 """
 
-import logging
 import time
 import uuid
 from dataclasses import dataclass
@@ -64,6 +63,7 @@ from fastapi import HTTPException, Request, status
 from fastapi.security import HTTPBearer
 
 from server import config  # Import config for auth settings
+from utils.logging import llmmllogger
 
 
 # Custom context keys (equivalent to Go's contextKey type)
@@ -102,7 +102,7 @@ class JWTValidator:
         self.jwks_cache: Optional[Dict[str, Any]] = None
         self.cache_timeout = 3600  # 1 hour cache
         self._last_fetch = 0
-        self.logger = logging.getLogger(__name__)
+        self.logger = llmmllogger.bind(component="jwt_validator")
 
     async def _fetch_jwks(self) -> Dict[str, Any]:
         """Fetch JWKS from the provided URI"""
@@ -265,7 +265,7 @@ class AuthMiddleware:
             self.validator = JWTValidator(jwks_uri)
 
         self.security = HTTPBearer()
-        self.logger = logging.getLogger(__name__)
+        self.logger = llmmllogger.bind(component="auth_middleware")
 
     async def validate_and_get_user_id(self, token_str: str) -> str:
         """

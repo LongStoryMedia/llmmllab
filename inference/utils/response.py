@@ -3,7 +3,6 @@ Helper functions for message processing.
 """
 
 import datetime
-import logging
 from typing import Optional
 
 from models import (
@@ -14,7 +13,9 @@ from models import (
     ChatResponse,
 )
 
-logger = logging.getLogger(__name__)
+from .logging import llmmllogger
+
+logger = llmmllogger.bind(module=__name__)
 
 
 def create_streaming_chunk(

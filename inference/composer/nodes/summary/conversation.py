@@ -8,7 +8,7 @@ combining multiple summaries into higher-level abstractions.
 from typing import List, TYPE_CHECKING
 
 from models import SummaryType
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.graph.state import WorkflowState
 from composer.utils.conversion import convert_langchain_messages_to_messages
 
@@ -26,7 +26,7 @@ class ConsolidationNode:
 
     def __init__(self, summarization_agent: "SummarizationAgent"):
         self.summarization_agent = summarization_agent
-        self.logger = composer_logger.logger.bind(component="ConsolidationNode")
+        self.logger = llmmllogger.logger.bind(component="ConsolidationNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

@@ -272,7 +272,9 @@ class UserConfigStorage:
         self._apply_defaults(config_data["gpu_config"], DEFAULT_GPU_CONFIG.dict())
         self._apply_defaults(config_data["workflow"], DEFAULT_WORKFLOW_CONFIG.dict())
         self._apply_defaults(config_data["tool"], DEFAULT_TOOL_CONFIG.dict())
-        self._apply_defaults(config_data["context_window"], DEFAULT_CONTEXT_WINDOW_CONFIG.dict())
+        self._apply_defaults(
+            config_data["context_window"], DEFAULT_CONTEXT_WINDOW_CONFIG.dict()
+        )
 
     def _apply_defaults(self, target_dict: dict, defaults_dict: dict) -> None:
         """Apply default values from a defaults dictionary to a target dictionary"""

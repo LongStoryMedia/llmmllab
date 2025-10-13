@@ -8,7 +8,7 @@ from typing import Any
 
 from models import CircuitBreakerConfig, LangChainMessage
 from composer.graph.state import WorkflowState
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 
 
 class CircuitProtectedNode:
@@ -34,7 +34,7 @@ class CircuitProtectedNode:
         self.last_failure_time = None
         self.circuit_open = False
 
-        self.logger = composer_logger.logger
+        self.logger = llmmllogger.logger
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

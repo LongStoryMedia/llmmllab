@@ -3,9 +3,9 @@ Security validation for dynamic tools to prevent unsafe code execution
 """
 
 import ast
-import logging
+from utils.logging import llmmllogger
 
-logger = logging.getLogger(__name__)
+logger = llmmllogger.bind(component="tool_security_validator")
 
 
 class ToolSecurityValidator:

@@ -39,7 +39,6 @@ async def get_users(request: Request):
 
     try:
         users = await storage.user_config.get_all_users()
-
         # Transform the data to match the User model
         transformed_users = []
         for user in users:

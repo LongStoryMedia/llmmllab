@@ -19,7 +19,7 @@ from models import (
     UserConfig,
 )
 from runner import PipelineFactory, run_pipeline
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
 from utils.model_profile import get_model_profile_for_task
 from utils.message import extract_message_text
@@ -58,7 +58,7 @@ class SummarizationAgent:
         self.summary_storage = summary_storage
         self.search_storage = search_storage
         self.user_config = user_config
-        self.logger = composer_logger.logger.bind(component="SummarizationAgent")
+        self.logger = llmmllogger.logger.bind(component="SummarizationAgent")
 
     async def summarize_text(
         self,

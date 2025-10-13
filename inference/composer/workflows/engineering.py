@@ -14,7 +14,7 @@ from composer.graph.tools.tool_orchestration import (
 from composer.nodes.routing import IntentClassifierNode
 from composer.nodes.agents import EngineeringAgentNode
 from composer.nodes.agents.response_format_analysis import ResponseFormatAnalysisNode
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.tools.registry import ToolRegistry
 from composer.utils.extraction import get_most_recent_user_message_content
 from runner import PipelineFactory
@@ -37,7 +37,7 @@ async def build_enhanced_engineering_workflow(
         Compiled workflow with tool orchestration integration
     """
     try:
-        composer_logger.logger.info(
+        llmmllogger.logger.info(
             "Building enhanced engineering workflow", extra={"user_id": user_id}
         )
 
@@ -80,7 +80,7 @@ async def build_enhanced_engineering_workflow(
 
         compiled_workflow = workflow.compile()
 
-        composer_logger.logger.info(
+        llmmllogger.logger.info(
             "Enhanced engineering workflow built successfully",
             extra={"user_id": user_id},
         )
@@ -88,7 +88,7 @@ async def build_enhanced_engineering_workflow(
         return compiled_workflow
 
     except Exception as e:
-        composer_logger.logger.error(
+        llmmllogger.logger.error(
             f"Failed to build enhanced engineering workflow: {e}",
             extra={"user_id": user_id},
         )
@@ -113,14 +113,14 @@ def _create_tool_orchestration_bridge_node(
         """
         try:
             if not state.intent_classification:
-                composer_logger.logger.warning(
+                llmmllogger.logger.warning(
                     "No intent classification found in state; skipping tool orchestration",
                     extra={"user_id": user_id},
                 )
                 state.available_tools = []
                 return state
 
-            composer_logger.logger.info(
+            llmmllogger.logger.info(
                 "Executing tool orchestration subgraph",
                 extra={
                     "user_id": user_id,
@@ -159,7 +159,7 @@ def _create_tool_orchestration_bridge_node(
                 static_tools_count=len(result.get("static_tools") or []),
             )
 
-            composer_logger.logger.info(
+            llmmllogger.logger.info(
                 "Tool orchestration completed",
                 extra={
                     "user_id": user_id,
@@ -172,7 +172,7 @@ def _create_tool_orchestration_bridge_node(
             return state
 
         except Exception as e:
-            composer_logger.logger.error(
+            llmmllogger.logger.error(
                 f"Tool orchestration bridge failed: {e}", extra={"user_id": user_id}
             )
 
@@ -223,7 +223,7 @@ async def build_simple_tool_orchestration_workflow(
         return workflow.compile()
 
     except Exception as e:
-        composer_logger.logger.error(
+        llmmllogger.logger.error(
             f"Failed to build simple tool orchestration workflow: {e}"
         )
         raise

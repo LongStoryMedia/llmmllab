@@ -1,10 +1,10 @@
 from typing import List, Dict, Any, Optional
-import logging
 from ..base.benchmark_base import BenchmarkBase
 from ..base.result_types import BenchmarkResult
 from ..utils.inference import InferenceEngine
 from ..utils.deterministic_evaluators import CodeEvaluator
 from ..utils.prompt_templates import PromptTemplates
+from utils.logging import llmmllogger
 
 
 class HumanEvalBenchmark(BenchmarkBase):
@@ -16,7 +16,7 @@ class HumanEvalBenchmark(BenchmarkBase):
         )
         self.inference_engine = InferenceEngine()
         self.evaluator = CodeEvaluator()
-        self.logger = logging.getLogger("benchmark.humaneval")
+        self.logger = llmmllogger.bind(component="benchmark.humaneval")
 
     def get_sample_questions(self) -> List[Dict[str, Any]]:
         """Get sample HumanEval problems."""

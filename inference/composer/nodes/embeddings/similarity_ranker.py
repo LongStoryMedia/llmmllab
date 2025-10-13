@@ -8,7 +8,7 @@ from typing import List, Optional
 import numpy as np
 
 from composer.graph.state import WorkflowState
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 
 
 class SimilarityRankerNode:
@@ -21,7 +21,7 @@ class SimilarityRankerNode:
 
     def __init__(self):
         """Initialize similarity ranker node."""
-        self.logger = composer_logger.logger.bind(component="SimilarityRankerNode")
+        self.logger = llmmllogger.logger.bind(component="SimilarityRankerNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

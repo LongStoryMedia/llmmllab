@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, List, Optional
 from langchain_core.tools import BaseTool
 
 from models import Tool
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.tools.registry import ToolRegistry
 
 
@@ -43,7 +43,7 @@ class RunnableToolComposer:
             # Wrap sequence as a single tool for abstraction
             composed_tool = sequence.as_tool(name=name, description=description)
 
-            composer_logger.log_tool_generation(
+            llmmllogger.log_tool_generation(
                 tool_spec=f"chain:{name}",
                 method="composed",
                 success=True,
@@ -53,7 +53,7 @@ class RunnableToolComposer:
             return composed_tool
 
         except Exception as e:
-            composer_logger.log_error(
+            llmmllogger.log_error(
                 e, {"context": "tool_chaining", "tool_count": len(tools)}
             )
             # Return first tool as fallback
@@ -97,7 +97,7 @@ class RunnableToolComposer:
                 name=name, description=description
             )
 
-            composer_logger.log_tool_generation(
+            llmmllogger.log_tool_generation(
                 tool_spec=f"parallel:{name}",
                 method="composed",
                 success=True,
@@ -107,7 +107,7 @@ class RunnableToolComposer:
             return composed_tool
 
         except Exception as e:
-            composer_logger.log_error(e, {"context": "parallel_tool_composition"})
+            llmmllogger.log_error(e, {"context": "parallel_tool_composition"})
             # Return first tool as fallback
             if not tools:
                 raise ValueError("Cannot return tool from empty list")
@@ -139,7 +139,7 @@ class RunnableToolComposer:
                 name=name, description=description
             )
 
-            composer_logger.log_tool_generation(
+            llmmllogger.log_tool_generation(
                 tool_spec=f"conditional:{name}",
                 method="composed",
                 success=True,
@@ -149,7 +149,7 @@ class RunnableToolComposer:
             return conditional_tool
 
         except Exception as e:
-            composer_logger.log_error(e, {"context": "conditional_tool_composition"})
+            llmmllogger.log_error(e, {"context": "conditional_tool_composition"})
             return true_tool  # Fallback to true tool
 
     @staticmethod
@@ -177,7 +177,7 @@ class RunnableToolComposer:
             return serialized
 
         except Exception as e:
-            composer_logger.log_error(e, {"context": "tool_serialization"})
+            llmmllogger.log_error(e, {"context": "tool_serialization"})
             return {"type": "tool_chain", "tools": [], "error": str(e)}
 
     @staticmethod
@@ -217,5 +217,5 @@ class RunnableToolComposer:
             return None
 
         except Exception as e:
-            composer_logger.log_error(e, {"context": "tool_deserialization"})
+            llmmllogger.log_error(e, {"context": "tool_deserialization"})
             return None

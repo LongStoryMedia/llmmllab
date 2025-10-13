@@ -5,13 +5,13 @@ This middleware ensures the database is initialized before handling any request.
 """
 
 from fastapi import Request
-import logging
 import os
 
 from db import storage
 from server.config import DB_CONNECTION_STRING
+from utils.logging import llmmllogger
 
-logger = logging.getLogger("inference-service")
+logger = llmmllogger.bind(component="db_init_middleware")
 
 
 async def db_init_middleware(request: Request, call_next):

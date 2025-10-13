@@ -3,8 +3,8 @@ Database module that initializes all storage components and provides access to t
 """
 
 import asyncpg
-import logging
 import os
+from utils.logging import llmmllogger
 
 from asyncpg import Pool
 
@@ -22,7 +22,7 @@ from .dynamic_tool_storage import DynamicToolStorage
 from .queries import get_query
 from typing import Optional, Protocol, Any, Callable, cast
 
-logger = logging.getLogger(__name__)
+logger = llmmllogger.bind(component="db_init")
 
 
 class StorageInterface(Protocol):

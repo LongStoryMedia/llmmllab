@@ -19,7 +19,7 @@ from composer.nodes.research import (
     QuickResearchExecutor,
     ComprehensiveResearchExecutor,
 )
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 
 
 async def build_chat_workflow(
@@ -42,7 +42,7 @@ async def build_chat_workflow(
     Returns:
         Compiled LangGraph workflow
     """
-    composer_logger.logger.info("Building chat workflow", extra={"user_id": user_id})
+    llmmllogger.logger.info("Building chat workflow", extra={"user_id": user_id})
 
     # Create workflow graph
     workflow = StateGraph(WorkflowState)
@@ -110,7 +110,7 @@ async def build_chat_workflow(
     # Compile and return workflow
     compiled_workflow = workflow.compile()
 
-    composer_logger.logger.info(
+    llmmllogger.logger.info(
         "Chat workflow built successfully",
         extra={"user_id": user_id, "node_count": len(workflow.nodes)},
     )

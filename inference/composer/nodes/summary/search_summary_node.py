@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from composer.graph.state import WorkflowState
 from composer.utils.extraction import extract_content_from_langchain_message
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 
 
 if TYPE_CHECKING:
@@ -26,7 +26,7 @@ class SearchSummaryNode:
 
     def __init__(self, summarization_agent: "SummarizationAgent"):
         self.agent = summarization_agent
-        self.logger = composer_logger.logger.bind(component="SearchSummaryNode")
+        self.logger = llmmllogger.logger.bind(component="SearchSummaryNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

@@ -4,7 +4,7 @@ Consolidates workflow-level routing logic from GraphBuilder into a dedicated, re
 """
 
 from composer.graph.state import WorkflowState
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 
 # Inline workflow registry to avoid circular imports
 
@@ -26,7 +26,7 @@ class WorkflowRouter:
             user_id: User identifier for logging and context
         """
         self.user_id = user_id
-        self.logger = composer_logger.logger
+        self.logger = llmmllogger.logger
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

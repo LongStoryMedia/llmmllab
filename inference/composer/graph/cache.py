@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional, Callable, List
 
 from models import Tool, WorkflowType
 from models.config import Config as config
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 
 
 class CacheEntry:
@@ -58,22 +58,20 @@ class WorkflowCache:
 
             # Initialize storage if not done
             if not storage.pool:
-                composer_logger.logger.warning(
-                    "Database not initialized for WorkflowCache"
-                )
+                llmmllogger.logger.warning("Database not initialized for WorkflowCache")
                 return None
 
             user_config = await storage.get_service(
                 storage.user_config
             ).get_user_config(user_id)
             if not user_config:
-                composer_logger.logger.warning(
+                llmmllogger.logger.warning(
                     f"No user config found for {user_id} in WorkflowCache"
                 )
                 return None
             return user_config
         except Exception as e:
-            composer_logger.logger.error(
+            llmmllogger.logger.error(
                 f"Failed to get user config for {user_id} in WorkflowCache: {e}"
             )
             return None
@@ -118,16 +116,16 @@ class WorkflowCache:
             entry = self.cache.get(cache_key)
 
             if entry is None:
-                composer_logger.log_cache_operation("miss", cache_key)
+                llmmllogger.log_cache_operation("miss", cache_key)
                 return None
 
             if entry.is_expired:
                 # Remove expired entry
                 del self.cache[cache_key]
-                composer_logger.log_cache_operation("evict", cache_key)
+                llmmllogger.log_cache_operation("evict", cache_key)
                 return None
 
-            composer_logger.log_cache_operation("hit", cache_key)
+            llmmllogger.log_cache_operation("hit", cache_key)
             return entry.access()
 
     async def set(
@@ -141,7 +139,7 @@ class WorkflowCache:
 
             ttl = ttl_seconds or self.default_ttl
             self.cache[cache_key] = CacheEntry(workflow, ttl)
-            composer_logger.log_cache_operation("set", cache_key)
+            llmmllogger.log_cache_operation("set", cache_key)
 
     async def get_or_create(
         self,
@@ -165,7 +163,7 @@ class WorkflowCache:
         async with self._lock:
             if cache_key in self.cache:
                 del self.cache[cache_key]
-                composer_logger.log_cache_operation("evict", cache_key)
+                llmmllogger.log_cache_operation("evict", cache_key)
                 return True
             return False
 
@@ -173,7 +171,7 @@ class WorkflowCache:
         """Clear all cached workflows."""
         async with self._lock:
             self.cache.clear()
-            composer_logger.log_cache_operation("clear", "all")
+            llmmllogger.log_cache_operation("clear", "all")
 
     async def _evict_lru(self) -> None:
         """Evict least recently used entry."""
@@ -184,7 +182,7 @@ class WorkflowCache:
         lru_key = min(self.cache.keys(), key=lambda k: self.cache[k].last_accessed)
 
         del self.cache[lru_key]
-        composer_logger.log_cache_operation("evict", lru_key)
+        llmmllogger.log_cache_operation("evict", lru_key)
 
     async def _periodic_cleanup(self) -> None:
         """Periodically remove expired entries."""
@@ -199,12 +197,12 @@ class WorkflowCache:
 
                     for key in expired_keys:
                         del self.cache[key]
-                        composer_logger.log_cache_operation("evict", key)
+                        llmmllogger.log_cache_operation("evict", key)
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                composer_logger.log_error(e, {"context": "cache_cleanup"})
+                llmmllogger.log_error(e, {"context": "cache_cleanup"})
 
     async def get_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""

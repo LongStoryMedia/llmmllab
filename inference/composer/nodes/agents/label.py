@@ -17,7 +17,7 @@ from models import (
     LangChainMessage,
 )
 from composer.graph.state import WorkflowState
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 
 if TYPE_CHECKING:
     from composer.agents.classifier_agent import ClassifierAgent
@@ -44,7 +44,7 @@ class TitleGenerationNode:
         """
         self.pipeline_factory = pipeline_factory
         self.classifier_agent = analysis_agent
-        self.logger = composer_logger.logger
+        self.logger = llmmllogger.logger
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

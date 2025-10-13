@@ -8,26 +8,9 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 """
 
 import json
-from typing import AsyncGenerator, Any
+from typing import AsyncGenerator, Any, Dict
 
-
-def safe_json_serialize(obj: Any) -> str:
-    """Safely serialize objects to JSON, handling non-serializable types."""
-    def json_serializer(obj):
-        if isinstance(obj, set):
-            return list(obj)  # Convert sets to lists
-        elif hasattr(obj, '__dict__'):
-            return obj.__dict__  # Convert objects to dicts
-        elif hasattr(obj, 'dict') and callable(obj.dict):
-            return obj.dict()  # Handle Pydantic models
-        else:
-            return str(obj)  # Fallback to string representation
-    
-    try:
-        return json.dumps(obj, default=json_serializer, ensure_ascii=False)
-    except Exception as e:
-        # If all else fails, return a safe error representation
-        return json.dumps({"error": f"Serialization failed: {str(e)}", "original_type": str(type(obj))})
+from langchain_core.runnables.schema import StandardStreamEvent, CustomStreamEvent
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -67,21 +50,10 @@ async def chat_completion(
 
     try:
         # Store the user message in database first (with fallback for connection issues)
-        if storage.message:
-            try:
-                await storage.message.add_message(msg)
-                logger.debug(f"Message stored successfully for conversation {msg.conversation_id}")
-            except Exception as storage_error:
-                if "another operation is in progress" in str(storage_error).lower():
-                    logger.warning(f"Skipping message storage due to connection pool issue: {storage_error}")
-                    # Continue without storing - this is acceptable for the demo
-                else:
-                    # Re-raise other storage errors
-                    raise storage_error
-
+        await storage.get_service(storage.message).add_message(msg)
         # Capture variables for the async generator
         conversation_id = msg.conversation_id
-        
+
         # Direct composer workflow orchestration
         async def composer_chat_completion() -> AsyncGenerator[str, None]:
             """Handle chat completions by delegating to composer interface."""
@@ -93,7 +65,9 @@ async def chat_completion(
                 workflow = await composer.compose_workflow(user_id)
 
                 # Create initial state (conversation_id is already validated)
-                initial_state = await composer.create_initial_state(user_id, conversation_id)
+                initial_state = await composer.create_initial_state(
+                    user_id, conversation_id
+                )
 
                 # Execute workflow and stream events
                 final_state = None
@@ -103,36 +77,46 @@ async def chat_completion(
                     if isinstance(event, dict):
                         event_type = event.get("event", "")
                         event_data = event.get("data", {})
-                        
+
                         # Log all events for debugging
-                        logger.debug(f"Received event: {event_type}, data keys: {list(event_data.keys()) if isinstance(event_data, dict) else type(event_data)}")
-                        
+                        logger.info(
+                            f"Received event: {event_type}, data keys: {list(event_data.keys()) if isinstance(event_data, dict) else type(event_data)}"
+                        )
+
                         # Try to capture streaming content from various event types
                         if event_type == "on_chat_model_stream":
                             chunk = event_data.get("chunk", {})
                             content = ""
-                            
+
+                            logger.info(
+                                f"Streaming chunk: {safe_json_serialize(chunk)}"
+                            )
+
                             if isinstance(chunk, dict):
                                 content = chunk.get("content", "")
-                            elif hasattr(chunk, 'content'):
+                            elif hasattr(chunk, "content"):
                                 content = str(chunk.content)
-                            
+
                             if content:
                                 chat_response = {
                                     "message": {
                                         "role": "assistant",
-                                        "content": [{"type": "text", "text": content}]
+                                        "content": [{"type": "text", "text": content}],
                                     },
-                                    "done": False
+                                    "done": False,
                                 }
-                                yield f"data: {safe_json_serialize(chat_response)}\n\n"
-                                
+                                yield f"{safe_json_serialize(chat_response)}\n"
+
                         elif event_type == "on_chain_end":
                             # Capture final state for response extraction
                             final_state = event_data.get("output", {})
-                            
+
                         # Also try to extract streaming content from other event types
-                        elif event_type in ["on_chain_stream", "on_tool_end", "on_chain_start"]:
+                        elif event_type in [
+                            "on_chain_stream",
+                            "on_tool_end",
+                            "on_chain_start",
+                        ]:
                             # Look for streaming content in various places
                             output = event_data.get("output", {})
                             if isinstance(output, dict):
@@ -140,18 +124,26 @@ async def chat_completion(
                                 messages = output.get("messages", [])
                                 if messages and isinstance(messages, list):
                                     for msg in messages:
-                                        if isinstance(msg, dict) and msg.get("type") == "ai":
+                                        if (
+                                            isinstance(msg, dict)
+                                            and msg.get("type") == "ai"
+                                        ):
                                             content = msg.get("content", "")
                                             if content and isinstance(content, str):
                                                 chat_response = {
                                                     "message": {
                                                         "role": "assistant",
-                                                        "content": [{"type": "text", "text": content}]
+                                                        "content": [
+                                                            {
+                                                                "type": "text",
+                                                                "text": content,
+                                                            }
+                                                        ],
                                                     },
-                                                    "done": False
+                                                    "done": False,
                                                 }
-                                                yield f"data: {safe_json_serialize(chat_response)}\n\n"
-                
+                                                yield f"{safe_json_serialize(chat_response)}\n"
+
                 # Extract final response from workflow state
                 if final_state and isinstance(final_state, dict):
                     messages = final_state.get("messages", [])
@@ -160,73 +152,96 @@ async def chat_completion(
                         last_message = None
                         for msg in reversed(messages):
                             if isinstance(msg, dict):
-                                role = msg.get("type", "").lower()  # LangChain message type
+                                role = msg.get(
+                                    "type", ""
+                                ).lower()  # LangChain message type
                                 if role == "ai" or role == "assistant":
                                     last_message = msg
                                     break
-                            elif hasattr(msg, 'type') and str(msg.type).lower() in ["ai", "aimessage"]:
+                            elif hasattr(msg, "type") and str(msg.type).lower() in [
+                                "ai",
+                                "aimessage",
+                            ]:
                                 last_message = msg
                                 break
-                        
+
                         if last_message:
                             # Extract content from LangChain message
                             content = ""
                             if isinstance(last_message, dict):
                                 content = last_message.get("content", "")
-                            elif hasattr(last_message, 'content'):
+                            elif hasattr(last_message, "content"):
                                 content = str(last_message.content)
-                            
+
                             if content:
                                 # Save assistant response to database
                                 if storage.message:
                                     try:
-                                        from models import MessageRole, MessageContent, MessageContentType
+                                        from models import (
+                                            MessageRole,
+                                            MessageContent,
+                                            MessageContentType,
+                                        )
+
                                         assistant_message = Message(
                                             conversation_id=conversation_id,
                                             role=MessageRole.ASSISTANT,
-                                            content=[MessageContent(type=MessageContentType.TEXT, text=content)]
+                                            content=[
+                                                MessageContent(
+                                                    type=MessageContentType.TEXT,
+                                                    text=content,
+                                                )
+                                            ],
                                         )
-                                        await storage.message.add_message(assistant_message)
-                                        logger.debug(f"Assistant response stored for conversation {conversation_id}")
+                                        await storage.message.add_message(
+                                            assistant_message
+                                        )
+                                        logger.debug(
+                                            f"Assistant response stored for conversation {conversation_id}"
+                                        )
                                     except Exception as storage_error:
-                                        logger.warning(f"Failed to store assistant response: {storage_error}")
-                                
+                                        logger.warning(
+                                            f"Failed to store assistant response: {storage_error}"
+                                        )
+
                                 final_response = {
                                     "message": {
                                         "role": "assistant",
-                                        "content": [{"type": "text", "text": content}]
+                                        "content": [{"type": "text", "text": content}],
                                     },
-                                    "done": True
+                                    "done": True,
                                 }
-                                yield f"data: {safe_json_serialize(final_response)}\n\n"
+                                yield f"{safe_json_serialize(final_response)}\n"
                                 return
-                
+
                 # Fallback if no response was extracted
                 fallback_response = {
                     "message": {
                         "role": "assistant",
-                        "content": [{"type": "text", "text": "Response completed successfully."}]
+                        "content": [
+                            {"type": "text", "text": "Response completed successfully."}
+                        ],
                     },
-                    "done": True
+                    "done": True,
                 }
-                yield f"data: {safe_json_serialize(fallback_response)}\n\n"
+                yield f"{safe_json_serialize(fallback_response)}\n"
 
             except Exception as e:
                 logger.error(f"Error in composer chat completion: {e}")
                 error_data = safe_json_serialize({"error": str(e), "type": "error"})
-                yield f"data: {error_data}\n\n"
+                yield f"{error_data}\n"
             finally:
                 # Always send a final done event to signal stream completion
-                yield f"data: {safe_json_serialize({'type': 'stream_end'})}\n\n"
+                yield f"{safe_json_serialize({'type': 'stream_end'})}\n"
 
         return StreamingResponse(
             composer_chat_completion(),
-            media_type="text/event-stream",
+            media_type="application/json",
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
                 "X-Accel-Buffering": "no",  # Disable nginx buffer
-            }
+            },
         )
 
     except Exception as e:  # noqa: BLE001
@@ -279,3 +294,37 @@ async def admin_only(request: Request):
         "user_id": user_id,
         "request_id": request_id,
     }
+
+
+def safe_json_serialize(obj: Any) -> str:
+    """Safely serialize objects to JSON, handling non-serializable types."""
+
+    def json_serializer(obj):
+        if isinstance(obj, set):
+            return list(obj)  # Convert sets to lists
+        elif hasattr(obj, "__dict__"):
+            return obj.__dict__  # Convert objects to dicts
+        elif hasattr(obj, "dict") and callable(obj.dict):
+            return obj.dict()  # Handle Pydantic models
+        else:
+            return str(obj)  # Fallback to string representation
+
+    try:
+        return json.dumps(obj, default=json_serializer, ensure_ascii=False)
+    except Exception as e:
+        # If all else fails, return a safe error representation
+        return json.dumps(
+            {
+                "error": f"Serialization failed: {str(e)}",
+                "original_type": str(type(obj)),
+            }
+        )
+
+
+def dbg_evt(evt: StandardStreamEvent | CustomStreamEvent | Dict[str, Any]):
+    if isinstance(evt, dict):
+        event_type = evt.get("event", "")
+        event_data = evt.get("data", {})
+
+        for k, v in event_data.items():
+            logger.info(f"Event {event_type} - {k}: {safe_json_serialize(v)}")

@@ -26,7 +26,7 @@ from models import (
 from composer.graph.state import WorkflowState
 from composer.graph.builder import GraphBuilder
 from composer.graph.cache import WorkflowCache
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.utils.conversion import (
     convert_messages_to_langchain,
     message_to_langchain_message,
@@ -52,7 +52,7 @@ class ComposerService:
     """
 
     def __init__(self):
-        self.logger = composer_logger.logger
+        self.logger = llmmllogger.logger
         from runner import pipeline_factory  # pylint: disable=import-outside-toplevel
 
         self.pipeline_factory = pipeline_factory
@@ -101,26 +101,9 @@ class ComposerService:
             # 1. Get user configuration from shared data layer
             from db import storage  # pylint: disable=import-outside-toplevel
 
-            try:
-                user_config = await storage.get_service(
-                    storage.user_config
-                ).get_user_config(user_id)
-            except Exception as db_error:
-                # Handle database connection issues and validation errors during streaming contexts
-                error_msg = str(db_error).lower()
-                if ("another operation is in progress" in error_msg or 
-                    "validation error" in error_msg or
-                    "field required" in error_msg or
-                    "context_window" in error_msg):
-                    self.logger.warning(
-                        f"Database/validation issue during workflow composition, using default config for {user_id}",
-                        extra={"error": str(db_error)}
-                    )
-                    # Import and create default config
-                    from models.default_configs import create_default_user_config
-                    user_config = create_default_user_config(user_id)
-                else:
-                    raise db_error
+            user_config = await storage.get_service(
+                storage.user_config
+            ).get_user_config(user_id)
 
             # 2. Use per-user cache if enabled (cache based on user_id only now)
             user_cache = None

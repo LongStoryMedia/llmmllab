@@ -3,16 +3,74 @@ Structured logging for composer service.
 Follows inference service logging patterns.
 """
 
+import logging
+from datetime import datetime
+import os
+import sys
+from typing import Dict, Any, Optional
 import structlog
 import structlog.typing
-from datetime import datetime
-from typing import Dict, Any, Optional
+import structlog.stdlib
+import structlog.processors
 
 
-class ComposerLogger:
-    """Structured logging for composer workflows."""
+class LlmmlLogger:
+    """Structured logging with colorized output for both direct execution and Kubernetes logs."""
 
-    def __init__(self, service_name: str = "composer"):
+    def __init__(self, service_name: str = "llmmllab"):
+        # Set up logging
+        log_level = os.environ.get("LOG_LEVEL", "info").lower()
+        log_level_map = {
+            "debug": logging.DEBUG,
+            "info": logging.INFO,
+            "warning": logging.WARNING,
+            "error": logging.ERROR,
+            "critical": logging.CRITICAL,
+        }
+        logging_level = log_level_map.get(log_level, logging.INFO)
+
+        # Check if we should force colors (useful for Kubernetes logs)
+        force_colors = os.environ.get("FORCE_COLOR", "0") == "1"
+
+        # Determine if we should use colors
+        # Force colors if FORCE_COLOR is set, or if we're in a TTY
+        use_colors = force_colors or (
+            hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+        )
+
+        # Configure structured logging with enhanced processors
+        processors = [
+            structlog.stdlib.filter_by_level,
+            structlog.stdlib.add_logger_name,
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.processors.UnicodeDecoder(),
+        ]
+
+        # Add colorized console renderer if colors are enabled
+        if use_colors:
+            processors.append(structlog.dev.ConsoleRenderer(colors=True))
+        else:
+            processors.append(structlog.dev.ConsoleRenderer(colors=False))
+
+        # Configure structlog
+        structlog.configure(
+            processors=processors,
+            wrapper_class=structlog.make_filtering_bound_logger(logging_level),
+            logger_factory=structlog.stdlib.LoggerFactory(),
+            cache_logger_on_first_use=True,
+        )
+
+        # Configure standard library logging
+        logging.basicConfig(
+            format="%(message)s",
+            level=logging_level,
+            stream=sys.stdout,
+        )
+
         self.logger: structlog.typing.FilteringBoundLogger = structlog.get_logger(
             service_name
         )
@@ -141,6 +199,10 @@ class ComposerLogger:
 
         self.logger.error("Composer error occurred", extra=error_context, exc_info=True)
 
+    def bind(self, **kwargs) -> structlog.typing.FilteringBoundLogger:
+        """Create a new logger with additional bound context."""
+        return self.logger.bind(**kwargs)
+
 
 # Global logger instance
-composer_logger = ComposerLogger()
+llmmllogger = LlmmlLogger()

@@ -14,7 +14,7 @@ from composer.graph.state import ResearchWorkflowState
 from composer.nodes import PipelineNode
 from composer.nodes.routing import IntentClassifierNode
 from composer.nodes.research import ComprehensiveResearchExecutor
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 
 
 async def build_research_workflow(
@@ -36,9 +36,7 @@ async def build_research_workflow(
     Returns:
         Compiled LangGraph research workflow
     """
-    composer_logger.logger.info(
-        "Building research workflow", extra={"user_id": user_id}
-    )
+    llmmllogger.logger.info("Building research workflow", extra={"user_id": user_id})
 
     # Create research workflow graph
     workflow = StateGraph(ResearchWorkflowState)
@@ -100,7 +98,7 @@ async def build_research_workflow(
     # Compile and return workflow
     compiled_workflow = workflow.compile()
 
-    composer_logger.logger.info(
+    llmmllogger.logger.info(
         "Research workflow built successfully",
         extra={"user_id": user_id, "node_count": len(workflow.nodes)},
     )
@@ -138,7 +136,7 @@ def _create_config_setup_node(user_id: str):
                 web_search_config = user_config.web_search
             else:
                 # Use default config if no user-specific config found
-                composer_logger.logger.info(
+                llmmllogger.logger.info(
                     f"Using default web search config for research workflow, user {user_id}"
                 )
                 web_search_config = WebSearchConfig(
@@ -173,7 +171,7 @@ def _create_config_setup_node(user_id: str):
                 web_search_config.max_results
             )
 
-            composer_logger.logger.info(
+            llmmllogger.logger.info(
                 "Research workflow config setup completed",
                 extra={
                     "user_id": user_id,
@@ -184,7 +182,7 @@ def _create_config_setup_node(user_id: str):
             )
 
         except Exception as e:
-            composer_logger.logger.warning(
+            llmmllogger.logger.warning(
                 f"Failed to set up research workflow config for user {user_id}: {e}"
             )
             # Continue with default settings - don't fail the workflow

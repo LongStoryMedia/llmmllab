@@ -3,7 +3,6 @@ Dynamic Tool implementation for executing custom code at runtime
 """
 
 import io
-import logging
 from typing import Any, Dict, Optional
 from contextlib import redirect_stdout, redirect_stderr
 
@@ -12,10 +11,11 @@ from langchain_core.callbacks import CallbackManagerForToolRun
 from pydantic import Field
 
 from models import DynamicTool
+from utils.logging import llmmllogger
 
 from .security import ToolSecurityValidator
 
-logger = logging.getLogger(__name__)
+logger = llmmllogger.bind(component="dynamic_tool_generator")
 
 
 class DynamicToolRunner(BaseTool):

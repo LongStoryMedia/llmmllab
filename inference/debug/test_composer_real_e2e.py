@@ -18,17 +18,15 @@ import asyncio
 import time
 import uuid
 import json
-import logging
 import os
 import sys
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
+from utils.logging import llmmllogger
+
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+logger = llmmllogger.bind(component="composer_e2e_test")
 
 
 class ComposerRealEndToEndTester:

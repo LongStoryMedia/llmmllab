@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 
 from composer.graph.state import WorkflowState
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
 from composer.utils.conversion import langchain_message_to_message
 
@@ -32,7 +32,7 @@ class IntentClassifierNode:
         """
         self.agent = classifier_agent
 
-        self.logger = composer_logger.logger
+        self.logger = llmmllogger.logger
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

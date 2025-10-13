@@ -18,7 +18,7 @@ from models import (
     Message,
     MessageRole,
 )
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.core.errors import IntentAnalysisError
 from utils.message import extract_message_text
 from utils.grammar_generator import parse_structured_output
@@ -59,7 +59,7 @@ class ClassifierAgent:
         """
         self.pipeline_factory = pipeline_factory
         self.profile = profile
-        composer_logger.logger.info(
+        llmmllogger.logger.info(
             "Intent classifier initialized with analysis model profile"
         )
 
@@ -132,21 +132,10 @@ class ClassifierAgent:
                 for intent_analysis in intent_analyses:
                     self._augment_with_statistics(intent_analysis, user_query)
 
-                    composer_logger.log_intent_analysis(
-                        intent_result={
-                            "primary_intent": intent_analysis.primary_intent,
-                            "complexity": intent_analysis.complexity_level,
-                            "capabilities_count": len(
-                                intent_analysis.required_capabilities
-                            ),
-                        },
-                        confidence=intent_analysis.confidence,
-                    )
-
                 return intent_analyses
 
         except Exception as e:
-            composer_logger.log_error(e, {"context": "intent_analysis"})
+            llmmllogger.log_error(e, {"context": "intent_analysis"})
             raise IntentAnalysisError(f"Intent analysis failed: {e}") from e
 
     async def _llm_analyze_intent(
@@ -169,26 +158,31 @@ class ClassifierAgent:
         class _Intnts(BaseModel):
             intents: List[IntentAnalysis]
 
+        intnt_schema = _Intnts.model_json_schema()
+
         analysis_prompt = f"""
 You are an expert intent classification system. Analyze the user request and output ONLY JSON.
 
-Enumerations (must use exactly these values where applicable):
-    primary_intent: general | research | engineering | creative | image_generation | image_refinement
-    complexity_level: TRIVIAL | SIMPLE | MODERATE | COMPLEX | SPECIALIZED
-    required_capabilities (array, choose relevant): basic_math, text_processing, information_retrieval, conversation_memory, web_search, summarization, reasoning, general_knowledge, api_integration, async_processing, file_manipulation, data_processing, image_processing, audio_processing, database_access, network_communication
-    computational_requirements (array, choose relevant): high_memory, gpu_acceleration, parallel_processing, real_time_processing, large_data_handling, complex_reasoning, multi_modal_processing, external_api_calls, file_operations, database_operations
+Valid enumerations ONLY:
+primary_intent (choose one per intent): [ {" | ".join(intnt_schema['$defs']['WorkflowType']['enum'])} ]
+complexity_level (choose one per intent): [ {" | ".join(intnt_schema['$defs']['ComplexityLevel']['enum'])} ]
+
+required_capabilities (functionality needed - choose many, one, or none):
+{", ".join(intnt_schema['$defs']['RequiredCapability']['enum'])}
+
+computational_requirements (hardware needs - choose many, one, or none - LEAVE THIS EMPTY IF THERE ARE NO OPTIONS THAT APPLY):
+{", ".join(intnt_schema['$defs']['ComputationalRequirement']['enum'])}
 
 Instructions:
-1. Decompose only if there are clearly separable sub-tasks; else one intent.
+1. Decompose only if there are clearly separable sub-tasks; else one intent in the intents array.
 2. Each element in intents must follow the enumerations exactly.
-3. domain_specificity, reusability_potential, confidence are floats 0.0-1.0.
-4. Omit response_format / technical_domain unless clearly implied.
-5. Output strictly valid JSON. No prose, no markdown, no comments.
+3. Omit response_format / technical_domain unless clearly implied.
+4. Output strictly valid JSON. No prose, no markdown, no comments.
 
 User Request: {user_query}
 
-Return JSON that is valid against this schema:
-{json.dumps(_Intnts.model_json_schema())}
+IMPORTANT: Return JSON that is valid against this schema:
+{json.dumps(intnt_schema)}
 
 If multiple intents are needed, include additional objects in the intents array.
 """
@@ -221,7 +215,7 @@ If multiple intents are needed, include additional objects in the intents array.
             if repaired and repaired != txt:
                 try:
                     intents = parse_structured_output(repaired, _Intnts)
-                    composer_logger.logger.info(
+                    llmmllogger.logger.info(
                         "Intent JSON repaired successfully",
                         extra={"original_len": len(txt), "repaired_len": len(repaired)},
                     )
@@ -376,7 +370,7 @@ Title:"""
                 if not title:
                     title = "New Conversation"
 
-                composer_logger.logger.info(
+                llmmllogger.logger.info(
                     "Title generated successfully",
                     extra={
                         "title": title,
@@ -388,7 +382,7 @@ Title:"""
                 return title
 
         except Exception as e:
-            composer_logger.log_error(e, {"context": "title_generation"})
+            llmmllogger.log_error(e, {"context": "title_generation"})
             # Provide fallback title instead of raising error
             return "Conversation"
 

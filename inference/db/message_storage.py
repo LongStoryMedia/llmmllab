@@ -2,7 +2,6 @@
 Direct port of Maistro's message.go storage logic to Python with cache integration.
 """
 
-import logging
 import asyncpg
 from typing import List, Optional
 from models.message import Message
@@ -10,8 +9,9 @@ from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
 from db.cache_storage import cache_storage
 from db.db_utils import TypedConnection, typed_pool
+from utils.logging import llmmllogger
 
-logger = logging.getLogger(__name__)
+logger = llmmllogger.bind(component="message_storage")
 
 
 class MessageStorage:
@@ -19,7 +19,7 @@ class MessageStorage:
         self.pool = pool
         self.typed_pool = typed_pool(pool)
         self.get_query = get_query
-        self.logger = logging.getLogger(__name__)
+        self.logger = llmmllogger.bind(component="message_storage_instance")
 
     async def add_message(self, message: Message) -> Optional[int]:
         # Process content to ensure it's in the right format for storage

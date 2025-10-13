@@ -8,7 +8,6 @@ before sending to the client, focusing on:
 """
 
 import json
-import logging
 import re
 from typing import List, Dict, Any, Optional, Union, Callable
 from datetime import datetime
@@ -17,8 +16,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
+from utils.logging import llmmllogger
 
-logger = logging.getLogger(__name__)
+logger = llmmllogger.bind(component="message_validation_middleware")
 
 
 class MessageValidationMiddleware(BaseHTTPMiddleware):

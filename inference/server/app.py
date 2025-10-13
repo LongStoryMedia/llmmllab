@@ -36,14 +36,7 @@ detailed logging throughout the startup and shutdown processes.
 """
 
 import os
-
-# Enable auth bypass for testing
-os.environ['DISABLE_AUTH'] = 'true'
-# Set test user ID to match existing conversation owner
-os.environ['TEST_USER_ID'] = 'CgNsc20SBGxkYXA'
-
 from contextlib import asynccontextmanager
-
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -64,8 +57,13 @@ from server.routers import (
 )
 from server.middleware.auth import AuthMiddleware
 from server.config import API_VERSION
-from db.maintenance import maintenance_service
 from server.cleanup_service import cleanup_service
+from db.maintenance import maintenance_service
+
+# Enable auth bypass for testing
+os.environ["DISABLE_AUTH"] = "true"
+# Set test user ID to match existing conversation owner
+os.environ["TEST_USER_ID"] = "CgNsc20SBGxkYXA"
 
 # Create required directories if they don't exist
 os.makedirs(IMAGE_DIR, exist_ok=True)
@@ -287,7 +285,7 @@ async def lifespan(_: FastAPI):
 
 
 # Import logging for auth middleware debugging
-import logging
+from utils.logging import llmmllogger
 
 # Initialize auth middleware first before creating the app
 # This ensures middleware is ready before any routes are registered
@@ -308,7 +306,6 @@ app = FastAPI(
 
 # Store auth middleware in app.state right away
 app.state.auth_middleware = global_auth_middleware
-
 # Add message validation middleware to ensure proper response structure
 from server.middleware.message_validation import MessageValidationMiddleware
 
@@ -319,7 +316,7 @@ app.add_middleware(MessageValidationMiddleware)
 async def auth_middleware_handler(request: Request, call_next):
     """Authentication middleware to handle token validation and user identification"""
     # Get logger for debugging
-    logger = logging.getLogger("auth-middleware")
+    logger = llmmllogger.bind(component="auth-middleware")
     logger.debug(f"Processing request for path: {request.url.path}")
 
     # Skip auth for public endpoints

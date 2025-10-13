@@ -104,14 +104,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy only the compiled llama-cpp-python wheel from builder
 COPY --from=builder /opt/wheels /opt/wheels
 
-# Set working directory and copy application code
+# Set working directory
 WORKDIR /app
-COPY . .
 
 # Create single shared virtual environment instead of 4 separate ones
 RUN python3 -m venv ${SHARED_VENV}
 
-# Install all dependencies in shared environment to avoid duplication
+# Install all dependencies in shared environment to avoid duplication (before copying source code)
 RUN . ${SHARED_VENV}/bin/activate && \
     pip install --no-cache-dir --upgrade pip setuptools wheel && \
     # Install PyTorch runtime directly (much smaller than pre-built wheels)
@@ -120,12 +119,16 @@ RUN . ${SHARED_VENV}/bin/activate && \
     pip install --no-cache-dir diskcache>=5.6.1 typing-extensions>=4.5.0 numpy>=1.20.0 jinja2>=2.11.3 && \
     # Install our custom llama-cpp-python from wheels
     pip install --no-cache-dir --find-links /opt/wheels --no-index llama-cpp-python && \
+    # Cleanup wheels and pip cache
+    rm -rf /opt/wheels /root/.cache/pip && \
     deactivate
-# Install all service packages in shared environment
+
+# Copy application code AFTER installing base dependencies
+COPY . .
+
+# Install service packages in development mode (these will rebuild when code changes)
 RUN . ${SHARED_VENV}/bin/activate && \
     pip install --no-cache-dir -e /app/runner -e /app/server -e /app/evaluation -e /app/composer && \
-    # Immediate cleanup to reduce layer size
-    rm -rf /opt/wheels /root/.cache/pip && \
     deactivate
 
 # Setup cross-environment access
@@ -152,4 +155,4 @@ RUN find ${SHARED_VENV} -name "*.pyc" -delete && \
 EXPOSE 8000 50051
 
 # Default command
-CMD ["/app/startup.sh"]
+CMD ["sh", "-c", "cd /app/server && /app/v.sh python -m uvicorn app:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app --timeout-graceful-shutdown 0"]

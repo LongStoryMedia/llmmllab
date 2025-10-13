@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from composer.graph.state import WorkflowState
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
 
 
@@ -30,7 +30,7 @@ class BaseNode(ABC):
             **kwargs: Additional initialization parameters for subclasses
         """
         self.node_name = node_name
-        self.logger = composer_logger.logger.bind(component=node_name)
+        self.logger = llmmllogger.logger.bind(component=node_name)
 
         # Allow subclasses to handle additional initialization
         self._initialize_node(**kwargs)

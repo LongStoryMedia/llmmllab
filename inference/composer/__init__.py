@@ -26,9 +26,9 @@ from langchain_core.runnables.schema import StreamEvent
 
 from models import Message, WorkflowType
 
+from utils.logging import llmmllogger
 
 from .core.service import CompiledStateGraph, ComposerService
-from .monitoring.logging import composer_logger
 
 # Global service instance
 _composer_service: Optional[ComposerService] = None
@@ -38,16 +38,16 @@ async def initialize_composer() -> None:
     """Initialize the composer service. Should be called once at startup."""
     global _composer_service  # noqa: PLW0603
     if _composer_service is None:
-        composer_logger.logger.info("Initializing composer service")
+        llmmllogger.logger.info("Initializing composer service")
         _composer_service = ComposerService()
-        composer_logger.logger.info("Composer service initialized")
+        llmmllogger.logger.info("Composer service initialized")
 
 
 async def shutdown_composer() -> None:
     """Shutdown the composer service. Should be called at server shutdown."""
     global _composer_service  # noqa: PLW0603
     if _composer_service:
-        composer_logger.logger.info("Shutting down composer service")
+        llmmllogger.logger.info("Shutting down composer service")
         await _composer_service.shutdown()
         _composer_service = None
 

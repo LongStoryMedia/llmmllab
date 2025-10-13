@@ -202,6 +202,8 @@ class ModelProfileStorage:
                 profile.system_prompt,
                 profile.model_version,
                 profile.type,
+                circuit_breaker_json,
+                gpu_config_json,
             )
 
             # Update the profile with current timestamps (which are set by the database)

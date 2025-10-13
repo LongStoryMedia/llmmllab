@@ -1,6 +1,6 @@
 from composer.graph.state import WorkflowState
 from composer.tools.registry import ToolRegistry
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 
 
 class StaticToolCollectionNode:
@@ -16,7 +16,7 @@ class StaticToolCollectionNode:
             tool_registry: Registry to fetch static tools from
         """
         self.tool_registry = tool_registry
-        self.logger = composer_logger.logger.bind(component="StaticToolCollectionNode")
+        self.logger = llmmllogger.logger.bind(component="StaticToolCollectionNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

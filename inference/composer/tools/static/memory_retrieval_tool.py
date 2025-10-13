@@ -43,7 +43,7 @@ from models import MemoryConfig, ModelProfileType
 from models.default_configs import DEFAULT_MEMORY_CONFIG
 from utils.model_profile import get_model_profile
 
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 
 
 class MemoryRetrievalTool(BaseTool):
@@ -65,7 +65,7 @@ class MemoryRetrievalTool(BaseTool):
     @property
     def logger(self):
         """Get logger for this tool instance."""
-        return composer_logger.logger.bind(component=self.__class__.__name__)
+        return llmmllogger.logger.bind(component=self.__class__.__name__)
 
     async def _get_memory_config(self) -> MemoryConfig:
         """Get memory configuration from user config via shared data layer."""

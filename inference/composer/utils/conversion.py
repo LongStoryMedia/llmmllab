@@ -31,9 +31,9 @@ def message_to_langchain_message(msg: Message) -> LangChainMessage:
             )
 
     # Debug logging for tool calls conversion
-    from composer.monitoring.logging import composer_logger
+    from utils.logging import llmmllogger
 
-    logger = composer_logger.logger.bind(component="message_conversion")
+    logger = llmmllogger.logger.bind(component="message_conversion")
 
     logger.info(
         "Converting Message to LangChainMessage",

@@ -1,24 +1,9 @@
 import os
-import logging
 from typing import Any, Dict
+from utils.logging import llmmllogger
 
-# Set up logging
-log_level = os.environ.get("LOG_LEVEL", "info").lower()
-log_level_map = {
-    "debug": logging.DEBUG,
-    "info": logging.INFO,
-    "warning": logging.WARNING,
-    "error": logging.ERROR,
-    "critical": logging.CRITICAL,
-}
-logging_level = log_level_map.get(log_level, logging.INFO)
 
-logging.basicConfig(
-    level=logging_level,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler()],
-)
-logger = logging.getLogger("inference-service")
+logger = llmmllogger.logger.bind(component="Server")
 
 # API versioning configuration
 API_VERSION = os.environ.get("API_VERSION", "v1")

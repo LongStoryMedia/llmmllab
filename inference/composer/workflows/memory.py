@@ -15,7 +15,7 @@ from composer.nodes.memory import (
     MemoryStorageNode,
     MemoryCreationNode,
 )
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 
 
 async def build_memory_workflow(
@@ -38,7 +38,7 @@ async def build_memory_workflow(
     Returns:
         Compiled memory workflow graph
     """
-    logger = composer_logger.logger.bind(component="MemoryWorkflow")
+    logger = llmmllogger.logger.bind(component="MemoryWorkflow")
 
     try:
         logger.info(
@@ -108,7 +108,7 @@ async def build_embedding_only_workflow(
     Returns:
         Compiled embedding workflow graph
     """
-    logger = composer_logger.logger.bind(component="EmbeddingWorkflow")
+    logger = llmmllogger.logger.bind(component="EmbeddingWorkflow")
 
     try:
         logger.info("Building embedding-only workflow", user_id=user_id)

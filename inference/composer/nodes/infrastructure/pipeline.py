@@ -22,7 +22,7 @@ from models.default_configs import DEFAULT_CIRCUIT_BREAKER_CONFIG
 from utils.model_profile import get_model_profile_for_task
 from utils.message import extract_message_text
 from composer.graph.state import WorkflowState
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
 from composer.utils.state import assemble_context_messages
 from composer.utils.conversion import message_to_langchain_message
@@ -55,7 +55,7 @@ class PipelineNode:
         self.profile_type = profile_type
         self.stream = stream
         self.priority = priority
-        self.logger = composer_logger.logger.bind(component="PipelineNode")
+        self.logger = llmmllogger.logger.bind(component="PipelineNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

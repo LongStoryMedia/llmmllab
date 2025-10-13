@@ -25,7 +25,7 @@ from models import (
     UserConfig,
 )  # DynamicTool intentionally unused pending implementation
 
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.core.errors import ToolGenerationError
 from composer.tools.static import (
     MemoryRetrievalTool,
@@ -80,12 +80,12 @@ class ToolRegistry:
             # These are already instances, not classes that need instantiation
             self.executable_tools["web_search"] = web_search
 
-            composer_logger.logger.info(
+            llmmllogger.logger.info(
                 "Loaded static tools", extra={"tool_count": len(self.static_tools)}
             )
 
         except ImportError as e:
-            composer_logger.log_error(e, {"context": "static_tools_loading"})
+            llmmllogger.log_error(e, {"context": "static_tools_loading"})
 
     async def get_tools_for_context(
         self,
@@ -127,7 +127,7 @@ class ToolRegistry:
                 if dynamic_tool:
                     tools.append(dynamic_tool)
 
-            composer_logger.logger.info(
+            llmmllogger.logger.info(
                 "Selected tools for context",
                 extra={
                     "tool_count": len(tools),
@@ -139,7 +139,7 @@ class ToolRegistry:
             return tools
 
         except Exception as e:
-            composer_logger.log_error(e, {"context": "tool_selection"})
+            llmmllogger.log_error(e, {"context": "tool_selection"})
             # Return minimal tool set on error
             return []
 
@@ -176,7 +176,7 @@ class ToolRegistry:
         """
         async with self._lock:
             self.dynamic_tools[tool_id] = tool_instance
-            composer_logger.logger.info(
+            llmmllogger.logger.info(
                 f"Registered dynamic tool instance: {tool_id}",
                 extra={"tool_name": getattr(tool_instance, "name", tool_id)},
             )
@@ -189,7 +189,7 @@ class ToolRegistry:
                     if emb is not None:
                         self.tool_embeddings[tool_id] = emb
                 except Exception as e:  # pragma: no cover - defensive
-                    composer_logger.log_error(e, {"context": "dynamic_tool_embedding"})
+                    llmmllogger.log_error(e, {"context": "dynamic_tool_embedding"})
 
     async def get_static_tool_instances(self, user_id: str) -> List[Tool]:
         """
@@ -261,7 +261,7 @@ class ToolRegistry:
                 response_format=getattr(base_tool, "response_format", "content"),
             )
 
-            composer_logger.logger.debug(
+            llmmllogger.logger.debug(
                 "Created tool instance",
                 tool_class=tool_cls.__name__,
                 tool_name=tool_name,
@@ -270,7 +270,7 @@ class ToolRegistry:
             )
             return tool_instance
         except Exception as e:
-            composer_logger.log_error(
+            llmmllogger.log_error(
                 e,
                 {
                     "context": "tool_instantiation",
@@ -311,7 +311,7 @@ class ToolRegistry:
                 spec_embedding
             )
 
-            composer_logger.log_tool_generation(
+            llmmllogger.log_tool_generation(
                 tool_spec=spec_description,
                 method="similarity_search",
                 success=True,
@@ -344,13 +344,13 @@ class ToolRegistry:
             else:
                 # Create New - temporarily disabled to avoid Tool structure issues
                 # PLACEHOLDER: Implement _create_new_tool with proper Tool structure
-                composer_logger.logger.warning(
+                llmmllogger.logger.warning(
                     f"Dynamic tool creation not yet implemented for user {user_id}"
                 )
                 return None
 
         except Exception as e:  # pragma: no cover - error path
-            composer_logger.log_error(e, {"context": "dynamic_tool_generation"})
+            llmmllogger.log_error(e, {"context": "dynamic_tool_generation"})
             raise ToolGenerationError(f"Failed to generate dynamic tool: {e}") from e
 
     async def _compute_embedding(self, text: str, user_id: str) -> Optional[np.ndarray]:
@@ -366,7 +366,7 @@ class ToolRegistry:
                 return None
             return np.array(vec, dtype=np.float32)
         except Exception as e:  # pragma: no cover - defensive
-            composer_logger.log_error(e, {"context": "embedding_computation"})
+            llmmllogger.log_error(e, {"context": "embedding_computation"})
             return None
 
     async def _find_best_match(
@@ -396,7 +396,7 @@ class ToolRegistry:
         async with self._lock:
             existing_tool = self.dynamic_tools.get(tool_id)
             if existing_tool:
-                composer_logger.log_tool_generation(
+                llmmllogger.log_tool_generation(
                     tool_spec=f"existing:{tool_id}",
                     method="existing",
                     success=True,
@@ -412,7 +412,7 @@ class ToolRegistry:
 
         Currently returns existing tool untouched.
         """
-        composer_logger.log_tool_generation(
+        llmmllogger.log_tool_generation(
             tool_spec=f"modify:{base_tool_id}",
             method="modified",
             success=False,
@@ -425,13 +425,13 @@ class ToolRegistry:
         self, _intent: IntentAnalysis, spec_description: str
     ) -> Optional[Tool]:  # pragma: no cover - placeholder
         """Placeholder for future dynamic tool creation via LLM code generation."""
-        composer_logger.log_tool_generation(
+        llmmllogger.log_tool_generation(
             tool_spec=spec_description,
             method="new",
             success=False,
             additional_context={"reason": "creation_not_implemented"},
         )
-        composer_logger.logger.warning(
+        llmmllogger.logger.warning(
             "Dynamic tool creation disabled (pending implementation)"
         )
         return None

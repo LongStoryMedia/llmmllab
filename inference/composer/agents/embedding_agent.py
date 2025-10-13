@@ -9,7 +9,7 @@ import numpy as np
 
 from runner import PipelineFactory
 from models import ModelProfile, PipelinePriority
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
 
 
@@ -34,7 +34,7 @@ class EmbeddingAgent:
             user_config_storage: Injected UserConfigStorage service
         """
         self.pipeline_factory = pipeline_factory
-        self.logger = composer_logger.logger.bind(component="EmbeddingAgent")
+        self.logger = llmmllogger.logger.bind(component="EmbeddingAgent")
         self.profile = profile
 
     async def generate_embeddings(

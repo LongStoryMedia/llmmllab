@@ -5,7 +5,7 @@ Stores messages as memories with their embeddings.
 
 from composer.agents.memory_agent import MemoryAgent
 from composer.graph.state import WorkflowState
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 
 
 class MemoryStorageNode:
@@ -27,7 +27,7 @@ class MemoryStorageNode:
             storage: Required Storage instance
         """
         self.agent = memory_agent
-        self.logger = composer_logger.logger.bind(component="MemoryStorageNode")
+        self.logger = llmmllogger.logger.bind(component="MemoryStorageNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

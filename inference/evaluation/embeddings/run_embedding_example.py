@@ -6,7 +6,6 @@ and evaluate them using the embedding benchmark.
 """
 
 import argparse
-import logging
 import os
 import sys
 
@@ -17,15 +16,13 @@ from evaluation.embeddings.adapter import EmbeddingModelAdapter
 from evaluation.embeddings.extractor import EmbeddingExtractor
 from evaluation.embeddings.utils import EmbeddingUtils
 from evaluation.embeddings.embedding_benchmark import EmbeddingBenchmark
+from utils.logging import llmmllogger
 
 
 def setup_logging():
     """Set up logging configuration."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler()],
-    )
+    # Logging is now handled by llmmllogger
+    pass
 
 
 def main():
@@ -47,7 +44,7 @@ def main():
     args = parser.parse_args()
 
     setup_logging()
-    logger = logging.getLogger(__name__)
+    logger = llmmllogger.bind(component="embedding_evaluation_example")
     logger.info("Starting embedding evaluation example")
 
     # Example 1: Generate embeddings using the adapter directly

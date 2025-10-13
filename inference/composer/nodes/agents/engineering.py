@@ -9,7 +9,7 @@ from runner import PipelineFactory
 from models import LangChainMessage
 
 from composer.graph.state import WorkflowState
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
 from composer.utils.extraction import extract_content_from_langchain_message
 
@@ -40,7 +40,7 @@ class EngineeringAgentNode:
         """
         self.agent = engineering_agent
 
-        self.logger = composer_logger.logger
+        self.logger = llmmllogger.logger
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

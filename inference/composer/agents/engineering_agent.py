@@ -12,7 +12,7 @@ from models import (
     TechnicalDomain,
     ResponseFormat,
 )
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
 from utils.message import extract_message_text
 
@@ -41,7 +41,7 @@ class EngineeringAgent:
             user_config_storage: Injected UserConfigStorage service
         """
         self.pipeline_factory = pipeline_factory
-        self.logger = composer_logger.logger.bind(component="EngineeringAgent")
+        self.logger = llmmllogger.logger.bind(component="EngineeringAgent")
         self.profile = profile
 
     async def generate_technical_response(

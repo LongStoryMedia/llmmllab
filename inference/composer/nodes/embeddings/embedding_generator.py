@@ -6,7 +6,7 @@ Generates embeddings from text using the embedding agent.
 from typing import TYPE_CHECKING
 
 from composer.graph.state import WorkflowState
-from composer.monitoring.logging import composer_logger
+from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
 from composer.utils.extraction import extract_content_from_langchain_message
 
@@ -37,7 +37,7 @@ class EmbeddingGeneratorNode:
         """
         self.agent = embedding_agent
         self.model_name = model_name
-        self.logger = composer_logger.logger.bind(component="EmbeddingGeneratorNode")
+        self.logger = llmmllogger.logger.bind(component="EmbeddingGeneratorNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
