@@ -5,7 +5,7 @@ import { ChatProvider } from './chat'
 import { ThemeProvider } from '@emotion/react'
 import useColorMode from './hooks/useColorMode'
 import config from './config/index'
-import { CssBaseline, styled } from '@mui/material'
+import { CssBaseline, styled, GlobalStyles } from '@mui/material'
 import { ConfigProvider } from './context/ConfigContext'
 import MainLayout from './components/Layout/MainLayout'
 import ThemeToggle from './components/Shared/ThemeToggle'
@@ -25,6 +25,23 @@ const LoadingContainer = styled('div')(({ theme }) => ({
   zIndex: 1300
 }));
 
+const globalStyles = {
+  html: {
+    overflow: 'hidden',
+    height: '100%'
+  },
+  body: {
+    overflow: 'hidden',
+    height: '100%',
+    margin: 0,
+    padding: 0
+  },
+  '#root': {
+    height: '100%',
+    overflow: 'hidden'
+  }
+};
+
 
 const Wrapper: React.FC = () => {
   const auth = useAuth();
@@ -37,6 +54,7 @@ const Wrapper: React.FC = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
+      <GlobalStyles styles={globalStyles} />
       <ConfigProvider>
         {auth.evaluating ? (
           <LoadingContainer>

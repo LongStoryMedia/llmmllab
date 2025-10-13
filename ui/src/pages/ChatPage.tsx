@@ -11,7 +11,8 @@ import ChatInput from '../components/Chat/ChatInput';
 const ChatPageContainer = styled('div')({
   display: 'flex',
   flexDirection: 'column',
-  height: '100vh',
+  height: '100%',
+  flex: 1,
   position: 'relative',
   overflow: 'hidden'
 });
