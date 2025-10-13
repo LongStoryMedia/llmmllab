@@ -19,11 +19,11 @@ const ImageContainer = styled(Box)(({ theme }) => ({
   overflow: 'hidden'
 }));
 
-const LazyImage: React.FC<LazyImageProps> = ({ 
-  src, 
-  alt, 
-  maxWidth = '100%', 
-  maxHeight = '400px' 
+const LazyImage: React.FC<LazyImageProps> = ({
+  src,
+  alt,
+  maxWidth = '100%',
+  maxHeight = '400px'
 }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);

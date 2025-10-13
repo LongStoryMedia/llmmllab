@@ -1,12 +1,12 @@
-import { 
-  List, 
-  Typography, 
-  Box, 
-  useTheme, 
-  Accordion, 
-  AccordionSummary, 
+import {
+  List,
+  Typography,
+  Box,
+  useTheme,
+  Accordion,
+  AccordionSummary,
   AccordionDetails,
-  styled 
+  styled
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import PersonIcon from '@mui/icons-material/Person';
@@ -63,7 +63,7 @@ const ChatHistory = () => {
   // Sort conversations to put current user first
   const sortedConversationEntries = useMemo(() => {
     const entries = Object.entries(conversations || {});
-    
+
     return entries.sort(([usernameA], [usernameB]) => {
       // Current user always comes first
       if (usernameA === currentUserId) {
@@ -82,8 +82,8 @@ const ChatHistory = () => {
     _event: React.SyntheticEvent,
     isExpanded: boolean
   ) => {
-    setExpandedUsers(prev => 
-      isExpanded 
+    setExpandedUsers(prev =>
+      isExpanded
         ? [...prev, username]
         : prev.filter(id => id !== username)
     );
@@ -104,7 +104,7 @@ const ChatHistory = () => {
       <Typography variant="subtitle1" sx={{ mb: theme.spacing(1) }}>
         Conversations
       </Typography>
-      
+
       {sortedConversationEntries.length ? (
         <Box sx={{ overflow: 'auto' }}>
           {sortedConversationEntries.map(([username, chats]) => (
@@ -117,23 +117,23 @@ const ChatHistory = () => {
               <StyledAccordionSummary
                 expandIcon={<ExpandMoreIcon />}
                 sx={{
-                  backgroundColor: isCurrentUser(username) 
-                    ? theme.palette.primary.main + '20' 
+                  backgroundColor: isCurrentUser(username)
+                    ? theme.palette.primary.main + '20'
                     : 'transparent',
                   borderRadius: theme.spacing(0.5)
                 }}
               >
                 <UserLabel>
-                  <PersonIcon 
-                    fontSize="small" 
+                  <PersonIcon
+                    fontSize="small"
                     color={isCurrentUser(username) ? 'primary' : 'action'}
                   />
                   <Typography
                     variant="subtitle2"
                     sx={{
                       fontWeight: isCurrentUser(username) ? 'bold' : 'medium',
-                      color: isCurrentUser(username) 
-                        ? theme.palette.primary.main 
+                      color: isCurrentUser(username)
+                        ? theme.palette.primary.main
                         : theme.palette.text.primary
                     }}
                   >
@@ -165,8 +165,8 @@ const ChatHistory = () => {
           ))}
         </Box>
       ) : (
-        <Typography 
-          variant="body2" 
+        <Typography
+          variant="body2"
           color="text.secondary"
           sx={{ textAlign: 'center', mt: theme.spacing(2) }}
         >

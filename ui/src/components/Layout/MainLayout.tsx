@@ -30,7 +30,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { activeStages } = useBackgroundContext();
 
   const handleDrawerOpen = () => setDrawerOpen(true);
-  const handleDrawerClose = () => setDrawerOpen(false);  return (
+  const handleDrawerClose = () => setDrawerOpen(false); return (
     <MainContainer>
       <TopBar onMenuClick={handleDrawerOpen} />
 

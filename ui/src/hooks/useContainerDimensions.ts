@@ -24,7 +24,7 @@ export const useContainerDimensions = () => {
 
     // Add resize listener
     window.addEventListener('resize', handleResize);
-    
+
     // Use ResizeObserver for more accurate container resizing
     const resizeObserver = new ResizeObserver(() => {
       handleResize();

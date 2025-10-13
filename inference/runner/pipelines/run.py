@@ -1,22 +1,17 @@
 """
-Enhanced streaming implementation with proper error handling and type safety.
-Fixes critical issues with the current streaming architecture.
+Simplified pipeline execution with metadata tracking and streaming support.
+Designed for the new simplified architecture where orchestration is handled by Composer.
 """
 
-import hashlib
-import uuid
 import logging
+import uuid
 from copy import deepcopy
-from typing import Any, Dict, Optional, List, AsyncIterator, cast, Union, Type
+from typing import Any, Dict, Optional, List, AsyncIterator, Union, Type
 from datetime import datetime, timezone
 from pathlib import Path
 
 from pydantic import BaseModel
-from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.runnables.schema import StandardStreamEvent
-from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import BaseTool
-from langchain_core.messages import BaseMessage
 
 from models import (
     ChatResponse,
@@ -24,22 +19,73 @@ from models import (
     MessageRole,
     MessageContent,
     MessageContentType,
-    EventStreamConfig,
+    ModelProvider,
 )
-from utils.message import (
-    to_lc_message,
-    extract_message_text,
-)
+from utils.message import extract_message_text
 from utils.response import create_streaming_chunk
 
-# from utils.serialization import serialize_to_json  # unused
-
-from .base import BasePipelineCore, EmbeddingPipeline
+from .base import SimplePipelineCore, SimpleEmbeddingPipeline
 
 
 # Type aliases for better readability
 MessageInput = Union[str, Message, List[Union[str, Message]], List[Message], List[str]]
 GrammarInput = Union[str, Path, Type[BaseModel], None]
+
+
+class PipelineExecutionMetadata:
+    """Tracks execution metadata for pipeline runs."""
+    
+    def __init__(self, pipeline: SimplePipelineCore, execution_id: Optional[str] = None):
+        self.execution_id = execution_id or str(uuid.uuid4())[:8]
+        self.pipeline_name = type(pipeline).__name__
+        self.model_name = getattr(pipeline.model, 'name', 'unknown') if hasattr(pipeline, 'model') else 'unknown'
+        self.model_id = getattr(pipeline.model, 'id', 'unknown') if hasattr(pipeline, 'model') else 'unknown'
+        self.provider = getattr(pipeline.model, 'provider', ModelProvider.OTHER) if hasattr(pipeline, 'model') else ModelProvider.OTHER
+        self.is_cached = self._determine_if_cached(pipeline)
+        self.expected_return_type = getattr(pipeline, 'expected_return_type', None)
+        self.start_time = datetime.now(timezone.utc)
+        self.token_count = 0
+        
+    def _determine_if_cached(self, pipeline: SimplePipelineCore) -> bool:
+        """Determine if this pipeline instance is from cache."""
+        # Local providers use caching
+        if hasattr(pipeline, 'model') and hasattr(pipeline.model, 'provider'):
+            return pipeline.model.provider in {
+                ModelProvider.LLAMA_CPP, 
+                ModelProvider.STABLE_DIFFUSION_CPP
+            }
+        return False
+        
+    def log_start(self, logger: logging.Logger) -> None:
+        """Log pipeline execution start with metadata."""
+        cache_status = "cached" if self.is_cached else "transient"
+        logger.info(
+            f"[{self.execution_id}] Starting {self.pipeline_name} execution",
+            extra={
+                "execution_id": self.execution_id,
+                "pipeline": self.pipeline_name,
+                "model": self.model_name,
+                "model_id": self.model_id,
+                "provider": self.provider.value if hasattr(self.provider, 'value') else str(self.provider),
+                "cache_status": cache_status,
+                "return_type": self.expected_return_type.__name__ if self.expected_return_type else None,
+            }
+        )
+        
+    def log_completion(self, logger: logging.Logger, success: bool = True) -> None:
+        """Log pipeline execution completion."""
+        duration = (datetime.now(timezone.utc) - self.start_time).total_seconds()
+        status = "completed" if success else "failed"
+        logger.info(
+            f"[{self.execution_id}] Pipeline {status} in {duration:.2f}s",
+            extra={
+                "execution_id": self.execution_id,
+                "pipeline": self.pipeline_name,
+                "duration_seconds": duration,
+                "token_count": self.token_count,
+                "status": status,
+            }
+        )
 
 
 def _normalize_message_input(
@@ -96,624 +142,170 @@ def _normalize_message_input(
         return messages
 
 
-class StreamingCallbackHandler(BaseCallbackHandler):
-    """Enhanced callback handler with better error handling."""
-
-    def __init__(self):
-        self.tokens = []
-        self.current_step = ""
-        self.logger = logging.getLogger(__name__)
-        self.errors = []
-
-    def on_llm_new_token(self, token: str, **kwargs) -> None:
-        """Called when a new token is generated."""
-        try:
-            self.tokens.append(token)
-        except Exception as e:
-            self.logger.error(f"Error handling new token: {e}")
-            self.errors.append(str(e))
-
-    def on_agent_action(self, action, **kwargs) -> None:
-        """Called when agent takes an action."""
-        try:
-            self.logger.debug(f"Agent action: {action}")
-            self.current_step = f"Using tool: {getattr(action, 'tool', 'unknown')}"
-        except Exception as e:
-            self.logger.error(f"Error handling agent action: {e}")
-            self.errors.append(str(e))
-
-    def on_tool_start(
-        self, serialized: Dict[str, Any], input_str: str, **kwargs
-    ) -> None:
-        """Called when a tool starts running."""
-        try:
-            tool_name = serialized.get("name", "unknown")
-            self.logger.debug(f"Tool start: {tool_name} with input {input_str}")
-            self.current_step = f"Running {tool_name}..."
-        except Exception as e:
-            self.logger.error(f"Error handling tool start: {e}")
-            self.errors.append(str(e))
-
-    def on_tool_end(self, output: str, **kwargs) -> None:
-        """Called when a tool finishes."""
-        try:
-            self.logger.debug(f"Tool end with output: {output}")
-            self.current_step = "Processing results..."
-        except Exception as e:
-            self.logger.error(f"Error handling tool end: {e}")
-            self.errors.append(str(e))
-
-    def on_llm_error(self, error: Exception, **kwargs) -> None:
-        """Called when LLM encounters an error."""
-        self.logger.error(f"LLM error: {error}")
-        self.errors.append(str(error))
+# Removed complex StreamingCallbackHandler - orchestration handled by Composer
 
 
-class EventStreamProcessor:
-    """Stream processor with configurable repetition controls and pipeline-specific post-processing."""
-
-    def __init__(
-        self,
-        thinking_phase: bool = True,
-        config: Optional[EventStreamConfig] = None,
-        pipeline: Optional["BasePipelineCore"] = None,
-    ):
-        self.config = config or EventStreamConfig(thinking_phase_initial=thinking_phase)
-        self.thinking_phase = self.config.thinking_phase_initial
-        self.total_content_length = 0
-        self._buffer = ""
-        self.repetition_count = 0
-        self._last_hashes: List[int] = []
-        self.logger = logging.getLogger(__name__)
-        self.pipeline = pipeline
-
-        # Pre-compute event type sets for faster lookup
-        self._start_events = frozenset(
-            ["on_chat_model_start", "on_llm_start", "on_agent_start"]
-        )
-        self._stream_events = frozenset(
-            ["on_chat_model_stream", "on_llm_stream", "on_agent_stream"]
-        )
-        self._end_events = frozenset(["on_chat_model_end", "on_llm_end"])
-
-    def set_pipeline(self, pipeline: Optional["BasePipelineCore"]) -> None:
-        """Set the pipeline for post-processing and reset its streaming state."""
-        self.pipeline = pipeline
-        if self.pipeline and hasattr(self.pipeline, "reset_streaming_state"):
-            self.pipeline.reset_streaming_state()
-
-    def finalize_pipeline_streaming(self) -> Optional[ChatResponse]:
-        """Call the pipeline's finalize_streaming method if available."""
-        if self.pipeline and hasattr(self.pipeline, "finalize_streaming"):
-            return self.pipeline.finalize_streaming()
-        return None
-
-    def _update_buffer(self, new_content: str) -> str:
-        self._buffer = (self._buffer + new_content)[
-            -self.config.repetition_buffer_chars :
-        ]
-        return self._buffer
-
-    def _dedup(self, content: str) -> bool:
-        """Return True if this content chunk appears to be a duplicate of recent ones."""
-        h = hash(content)
-        if h in self._last_hashes:
-            return True
-        self._last_hashes.append(h)
-        if len(self._last_hashes) > self.config.dedup_last_hashes:
-            self._last_hashes.pop(0)
-        return False
-
-    def _is_repetitive(self, new_content: str) -> bool:
-        if not new_content:
-            return False
-
-        try:
-            buf = self._update_buffer(new_content)
-
-            # n-gram repetition near the tail
-            words = buf.split()
-            if len(words) > self.config.ngram_max:
-                tail_window = words[-max(50, self.config.ngram_max * 4) :]
-                prior = (
-                    words[: -len(tail_window)] if len(words) > len(tail_window) else []
-                )
-                prior_text = " ".join(prior)
-                for n in range(self.config.ngram_min, self.config.ngram_max + 1):
-                    if len(tail_window) < n:
-                        break
-                    ngram = " ".join(tail_window[-n:])
-                    # Require n-gram to be meaningful (>= 3 words default)
-                    if ngram.strip().count(" ") + 1 < n:
-                        continue
-                    if prior_text.count(ngram) >= self.config.ngram_repeat_threshold:
-                        return True
-
-            # stutter detection (very lax)
-            if len(words) >= self.config.stutter_window_words:
-                last = words[-self.config.stutter_window_words :]
-                unique_ratio = len(set(last)) / max(1, len(last))
-                if unique_ratio <= self.config.stutter_unique_ratio_threshold:
-                    return True
-
-            return False
-        except Exception as e:
-            self.logger.error(f"Error checking repetition: {e}")
-            return False
-
-    def process_event(self, evt: StandardStreamEvent) -> Optional[ChatResponse]:
-        """Process a streaming event with enhanced error handling."""
-        try:
-            event_type = evt.get("event", "")
-
-            # Use a dispatch table for better performance
-            if event_type in self._start_events:
-                if self.thinking_phase:
-                    self.thinking_phase = False
-                    return create_streaming_chunk(
-                        # "🤔 Analyzing request...\n\n",
-                        "",
-                        done=False,
-                        role=MessageRole.OBSERVER,
-                    )
-
-            elif event_type in self._stream_events:
-                return self._process_stream_chunk(evt)
-
-            elif event_type in self._end_events:
-                return create_streaming_chunk("", done=True)
-
-            elif event_type == "on_tool_start":
-                return self._process_tool_start(evt)
-
-            elif event_type == "on_tool_end":
-                return self._process_tool_end(evt)
-
-            elif event_type == "on_agent_finish":
-                return self._process_agent_finish(evt)
-
-            # Skip unknown/unhandled events instead of serializing them
-            return None
-
-        except Exception as e:
-            self.logger.error(f"Error processing event: {e}")
-            return create_streaming_chunk(f"[Error processing event: {str(e)[:50]}...]")
-
-    def _process_stream_chunk(self, evt: StandardStreamEvent) -> Optional[ChatResponse]:
-        """Process streaming content chunks using pipeline-specific post-processing."""
-        try:
-            data = evt.get("data", {})
-            chunk = data.get("chunk") if isinstance(data, dict) else None
-
-            if not chunk:
-                return None
-
-            # Extract content from various chunk formats
-            content = ""
-
-            # Try to extract content from different chunk formats
-            if hasattr(chunk, "message") and chunk.message:
-                # ChatResponse with Message object
-                message = chunk.message
-                if hasattr(message, "content") and message.content:
-                    if isinstance(message.content, list) and len(message.content) > 0:
-                        # Message.content is a list of MessageContent objects
-                        first_content = message.content[0]
-                        if hasattr(first_content, "text") and first_content.text:
-                            content = str(first_content.text)
-                    elif isinstance(message.content, str):
-                        content = message.content
-                elif hasattr(message, "thinking") and message.thinking:
-                    # Extract thinking content for analysis channel
-                    content = str(message.thinking)
-            elif hasattr(chunk, "content"):
-                # Direct content attribute
-                if isinstance(chunk.content, list) and len(chunk.content) > 0:
-                    first_item = chunk.content[0]
-                    if hasattr(first_item, "text"):
-                        content = str(first_item.text)
-                    else:
-                        content = str(first_item)
-                elif isinstance(chunk.content, str):
-                    content = chunk.content
-            elif hasattr(chunk, "thinking") and chunk.thinking:
-                # Thinking content
-                content = str(chunk.thinking)
-            elif hasattr(chunk, "text"):
-                # Direct text attribute
-                content = str(chunk.text)
-
-            # If still no content, skip this chunk
-            if not content or not content.strip():
-                return None
-
-            # Check content length limit
-            self.total_content_length += len(content)
-            if self.total_content_length > self.config.max_content_length:
-                return create_streaming_chunk("\n\n[Content limit reached]", done=True)
-
-            # Drop exact duplicates to reduce flicker
-            # if self._dedup(content):
-            #     return None
-
-            # Check for repetitive patterns
-            if self._is_repetitive(content):
-                self.repetition_count += 1
-                if self.repetition_count >= self.config.max_repetitions:
-                    return create_streaming_chunk(
-                        "\n\n[Stopping repetitive output]", done=True
-                    )
-
-            # Use pipeline-specific post-processing if available
-            if self.pipeline and hasattr(self.pipeline, "process_streaming_token"):
-                return self.pipeline.process_streaming_token(content)
-            else:
-                # Fallback to simple streaming chunk
-                return create_streaming_chunk(content)
-
-        except Exception as e:
-            self.logger.error(f"Error processing stream chunk: {e}")
-            return None
-
-    def _process_tool_start(self, evt: StandardStreamEvent) -> Optional[ChatResponse]:
-        """Process tool start events with improved tool name detection."""
-        try:
-            data = evt.get("data", {})
-
-            # Try multiple ways to extract tool name from LangGraph events
-            tool_name = "unknown"
-
-            # Method 1: Check event-level name field first (most common for LangGraph)
-            if "name" in evt:
-                tool_name = evt["name"]
-            # Method 2: Direct name field in data
-            elif "name" in data:
-                tool_name = data["name"]
-            # Method 3: Check if data has a 'tool' field with name
-            elif (
-                "tool" in data
-                and isinstance(data["tool"], dict)
-                and "name" in data["tool"]
-            ):
-                tool_name = data["tool"]["name"]
-            # Method 4: Check for nested structure
-            elif "input" in data and isinstance(data["input"], dict):
-                if "tool" in data["input"] and isinstance(data["input"]["tool"], str):
-                    tool_name = data["input"]["tool"]
-                elif "name" in data["input"]:
-                    tool_name = data["input"]["name"]
-            # Method 5: Check event metadata
-            elif "metadata" in evt and "name" in evt["metadata"]:
-                tool_name = evt["metadata"]["name"]
-
-            # Log for debugging
-            self.logger.debug(
-                f"Tool start event - extracted name: '{tool_name}', data keys: {list(data.keys())}"
-            )
-
-            tool_input = data.get("input", {})
-
-            tool_txt = ""
-            if isinstance(tool_input, dict):
-                for key, value in tool_input.items():
-                    str_value = str(value)
-                    if len(str_value) > 100:
-                        str_value = str_value[:100] + "..."
-                    tool_txt += f"   - {key}: {str_value}\n"
-
-            if tool_txt:
-                return create_streaming_chunk(
-                    f"\n\n🔧 **Using {tool_name}**\n{tool_txt}",
-                    done=False,
-                    role=MessageRole.OBSERVER,
-                )
-            else:
-                return create_streaming_chunk(
-                    f"\n\n🔧 **Using {tool_name}**\n",
-                    done=False,
-                    role=MessageRole.OBSERVER,
-                )
-
-        except Exception as e:
-            self.logger.error(f"Error processing tool start: {e}")
-            return create_streaming_chunk("\n\n🔧 **Using tool**\n")
-
-    def _process_tool_end(self, evt: StandardStreamEvent) -> Optional[ChatResponse]:
-        """Process tool end events with configurable output length."""
-        try:
-            data = evt.get("data", {})
-            tool_output = str(data.get("output", ""))
-
-            # Make truncation configurable with much higher limit for comprehensive output
-            max_output_length = getattr(
-                self, "max_tool_output_length", 10000
-            )  # Default 10K chars for full web content
-
-            if len(tool_output) > max_output_length:
-                # Show beginning and end for better context, but with more generous limits
-                quarter_length = (
-                    max_output_length - 40
-                ) // 4  # Show first 1/4 and last 1/4
-                tool_output = (
-                    tool_output[: quarter_length * 3]
-                    + "\n... (content truncated for length) ...\n"
-                    + tool_output[-quarter_length:]
-                )
-
-            return create_streaming_chunk(
-                f"✅ **Tool completed**\n{tool_output}\n\n",
-                done=False,
-                role=MessageRole.OBSERVER,
-            )
-
-        except Exception as e:
-            self.logger.error(f"Error processing tool end: {e}")
-            return create_streaming_chunk("✅ **Tool completed**\n\n")
-
-    def _process_agent_finish(self, evt: StandardStreamEvent) -> Optional[ChatResponse]:
-        """Process agent finish events."""
-        try:
-            data = evt.get("data", {})
-            output = str(data.get("output", ""))
-
-            if output:
-                return create_streaming_chunk(
-                    f"\n\n**Final Answer:**\n{output}\n",
-                    done=False,
-                    role=MessageRole.OBSERVER,
-                )
-            else:
-                return create_streaming_chunk("", done=True)
-
-        except Exception as e:
-            self.logger.error(f"Error processing agent finish: {e}")
-            return create_streaming_chunk("", done=True)
+# Removed complex EventStreamProcessor - streaming handled by individual pipelines
 
 
 async def stream_pipeline(
     messages: MessageInput,
-    pipeline: BasePipelineCore,
+    pipeline: SimplePipelineCore,
     tools: Optional[List[BaseTool]] = None,
     grammar: Optional[GrammarInput] = None,
 ) -> AsyncIterator[ChatResponse]:
     """
-    Execute the LangGraph workflow for chat completion with enhanced error handling.
-    Accepts flexible input: str, Message, List[str], or List[Message].
+    Stream pipeline execution with metadata tracking.
+    Simplified implementation - complex orchestration handled by Composer.
 
     Args:
         messages: Input messages in various formats
         pipeline: Pipeline instance to execute
         tools: Optional tools for the pipeline
-        grammar: Optional grammar constraint (GBNF string, file path, or Pydantic model class)
+        grammar: Optional grammar constraint
     """
     logger = logging.getLogger(__name__)
+    metadata = PipelineExecutionMetadata(pipeline)
+    metadata.log_start(logger)
 
     try:
         # Normalize input to List[Message]
         normalized_messages = _normalize_message_input(messages)
 
-        # Validate inputs
         if not normalized_messages:
             yield create_streaming_chunk("No messages provided", done=True)
+            metadata.log_completion(logger, success=False)
             return
 
-        # Enforce that streaming requires ChatResponse-capable pipelines
-        try:
-            if hasattr(
-                pipeline, "allows_return_type"
-            ) and not pipeline.allows_return_type(ChatResponse):
-                yield create_streaming_chunk(
-                    "Pipeline does not support streaming ChatResponse chunks.",
-                    done=True,
-                )
+        # Check if pipeline supports streaming
+        if hasattr(pipeline, "stream"):
+            try:
+                async for chunk in pipeline.stream(normalized_messages, tools=tools, grammar=grammar):
+                    if isinstance(chunk, ChatResponse):
+                        # Track tokens if available
+                        if chunk.message:
+                            text = extract_message_text(chunk.message)
+                            if text:
+                                metadata.token_count += len(text.split())
+                        yield chunk
+                    else:
+                        # Convert non-ChatResponse to streaming chunk
+                        yield create_streaming_chunk(str(chunk))
+                        
+                metadata.log_completion(logger, success=True)
                 return
-        except Exception as e:
-            logger.error(f"Error checking pipeline type capabilities: {e}")
-            yield create_streaming_chunk("Invalid pipeline configuration", done=True)
-            return
-
-        # Convert messages to LangChain format
-        lc_messages: List[BaseMessage] = []
-        for msg in normalized_messages:
-            try:
-                lc_msg = to_lc_message(msg)
-                lc_messages.append(lc_msg)
+                
             except Exception as e:
-                logger.error(f"Error converting message: {e}")
-                continue
+                logger.error(f"Error in pipeline streaming: {e}")
+                yield create_streaming_chunk(f"Streaming error: {str(e)}", done=True)
+                metadata.log_completion(logger, success=False)
+                return
 
-        if not lc_messages:
-            yield create_streaming_chunk("No valid messages to process", done=True)
-            return
-
-        # Check if this is a simple pipeline without create_graph method
-        if not hasattr(pipeline, "create_graph"):
-            logger.info(
-                f"Using direct invocation for simple pipeline: {type(pipeline).__name__}"
-            )
-            try:
-                # For simple pipelines, use direct invocation
-                result = await pipeline.invoke(
-                    normalized_messages, tools=tools, grammar=grammar
-                )
-
-                # Convert result to streaming format, preserving tool calls
-                if hasattr(result, "message") and result.message:
+        # Fallback to invoke for pipelines that don't support streaming
+        try:
+            result = await pipeline.invoke(normalized_messages, tools=tools, grammar=grammar)
+            
+            if isinstance(result, ChatResponse):
+                # Track token count
+                if result.message:
                     text = extract_message_text(result.message)
-                    # Create streaming chunk that preserves tool calls
-                    streaming_message = Message(
-                        role=result.message.role,
-                        content=(
-                            [MessageContent(type=MessageContentType.TEXT, text=text)]
-                            if text
-                            else []
-                        ),
-                        tool_calls=result.message.tool_calls,  # Preserve tool calls!
-                    )
-                    yield ChatResponse(done=True, message=streaming_message)
-                else:
-                    yield create_streaming_chunk(str(result), done=True)
-                return
-            except Exception as e:
-                logger.error(f"Error invoking simple pipeline: {e}")
-                yield create_streaming_chunk(
-                    f"Error executing pipeline: {str(e)}", done=True
-                )
-                return
-
-        # Create graph for full pipelines
-        try:
-            graph = pipeline.create_graph(tools, grammar=grammar)
+                    if text:
+                        metadata.token_count = len(text.split())
+                yield result
+            else:
+                yield create_streaming_chunk(str(result), done=True)
+                
+            metadata.log_completion(logger, success=True)
+            
         except Exception as e:
-            logger.error(f"Error creating graph: {e}")
-            yield create_streaming_chunk(
-                f"Error creating workflow: {str(e)}", done=True
-            )
-            return
-
-        # Generate thread ID
-        latest_message = normalized_messages[-1]
-        thread_content = f"{latest_message.conversation_id}-{len(normalized_messages)}"
-        thread_id = hashlib.md5(thread_content.encode()).hexdigest()[:16]
-
-        # Create config
-        config = RunnableConfig(
-            configurable={"thread_id": f"chat-{thread_id}"},
-            tags=["chat", "user"],
-            run_id=uuid.uuid4(),
-            callbacks=[StreamingCallbackHandler()],
-        )
-
-        # Extract user input
-        user_input = ""
-        if latest_message and latest_message.content:
-            user_input = extract_message_text(latest_message)
-
-        # Create initial state via builder to decouple from generated model
-        from composer.utils.state import (
-            build_langgraph_state,
-        )  # Lazy import to avoid circular dependency
-
-        initial_state = build_langgraph_state(lc_messages, user_input)
-
-        # Initialize processor
-        processor = EventStreamProcessor(thinking_phase=True, pipeline=pipeline)
-        # Pipeline-specific streaming with individual post-processing
-        pipeline_type = type(pipeline).__name__
-        logger.info(f"Using pipeline-specific streaming for {pipeline_type}")
-
-        # Reset pipeline streaming state
-        processor.set_pipeline(pipeline)
-
-        # Stream execution
-        try:
-            logger.info(f"Starting graph streaming for {len(lc_messages)} messages")
-            event_count = 0
-            async for event in graph.astream_events(
-                initial_state.model_dump(),
-                config=config,
-                version="v2",
-                include_types=[
-                    "chat_model",
-                    "tool",
-                    "llm",
-                    "agent",
-                    "chain",
-                    "retriever",
-                    "prompt",
-                ],
-            ):
-                event_count += 1
-                chunk = processor.process_event(cast(StandardStreamEvent, event))
-                if chunk:
-                    yield chunk
-
-            logger.info(f"Graph streaming completed with {event_count} events")
-
-        except Exception as e:
-            logger.error(f"Error during streaming execution: {e}")
-            yield create_streaming_chunk(f"Streaming error: {str(e)}", done=True)
-
-        # Call pipeline finalization before final completion
-        final_response = processor.finalize_pipeline_streaming()
-        if final_response:
-            yield final_response
-
-        # Final completion
-        yield create_streaming_chunk("", done=True)
+            logger.error(f"Error in pipeline invoke: {e}")
+            yield create_streaming_chunk(f"Pipeline error: {str(e)}", done=True)
+            metadata.log_completion(logger, success=False)
 
     except Exception as e:
         logger.error(f"Pipeline streaming error: {e}", exc_info=True)
         yield create_streaming_chunk(f"Pipeline error: {str(e)}", done=True)
+        metadata.log_completion(logger, success=False)
 
 
 async def run_pipeline(
     messages: MessageInput,
-    pipeline: BasePipelineCore,
+    pipeline: SimplePipelineCore,
     tools: Optional[List[BaseTool]] = None,
     grammar: Optional[GrammarInput] = None,
 ) -> ChatResponse:
     """
-    Get a complete response from the pipeline by aggregating streaming chunks.
-    Accepts flexible input: str, Message, List[str], or List[Message].
+    Get a complete response from the pipeline with metadata tracking.
+    Simplified implementation for the new architecture.
 
     Args:
         messages: Input messages in various formats
         pipeline: Pipeline instance to execute
         tools: Optional tools for the pipeline
-        grammar: Optional grammar constraint (GBNF string, file path, or Pydantic model class)
+        grammar: Optional grammar constraint
     """
     logger = logging.getLogger(__name__)
+    metadata = PipelineExecutionMetadata(pipeline)
+    metadata.log_start(logger)
 
     try:
-        chunks: List[str] = []
-        collected_tool_calls: List[Dict[str, Any]] = []
+        # Normalize input to List[Message]
+        normalized_messages = _normalize_message_input(messages)
 
-        async for chunk in stream_pipeline(messages, pipeline, tools, grammar):
-            if chunk and chunk.message:
-                # Aggregate text
-                text = extract_message_text(chunk.message)
+        if not normalized_messages:
+            metadata.log_completion(logger, success=False)
+            return ChatResponse(
+                done=True,
+                message=Message(
+                    role=MessageRole.ASSISTANT,
+                    content=[MessageContent(type=MessageContentType.TEXT, text="No messages provided")],
+                ),
+                created_at=datetime.now(timezone.utc),
+                finish_reason="error",
+            )
+
+        # Direct pipeline invocation
+        result = await pipeline.invoke(normalized_messages, tools=tools, grammar=grammar)
+
+        # Handle different return types based on pipeline
+        if isinstance(result, ChatResponse):
+            # Track token count
+            if result.message:
+                text = extract_message_text(result.message)
                 if text:
-                    chunks.append(text)
-                # Preserve first occurrence of tool calls from any chunk
-                if getattr(chunk.message, "tool_calls", None):
-                    if not collected_tool_calls:
-                        collected_tool_calls = (
-                            deepcopy(chunk.message.tool_calls)
-                            if chunk.message.tool_calls
-                            else []
-                        )
-
-        # Combine all chunks
-        full_text = "".join(chunks)
-
-        logger.info(
-            "run_pipeline aggregation complete",
-            extra={
-                "text_length": len(full_text),
-                "tool_calls_present": bool(collected_tool_calls),
-                "tool_calls": collected_tool_calls,
-            },
-        )
-
-        return ChatResponse(
-            done=True,
-            message=Message(
-                role=MessageRole.ASSISTANT,
-                content=[
-                    MessageContent(
-                        type=MessageContentType.TEXT,
-                        text=full_text,
-                    )
-                ],
-                tool_calls=collected_tool_calls if collected_tool_calls else None,
-            ),
-            created_at=datetime.now(timezone.utc),
-            finish_reason="stop",
-        )
+                    metadata.token_count = len(text.split())
+            metadata.log_completion(logger, success=True)
+            return result
+            
+        elif isinstance(result, str):
+            # Convert string result to ChatResponse
+            metadata.token_count = len(result.split())
+            metadata.log_completion(logger, success=True)
+            return ChatResponse(
+                done=True,
+                message=Message(
+                    role=MessageRole.ASSISTANT,
+                    content=[MessageContent(type=MessageContentType.TEXT, text=result)],
+                ),
+                created_at=datetime.now(timezone.utc),
+                finish_reason="stop",
+            )
+        else:
+            # Handle other return types (embeddings, etc.)
+            metadata.log_completion(logger, success=True)
+            return ChatResponse(
+                done=True,
+                message=Message(
+                    role=MessageRole.ASSISTANT,
+                    content=[MessageContent(type=MessageContentType.TEXT, text=str(result))],
+                ),
+                created_at=datetime.now(timezone.utc),
+                finish_reason="stop",
+            )
 
     except Exception as e:
         logger.error(f"Error in run_pipeline: {e}")
+        metadata.log_completion(logger, success=False)
         return ChatResponse(
             done=True,
             message=Message(
@@ -732,13 +324,12 @@ async def run_pipeline(
 
 async def embed_pipeline(
     messages: MessageInput,
-    pipeline: EmbeddingPipeline,
+    pipeline: SimpleEmbeddingPipeline,
     grammar: Optional[GrammarInput] = None,
 ) -> List[List[float]]:
     """
-    Get embeddings from the pipeline for the given messages.
-    This provides a normalized interface for embedding operations.
-    Accepts flexible input: str, Message, List[str], or List[Message].
+    Get embeddings from the pipeline with metadata tracking.
+    Simplified interface for embedding operations.
 
     Args:
         messages: Input messages in various formats
@@ -746,43 +337,38 @@ async def embed_pipeline(
         grammar: Optional grammar constraint (typically not used for embeddings)
     """
     logger = logging.getLogger(__name__)
+    metadata = PipelineExecutionMetadata(pipeline)
+    metadata.log_start(logger)
 
     try:
         # Normalize input to List[Message]
         normalized_messages = _normalize_message_input(messages)
 
-        # Validate inputs
         if not normalized_messages:
             logger.warning("No messages provided to embed_pipeline")
+            metadata.log_completion(logger, success=False)
             return []
 
-        # Validate that this is an embedding pipeline
-        try:
-            if hasattr(
-                pipeline, "allows_return_type"
-            ) and not pipeline.allows_return_type(list):
-                logger.error("Pipeline does not support embedding return type")
-                return []
-        except Exception as e:
-            logger.warning(f"Could not validate pipeline type for embeddings: {e}")
-
-        # Process messages through the embedding pipeline
-        result = await pipeline.process_messages(normalized_messages)
+        # Direct pipeline invocation
+        result = await pipeline.invoke(normalized_messages, grammar=grammar)
 
         # Validate result format
-        if isinstance(result, list) and all(isinstance(item, list) for item in result):
+        if isinstance(result, list) and (not result or all(isinstance(item, list) for item in result)):
+            metadata.log_completion(logger, success=True)
             return result
         else:
             logger.warning(f"Unexpected embedding result type: {type(result)}")
+            metadata.log_completion(logger, success=False)
             return []
 
     except Exception as e:
         logger.error(f"Error in embed_pipeline: {e}")
+        metadata.log_completion(logger, success=False)
         return []
 
 
-# Type for pipeline chain steps
-PipelineStep = tuple[BasePipelineCore, Optional[str]]
+# Pipeline chaining - simplified for new architecture
+PipelineStep = tuple[SimplePipelineCore, Optional[str]]
 
 
 async def chain_pipelines(
@@ -792,29 +378,19 @@ async def chain_pipelines(
     grammar: Optional[GrammarInput] = None,
 ) -> ChatResponse:
     """
-    Chain multiple pipeline calls where the output of one becomes input to the next.
+    Chain multiple pipeline calls with metadata tracking.
+    Note: Complex orchestration should typically be handled by Composer.
 
     Args:
-        initial_input: Starting input (str, Message, List[str], or List[Message])
+        initial_input: Starting input
         pipeline_steps: List of (pipeline, optional_prompt) tuples
         tools: Optional tools for pipelines that support them
         grammar: Optional grammar constraint for the final pipeline step
-
-    Returns:
-        ChatResponse: Final result from the last pipeline
-
-    Example:
-        # Chain: user input -> generate -> summarize -> format
-        result = await chain_pipelines(
-            "What is machine learning?",
-            [
-                (generation_pipeline, None),  # Generate initial response
-                (summary_pipeline, "Summarize this in 2 sentences:"),  # Summarize
-                (format_pipeline, "Format as a bullet list:")  # Format
-            ]
-        )
     """
     logger = logging.getLogger(__name__)
+    chain_id = str(uuid.uuid4())[:8]
+    
+    logger.info(f"[{chain_id}] Starting pipeline chain with {len(pipeline_steps)} steps")
 
     try:
         if not pipeline_steps:
@@ -823,19 +399,19 @@ async def chain_pipelines(
         current_input: MessageInput = initial_input
 
         for i, (pipeline, prompt) in enumerate(pipeline_steps):
-            logger.debug(f"Executing pipeline step {i+1}/{len(pipeline_steps)}")
+            metadata = PipelineExecutionMetadata(pipeline, f"{chain_id}-{i+1}")
+            logger.info(f"[{chain_id}] Step {i+1}/{len(pipeline_steps)}: {metadata.pipeline_name}")
 
             # Run the pipeline
             result = await run_pipeline(current_input, pipeline, tools)
 
             # Prepare input for next step
             if i < len(pipeline_steps) - 1:  # Not the last step
-                # Extract text from result and optionally combine with prompt
                 result_text = ""
                 if result.message:
                     result_text = extract_message_text(result.message)
 
-                # For next step, use the result text, optionally with next step's prompt
+                # Combine with next step's prompt if provided
                 next_pipeline, next_prompt = pipeline_steps[i + 1]
                 if next_prompt:
                     current_input = f"{next_prompt}\n\n{result_text}"
@@ -843,23 +419,22 @@ async def chain_pipelines(
                     current_input = result_text
             else:
                 # Last step - return the final result
+                logger.info(f"[{chain_id}] Pipeline chain completed successfully")
                 return result
 
-        # This shouldn't be reached, but just in case
+        # Fallback (shouldn't be reached)
         return ChatResponse(
             done=True,
             message=Message(
                 role=MessageRole.ASSISTANT,
-                content=[
-                    MessageContent(type=MessageContentType.TEXT, text="Chain completed")
-                ],
+                content=[MessageContent(type=MessageContentType.TEXT, text="Chain completed")],
             ),
             created_at=datetime.now(timezone.utc),
             finish_reason="stop",
         )
 
     except Exception as e:
-        logger.error(f"Error in chain_pipelines: {e}")
+        logger.error(f"[{chain_id}] Error in pipeline chain: {e}")
         return ChatResponse(
             done=True,
             message=Message(
