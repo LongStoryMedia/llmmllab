@@ -180,3 +180,11 @@ class WorkflowState(BaseModel):
         default_factory=list,
         description="Error details for circuit breaker and recovery",
     )
+
+    # Node execution metadata tracking
+    node_metadata: Annotated[
+        Dict[str, Dict[str, Any]], lambda x, y: {**x, **y} if x and y else y or x or {}
+    ] = Field(
+        default_factory=dict,
+        description="Metadata from node executions keyed by node_id",
+    )

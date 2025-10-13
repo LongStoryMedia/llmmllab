@@ -8,6 +8,8 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 """
 
 import json
+import os
+import os
 from typing import AsyncGenerator, Any, Dict
 
 from langchain_core.runnables.schema import StandardStreamEvent, CustomStreamEvent
@@ -86,6 +88,8 @@ async def chat_completion(
                         event_data = event.get("data", {})
 
                         # Log all events for debugging
+                        os.environ["DEBUG"] = "1"
+                        os.environ["LOG_LEVEL"] = "debug"
                         dbg_evt(event)
 
                         # Try to capture streaming content from various event types

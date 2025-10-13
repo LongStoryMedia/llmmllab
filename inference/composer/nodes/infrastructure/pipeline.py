@@ -3,7 +3,9 @@ Pipeline Node for LangGraph workflows.
 Wraps LLM pipeline execution for chat model operations within workflows.
 """
 
-from typing import List, cast
+from typing import List, cast, Dict, Any
+import uuid
+from datetime import datetime, timezone
 
 from langchain.tools import BaseTool
 
@@ -42,6 +44,7 @@ class PipelineNode:
         profile_type: ModelProfileType,
         priority: PipelinePriority = PipelinePriority.MEDIUM,
         stream: bool = False,
+        node_name: str = None,
     ):
         """
         Initialize pipeline node.
@@ -50,12 +53,43 @@ class PipelineNode:
             pipeline_factory: Factory for creating pipeline instances
             profile_type: Model profile type (Primary, Analysis, etc.)
             stream: Whether to enable streaming responses
+            node_name: Optional custom name for this node (for metadata)
         """
         self.pipeline_factory = pipeline_factory
         self.profile_type = profile_type
         self.stream = stream
         self.priority = priority
-        self.logger = llmmllogger.logger.bind(component="PipelineNode")
+        self.node_name = node_name or f"PipelineNode-{profile_type.value}"
+        self.node_id = str(uuid.uuid4())[:8]  # Unique ID for this node instance
+        self.logger = llmmllogger.logger.bind(
+            component="PipelineNode", 
+            node_name=self.node_name,
+            node_id=self.node_id
+        )
+
+    def create_node_metadata(self, state: WorkflowState, pipeline=None) -> Dict[str, Any]:
+        """Create metadata for this node execution."""
+        metadata = {
+            "node_name": self.node_name,
+            "node_id": self.node_id,
+            "node_type": "PipelineNode",
+            "profile_type": self.profile_type.value,
+            "priority": self.priority.value,
+            "streaming": self.stream,
+            "execution_time": datetime.now(timezone.utc).isoformat(),
+            "user_id": state.user_id,
+            "conversation_id": getattr(state, 'conversation_id', None),
+        }
+        
+        # Add pipeline-specific metadata if available
+        if pipeline:
+            metadata.update({
+                "pipeline_type": type(pipeline).__name__,
+                "model_name": getattr(pipeline.model, 'name', 'unknown') if hasattr(pipeline, 'model') else 'unknown',
+                "model_provider": str(getattr(pipeline.model, 'provider', 'unknown')) if hasattr(pipeline, 'model') else 'unknown',
+            })
+            
+        return metadata
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
@@ -112,6 +146,14 @@ class PipelineNode:
             with self.pipeline_factory.pipeline(
                 mp, ChatResponse, self.priority, cb
             ) as pipe:
+                # Create comprehensive node metadata
+                node_metadata = self.create_node_metadata(state, pipe)
+                
+                # Store metadata in state for downstream access
+                if not hasattr(state, 'node_metadata'):
+                    state.node_metadata = {}
+                state.node_metadata[self.node_id] = node_metadata
+                
                 if self.stream:
                     # For streaming: collect all chunks into final response (accumulate, do not overwrite)
                     # LangGraph streaming is handled at graph level, not node level
@@ -123,6 +165,7 @@ class PipelineNode:
                         "Starting stream_pipeline execution",
                         user_id=state.user_id,
                         pipeline_type=type(pipe).__name__,
+                        node_metadata=node_metadata,
                     )
 
                     async for chunk in stream_pipeline(
@@ -131,6 +174,11 @@ class PipelineNode:
                         cast(List[BaseTool], state.available_tools),
                     ):
                         chunk_count += 1
+                        
+                        # Enrich chunk with node metadata for downstream processing
+                        if hasattr(chunk, '__dict__'):
+                            chunk.__dict__.setdefault('node_metadata', node_metadata)
+                        
                         self.logger.info(
                             "Received pipeline chunk",
                             user_id=state.user_id,
@@ -142,6 +190,7 @@ class PipelineNode:
                                 if chunk.message and chunk.message.content
                                 else "No content"
                             )[:100],
+                            node_metadata=node_metadata,
                         )
 
                         if chunk.message:
@@ -207,11 +256,21 @@ class PipelineNode:
                     )
                 else:
                     # For non-streaming: get complete response directly
+                    self.logger.info(
+                        "Starting run_pipeline execution",
+                        user_id=state.user_id,
+                        node_metadata=node_metadata,
+                    )
+                    
                     response = await run_pipeline(
                         context_messages,
                         pipe,
                         cast(List[BaseTool], state.available_tools),
                     )
+                    
+                    # Enrich response with node metadata
+                    if hasattr(response, '__dict__'):
+                        response.__dict__.setdefault('node_metadata', node_metadata)
 
             # Convert response to LangChainMessage and add to state
             if response and response.message:
