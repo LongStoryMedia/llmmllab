@@ -50,24 +50,46 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const handleDrawerOpen = () => setDrawerOpen(true);
   const handleDrawerClose = () => setDrawerOpen(false);
 
-  // Auto-show TopBar after mouse movement (since we removed window scroll)
+  // Auto-hide TopBar after initial delay and on user inactivity
   useEffect(() => {
-    let timeoutId: number;
+    let hideTimer: number;
     
-    const handleMouseMove = () => {
+    // Initial hide after 3 seconds
+    hideTimer = setTimeout(() => {
+      setTopBarVisible(false);
+    }, 3000);
+    
+    const handleUserActivity = () => {
       setTopBarVisible(true);
+      clearTimeout(hideTimer);
       
-      // Hide TopBar after no mouse movement
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
+      // Hide again after 3 seconds of inactivity
+      hideTimer = setTimeout(() => {
         setTopBarVisible(false);
       }, 3000);
     };
 
+    const handleMouseMove = (e: MouseEvent) => {
+      // Only show TopBar if mouse is near the top of the screen
+      if (e.clientY < 100) {
+        handleUserActivity();
+      }
+    };
+
+    const handleKeyDown = () => {
+      handleUserActivity();
+    };
+
+    // Add event listeners
     document.addEventListener('mousemove', handleMouseMove, { passive: true });
+    document.addEventListener('keydown', handleKeyDown, { passive: true });
+    document.addEventListener('click', handleUserActivity, { passive: true });
+    
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
-      clearTimeout(timeoutId);
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('click', handleUserActivity);
+      clearTimeout(hideTimer);
     };
   }, []);  return (
     <MainContainer>
