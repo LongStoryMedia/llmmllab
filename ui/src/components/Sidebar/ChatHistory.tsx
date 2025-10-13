@@ -57,35 +57,35 @@ const ChatHistory = () => {
   const theme = useTheme();
   const [expandedUsers, setExpandedUsers] = useState<string[]>([]);
 
-  // Get current user's identifier (using profile.name as the key)
-  const currentUserId = user?.profile?.name;
+  // Get current user's identifier (using preferred_username which matches the username in conversations)
+  const currentUserId = user?.profile?.preferred_username;
 
   // Sort conversations to put current user first
   const sortedConversationEntries = useMemo(() => {
     const entries = Object.entries(conversations || {});
     
-    return entries.sort(([uidA], [uidB]) => {
+    return entries.sort(([usernameA], [usernameB]) => {
       // Current user always comes first
-      if (uidA === currentUserId) {
+      if (usernameA === currentUserId) {
         return -1;
       }
-      if (uidB === currentUserId) {
+      if (usernameB === currentUserId) {
         return 1;
       }
       // Sort others alphabetically
-      return uidA.localeCompare(uidB);
+      return usernameA.localeCompare(usernameB);
     });
   }, [conversations, currentUserId]);
 
   // Auto-expand current user's accordion
-  const handleAccordionChange = (userId: string) => (
+  const handleAccordionChange = (username: string) => (
     _event: React.SyntheticEvent,
     isExpanded: boolean
   ) => {
     setExpandedUsers(prev => 
       isExpanded 
-        ? [...prev, userId]
-        : prev.filter(id => id !== userId)
+        ? [...prev, username]
+        : prev.filter(id => id !== username)
     );
   };
 
@@ -96,8 +96,8 @@ const ChatHistory = () => {
     }
   }, [currentUserId, expandedUsers]);
 
-  const isUserExpanded = (userId: string) => expandedUsers.includes(userId);
-  const isCurrentUser = (userId: string) => userId === currentUserId;
+  const isUserExpanded = (username: string) => expandedUsers.includes(username);
+  const isCurrentUser = (username: string) => username === currentUserId;
 
   return (
     <Box>
@@ -107,17 +107,17 @@ const ChatHistory = () => {
       
       {sortedConversationEntries.length ? (
         <Box sx={{ overflow: 'auto' }}>
-          {sortedConversationEntries.map(([uid, chats]) => (
+          {sortedConversationEntries.map(([username, chats]) => (
             <StyledAccordion
-              key={uid}
-              expanded={isUserExpanded(uid)}
-              onChange={handleAccordionChange(uid)}
+              key={username}
+              expanded={isUserExpanded(username)}
+              onChange={handleAccordionChange(username)}
               disableGutters
             >
               <StyledAccordionSummary
                 expandIcon={<ExpandMoreIcon />}
                 sx={{
-                  backgroundColor: isCurrentUser(uid) 
+                  backgroundColor: isCurrentUser(username) 
                     ? theme.palette.primary.main + '20' 
                     : 'transparent',
                   borderRadius: theme.spacing(0.5)
@@ -126,18 +126,18 @@ const ChatHistory = () => {
                 <UserLabel>
                   <PersonIcon 
                     fontSize="small" 
-                    color={isCurrentUser(uid) ? 'primary' : 'action'}
+                    color={isCurrentUser(username) ? 'primary' : 'action'}
                   />
                   <Typography
                     variant="subtitle2"
                     sx={{
-                      fontWeight: isCurrentUser(uid) ? 'bold' : 'medium',
-                      color: isCurrentUser(uid) 
+                      fontWeight: isCurrentUser(username) ? 'bold' : 'medium',
+                      color: isCurrentUser(username) 
                         ? theme.palette.primary.main 
                         : theme.palette.text.primary
                     }}
                   >
-                    {isCurrentUser(uid) ? `${uid} (You)` : uid}
+                    {isCurrentUser(username) ? `${username} (You)` : username}
                   </Typography>
                   <Typography
                     variant="caption"
