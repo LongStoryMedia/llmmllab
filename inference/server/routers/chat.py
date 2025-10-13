@@ -10,6 +10,7 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 import json
 from typing import AsyncGenerator, Any, Dict
 
+import db
 from langchain_core.runnables.schema import StandardStreamEvent, CustomStreamEvent
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -79,18 +80,12 @@ async def chat_completion(
                         event_data = event.get("data", {})
 
                         # Log all events for debugging
-                        logger.info(
-                            f"Received event: {event_type}, data keys: {list(event_data.keys()) if isinstance(event_data, dict) else type(event_data)}"
-                        )
+                        dbg_evt(event)
 
                         # Try to capture streaming content from various event types
                         if event_type == "on_chat_model_stream":
                             chunk = event_data.get("chunk", {})
                             content = ""
-
-                            logger.info(
-                                f"Streaming chunk: {safe_json_serialize(chunk)}"
-                            )
 
                             if isinstance(chunk, dict):
                                 content = chunk.get("content", "")

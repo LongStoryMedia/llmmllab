@@ -57,3 +57,8 @@ dl/
 
 .models.json
 .maistro/
+res*.md
+io.md
+CHAT_COMPLETION*.md
+.*.json
+res2.md
