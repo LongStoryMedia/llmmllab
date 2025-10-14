@@ -1,0 +1,361 @@
+"""
+Unit tests for ChatNode functionality.
+Tests workflow integration, state management, and ChatAgent orchestration.
+"""
+
+import pytest
+from unittest.mock import Mock, AsyncMock, patch
+from datetime import datetime, timezone
+from typing import List
+
+from composer.nodes.agents.chat_node import ChatNode
+from composer.agents.chat_agent import ChatAgent
+from composer.graph.state import WorkflowState
+from models import (
+    LangChainMessage,
+    UserConfig,
+    ModelProfile,
+    NodeMetadata,
+    CircuitBreakerConfig,
+)
+from composer.core.errors import NodeExecutionError
+
+
+def create_test_user_config() -> UserConfig:
+    """Create a test UserConfig object."""
+    return UserConfig(
+        user_id="test-user",
+        model_profiles=[],
+        circuit_breaker=CircuitBreakerConfig(
+            failure_threshold=5,
+            timeout_seconds=60,
+            retry_delay_seconds=10
+        ),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+
+
+def create_test_workflow_state() -> WorkflowState:
+    """Create a test WorkflowState object."""
+    return WorkflowState(
+        user_id="test-user",
+        conversation_id=42,
+        user_config=create_test_user_config(),
+        messages=[
+            LangChainMessage(type="human", content="Hello"),
+            LangChainMessage(type="ai", content="Hi there!"),
+        ],
+        available_tools=[],
+        tool_calls=None,
+        selected_workflows=[],
+        intent_analyses=[],
+        node_metadata={},
+        retrieved_memories=[],
+        web_search_results=[],
+    )
+
+
+def create_mock_chat_agent() -> Mock:
+    """Create a mock ChatAgent."""
+    mock_agent = Mock(spec=ChatAgent)
+    mock_agent.profile = Mock()
+    mock_agent.profile.model_name = "test-model"
+    mock_agent.priority = Mock()
+    mock_agent.priority.value = "medium"
+    mock_agent.stream = True
+    mock_agent.chat_completion_with_conversion = AsyncMock()
+    mock_agent.extract_tool_calls = Mock()
+    mock_agent.inject_node_metadata = Mock()
+    return mock_agent
+
+
+class TestChatNode:
+    """Test suite for ChatNode class."""
+
+    def test_chat_node_initialization(self):
+        """Test ChatNode initialization."""
+        mock_agent = create_mock_chat_agent()
+        node = ChatNode(mock_agent, node_name="TestChatNode")
+        
+        # Verify initialization
+        assert node.chat_agent == mock_agent
+        assert node.node_name == "TestChatNode"
+        
+        # Verify BaseNode initialization
+        assert hasattr(node, 'node_id')
+        assert hasattr(node, 'logger')
+
+    def test_chat_node_initialization_default_name(self):
+        """Test ChatNode initialization with default name."""
+        mock_agent = create_mock_chat_agent()
+        node = ChatNode(mock_agent)
+        
+        assert node.node_name == "ChatNode"
+
+    @pytest.mark.asyncio
+    async def test_execute_success(self):
+        """Test successful chat node execution."""
+        # Setup
+        mock_agent = create_mock_chat_agent()
+        node = ChatNode(mock_agent)
+        state = create_test_workflow_state()
+        
+        # Mock responses
+        response_message = LangChainMessage(
+            type="ai",
+            content="This is a test response",
+            tool_calls=[{"id": "test", "type": "function", "function": {"name": "test"}}]
+        )
+        mock_agent.chat_completion_with_conversion.return_value = response_message
+        mock_agent.extract_tool_calls.return_value = [{"id": "test", "type": "function"}]
+        
+        # Mock assemble_context_messages
+        with patch('composer.nodes.agents.chat_node.assemble_context_messages') as mock_assemble:
+            mock_assemble.return_value = [
+                LangChainMessage(type="human", content="Test message")
+            ]
+            
+            # Execute
+            result_state = await node.execute(state)
+            
+            # Verify agent was called correctly
+            mock_agent.inject_node_metadata.assert_called_once()
+            mock_agent.chat_completion_with_conversion.assert_called_once_with(
+                messages=[LangChainMessage(type="human", content="Test message")],
+                user_id="test-user",
+                tools=[],
+                circuit_breaker=state.user_config.circuit_breaker,
+                stream=None,
+            )
+            
+            # Verify state updates
+            assert len(result_state.messages) == 3  # Original 2 + new response
+            assert result_state.messages[-1] == response_message
+            assert result_state.tool_calls == [{"id": "test", "type": "function"}]
+
+    @pytest.mark.asyncio
+    async def test_execute_with_tools(self):
+        """Test chat node execution with tools."""
+        # Setup
+        mock_agent = create_mock_chat_agent()
+        node = ChatNode(mock_agent)
+        state = create_test_workflow_state()
+        
+        # Add tools to state
+        mock_tool = Mock()
+        mock_tool.name = "test_tool"
+        state.available_tools = [mock_tool]
+        
+        # Mock responses
+        response_message = LangChainMessage(type="ai", content="Response with tools")
+        mock_agent.chat_completion_with_conversion.return_value = response_message
+        mock_agent.extract_tool_calls.return_value = None
+        
+        with patch('composer.nodes.agents.chat_node.assemble_context_messages') as mock_assemble:
+            mock_assemble.return_value = [
+                LangChainMessage(type="human", content="Test message")
+            ]
+            
+            # Execute
+            result_state = await node.execute(state)
+            
+            # Verify tools were passed
+            mock_agent.chat_completion_with_conversion.assert_called_once_with(
+                messages=[LangChainMessage(type="human", content="Test message")],
+                user_id="test-user",
+                tools=[mock_tool],
+                circuit_breaker=state.user_config.circuit_breaker,
+                stream=None,
+            )
+            
+            # Verify no tool calls in result
+            assert result_state.tool_calls is None
+
+    @pytest.mark.asyncio
+    async def test_execute_metadata_injection(self):
+        """Test node metadata injection during execution."""
+        # Setup
+        mock_agent = create_mock_chat_agent()
+        node = ChatNode(mock_agent)
+        state = create_test_workflow_state()
+        
+        # Mock responses
+        response_message = LangChainMessage(type="ai", content="Test response")
+        mock_agent.chat_completion_with_conversion.return_value = response_message
+        mock_agent.extract_tool_calls.return_value = None
+        
+        with patch('composer.nodes.agents.chat_node.assemble_context_messages') as mock_assemble:
+            mock_assemble.return_value = [
+                LangChainMessage(type="human", content="Test message")
+            ]
+            
+            # Execute
+            await node.execute(state)
+            
+            # Verify metadata injection
+            mock_agent.inject_node_metadata.assert_called_once()
+            
+            # Get the metadata that was injected
+            call_args = mock_agent.inject_node_metadata.call_args[0]
+            metadata = call_args[0]
+            
+            # Verify metadata structure
+            assert isinstance(metadata, NodeMetadata)
+            assert metadata.user_id == "test-user"
+            assert metadata.conversation_id == 42
+            assert metadata.node_name == "ChatNode"
+            assert metadata.model_name == "test-model"
+            assert metadata.streaming is True
+
+    @pytest.mark.asyncio
+    async def test_execute_missing_user_id(self):
+        """Test execution with missing user ID."""
+        mock_agent = create_mock_chat_agent()
+        node = ChatNode(mock_agent)
+        state = create_test_workflow_state()
+        state.user_id = None
+        
+        # Execute and verify error
+        with pytest.raises(NodeExecutionError, match="User ID required"):
+            await node.execute(state)
+
+    @pytest.mark.asyncio
+    async def test_execute_missing_user_config(self):
+        """Test execution with missing user config."""
+        mock_agent = create_mock_chat_agent()
+        node = ChatNode(mock_agent)
+        state = create_test_workflow_state()
+        state.user_config = None
+        
+        # Execute and verify error
+        with pytest.raises(NodeExecutionError, match="User config required"):
+            await node.execute(state)
+
+    @pytest.mark.asyncio
+    async def test_execute_no_context_messages(self):
+        """Test execution with no context messages."""
+        mock_agent = create_mock_chat_agent()
+        node = ChatNode(mock_agent)
+        state = create_test_workflow_state()
+        
+        with patch('composer.nodes.agents.chat_node.assemble_context_messages') as mock_assemble:
+            mock_assemble.return_value = []
+            
+            # Execute and verify error
+            with pytest.raises(NodeExecutionError, match="No context messages available"):
+                await node.execute(state)
+
+    @pytest.mark.asyncio
+    async def test_execute_agent_error(self):
+        """Test execution when agent raises error."""
+        mock_agent = create_mock_chat_agent()
+        node = ChatNode(mock_agent)
+        state = create_test_workflow_state()
+        
+        # Mock agent to raise exception
+        mock_agent.chat_completion_with_conversion.side_effect = Exception("Agent error")
+        
+        with patch('composer.nodes.agents.chat_node.assemble_context_messages') as mock_assemble:
+            mock_assemble.return_value = [
+                LangChainMessage(type="human", content="Test message")
+            ]
+            
+            # Execute and verify error handling
+            with pytest.raises(NodeExecutionError, match="Chat execution failed"):
+                await node.execute(state)
+
+    @pytest.mark.asyncio
+    async def test_call_method_delegates_to_execute(self):
+        """Test __call__ method delegates to execute."""
+        mock_agent = create_mock_chat_agent()
+        node = ChatNode(mock_agent)
+        state = create_test_workflow_state()
+        
+        # Mock responses
+        response_message = LangChainMessage(type="ai", content="Test response")
+        mock_agent.chat_completion_with_conversion.return_value = response_message
+        mock_agent.extract_tool_calls.return_value = None
+        
+        with patch('composer.nodes.agents.chat_node.assemble_context_messages') as mock_assemble:
+            mock_assemble.return_value = [
+                LangChainMessage(type="human", content="Test message")
+            ]
+            
+            # Execute using __call__
+            result_state = await node(state)
+            
+            # Verify same behavior as execute
+            assert len(result_state.messages) == 3
+            assert result_state.messages[-1] == response_message
+            mock_agent.chat_completion_with_conversion.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_execute_logging(self):
+        """Test logging during execution."""
+        mock_agent = create_mock_chat_agent()
+        node = ChatNode(mock_agent)
+        state = create_test_workflow_state()
+        
+        # Mock responses
+        response_message = LangChainMessage(type="ai", content="Test response")
+        mock_agent.chat_completion_with_conversion.return_value = response_message
+        mock_agent.extract_tool_calls.return_value = [{"id": "test"}]
+        
+        with patch('composer.nodes.agents.chat_node.assemble_context_messages') as mock_assemble:
+            mock_assemble.return_value = [
+                LangChainMessage(type="human", content="Test message")
+            ]
+            
+            # Mock logger to verify calls
+            node.logger = Mock()
+            
+            # Execute
+            await node.execute(state)
+            
+            # Verify logging calls
+            assert node.logger.info.call_count >= 2  # At least start and success logs
+            
+            # Check specific log messages
+            log_calls = [call[0][0] for call in node.logger.info.call_args_list]
+            assert any("Executing chat completion" in msg for msg in log_calls)
+            assert any("Chat completion successful" in msg for msg in log_calls)
+
+    @pytest.mark.asyncio
+    async def test_execute_with_empty_tool_calls(self):
+        """Test execution when agent returns empty tool calls."""
+        mock_agent = create_mock_chat_agent()
+        node = ChatNode(mock_agent)
+        state = create_test_workflow_state()
+        
+        # Mock responses
+        response_message = LangChainMessage(type="ai", content="No tools used")
+        mock_agent.chat_completion_with_conversion.return_value = response_message
+        mock_agent.extract_tool_calls.return_value = []  # Empty list
+        
+        with patch('composer.nodes.agents.chat_node.assemble_context_messages') as mock_assemble:
+            mock_assemble.return_value = [
+                LangChainMessage(type="human", content="Test message")
+            ]
+            
+            # Execute
+            result_state = await node.execute(state)
+            
+            # Verify empty tool calls are handled correctly
+            assert result_state.tool_calls == []
+
+    def test_integration_with_base_node(self):
+        """Test integration with BaseNode functionality."""
+        mock_agent = create_mock_chat_agent()
+        node = ChatNode(mock_agent, node_name="IntegrationTestNode")
+        
+        # Verify BaseNode methods are available
+        assert hasattr(node, 'create_node_metadata')
+        assert hasattr(node, 'store_node_metadata')
+        assert hasattr(node, '_validate_user_id')
+        assert hasattr(node, '_get_user_config')
+        
+        # Verify node properties
+        assert node.node_name == "IntegrationTestNode"
+        assert node.node_id is not None
+        assert len(node.node_id) == 8  # UUID truncated to 8 chars

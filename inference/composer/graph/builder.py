@@ -14,6 +14,7 @@ from runner import PipelineFactory
 from utils.model_profile import get_model_profile_for_task
 
 # Import all agents
+from composer.agents.chat_agent import ChatAgent
 from composer.agents.classifier_agent import ClassifierAgent
 from composer.agents.engineering_agent import EngineeringAgent
 from composer.agents.memory_agent import MemoryAgent
@@ -29,12 +30,12 @@ from composer.nodes.tools import (
     ToolComposerNode,
     ToolExecutorNode,
 )
-from composer.nodes.infrastructure import PipelineNode
 from composer.nodes.memory import (
     MemorySearchNode,
     MemoryCreationNode,
     MemoryStorageNode,
 )
+from composer.nodes.agents.chat_node import ChatNode
 from composer.nodes.agents import TitleGenerationNode
 from composer.nodes.agents.engineering import EngineeringAgentNode
 from composer.nodes.summary import ConsolidationNode, SearchSummaryNode
@@ -151,6 +152,11 @@ class GraphBuilder:
             )
 
             # Create agents with injected dependencies
+            chat_agent = ChatAgent(
+                self.pipeline_factory,
+                primary_profile,
+                stream=True,  # Enable streaming for primary chat
+            )
             classifier_agent = ClassifierAgent(
                 self.pipeline_factory,
                 analysis_profile,
@@ -236,9 +242,7 @@ class GraphBuilder:
             # Primary chat agent with streaming enabled
             workflow.add_node(
                 "chat_agent",
-                PipelineNode(
-                    self.pipeline_factory, ModelProfileType.Primary, stream=True
-                ),
+                ChatNode(chat_agent, node_name="PrimaryChatAgent"),
             )
 
             # Build a logical workflow graph structure:
