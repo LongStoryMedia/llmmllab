@@ -34,12 +34,9 @@ class EmbeddingGeneratorNode(BaseNode):
             embedding_agent: Required EmbeddingAgent instance
             model_name: Required specific embedding model to use
         """
-        super().__init__("embedding_generator", embedding_agent=embedding_agent, model_name=model_name)
-        
-    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
-        """Initialize EmbeddingGeneratorNode with dependency injection."""
-        self.agent = kwargs.get('embedding_agent')
-        self.model_name = kwargs.get('model_name')
+        super().__init__("embedding_generator")
+        self.agent = embedding_agent
+        self.model_name = model_name
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

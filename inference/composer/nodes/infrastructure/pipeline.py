@@ -36,28 +36,6 @@ class PipelineNode(BaseNode):
     Retrieves model profiles internally from shared data layer using user_id.
     """
 
-    def _initialize_node(
-        self,
-        pipeline_factory: PipelineFactory = None,
-        profile_type: ModelProfileType = None,
-        priority: PipelinePriority = PipelinePriority.MEDIUM,
-        stream: bool = False,
-        **kwargs
-    ) -> None:
-        """
-        Initialize pipeline-specific attributes.
-
-        Args:
-            pipeline_factory: Factory for creating pipeline instances
-            profile_type: Model profile type (Primary, Analysis, etc.)
-            priority: Pipeline execution priority
-            stream: Whether to enable streaming responses
-        """
-        self.pipeline_factory = pipeline_factory
-        self.profile_type = profile_type
-        self.stream = stream
-        self.priority = priority
-
     def __init__(
         self,
         pipeline_factory: PipelineFactory,
@@ -78,33 +56,15 @@ class PipelineNode(BaseNode):
         """
         # Use custom name or default based on profile type
         node_name = node_name or f"PipelineNode-{profile_type.value}"
-        
-        # Initialize base node
-        super().__init__(
-            node_name=node_name,
-            pipeline_factory=pipeline_factory,
-            profile_type=profile_type,
-            priority=priority,
-            stream=stream
-        )
 
-    def create_pipeline_metadata(self, pipeline=None) -> Dict[str, Any]:
-        """Create pipeline-specific metadata to add to base node metadata."""
-        pipeline_metadata = {
-            "profile_type": self.profile_type.value,
-            "priority": self.priority.value,
-            "streaming": self.stream,
-        }
-        
-        # Add pipeline-specific metadata if available
-        if pipeline:
-            pipeline_metadata.update({
-                "pipeline_type": type(pipeline).__name__,
-                "model_name": getattr(pipeline.model, 'name', 'unknown') if hasattr(pipeline, 'model') else 'unknown',
-                "model_provider": str(getattr(pipeline.model, 'provider', 'unknown')) if hasattr(pipeline, 'model') else 'unknown',
-            })
-            
-        return pipeline_metadata
+        # Initialize base node
+        super().__init__(node_name=node_name)
+
+        # Initialize pipeline-specific attributes
+        self.pipeline_factory = pipeline_factory
+        self.profile_type = profile_type
+        self.stream = stream
+        self.priority = priority
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
@@ -162,9 +122,7 @@ class PipelineNode(BaseNode):
                 mp, ChatResponse, self.priority, cb
             ) as pipe:
                 # Create and store comprehensive node metadata
-                pipeline_metadata = self.create_pipeline_metadata(pipe)
-                self.store_node_metadata(state, **pipeline_metadata)
-                
+
                 if self.stream:
                     # For streaming: collect all chunks into final response (accumulate, do not overwrite)
                     # LangGraph streaming is handled at graph level, not node level
@@ -185,10 +143,7 @@ class PipelineNode(BaseNode):
                         cast(List[BaseTool], state.available_tools),
                     ):
                         chunk_count += 1
-                        
-                        # Enrich chunk with node metadata for downstream processing
-                        self.enrich_with_node_metadata(chunk, state, **pipeline_metadata)
-                        
+
                         self.logger.info(
                             "Received pipeline chunk",
                             user_id=state.user_id,
@@ -271,15 +226,15 @@ class PipelineNode(BaseNode):
                         user_id=state.user_id,
                         node_id=self.node_id,
                     )
-                    
+
                     response = await run_pipeline(
                         context_messages,
                         pipe,
                         cast(List[BaseTool], state.available_tools),
                     )
-                    
+
                     # Enrich response with node metadata
-                    self.enrich_with_node_metadata(response, state, **pipeline_metadata)
+                    self.enrich_with_node_metadata(response, state)
 
             # Convert response to LangChainMessage and add to state
             if response and response.message:

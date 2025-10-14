@@ -25,11 +25,8 @@ class WorkflowRouter(BaseNode):
         Args:
             user_id: User identifier for logging and context
         """
-        super().__init__("workflow_router", user_id=user_id)
-        
-    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
-        """Initialize WorkflowRouter with dependency injection."""
-        self.user_id = kwargs.get('user_id')
+        super().__init__("workflow_router")
+        self.user_id = user_id
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

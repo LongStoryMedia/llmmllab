@@ -22,11 +22,6 @@ class SimilarityRankerNode(BaseNode):
     def __init__(self):
         """Initialize similarity ranker node."""
         super().__init__("similarity_ranker")
-        
-    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
-        """Initialize SimilarityRankerNode with dependency injection."""
-        # No dependencies needed for this node
-        return
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

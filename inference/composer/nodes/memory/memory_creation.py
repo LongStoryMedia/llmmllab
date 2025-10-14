@@ -44,11 +44,8 @@ class MemoryCreationNode(BaseNode):
         Args:
             embedding_agent: Required EmbeddingAgent instance
         """
-        super().__init__("memory_creation", embedding_agent=embedding_agent)
-        
-    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
-        """Initialize MemoryCreationNode with dependency injection."""
-        self.embedding_agent = kwargs.get('embedding_agent')
+        super().__init__("memory_creation")
+        self.embedding_agent = embedding_agent
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

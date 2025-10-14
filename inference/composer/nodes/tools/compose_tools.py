@@ -14,11 +14,6 @@ class ToolComposerNode(BaseNode):
         Initialize the tool composer node.
         """
         super().__init__("tool_composer")
-        
-    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
-        """Initialize ToolComposerNode with dependency injection."""
-        # No dependencies needed for this node
-        return
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

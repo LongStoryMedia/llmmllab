@@ -25,11 +25,8 @@ class SearchSummaryNode(BaseNode):
     """
 
     def __init__(self, summarization_agent: "SummarizationAgent"):
-        super().__init__("search_summary", summarization_agent=summarization_agent)
-        
-    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
-        """Initialize SearchSummaryNode with dependency injection."""
-        self.agent = kwargs.get('summarization_agent')
+        super().__init__("search_summary")
+        self.agent = summarization_agent
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

@@ -35,12 +35,7 @@ class ResponseFormatAnalysisNode(BaseNode):
         Args:
             pipeline_factory: Factory for creating structured pipelines
         """
-        super().__init__(
-            "ResponseFormatAnalysisNode", pipeline_factory=pipeline_factory
-        )
-
-    def _initialize_node(self, pipeline_factory: PipelineFactory, **kwargs):
-        """Initialize node-specific components."""
+        super().__init__("ResponseFormatAnalysisNode")
         self.pipeline_factory = pipeline_factory
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:

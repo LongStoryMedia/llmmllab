@@ -30,11 +30,7 @@ class IntentClassifierNode(BaseNode):
             classifier_agent: Required ClassifierAgent instance
         """
         # Use a default name for now, could be made configurable later
-        super().__init__("intent_classifier", classifier_agent=classifier_agent)
-        
-    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
-        """Initialize IntentClassifierNode with dependency injection."""
-        classifier_agent = kwargs.get('classifier_agent')
+        super().__init__("intent_classifier")
         self.agent = classifier_agent
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:

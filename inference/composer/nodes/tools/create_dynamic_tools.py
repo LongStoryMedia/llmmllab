@@ -23,11 +23,8 @@ class DynamicToolCreationNode(BaseNode):
         tool_registry: ToolRegistry,
         pipeline_factory: PipelineFactory,
     ):
-        super().__init__("dynamic_tool_creation", tool_registry=tool_registry, pipeline_factory=pipeline_factory)
-        
-    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
-        """Initialize DynamicToolCreationNode with dependency injection."""
-        self.tool_registry = kwargs.get('tool_registry')
+        super().__init__("dynamic_tool_creation")
+        self.tool_registry = tool_registry
         self.pipeline_factory = pipeline_factory
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:

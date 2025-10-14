@@ -23,13 +23,12 @@ class BaseNode(ABC):
     and error handling patterns that are common across all nodes.
     """
 
-    def __init__(self, node_name: str = None, **kwargs):
+    def __init__(self, node_name: str = None):
         """
         Initialize base node with common setup.
 
         Args:
             node_name: Name of the node for logging and error reporting
-            **kwargs: Additional initialization parameters for subclasses
         """
         # Use class name if no explicit node_name provided
         self.node_name = node_name or self.__class__.__name__
@@ -38,20 +37,6 @@ class BaseNode(ABC):
             component=self.node_name,
             node_id=self.node_id
         )
-
-        # Allow subclasses to handle additional initialization
-        self._initialize_node(**kwargs)
-
-    @abstractmethod
-    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
-        """
-        Hook for subclass-specific initialization.
-
-        Override this method in subclasses to handle additional initialization
-        parameters passed to the constructor.
-        """
-        # Base implementation does nothing - subclasses override as needed
-        return
 
     @abstractmethod
     async def __call__(self, state: WorkflowState) -> WorkflowState:

@@ -25,11 +25,7 @@ class ToolExecutorNode(BaseNode):
         Args:
             tool_registry: Registry containing executable tool instances
         """
-        super().__init__("tool_executor", tool_registry=tool_registry)
-        
-    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
-        """Initialize ToolExecutorNode with dependency injection."""
-        tool_registry = kwargs.get('tool_registry')
+        super().__init__("tool_executor")
         self.tool_registry = tool_registry
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:

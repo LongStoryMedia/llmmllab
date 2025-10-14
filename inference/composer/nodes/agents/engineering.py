@@ -36,11 +36,8 @@ class EngineeringAgentNode(BaseNode):
         Args:
             engineering_agent: Required EngineeringAgent instance
         """
-        super().__init__("engineering_agent", engineering_agent=engineering_agent)
-        
-    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
-        """Initialize EngineeringAgentNode with dependency injection."""
-        self.agent = kwargs.get('engineering_agent')
+        super().__init__("engineering_agent")
+        self.agent = engineering_agent
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

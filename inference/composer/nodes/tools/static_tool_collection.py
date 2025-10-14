@@ -15,11 +15,8 @@ class StaticToolCollectionNode(BaseNode):
         Args:
             tool_registry: Registry to fetch static tools from
         """
-        super().__init__("static_tool_collection", tool_registry=tool_registry)
-        
-    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
-        """Initialize StaticToolCollectionNode with dependency injection."""
-        self.tool_registry = kwargs.get('tool_registry')
+        super().__init__("static_tool_collection")
+        self.tool_registry = tool_registry
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

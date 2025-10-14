@@ -25,11 +25,8 @@ class MemoryStorageNode(BaseNode):
         Args:
             memory_agent: Required MemoryAgent instance
         """
-        super().__init__("memory_storage", memory_agent=memory_agent)
-        
-    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
-        """Initialize MemoryStorageNode with dependency injection."""
-        self.agent = kwargs.get('memory_agent')
+        super().__init__("memory_storage")
+        self.agent = memory_agent
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

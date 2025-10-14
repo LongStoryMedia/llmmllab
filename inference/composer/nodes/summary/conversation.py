@@ -25,11 +25,8 @@ class ConsolidationNode(BaseNode):
     """
 
     def __init__(self, summarization_agent: "SummarizationAgent"):
-        super().__init__("consolidation", summarization_agent=summarization_agent)
-        
-    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
-        """Initialize ConsolidationNode with dependency injection."""
-        self.summarization_agent = kwargs.get('summarization_agent')
+        super().__init__("consolidation")
+        self.summarization_agent = summarization_agent
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

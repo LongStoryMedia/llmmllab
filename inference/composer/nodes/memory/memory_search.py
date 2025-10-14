@@ -30,12 +30,9 @@ class MemorySearchNode(BaseNode):
             memory_agent: Required MemoryAgent instance
             embedding_agent: Required EmbeddingAgent instance
         """
-        super().__init__("memory_search", memory_agent=memory_agent, embedding_agent=embedding_agent)
-        
-    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
-        """Initialize MemorySearchNode with dependency injection."""
-        self.agent = kwargs.get('memory_agent')
-        self.embedding_agent = kwargs.get('embedding_agent')
+        super().__init__("memory_search")
+        self.agent = memory_agent
+        self.embedding_agent = embedding_agent
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

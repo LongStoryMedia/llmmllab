@@ -42,12 +42,9 @@ class TitleGenerationNode(BaseNode):
             pipeline_factory: Factory for creating pipelines
             analysis_agent: Required ClassifierAgent instance
         """
-        super().__init__("title_generation", pipeline_factory=pipeline_factory, analysis_agent=analysis_agent)
-        
-    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
-        """Initialize TitleGenerationNode with dependency injection."""
+        super().__init__("title_generation")
         self.pipeline_factory = pipeline_factory
-        self.classifier_agent = kwargs.get('analysis_agent')
+        self.classifier_agent = analysis_agent
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
