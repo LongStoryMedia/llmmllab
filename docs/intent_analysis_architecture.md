@@ -16,7 +16,7 @@ User Request → IntentAnalysis → RequiredCapabilities → ModelProfileType �
 
 - **Purpose**: Comprehensive analysis of user intent with structured scoring
 - **Key Fields**:
-  - `primary_intent`: Enum of intent categories (chat, research, creative, etc.)
+  - `workflow_type`: Enum of intent categories (chat, research, creative, etc.)
   - `required_capabilities`: List of `RequiredCapability` enums needed
   - `computational_requirements`: Structured list of compute needs
   - `complexity_level`: TRIVIAL → SIMPLE → MODERATE → COMPLEX → SPECIALIZED
@@ -130,7 +130,7 @@ The composer service uses capability mappings to:
 
 # 1. Intent Analysis
 intent_analysis = IntentAnalysis(
-    primary_intent="research",
+    workflow_type="research",
     required_capabilities=[RequiredCapability.WEB_SEARCH, RequiredCapability.REASONING, RequiredCapability.SUMMARIZATION],
     computational_requirements=["complex_reasoning", "large_data_handling"],
     complexity_level=ComplexityLevel.COMPLEX,

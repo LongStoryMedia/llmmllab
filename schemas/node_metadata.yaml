@@ -1,0 +1,176 @@
+type: object
+description: Metadata structure for workflow node execution tracking
+required:
+  - node_name
+  - node_id
+  - node_type
+  - execution_time
+properties:
+  node_name:
+    type: string
+    description: Human-readable name of the node
+    examples:
+      - "pipeline_node"
+      - "intent_classifier"
+      - "tool_executor"
+  
+  node_id:
+    type: string
+    description: Unique identifier for this specific node instance
+    pattern: "^[a-f0-9]{8}$"
+    examples:
+      - "abc12345"
+      - "def67890"
+  
+  node_type:
+    type: string
+    description: Class name of the node for type identification
+    examples:
+      - "PipelineNode"
+      - "IntentClassifierNode" 
+      - "ToolExecutorNode"
+  
+  execution_time:
+    type: string
+    format: date-time
+    description: ISO timestamp when node execution started
+    examples:
+      - "2025-10-13T23:15:30.123456Z"
+  
+  user_id:
+    type: string
+    description: User identifier associated with this execution
+    nullable: true
+    examples:
+      - "user_12345"
+      - null
+      
+  conversation_id:
+    type: integer
+    description: Conversation identifier for this execution context
+    nullable: true
+    minimum: 0
+    examples:
+      - 12345
+      - null
+      - 0
+  
+  # Optional fields for specific node types
+  model_name:
+    type: string
+    description: Name of the model being used (for pipeline nodes)
+    nullable: true
+    examples:
+      - "qwen2.5:32b"
+      - "llama3.1:8b"
+      - null
+  
+  profile_type:
+    type: string
+    description: Model profile type for pipeline execution
+    nullable: true
+    enum:
+      - "Primary" 
+      - "Analysis"
+      - "Embedding"
+      - "Formatting"
+      - "Engineering"
+    examples:
+      - "Primary"
+      - null
+  
+  priority:
+    type: string
+    description: Pipeline execution priority level
+    nullable: true
+    enum:
+      - "LOW"
+      - "MEDIUM" 
+      - "HIGH"
+      - "URGENT"
+    examples:
+      - "MEDIUM"
+      - null
+  
+  streaming:
+    type: boolean
+    description: Whether this execution uses streaming responses
+    nullable: true
+    examples:
+      - true
+      - false
+      - null
+  
+  is_cached:
+    type: boolean
+    description: Whether this execution uses a cached pipeline
+    nullable: true
+    examples:
+      - true
+      - false
+      - null
+  
+  cache_key:
+    type: string
+    description: Cache key used for pipeline caching
+    nullable: true
+    examples:
+      - "pipeline_qwen2.5_primary_123abc"
+      - null
+      
+  tool_count:
+    type: integer
+    description: Number of tools available or executed
+    nullable: true
+    minimum: 0
+    examples:
+      - 5
+      - 0
+      - null
+      
+  intent_classification:
+    type: string
+    description: Classified intent for routing decisions
+    nullable: true
+    examples:
+      - "technical_question"
+      - "code_generation" 
+      - null
+      
+  memory_operations:
+    type: array
+    description: Memory operations performed by this node
+    nullable: true
+    items:
+      type: string
+      enum:
+        - "search"
+        - "store"
+        - "create"
+        - "retrieve"
+    examples:
+      - ["search", "store"]
+      - null
+      
+  error_details:
+    type: object
+    description: Error information if node execution failed
+    nullable: true
+    properties:
+      error_type:
+        type: string
+        description: Type/class of the error
+      error_message:
+        type: string
+        description: Human-readable error message
+      stack_trace:
+        type: string
+        description: Stack trace for debugging
+        nullable: true
+    examples:
+      - error_type: "NodeExecutionError"
+        error_message: "Pipeline execution failed"
+        stack_trace: "Traceback (most recent call last)..."
+      - null
+
+additionalProperties: true  # Allow for custom metadata from specific nodes

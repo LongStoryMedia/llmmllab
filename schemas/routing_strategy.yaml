@@ -63,9 +63,9 @@ properties:
     type: object
     description: "Additional metadata about the routing decision"
     properties:
-      primary_intent:
-        type: string
-        description: "Primary intent detected from analysis"
+      workflow_type:
+        $ref: workflow_type.yaml
+        description: "Identified primary workflow type from intent analysis"
       complexity_level:
         type: string
         description: "Assessed complexity level"

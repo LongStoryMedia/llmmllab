@@ -228,44 +228,56 @@ class ComposerService:
                                 # Create a shallow copy to avoid mutating a typed dict structure
                                 new_data = dict(data)
                                 updated = False
-                                
+
                                 # Inject tool_calls if missing
                                 tc = state_values.get("tool_calls")
                                 if tc and "tool_calls" not in data:
                                     new_data["tool_calls"] = tc
                                     updated = True
-                                
+
                                 # Inject node metadata if available
                                 node_metadata = state_values.get("node_metadata")
                                 if node_metadata and "node_metadata" not in data:
                                     new_data["node_metadata"] = node_metadata
                                     updated = True
-                                    
+
                                 # Apply enriched data if we made changes
                                 if updated:
                                     event["data"] = new_data  # type: ignore[index]
-                            
+
                             # Also check if the event itself has node information we can enrich
                             event_name = event.get("name", "")
                             event_type = event.get("event", "")
-                            
+
                             # Add execution metadata to certain event types for better traceability
-                            if event_type in ["on_chain_start", "on_chain_end", "on_tool_start", "on_tool_end"]:
+                            if event_type in [
+                                "on_chain_start",
+                                "on_chain_end",
+                                "on_tool_start",
+                                "on_tool_end",
+                            ]:
                                 if "metadata" not in event:
                                     event["metadata"] = {}  # type: ignore[index]
-                                
+
                                 # Add timing and context information
-                                event["metadata"].update({  # type: ignore[index]
-                                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                                    "workflow_context": "composer_service",
-                                })
-                            
+                                event["metadata"].update(
+                                    {  # type: ignore[index]
+                                        "timestamp": datetime.now(
+                                            timezone.utc
+                                        ).isoformat(),
+                                        "workflow_context": "composer_service",
+                                    }
+                                )
+
                             # Else if top-level tool_calls already emitted by node update, keep as-is
                     yield event
                 except Exception as e:
                     self.logger.warning(
-                        "Error enriching workflow event", 
-                        extra={"error": str(e), "event_type": event.get("event", "unknown")}
+                        "Error enriching workflow event",
+                        extra={
+                            "error": str(e),
+                            "event_type": event.get("event", "unknown"),
+                        },
                     )
                     # On any injection error, still yield original event to avoid stream disruption
                     yield event

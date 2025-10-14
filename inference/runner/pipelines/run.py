@@ -34,28 +34,42 @@ GrammarInput = Union[str, Path, Type[BaseModel], None]
 
 class PipelineExecutionMetadata:
     """Tracks execution metadata for pipeline runs."""
-    
-    def __init__(self, pipeline: SimplePipelineCore, execution_id: Optional[str] = None):
+
+    def __init__(
+        self, pipeline: SimplePipelineCore, execution_id: Optional[str] = None
+    ):
         self.execution_id = execution_id or str(uuid.uuid4())[:8]
         self.pipeline_name = type(pipeline).__name__
-        self.model_name = getattr(pipeline.model, 'name', 'unknown') if hasattr(pipeline, 'model') else 'unknown'
-        self.model_id = getattr(pipeline.model, 'id', 'unknown') if hasattr(pipeline, 'model') else 'unknown'
-        self.provider = getattr(pipeline.model, 'provider', ModelProvider.OTHER) if hasattr(pipeline, 'model') else ModelProvider.OTHER
+        self.model_name = (
+            getattr(pipeline.model, "name", "unknown")
+            if hasattr(pipeline, "model")
+            else "unknown"
+        )
+        self.model_id = (
+            getattr(pipeline.model, "id", "unknown")
+            if hasattr(pipeline, "model")
+            else "unknown"
+        )
+        self.provider = (
+            getattr(pipeline.model, "provider", ModelProvider.OTHER)
+            if hasattr(pipeline, "model")
+            else ModelProvider.OTHER
+        )
         self.is_cached = self._determine_if_cached(pipeline)
-        self.expected_return_type = getattr(pipeline, 'expected_return_type', None)
+        self.expected_return_type = getattr(pipeline, "expected_return_type", None)
         self.start_time = datetime.now(timezone.utc)
         self.token_count = 0
-        
+
     def _determine_if_cached(self, pipeline: SimplePipelineCore) -> bool:
         """Determine if this pipeline instance is from cache."""
         # Local providers use caching
-        if hasattr(pipeline, 'model') and hasattr(pipeline.model, 'provider'):
+        if hasattr(pipeline, "model") and hasattr(pipeline.model, "provider"):
             return pipeline.model.provider in {
-                ModelProvider.LLAMA_CPP, 
-                ModelProvider.STABLE_DIFFUSION_CPP
+                ModelProvider.LLAMA_CPP,
+                ModelProvider.STABLE_DIFFUSION_CPP,
             }
         return False
-        
+
     def log_start(self, logger: logging.Logger) -> None:
         """Log pipeline execution start with metadata."""
         cache_status = "cached" if self.is_cached else "transient"
@@ -66,12 +80,20 @@ class PipelineExecutionMetadata:
                 "pipeline": self.pipeline_name,
                 "model": self.model_name,
                 "model_id": self.model_id,
-                "provider": self.provider.value if hasattr(self.provider, 'value') else str(self.provider),
+                "provider": (
+                    self.provider.value
+                    if hasattr(self.provider, "value")
+                    else str(self.provider)
+                ),
                 "cache_status": cache_status,
-                "return_type": self.expected_return_type.__name__ if self.expected_return_type else None,
-            }
+                "return_type": (
+                    self.expected_return_type.__name__
+                    if self.expected_return_type
+                    else None
+                ),
+            },
         )
-        
+
     def log_completion(self, logger: logging.Logger, success: bool = True) -> None:
         """Log pipeline execution completion."""
         duration = (datetime.now(timezone.utc) - self.start_time).total_seconds()
@@ -84,7 +106,7 @@ class PipelineExecutionMetadata:
                 "duration_seconds": duration,
                 "token_count": self.token_count,
                 "status": status,
-            }
+            },
         )
 
 
@@ -180,7 +202,9 @@ async def stream_pipeline(
         # Check if pipeline supports streaming
         if hasattr(pipeline, "stream"):
             try:
-                async for chunk in pipeline.stream(normalized_messages, tools=tools, grammar=grammar):
+                async for chunk in pipeline.stream(
+                    normalized_messages, tools=tools, grammar=grammar
+                ):
                     if isinstance(chunk, ChatResponse):
                         # Track tokens if available
                         if chunk.message:
@@ -191,10 +215,10 @@ async def stream_pipeline(
                     else:
                         # Convert non-ChatResponse to streaming chunk
                         yield create_streaming_chunk(str(chunk))
-                        
+
                 metadata.log_completion(logger, success=True)
                 return
-                
+
             except Exception as e:
                 logger.error(f"Error in pipeline streaming: {e}")
                 yield create_streaming_chunk(f"Streaming error: {str(e)}", done=True)
@@ -203,8 +227,10 @@ async def stream_pipeline(
 
         # Fallback to invoke for pipelines that don't support streaming
         try:
-            result = await pipeline.invoke(normalized_messages, tools=tools, grammar=grammar)
-            
+            result = await pipeline.invoke(
+                normalized_messages, tools=tools, grammar=grammar
+            )
+
             if isinstance(result, ChatResponse):
                 # Track token count
                 if result.message:
@@ -214,9 +240,9 @@ async def stream_pipeline(
                 yield result
             else:
                 yield create_streaming_chunk(str(result), done=True)
-                
+
             metadata.log_completion(logger, success=True)
-            
+
         except Exception as e:
             logger.error(f"Error in pipeline invoke: {e}")
             yield create_streaming_chunk(f"Pipeline error: {str(e)}", done=True)
@@ -258,14 +284,20 @@ async def run_pipeline(
                 done=True,
                 message=Message(
                     role=MessageRole.ASSISTANT,
-                    content=[MessageContent(type=MessageContentType.TEXT, text="No messages provided")],
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT, text="No messages provided"
+                        )
+                    ],
                 ),
                 created_at=datetime.now(timezone.utc),
                 finish_reason="error",
             )
 
         # Direct pipeline invocation
-        result = await pipeline.invoke(normalized_messages, tools=tools, grammar=grammar)
+        result = await pipeline.invoke(
+            normalized_messages, tools=tools, grammar=grammar
+        )
 
         # Handle different return types based on pipeline
         if isinstance(result, ChatResponse):
@@ -276,7 +308,7 @@ async def run_pipeline(
                     metadata.token_count = len(text.split())
             metadata.log_completion(logger, success=True)
             return result
-            
+
         elif isinstance(result, str):
             # Convert string result to ChatResponse
             metadata.token_count = len(result.split())
@@ -297,7 +329,9 @@ async def run_pipeline(
                 done=True,
                 message=Message(
                     role=MessageRole.ASSISTANT,
-                    content=[MessageContent(type=MessageContentType.TEXT, text=str(result))],
+                    content=[
+                        MessageContent(type=MessageContentType.TEXT, text=str(result))
+                    ],
                 ),
                 created_at=datetime.now(timezone.utc),
                 finish_reason="stop",
@@ -353,7 +387,9 @@ async def embed_pipeline(
         result = await pipeline.invoke(normalized_messages, grammar=grammar)
 
         # Validate result format
-        if isinstance(result, list) and (not result or all(isinstance(item, list) for item in result)):
+        if isinstance(result, list) and (
+            not result or all(isinstance(item, list) for item in result)
+        ):
             metadata.log_completion(logger, success=True)
             return result
         else:
@@ -389,8 +425,10 @@ async def chain_pipelines(
     """
     logger = logging.getLogger(__name__)
     chain_id = str(uuid.uuid4())[:8]
-    
-    logger.info(f"[{chain_id}] Starting pipeline chain with {len(pipeline_steps)} steps")
+
+    logger.info(
+        f"[{chain_id}] Starting pipeline chain with {len(pipeline_steps)} steps"
+    )
 
     try:
         if not pipeline_steps:
@@ -400,7 +438,9 @@ async def chain_pipelines(
 
         for i, (pipeline, prompt) in enumerate(pipeline_steps):
             metadata = PipelineExecutionMetadata(pipeline, f"{chain_id}-{i+1}")
-            logger.info(f"[{chain_id}] Step {i+1}/{len(pipeline_steps)}: {metadata.pipeline_name}")
+            logger.info(
+                f"[{chain_id}] Step {i+1}/{len(pipeline_steps)}: {metadata.pipeline_name}"
+            )
 
             # Run the pipeline
             result = await run_pipeline(current_input, pipeline, tools)
@@ -427,7 +467,9 @@ async def chain_pipelines(
             done=True,
             message=Message(
                 role=MessageRole.ASSISTANT,
-                content=[MessageContent(type=MessageContentType.TEXT, text="Chain completed")],
+                content=[
+                    MessageContent(type=MessageContentType.TEXT, text="Chain completed")
+                ],
             ),
             created_at=datetime.now(timezone.utc),
             finish_reason="stop",

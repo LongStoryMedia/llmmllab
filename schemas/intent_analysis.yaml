@@ -3,7 +3,7 @@ type: object
 title: IntentAnalysis
 description: "Detailed analysis of user intent for smart tool generation"
 properties:
-  primary_intent:
+  workflow_type:
     $ref: "workflow_type.yaml"
     description: "Primary intent category identified from the user message"
   complexity_level:
@@ -14,11 +14,6 @@ properties:
     items:
       $ref: "required_capability.yaml"
     description: "Set of capabilities required to fulfill the request"
-  computational_requirements:
-    type: array
-    items:
-      $ref: "computational_requirement.yaml"
-    description: "List of specific computational requirements identified"
   domain_specificity:
     type: number
     minimum: 0.0
@@ -41,7 +36,7 @@ properties:
     $ref: "technical_domain.yaml"
     description: "Identified technical domain if applicable"
 required:
-  - primary_intent
+  - workflow_type
   - complexity_level
   - required_capabilities
   - computational_requirements

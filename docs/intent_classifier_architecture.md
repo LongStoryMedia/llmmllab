@@ -65,7 +65,7 @@ The LLM receives a comprehensive prompt requesting:
 ### JSON Response Format
 ```json
 {
-    "primary_intent": "<intent_type>",
+    "workflow_type": "<intent_type>",
     "complexity_level": "<complexity_level>",
     "required_capabilities": ["<capability1>", "<capability2>"],
     "computational_requirements": ["<requirement1>", "<requirement2>"],

@@ -26,8 +26,8 @@ class AgentSpecialization(str, Enum):
 
 
 class MockIntentAnalysis:
-    def __init__(self, primary_intent: str, required_capabilities: list):
-        self.primary_intent = primary_intent
+    def __init__(self, workflow_type: str, required_capabilities: list):
+        self.workflow_type = workflow_type
         self.required_capabilities = required_capabilities
 
 
@@ -75,7 +75,7 @@ def route_to_specialists_logic(state):
         "process",
     }
 
-    if any(keyword in intent.primary_intent.lower() for keyword in analysis_intents):
+    if any(keyword in intent.workflow_type.lower() for keyword in analysis_intents):
         return AgentSpecialization.ANALYSIS.value
 
     # Default to content generation for creative, general, and conversational tasks
@@ -85,9 +85,9 @@ def route_to_specialists_logic(state):
 class TestMultiAgentRouting(unittest.TestCase):
     """Test multi-agent routing decisions based on intent analysis."""
 
-    def create_test_state(self, primary_intent: str, required_capabilities: list):
+    def create_test_state(self, workflow_type: str, required_capabilities: list):
         """Create a test state with intent analysis."""
-        intent = MockIntentAnalysis(primary_intent, required_capabilities)
+        intent = MockIntentAnalysis(workflow_type, required_capabilities)
         return MockWorkflowState(intent_classification=intent)
 
     def test_analysis_routing_by_capabilities(self):

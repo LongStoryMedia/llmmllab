@@ -271,7 +271,7 @@ class BaseLlamaCppPipeline(
                             "stop": self.profile.parameters.stop or [],
                             "streaming": True,
                             "verbose": os.getenv("LOG_LEVEL", "WARNING").lower()
-                            == "debug",
+                            == "trace",
                             "logits_all": logits_all_enabled,
                             "logprobs": logprobs,
                             "n_cpu_moe": getattr(

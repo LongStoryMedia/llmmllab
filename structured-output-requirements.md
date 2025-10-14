@@ -390,7 +390,7 @@ All fields are required and must match the specified types and constraints.
     async def _fallback_parsing(self, user_query: str, conversation_ctx: ConversationCtx, error: str) -> IntentAnalysis:
         # Heuristic analysis as fallback
         return IntentAnalysis(
-            primary_intent="tool_use",  # Conservative fallback
+            workflow_type="tool_use",  # Conservative fallback
             complexity_level=ComplexityLevel.MODERATE,
             required_capabilities=["general_knowledge"],
             computational_requirements=[],

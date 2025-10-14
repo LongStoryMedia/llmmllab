@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from composer.graph.state import WorkflowState
 from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
+from models.node_metadata import NodeMetadata, ErrorDetails
 
 
 class BaseNode(ABC):
@@ -34,8 +35,7 @@ class BaseNode(ABC):
         self.node_name = node_name or self.__class__.__name__
         self.node_id = str(uuid.uuid4())[:8]  # Unique ID for this node instance
         self.logger = llmmllogger.logger.bind(
-            component=self.node_name,
-            node_id=self.node_id
+            component=self.node_name, node_id=self.node_id
         )
 
     @abstractmethod
@@ -196,7 +196,9 @@ class BaseNode(ABC):
 
         self.logger.info(f"Completed {self.node_name} execution", **context)
 
-    def create_node_metadata(self, state: WorkflowState, **additional_metadata) -> Dict[str, Any]:
+    def create_node_metadata(
+        self, state: WorkflowState, **additional_metadata
+    ) -> NodeMetadata:
         """
         Create comprehensive metadata for this node execution.
 
@@ -205,46 +207,50 @@ class BaseNode(ABC):
             **additional_metadata: Additional metadata to include
 
         Returns:
-            Dictionary containing node execution metadata
+            Strongly typed NodeMetadata object containing node execution metadata
         """
-        metadata = {
+        # Base required fields
+        base_data = {
             "node_name": self.node_name,
             "node_id": self.node_id,
             "node_type": self.__class__.__name__,
-            "execution_time": datetime.now(timezone.utc).isoformat(),
-            "user_id": getattr(state, 'user_id', None),
-            "conversation_id": getattr(state, 'conversation_id', None),
+            "execution_time": datetime.now(timezone.utc),
+            "user_id": getattr(state, "user_id", None),
+            "conversation_id": getattr(state, "conversation_id", None),
         }
-        
+
         # Add any additional metadata passed by subclasses
-        metadata.update(additional_metadata)
-        
-        return metadata
+        base_data.update(additional_metadata)
+
+        # Create and return strongly typed NodeMetadata object
+        return NodeMetadata(**base_data)
 
     def store_node_metadata(self, state: WorkflowState, **additional_metadata) -> None:
         """
         Create and store node metadata in the workflow state.
 
         Args:
-            state: Current workflow state  
+            state: Current workflow state
             **additional_metadata: Additional metadata to include
         """
         metadata = self.create_node_metadata(state, **additional_metadata)
-        
+
         # Ensure node_metadata dict exists in state
-        if not hasattr(state, 'node_metadata'):
+        if not hasattr(state, "node_metadata"):
             state.node_metadata = {}
-        
+
         # Store metadata keyed by node_id
         state.node_metadata[self.node_id] = metadata
-        
+
         self.logger.debug(
             "Stored node metadata",
-            user_id=getattr(state, 'user_id', 'unknown'),
-            node_metadata_keys=list(metadata.keys())
+            user_id=getattr(state, "user_id", "unknown"),
+            node_metadata_keys=list(metadata.model_fields.keys()),
         )
 
-    def enrich_with_node_metadata(self, obj: Any, state: WorkflowState, **additional_metadata) -> Any:
+    def enrich_with_node_metadata(
+        self, obj: Any, state: WorkflowState, **additional_metadata
+    ) -> Any:
         """
         Enrich an object (like a response or chunk) with node metadata.
 
@@ -256,8 +262,8 @@ class BaseNode(ABC):
         Returns:
             The enriched object
         """
-        if hasattr(obj, '__dict__'):
+        if hasattr(obj, "__dict__"):
             metadata = self.create_node_metadata(state, **additional_metadata)
-            obj.__dict__.setdefault('node_metadata', metadata)
-        
+            obj.__dict__.setdefault("node_metadata", metadata)
+
         return obj

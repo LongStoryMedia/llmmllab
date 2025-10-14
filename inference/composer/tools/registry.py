@@ -131,7 +131,7 @@ class ToolRegistry:
                 "Selected tools for context",
                 extra={
                     "tool_count": len(tools),
-                    "intent": intent.primary_intent,
+                    "intent": intent.workflow_type,
                     "requires_tools": getattr(intent, "requires_tools", False),
                 },
             )

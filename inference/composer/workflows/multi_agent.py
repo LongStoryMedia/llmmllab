@@ -123,14 +123,14 @@ async def build_multi_agent_workflow(
         }
 
         # Check primary intent (handle list case)
-        primary_intent_text = ""
+        workflow_type_text = ""
         if isinstance(intent, list):
-            if intent and hasattr(intent[0], "primary_intent"):
-                primary_intent_text = intent[0].primary_intent.lower()
-        elif hasattr(intent, "primary_intent"):
-            primary_intent_text = intent.primary_intent.lower()
+            if intent and hasattr(intent[0], "workflow_type"):
+                workflow_type_text = intent[0].workflow_type.lower()
+        elif hasattr(intent, "workflow_type"):
+            workflow_type_text = intent.workflow_type.lower()
 
-        if any(keyword in primary_intent_text for keyword in analysis_intents):
+        if any(keyword in workflow_type_text for keyword in analysis_intents):
             return "analysis"
 
         # Default to content generation for creative, general, and conversational tasks

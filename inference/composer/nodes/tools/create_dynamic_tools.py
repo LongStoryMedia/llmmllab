@@ -140,7 +140,7 @@ class DynamicToolCreationNode(BaseNode):
         prompt = f"""As a Tool Engineering Specialist, analyze the user's request and determine if a dynamic tool is needed beyond the available static tools.
 
 User Query: {user_query}
-Primary Intent: {intent.primary_intent}
+Primary Intent: {intent.workflow_type}
 Complexity Level: {intent.complexity_level}
 Required Capabilities: {[str(cap) for cap in intent.required_capabilities]}
 

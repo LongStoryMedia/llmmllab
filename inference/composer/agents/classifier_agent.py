@@ -164,14 +164,13 @@ class ClassifierAgent:
 You are an expert intent classification system. Analyze the user request and output ONLY JSON.
 
 Valid enumerations ONLY:
-primary_intent (choose one per intent): [ {" | ".join(intnt_schema['$defs']['WorkflowType']['enum'])} ]
+workflow_type (choose one per intent): [ {" | ".join(intnt_schema['$defs']['WorkflowType']['enum'])} ]
 complexity_level (choose one per intent): [ {" | ".join(intnt_schema['$defs']['ComplexityLevel']['enum'])} ]
 
 required_capabilities (functionality needed - choose many, one, or none):
 {", ".join(intnt_schema['$defs']['RequiredCapability']['enum'])}
-
-computational_requirements (hardware needs - choose many, one, or none - LEAVE THIS EMPTY IF THERE ARE NO OPTIONS THAT APPLY):
-{", ".join(intnt_schema['$defs']['ComputationalRequirement']['enum'])}
+required_capabilities can be empty if none apply. It is usually empty for simple queries.
+DO NOT invent capabilities or requirements - only use those listed above.
 
 Instructions:
 1. Decompose only if there are clearly separable sub-tasks; else one intent in the intents array.

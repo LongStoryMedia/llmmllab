@@ -93,7 +93,7 @@ class ResponseFormatAnalysisNode(BaseNode):
                     "Response format analysis completed",
                     extra={
                         "user_id": user_id,
-                        "intent": intent.primary_intent,
+                        "intent": intent.workflow_type,
                         "response_format": intent.response_format,
                         "technical_domain": intent.technical_domain,
                     },
@@ -132,7 +132,7 @@ class ResponseFormatAnalysisNode(BaseNode):
 
 User Query: {user_query}
 
-Primary Intent: {intent_analysis.primary_intent if intent_analysis else 'unknown'}
+Primary Intent: {intent_analysis.workflow_type if intent_analysis else 'unknown'}
 Complexity Level: {intent_analysis.complexity_level if intent_analysis else 'unknown'}
 
 Available Response Formats:
@@ -206,7 +206,7 @@ Respond with only the format name (e.g., CODE_SOLUTION)."""
 
 User Query: {user_query}
 
-Primary Intent: {intent_analysis.primary_intent if intent_analysis else 'unknown'}
+Primary Intent: {intent_analysis.workflow_type if intent_analysis else 'unknown'}
 
 Available Technical Domains:
 1. SOFTWARE_DEVELOPMENT - Programming, coding, software engineering
@@ -273,26 +273,26 @@ Respond with only the domain name (e.g., SOFTWARE_DEVELOPMENT)."""
         if not intent_analysis:
             return ResponseFormat.DETAILED_ANALYSIS
 
-        primary_intent = str(intent_analysis.primary_intent).lower()
+        workflow_type = str(intent_analysis.workflow_type).lower()
 
         # Map intents to response formats
         if any(
-            keyword in primary_intent
+            keyword in workflow_type
             for keyword in ["code", "implement", "build", "create"]
         ):
             return ResponseFormat.CODE_SOLUTION
         elif any(
-            keyword in primary_intent
+            keyword in workflow_type
             for keyword in ["how", "steps", "guide", "tutorial"]
         ):
             return ResponseFormat.STEP_BY_STEP_GUIDE
         elif any(
-            keyword in primary_intent
+            keyword in workflow_type
             for keyword in ["best", "practice", "recommend", "approach"]
         ):
             return ResponseFormat.BEST_PRACTICES
         elif any(
-            keyword in primary_intent
+            keyword in workflow_type
             for keyword in ["debug", "fix", "error", "issue", "problem"]
         ):
             return ResponseFormat.TROUBLESHOOTING
@@ -314,7 +314,7 @@ Respond with only the domain name (e.g., SOFTWARE_DEVELOPMENT)."""
         if not intent_analysis:
             return TechnicalDomain.GENERAL_ENGINEERING
 
-        primary_intent = str(intent_analysis.primary_intent).lower()
+        workflow_type = str(intent_analysis.workflow_type).lower()
 
         # Map common intents to technical domains
         domain_mapping = {
@@ -337,7 +337,7 @@ Respond with only the domain name (e.g., SOFTWARE_DEVELOPMENT)."""
         }
 
         for keyword, domain in domain_mapping.items():
-            if keyword in primary_intent:
+            if keyword in workflow_type:
                 return domain
 
         return TechnicalDomain.GENERAL_ENGINEERING

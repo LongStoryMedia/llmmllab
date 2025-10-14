@@ -42,7 +42,7 @@ class WorkflowRouter(BaseNode):
             Updated state with routing decisions
         """
         state.selected_workflows = {
-            i.primary_intent for i in state.intent_classification
+            i.workflow_type for i in state.intent_classification
         }
 
         return state
