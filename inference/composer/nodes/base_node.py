@@ -6,14 +6,14 @@ user configuration access patterns, standardized error handling, and metadata ma
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict
+from typing import Any, Optional
 import uuid
 from datetime import datetime, timezone
 
 from composer.graph.state import WorkflowState
 from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
-from models.node_metadata import NodeMetadata, ErrorDetails
+from models.node_metadata import NodeMetadata
 
 
 class BaseNode(ABC):
@@ -24,7 +24,7 @@ class BaseNode(ABC):
     and error handling patterns that are common across all nodes.
     """
 
-    def __init__(self, node_name: str = None):
+    def __init__(self, node_name: Optional[str] = None):
         """
         Initialize base node with common setup.
 

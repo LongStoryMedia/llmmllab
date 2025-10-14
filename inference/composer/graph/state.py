@@ -4,11 +4,8 @@ This is the centralized state schema that acts as the common interface
 """
 
 import operator
-from enum import Enum
-
-from re import L
 from typing import List, Dict, Any, Optional, Annotated, Set, Union
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from models import (
     LangChainMessage,
@@ -19,11 +16,10 @@ from models import (
     UserConfig,
     Summary,
     SearchTopicSynthesis,
-    ResponseFormat,
-    TechnicalDomain,
     SearchResult,
     Message,
 )
+from models.node_metadata import NodeMetadata
 
 
 class WorkflowState(BaseModel):
@@ -183,8 +179,8 @@ class WorkflowState(BaseModel):
 
     # Node execution metadata tracking
     node_metadata: Annotated[
-        Dict[str, Dict[str, Any]], lambda x, y: {**x, **y} if x and y else y or x or {}
+        Dict[str, NodeMetadata], lambda x, y: {**x, **y} if x and y else y or x or {}
     ] = Field(
         default_factory=dict,
-        description="Metadata from node executions keyed by node_id",
+        description="Strongly typed metadata from node executions keyed by node_id",
     )
