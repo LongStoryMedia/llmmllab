@@ -245,7 +245,7 @@ class BaseNode(ABC):
         self.logger.debug(
             "Stored node metadata",
             user_id=getattr(state, "user_id", "unknown"),
-            node_metadata_keys=list(metadata.model_fields.keys()),
+            node_metadata_keys=list(NodeMetadata.model_fields.keys()),
         )
 
     def enrich_with_node_metadata(
