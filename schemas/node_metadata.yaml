@@ -6,7 +6,6 @@ required:
   - node_name
   - node_id
   - node_type
-  - execution_time
 properties:
   node_name:
     type: string

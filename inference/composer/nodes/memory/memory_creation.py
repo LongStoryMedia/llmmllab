@@ -20,14 +20,14 @@ from models import (
 from composer.graph.state import WorkflowState
 from composer.utils.conversion import langchain_message_to_message
 from utils.message import extract_message_text
-from composer.nodes.base_node import BaseNode
+from utils.logging import llmmllogger
 
 
 if TYPE_CHECKING:
     from composer.agents.embedding_agent import EmbeddingAgent
 
 
-class MemoryCreationNode(BaseNode):
+class MemoryCreationNode:
     """
     Node for creating Memory objects from various sources.
 
@@ -44,8 +44,8 @@ class MemoryCreationNode(BaseNode):
         Args:
             embedding_agent: Required EmbeddingAgent instance
         """
-        super().__init__("memory_creation")
         self.embedding_agent = embedding_agent
+        self.logger = llmmllogger.logger.bind(component="MemoryCreationNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

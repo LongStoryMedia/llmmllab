@@ -11,7 +11,7 @@ from runner import PipelineFactory
 from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class BaseAgent(ABC, Generic[T]):
@@ -41,7 +41,7 @@ class BaseAgent(ABC, Generic[T]):
         ✅ ClassifierAgent: Fully updated - BaseAgent[List[IntentAnalysis]], execute_pipeline, constructor
         ✅ EmbeddingAgent: Fully updated - BaseAgent[List[List[float]]], execute_pipeline, constructor
         ✅ SummarizationAgent: Fully updated - BaseAgent[str], execute_pipeline, constructor
-        ✅ EngineeringAgent: Fully updated - BaseAgent[str], execute_pipeline, constructor  
+        ✅ EngineeringAgent: Fully updated - BaseAgent[str], execute_pipeline, constructor
         ✅ MemoryAgent: Fully updated - BaseAgent[List[Memory]], execute_pipeline, constructor
 
     Migration Pattern Applied:
@@ -120,6 +120,23 @@ class BaseAgent(ABC, Generic[T]):
         Raises:
             NodeExecutionError: If pipeline execution fails
         """
+
+    def update_metadata(self, **kwargs) -> None:
+        """
+        Update node metadata and logger context with additional information.
+
+        Args:
+            **kwargs: Key-value pairs to update in node metadata and logger context
+        """
+        for key, value in kwargs.items():
+            if hasattr(self._node_metadata, key):
+                setattr(self._node_metadata, key, value)
+                self.logger = self.logger.bind(**{key: value})
+                self.logger.debug(f"Updated node metadata: {key}={value}")
+            else:
+                self.logger.warning(
+                    f"Attempted to update unknown metadata field: {key}"
+                )
 
     def _log_operation_start(self, operation: str, **kwargs) -> None:
         """

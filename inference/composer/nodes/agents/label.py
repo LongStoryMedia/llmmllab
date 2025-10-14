@@ -17,13 +17,13 @@ from models import (
     LangChainMessage,
 )
 from composer.graph.state import WorkflowState
-from composer.nodes.base_node import BaseNode
+from utils.logging import llmmllogger
 
 if TYPE_CHECKING:
     from composer.agents.classifier_agent import ClassifierAgent
 
 
-class TitleGenerationNode(BaseNode):
+class TitleGenerationNode:
     """
     Generates a conversation title if none exists.
 
@@ -42,9 +42,9 @@ class TitleGenerationNode(BaseNode):
             pipeline_factory: Factory for creating pipelines
             analysis_agent: Required ClassifierAgent instance
         """
-        super().__init__("title_generation")
         self.pipeline_factory = pipeline_factory
         self.classifier_agent = analysis_agent
+        self.logger = llmmllogger.logger.bind(component="TitleGenerationNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

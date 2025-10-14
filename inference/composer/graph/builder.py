@@ -5,13 +5,16 @@ All agents, storage services, and model profiles are instantiated upfront and in
 """
 
 from typing import TYPE_CHECKING
+import uuid
 
 from langgraph.graph.state import CompiledStateGraph, StateGraph, END, START
 
-from models import ModelProfileType, UserConfig, WorkflowType
+from models import ModelProfileType, UserConfig, WorkflowType, NodeMetadata
+from openai import chat
 from runner import PipelineFactory
 
 from utils.model_profile import get_model_profile_for_task
+from utils.logging import llmmllogger
 
 # Import all agents
 from composer.agents.chat_agent import ChatAgent
@@ -41,7 +44,6 @@ from composer.nodes.agents.engineering import EngineeringAgentNode
 from composer.nodes.summary import ConsolidationNode, SearchSummaryNode
 
 from composer.tools.registry import ToolRegistry
-from utils.logging import llmmllogger
 
 from .state import WorkflowState
 
@@ -140,6 +142,11 @@ class GraphBuilder:
                 ModelProfileType.Analysis,
                 self.user_config.user_id,
             )
+            memory_profile = await get_model_profile_for_task(
+                self.user_config.model_profiles,
+                ModelProfileType.MemoryRetrieval,
+                self.user_config.user_id,
+            )
             engineering_profile = await get_model_profile_for_task(
                 self.user_config.model_profiles,
                 ModelProfileType.Engineering,
@@ -150,100 +157,153 @@ class GraphBuilder:
                 ModelProfileType.Embedding,
                 self.user_config.user_id,
             )
+            summarization_profile = await get_model_profile_for_task(
+                self.user_config.model_profiles,
+                ModelProfileType.PrimarySummary,
+                self.user_config.user_id,
+            )
+
+            # Node metadata for logging and tracing
+            chat_node_metadata = NodeMetadata(
+                node_name="PrimaryChatAgent",
+                node_id=uuid.uuid4().hex,
+                node_type="ChatNode",
+                user_id=user_id,
+            )
+            classifier_node_metadata = NodeMetadata(
+                node_name="IntentClassifier",
+                node_id=uuid.uuid4().hex,
+                node_type="IntentClassifierNode",
+                user_id=user_id,
+            )
+            engineering_node_metadata = NodeMetadata(
+                node_name="EngineeringAgent",
+                node_id=uuid.uuid4().hex,
+                node_type="EngineeringAgentNode",
+                user_id=user_id,
+            )
+            memory_node_metadata = NodeMetadata(
+                node_name="MemoryAgent",
+                node_id=uuid.uuid4().hex,
+                node_type="MemoryAgentNode",
+                user_id=user_id,
+            )
+            embedding_node_metadata = NodeMetadata(
+                node_name="EmbeddingAgent",
+                node_id=uuid.uuid4().hex,
+                node_type="EmbeddingAgentNode",
+                user_id=user_id,
+            )
+            summarization_node_metadata = NodeMetadata(
+                node_name="SummarizationAgent",
+                node_id=uuid.uuid4().hex,
+                node_type="SummarizationAgentNode",
+                user_id=user_id,
+            )
 
             # Create agents with injected dependencies
             chat_agent = ChatAgent(
                 self.pipeline_factory,
-                primary_profile,
+                profile=primary_profile,
+                node_metadata=chat_node_metadata,
                 stream=True,  # Enable streaming for primary chat
             )
             classifier_agent = ClassifierAgent(
                 self.pipeline_factory,
                 analysis_profile,
+                classifier_node_metadata,
             )
             engineering_agent = EngineeringAgent(
                 self.pipeline_factory,
                 engineering_profile,
+                engineering_node_metadata,
             )
-            memory_agent = MemoryAgent(memory_storage=self.memory_storage)
+            memory_agent = MemoryAgent(
+                self.pipeline_factory,
+                memory_profile,
+                memory_node_metadata,
+                self.memory_storage,
+            )
             embedding_agent = EmbeddingAgent(
                 self.pipeline_factory,
                 embedding_profile,
+                embedding_node_metadata,
             )
             summarization_agent = SummarizationAgent(
-                pipeline_factory=self.pipeline_factory,
-                summary_storage=self.summary_storage,
-                search_storage=self.search_storage,
-                user_config=self.user_config,
+                self.pipeline_factory,
+                summarization_profile,
+                summarization_node_metadata,
+                self.summary_storage,
+                self.search_storage,
+                self.user_config,
             )
+
             # Create tool registry (also depends on embedding agent)
             tool_registry = ToolRegistry(self.pipeline_factory, embedding_agent)
+
+            # Create nodes with injected agents and storage
+            chat_node = ChatNode(
+                self.pipeline_factory,
+                chat_agent,
+            )
+            classifier_node = IntentClassifierNode(classifier_agent)
+            engineering_node = EngineeringAgentNode(engineering_agent)
+            memory_creation_node = MemoryCreationNode(embedding_agent)
+            memory_search_node = MemorySearchNode(
+                memory_agent,
+                embedding_agent,
+            )
+            memory_storage_node = MemoryStorageNode(memory_agent)
+            title_generation_node = TitleGenerationNode(
+                self.pipeline_factory,
+                classifier_agent,
+            )
+            static_tool_collection_node = StaticToolCollectionNode(tool_registry)
+            dynamic_tool_collection_node = DynamicToolCreationNode(
+                tool_registry,
+                self.pipeline_factory,
+            )
+            tool_composer_node = ToolComposerNode()
+            tool_executor_node = ToolExecutorNode(tool_registry)
+            chat_summary_node = ConsolidationNode(summarization_agent)
+            search_summary_node = SearchSummaryNode(summarization_agent)
+
+            router_node = WorkflowRouter(user_id)
 
             self.logger.info(
                 "Building workflow with dependency injection", user_id=user_id
             )
+
             # Create master workflow graph
             workflow = StateGraph(WorkflowState)
 
             # Create nodes with injected dependencies
             # Intent analysis -> router -> (optional specialized agents) pattern
-            workflow.add_node(
-                "intent_analysis",
-                IntentClassifierNode(classifier_agent),
-            )
-            workflow.add_node("workflow_router", WorkflowRouter(user_id))
+            workflow.add_node("intent_analysis", classifier_node)
+            workflow.add_node("workflow_router", router_node)
 
             # Engineering agent (invoked only when routing selects engineering)
-            workflow.add_node(
-                "engineering_agent",
-                EngineeringAgentNode(engineering_agent),
-            )
+            workflow.add_node("engineering_agent", engineering_node)
 
             # Title generation (if no title exists)
-            workflow.add_node(
-                "title_generation",
-                TitleGenerationNode(self.pipeline_factory, classifier_agent),
-            )
+            workflow.add_node("title_generation", title_generation_node)
 
             # Memory nodes with injected agents and storage
-            workflow.add_node(
-                "memory_search",
-                MemorySearchNode(
-                    memory_agent,
-                    embedding_agent,
-                ),
-            )
-            workflow.add_node(
-                "memory_creation",
-                MemoryCreationNode(embedding_agent),
-            )
-            workflow.add_node(
-                "memory_storage",
-                MemoryStorageNode(memory_agent),
-            )
+            workflow.add_node("memory_search", memory_search_node)
+            workflow.add_node("memory_creation", memory_creation_node)
+            workflow.add_node("memory_storage", memory_storage_node)
 
             # Tool nodes with injected dependencies
-            workflow.add_node(
-                "static_tool_collection", StaticToolCollectionNode(tool_registry)
-            )
-            workflow.add_node(
-                "dynamic_tool_collection",
-                DynamicToolCreationNode(
-                    tool_registry,
-                    self.pipeline_factory,
-                ),
-            )
-            workflow.add_node("tool_composer", ToolComposerNode())
-            workflow.add_node("tool_executor", ToolExecutorNode(tool_registry))
+            workflow.add_node("static_tool_collection", static_tool_collection_node)
+            workflow.add_node("dynamic_tool_collection", dynamic_tool_collection_node)
+            workflow.add_node("tool_composer", tool_composer_node)
+            workflow.add_node("tool_executor", tool_executor_node)
 
-            workflow.add_node("chat_summary", ConsolidationNode(summarization_agent))
-            workflow.add_node("search_summary", SearchSummaryNode(summarization_agent))
+            workflow.add_node("chat_summary", chat_summary_node)
+            workflow.add_node("search_summary", search_summary_node)
 
             # Primary chat agent with streaming enabled
-            workflow.add_node(
-                "chat_agent",
-                ChatNode(chat_agent, node_name="PrimaryChatAgent"),
-            )
+            workflow.add_node("chat_agent", chat_node)
 
             # Build a logical workflow graph structure:
             # 1. Start -> Intent Analysis

@@ -67,9 +67,9 @@ class SummarizationAgent(BaseAgent[str]):
     async def execute_pipeline(self, stream: bool = False, **kwargs) -> str:
         """
         Execute summarization pipeline with the provided parameters.
-        
+
         This is the standard interface for pipeline execution required by BaseAgent.
-        
+
         Args:
             stream: Whether to stream the response (not applicable for summarization)
             **kwargs: Pipeline execution parameters, expected to include:
@@ -80,21 +80,21 @@ class SummarizationAgent(BaseAgent[str]):
                 - style: Optional SummaryStyle
                 - tools: Optional tools list
                 - grammar: Optional grammar constraints
-        
+
         Returns:
             str: The summary text
         """
-        text = kwargs.get('text', '')
-        user_id = kwargs.get('user_id', '')
-        summary_type = kwargs.get('summary_type', SummaryType.PRIMARY)
-        max_length = kwargs.get('max_length')
-        style = kwargs.get('style', SummaryStyle.CONCISE)
-        tools = kwargs.get('tools')
-        grammar = kwargs.get('grammar')
-        
+        text = kwargs.get("text", "")
+        user_id = kwargs.get("user_id", "")
+        summary_type = kwargs.get("summary_type", SummaryType.PRIMARY)
+        max_length = kwargs.get("max_length")
+        style = kwargs.get("style", SummaryStyle.CONCISE)
+        tools = kwargs.get("tools")
+        grammar = kwargs.get("grammar")
+
         if not text:
             raise NodeExecutionError("text parameter is required for summarization")
-        
+
         return await self.summarize_text(
             text=text,
             user_id=user_id,
@@ -102,7 +102,7 @@ class SummarizationAgent(BaseAgent[str]):
             max_length=max_length,
             style=style,
             tools=tools,
-            grammar=grammar
+            grammar=grammar,
         )
 
     async def summarize_text(

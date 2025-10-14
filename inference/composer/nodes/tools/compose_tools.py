@@ -1,10 +1,10 @@
 """Tool composition node (dynamic tools already persisted during creation)."""
 
 from composer.graph.state import WorkflowState
-from composer.nodes.base_node import BaseNode
+from utils.logging import llmmllogger
 
 
-class ToolComposerNode(BaseNode):
+class ToolComposerNode:
     """
     A node that composes multiple tools into a single workflow.
     """
@@ -13,7 +13,7 @@ class ToolComposerNode(BaseNode):
         """
         Initialize the tool composer node.
         """
-        super().__init__("tool_composer")
+        self.logger = llmmllogger.logger.bind(component="ToolComposerNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

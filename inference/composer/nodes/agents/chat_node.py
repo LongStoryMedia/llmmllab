@@ -11,13 +11,14 @@ from langchain.tools import BaseTool
 from composer.graph.state import WorkflowState
 from composer.core.errors import NodeExecutionError
 from composer.utils.state import assemble_context_messages
-from composer.nodes.base_node import BaseNode
+from composer.utils.conversion import convert_messages_to_langchain
 from composer.agents.chat_agent import ChatAgent
 from runner import PipelineFactory
 from models import ModelProfile, PipelinePriority
+from utils.logging import llmmllogger
 
 
-class ChatNode(BaseNode):
+class ChatNode:
     """
     Chat Node for LangGraph workflows using ChatAgent.
 
@@ -29,29 +30,20 @@ class ChatNode(BaseNode):
     def __init__(
         self,
         pipeline_factory: PipelineFactory,
-        profile: ModelProfile,
-        priority: PipelinePriority = PipelinePriority.MEDIUM,
-        stream: bool = False,
-        node_name: str = "ChatNode",
+        agent: ChatAgent,
     ):
         """
         Initialize chat node with dependencies for ChatAgent creation.
 
         Args:
             pipeline_factory: Factory for creating chat pipelines
-            profile: Model profile for chat operations
-            priority: Pipeline execution priority
-            stream: Whether to enable streaming responses
-            node_name: Optional custom name for this node
+            agent: ChatAgent instance for handling chat operations
         """
-        super().__init__(node_name=node_name)
         self.pipeline_factory = pipeline_factory
-        self.profile = profile
-        self.priority = priority
-        self.stream = stream
-        self.chat_agent = None  # Will be created when we have metadata
+        self.agent = agent
+        self.logger = llmmllogger.logger.bind(component="ChatNode")
 
-    async def execute(self, state: WorkflowState) -> WorkflowState:
+    async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
         Execute chat node with ChatAgent.
 
@@ -68,30 +60,12 @@ class ChatNode(BaseNode):
 
             if not state.user_config:
                 raise NodeExecutionError("User config required for chat execution")
-
-            # Create node metadata
-            metadata = self.create_node_metadata(
-                state=state,
-                model_name=self.profile.model_name if self.profile else None,
-                profile_type=getattr(self.profile, 'profile_type', None),
-                priority=self.priority.value if self.priority else None,
-                streaming=self.stream,
-                tool_count=len(state.available_tools) if state.available_tools else 0,
-            )
-
-            # Create ChatAgent with required dependencies
-            self.chat_agent = ChatAgent(
-                pipeline_factory=self.pipeline_factory,
-                profile=self.profile,
-                node_metadata=metadata,
-                priority=self.priority,
-                stream=self.stream,
-            )
-
             # Assemble context messages
             context_messages = assemble_context_messages(state)
             if not context_messages:
-                raise NodeExecutionError("No context messages available for chat completion")
+                raise NodeExecutionError(
+                    "No context messages available for chat completion"
+                )
 
             self.logger.info(
                 "Executing chat completion",
@@ -99,14 +73,18 @@ class ChatNode(BaseNode):
                 conversation_id=state.conversation_id,
                 message_count=len(context_messages),
                 tool_count=len(state.available_tools) if state.available_tools else 0,
-                streaming=self.chat_agent.stream,
+                streaming=True,
             )
 
             # Execute chat completion with conversion
-            assistant_message = await self.chat_agent.chat_completion_with_conversion(
-                messages=context_messages,
+            assistant_message = await self.agent.chat_completion_with_conversion(
+                messages=convert_messages_to_langchain(context_messages),
                 user_id=state.user_id,
-                tools=cast(List[BaseTool], state.available_tools) if state.available_tools else None,
+                tools=(
+                    cast(List[BaseTool], state.available_tools)
+                    if state.available_tools
+                    else None
+                ),
                 circuit_breaker=state.user_config.circuit_breaker,
                 # Use agent's default stream setting
                 stream=None,
@@ -116,7 +94,7 @@ class ChatNode(BaseNode):
             state.messages.append(assistant_message)
 
             # Extract and surface tool calls for downstream nodes
-            tool_calls = self.chat_agent.extract_tool_calls(assistant_message)
+            tool_calls = self.agent.extract_tool_calls(assistant_message)
             state.tool_calls = tool_calls
 
             self.logger.info(
@@ -138,13 +116,3 @@ class ChatNode(BaseNode):
                 error=str(e),
             )
             raise NodeExecutionError(f"Chat execution failed: {e}") from e
-
-    async def __call__(self, state: WorkflowState) -> WorkflowState:
-        """
-        Synchronous wrapper for compatibility with PipelineNode interface.
-        
-        Note: This is a compatibility shim. Prefer using execute() directly
-        for proper async handling.
-        """
-        # Simply delegate to execute method since both are now async
-        return await self.execute(state)

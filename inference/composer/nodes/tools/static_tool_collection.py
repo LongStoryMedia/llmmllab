@@ -1,9 +1,9 @@
 from composer.graph.state import WorkflowState
 from composer.tools.registry import ToolRegistry
-from composer.nodes.base_node import BaseNode
+from utils.logging import llmmllogger
 
 
-class StaticToolCollectionNode(BaseNode):
+class StaticToolCollectionNode:
     """
     Node to collect static tools based on intent analysis.
     """
@@ -15,8 +15,8 @@ class StaticToolCollectionNode(BaseNode):
         Args:
             tool_registry: Registry to fetch static tools from
         """
-        super().__init__("static_tool_collection")
         self.tool_registry = tool_registry
+        self.logger = llmmllogger.logger.bind(component="StaticToolCollectionNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

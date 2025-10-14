@@ -21,7 +21,10 @@ from models import (
     NodeMetadata,
 )
 from utils.message import extract_message_text
-from composer.utils.conversion import message_to_langchain_message
+from composer.utils.conversion import (
+    message_to_langchain_message,
+    convert_langchain_messages_to_messages,
+)
 from .base_agent import BaseAgent
 
 
@@ -59,9 +62,9 @@ class ChatAgent(BaseAgent[ChatResponse]):
     async def execute_pipeline(self, stream: bool = False, **kwargs) -> ChatResponse:
         """
         Execute chat pipeline with the provided parameters.
-        
+
         This is the standard interface for pipeline execution required by BaseAgent.
-        
+
         Args:
             stream: Whether to stream the response
             **kwargs: Pipeline execution parameters, expected to include:
@@ -69,21 +72,21 @@ class ChatAgent(BaseAgent[ChatResponse]):
                 - user_id: User identifier
                 - tools: Optional list of BaseTool objects
                 - circuit_breaker: Optional CircuitBreakerConfig
-        
+
         Returns:
             ChatResponse: The completion result
         """
-        messages = kwargs.get('messages', [])
-        user_id = kwargs.get('user_id', '')
-        tools = kwargs.get('tools')
-        circuit_breaker = kwargs.get('circuit_breaker')
-        
+        messages = kwargs.get("messages", [])
+        user_id = kwargs.get("user_id", "")
+        tools = kwargs.get("tools")
+        circuit_breaker = kwargs.get("circuit_breaker")
+
         return await self.chat_completion(
             messages=messages,
             user_id=user_id,
             tools=tools,
             circuit_breaker=circuit_breaker,
-            stream=stream
+            stream=stream,
         )
 
     async def chat_completion(
@@ -120,18 +123,11 @@ class ChatAgent(BaseAgent[ChatResponse]):
                 model=self.profile.model_name if self.profile else "unknown",
             )
 
-            self.update_execution_context(
-                operation="chat_completion",
-                message_count=len(messages),
-                tool_count=len(tools) if tools else 0,
-                streaming=should_stream,
-            )
-
             # Execute pipeline based on streaming configuration
             with self.pipeline_factory.pipeline(
                 self.profile, ChatResponse, self.priority, circuit_breaker
             ) as pipe:
-                
+
                 if should_stream:
                     response = await self._execute_streaming_completion(
                         messages, pipe, tools, user_id
@@ -146,7 +142,11 @@ class ChatAgent(BaseAgent[ChatResponse]):
                     user_id=user_id,
                     has_response=bool(response),
                     has_message=bool(response.message if response else False),
-                    tool_calls_count=len(response.message.tool_calls) if response and response.message and response.message.tool_calls else 0,
+                    tool_calls_count=(
+                        len(response.message.tool_calls)
+                        if response and response.message and response.message.tool_calls
+                        else 0
+                    ),
                 )
 
                 return response
@@ -159,6 +159,7 @@ class ChatAgent(BaseAgent[ChatResponse]):
                 message_count=len(messages),
                 has_tools=bool(tools),
             )
+            return ChatResponse(done=True, message=None, finish_reason="error")
 
     async def _execute_streaming_completion(
         self,
@@ -182,8 +183,10 @@ class ChatAgent(BaseAgent[ChatResponse]):
         tool_calls = []
         chunk_count = 0
 
+        msgs = convert_langchain_messages_to_messages(messages)
+
         async for chunk in stream_pipeline(
-            messages,
+            msgs,
             pipeline,
             cast(List[BaseTool], tools) if tools else None,
         ):
@@ -221,12 +224,11 @@ class ChatAgent(BaseAgent[ChatResponse]):
             done=True,
             message=Message(
                 role=MessageRole.ASSISTANT,
-                content=[
-                    MessageContent(
-                        type=MessageContentType.TEXT, 
-                        text=final_content
-                    )
-                ] if final_content else [],
+                content=(
+                    [MessageContent(type=MessageContentType.TEXT, text=final_content)]
+                    if final_content
+                    else []
+                ),
                 tool_calls=tool_calls if tool_calls else None,
             ),
             finish_reason="stop",
@@ -252,7 +254,7 @@ class ChatAgent(BaseAgent[ChatResponse]):
         )
 
         response = await run_pipeline(
-            messages,
+            convert_langchain_messages_to_messages(messages),
             pipeline,
             cast(List[BaseTool], tools) if tools else None,
         )
@@ -261,13 +263,17 @@ class ChatAgent(BaseAgent[ChatResponse]):
             "Non-streaming completion finished",
             user_id=user_id,
             has_response=bool(response),
-            tool_calls_count=len(response.message.tool_calls) if response and response.message and response.message.tool_calls else 0,
+            tool_calls_count=(
+                len(response.message.tool_calls)
+                if response and response.message and response.message.tool_calls
+                else 0
+            ),
         )
 
         return response
 
     def convert_to_langchain_message(
-        self, 
+        self,
         response: ChatResponse,
         user_id: str,
     ) -> LangChainMessage:
@@ -297,7 +303,9 @@ class ChatAgent(BaseAgent[ChatResponse]):
                     "Message conversion details",
                     user_id=user_id,
                     original_tool_calls=bool(response.message.tool_calls),
-                    converted_tool_calls=bool(getattr(langchain_message, "tool_calls", None)),
+                    converted_tool_calls=bool(
+                        getattr(langchain_message, "tool_calls", None)
+                    ),
                 )
 
                 self._log_operation_success(
@@ -327,6 +335,10 @@ class ChatAgent(BaseAgent[ChatResponse]):
                 e,
                 user_id=user_id,
                 has_response=bool(response),
+            )
+            return LangChainMessage(
+                type="ai",
+                content="Error during message conversion",
             )
 
     async def chat_completion_with_conversion(
@@ -372,8 +384,14 @@ class ChatAgent(BaseAgent[ChatResponse]):
                 user_id=user_id,
                 message_count=len(messages),
             )
+            return LangChainMessage(
+                type="ai",
+                content="Error during chat completion with conversion",
+            )
 
-    def extract_tool_calls(self, message: LangChainMessage) -> Optional[List[Dict[str, Any]]]:
+    def extract_tool_calls(
+        self, message: LangChainMessage
+    ) -> Optional[List[Dict[str, Any]]]:
         """
         Extract tool calls from a LangChain message.
 
@@ -385,14 +403,14 @@ class ChatAgent(BaseAgent[ChatResponse]):
         """
         try:
             tool_calls = getattr(message, "tool_calls", None)
-            
+
             if tool_calls:
                 self.logger.debug(
                     "Extracted tool calls",
                     tool_calls_count=len(tool_calls),
                     tool_calls_preview=str(tool_calls)[:200],
                 )
-                
+
             return tool_calls
 
         except Exception as e:

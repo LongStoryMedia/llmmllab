@@ -8,10 +8,10 @@ from typing import Any
 
 from models import CircuitBreakerConfig, LangChainMessage
 from composer.graph.state import WorkflowState
-from composer.nodes.base_node import BaseNode
+from utils.logging import llmmllogger
 
 
-class CircuitProtectedNode(BaseNode):
+class CircuitProtectedNode:
     """
     Wrapper node that provides circuit breaker protection for any node.
 
@@ -26,9 +26,9 @@ class CircuitProtectedNode(BaseNode):
             wrapped_node: The node to wrap with circuit breaker protection
             circuit_config: Required circuit breaker configuration
         """
-        super().__init__("circuit_breaker")
         self.wrapped_node = wrapped_node
         self.circuit_config = circuit_config
+        self.logger = llmmllogger.logger.bind(component="CircuitProtectedNode")
 
         # Circuit breaker state
         self.failure_count = 0

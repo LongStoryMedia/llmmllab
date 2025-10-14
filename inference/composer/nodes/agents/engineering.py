@@ -10,14 +10,14 @@ from models import LangChainMessage
 from composer.graph.state import WorkflowState
 from composer.core.errors import NodeExecutionError
 from composer.utils.extraction import extract_content_from_langchain_message
-from composer.nodes.base_node import BaseNode
+from utils.logging import llmmllogger
 
 
 if TYPE_CHECKING:
     from composer.agents.engineering_agent import EngineeringAgent
 
 
-class EngineeringAgentNode(BaseNode):
+class EngineeringAgentNode:
     """
     LangGraph node wrapper for Engineering Agent.
 
@@ -36,8 +36,8 @@ class EngineeringAgentNode(BaseNode):
         Args:
             engineering_agent: Required EngineeringAgent instance
         """
-        super().__init__("engineering_agent")
         self.agent = engineering_agent
+        self.logger = llmmllogger.logger.bind(component="EngineeringAgentNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

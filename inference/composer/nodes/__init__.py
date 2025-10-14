@@ -1,8 +1,5 @@
 """LangGraph workflow nodes organized by functional purpose."""
 
-# Base node for all workflow nodes
-from .base_node import BaseNode
-
 # Infrastructure nodes (core workflow components)
 from .infrastructure import PipelineNode, CircuitProtectedNode
 

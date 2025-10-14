@@ -10,10 +10,10 @@ from composer.utils.extraction import extract_content_from_langchain_message
 from runner import PipelineFactory, run_pipeline
 from utils.model_profile import get_model_profile
 from utils.message import extract_message_text
-from composer.nodes.base_node import BaseNode
+from utils.logging import llmmllogger
 
 
-class DynamicToolCreationNode(BaseNode):
+class DynamicToolCreationNode:
     """
     Node responsible for creating dynamic tool specifications based on user queries and intent analysis.
     """
@@ -23,9 +23,9 @@ class DynamicToolCreationNode(BaseNode):
         tool_registry: ToolRegistry,
         pipeline_factory: PipelineFactory,
     ):
-        super().__init__("dynamic_tool_creation")
         self.tool_registry = tool_registry
         self.pipeline_factory = pipeline_factory
+        self.logger = llmmllogger.logger.bind(component="DynamicToolCreationNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

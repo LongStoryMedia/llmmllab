@@ -8,10 +8,10 @@ from composer.graph.state import WorkflowState
 from composer.utils.conversion import langchain_message_to_message
 from composer.agents.embedding_agent import EmbeddingAgent
 from utils.message import extract_message_text
-from composer.nodes.base_node import BaseNode
+from utils.logging import llmmllogger
 
 
-class MemorySearchNode(BaseNode):
+class MemorySearchNode:
     """
     Node for searching memories relevant to the current user query by embedding similarity.
 
@@ -30,9 +30,9 @@ class MemorySearchNode(BaseNode):
             memory_agent: Required MemoryAgent instance
             embedding_agent: Required EmbeddingAgent instance
         """
-        super().__init__("memory_search")
         self.agent = memory_agent
         self.embedding_agent = embedding_agent
+        self.logger = llmmllogger.logger.bind(component="MemorySearchNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

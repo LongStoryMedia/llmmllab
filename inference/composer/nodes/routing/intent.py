@@ -8,13 +8,13 @@ from typing import TYPE_CHECKING
 
 from composer.graph.state import WorkflowState
 from composer.utils.conversion import langchain_message_to_message
-from composer.nodes.base_node import BaseNode
+from utils.logging import llmmllogger
 
 if TYPE_CHECKING:
     from composer.agents.classifier_agent import ClassifierAgent
 
 
-class IntentClassifierNode(BaseNode):
+class IntentClassifierNode:
     """
     LangGraph node wrapper for intent classification.
 
@@ -29,9 +29,8 @@ class IntentClassifierNode(BaseNode):
         Args:
             classifier_agent: Required ClassifierAgent instance
         """
-        # Use a default name for now, could be made configurable later
-        super().__init__("intent_classifier")
         self.agent = classifier_agent
+        self.logger = llmmllogger.logger.bind(component="IntentClassifierNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

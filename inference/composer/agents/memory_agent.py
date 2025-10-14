@@ -34,7 +34,7 @@ class MemoryAgent(BaseAgent[List[Memory]]):
 
         Args:
             pipeline_factory: Factory for creating pipelines (for consistency)
-            profile: Model profile (for consistency) 
+            profile: Model profile (for consistency)
             node_metadata: Node execution metadata for tracking
             memory_storage: Injected MemoryStorage service
         """
@@ -44,9 +44,9 @@ class MemoryAgent(BaseAgent[List[Memory]]):
     async def execute_pipeline(self, stream: bool = False, **kwargs) -> List[Memory]:
         """
         Execute memory search pipeline with the provided parameters.
-        
+
         This is the standard interface for pipeline execution required by BaseAgent.
-        
+
         Args:
             stream: Whether to stream the response (not applicable for memory search)
             **kwargs: Pipeline execution parameters, expected to include:
@@ -57,23 +57,25 @@ class MemoryAgent(BaseAgent[List[Memory]]):
                 - similarity_threshold: Optional similarity threshold
                 - enable_cross_conversation: Optional cross-conversation search
                 - enable_cross_user: Optional cross-user search
-        
+
         Returns:
             List[Memory]: The search results
         """
-        query_embeddings = kwargs.get('query_embeddings', [])
-        user_id = kwargs.get('user_id', '')
-        conversation_id = kwargs.get('conversation_id')
-        max_results = kwargs.get('max_results', 3)
-        similarity_threshold = kwargs.get('similarity_threshold', 0.7)
-        enable_cross_conversation = kwargs.get('enable_cross_conversation', True)
-        enable_cross_user = kwargs.get('enable_cross_user', False)
-        
+        query_embeddings = kwargs.get("query_embeddings", [])
+        user_id = kwargs.get("user_id", "")
+        conversation_id = kwargs.get("conversation_id")
+        max_results = kwargs.get("max_results", 3)
+        similarity_threshold = kwargs.get("similarity_threshold", 0.7)
+        enable_cross_conversation = kwargs.get("enable_cross_conversation", True)
+        enable_cross_user = kwargs.get("enable_cross_user", False)
+
         if not query_embeddings:
-            raise NodeExecutionError("query_embeddings parameter is required for memory search")
+            raise NodeExecutionError(
+                "query_embeddings parameter is required for memory search"
+            )
         if not user_id:
             raise NodeExecutionError("user_id parameter is required for memory search")
-        
+
         return await self.search_memories_by_embedding(
             query_embeddings=query_embeddings,
             user_id=user_id,
@@ -81,7 +83,7 @@ class MemoryAgent(BaseAgent[List[Memory]]):
             max_results=max_results,
             similarity_threshold=similarity_threshold,
             enable_cross_conversation=enable_cross_conversation,
-            enable_cross_user=enable_cross_user
+            enable_cross_user=enable_cross_user,
         )
 
     async def store_memories(

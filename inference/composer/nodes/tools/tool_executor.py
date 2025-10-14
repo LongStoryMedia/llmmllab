@@ -8,10 +8,10 @@ Wraps LangChain v1.0 ToolNode for reliable tool execution within workflows.
 from models import LangChainMessage
 from composer.graph.state import WorkflowState
 from composer.tools.registry import ToolRegistry
-from composer.nodes.base_node import BaseNode
+from utils.logging import llmmllogger
 
 
-class ToolExecutorNode(BaseNode):
+class ToolExecutorNode:
     """
     Executes tool calls produced by the previous agent or tool node.
 
@@ -25,8 +25,8 @@ class ToolExecutorNode(BaseNode):
         Args:
             tool_registry: Registry containing executable tool instances
         """
-        super().__init__("tool_executor")
         self.tool_registry = tool_registry
+        self.logger = llmmllogger.logger.bind(component="ToolExecutorNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

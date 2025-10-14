@@ -186,4 +186,4 @@ def assemble_context_messages(state: WorkflowState) -> List[Message]:
             ]
         )
 
-    return assembled_messages
+    return reversed(assembled_messages)

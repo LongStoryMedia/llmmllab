@@ -10,13 +10,13 @@ from typing import TYPE_CHECKING
 from models import SummaryType
 from composer.graph.state import WorkflowState
 from composer.utils.conversion import convert_langchain_messages_to_messages
-from composer.nodes.base_node import BaseNode
+from utils.logging import llmmllogger
 
 if TYPE_CHECKING:
     from composer.agents.summarization_agent import SummarizationAgent
 
 
-class ConsolidationNode(BaseNode):
+class ConsolidationNode:
     """
     Node for hierarchical summary consolidation.
 
@@ -25,8 +25,8 @@ class ConsolidationNode(BaseNode):
     """
 
     def __init__(self, summarization_agent: "SummarizationAgent"):
-        super().__init__("consolidation")
         self.summarization_agent = summarization_agent
+        self.logger = llmmllogger.logger.bind(component="ConsolidationNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

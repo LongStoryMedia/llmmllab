@@ -8,13 +8,13 @@ from typing import TYPE_CHECKING
 from composer.graph.state import WorkflowState
 from composer.core.errors import NodeExecutionError
 from composer.utils.extraction import extract_content_from_langchain_message
-from composer.nodes.base_node import BaseNode
+from utils.logging import llmmllogger
 
 if TYPE_CHECKING:
     from composer.agents.embedding_agent import EmbeddingAgent
 
 
-class EmbeddingGeneratorNode(BaseNode):
+class EmbeddingGeneratorNode:
     """
     Node for generating embeddings from text content in workflow state.
 
@@ -34,9 +34,9 @@ class EmbeddingGeneratorNode(BaseNode):
             embedding_agent: Required EmbeddingAgent instance
             model_name: Required specific embedding model to use
         """
-        super().__init__("embedding_generator")
         self.agent = embedding_agent
         self.model_name = model_name
+        self.logger = llmmllogger.logger.bind(component="EmbeddingGeneratorNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

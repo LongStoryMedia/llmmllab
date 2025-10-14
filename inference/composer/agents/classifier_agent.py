@@ -63,34 +63,35 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
             node_metadata: Node execution metadata for tracking
         """
         super().__init__(pipeline_factory, profile, node_metadata, "ClassifierAgent")
-        self.logger.info(
-            "Intent classifier initialized with analysis model profile"
-        )
+        self.logger.info("Intent classifier initialized with analysis model profile")
 
-    async def execute_pipeline(self, stream: bool = False, **kwargs) -> List[IntentAnalysis]:
+    async def execute_pipeline(
+        self, stream: bool = False, **kwargs
+    ) -> List[IntentAnalysis]:
         """
         Execute intent analysis pipeline with the provided parameters.
-        
+
         This is the standard interface for pipeline execution required by BaseAgent.
-        
+
         Args:
             stream: Whether to stream the response (not applicable for classification)
             **kwargs: Pipeline execution parameters, expected to include:
                 - current_user_message: Message object to analyze
                 - circuit_breaker: Optional CircuitBreakerConfig
-        
+
         Returns:
             List[IntentAnalysis]: The analysis results
         """
-        current_user_message = kwargs.get('current_user_message')
-        circuit_breaker = kwargs.get('circuit_breaker')
-        
+        current_user_message = kwargs.get("current_user_message")
+        circuit_breaker = kwargs.get("circuit_breaker")
+
         if not current_user_message:
-            raise NodeExecutionError("current_user_message is required for intent analysis")
-        
+            raise NodeExecutionError(
+                "current_user_message is required for intent analysis"
+            )
+
         return await self.analyze(
-            current_user_message=current_user_message,
-            circuit_breaker=circuit_breaker
+            current_user_message=current_user_message, circuit_breaker=circuit_breaker
         )
 
     def determine_search_depth(self, intent_analysis: IntentAnalysis) -> str:
@@ -165,7 +166,9 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
                 return intent_analyses
 
         except Exception as e:
-            self.logger.error("Intent analysis failed", error=str(e), context="intent_analysis")
+            self.logger.error(
+                "Intent analysis failed", error=str(e), context="intent_analysis"
+            )
             raise IntentAnalysisError(f"Intent analysis failed: {e}") from e
 
     async def _llm_analyze_intent(
@@ -246,8 +249,8 @@ If multiple intents are needed, include additional objects in the intents array.
                     intents = parse_structured_output(repaired, _Intnts)
                     self.logger.info(
                         "Intent JSON repaired successfully",
-                        original_len=len(txt), 
-                        repaired_len=len(repaired)
+                        original_len=len(txt),
+                        repaired_len=len(repaired),
                     )
                     return intents.intents
                 except Exception as e2:  # still failing
@@ -410,7 +413,9 @@ Title:"""
                 return title
 
         except Exception as e:
-            self.logger.error("Title generation failed", error=str(e), context="title_generation")
+            self.logger.error(
+                "Title generation failed", error=str(e), context="title_generation"
+            )
             # Provide fallback title instead of raising error
             return "Conversation"
 

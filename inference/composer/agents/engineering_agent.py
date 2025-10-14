@@ -48,9 +48,9 @@ class EngineeringAgent(BaseAgent[str]):
     async def execute_pipeline(self, stream: bool = False, **kwargs) -> str:
         """
         Execute engineering pipeline with the provided parameters.
-        
+
         This is the standard interface for pipeline execution required by BaseAgent.
-        
+
         Args:
             stream: Whether to stream the response (not applicable for engineering responses)
             **kwargs: Pipeline execution parameters, expected to include:
@@ -61,21 +61,25 @@ class EngineeringAgent(BaseAgent[str]):
                 - tools: Optional tools list
                 - grammar: Optional grammar constraints
                 - circuit_breaker: Optional CircuitBreakerConfig
-        
+
         Returns:
             str: The engineering response
         """
-        query = kwargs.get('query', '')
-        user_id = kwargs.get('user_id', '')
-        domain = kwargs.get('domain', TechnicalDomain.GENERAL_ENGINEERING)
-        response_format = kwargs.get('response_format', ResponseFormat.DETAILED_ANALYSIS)
-        tools = kwargs.get('tools')
-        grammar = kwargs.get('grammar')
-        circuit_breaker = kwargs.get('circuit_breaker')
-        
+        query = kwargs.get("query", "")
+        user_id = kwargs.get("user_id", "")
+        domain = kwargs.get("domain", TechnicalDomain.GENERAL_ENGINEERING)
+        response_format = kwargs.get(
+            "response_format", ResponseFormat.DETAILED_ANALYSIS
+        )
+        tools = kwargs.get("tools")
+        grammar = kwargs.get("grammar")
+        circuit_breaker = kwargs.get("circuit_breaker")
+
         if not query:
-            raise NodeExecutionError("query parameter is required for engineering analysis")
-        
+            raise NodeExecutionError(
+                "query parameter is required for engineering analysis"
+            )
+
         return await self.generate_technical_response(
             query=query,
             user_id=user_id,
@@ -83,7 +87,7 @@ class EngineeringAgent(BaseAgent[str]):
             response_format=response_format,
             tools=tools,
             grammar=grammar,
-            circuit_breaker=circuit_breaker
+            circuit_breaker=circuit_breaker,
         )
 
     async def generate_technical_response(
