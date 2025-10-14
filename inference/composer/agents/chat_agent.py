@@ -4,6 +4,7 @@ Provides core business logic for chat completions, streaming, and tool integrati
 """
 
 from typing import List, cast, Optional, Dict, Any
+from datetime import datetime, timezone
 
 from langchain.tools import BaseTool
 
@@ -113,164 +114,132 @@ class ChatAgent(BaseAgent[ChatResponse]):
         # Use provided stream setting or default
         should_stream = stream if stream is not None else self.stream
 
-        try:
-            self._log_operation_start(
-                "chat_completion",
+        if should_stream:
+            # For streaming, we need to accumulate the response
+            return await self._execute_streaming_completion_with_metadata(
+                messages, user_id, tools, circuit_breaker
+            )
+        else:
+            # For non-streaming, use the base class method directly
+            return await self.run_pipeline_with_metadata(
+                messages=messages,
                 user_id=user_id,
-                message_count=len(messages),
-                has_tools=bool(tools),
-                streaming=should_stream,
-                model=self.profile.model_name if self.profile else "unknown",
+                tools=tools,
+                circuit_breaker=circuit_breaker,
+                priority=self.priority,
             )
 
-            # Execute pipeline based on streaming configuration
-            with self.pipeline_factory.pipeline(
-                self.profile, ChatResponse, self.priority, circuit_breaker
-            ) as pipe:
-
-                if should_stream:
-                    response = await self._execute_streaming_completion(
-                        messages, pipe, tools, user_id
-                    )
-                else:
-                    response = await self._execute_completion(
-                        messages, pipe, tools, user_id
-                    )
-
-                self._log_operation_success(
-                    "chat_completion",
-                    user_id=user_id,
-                    has_response=bool(response),
-                    has_message=bool(response.message if response else False),
-                    tool_calls_count=(
-                        len(response.message.tool_calls)
-                        if response and response.message and response.message.tool_calls
-                        else 0
-                    ),
-                )
-
-                return response
-
-        except Exception as e:
-            self._handle_node_error(
-                "chat_completion",
-                e,
-                user_id=user_id,
-                message_count=len(messages),
-                has_tools=bool(tools),
-            )
-            return ChatResponse(done=True, message=None, finish_reason="error")
-
-    async def _execute_streaming_completion(
+    async def _execute_streaming_completion_with_metadata(
         self,
         messages: List[LangChainMessage],
-        pipeline: Any,
-        tools: Optional[List[BaseTool]],
         user_id: str,
+        tools: Optional[List[BaseTool]] = None,
+        circuit_breaker: Optional[CircuitBreakerConfig] = None,
     ) -> ChatResponse:
-        """Execute streaming chat completion."""
-        # Lazy imports to avoid circular dependency
-        from runner import stream_pipeline  # pylint: disable=import-outside-toplevel
-
-        self.logger.info(
-            "Starting streaming chat completion",
-            user_id=user_id,
-            pipeline_type=type(pipeline).__name__,
-        )
-
+        """Execute streaming chat completion using BaseAgent methods with metadata."""
         # Accumulate streaming response
         final_content = ""
         tool_calls = []
         chunk_count = 0
 
-        msgs = convert_langchain_messages_to_messages(messages)
-
-        async for chunk in stream_pipeline(
-            msgs,
-            pipeline,
-            cast(List[BaseTool], tools) if tools else None,
-        ):
-            chunk_count += 1
-
-            self.logger.debug(
-                "Received streaming chunk",
+        try:
+            async for chunk in self.stream_pipeline_with_metadata(
+                messages=messages,
                 user_id=user_id,
-                chunk_num=chunk_count,
-                has_message=bool(chunk.message),
-                chunk_done=chunk.done,
-            )
+                tools=tools,
+                circuit_breaker=circuit_breaker,
+                priority=self.priority,
+            ):
+                # Skip metadata boundary chunks
+                if chunk.channels and chunk.channels.get("stream_metadata", {}).get("is_boundary"):
+                    continue
 
-            if chunk.message:
-                # Append new text content
-                final_content += extract_message_text(chunk.message)
+                chunk_count += 1
+
+                self.logger.debug(
+                    "Received streaming chunk with metadata",
+                    user_id=user_id,
+                    chunk_num=chunk_count,
+                    has_message=bool(chunk.message),
+                    chunk_done=chunk.done,
+                    has_metadata=bool(chunk.channels),
+                )
+
+                # Accumulate content
+                if chunk.message and chunk.message.content:
+                    content_text = extract_message_text(chunk.message)
+                    if content_text:
+                        final_content += content_text
 
                 # Collect tool calls
-                if chunk.message.tool_calls:
+                if chunk.message and chunk.message.tool_calls:
                     tool_calls.extend(chunk.message.tool_calls)
 
-                if chunk.done:
-                    break
+            self.logger.info(
+                "Streaming completion with metadata finished",
+                user_id=user_id,
+                total_chunks=chunk_count,
+                content_length=len(final_content),
+                tool_calls_count=len(tool_calls),
+            )
 
-        self.logger.info(
-            "Streaming completion finished",
-            user_id=user_id,
-            total_chunks=chunk_count,
-            content_length=len(final_content),
-            tool_calls_count=len(tool_calls),
-        )
-
-        # Create final response from accumulated content
-        response = ChatResponse(
-            done=True,
-            message=Message(
+            # Create final response from accumulated content
+            final_message = Message(
                 role=MessageRole.ASSISTANT,
-                content=(
-                    [MessageContent(type=MessageContentType.TEXT, text=final_content)]
-                    if final_content
-                    else []
-                ),
+                content=[
+                    MessageContent(type=MessageContentType.TEXT, text=final_content)
+                ] if final_content else [],
                 tool_calls=tool_calls if tool_calls else None,
-            ),
-            finish_reason="stop",
-        )
+            )
 
-        return response
+            return ChatResponse(
+                done=True,
+                message=final_message,
+                finish_reason="stop",
+                created_at=datetime.now(timezone.utc),
+            )
 
-    async def _execute_completion(
+        except Exception as e:
+            self._handle_node_error(
+                "streaming_completion_with_metadata",
+                e,
+                user_id=user_id,
+                message_count=len(messages),
+            )
+            return ChatResponse(done=True, message=None, finish_reason="error")
+
+    async def stream_chat_completion(
         self,
         messages: List[LangChainMessage],
-        pipeline: Any,
-        tools: Optional[List[BaseTool]],
         user_id: str,
-    ) -> ChatResponse:
-        """Execute non-streaming chat completion."""
-        # Lazy imports to avoid circular dependency
-        from runner import run_pipeline  # pylint: disable=import-outside-toplevel
+        tools: Optional[List[BaseTool]] = None,
+        circuit_breaker: Optional[CircuitBreakerConfig] = None,
+    ):
+        """
+        Stream chat completion with metadata injection.
+        
+        This method is designed for LangGraph integration where you want to 
+        stream responses with node metadata for better observability.
 
-        self.logger.info(
-            "Starting non-streaming chat completion",
+        Args:
+            messages: Context messages for the chat completion
+            user_id: User identifier
+            tools: Optional tools available for the chat completion
+            circuit_breaker: Optional circuit breaker configuration
+
+        Yields:
+            ChatResponse: Streaming chunks with injected node metadata
+        """
+        async for chunk in self.stream_pipeline_with_metadata(
+            messages=messages,
             user_id=user_id,
-            pipeline_type=type(pipeline).__name__,
-        )
+            tools=tools,
+            circuit_breaker=circuit_breaker,
+            priority=self.priority,
+        ):
+            yield chunk
 
-        response = await run_pipeline(
-            convert_langchain_messages_to_messages(messages),
-            pipeline,
-            cast(List[BaseTool], tools) if tools else None,
-        )
 
-        self.logger.info(
-            "Non-streaming completion finished",
-            user_id=user_id,
-            has_response=bool(response),
-            tool_calls_count=(
-                len(response.message.tool_calls)
-                if response and response.message and response.message.tool_calls
-                else 0
-            ),
-        )
-
-        return response
 
     def convert_to_langchain_message(
         self,

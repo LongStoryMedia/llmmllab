@@ -3,12 +3,15 @@ Base Agent class providing common functionality for all workflow agents.
 Provides node metadata injection, logging setup, and common error handling patterns.
 """
 
-from typing import Optional, Any, Dict, TypeVar, Generic
+from typing import Optional, Any, Dict, TypeVar, Generic, AsyncIterator, List, cast
 from abc import ABC, abstractmethod
 
-from models import NodeMetadata, ModelProfile
+from langchain_core.tools import BaseTool
+
+from models import NodeMetadata, ModelProfile, ChatResponse, LangChainMessage, PipelinePriority
 from runner import PipelineFactory
 from utils.logging import llmmllogger
+from utils.response import create_streaming_chunk
 from composer.core.errors import NodeExecutionError
 
 T = TypeVar("T")
@@ -198,3 +201,309 @@ class BaseAgent(ABC, Generic[T]):
             error_msg = f"[{self._node_metadata.node_name}] {error_msg}"
 
         raise NodeExecutionError(error_msg) from error
+
+    async def stream_pipeline_with_metadata(
+        self,
+        messages: List[LangChainMessage],
+        user_id: str,
+        tools: Optional[List[BaseTool]] = None,
+        circuit_breaker: Optional[Any] = None,
+        priority: PipelinePriority = PipelinePriority.MEDIUM,
+    ) -> AsyncIterator[ChatResponse]:
+        """
+        Stream pipeline execution with node metadata injection.
+
+        This method abstracts the common pattern of streaming pipeline execution
+        and automatically injects node metadata into streaming chunks to provide
+        context about what type of content is being generated.
+
+        Args:
+            messages: Input messages for the pipeline
+            user_id: User identifier
+            tools: Optional tools for the pipeline
+            circuit_breaker: Optional circuit breaker configuration
+            priority: Pipeline execution priority
+
+        Yields:
+            ChatResponse: Streaming chunks with injected node metadata
+        """
+        # Lazy imports to avoid circular dependency
+        from runner import stream_pipeline  # pylint: disable=import-outside-toplevel
+        from composer.utils.conversion import convert_langchain_messages_to_messages  # pylint: disable=import-outside-toplevel
+
+        try:
+            self._log_operation_start(
+                "stream_pipeline",
+                user_id=user_id,
+                message_count=len(messages),
+                has_tools=bool(tools),
+                node_name=self._node_metadata.node_name,
+                node_type=self._node_metadata.node_type,
+            )
+
+            # Yield start chunk with node metadata
+            start_chunk = self._create_metadata_chunk(
+                is_start=True,
+                content_type="stream_start",
+                node_operation="pipeline_execution"
+            )
+            yield start_chunk
+
+            # Execute pipeline with streaming
+            with self.pipeline_factory.pipeline(
+                self.profile, ChatResponse, priority, circuit_breaker
+            ) as pipeline:
+                
+                msgs = convert_langchain_messages_to_messages(messages)
+                chunk_count = 0
+
+                async for chunk in stream_pipeline(
+                    msgs,
+                    pipeline,
+                    cast(List[BaseTool], tools) if tools else None,
+                ):
+                    chunk_count += 1
+                    
+                    # Inject node metadata into each chunk
+                    enhanced_chunk = self._enhance_chunk_with_metadata(chunk, chunk_count)
+                    yield enhanced_chunk
+
+                # Yield end chunk with node metadata
+                end_chunk = self._create_metadata_chunk(
+                    is_start=False,
+                    content_type="stream_end",
+                    node_operation="pipeline_execution",
+                    additional_data={"total_chunks": chunk_count}
+                )
+                yield end_chunk
+
+                self._log_operation_success(
+                    "stream_pipeline",
+                    user_id=user_id,
+                    chunk_count=chunk_count,
+                    node_name=self._node_metadata.node_name,
+                )
+
+        except Exception as e:
+            # Yield error chunk with metadata
+            error_chunk = self._create_metadata_chunk(
+                is_start=False,
+                content_type="stream_error",
+                node_operation="pipeline_execution",
+                additional_data={"error": str(e)}
+            )
+            yield error_chunk
+
+            self._handle_node_error(
+                "stream_pipeline",
+                e,
+                user_id=user_id,
+                message_count=len(messages),
+            )
+
+    async def run_pipeline_with_metadata(
+        self,
+        messages: List[LangChainMessage], 
+        user_id: str,
+        tools: Optional[List[BaseTool]] = None,
+        circuit_breaker: Optional[Any] = None,
+        priority: PipelinePriority = PipelinePriority.MEDIUM,
+    ) -> ChatResponse:
+        """
+        Run pipeline execution with node metadata injection.
+
+        This method abstracts the common pattern of pipeline execution
+        and automatically injects node metadata into the response.
+
+        Args:
+            messages: Input messages for the pipeline
+            user_id: User identifier  
+            tools: Optional tools for the pipeline
+            circuit_breaker: Optional circuit breaker configuration
+            priority: Pipeline execution priority
+
+        Returns:
+            ChatResponse: Response with injected node metadata
+        """
+        # Lazy imports to avoid circular dependency
+        from runner import run_pipeline  # pylint: disable=import-outside-toplevel
+        from composer.utils.conversion import convert_langchain_messages_to_messages  # pylint: disable=import-outside-toplevel
+
+        try:
+            self._log_operation_start(
+                "run_pipeline",
+                user_id=user_id,
+                message_count=len(messages),
+                has_tools=bool(tools),
+                node_name=self._node_metadata.node_name,
+                node_type=self._node_metadata.node_type,
+            )
+
+            # Execute pipeline 
+            with self.pipeline_factory.pipeline(
+                self.profile, ChatResponse, priority, circuit_breaker
+            ) as pipeline:
+                
+                msgs = convert_langchain_messages_to_messages(messages)
+                
+                response = await run_pipeline(
+                    msgs,
+                    pipeline,
+                    cast(List[BaseTool], tools) if tools else None,
+                )
+
+                # Inject node metadata into the response
+                enhanced_response = self._enhance_response_with_metadata(response)
+
+                self._log_operation_success(
+                    "run_pipeline", 
+                    user_id=user_id,
+                    has_response=bool(enhanced_response),
+                    node_name=self._node_metadata.node_name,
+                )
+
+                return enhanced_response
+
+        except Exception as e:
+            self._handle_node_error(
+                "run_pipeline",
+                e,
+                user_id=user_id,
+                message_count=len(messages),
+            )
+            # Return error response with metadata
+            return self._create_error_response_with_metadata(str(e))
+
+    def _create_metadata_chunk(
+        self,
+        is_start: bool,
+        content_type: str,
+        node_operation: str,
+        additional_data: Optional[Dict[str, Any]] = None
+    ) -> ChatResponse:
+        """
+        Create a metadata chunk for streaming boundaries.
+
+        Args:
+            is_start: Whether this is a start or end marker
+            content_type: Type of content being generated
+            node_operation: Operation being performed
+            additional_data: Optional additional metadata
+
+        Returns:
+            ChatResponse: Metadata chunk
+        """
+        metadata = {
+            "node_metadata": {
+                "node_name": self._node_metadata.node_name,
+                "node_id": self._node_metadata.node_id,
+                "node_type": self._node_metadata.node_type,
+                "user_id": self._node_metadata.user_id,
+                "conversation_id": self._node_metadata.conversation_id,
+            },
+            "stream_metadata": {
+                "is_boundary": True,
+                "is_start": is_start,
+                "content_type": content_type,
+                "node_operation": node_operation,
+            }
+        }
+
+        if additional_data:
+            metadata["stream_metadata"].update(additional_data)
+
+        return create_streaming_chunk(
+            text="",
+            done=not is_start,
+        ).model_copy(update={"channels": metadata})
+
+    def _enhance_chunk_with_metadata(
+        self, 
+        chunk: ChatResponse, 
+        chunk_index: int
+    ) -> ChatResponse:
+        """
+        Enhance a streaming chunk with node metadata.
+
+        Args:
+            chunk: Original chunk
+            chunk_index: Index of this chunk in the stream
+
+        Returns:
+            ChatResponse: Enhanced chunk with metadata
+        """
+        if not chunk:
+            return chunk
+
+        # Preserve existing channels if any
+        existing_channels = chunk.channels or {}
+        
+        # Add node metadata
+        node_metadata = {
+            "node_metadata": {
+                "node_name": self._node_metadata.node_name,
+                "node_id": self._node_metadata.node_id,
+                "node_type": self._node_metadata.node_type,
+                "user_id": self._node_metadata.user_id,
+                "conversation_id": self._node_metadata.conversation_id,
+            },
+            "chunk_metadata": {
+                "chunk_index": chunk_index,
+                "is_boundary": False,
+            }
+        }
+
+        # Merge with existing channels
+        enhanced_channels = {**existing_channels, **node_metadata}
+
+        return chunk.model_copy(update={"channels": enhanced_channels})
+
+    def _enhance_response_with_metadata(self, response: ChatResponse) -> ChatResponse:
+        """
+        Enhance a pipeline response with node metadata.
+
+        Args:
+            response: Original response
+
+        Returns:
+            ChatResponse: Enhanced response with metadata
+        """
+        if not response:
+            return response
+
+        # Preserve existing channels if any
+        existing_channels = response.channels or {}
+        
+        # Add node metadata
+        node_metadata = {
+            "node_metadata": {
+                "node_name": self._node_metadata.node_name,
+                "node_id": self._node_metadata.node_id, 
+                "node_type": self._node_metadata.node_type,
+                "user_id": self._node_metadata.user_id,
+                "conversation_id": self._node_metadata.conversation_id,
+            },
+            "execution_metadata": {
+                "is_streaming": False,
+            }
+        }
+
+        # Merge with existing channels
+        enhanced_channels = {**existing_channels, **node_metadata}
+
+        return response.model_copy(update={"channels": enhanced_channels})
+
+    def _create_error_response_with_metadata(self, error_message: str) -> ChatResponse:
+        """
+        Create an error response with node metadata.
+
+        Args:
+            error_message: Error message to include
+
+        Returns:
+            ChatResponse: Error response with metadata
+        """
+        from utils.response import create_error_response  # pylint: disable=import-outside-toplevel
+
+        error_response = create_error_response(error_message)
+        return self._enhance_response_with_metadata(error_response)
