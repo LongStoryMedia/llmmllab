@@ -18,8 +18,8 @@ from models import (
     SearchTopicSynthesis,
     SearchResult,
     Message,
+    NodeMetadata,
 )
-from models.node_metadata import NodeMetadata
 
 
 class WorkflowState(BaseModel):

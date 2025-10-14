@@ -45,6 +45,42 @@ def create_test_model_profile() -> ModelProfile:
     )
 
 
+def create_test_node_metadata() -> NodeMetadata:
+    """Create a test NodeMetadata object."""
+    import uuid
+    import random
+    
+    return NodeMetadata(
+        node_id=str(uuid.uuid4()),
+        node_name="test-chat-node",
+        node_type="ChatNode",
+        user_id="test-user",
+        conversation_id=random.randint(1, 100000),
+        execution_time=datetime.now(timezone.utc),
+        execution_context={
+            "operation": "chat_completion",
+            "streaming": False,
+        },
+    )
+
+
+def create_test_chat_agent(pipeline_factory=None, profile=None, node_metadata=None, **kwargs) -> ChatAgent:
+    """Create a test ChatAgent with all required dependencies."""
+    if pipeline_factory is None:
+        pipeline_factory = Mock()
+    if profile is None:
+        profile = create_test_model_profile()
+    if node_metadata is None:
+        node_metadata = create_test_node_metadata()
+        
+    return ChatAgent(
+        pipeline_factory=pipeline_factory,
+        profile=profile,
+        node_metadata=node_metadata,
+        **kwargs
+    )
+
+
 def create_test_langchain_messages() -> List[LangChainMessage]:
     """Create test LangChain messages."""
     return [
@@ -92,10 +128,12 @@ class TestChatAgent:
         """Test ChatAgent initialization with dependencies."""
         pipeline_factory = Mock()
         profile = create_test_model_profile()
+        node_metadata = create_test_node_metadata()
         
         agent = ChatAgent(
             pipeline_factory=pipeline_factory,
             profile=profile,
+            node_metadata=node_metadata,
             priority=PipelinePriority.HIGH,
             stream=True,
         )
@@ -103,6 +141,7 @@ class TestChatAgent:
         # Verify initialization
         assert agent.pipeline_factory == pipeline_factory
         assert agent.profile == profile
+        assert agent._node_metadata == node_metadata
         assert agent.priority == PipelinePriority.HIGH
         assert agent.stream is True
         
@@ -114,10 +153,12 @@ class TestChatAgent:
         """Test ChatAgent initialization with default values."""
         pipeline_factory = Mock()
         profile = create_test_model_profile()
+        node_metadata = create_test_node_metadata()
         
         agent = ChatAgent(
             pipeline_factory=pipeline_factory,
             profile=profile,
+            node_metadata=node_metadata,
         )
         
         # Verify defaults
@@ -131,7 +172,8 @@ class TestChatAgent:
         # Setup
         pipeline_factory = Mock()
         profile = create_test_model_profile()
-        agent = ChatAgent(pipeline_factory, profile, stream=False)
+        node_metadata = create_test_node_metadata()
+        agent = ChatAgent(pipeline_factory, profile, node_metadata, stream=False)
         
         # Mock pipeline context manager
         mock_pipeline = Mock()
@@ -164,7 +206,8 @@ class TestChatAgent:
         # Setup
         pipeline_factory = Mock()
         profile = create_test_model_profile()
-        agent = ChatAgent(pipeline_factory, profile, stream=True)
+        node_metadata = create_test_node_metadata()
+        agent = ChatAgent(pipeline_factory, profile, node_metadata, stream=True)
         
         # Mock pipeline context manager
         mock_pipeline = Mock()

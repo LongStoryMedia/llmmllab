@@ -13,6 +13,8 @@ from composer.core.errors import NodeExecutionError
 from composer.utils.state import assemble_context_messages
 from composer.nodes.base_node import BaseNode
 from composer.agents.chat_agent import ChatAgent
+from runner import PipelineFactory
+from models import ModelProfile, PipelinePriority
 
 
 class ChatNode(BaseNode):
@@ -26,18 +28,28 @@ class ChatNode(BaseNode):
 
     def __init__(
         self,
-        chat_agent: ChatAgent,
+        pipeline_factory: PipelineFactory,
+        profile: ModelProfile,
+        priority: PipelinePriority = PipelinePriority.MEDIUM,
+        stream: bool = False,
         node_name: str = "ChatNode",
     ):
         """
-        Initialize chat node with injected ChatAgent.
+        Initialize chat node with dependencies for ChatAgent creation.
 
         Args:
-            chat_agent: Injected ChatAgent for chat operations
+            pipeline_factory: Factory for creating chat pipelines
+            profile: Model profile for chat operations
+            priority: Pipeline execution priority
+            stream: Whether to enable streaming responses
             node_name: Optional custom name for this node
         """
         super().__init__(node_name=node_name)
-        self.chat_agent = chat_agent
+        self.pipeline_factory = pipeline_factory
+        self.profile = profile
+        self.priority = priority
+        self.stream = stream
+        self.chat_agent = None  # Will be created when we have metadata
 
     async def execute(self, state: WorkflowState) -> WorkflowState:
         """
@@ -57,16 +69,24 @@ class ChatNode(BaseNode):
             if not state.user_config:
                 raise NodeExecutionError("User config required for chat execution")
 
-            # Create and inject node metadata
+            # Create node metadata
             metadata = self.create_node_metadata(
                 state=state,
-                model_name=self.chat_agent.profile.model_name if self.chat_agent.profile else None,
-                profile_type=getattr(self.chat_agent.profile, 'profile_type', None),
-                priority=self.chat_agent.priority.value if self.chat_agent.priority else None,
-                streaming=self.chat_agent.stream,
+                model_name=self.profile.model_name if self.profile else None,
+                profile_type=getattr(self.profile, 'profile_type', None),
+                priority=self.priority.value if self.priority else None,
+                streaming=self.stream,
                 tool_count=len(state.available_tools) if state.available_tools else 0,
             )
-            self.chat_agent.inject_node_metadata(metadata)
+
+            # Create ChatAgent with required dependencies
+            self.chat_agent = ChatAgent(
+                pipeline_factory=self.pipeline_factory,
+                profile=self.profile,
+                node_metadata=metadata,
+                priority=self.priority,
+                stream=self.stream,
+            )
 
             # Assemble context messages
             context_messages = assemble_context_messages(state)

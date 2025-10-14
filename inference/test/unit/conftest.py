@@ -8,7 +8,7 @@ import torch
 from models.model import Model
 from models.model_details import ModelDetails
 from models.lora_weight import LoraWeight
-from test.utils import load_test_models
+from test.unit.utils import load_test_models
 
 # Add the parent directory to the sys.path to make imports work correctly
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))

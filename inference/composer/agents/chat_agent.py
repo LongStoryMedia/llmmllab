@@ -18,6 +18,7 @@ from models import (
     MessageContent,
     MessageContentType,
     CircuitBreakerConfig,
+    NodeMetadata,
 )
 from utils.message import extract_message_text
 from composer.utils.conversion import message_to_langchain_message
@@ -37,6 +38,7 @@ class ChatAgent(BaseAgent):
         self,
         pipeline_factory: PipelineFactory,
         profile: ModelProfile,
+        node_metadata: NodeMetadata,
         priority: PipelinePriority = PipelinePriority.MEDIUM,
         stream: bool = False,
     ):
@@ -46,14 +48,43 @@ class ChatAgent(BaseAgent):
         Args:
             pipeline_factory: Factory for creating chat pipelines
             profile: Model profile for chat operations
+            node_metadata: Node execution metadata for tracking
             priority: Pipeline execution priority
             stream: Whether to enable streaming responses by default
         """
-        super().__init__("ChatAgent")
-        self.pipeline_factory = pipeline_factory
-        self.profile = profile
+        super().__init__(pipeline_factory, profile, node_metadata)
         self.priority = priority
         self.stream = stream
+
+    async def execute_pipeline(self, stream: bool = False, **kwargs) -> ChatResponse:
+        """
+        Execute chat pipeline with the provided parameters.
+        
+        This is the standard interface for pipeline execution required by BaseAgent.
+        
+        Args:
+            stream: Whether to stream the response
+            **kwargs: Pipeline execution parameters, expected to include:
+                - messages: List of LangChainMessage objects
+                - user_id: User identifier
+                - tools: Optional list of BaseTool objects
+                - circuit_breaker: Optional CircuitBreakerConfig
+        
+        Returns:
+            ChatResponse: The completion result
+        """
+        messages = kwargs.get('messages', [])
+        user_id = kwargs.get('user_id', '')
+        tools = kwargs.get('tools')
+        circuit_breaker = kwargs.get('circuit_breaker')
+        
+        return await self.chat_completion(
+            messages=messages,
+            user_id=user_id,
+            tools=tools,
+            circuit_breaker=circuit_breaker,
+            stream=stream
+        )
 
     async def chat_completion(
         self,
