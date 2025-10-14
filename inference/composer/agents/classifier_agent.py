@@ -16,6 +16,7 @@ from models import (
     ModelProfile,
     PipelinePriority,
     Message,
+    NodeMetadata,
 )
 from composer.core.errors import IntentAnalysisError, NodeExecutionError
 from utils.message import extract_message_text
@@ -51,14 +52,17 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
         self,
         pipeline_factory: "PipelineFactory",
         profile: ModelProfile,
+        node_metadata: NodeMetadata,
     ):
         """
-        Initialize the intent classification agent.
+        Initialize the intent classification agent with required dependencies.
 
+        Args:
+            pipeline_factory: Factory for creating analysis pipelines
+            profile: Model profile for intent analysis operations
+            node_metadata: Node execution metadata for tracking
         """
-        super().__init__("ClassifierAgent")
-        self.pipeline_factory = pipeline_factory
-        self.profile = profile
+        super().__init__(pipeline_factory, profile, node_metadata, "ClassifierAgent")
         self.logger.info(
             "Intent classifier initialized with analysis model profile"
         )

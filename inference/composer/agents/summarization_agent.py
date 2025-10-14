@@ -17,6 +17,7 @@ from models import (
     SearchTopicSynthesis,
     SearchResult,
     UserConfig,
+    NodeMetadata,
 )
 from runner import PipelineFactory, run_pipeline
 from composer.core.errors import NodeExecutionError
@@ -41,24 +42,68 @@ class SummarizationAgent(BaseAgent[str]):
     def __init__(
         self,
         pipeline_factory: PipelineFactory,
+        profile: ModelProfile,
+        node_metadata: NodeMetadata,
         summary_storage: "SummaryStorage",
         search_storage: "SearchStorage",
         user_config: UserConfig,
     ):
         """
-        Initialize summarization agent.
+        Initialize summarization agent with required dependencies.
 
         Args:
             pipeline_factory: Factory for creating summarization pipelines
+            profile: Model profile for summarization operations
+            node_metadata: Node execution metadata for tracking
             summary_storage: Injected summary storage service
             search_storage: Injected search storage service
             user_config: User configuration object
         """
-        super().__init__("SummarizationAgent")
-        self.pipeline_factory = pipeline_factory
+        super().__init__(pipeline_factory, profile, node_metadata, "SummarizationAgent")
         self.summary_storage = summary_storage
         self.search_storage = search_storage
         self.user_config = user_config
+
+    async def execute_pipeline(self, stream: bool = False, **kwargs) -> str:
+        """
+        Execute summarization pipeline with the provided parameters.
+        
+        This is the standard interface for pipeline execution required by BaseAgent.
+        
+        Args:
+            stream: Whether to stream the response (not applicable for summarization)
+            **kwargs: Pipeline execution parameters, expected to include:
+                - text: Text content to summarize
+                - user_id: User identifier
+                - summary_type: Optional SummaryType
+                - max_length: Optional maximum summary length
+                - style: Optional SummaryStyle
+                - tools: Optional tools list
+                - grammar: Optional grammar constraints
+        
+        Returns:
+            str: The summary text
+        """
+        text = kwargs.get('text', '')
+        user_id = kwargs.get('user_id', '')
+        summary_type = kwargs.get('summary_type', SummaryType.PRIMARY)
+        max_length = kwargs.get('max_length')
+        style = kwargs.get('style', SummaryStyle.CONCISE)
+        tools = kwargs.get('tools')
+        grammar = kwargs.get('grammar')
+        
+        if not text:
+            raise NodeExecutionError("text parameter is required for summarization")
+        
+        return await self.summarize_text(
+            text=text,
+            user_id=user_id,
+            summary_type=summary_type,
+            max_length=max_length,
+            style=style,
+            tools=tools,
+            grammar=grammar
+        )
 
     async def summarize_text(
         self,

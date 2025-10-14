@@ -8,7 +8,7 @@ from typing import List, cast
 import numpy as np
 
 from runner import PipelineFactory
-from models import ModelProfile, PipelinePriority
+from models import ModelProfile, PipelinePriority, NodeMetadata
 from composer.core.errors import NodeExecutionError
 from .base_agent import BaseAgent
 
@@ -25,17 +25,17 @@ class EmbeddingAgent(BaseAgent[List[List[float]]]):
         self,
         pipeline_factory: PipelineFactory,
         profile: ModelProfile,
+        node_metadata: NodeMetadata,
     ):
         """
-        Initialize embedding agent with dependency injection.
+        Initialize embedding agent with required dependencies.
 
         Args:
             pipeline_factory: Factory for creating embedding pipelines
             profile: Model profile for embedding generation
+            node_metadata: Node execution metadata for tracking
         """
-        super().__init__("EmbeddingAgent")
-        self.pipeline_factory = pipeline_factory
-        self.profile = profile
+        super().__init__(pipeline_factory, profile, node_metadata, "EmbeddingAgent")
 
     async def execute_pipeline(self, stream: bool = False, **kwargs) -> List[List[float]]:
         """

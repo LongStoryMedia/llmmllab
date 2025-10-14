@@ -11,6 +11,7 @@ from models import (
     PipelinePriority,
     TechnicalDomain,
     ResponseFormat,
+    NodeMetadata,
 )
 from composer.core.errors import NodeExecutionError
 from utils.message import extract_message_text
@@ -19,7 +20,7 @@ from .base_agent import BaseAgent
 from runner import PipelineFactory
 
 
-class EngineeringAgent(BaseAgent):
+class EngineeringAgent(BaseAgent[str]):
     """
     Engineering Agent for generating technical responses with grammar-constrained output.
 
@@ -32,17 +33,58 @@ class EngineeringAgent(BaseAgent):
         self,
         pipeline_factory: PipelineFactory,
         profile: ModelProfile,
+        node_metadata: NodeMetadata,
     ):
         """
-        Initialize engineering agent with dependency injection.
+        Initialize engineering agent with required dependencies.
 
         Args:
             pipeline_factory: Factory for creating engineering pipelines
             profile: Model profile for engineering tasks
+            node_metadata: Node execution metadata for tracking
         """
-        super().__init__("EngineeringAgent")
-        self.pipeline_factory = pipeline_factory
-        self.profile = profile
+        super().__init__(pipeline_factory, profile, node_metadata, "EngineeringAgent")
+
+    async def execute_pipeline(self, stream: bool = False, **kwargs) -> str:
+        """
+        Execute engineering pipeline with the provided parameters.
+        
+        This is the standard interface for pipeline execution required by BaseAgent.
+        
+        Args:
+            stream: Whether to stream the response (not applicable for engineering responses)
+            **kwargs: Pipeline execution parameters, expected to include:
+                - query: Technical query to analyze
+                - user_id: User identifier
+                - domain: Optional TechnicalDomain
+                - response_format: Optional ResponseFormat
+                - tools: Optional tools list
+                - grammar: Optional grammar constraints
+                - circuit_breaker: Optional CircuitBreakerConfig
+        
+        Returns:
+            str: The engineering response
+        """
+        query = kwargs.get('query', '')
+        user_id = kwargs.get('user_id', '')
+        domain = kwargs.get('domain', TechnicalDomain.GENERAL_ENGINEERING)
+        response_format = kwargs.get('response_format', ResponseFormat.DETAILED_ANALYSIS)
+        tools = kwargs.get('tools')
+        grammar = kwargs.get('grammar')
+        circuit_breaker = kwargs.get('circuit_breaker')
+        
+        if not query:
+            raise NodeExecutionError("query parameter is required for engineering analysis")
+        
+        return await self.generate_technical_response(
+            query=query,
+            user_id=user_id,
+            domain=domain,
+            response_format=response_format,
+            tools=tools,
+            grammar=grammar,
+            circuit_breaker=circuit_breaker
+        )
 
     async def generate_technical_response(
         self,
