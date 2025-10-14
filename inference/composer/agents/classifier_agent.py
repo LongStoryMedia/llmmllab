@@ -149,14 +149,16 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
         Raises:
             IntentAnalysisError: When analysis fails or user message unavailable
         """
-        try:
-
+        async def _execute_intent_analysis() -> List[IntentAnalysis]:
+            """Internal pipeline executor for intent analysis."""
             # Extract user message text
             user_query = extract_message_text(current_user_message)
 
             # Use pipeline with default priority for intent analysis
-            with self.pipeline_factory.pipeline(
-                self.profile, str, PipelinePriority.HIGH, circuit_breaker
+            with self.run_pipeline_with_context_manager(
+                return_type=str, 
+                priority=PipelinePriority.HIGH, 
+                circuit_breaker=circuit_breaker
             ) as pipeline:
                 intent_analyses = await self._llm_analyze_intent(pipeline, user_query)
                 # Apply any statistical augmentations
@@ -165,11 +167,12 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
 
                 return intent_analyses
 
-        except Exception as e:
-            self.logger.error(
-                "Intent analysis failed", error=str(e), context="intent_analysis"
-            )
-            raise IntentAnalysisError(f"Intent analysis failed: {e}") from e
+        # Use BaseAgent's generic pipeline runner with metadata
+        return await self.run_generic_pipeline_with_metadata(
+            pipeline_executor=_execute_intent_analysis,
+            operation_name="intent_analysis",
+            user_id=current_user_message.id if hasattr(current_user_message, 'id') else "unknown",
+        )
 
     async def _llm_analyze_intent(
         self, pipeline, user_query: str

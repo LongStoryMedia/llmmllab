@@ -3,7 +3,7 @@ Base Agent class providing common functionality for all workflow agents.
 Provides node metadata injection, logging setup, and common error handling patterns.
 """
 
-from typing import Optional, Any, Dict, TypeVar, Generic, AsyncIterator, List, cast
+from typing import Optional, Any, Dict, TypeVar, Generic, AsyncIterator, List, cast, Callable, Awaitable
 from abc import ABC, abstractmethod
 
 from langchain_core.tools import BaseTool
@@ -507,3 +507,145 @@ class BaseAgent(ABC, Generic[T]):
 
         error_response = create_error_response(error_message)
         return self._enhance_response_with_metadata(error_response)
+
+    async def run_generic_pipeline_with_metadata(
+        self,
+        pipeline_executor: Callable[..., Awaitable[Any]],
+        operation_name: str,
+        **kwargs
+    ) -> Any:
+        """
+        Run any pipeline execution function with metadata tracking and logging.
+        
+        This method provides a consistent interface for agents that don't return ChatResponse
+        but still want the benefits of metadata tracking, logging, and error handling.
+
+        Args:
+            pipeline_executor: Async function that executes the pipeline
+            operation_name: Name of the operation for logging
+            **kwargs: Arguments to pass to the pipeline executor
+
+        Returns:
+            The result from pipeline_executor, potentially wrapped with metadata
+        """
+        try:
+            self._log_operation_start(
+                operation_name,
+                node_name=self._node_metadata.node_name,
+                node_type=self._node_metadata.node_type,
+                **kwargs
+            )
+
+            # Execute the pipeline
+            result = await pipeline_executor(**kwargs)
+
+            self._log_operation_success(
+                operation_name,
+                node_name=self._node_metadata.node_name,
+                has_result=bool(result),
+            )
+
+            return result
+
+        except Exception as e:
+            self._handle_node_error(
+                operation_name,
+                e,
+                **kwargs
+            )
+            raise
+
+    def run_pipeline_with_context_manager(
+        self,
+        return_type: type,
+        priority: PipelinePriority = PipelinePriority.MEDIUM,
+        circuit_breaker: Optional[Any] = None,
+    ):
+        """
+        Get a pipeline context manager with consistent metadata tracking.
+        
+        This provides the same context manager pattern used by agents but with
+        enhanced logging that includes node metadata.
+
+        Args:
+            return_type: Expected return type for the pipeline
+            priority: Pipeline execution priority
+            circuit_breaker: Optional circuit breaker configuration
+
+        Returns:
+            Pipeline context manager with enhanced logging
+        """
+        return PipelineContextWithMetadata(
+            self.pipeline_factory,
+            self.profile,
+            return_type, 
+            priority,
+            circuit_breaker,
+            self._node_metadata,
+            self.logger
+        )
+
+
+class PipelineContextWithMetadata:
+    """
+    Context manager wrapper that adds metadata tracking to pipeline operations.
+    
+    This provides the same interface as the regular pipeline factory context manager
+    but adds enhanced logging with node metadata.
+    """
+    
+    def __init__(
+        self,
+        pipeline_factory: PipelineFactory,
+        profile: ModelProfile,
+        return_type: type,
+        priority: PipelinePriority,
+        circuit_breaker: Optional[Any],
+        node_metadata: NodeMetadata,
+        logger: Any,
+    ):
+        self.pipeline_factory = pipeline_factory
+        self.profile = profile
+        self.return_type = return_type
+        self.priority = priority
+        self.circuit_breaker = circuit_breaker
+        self.node_metadata = node_metadata
+        self.logger = logger
+        self._pipeline_context = None
+
+    def __enter__(self):
+        """Enter the context manager."""
+        self.logger.info(
+            "Starting pipeline context",
+            node_name=self.node_metadata.node_name,
+            node_type=self.node_metadata.node_type,
+            return_type=self.return_type.__name__ if self.return_type else "unknown",
+            priority=self.priority.value if hasattr(self.priority, 'value') else str(self.priority),
+        )
+        
+        self._pipeline_context = self.pipeline_factory.pipeline(
+            self.profile,
+            self.return_type,
+            self.priority,
+            self.circuit_breaker
+        )
+        return self._pipeline_context.__enter__()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the context manager."""
+        if exc_type:
+            self.logger.error(
+                "Pipeline context failed",
+                node_name=self.node_metadata.node_name,
+                error=str(exc_val),
+                error_type=exc_type.__name__,
+            )
+        else:
+            self.logger.info(
+                "Pipeline context completed",
+                node_name=self.node_metadata.node_name,
+                node_type=self.node_metadata.node_type,
+            )
+        
+        if self._pipeline_context:
+            return self._pipeline_context.__exit__(exc_type, exc_val, exc_tb)

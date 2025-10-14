@@ -104,6 +104,22 @@ class MemoryAgent(BaseAgent[List[Memory]]):
         Returns:
             True if storage succeeded, False otherwise
         """
+        return await self.run_generic_pipeline_with_metadata(
+            operation_name="store_memories",
+            pipeline_executor=self._execute_memory_storage,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            memories=memories,
+        )
+
+    async def _execute_memory_storage(
+        self,
+        user_id: str,
+        conversation_id: int,
+        memories: List[Memory],
+        **kwargs
+    ) -> bool:
+        """Internal executor for memory storage operation."""
         try:
             # Use injected storage service
             memory_svc = self.memory_storage
@@ -182,6 +198,30 @@ class MemoryAgent(BaseAgent[List[Memory]]):
         Returns:
             List of Memory objects with similarity scores and paired content
         """
+        return await self.run_generic_pipeline_with_metadata(
+            operation_name="search_memories_by_embedding",
+            pipeline_executor=self._execute_memory_search,
+            query_embeddings=query_embeddings,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            max_results=max_results,
+            similarity_threshold=similarity_threshold,
+            enable_cross_conversation=enable_cross_conversation,
+            enable_cross_user=enable_cross_user,
+        )
+
+    async def _execute_memory_search(
+        self,
+        query_embeddings: List[List[float]],
+        user_id: str,
+        conversation_id: Optional[int] = None,
+        max_results: int = 3,
+        similarity_threshold: float = 0.7,
+        enable_cross_conversation: bool = True,
+        enable_cross_user: bool = False,
+        **kwargs
+    ) -> List[Memory]:
+        """Internal executor for memory search operation."""
         try:
             # Use injected storage service
             memory_svc = self.memory_storage

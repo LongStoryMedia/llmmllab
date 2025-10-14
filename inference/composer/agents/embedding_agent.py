@@ -79,13 +79,8 @@ class EmbeddingAgent(BaseAgent[List[List[float]]]):
         Returns:
             List of embedding vectors (one per input text)
         """
-        try:
-            self._log_operation_start(
-                "embedding_generation",
-                user_id=user_id,
-                text_count=len(texts),
-            )
-
+        async def _execute_embedding_pipeline(user_id: str, text_count: int) -> List[List[float]]:
+            """Internal pipeline executor for embeddings."""
             # Use injected storage service
             from runner import (  # pylint: disable=import-outside-toplevel
                 embed_pipeline,
@@ -106,21 +101,17 @@ class EmbeddingAgent(BaseAgent[List[List[float]]]):
             )
 
             if embeddings:
-                self._log_operation_success(
-                    "embedding_generation",
-                    user_id=user_id,
-                    embedding_count=len(embeddings),
-                    embedding_dimensions=len(embeddings[0]) if embeddings else 0,
-                )
                 return embeddings
             else:
                 raise NodeExecutionError("No embeddings returned from pipeline")
 
-        except Exception as e:
-            self._handle_node_error(
-                "embedding_generation", e, user_id=user_id, text_count=len(texts)
-            )
-            return []
+        # Use BaseAgent's generic pipeline runner with metadata
+        return await self.run_generic_pipeline_with_metadata(
+            pipeline_executor=_execute_embedding_pipeline,
+            operation_name="embedding_generation",
+            user_id=user_id,
+            text_count=len(texts),
+        )
 
     async def generate_single_embedding(self, text: str, user_id: str) -> List[float]:
         """

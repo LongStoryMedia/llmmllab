@@ -868,6 +868,26 @@ Action items and next steps:"""
         Extracted common pipeline execution logic to ensure consistent
         behavior across all summarization methods.
         """
+        return await self.run_generic_pipeline_with_metadata(
+            operation_name="execute_summarization",
+            pipeline_executor=self._execute_summarization_pipeline,
+            prompt=prompt,
+            model_profile=model_profile,
+            circuit_breaker=circuit_breaker,
+            tools=tools,
+            grammar=grammar,
+        )
+
+    async def _execute_summarization_pipeline(
+        self,
+        prompt: str,
+        model_profile: ModelProfile,
+        circuit_breaker: Any,
+        tools: Optional[List[Any]] = None,
+        grammar: Optional[Any] = None,
+        **kwargs
+    ) -> str:
+        """Internal executor for summarization pipeline operation."""
         with self.pipeline_factory.pipeline(
             model_profile, str, PipelinePriority.NORMAL, circuit_breaker
         ) as pipeline:
