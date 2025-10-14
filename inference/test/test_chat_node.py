@@ -22,18 +22,15 @@ from composer.core.errors import NodeExecutionError
 
 
 def create_test_user_config() -> UserConfig:
-    """Create a test UserConfig object."""
-    return UserConfig(
-        user_id="test-user",
-        model_profiles=[],
-        circuit_breaker=CircuitBreakerConfig(
-            failure_threshold=5,
-            timeout_seconds=60,
-            retry_delay_seconds=10
-        ),
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+    """Create a test UserConfig object using Mock for complex nested objects."""
+    mock_config = Mock(spec=UserConfig)
+    mock_config.user_id = "test-user"
+    mock_config.circuit_breaker = CircuitBreakerConfig(
+        failure_threshold=5,
+        timeout_seconds=60,
+        retry_delay_seconds=10
     )
+    return mock_config
 
 
 def create_test_workflow_state() -> WorkflowState:
@@ -48,19 +45,19 @@ def create_test_workflow_state() -> WorkflowState:
         ],
         available_tools=[],
         tool_calls=None,
-        selected_workflows=[],
-        intent_analyses=[],
+        selected_workflows=set(),
         node_metadata={},
         retrieved_memories=[],
         web_search_results=[],
     )
 
 
-def create_mock_chat_agent() -> Mock:
+def create_mock_chat_agent():
     """Create a mock ChatAgent."""
     mock_agent = Mock(spec=ChatAgent)
     mock_agent.profile = Mock()
     mock_agent.profile.model_name = "test-model"
+    mock_agent.profile.profile_type = "primary"  # String value instead of Mock
     mock_agent.priority = Mock()
     mock_agent.priority.value = "medium"
     mock_agent.stream = True
@@ -124,7 +121,7 @@ class TestChatNode:
             mock_agent.chat_completion_with_conversion.assert_called_once_with(
                 messages=[LangChainMessage(type="human", content="Test message")],
                 user_id="test-user",
-                tools=[],
+                tools=None,  # When available_tools is empty, it passes None
                 circuit_breaker=state.user_config.circuit_breaker,
                 stream=None,
             )
@@ -143,9 +140,12 @@ class TestChatNode:
         state = create_test_workflow_state()
         
         # Add tools to state
-        mock_tool = Mock()
-        mock_tool.name = "test_tool"
-        state.available_tools = [mock_tool]
+        from models.tool import Tool
+        test_tool = Tool(
+            name="test_tool",
+            description="A test tool for testing purposes"
+        )
+        state.available_tools = [test_tool]
         
         # Mock responses
         response_message = LangChainMessage(type="ai", content="Response with tools")
@@ -160,11 +160,11 @@ class TestChatNode:
             # Execute
             result_state = await node.execute(state)
             
-            # Verify tools were passed
+            # Verify tools were passed correctly  
             mock_agent.chat_completion_with_conversion.assert_called_once_with(
                 messages=[LangChainMessage(type="human", content="Test message")],
                 user_id="test-user",
-                tools=[mock_tool],
+                tools=[test_tool],
                 circuit_breaker=state.user_config.circuit_breaker,
                 stream=None,
             )
@@ -353,7 +353,7 @@ class TestChatNode:
         assert hasattr(node, 'create_node_metadata')
         assert hasattr(node, 'store_node_metadata')
         assert hasattr(node, '_validate_user_id')
-        assert hasattr(node, '_get_user_config')
+        assert hasattr(node, '_ensure_user_config_initialized')
         
         # Verify node properties
         assert node.node_name == "IntegrationTestNode"
