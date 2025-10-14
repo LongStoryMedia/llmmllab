@@ -65,5 +65,4 @@ class ToolComposerNode:
         except Exception as e:
             # Record error and re-raise so test framework captures failure
             self.logger.error(f"Tool composition failed: {e}")
-            state.execution_metadata.add_error(f"Tool composition failed: {e}")
             raise

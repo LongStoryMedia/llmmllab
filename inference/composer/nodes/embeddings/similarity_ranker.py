@@ -35,10 +35,12 @@ class SimilarityRankerNode:
         """
         try:
             # Get query embedding and candidates from state
-            query_embedding = getattr(state.execution_metadata, "query_embedding", None)
-            candidate_embeddings = getattr(
-                state.execution_metadata, "candidate_embeddings", None
-            )
+            if not state.embedding:
+                self.logger.warning("No query embedding found in state")
+                return state
+
+            query_embedding = state.embedding
+            candidate_embeddings = state.unranked_retrievals
 
             if not query_embedding:
                 self.logger.warning("No query embedding found in state")
@@ -64,7 +66,7 @@ class SimilarityRankerNode:
             similarities.sort(key=lambda x: x[1], reverse=True)
 
             # Store ranked results in state
-            state.execution_metadata.ranked_similarities = similarities
+            state.ranked_retrievals = similarities
 
             self.logger.info(
                 "Successfully ranked embeddings",
@@ -125,8 +127,8 @@ class SimilarityRankerNode:
         """
         try:
             # Get query embedding and retrieved memories from state
-            query_embedding = getattr(state.execution_metadata, "query_embedding", None)
-            retrieved_memories = getattr(state, "retrieved_memories", None)
+            query_embedding = state.embedding
+            retrieved_memories = state.retrieved_memories
 
             if not query_embedding or not retrieved_memories:
                 self.logger.info("No query embedding or memories to rank")

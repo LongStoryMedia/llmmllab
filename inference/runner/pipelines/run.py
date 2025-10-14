@@ -164,12 +164,6 @@ def _normalize_message_input(
         return messages
 
 
-# Removed complex StreamingCallbackHandler - orchestration handled by Composer
-
-
-# Removed complex EventStreamProcessor - streaming handled by individual pipelines
-
-
 async def stream_pipeline(
     messages: MessageInput,
     pipeline: SimplePipelineCore,
@@ -401,93 +395,3 @@ async def embed_pipeline(
         logger.error(f"Error in embed_pipeline: {e}")
         metadata.log_completion(logger, success=False)
         return []
-
-
-# Pipeline chaining - simplified for new architecture
-PipelineStep = tuple[SimplePipelineCore, Optional[str]]
-
-
-async def chain_pipelines(
-    initial_input: MessageInput,
-    pipeline_steps: List[PipelineStep],
-    tools: Optional[List[BaseTool]] = None,
-    grammar: Optional[GrammarInput] = None,
-) -> ChatResponse:
-    """
-    Chain multiple pipeline calls with metadata tracking.
-    Note: Complex orchestration should typically be handled by Composer.
-
-    Args:
-        initial_input: Starting input
-        pipeline_steps: List of (pipeline, optional_prompt) tuples
-        tools: Optional tools for pipelines that support them
-        grammar: Optional grammar constraint for the final pipeline step
-    """
-    logger = logging.getLogger(__name__)
-    chain_id = str(uuid.uuid4())[:8]
-
-    logger.info(
-        f"[{chain_id}] Starting pipeline chain with {len(pipeline_steps)} steps"
-    )
-
-    try:
-        if not pipeline_steps:
-            raise ValueError("No pipeline steps provided")
-
-        current_input: MessageInput = initial_input
-
-        for i, (pipeline, prompt) in enumerate(pipeline_steps):
-            metadata = PipelineExecutionMetadata(pipeline, f"{chain_id}-{i+1}")
-            logger.info(
-                f"[{chain_id}] Step {i+1}/{len(pipeline_steps)}: {metadata.pipeline_name}"
-            )
-
-            # Run the pipeline
-            result = await run_pipeline(current_input, pipeline, tools)
-
-            # Prepare input for next step
-            if i < len(pipeline_steps) - 1:  # Not the last step
-                result_text = ""
-                if result.message:
-                    result_text = extract_message_text(result.message)
-
-                # Combine with next step's prompt if provided
-                next_pipeline, next_prompt = pipeline_steps[i + 1]
-                if next_prompt:
-                    current_input = f"{next_prompt}\n\n{result_text}"
-                else:
-                    current_input = result_text
-            else:
-                # Last step - return the final result
-                logger.info(f"[{chain_id}] Pipeline chain completed successfully")
-                return result
-
-        # Fallback (shouldn't be reached)
-        return ChatResponse(
-            done=True,
-            message=Message(
-                role=MessageRole.ASSISTANT,
-                content=[
-                    MessageContent(type=MessageContentType.TEXT, text="Chain completed")
-                ],
-            ),
-            created_at=datetime.now(timezone.utc),
-            finish_reason="stop",
-        )
-
-    except Exception as e:
-        logger.error(f"[{chain_id}] Error in pipeline chain: {e}")
-        return ChatResponse(
-            done=True,
-            message=Message(
-                role=MessageRole.ASSISTANT,
-                content=[
-                    MessageContent(
-                        type=MessageContentType.TEXT,
-                        text=f"Error in pipeline chain: {str(e)}",
-                    )
-                ],
-            ),
-            created_at=datetime.now(timezone.utc),
-            finish_reason="error",
-        )

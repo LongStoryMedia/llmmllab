@@ -108,6 +108,30 @@ class WorkflowState(BaseModel):
         description="Structured tool calls from the most recent assistant generation",
     )
 
+    embedding: Annotated[
+        Optional[List[float]],
+        lambda current, new: new if new is not None else current,
+    ] = Field(
+        default=None,
+        description="Embedding for comparison and retrieval tasks",
+    )
+
+    unranked_retrievals: Annotated[
+        Optional[List[List[float]]],
+        lambda current, new: new if new is not None else current,
+    ] = Field(
+        default=None,
+        description="Unranked retrieval results from the most recent retrieval operation",
+    )
+
+    ranked_retrievals: Annotated[
+        Optional[List[List[float]]],
+        lambda current, new: new if new is not None else current,
+    ] = Field(
+        default=None,
+        description="Ranked retrieval results from the most recent retrieval operation",
+    )
+
     # Routing and execution control fields (referenced by builder.py)
     next_node: Annotated[Optional[str], lambda x, y: y if y is not None else x] = Field(
         default=None,
