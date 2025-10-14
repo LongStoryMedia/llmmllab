@@ -8,10 +8,10 @@ from typing import Any
 
 from models import CircuitBreakerConfig, LangChainMessage
 from composer.graph.state import WorkflowState
-from utils.logging import llmmllogger
+from composer.nodes.base_node import BaseNode
 
 
-class CircuitProtectedNode:
+class CircuitProtectedNode(BaseNode):
     """
     Wrapper node that provides circuit breaker protection for any node.
 
@@ -26,15 +26,17 @@ class CircuitProtectedNode:
             wrapped_node: The node to wrap with circuit breaker protection
             circuit_config: Required circuit breaker configuration
         """
-        self.wrapped_node = wrapped_node
-        self.circuit_config = circuit_config
+        super().__init__("circuit_breaker", wrapped_node=wrapped_node, circuit_config=circuit_config)
+        
+    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
+        """Initialize CircuitProtectedNode with dependency injection."""
+        self.wrapped_node = kwargs.get('wrapped_node')
+        self.circuit_config = kwargs.get('circuit_config')
 
         # Circuit breaker state
         self.failure_count = 0
         self.last_failure_time = None
         self.circuit_open = False
-
-        self.logger = llmmllogger.logger
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

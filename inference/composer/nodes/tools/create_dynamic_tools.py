@@ -5,15 +5,15 @@ from langchain.tools import BaseTool
 
 from models import IntentAnalysis, Tool, DynamicTool, ModelProfileType
 from composer.graph.state import WorkflowState
-from utils.logging import llmmllogger
 from composer.tools.registry import ToolRegistry
 from composer.utils.extraction import extract_content_from_langchain_message
 from runner import PipelineFactory, run_pipeline
 from utils.model_profile import get_model_profile
 from utils.message import extract_message_text
+from composer.nodes.base_node import BaseNode
 
 
-class DynamicToolCreationNode:
+class DynamicToolCreationNode(BaseNode):
     """
     Node responsible for creating dynamic tool specifications based on user queries and intent analysis.
     """
@@ -23,9 +23,12 @@ class DynamicToolCreationNode:
         tool_registry: ToolRegistry,
         pipeline_factory: PipelineFactory,
     ):
-        self.tool_registry = tool_registry
+        super().__init__("dynamic_tool_creation", tool_registry=tool_registry, pipeline_factory=pipeline_factory)
+        
+    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
+        """Initialize DynamicToolCreationNode with dependency injection."""
+        self.tool_registry = kwargs.get('tool_registry')
         self.pipeline_factory = pipeline_factory
-        self.logger = llmmllogger.logger.bind(component="DynamicToolCreationNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

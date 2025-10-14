@@ -5,20 +5,19 @@ Provides LangGraph node wrapper for technical engineering response generation.
 
 from typing import TYPE_CHECKING
 
-from runner import PipelineFactory
 from models import LangChainMessage
 
 from composer.graph.state import WorkflowState
-from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
 from composer.utils.extraction import extract_content_from_langchain_message
+from composer.nodes.base_node import BaseNode
 
 
 if TYPE_CHECKING:
     from composer.agents.engineering_agent import EngineeringAgent
 
 
-class EngineeringAgentNode:
+class EngineeringAgentNode(BaseNode):
     """
     LangGraph node wrapper for Engineering Agent.
 
@@ -36,11 +35,12 @@ class EngineeringAgentNode:
 
         Args:
             engineering_agent: Required EngineeringAgent instance
-            pipeline_factory: Factory for creating structured pipelines
         """
-        self.agent = engineering_agent
-
-        self.logger = llmmllogger.logger
+        super().__init__("engineering_agent", engineering_agent=engineering_agent)
+        
+    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
+        """Initialize EngineeringAgentNode with dependency injection."""
+        self.agent = kwargs.get('engineering_agent')
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

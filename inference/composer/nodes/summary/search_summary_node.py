@@ -9,14 +9,14 @@ from typing import TYPE_CHECKING
 
 from composer.graph.state import WorkflowState
 from composer.utils.extraction import extract_content_from_langchain_message
-from utils.logging import llmmllogger
+from composer.nodes.base_node import BaseNode
 
 
 if TYPE_CHECKING:
     from composer.agents.summarization_agent import SummarizationAgent
 
 
-class SearchSummaryNode:
+class SearchSummaryNode(BaseNode):
     """
     Node for synthesizing web search results into coherent responses.
 
@@ -25,8 +25,11 @@ class SearchSummaryNode:
     """
 
     def __init__(self, summarization_agent: "SummarizationAgent"):
-        self.agent = summarization_agent
-        self.logger = llmmllogger.logger.bind(component="SearchSummaryNode")
+        super().__init__("search_summary", summarization_agent=summarization_agent)
+        
+    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
+        """Initialize SearchSummaryNode with dependency injection."""
+        self.agent = kwargs.get('summarization_agent')
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

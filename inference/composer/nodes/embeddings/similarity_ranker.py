@@ -8,10 +8,10 @@ from typing import List, Optional
 import numpy as np
 
 from composer.graph.state import WorkflowState
-from utils.logging import llmmllogger
+from composer.nodes.base_node import BaseNode
 
 
-class SimilarityRankerNode:
+class SimilarityRankerNode(BaseNode):
     """
     Node for ranking embeddings by cosine similarity to a query embedding.
 
@@ -21,7 +21,12 @@ class SimilarityRankerNode:
 
     def __init__(self):
         """Initialize similarity ranker node."""
-        self.logger = llmmllogger.logger.bind(component="SimilarityRankerNode")
+        super().__init__("similarity_ranker")
+        
+    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
+        """Initialize SimilarityRankerNode with dependency injection."""
+        # No dependencies needed for this node
+        return
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

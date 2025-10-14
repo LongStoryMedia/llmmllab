@@ -4,12 +4,12 @@ Consolidates workflow-level routing logic from GraphBuilder into a dedicated, re
 """
 
 from composer.graph.state import WorkflowState
-from utils.logging import llmmllogger
+from composer.nodes.base_node import BaseNode
 
 # Inline workflow registry to avoid circular imports
 
 
-class WorkflowRouter:
+class WorkflowRouter(BaseNode):
     """
     Intelligent router for workflow selection and execution strategy.
 
@@ -25,8 +25,11 @@ class WorkflowRouter:
         Args:
             user_id: User identifier for logging and context
         """
-        self.user_id = user_id
-        self.logger = llmmllogger.logger
+        super().__init__("workflow_router", user_id=user_id)
+        
+    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
+        """Initialize WorkflowRouter with dependency injection."""
+        self.user_id = kwargs.get('user_id')
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

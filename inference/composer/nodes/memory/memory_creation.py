@@ -18,16 +18,16 @@ from models import (
     Message,
 )
 from composer.graph.state import WorkflowState
-from utils.logging import llmmllogger
 from composer.utils.conversion import langchain_message_to_message
 from utils.message import extract_message_text
+from composer.nodes.base_node import BaseNode
 
 
 if TYPE_CHECKING:
     from composer.agents.embedding_agent import EmbeddingAgent
 
 
-class MemoryCreationNode:
+class MemoryCreationNode(BaseNode):
     """
     Node for creating Memory objects from various sources.
 
@@ -43,10 +43,12 @@ class MemoryCreationNode:
 
         Args:
             embedding_agent: Required EmbeddingAgent instance
-            storage: Required Storage instance
         """
-        self.logger = llmmllogger.logger.bind(component="MemoryCreationNode")
-        self.embedding_agent = embedding_agent
+        super().__init__("memory_creation", embedding_agent=embedding_agent)
+        
+    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
+        """Initialize MemoryCreationNode with dependency injection."""
+        self.embedding_agent = kwargs.get('embedding_agent')
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """

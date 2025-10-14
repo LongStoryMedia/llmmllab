@@ -5,18 +5,18 @@ Encapsulates the consolidation capability for Level 2+ summarization,
 combining multiple summaries into higher-level abstractions.
 """
 
-from typing import List, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from models import SummaryType
-from utils.logging import llmmllogger
 from composer.graph.state import WorkflowState
 from composer.utils.conversion import convert_langchain_messages_to_messages
+from composer.nodes.base_node import BaseNode
 
 if TYPE_CHECKING:
     from composer.agents.summarization_agent import SummarizationAgent
 
 
-class ConsolidationNode:
+class ConsolidationNode(BaseNode):
     """
     Node for hierarchical summary consolidation.
 
@@ -25,8 +25,11 @@ class ConsolidationNode:
     """
 
     def __init__(self, summarization_agent: "SummarizationAgent"):
-        self.summarization_agent = summarization_agent
-        self.logger = llmmllogger.logger.bind(component="ConsolidationNode")
+        super().__init__("consolidation", summarization_agent=summarization_agent)
+        
+    def _initialize_node(self, pipeline_factory=None, **kwargs) -> None:
+        """Initialize ConsolidationNode with dependency injection."""
+        self.summarization_agent = kwargs.get('summarization_agent')
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
