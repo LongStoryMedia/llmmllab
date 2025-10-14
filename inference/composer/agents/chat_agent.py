@@ -25,7 +25,7 @@ from composer.utils.conversion import message_to_langchain_message
 from .base_agent import BaseAgent
 
 
-class ChatAgent(BaseAgent):
+class ChatAgent(BaseAgent[ChatResponse]):
     """
     Chat Agent for LLM chat model operations with streaming and tool support.
 

@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from db.userconfig_storage import UserConfigStorage
 
 
-class SummarizationAgent(BaseAgent):
+class SummarizationAgent(BaseAgent[str]):
     """
     Summarization Agent for content summarization with grammar-constrained output.
 

@@ -17,7 +17,7 @@ from models import (
     PipelinePriority,
     Message,
 )
-from composer.core.errors import IntentAnalysisError
+from composer.core.errors import IntentAnalysisError, NodeExecutionError
 from utils.message import extract_message_text
 from utils.grammar_generator import parse_structured_output
 from .base_agent import BaseAgent
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from runner import PipelineFactory
 
 
-class ClassifierAgent(BaseAgent):
+class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
     """
     Grammar-constrained LLM intent analysis agent for workflow routing and tool selection.
 
@@ -61,6 +61,32 @@ class ClassifierAgent(BaseAgent):
         self.profile = profile
         self.logger.info(
             "Intent classifier initialized with analysis model profile"
+        )
+
+    async def execute_pipeline(self, stream: bool = False, **kwargs) -> List[IntentAnalysis]:
+        """
+        Execute intent analysis pipeline with the provided parameters.
+        
+        This is the standard interface for pipeline execution required by BaseAgent.
+        
+        Args:
+            stream: Whether to stream the response (not applicable for classification)
+            **kwargs: Pipeline execution parameters, expected to include:
+                - current_user_message: Message object to analyze
+                - circuit_breaker: Optional CircuitBreakerConfig
+        
+        Returns:
+            List[IntentAnalysis]: The analysis results
+        """
+        current_user_message = kwargs.get('current_user_message')
+        circuit_breaker = kwargs.get('circuit_breaker')
+        
+        if not current_user_message:
+            raise NodeExecutionError("current_user_message is required for intent analysis")
+        
+        return await self.analyze(
+            current_user_message=current_user_message,
+            circuit_breaker=circuit_breaker
         )
 
     def determine_search_depth(self, intent_analysis: IntentAnalysis) -> str:

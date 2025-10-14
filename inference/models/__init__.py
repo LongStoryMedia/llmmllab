@@ -79,6 +79,7 @@ try:
     from . import research_task_status
     from . import resource_usage
     from . import response_format
+
     # from . import retrieved_document  # Module not found
     from . import routing_strategy
     from . import search_result
@@ -300,9 +301,7 @@ __all__ = [
     "ResearchTaskStatus",
     "ResourceUsage",
     "ResponseFormat",
-    "ChunkInfo",
     "Metadata",
-    "RetrievedDocument",
     "AlternativeStrategy",
     "Metadata",
     "RoutingStrategy",

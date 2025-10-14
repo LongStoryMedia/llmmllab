@@ -13,7 +13,7 @@ from composer.core.errors import NodeExecutionError
 from .base_agent import BaseAgent
 
 
-class EmbeddingAgent(BaseAgent):
+class EmbeddingAgent(BaseAgent[List[List[float]]]):
     """
     Embedding Agent for text-to-vector conversion with model profile integration.
 
@@ -36,6 +36,29 @@ class EmbeddingAgent(BaseAgent):
         super().__init__("EmbeddingAgent")
         self.pipeline_factory = pipeline_factory
         self.profile = profile
+
+    async def execute_pipeline(self, stream: bool = False, **kwargs) -> List[List[float]]:
+        """
+        Execute embedding generation pipeline with the provided parameters.
+        
+        This is the standard interface for pipeline execution required by BaseAgent.
+        
+        Args:
+            stream: Whether to stream the response (not applicable for embeddings)
+            **kwargs: Pipeline execution parameters, expected to include:
+                - texts: List of text strings to generate embeddings for
+                - user_id: User identifier
+        
+        Returns:
+            List[List[float]]: The generated embeddings
+        """
+        texts = kwargs.get('texts', [])
+        user_id = kwargs.get('user_id', '')
+        
+        if not texts:
+            raise NodeExecutionError("texts parameter is required for embedding generation")
+        
+        return await self.generate_embeddings(texts=texts, user_id=user_id)
 
     async def generate_embeddings(
         self,

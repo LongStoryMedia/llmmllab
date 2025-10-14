@@ -3,7 +3,7 @@ Base Agent class providing common functionality for all workflow agents.
 Provides node metadata injection, logging setup, and common error handling patterns.
 """
 
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, TypeVar, Generic
 from abc import ABC, abstractmethod
 
 from models import NodeMetadata, ModelProfile
@@ -11,8 +11,10 @@ from runner import PipelineFactory
 from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
 
+T = TypeVar('T')
 
-class BaseAgent(ABC):
+
+class BaseAgent(ABC, Generic[T]):
     """
     Base class for all workflow agents providing common functionality.
 
@@ -21,9 +23,32 @@ class BaseAgent(ABC):
     - Consistent logging setup with component binding
     - Common error handling patterns
     - Shared initialization patterns
+    - Generic typing for pipeline execution results
 
     All agent classes should inherit from this base class to ensure consistent
     behavior across the workflow system.
+
+    Generic Type Parameter:
+        T: The return type of the execute_pipeline method, specified by derived classes.
+           Examples:
+           - ChatAgent(BaseAgent[ChatResponse])
+           - ClassifierAgent(BaseAgent[List[IntentAnalysis]])
+           - EmbeddingAgent(BaseAgent[List[List[float]]])
+           - SummarizationAgent(BaseAgent[str])
+
+    Implementation Status:
+        ✅ ChatAgent: Fully updated with new constructor and execute_pipeline
+        ⚠️  ClassifierAgent: Generic typing added, execute_pipeline added, needs constructor update
+        ⚠️  EmbeddingAgent: Generic typing added, execute_pipeline added, needs constructor update  
+        ⚠️  SummarizationAgent: Generic typing added, needs execute_pipeline and constructor update
+        ❌ EngineeringAgent: Needs full update (generic typing, execute_pipeline, constructor)
+        ❌ MemoryAgent: Needs full update (generic typing, execute_pipeline, constructor)
+
+    Migration Required:
+        Agents using the old BaseAgent pattern need to:
+        1. Update constructor to call super().__init__(pipeline_factory, profile, node_metadata)
+        2. Add generic type parameter: BaseAgent[ReturnType]
+        3. Implement execute_pipeline(self, stream: bool = False, **kwargs) -> ReturnType
     """
 
     def __init__(
@@ -71,7 +96,7 @@ class BaseAgent(ABC):
         )
 
     @abstractmethod
-    async def execute_pipeline(self, stream: bool = False, **kwargs) -> Any:
+    async def execute_pipeline(self, stream: bool = False, **kwargs) -> T:
         """
         Execute the agent's pipeline with streaming option and custom parameters.
 
@@ -85,73 +110,11 @@ class BaseAgent(ABC):
                      pipeline requirements (e.g., messages, user_id, tools, etc.)
 
         Returns:
-            Pipeline execution result - type depends on the specific agent implementation
+            Pipeline execution result - type T is specified by the derived agent class
 
         Raises:
             NodeExecutionError: If pipeline execution fails
         """
-        pass
-
-    def inject_node_metadata(self, metadata: NodeMetadata) -> None:
-        """
-        Update node metadata for workflow execution tracking.
-
-        This method allows workflow nodes to update execution context and metadata
-        during agent execution for debugging, logging, and tracking purposes.
-        Since metadata is provided at initialization, this method updates the
-        existing metadata with new information.
-
-        Args:
-            metadata: NodeMetadata object containing updated execution context
-        """
-        self._node_metadata = metadata
-
-        # Update logger context with new node information
-        self.logger = self.logger.bind(
-            node_name=metadata.node_name,
-            node_id=metadata.node_id,
-            node_type=metadata.node_type,
-            user_id=metadata.user_id,
-            conversation_id=metadata.conversation_id,
-        )
-
-        self.logger.debug(
-            "Node metadata updated",
-            node_name=metadata.node_name,
-            node_type=metadata.node_type,
-            execution_time=metadata.execution_time.isoformat(),
-        )
-
-    def get_node_metadata(self) -> Optional[NodeMetadata]:
-        """
-        Get the currently injected node metadata.
-
-        Returns:
-            NodeMetadata object if metadata has been injected, None otherwise
-        """
-        return self._node_metadata
-
-    def update_execution_context(self, **context: Any) -> None:
-        """
-        Update execution context with additional metadata.
-
-        This method allows agents to add additional context information
-        that may be useful for debugging or tracking purposes.
-
-        Args:
-            **context: Key-value pairs to add to execution context
-        """
-        self._execution_context.update(context)
-        self.logger.debug("Execution context updated", **context)
-
-    def get_execution_context(self) -> Dict[str, Any]:
-        """
-        Get the current execution context.
-
-        Returns:
-            Dictionary containing execution context metadata
-        """
-        return self._execution_context.copy()
 
     def _log_operation_start(self, operation: str, **kwargs) -> None:
         """
@@ -240,18 +203,3 @@ class BaseAgent(ABC):
             error_msg = f"[{self._node_metadata.node_name}] {error_msg}"
 
         raise NodeExecutionError(error_msg) from error
-
-    def _get_user_context(self) -> Dict[str, Any]:
-        """
-        Get user context from node metadata.
-
-        Returns:
-            Dictionary containing user and conversation context
-        """
-        if not self._node_metadata:
-            return {}
-
-        return {
-            "user_id": self._node_metadata.user_id,
-            "conversation_id": self._node_metadata.conversation_id,
-        }
