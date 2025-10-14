@@ -17,7 +17,9 @@ from models import (
     ModelProfile,
     NodeMetadata,
     CircuitBreakerConfig,
+    PipelinePriority,
 )
+from runner import PipelineFactory
 from composer.core.errors import NodeExecutionError
 
 
@@ -67,17 +69,69 @@ def create_mock_chat_agent():
     return mock_agent
 
 
+def create_test_model_profile() -> ModelProfile:
+    """Create a test ModelProfile object."""
+    from models.model_parameters import ModelParameters
+    import uuid
+    
+    return ModelProfile(
+        id=str(uuid.uuid4()),
+        user_id="test-user",
+        name="Test Profile",
+        model_name="test-model",
+        parameters=ModelParameters(
+            temperature=0.7,
+            num_predict=1000,
+        ),
+        system_prompt="Test system prompt",
+        type=1,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+
+
+def create_test_chat_node(
+    pipeline_factory=None,
+    profile=None,
+    priority=PipelinePriority.MEDIUM,
+    stream=False,
+    node_name="ChatNode"
+) -> ChatNode:
+    """Create a test ChatNode with all required dependencies."""
+    if pipeline_factory is None:
+        pipeline_factory = Mock(spec=PipelineFactory)
+    if profile is None:
+        profile = create_test_model_profile()
+        
+    return ChatNode(
+        pipeline_factory=pipeline_factory,
+        profile=profile,
+        priority=priority,
+        stream=stream,
+        node_name=node_name,
+    )
+
+
 class TestChatNode:
     """Test suite for ChatNode class."""
 
     def test_chat_node_initialization(self):
         """Test ChatNode initialization."""
-        mock_agent = create_mock_chat_agent()
-        node = ChatNode(mock_agent, node_name="TestChatNode")
+        pipeline_factory = Mock(spec=PipelineFactory)
+        profile = create_test_model_profile()
+        node = create_test_chat_node(
+            pipeline_factory=pipeline_factory,
+            profile=profile,
+            node_name="TestChatNode"
+        )
         
         # Verify initialization
-        assert node.chat_agent == mock_agent
+        assert node.pipeline_factory == pipeline_factory
+        assert node.profile == profile
         assert node.node_name == "TestChatNode"
+        assert node.priority == PipelinePriority.MEDIUM
+        assert node.stream is False
+        assert node.chat_agent is None  # Created during execution
         
         # Verify BaseNode initialization
         assert hasattr(node, 'node_id')
@@ -85,8 +139,7 @@ class TestChatNode:
 
     def test_chat_node_initialization_default_name(self):
         """Test ChatNode initialization with default name."""
-        mock_agent = create_mock_chat_agent()
-        node = ChatNode(mock_agent)
+        node = create_test_chat_node()
         
         assert node.node_name == "ChatNode"
 
@@ -95,7 +148,7 @@ class TestChatNode:
         """Test successful chat node execution."""
         # Setup
         mock_agent = create_mock_chat_agent()
-        node = ChatNode(mock_agent)
+        node = create_test_chat_node()
         state = create_test_workflow_state()
         
         # Mock responses
@@ -136,7 +189,7 @@ class TestChatNode:
         """Test chat node execution with tools."""
         # Setup
         mock_agent = create_mock_chat_agent()
-        node = ChatNode(mock_agent)
+        node = create_test_chat_node()
         state = create_test_workflow_state()
         
         # Add tools to state
@@ -177,7 +230,7 @@ class TestChatNode:
         """Test node metadata injection during execution."""
         # Setup
         mock_agent = create_mock_chat_agent()
-        node = ChatNode(mock_agent)
+        node = create_test_chat_node()
         state = create_test_workflow_state()
         
         # Mock responses
@@ -212,7 +265,7 @@ class TestChatNode:
     async def test_execute_missing_user_id(self):
         """Test execution with missing user ID."""
         mock_agent = create_mock_chat_agent()
-        node = ChatNode(mock_agent)
+        node = create_test_chat_node()
         state = create_test_workflow_state()
         state.user_id = None
         
@@ -224,7 +277,7 @@ class TestChatNode:
     async def test_execute_missing_user_config(self):
         """Test execution with missing user config."""
         mock_agent = create_mock_chat_agent()
-        node = ChatNode(mock_agent)
+        node = create_test_chat_node()
         state = create_test_workflow_state()
         state.user_config = None
         
@@ -236,7 +289,7 @@ class TestChatNode:
     async def test_execute_no_context_messages(self):
         """Test execution with no context messages."""
         mock_agent = create_mock_chat_agent()
-        node = ChatNode(mock_agent)
+        node = create_test_chat_node()
         state = create_test_workflow_state()
         
         with patch('composer.nodes.agents.chat_node.assemble_context_messages') as mock_assemble:
@@ -250,7 +303,7 @@ class TestChatNode:
     async def test_execute_agent_error(self):
         """Test execution when agent raises error."""
         mock_agent = create_mock_chat_agent()
-        node = ChatNode(mock_agent)
+        node = create_test_chat_node()
         state = create_test_workflow_state()
         
         # Mock agent to raise exception
@@ -269,7 +322,7 @@ class TestChatNode:
     async def test_call_method_delegates_to_execute(self):
         """Test __call__ method delegates to execute."""
         mock_agent = create_mock_chat_agent()
-        node = ChatNode(mock_agent)
+        node = create_test_chat_node()
         state = create_test_workflow_state()
         
         # Mock responses
@@ -294,7 +347,7 @@ class TestChatNode:
     async def test_execute_logging(self):
         """Test logging during execution."""
         mock_agent = create_mock_chat_agent()
-        node = ChatNode(mock_agent)
+        node = create_test_chat_node()
         state = create_test_workflow_state()
         
         # Mock responses
@@ -325,7 +378,7 @@ class TestChatNode:
     async def test_execute_with_empty_tool_calls(self):
         """Test execution when agent returns empty tool calls."""
         mock_agent = create_mock_chat_agent()
-        node = ChatNode(mock_agent)
+        node = create_test_chat_node()
         state = create_test_workflow_state()
         
         # Mock responses
@@ -347,7 +400,7 @@ class TestChatNode:
     def test_integration_with_base_node(self):
         """Test integration with BaseNode functionality."""
         mock_agent = create_mock_chat_agent()
-        node = ChatNode(mock_agent, node_name="IntegrationTestNode")
+        node = create_test_chat_node(node_name="IntegrationTestNode")
         
         # Verify BaseNode methods are available
         assert hasattr(node, 'create_node_metadata')

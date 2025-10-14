@@ -257,7 +257,7 @@ class TestChatAgent:
         # Setup
         pipeline_factory = Mock()
         profile = create_test_model_profile()
-        agent = ChatAgent(pipeline_factory, profile)
+        agent = create_test_chat_agent(pipeline_factory, profile)
         
         # Mock pipeline context manager
         mock_pipeline = Mock()
@@ -292,7 +292,7 @@ class TestChatAgent:
         # Setup
         pipeline_factory = Mock()
         profile = create_test_model_profile()
-        agent = ChatAgent(pipeline_factory, profile)
+        agent = create_test_chat_agent(pipeline_factory, profile)
         
         circuit_breaker = CircuitBreakerConfig(
             failure_threshold=5,
@@ -326,7 +326,7 @@ class TestChatAgent:
         # Setup
         pipeline_factory = Mock()
         profile = create_test_model_profile()
-        agent = ChatAgent(pipeline_factory, profile)
+        agent = create_test_chat_agent(pipeline_factory, profile)
         
         # Mock conversion
         expected_message = LangChainMessage(type="ai", content="Test response")
@@ -349,7 +349,7 @@ class TestChatAgent:
         # Setup
         pipeline_factory = Mock()
         profile = create_test_model_profile()
-        agent = ChatAgent(pipeline_factory, profile)
+        agent = create_test_chat_agent(pipeline_factory, profile)
         
         # Test with None response
         result = agent.convert_to_langchain_message(None, "test-user")
@@ -366,7 +366,7 @@ class TestChatAgent:
         # Setup
         pipeline_factory = Mock()
         profile = create_test_model_profile()
-        agent = ChatAgent(pipeline_factory, profile)
+        agent = create_test_chat_agent(pipeline_factory, profile)
         
         # Mock pipeline context manager
         mock_pipeline = Mock()
@@ -394,7 +394,7 @@ class TestChatAgent:
         # Setup
         pipeline_factory = Mock()
         profile = create_test_model_profile()
-        agent = ChatAgent(pipeline_factory, profile)
+        agent = create_test_chat_agent(pipeline_factory, profile)
         
         # Test message with tool calls
         tool_calls = [{"id": "test", "type": "function", "function": {"name": "test"}}]
@@ -417,7 +417,7 @@ class TestChatAgent:
         # Setup
         pipeline_factory = Mock()
         profile = create_test_model_profile()
-        agent = ChatAgent(pipeline_factory, profile)
+        agent = create_test_chat_agent(pipeline_factory, profile)
         
         # Test message with tool calls
         tool_calls = [{"id": "test", "type": "function", "function": {"name": "test"}}]
@@ -439,7 +439,7 @@ class TestChatAgent:
         # Setup
         pipeline_factory = Mock()
         profile = create_test_model_profile()
-        agent = ChatAgent(pipeline_factory, profile)
+        agent = create_test_chat_agent(pipeline_factory, profile)
         
         # Mock pipeline to raise exception
         pipeline_factory.pipeline.side_effect = Exception("Pipeline error")
@@ -455,7 +455,8 @@ class TestChatAgent:
         # Setup
         pipeline_factory = Mock()
         profile = create_test_model_profile()
-        agent = ChatAgent(pipeline_factory, profile, stream=True)
+        node_metadata = create_test_node_metadata()
+        agent = ChatAgent(pipeline_factory, profile, node_metadata, stream=True)
         
         # Mock pipeline context manager
         mock_pipeline = Mock()
@@ -475,7 +476,7 @@ class TestChatAgent:
         """Test node metadata injection functionality."""
         pipeline_factory = Mock()
         profile = create_test_model_profile()
-        agent = ChatAgent(pipeline_factory, profile)
+        agent = create_test_chat_agent(pipeline_factory, profile)
         
         # Create test metadata
         metadata = NodeMetadata(
