@@ -12,14 +12,14 @@ from models import (
     TechnicalDomain,
     ResponseFormat,
 )
-from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
 from utils.message import extract_message_text
+from .base_agent import BaseAgent
 
 from runner import PipelineFactory
 
 
-class EngineeringAgent:
+class EngineeringAgent(BaseAgent):
     """
     Engineering Agent for generating technical responses with grammar-constrained output.
 
@@ -38,10 +38,10 @@ class EngineeringAgent:
 
         Args:
             pipeline_factory: Factory for creating engineering pipelines
-            user_config_storage: Injected UserConfigStorage service
+            profile: Model profile for engineering tasks
         """
+        super().__init__("EngineeringAgent")
         self.pipeline_factory = pipeline_factory
-        self.logger = llmmllogger.logger.bind(component="EngineeringAgent")
         self.profile = profile
 
     async def generate_technical_response(

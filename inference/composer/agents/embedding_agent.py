@@ -9,11 +9,11 @@ import numpy as np
 
 from runner import PipelineFactory
 from models import ModelProfile, PipelinePriority
-from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
+from .base_agent import BaseAgent
 
 
-class EmbeddingAgent:
+class EmbeddingAgent(BaseAgent):
     """
     Embedding Agent for text-to-vector conversion with model profile integration.
 
@@ -31,10 +31,10 @@ class EmbeddingAgent:
 
         Args:
             pipeline_factory: Factory for creating embedding pipelines
-            user_config_storage: Injected UserConfigStorage service
+            profile: Model profile for embedding generation
         """
+        super().__init__("EmbeddingAgent")
         self.pipeline_factory = pipeline_factory
-        self.logger = llmmllogger.logger.bind(component="EmbeddingAgent")
         self.profile = profile
 
     async def generate_embeddings(
@@ -53,8 +53,8 @@ class EmbeddingAgent:
             List of embedding vectors (one per input text)
         """
         try:
-            self.logger.info(
-                "Generating embeddings",
+            self._log_operation_start(
+                "embedding_generation",
                 user_id=user_id,
                 text_count=len(texts),
             )
@@ -79,8 +79,8 @@ class EmbeddingAgent:
             )
 
             if embeddings:
-                self.logger.info(
-                    "Successfully generated embeddings",
+                self._log_operation_success(
+                    "embedding_generation",
                     user_id=user_id,
                     embedding_count=len(embeddings),
                     embedding_dimensions=len(embeddings[0]) if embeddings else 0,
@@ -90,13 +90,12 @@ class EmbeddingAgent:
                 raise NodeExecutionError("No embeddings returned from pipeline")
 
         except Exception as e:
-            self.logger.error(
-                "Embedding generation failed",
+            self._handle_node_error(
+                "embedding_generation", 
+                e, 
                 user_id=user_id,
-                error=str(e),
-                text_count=len(texts),
+                text_count=len(texts)
             )
-            raise NodeExecutionError(f"Embedding generation failed: {e}") from e
 
     async def generate_single_embedding(self, text: str, user_id: str) -> List[float]:
         """

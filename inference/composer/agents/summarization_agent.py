@@ -19,10 +19,10 @@ from models import (
     UserConfig,
 )
 from runner import PipelineFactory, run_pipeline
-from utils.logging import llmmllogger
 from composer.core.errors import NodeExecutionError
 from utils.model_profile import get_model_profile_for_task
 from utils.message import extract_message_text
+from .base_agent import BaseAgent
 
 if TYPE_CHECKING:
     from db.summary_storage import SummaryStorage
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from db.userconfig_storage import UserConfigStorage
 
 
-class SummarizationAgent:
+class SummarizationAgent(BaseAgent):
     """
     Summarization Agent for content summarization with grammar-constrained output.
 
@@ -52,13 +52,13 @@ class SummarizationAgent:
             pipeline_factory: Factory for creating summarization pipelines
             summary_storage: Injected summary storage service
             search_storage: Injected search storage service
-            user_config_storage: Injected user config storage service
+            user_config: User configuration object
         """
+        super().__init__("SummarizationAgent")
         self.pipeline_factory = pipeline_factory
         self.summary_storage = summary_storage
         self.search_storage = search_storage
         self.user_config = user_config
-        self.logger = llmmllogger.logger.bind(component="SummarizationAgent")
 
     async def summarize_text(
         self,
@@ -254,9 +254,9 @@ class SummarizationAgent:
                 created_at=datetime.datetime.now(datetime.timezone.utc),
             )
             # Extract structured elements
-            id = await summary_svc.create_summary(summ)
-            assert id is not None
-            summ.id = id
+            summary_id = await summary_svc.create_summary(summ)
+            assert summary_id is not None
+            summ.id = summary_id
 
             self.logger.info(
                 "Conversation summarized successfully",

@@ -16,18 +16,17 @@ from models import (
     ModelProfile,
     PipelinePriority,
     Message,
-    MessageRole,
 )
-from utils.logging import llmmllogger
 from composer.core.errors import IntentAnalysisError
 from utils.message import extract_message_text
 from utils.grammar_generator import parse_structured_output
+from .base_agent import BaseAgent
 
 if TYPE_CHECKING:
     from runner import PipelineFactory
 
 
-class ClassifierAgent:
+class ClassifierAgent(BaseAgent):
     """
     Grammar-constrained LLM intent analysis agent for workflow routing and tool selection.
 
@@ -57,9 +56,10 @@ class ClassifierAgent:
         Initialize the intent classification agent.
 
         """
+        super().__init__("ClassifierAgent")
         self.pipeline_factory = pipeline_factory
         self.profile = profile
-        llmmllogger.logger.info(
+        self.logger.info(
             "Intent classifier initialized with analysis model profile"
         )
 
@@ -135,7 +135,7 @@ class ClassifierAgent:
                 return intent_analyses
 
         except Exception as e:
-            llmmllogger.log_error(e, {"context": "intent_analysis"})
+            self.logger.error("Intent analysis failed", error=str(e), context="intent_analysis")
             raise IntentAnalysisError(f"Intent analysis failed: {e}") from e
 
     async def _llm_analyze_intent(
@@ -214,9 +214,10 @@ If multiple intents are needed, include additional objects in the intents array.
             if repaired and repaired != txt:
                 try:
                     intents = parse_structured_output(repaired, _Intnts)
-                    llmmllogger.logger.info(
+                    self.logger.info(
                         "Intent JSON repaired successfully",
-                        extra={"original_len": len(txt), "repaired_len": len(repaired)},
+                        original_len=len(txt), 
+                        repaired_len=len(repaired)
                     )
                     return intents.intents
                 except Exception as e2:  # still failing
@@ -369,19 +370,17 @@ Title:"""
                 if not title:
                     title = "New Conversation"
 
-                llmmllogger.logger.info(
+                self.logger.info(
                     "Title generated successfully",
-                    extra={
-                        "title": title,
-                        "word_count": len(title.split()),
-                        "message_count": len(messages),
-                    },
+                    title=title,
+                    word_count=len(title.split()),
+                    message_count=len(messages),
                 )
 
                 return title
 
         except Exception as e:
-            llmmllogger.log_error(e, {"context": "title_generation"})
+            self.logger.error("Title generation failed", error=str(e), context="title_generation")
             # Provide fallback title instead of raising error
             return "Conversation"
 
