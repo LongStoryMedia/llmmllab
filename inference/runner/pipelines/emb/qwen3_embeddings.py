@@ -14,7 +14,7 @@ from runner.pipelines.emb.qwen3emb import Qwen3EmbeddingPipe
 class Qwen3Embeddings(Embeddings):
     """
     LangChain Embeddings implementation wrapping Qwen3EmbeddingPipe.
-    
+
     This wrapper provides the standard LangChain Embeddings interface
     while using the existing Qwen3EmbeddingPipe implementation.
     """
@@ -27,11 +27,13 @@ class Qwen3Embeddings(Embeddings):
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """Embed search docs."""
         import asyncio
+
         return asyncio.run(self.aembed_documents(texts))
 
     def embed_query(self, text: str) -> List[float]:
         """Embed query text."""
         import asyncio
+
         # For single text, return the first (and only) embedding
         embeddings = asyncio.run(self.aembed_documents([text]))
         return embeddings[0] if embeddings else [0.0] * 1024
@@ -41,11 +43,11 @@ class Qwen3Embeddings(Embeddings):
         # Convert texts to Messages for the pipeline
         messages = []
         from models import Message, MessageRole, MessageContent, MessageContentType
-        
+
         for text in texts:
             message = Message(
                 role=MessageRole.USER,
-                content=[MessageContent(type=MessageContentType.TEXT, text=text)]
+                content=[MessageContent(type=MessageContentType.TEXT, text=text)],
             )
             messages.append(message)
 
@@ -60,6 +62,7 @@ class Qwen3Embeddings(Embeddings):
     def embed_messages(self, messages: List[Message]) -> List[List[float]]:
         """Embed messages using the pipeline interface."""
         import asyncio
+
         return asyncio.run(self.aembed_messages(messages))
 
     async def aembed_messages(self, messages: List[Message]) -> List[List[float]]:

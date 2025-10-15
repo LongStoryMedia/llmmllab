@@ -15,7 +15,7 @@ from utils.message import extract_message_text
 class NomicEmbeddings(Embeddings):
     """
     LangChain Embeddings implementation wrapping NomicEmbedTextPipe.
-    
+
     This wrapper provides the standard LangChain Embeddings interface
     while using the existing NomicEmbedTextPipe implementation.
     """
@@ -28,11 +28,13 @@ class NomicEmbeddings(Embeddings):
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """Embed search docs."""
         import asyncio
+
         return asyncio.run(self.aembed_documents(texts))
 
     def embed_query(self, text: str) -> List[float]:
         """Embed query text."""
         import asyncio
+
         return asyncio.run(self.aembed_query(text))
 
     async def aembed_documents(self, texts: List[str]) -> List[List[float]]:
@@ -46,6 +48,7 @@ class NomicEmbeddings(Embeddings):
     def embed_messages(self, messages: List[Message]) -> List[List[float]]:
         """Embed messages using the pipeline interface."""
         import asyncio
+
         return asyncio.run(self.aembed_messages(messages))
 
     async def aembed_messages(self, messages: List[Message]) -> List[List[float]]:
