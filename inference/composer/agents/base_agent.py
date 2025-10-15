@@ -259,31 +259,30 @@ class BaseAgent(ABC, Generic[T]):
                 chat_model = chat_model_factory.create_chat_model(
                     pipeline_config.model, self.profile, circuit_breaker
                 )
-                
+
                 if not chat_model:
-                    raise NodeExecutionError(f"Failed to create chat model for {pipeline_config.model.name}")
+                    raise NodeExecutionError(
+                        f"Failed to create chat model for {pipeline_config.model.name}"
+                    )
 
                 # Create LangChain agent using create_agent()
-                system_prompt = getattr(self.profile, 'system_prompt', None)
+                system_prompt = getattr(self.profile, "system_prompt", None)
                 agent = create_agent(
-                    model=chat_model,
-                    tools=tools or [],
-                    system_prompt=system_prompt
+                    model=chat_model, tools=tools or [], system_prompt=system_prompt
                 )
-                
+
                 # Convert messages to LangChain format
                 normalized_messages = convert_messages_to_langchain(
                     normalize_message_input(messages)
                 )
-                
+
                 # Stream agent execution
                 chunk_count = 0
                 async for chunk in agent.astream(
-                    {"messages": normalized_messages},
-                    stream_mode="messages"
+                    {"messages": normalized_messages}, stream_mode="messages"
                 ):
                     # Convert agent chunk to ChatResponse
-                    if hasattr(chunk, 'content') and chunk.content:
+                    if hasattr(chunk, "content") and chunk.content:
                         chat_chunk = create_streaming_chunk(
                             text=str(chunk.content),
                             role=MessageRole.ASSISTANT,
@@ -364,28 +363,30 @@ class BaseAgent(ABC, Generic[T]):
                 chat_model = chat_model_factory.create_chat_model(
                     pipeline_config.model, self.profile, circuit_breaker
                 )
-                
+
                 if not chat_model:
-                    raise NodeExecutionError(f"Failed to create chat model for {pipeline_config.model.name}")
+                    raise NodeExecutionError(
+                        f"Failed to create chat model for {pipeline_config.model.name}"
+                    )
 
                 # Create LangChain agent using create_agent()
-                system_prompt = getattr(self.profile, 'system_prompt', None)
+                system_prompt = getattr(self.profile, "system_prompt", None)
                 agent = create_agent(
-                    model=chat_model,
-                    tools=tools or [],
-                    system_prompt=system_prompt
+                    model=chat_model, tools=tools or [], system_prompt=system_prompt
                 )
-                
+
                 # Execute agent
-                result = await agent.ainvoke(
-                    {"messages": normalized_messages}
-                )
-                
+                result = await agent.ainvoke({"messages": normalized_messages})
+
                 # Convert agent result to ChatResponse
                 if "messages" in result and result["messages"]:
                     last_message = result["messages"][-1]
                     response = ChatResponse(
-                        text=str(last_message.content) if hasattr(last_message, 'content') else "",
+                        text=(
+                            str(last_message.content)
+                            if hasattr(last_message, "content")
+                            else ""
+                        ),
                         role=MessageRole.ASSISTANT,
                         done=True,
                     )
@@ -441,45 +442,49 @@ class BaseAgent(ABC, Generic[T]):
 
             # Get the model configuration from pipeline factory
             with self.pipeline_factory.pipeline(
-                self.profile, ChatResponse, priority, circuit_breaker
+                self.profile,
+                ChatResponse,
+                priority,
             ) as pipeline_config:
                 # Get Embeddings model from embedding model factory
                 embedding_model = embedding_model_factory.create_embedding_model(
-                    pipeline_config.model, self.profile, circuit_breaker
+                    pipeline_config.model, self.profile
                 )
-                
+
                 if not embedding_model:
-                    raise NodeExecutionError(f"Failed to create embedding model for {pipeline_config.model.name}")
+                    raise NodeExecutionError(
+                        f"Failed to create embedding model for {pipeline_config.model.name}"
+                    )
 
                 # Convert messages to text list
                 normalized_messages = normalize_message_input(messages)
                 text_list = []
-                
+
                 for message in normalized_messages:
-                    if hasattr(message, 'content'):
+                    if hasattr(message, "content"):
                         if isinstance(message.content, list):
                             # Handle multi-content messages
                             for content in message.content:
-                                if hasattr(content, 'text') and content.text:
+                                if hasattr(content, "text") and content.text:
                                     text_list.append(content.text)
                         else:
                             text_list.append(str(message.content))
                     elif isinstance(message, str):
                         text_list.append(message)
-                
+
                 if not text_list:
                     return []
-                
+
                 # Generate embeddings
                 embeddings = await embedding_model.aembed_documents(text_list)
-                
+
                 self._log_operation_success(
                     "embedding_factory_run",
                     user_id=user_id,
                     embedding_count=len(embeddings),
                     node_name=self._node_metadata.node_name,
                 )
-                
+
                 return embeddings
 
         except Exception as e:
@@ -491,143 +496,3 @@ class BaseAgent(ABC, Generic[T]):
             )
             # Return empty embeddings on error
             return []
-
-
-#     async def run_generic_pipeline_with_metadata(
-#         self,
-#         pipeline_executor: Callable[..., Awaitable[Any]],
-#         operation_name: str,
-#         **kwargs,
-#     ) -> Any:
-#         """
-#         Run any pipeline execution function with metadata tracking and logging.
-
-#         This method provides a consistent interface for agents that don't return ChatResponse
-#         but still want the benefits of metadata tracking, logging, and error handling.
-
-#         Args:
-#             pipeline_executor: Async function that executes the pipeline
-#             operation_name: Name of the operation for logging
-#             **kwargs: Arguments to pass to the pipeline executor
-
-#         Returns:
-#             The result from pipeline_executor, potentially wrapped with metadata
-#         """
-#         try:
-#             self._log_operation_start(
-#                 operation_name,
-#                 node_name=self._node_metadata.node_name,
-#                 node_type=self._node_metadata.node_type,
-#                 **kwargs,
-#             )
-
-#             # Execute the pipeline
-#             result = await pipeline_executor(**kwargs)
-
-#             self._log_operation_success(
-#                 operation_name,
-#                 node_name=self._node_metadata.node_name,
-#                 has_result=bool(result),
-#             )
-
-#             return result
-
-#         except Exception as e:
-#             self._handle_node_error(operation_name, e, **kwargs)
-#             raise
-
-#     def run_pipeline_with_context_manager(
-#         self,
-#         return_type: type,
-#         priority: PipelinePriority = PipelinePriority.MEDIUM,
-#         circuit_breaker: Optional[Any] = None,
-#     ):
-#         """
-#         Get a pipeline context manager with consistent metadata tracking.
-
-#         This provides the same context manager pattern used by agents but with
-#         enhanced logging that includes node metadata.
-
-#         Args:
-#             return_type: Expected return type for the pipeline
-#             priority: Pipeline execution priority
-#             circuit_breaker: Optional circuit breaker configuration
-
-#         Returns:
-#             Pipeline context manager with enhanced logging
-#         """
-#         return PipelineContextWithMetadata(
-#             self.pipeline_factory,
-#             self.profile,
-#             return_type,
-#             priority,
-#             circuit_breaker,
-#             self._node_metadata,
-#             self.logger,
-#         )
-
-
-# class PipelineContextWithMetadata:
-#     """
-#     Context manager wrapper that adds metadata tracking to pipeline operations.
-
-#     This provides the same interface as the regular pipeline factory context manager
-#     but adds enhanced logging with node metadata.
-#     """
-
-#     def __init__(
-#         self,
-#         pipeline_factory: PipelineFactory,
-#         profile: ModelProfile,
-#         return_type: type,
-#         priority: PipelinePriority,
-#         circuit_breaker: Optional[Any],
-#         node_metadata: NodeMetadata,
-#         logger: Any,
-#     ):
-#         self.pipeline_factory = pipeline_factory
-#         self.profile = profile
-#         self.return_type = return_type
-#         self.priority = priority
-#         self.circuit_breaker = circuit_breaker
-#         self.node_metadata = node_metadata
-#         self.logger = logger
-#         self._pipeline_context = None
-
-#     def __enter__(self):
-#         """Enter the context manager."""
-#         self.logger.info(
-#             "Starting pipeline context",
-#             node_name=self.node_metadata.node_name,
-#             node_type=self.node_metadata.node_type,
-#             return_type=self.return_type.__name__ if self.return_type else "unknown",
-#             priority=(
-#                 self.priority.value
-#                 if hasattr(self.priority, "value")
-#                 else str(self.priority)
-#             ),
-#         )
-
-#         self._pipeline_context = self.pipeline_factory.pipeline(
-#             self.profile, self.return_type, self.priority, self.circuit_breaker
-#         )
-#         return self._pipeline_context.__enter__()
-
-#     def __exit__(self, exc_type, exc_val, exc_tb):
-#         """Exit the context manager."""
-#         if exc_type:
-#             self.logger.error(
-#                 "Pipeline context failed",
-#                 node_name=self.node_metadata.node_name,
-#                 error=str(exc_val),
-#                 error_type=exc_type.__name__,
-#             )
-#         else:
-#             self.logger.info(
-#                 "Pipeline context completed",
-#                 node_name=self.node_metadata.node_name,
-#                 node_type=self.node_metadata.node_type,
-#             )
-
-#         if self._pipeline_context:
-#             return self._pipeline_context.__exit__(exc_type, exc_val, exc_tb)

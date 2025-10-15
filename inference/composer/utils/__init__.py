@@ -7,8 +7,7 @@ from .conversion import (
     langchain_message_to_message,
     convert_messages_to_langchain,
     convert_langchain_messages_to_messages,
-    normalize_message_list,
-    convert_message_batch,
+    normalize_message_input,
 )
 
 from .extraction import (
@@ -38,8 +37,7 @@ __all__ = [
     "langchain_message_to_message",
     "convert_messages_to_langchain",
     "convert_langchain_messages_to_messages",
-    "normalize_message_list",
-    "convert_message_batch",
+    "normalize_message_input",
     # State building
     "build_langgraph_state",
     "assemble_context_messages",

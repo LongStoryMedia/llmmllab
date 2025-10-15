@@ -27,6 +27,10 @@ from .pipeline_cache import LocalPipelineCacheManager
 from .pipelines.llamacpp.base_llamacpp import BaseLlamaCppPipeline
 from .utils.hardware_manager import hardware_manager
 
+# Import new factories
+from .chat_model_factory import chat_model_factory
+from .embedding_model_factory import embedding_model_factory
+
 T = TypeVar("T", bound=PipeReturn)
 
 
@@ -759,10 +763,6 @@ class PipelineFactory:
 
     # (Removed duplicate legacy cleanup method; single alias earlier in file)
 
-
-# Import new factories
-from .chat_model_factory import chat_model_factory
-from .embedding_model_factory import embedding_model_factory
 
 # Create global factory instance
 pipeline_factory = PipelineFactory({})
