@@ -21,7 +21,7 @@ from langchain_core.messages import (
 )
 from langchain_core.messages.ai import UsageMetadata
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
-from pydantic import Field
+from pydantic import Field, PrivateAttr
 
 from models import Model, ModelProfile
 from runner.pipelines.base import GrammarInput
@@ -46,9 +46,11 @@ class BaseLlamaCppPipeline(BaseChatModel):
     - Tool calling support through prompt formatting
     - Streaming and non-streaming chat completion
     """
-
-    model_config: Model = Field(description="Model configuration")
-    profile_config: ModelProfile = Field(description="Model profile configuration")
+    
+    class Config:
+        """Pydantic configuration."""
+        arbitrary_types_allowed = True
+        extra = "allow"
     
     def __init__(self, model: Model, profile: ModelProfile, **kwargs):
         super().__init__(**kwargs)
