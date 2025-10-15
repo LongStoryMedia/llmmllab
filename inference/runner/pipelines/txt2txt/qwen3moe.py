@@ -39,16 +39,18 @@ class Qwen3Moe(BaseLlamaCppPipeline):
     def _identifying_params(self) -> Dict[str, Any]:
         """Return a dictionary of identifying parameters."""
         base_params = super()._identifying_params
-        base_params.update({
-            "model_type": "qwen3-moe",
-            "chat_format": "chatml",
-        })
+        base_params.update(
+            {
+                "model_type": "qwen3-moe",
+                "chat_format": "chatml",
+            }
+        )
         return base_params
 
     def _get_llama_instance(
-        self, 
+        self,
         tools: Optional[List[BaseTool]] = None,
-        grammar: Optional[GrammarInput] = None
+        grammar: Optional[GrammarInput] = None,
     ) -> Any:
         """Get or create Llama instance with Qwen-specific optimizations."""
         if self.llama_instance is None:
@@ -56,7 +58,7 @@ class Qwen3Moe(BaseLlamaCppPipeline):
             self.llama_instance = self._initialize_llama_with_qwen_optimizations(
                 gguf_path, tools, grammar
             )
-                
+
         return self.llama_instance
 
     def _initialize_llama_with_qwen_optimizations(
@@ -67,17 +69,21 @@ class Qwen3Moe(BaseLlamaCppPipeline):
     ) -> Any:
         """Initialize Llama with Qwen-specific optimizations."""
         from llama_cpp import Llama
-        
+
         if Llama is None:
             raise ImportError("llama-cpp-python is required but not installed")
 
         # Get base parameters
-        requested_ctx = self.profile_config.parameters.num_ctx or 32768  # Qwen supports larger contexts
-        requested_batch = self.profile_config.parameters.batch_size or 1024  # Larger batch for MoE
-        
+        requested_ctx = (
+            self.profile_config.parameters.num_ctx or 32768
+        )  # Qwen supports larger contexts
+        requested_batch = (
+            self.profile_config.parameters.batch_size or 1024
+        )  # Larger batch for MoE
+
         # Qwen MoE-specific optimizations
         model_size_category = self._get_model_size_category()
-        
+
         # For MoE models, be more aggressive with GPU layers
         explicit_gpu_layers = None
         if (
@@ -115,12 +121,12 @@ class Qwen3Moe(BaseLlamaCppPipeline):
             }
 
             llama_instance = Llama(**llama_params)
-            
+
             self._logger.info(
                 f"Initialized Qwen3 MoE model: ctx={requested_ctx}, batch={requested_batch}, "
                 f"gpu_layers={explicit_gpu_layers}, chat_format=chatml"
             )
-            
+
             return llama_instance
 
         except Exception as e:
@@ -139,11 +145,13 @@ class Qwen3Moe(BaseLlamaCppPipeline):
 
         return cleaned or raw_response  # Fallback to original if nothing left
 
-    def _format_messages_for_llama(self, messages: List[BaseMessage]) -> List[Dict[str, str]]:
+    def _format_messages_for_llama(
+        self, messages: List[BaseMessage]
+    ) -> List[Dict[str, str]]:
         """Override message formatting for Qwen-specific chat format."""
         # Use base implementation but ensure proper ChatML format
         llama_messages = super()._format_messages_for_llama(messages)
-        
+
         # Qwen models work best with ChatML format, which is handled by the base class
         # but we could add Qwen-specific message processing here if needed
         return llama_messages

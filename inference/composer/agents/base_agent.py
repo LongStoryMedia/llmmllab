@@ -20,7 +20,7 @@ from abc import ABC, abstractmethod
 from langchain_core.tools import BaseTool
 from langchain_core.prompts import ChatPromptTemplate
 
-from langchain.agents import create_react_agent, AgentExecutor
+from langchain.agents import create_agent, AgentExecutor
 from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables.config import RunnableConfig
 

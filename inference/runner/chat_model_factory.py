@@ -14,7 +14,7 @@ from models.default_configs import DEFAULT_CIRCUIT_BREAKER_CONFIG
 class ChatModelFactory:
     """
     Factory for creating BaseChatModel implementations.
-    
+
     This factory returns BaseChatModel instances that can be used directly
     with LangChain's create_agent() and other agent construction utilities.
     """
@@ -31,7 +31,9 @@ class ChatModelFactory:
     ) -> Optional[BaseChatModel]:
         """Create a BaseChatModel implementation for the given model."""
         try:
-            self.logger.info(f"Creating chat model for {model.name} (task: {model.task})")
+            self.logger.info(
+                f"Creating chat model for {model.name} (task: {model.task})"
+            )
 
             # Only handle text-to-text tasks for chat models
             if not model.task.endswith("TextToText"):
@@ -67,7 +69,7 @@ class ChatModelFactory:
         self.logger.info(
             f"Creating text chat model for model: {model.name}, pipeline: {model.pipeline}"
         )
-        
+
         if model.pipeline == "Qwen3Pipe":
             self.logger.info("Creating Qwen chat model")
             from .pipelines.txt2txt.qwen3moe import Qwen3Moe
@@ -82,17 +84,43 @@ class ChatModelFactory:
 
         elif model.pipeline == "LlamaChatSummPipe":
             self.logger.info("Creating Llama Chat Summary model")
-            # TODO: Convert LlamaChatSummPipe to proper BaseChatModel
-            self.logger.warning("LlamaChatSummPipe needs conversion to BaseChatModel interface")
-            return None
+            from .pipelines.txt2txt.llamachatsum import LlamaChatSummPipe
+            
+            try:
+                chat_model = LlamaChatSummPipe(model, profile)
+                self.logger.info("Successfully created LlamaChatSummPipe")
+                return chat_model
+            except Exception as e:
+                self.logger.error(f"LlamaChatSummPipe creation failed: {e}")
+                raise
 
         elif model.pipeline == "OpenAiGptOssPipe":
             self.logger.info("Creating OpenAI GPT OSS model")
-            # TODO: Convert OpenAIGptOssPipeline to proper BaseChatModel
-            self.logger.warning("OpenAIGptOssPipeline needs conversion to BaseChatModel interface")
-            return None
-        
-        self.logger.warning(f"No chat model implementation for pipeline: {model.pipeline}")
+            from .pipelines.txt2txt.openai_gpt_oss import OpenAIGptOssPipeline
+            
+            try:
+                chat_model = OpenAIGptOssPipeline(model, profile)
+                self.logger.info("Successfully created OpenAIGptOssPipeline")
+                return chat_model
+            except Exception as e:
+                self.logger.error(f"OpenAIGptOssPipeline creation failed: {e}")
+                raise
+
+        elif model.pipeline == "Qwen25VLGGUFPipeline":
+            self.logger.info("Creating Qwen25VL model")
+            from .pipelines.imgtxt2txt.qwen25_vl import Qwen25VLPipeline
+            
+            try:
+                chat_model = Qwen25VLPipeline(model, profile)
+                self.logger.info("Successfully created Qwen25VLPipeline")
+                return chat_model
+            except Exception as e:
+                self.logger.error(f"Qwen25VLPipeline creation failed: {e}")
+                raise
+
+        self.logger.warning(
+            f"No chat model implementation for pipeline: {model.pipeline}"
+        )
         return None
 
 

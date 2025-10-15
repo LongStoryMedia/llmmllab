@@ -6,10 +6,10 @@ Replaced 641 lines of complex LangGraph orchestration with direct LLM calls.
 import os
 import logging
 import asyncio
-from typing import List, Optional, AsyncIterator
+from typing import List, Optional, AsyncIterator, Dict, Any
 
 from langchain_community.chat_models.llamacpp import ChatLlamaCpp
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, BaseMessage
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
 from langchain_core.callbacks import CallbackManager
@@ -40,9 +40,24 @@ class LlamaChatSummPipe(BaseLlamaCppPipeline):
     - Hardware optimization for Llama 3.2 3B models
     """
 
-    def __init__(self, model: Model, profile: ModelProfile):
-        super().__init__(model, profile)
+    def __init__(self, model: Model, profile: ModelProfile, **kwargs):
+        super().__init__(model, profile, **kwargs)
         self._logger = logging.getLogger(self.__class__.__name__)
+
+    @property
+    def _llm_type(self) -> str:
+        """Get the type of language model used by this chat model."""
+        return "llama-chat-summary-llamacpp"
+
+    @property
+    def _identifying_params(self) -> Dict[str, Any]:
+        """Return a dictionary of identifying parameters."""
+        base_params = super()._identifying_params
+        base_params.update({
+            "model_type": "llama-chat-summary",
+            "task": "summarization",
+        })
+        return base_params
 
     def _preprocess_text(self, text: str) -> str:
         """Preprocess text for better summarization."""
@@ -136,99 +151,20 @@ Guidelines:
         # Create summary prompt
         return self._create_summary_prompt(combined_text)
 
-    async def invoke(
-        self,
-        messages: List[Message],
-        tools: Optional[List[BaseTool]] = None,
-        grammar: Optional[GrammarInput] = None,
-        **kwargs,
-    ) -> ChatResponse:
-        """Invoke the Llama Chat Summary LLM directly."""
-        _ = grammar, kwargs  # Suppress unused warnings
-
-        # Initialize LLM if needed
-        if self.llm is None:
-            self.llm = self._initialize_llm()
-
-        try:
-            # Format conversation
-            formatted_prompt = self._format_messages(messages, tools)
-
-            # Invoke LLM directly
-            if self.llm is None:
-                raise RuntimeError("LLM not initialized")
-            response = await self.llm.ainvoke([HumanMessage(content=formatted_prompt)])
-
-            # Extract content
-            content = str(response.content) if response.content else ""
-
-            # Create response message
-            result_message = Message(
-                role=MessageRole.ASSISTANT,
-                content=[MessageContent(type=MessageContentType.TEXT, text=content)],
-            )
-
-            return ChatResponse(done=True, message=result_message)
-
-        except Exception as e:
-            self._logger.error(f"Llama Chat Summary invocation failed: {e}")
-            error_msg = f"Summarization error: {str(e)}"
-            error_message = Message(
-                role=MessageRole.ASSISTANT,
-                content=[MessageContent(type=MessageContentType.TEXT, text=error_msg)],
-            )
-            return ChatResponse(done=True, message=error_message)
-
-    async def stream(
-        self,
-        messages: List[Message],
-        tools: Optional[List[BaseTool]] = None,
-        grammar: Optional[GrammarInput] = None,
-        **kwargs,
-    ) -> AsyncIterator[ChatResponse]:
-        """Stream responses from Llama Chat Summary LLM."""
-        _ = grammar, kwargs  # Suppress unused warnings
-
-        # Initialize LLM if needed
-        if self.llm is None:
-            self.llm = self._initialize_llm()
-
-        try:
-            # Format conversation
-            formatted_prompt = self._format_messages(messages, tools)
-
-            # Stream from LLM
-            if self.llm is None:
-                raise RuntimeError("LLM not initialized")
-
-            async for chunk in self.llm.astream(
-                [HumanMessage(content=formatted_prompt)]
-            ):
-                if hasattr(chunk, "content") and chunk.content:
-                    chunk_text = str(chunk.content)
-
-                    chunk_message = Message(
-                        role=MessageRole.ASSISTANT,
-                        content=[
-                            MessageContent(
-                                type=MessageContentType.TEXT, text=chunk_text
-                            )
-                        ],
-                    )
-                    yield ChatResponse(done=False, message=chunk_message)
-
-            # Final chunk to indicate completion
-            final_message = Message(
-                role=MessageRole.ASSISTANT,
-                content=[MessageContent(type=MessageContentType.TEXT, text="")],
-            )
-            yield ChatResponse(done=True, message=final_message)
-
-        except Exception as e:
-            self._logger.error(f"Llama Chat Summary streaming failed: {e}")
-            error_msg = f"Summarization error: {str(e)}"
-            error_message = Message(
-                role=MessageRole.ASSISTANT,
-                content=[MessageContent(type=MessageContentType.TEXT, text=error_msg)],
-            )
-            yield ChatResponse(done=True, message=error_message)
+    def _format_messages_for_llama(self, messages: List[BaseMessage]) -> List[Dict[str, str]]:
+        """Override message formatting for Llama Chat Summary with summary-specific prompts."""
+        from langchain_core.messages import HumanMessage
+        
+        # Extract text content from messages for summarization
+        texts_to_summarize = []
+        
+        for msg in messages:
+            if hasattr(msg, 'content') and msg.content:
+                texts_to_summarize.append(str(msg.content))
+        
+        # Combine all texts and create summary prompt
+        combined_text = "\n\n".join(texts_to_summarize)
+        summary_prompt = self._create_summary_prompt(combined_text)
+        
+        # Return formatted for llama-cpp-python
+        return [{"role": "user", "content": summary_prompt}]

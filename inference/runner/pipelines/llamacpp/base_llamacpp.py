@@ -27,6 +27,8 @@ from models import Model, ModelProfile
 from runner.pipelines.base import GrammarInput
 from .utils import calculate_optimal_gpu_layers
 
+import llama_cpp
+
 # Import llama-cpp-python directly
 try:
     from llama_cpp import Llama, LlamaGrammar
@@ -38,7 +40,7 @@ except ImportError:
 class BaseLlamaCppPipeline(BaseChatModel):
     """
     Custom BaseChatModel implementation using llama-cpp-python directly.
-    
+
     Features:
     - Direct Llama class instantiation from llama-cpp-python
     - Hardware optimization with GPU layers and context fallback
@@ -46,12 +48,13 @@ class BaseLlamaCppPipeline(BaseChatModel):
     - Tool calling support through prompt formatting
     - Streaming and non-streaming chat completion
     """
-    
+
     class Config:
         """Pydantic configuration."""
+
         arbitrary_types_allowed = True
         extra = "allow"
-    
+
     def __init__(self, model: Model, profile: ModelProfile, **kwargs):
         super().__init__(**kwargs)
         self.model_config = model
@@ -79,7 +82,8 @@ class BaseLlamaCppPipeline(BaseChatModel):
         """Get the GGUF file path from model definition."""
         return (
             self.model_config.details.gguf_file
-            if hasattr(self.model_config.details, "gguf_file") and self.model_config.details.gguf_file
+            if hasattr(self.model_config.details, "gguf_file")
+            and self.model_config.details.gguf_file
             else self.model_config.model
         )
 
@@ -116,7 +120,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
     def _build_context_candidates(self, requested_ctx: int) -> List[int]:
         """Build context size candidates for fallback."""
         candidates = [requested_ctx]
-        
+
         fallbacks = [32768, 16384, 8192, 4096, 2048]
         for fallback in fallbacks:
             if fallback < requested_ctx and fallback not in candidates:
@@ -128,7 +132,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
         """Process grammar input and return GBNF string if possible."""
         if grammar is None:
             return None
-        
+
         try:
             from utils.grammar_generator import (
                 get_grammar_for_model,
@@ -146,7 +150,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 return get_grammar_for_model(grammar)
         except Exception as e:
             self._logger.warning(f"Grammar processing failed: {e}")
-        
+
         return None
 
     def _initialize_llama_with_fallback(
@@ -162,11 +166,15 @@ class BaseLlamaCppPipeline(BaseChatModel):
         # Get base parameters
         requested_ctx = self.profile_config.parameters.num_ctx or 4096
         requested_batch = self.profile_config.parameters.batch_size or 512
-        
+
         # Model size and GPU layer candidates
         model_size_category = self._get_model_size_category()
         context_candidates = self._build_context_candidates(requested_ctx)
-        
+        # Perplexity / logits guard (mirrors advanced base logic simplified)
+        perplexity_enabled = bool(
+            getattr(self.profile.parameters, "enable_perplexity_guard", False)
+        )
+
         # GPU layers strategy
         explicit_gpu_layers = None
         if (
@@ -181,7 +189,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
         # Try different configurations
         for n_ctx in context_candidates:
             n_batch = min(requested_batch, max(256, n_ctx // 64))
-            
+
             # GPU layer candidates
             if explicit_gpu_layers is not None:
                 gpu_candidates = [explicit_gpu_layers]
@@ -192,35 +200,75 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
             for n_gpu_layers in gpu_candidates:
                 try:
-                    # Initialize Llama directly
-                    llama_params = {
-                        "model_path": gguf_path,
-                        "n_gpu_layers": n_gpu_layers,
-                        "n_ctx": n_ctx,
-                        "n_batch": n_batch,
-                        "n_threads": self._get_optimal_threads(),
-                        "seed": self.profile_config.parameters.seed or -1,
-                        "temperature": self.profile_config.parameters.temperature or 0.7,
-                        "top_p": self.profile_config.parameters.top_p or 0.8,
-                        "top_k": self.profile_config.parameters.top_k or 20,
-                        "repeat_penalty": self.profile_config.parameters.repeat_penalty or 1.05,
-                        "use_mmap": True,
-                        "use_mlock": False,
-                        "f16_kv": True,
-                        "verbose": os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
-                        "flash_attn": getattr(self.profile_config.parameters, "flash_attention", True),
-                        "logits_all": False,  # Only enable if needed for specific features
-                        "embedding": False,   # This is for chat, not embeddings
-                        "chat_format": "chatml",  # Default chat format, can be overridden
-                    }
-
-                    llama_instance = Llama(**llama_params)
-                    
-                    self._logger.info(
-                        f"Initialized Llama model: ctx={n_ctx}, batch={n_batch}, "
-                        f"gpu_layers={n_gpu_layers}, threads={llama_params['n_threads']}"
+                    llama_instance = Llama(
+                        model_path=gguf_path,
+                        n_gpu_layers=n_gpu_layers,
+                        split_mode=llama_cpp.LLAMA_SPLIT_MODE_LAYER,
+                        # main_gpu=0,
+                        tensor_split=None,
+                        vocab_only=False,
+                        use_mmap=True,
+                        use_mlock=False,
+                        kv_overrides=None,
+                        # Context Params
+                        seed=self.profile_config.parameters.seed
+                        or llama_cpp.LLAMA_DEFAULT_SEED,
+                        n_ctx=n_ctx,
+                        n_batch=n_batch,
+                        n_ubatch=512,
+                        n_threads=self._get_optimal_threads(),
+                        temperature=self.profile_config.parameters.temperature or 0.7,
+                        top_p=self.profile_config.parameters.top_p or 0.8,
+                        top_k=self.profile_config.parameters.top_k or 20,
+                        repeat_penalty=self.profile_config.parameters.repeat_penalty
+                        or 1.05,
+                        f16_kv=True,
+                        verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
+                        flash_attn=getattr(
+                            self.profile_config.parameters, "flash_attention", True
+                        ),
+                        logits_all=perplexity_enabled,  # Only enable if needed for specific features
+                        logprobs=1 if perplexity_enabled else 0,
+                        embedding=False,  # This is for chat, not embeddings
+                        chat_format=None,  # Default chat format, can be overridden
+                        n_threads_batch=None,
+                        rope_scaling_type=None,
+                        pooling_type=llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
+                        rope_freq_base=0.0,
+                        rope_freq_scale=0.0,
+                        yarn_ext_factor=-1.0,
+                        yarn_attn_factor=1.0,
+                        yarn_beta_fast=32.0,
+                        yarn_beta_slow=1.0,
+                        yarn_orig_ctx=0,
+                        offload_kqv=False,  # Disable offload for better performance unless needed
+                        op_offload=None,
+                        swa_full=None,
+                        # Sampling Params
+                        no_perf=False,
+                        last_n_tokens_size=64,
+                        # LoRA Params
+                        lora_base=None,
+                        lora_scale=1.0,
+                        lora_path=None,
+                        # Backend Params
+                        numa=False,
+                        chat_handler=None,
+                        # Speculative Decoding
+                        draft_model=None,
+                        # Tokenizer Override
+                        tokenizer=None,
+                        # KV cache quantization
+                        type_k=None,
+                        type_v=None,
+                        # Misc
+                        spm_infill=False,
                     )
-                    
+
+                    self._logger.info(
+                        f"Initialized Llama model: ctx={n_ctx}, batch={n_batch}, gpu_layers={n_gpu_layers}"
+                    )
+
                     return llama_instance
 
                 except Exception as e:
@@ -230,23 +278,29 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     )
                     continue
 
-        raise RuntimeError(f"Failed to initialize {self.model_config.name} with any configuration")
+        raise RuntimeError(
+            f"Failed to initialize {self.model_config.name} with any configuration"
+        )
 
     def _get_llama_instance(
-        self, 
+        self,
         tools: Optional[List[BaseTool]] = None,
-        grammar: Optional[GrammarInput] = None
+        grammar: Optional[GrammarInput] = None,
     ) -> Any:
         """Get or create Llama instance."""
         if self.llama_instance is None:
             gguf_path = self._get_gguf_path()
-            self.llama_instance = self._initialize_llama_with_fallback(gguf_path, tools, grammar)
+            self.llama_instance = self._initialize_llama_with_fallback(
+                gguf_path, tools, grammar
+            )
         return self.llama_instance
 
-    def _format_messages_for_llama(self, messages: List[BaseMessage]) -> List[Dict[str, str]]:
+    def _format_messages_for_llama(
+        self, messages: List[BaseMessage]
+    ) -> List[Dict[str, str]]:
         """Convert LangChain messages to llama-cpp-python chat format."""
         llama_messages = []
-        
+
         for message in messages:
             if isinstance(message, SystemMessage):
                 llama_messages.append({"role": "system", "content": message.content})
@@ -256,20 +310,17 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 llama_messages.append({"role": "assistant", "content": message.content})
             elif isinstance(message, ToolMessage):
                 # Format tool results as user messages for now
-                llama_messages.append({
-                    "role": "user", 
-                    "content": f"Tool result: {message.content}"
-                })
+                llama_messages.append(
+                    {"role": "user", "content": f"Tool result: {message.content}"}
+                )
             else:
                 # Fallback: treat as user message
                 llama_messages.append({"role": "user", "content": str(message.content)})
-        
+
         return llama_messages
 
     def _calculate_usage_metadata(
-        self, 
-        prompt_tokens: int, 
-        completion_tokens: int
+        self, prompt_tokens: int, completion_tokens: int
     ) -> UsageMetadata:
         """Calculate usage metadata for the response."""
         return UsageMetadata(
@@ -287,13 +338,12 @@ class BaseLlamaCppPipeline(BaseChatModel):
     ) -> ChatResult:
         """Generate a chat response from messages."""
         llama = self._get_llama_instance(
-            tools=kwargs.get("tools"),
-            grammar=kwargs.get("grammar")
+            tools=kwargs.get("tools"), grammar=kwargs.get("grammar")
         )
-        
+
         # Format messages for llama-cpp-python
         llama_messages = self._format_messages_for_llama(messages)
-        
+
         # Prepare generation parameters
         generation_params = {
             "messages": llama_messages,
@@ -309,17 +359,17 @@ class BaseLlamaCppPipeline(BaseChatModel):
         try:
             # Generate response using llama-cpp-python
             response = llama.create_chat_completion(**generation_params)
-            
+
             # Extract content and usage
             content = response["choices"][0]["message"]["content"]
             usage = response.get("usage", {})
-            
+
             # Create usage metadata
             usage_metadata = self._calculate_usage_metadata(
                 prompt_tokens=usage.get("prompt_tokens", 0),
-                completion_tokens=usage.get("completion_tokens", 0)
+                completion_tokens=usage.get("completion_tokens", 0),
             )
-            
+
             # Create AI message
             message = AIMessage(
                 content=content,
@@ -327,9 +377,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 response_metadata={
                     "model_name": self.model_config.name,
                     "finish_reason": response["choices"][0].get("finish_reason"),
-                }
+                },
             )
-            
+
             generation = ChatGeneration(message=message)
             return ChatResult(generations=[generation])
 
@@ -346,13 +396,12 @@ class BaseLlamaCppPipeline(BaseChatModel):
     ) -> Iterator[ChatGenerationChunk]:
         """Stream chat response chunks."""
         llama = self._get_llama_instance(
-            tools=kwargs.get("tools"),
-            grammar=kwargs.get("grammar")
+            tools=kwargs.get("tools"), grammar=kwargs.get("grammar")
         )
-        
+
         # Format messages for llama-cpp-python
         llama_messages = self._format_messages_for_llama(messages)
-        
+
         # Prepare streaming parameters
         generation_params = {
             "messages": llama_messages,
@@ -368,37 +417,41 @@ class BaseLlamaCppPipeline(BaseChatModel):
         try:
             # Stream response using llama-cpp-python
             stream = llama.create_chat_completion(**generation_params)
-            
+
             for chunk in stream:
                 delta = chunk["choices"][0]["delta"]
                 content = delta.get("content", "")
                 finish_reason = chunk["choices"][0].get("finish_reason")
-                
+
                 # Create usage metadata if available
                 usage_metadata = None
                 if "usage" in chunk:
                     usage = chunk["usage"]
                     usage_metadata = self._calculate_usage_metadata(
                         prompt_tokens=usage.get("prompt_tokens", 0),
-                        completion_tokens=usage.get("completion_tokens", 0)
+                        completion_tokens=usage.get("completion_tokens", 0),
                     )
-                
+
                 # Create chunk message
                 chunk_message = AIMessageChunk(
                     content=content,
                     usage_metadata=usage_metadata,
-                    response_metadata={
-                        "model_name": self.model_config.name,
-                        "finish_reason": finish_reason,
-                    } if finish_reason else {}
+                    response_metadata=(
+                        {
+                            "model_name": self.model_config.name,
+                            "finish_reason": finish_reason,
+                        }
+                        if finish_reason
+                        else {}
+                    ),
                 )
-                
+
                 # Create and yield generation chunk
                 generation_chunk = ChatGenerationChunk(message=chunk_message)
-                
+
                 if run_manager:
                     run_manager.on_llm_new_token(content, chunk=generation_chunk)
-                
+
                 yield generation_chunk
 
         except Exception as e:
@@ -411,9 +464,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
         # For now, return a new instance that remembers the tools
         # Tools will be used in prompt formatting
         new_instance = self.__class__(
-            model=self.model_config,
-            profile=self.profile_config,
-            **kwargs
+            model=self.model_config, profile=self.profile_config, **kwargs
         )
         new_instance.llama_instance = self.llama_instance
         new_instance._bound_tools = tools

@@ -31,24 +31,39 @@ from composer.utils.langchain_compat import (
     coerce_to_lc_message,
 )
 from models.lang_chain_message import LangChainMessage
-from ..base import SimpleChatPipeline
+from ..llamacpp import BaseLlamaCppPipeline
 
 ReturnType = Union[str, ChatResponse]
 
 
-class Qwen25VLPipeline(SimpleChatPipeline):
+class Qwen25VLPipeline(BaseLlamaCppPipeline):
     """Qwen 2.5 VL pipeline with LangGraph support."""
 
     def __init__(
         self,
         model: Model,
         profile: ModelProfile,
-        expected_return_type: Optional[type] = None,
+        **kwargs,
     ):
         """Initialize a Qwen25VLPipeline instance."""
-        super().__init__(model, profile, expected_return_type)
+        super().__init__(model, profile, **kwargs)
         self._logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self._logger.info("Qwen25VLPipeline initialized")
+
+    @property
+    def _llm_type(self) -> str:
+        """Get the type of language model used by this chat model."""
+        return "qwen25-vl-llamacpp"
+
+    @property
+    def _identifying_params(self) -> Dict[str, Any]:
+        """Return a dictionary of identifying parameters."""
+        base_params = super()._identifying_params
+        base_params.update({
+            "model_type": "qwen25-vl",
+            "vision_capable": True,
+        })
+        return base_params
 
     def _get_gguf_path(self) -> str:
         """Get the GGUF file path for the model."""

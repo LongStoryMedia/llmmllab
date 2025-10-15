@@ -6,10 +6,10 @@ Just calls LLM directly with messages, configuration, and hardware management.
 import os
 import logging
 import asyncio
-from typing import List, Optional, AsyncIterator
+from typing import List, Optional, AsyncIterator, Dict, Any, ClassVar
 
 from langchain_core.tools import BaseTool
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, BaseMessage
 from langchain_core.language_models import BaseChatModel
 
 try:
@@ -41,16 +41,32 @@ class OpenAIGptOssPipeline(BaseLlamaCppPipeline):
     """
 
     # Override to allow ChatResponse return type
-    allowed_return_types = (ChatResponse,)
-    default_return_type = ChatResponse
+    allowed_return_types: ClassVar = (ChatResponse,)
+    default_return_type: ClassVar = ChatResponse
 
     def __init__(
         self,
         model: Model,
         profile: ModelProfile,
+        **kwargs,
     ):
-        super().__init__(model, profile)
+        super().__init__(model, profile, **kwargs)
         self._logger = logging.getLogger(self.__class__.__name__)
+
+    @property
+    def _llm_type(self) -> str:
+        """Get the type of language model used by this chat model."""
+        return "openai-gpt-oss-llamacpp"
+
+    @property
+    def _identifying_params(self) -> Dict[str, Any]:
+        """Return a dictionary of identifying parameters."""
+        base_params = super()._identifying_params
+        base_params.update({
+            "model_type": "openai-gpt-oss",
+            "chat_format": "openai-gpt",
+        })
+        return base_params
 
     async def _create_system_prompt(
         self, tools: Optional[List[BaseTool]] = None
@@ -101,114 +117,25 @@ class OpenAIGptOssPipeline(BaseLlamaCppPipeline):
 
         return "\n".join(formatted_parts)
 
-    async def invoke(
-        self,
-        messages: List[Message],
-        tools: Optional[List[BaseTool]] = None,
-        grammar: Optional[GrammarInput] = None,
-        **kwargs,
-    ) -> ChatResponse:
-        """
-            tools: Available tools (descriptions added to prompt)
-            grammar: Grammar constraints (applied to LLM)
-
-        Returns:
-            ChatResponse: Response from LLM
-        """
-        _ = grammar, kwargs  # Suppress unused warnings
-        # Initialize LLM if needed
-        if self.llm is None:
-            self.llm = self._initialize_llm(tools)
-
-        try:
-            # Format conversation
-            formatted_prompt = self._format_messages(messages, tools)
-
-            # Invoke LLM directly
-            if self.llm is None:
-                raise RuntimeError("LLM not initialized")
-            response = await self.llm.ainvoke([HumanMessage(content=formatted_prompt)])
-
-            # Extract content
-            content = (
-                response.content if hasattr(response, "content") else str(response)
-            )
-
-            # Create response message
-            result_message = Message(
-                role=MessageRole.ASSISTANT,
-                content=[
-                    MessageContent(type=MessageContentType.TEXT, text=str(content))
-                ],
-            )
-
-            return ChatResponse(done=True, message=result_message)
-
-        except Exception as e:
-            self._logger.error(f"LLM invocation failed: {e}")
-            error_msg = f"Error: {str(e)}"
-            error_message = Message(
-                role=MessageRole.ASSISTANT,
-                content=[MessageContent(type=MessageContentType.TEXT, text=error_msg)],
-            )
-            return ChatResponse(done=True, message=error_message)
-
-    async def stream(
-        self,
-        messages: List[Message],
-        tools: Optional[List[BaseTool]] = None,
-        grammar: Optional[GrammarInput] = None,
-        **kwargs,
-    ) -> AsyncIterator[ChatResponse]:
-        """
-        Stream responses from the LLM.
-
-        Args:
-            messages: Conversation history
-            tools: Available tools (descriptions added to prompt)
-            grammar: Grammar constraints (applied to LLM)
-
-        Yields:
-            ChatResponse: Streaming chunks from LLM
-        """
-        _ = grammar, kwargs  # Suppress unused warnings
-        # Initialize LLM if needed
-        if self.llm is None:
-            self.llm = self._initialize_llm(tools)
-
-        try:
-            # Format conversation
-            formatted_prompt = self._format_messages(messages, tools)
-
-            # Stream from LLM
-            if self.llm is None:
-                raise RuntimeError("LLM not initialized")
-            async for chunk in self.llm.astream(
-                [HumanMessage(content=formatted_prompt)]
-            ):
-                if hasattr(chunk, "content") and chunk.content:
-                    chunk_message = Message(
-                        role=MessageRole.ASSISTANT,
-                        content=[
-                            MessageContent(
-                                type=MessageContentType.TEXT, text=str(chunk.content)
-                            )
-                        ],
-                    )
-                    yield ChatResponse(done=False, message=chunk_message)
-
-            # Final chunk to indicate completion
-            final_message = Message(
-                role=MessageRole.ASSISTANT,
-                content=[MessageContent(type=MessageContentType.TEXT, text="")],
-            )
-            yield ChatResponse(done=True, message=final_message)
-
-        except Exception as e:
-            self._logger.error(f"LLM streaming failed: {e}")
-            error_msg = f"Error: {str(e)}"
-            error_message = Message(
-                role=MessageRole.ASSISTANT,
-                content=[MessageContent(type=MessageContentType.TEXT, text=error_msg)],
-            )
-            yield ChatResponse(done=True, message=error_message)
+    def _format_messages_for_llama(self, messages: List[BaseMessage]) -> List[Dict[str, str]]:
+        """Override message formatting for OpenAI GPT OSS format."""
+        from langchain_core.messages import BaseMessage
+        
+        formatted_messages = []
+        
+        # Add system message if we have tools or system prompt
+        system_prompt = self.profile_config.system_prompt or "You are a helpful AI assistant."
+        formatted_messages.append({"role": "system", "content": system_prompt})
+        
+        # Add conversation messages
+        for msg in messages:
+            if hasattr(msg, 'content') and msg.content:
+                content = str(msg.content)
+                
+                if hasattr(msg, 'type'):
+                    if msg.type == "human":
+                        formatted_messages.append({"role": "user", "content": content})
+                    elif msg.type == "ai":
+                        formatted_messages.append({"role": "assistant", "content": content})
+                
+        return formatted_messages
