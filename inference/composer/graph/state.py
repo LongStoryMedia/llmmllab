@@ -46,6 +46,10 @@ class WorkflowState(BaseModel):
         default_factory=list, description="Key messages or information to remember"
     )
 
+    title: Annotated[Optional[str], lambda x, y: y if y is not None else x] = Field(
+        default=None, description="Title for the conversation or workflow"
+    )
+
     # Conversation history and final outputs - essential for context and token streaming
     messages: Annotated[
         List[LangChainMessage], lambda x, y: y if y is not None else x

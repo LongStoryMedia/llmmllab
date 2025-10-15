@@ -7,13 +7,11 @@ for assembling context messages from WorkflowState following the context
 extension architecture patterns.
 """
 
-import asyncio
 from typing import Any, Dict, Iterable, List, Optional
 
 
 from models import (
     Message,
-    UserConfig,
     MessageRole,
     MessageContent,
     MessageContentType,
@@ -21,9 +19,7 @@ from models import (
 )
 from composer.graph.state import WorkflowState
 from .conversion import (
-    convert_messages_to_langchain,
     convert_langchain_messages_to_messages,
-    message_to_langchain_message,
 )
 from .langchain_compat import _coerce_to_langchain_message_dict
 
@@ -158,7 +154,7 @@ def assemble_context_messages(state: WorkflowState) -> List[Message]:
     Returns:
         List of Message objects assembled in context extension priority order
     """
-    assembled_messages = []
+    assembled_messages: List[Message] = []
     assert state.messages
     assert state.conversation_id
 
@@ -186,4 +182,4 @@ def assemble_context_messages(state: WorkflowState) -> List[Message]:
             ]
         )
 
-    return reversed(assembled_messages)
+    return list(reversed(assembled_messages))

@@ -72,9 +72,7 @@ class EmbeddingGeneratorNode:
             )
 
             # Generate embeddings using the agent
-            embeddings = await self.agent.generate_embeddings(
-                texts=texts, user_id=user_id
-            )
+            embeddings = await self.agent.generate_embeddings(texts=texts)
 
             self.logger.info(
                 "Successfully generated embeddings",

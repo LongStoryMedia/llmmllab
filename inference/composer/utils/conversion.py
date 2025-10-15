@@ -16,7 +16,7 @@ from .extraction import (
     _text_to_message_content_list,
 )
 
-MessageInput = Union[str, Message, List[Union[str, Message]]]
+MessageInput = Union[str, Message, List[Union[str, Message]], List[str], List[Message]]
 
 
 def message_to_langchain_message(msg: Message) -> LangChainMessage:

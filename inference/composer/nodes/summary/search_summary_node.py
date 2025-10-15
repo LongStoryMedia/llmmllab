@@ -13,7 +13,7 @@ from utils.logging import llmmllogger
 
 
 if TYPE_CHECKING:
-    from composer.agents.summarization_agent import SummarizationAgent
+    from composer.agents.primary_summary_agent import PrimarySummaryAgent
 
 
 class SearchSummaryNode:
@@ -24,8 +24,8 @@ class SearchSummaryNode:
     key point extraction, and source attribution.
     """
 
-    def __init__(self, summarization_agent: "SummarizationAgent"):
-        self.agent = summarization_agent
+    def __init__(self, primary_summary_agent: "PrimarySummaryAgent"):
+        self.agent = primary_summary_agent
         self.logger = llmmllogger.logger.bind(component="SearchSummaryNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:

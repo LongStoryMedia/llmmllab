@@ -12,13 +12,18 @@ import time
 import weakref
 from typing import Any, Callable, Dict, List, Optional, Type, cast
 
+from langchain_core.language_models import BaseChatModel
+from langchain_core.embeddings import Embeddings
+
 from models import Model, ModelProfile, ModelProvider, PipelinePriority
 from .utils.hardware_manager import hardware_manager
-from .pipelines.base import BasePipelineCore, PipeReturn
 
 
 class _PipelineCacheEntry:
-    def __init__(self, pipeline: BasePipelineCore, priority: PipelinePriority):
+
+    def __init__(
+        self, pipeline: BaseChatModel | Embeddings, priority: PipelinePriority
+    ):
         self._ref = weakref.ref(pipeline)
         self.priority = priority
         self.creation_time = time.time()
@@ -26,7 +31,7 @@ class _PipelineCacheEntry:
         self.access_count = 1
 
     @property
-    def pipeline(self) -> Optional[BasePipelineCore]:
+    def pipeline(self) -> Optional[BaseChatModel | Embeddings]:
         return self._ref()
 
     def is_alive(self) -> bool:
@@ -70,13 +75,12 @@ class LocalPipelineCacheManager:
         self,
         model: Model,
         profile: ModelProfile,
-        expected_type: Optional[Type[PipeReturn]],
         priority: PipelinePriority,
         create_fn: Callable[
-            [Model, ModelProfile, Optional[Type[PipeReturn]]],
-            Optional[BasePipelineCore],
+            [Model, ModelProfile],
+            Optional[BaseChatModel | Embeddings],
         ],
-    ) -> BasePipelineCore:
+    ) -> BaseChatModel | Embeddings:
         model_id = model.id or model.model
         with self._lock:
             entry = self._cache.get(model_id)
@@ -94,7 +98,7 @@ class LocalPipelineCacheManager:
                 f"Insufficient memory for local model {model.name}: need {required/1e9:.2f}GB"
             )
 
-        pipeline = create_fn(model, profile, expected_type)
+        pipeline = create_fn(model, profile)
         if not pipeline:
             raise RuntimeError(f"Failed to create pipeline for {model.name}")
 
@@ -102,7 +106,7 @@ class LocalPipelineCacheManager:
             self._cache[model_id] = _PipelineCacheEntry(pipeline, priority)
 
         hardware_manager.update_all_memory_stats()
-        return cast(BasePipelineCore, pipeline)
+        return pipeline
 
     def clear_cache(self, model_id: Optional[str] = None) -> None:
         with self._lock:
@@ -281,7 +285,7 @@ class LocalPipelineCacheManager:
             except Exception:
                 pass
 
-    def _cleanup_pipeline(self, pipeline: BasePipelineCore) -> None:
+    def _cleanup_pipeline(self, pipeline: BaseChatModel | Embeddings) -> None:
         try:
             cleanup_fn = getattr(pipeline, "cleanup", None)
             if callable(cleanup_fn):

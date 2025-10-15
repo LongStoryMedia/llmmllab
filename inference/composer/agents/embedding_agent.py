@@ -3,13 +3,12 @@ Embedding Agent for generating semantic embeddings from text input.
 Provides core business logic for embedding generation and vector operations.
 """
 
-from typing import List, cast
+from typing import List
 
 import numpy as np
 
 from runner import PipelineFactory
 from models import ModelProfile, PipelinePriority, NodeMetadata
-from composer.core.errors import NodeExecutionError
 from .base_agent import BaseAgent
 
 
@@ -40,7 +39,6 @@ class EmbeddingAgent(BaseAgent[List[List[float]]]):
     async def generate_embeddings(
         self,
         texts: List[str],
-        user_id: str,
     ) -> List[List[float]]:
         """
         Generate embeddings for input texts using configured embedding model.
@@ -55,12 +53,10 @@ class EmbeddingAgent(BaseAgent[List[List[float]]]):
 
         return await self.embed(
             messages=texts,
-            user_id=user_id,
-            circuit_breaker=self.profile.circuit_breaker,
             priority=PipelinePriority.NORMAL,
         )
 
-    async def generate_single_embedding(self, text: str, user_id: str) -> List[float]:
+    async def generate_single_embedding(self, text: str) -> List[float]:
         """
         Generate embedding for single text input.
 
@@ -71,7 +67,7 @@ class EmbeddingAgent(BaseAgent[List[List[float]]]):
         Returns:
             Single embedding vector
         """
-        embeddings = await self.generate_embeddings([text], user_id)
+        embeddings = await self.generate_embeddings([text])
         return embeddings[0] if embeddings else []
 
     async def compute_similarity(

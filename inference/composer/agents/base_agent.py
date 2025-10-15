@@ -11,39 +11,47 @@ from typing import (
     Generic,
     AsyncIterator,
     List,
-    cast,
-    Callable,
-    Awaitable,
 )
-from abc import ABC, abstractmethod
-
-from langchain_core.tools import BaseTool
-from langchain_core.prompts import ChatPromptTemplate
-
+from abc import ABC
+from pydantic import BaseModel
+from langchain.agents.structured_output import ProviderStrategy
 from langchain.agents import create_agent
-from langchain_core.language_models import BaseChatModel
-from langchain_core.runnables.config import RunnableConfig
+from langchain_core.tools import BaseTool
 
 from models import (
     MessageRole,
     NodeMetadata,
     ModelProfile,
     ChatResponse,
-    LangChainMessage,
     PipelinePriority,
+    Message,
 )
-from runner import PipelineFactory, GrammarInput, MessageInput
-from runner.chat_model_factory import chat_model_factory
-from runner.embedding_model_factory import embedding_model_factory
+from runner import PipelineFactory
 from utils.logging import llmmllogger
 from utils.response import create_streaming_chunk, create_error_response
+from utils.message import extract_message_text
 from composer.core.errors import NodeExecutionError
 from composer.utils.conversion import (
     normalize_message_input,
     convert_messages_to_langchain,
+    MessageInput,
 )
 
+
 T = TypeVar("T")
+
+
+def get_message_count(messages: MessageInput) -> int:
+    """Helper function to safely get message count from MessageInput."""
+    if isinstance(messages, str):
+        return 1
+    elif isinstance(messages, Message):
+        return 1
+    elif isinstance(messages, list):
+        return len(messages)
+    else:
+        # Fallback for unknown types
+        return 1
 
 
 class BaseAgent(ABC, Generic[T]):
@@ -213,11 +221,10 @@ class BaseAgent(ABC, Generic[T]):
     async def stream(
         self,
         messages: MessageInput,
-        user_id: str,
         tools: Optional[List[BaseTool]] = None,
         circuit_breaker: Optional[Any] = None,
         priority: PipelinePriority = PipelinePriority.MEDIUM,
-        grammar: Optional[GrammarInput] = None,
+        grammar: Optional[type[BaseModel]] = None,
     ) -> AsyncIterator[ChatResponse]:
         """
         Stream agent execution with node metadata injection.
@@ -238,8 +245,7 @@ class BaseAgent(ABC, Generic[T]):
         try:
             self._log_operation_start(
                 "create_agent_stream",
-                user_id=user_id,
-                message_count=len(messages),
+                message_count=get_message_count(messages),
                 has_tools=bool(tools),
                 node_name=self._node_metadata.node_name,
                 node_type=self._node_metadata.node_type,
@@ -253,40 +259,45 @@ class BaseAgent(ABC, Generic[T]):
 
             # Get the model configuration from pipeline factory
             with self.pipeline_factory.pipeline(
-                self.profile, ChatResponse, priority, circuit_breaker
-            ) as pipeline_config:
-                # Get BaseChatModel from chat model factory
-                chat_model = chat_model_factory.create_chat_model(
-                    pipeline_config.model, self.profile, circuit_breaker
-                )
-
+                self.profile, priority
+            ) as chat_model:
                 if not chat_model:
-                    raise NodeExecutionError(
-                        f"Failed to create chat model for {pipeline_config.model.name}"
-                    )
+                    raise NodeExecutionError("Failed to create chat model")
+
+                msgs = normalize_message_input(messages)
+                convo = []
 
                 # Create LangChain agent using create_agent()
-                system_prompt = getattr(self.profile, "system_prompt", None)
+                system_prompt = getattr(self.profile, "system_prompt", "") or ""
+                for msg in msgs:
+                    if msg.role == MessageRole.SYSTEM:
+                        system_prompt += f"\n\n{extract_message_text(msg)}"
+                    else:
+                        convo.append(msg)
+
                 agent = create_agent(
-                    model=chat_model, tools=tools or [], system_prompt=system_prompt
+                    model=chat_model,
+                    tools=tools or [],
+                    system_prompt=system_prompt,
+                    response_format=ProviderStrategy(grammar) if grammar else None,
+                    name=self._node_metadata.node_name,
                 )
 
                 # Convert messages to LangChain format
-                normalized_messages = convert_messages_to_langchain(
-                    normalize_message_input(messages)
-                )
+                normalized_messages = convert_messages_to_langchain(convo)
 
                 # Stream agent execution
                 chunk_count = 0
                 async for chunk in agent.astream(
-                    {"messages": normalized_messages}, stream_mode="messages"
+                    {"messages": normalized_messages},
+                    stream_mode="messages",
                 ):
                     # Convert agent chunk to ChatResponse
                     if hasattr(chunk, "content") and chunk.content:
                         chat_chunk = create_streaming_chunk(
-                            text=str(chunk.content),
-                            role=MessageRole.ASSISTANT,
+                            str(chunk.content),
                             done=False,
+                            role=MessageRole.ASSISTANT,
                         )
                         chat_chunk.channels = self._node_metadata.model_dump()
                         chunk_count += 1
@@ -301,7 +312,6 @@ class BaseAgent(ABC, Generic[T]):
 
                 self._log_operation_success(
                     "create_agent_stream",
-                    user_id=user_id,
                     chunk_count=chunk_count,
                     node_name=self._node_metadata.node_name,
                 )
@@ -312,18 +322,16 @@ class BaseAgent(ABC, Generic[T]):
             self._handle_node_error(
                 "create_agent_stream",
                 e,
-                user_id=user_id,
-                message_count=len(messages),
+                message_count=get_message_count(messages),
             )
 
     async def run(
         self,
         messages: MessageInput,
-        user_id: str,
         tools: Optional[List[BaseTool]] = None,
         circuit_breaker: Optional[Any] = None,
         priority: PipelinePriority = PipelinePriority.MEDIUM,
-        grammar: Optional[GrammarInput] = None,
+        grammar: Optional[type[BaseModel]] = None,
     ) -> ChatResponse:
         """
         Run agent execution with node metadata injection.
@@ -348,8 +356,7 @@ class BaseAgent(ABC, Generic[T]):
         try:
             self._log_operation_start(
                 "create_agent_run",
-                user_id=user_id,
-                message_count=len(messages),
+                message_count=get_message_count(messages),
                 has_tools=bool(tools),
                 node_name=self._node_metadata.node_name,
                 node_type=self._node_metadata.node_type,
@@ -357,44 +364,55 @@ class BaseAgent(ABC, Generic[T]):
 
             # Get the model configuration from pipeline factory
             with self.pipeline_factory.pipeline(
-                self.profile, ChatResponse, priority, circuit_breaker
-            ) as pipeline_config:
-                # Get BaseChatModel from chat model factory
-                chat_model = chat_model_factory.create_chat_model(
-                    pipeline_config.model, self.profile, circuit_breaker
-                )
-
+                self.profile, priority
+            ) as chat_model:
                 if not chat_model:
-                    raise NodeExecutionError(
-                        f"Failed to create chat model for {pipeline_config.model.name}"
-                    )
+                    raise NodeExecutionError("Failed to create chat model")
+
+                msgs = normalize_message_input(messages)
+                convo = []
 
                 # Create LangChain agent using create_agent()
-                system_prompt = getattr(self.profile, "system_prompt", None)
+                system_prompt = getattr(self.profile, "system_prompt", "") or ""
+                for msg in msgs:
+                    if msg.role == MessageRole.SYSTEM:
+                        system_prompt += f"\n\n{extract_message_text(msg)}"
+                    else:
+                        convo.append(msg)
+                # Create LangChain agent using create_agent()
+
                 agent = create_agent(
-                    model=chat_model, tools=tools or [], system_prompt=system_prompt
+                    model=chat_model,
+                    tools=tools or [],
+                    system_prompt=system_prompt,
+                    response_format=ProviderStrategy(grammar) if grammar else None,
+                    name=self._node_metadata.node_name,
                 )
 
+                # Convert messages to LangChain format
+                normalized_messages = convert_messages_to_langchain(convo)
                 # Execute agent
-                result = await agent.ainvoke({"messages": normalized_messages})
+                result = await agent.ainvoke(
+                    {"messages": normalized_messages},
+                    grammar=grammar,
+                    tools=tools,
+                )
 
                 # Convert agent result to ChatResponse
-                if "messages" in result and result["messages"]:
+                if result and result.get("messages"):
                     last_message = result["messages"][-1]
-                    response = ChatResponse(
-                        text=(
-                            str(last_message.content)
-                            if hasattr(last_message, "content")
-                            else ""
-                        ),
-                        role=MessageRole.ASSISTANT,
+                    response = create_streaming_chunk(
+                        str(last_message.content)
+                        if hasattr(last_message, "content")
+                        else "",
                         done=True,
+                        role=MessageRole.ASSISTANT,
                     )
                 else:
-                    response = ChatResponse(
-                        text="Agent completed without output",
-                        role=MessageRole.ASSISTANT,
+                    response = create_streaming_chunk(
+                        "Agent completed without output",
                         done=True,
+                        role=MessageRole.ASSISTANT,
                     )
 
                 response.channels = self._node_metadata.model_dump()
@@ -404,16 +422,13 @@ class BaseAgent(ABC, Generic[T]):
             self._handle_node_error(
                 "create_agent_run",
                 e,
-                user_id=user_id,
-                message_count=len(messages),
+                message_count=get_message_count(messages),
             )
             return create_error_response(str(e))
 
     async def embed(
         self,
         messages: MessageInput,
-        user_id: str,
-        circuit_breaker: Optional[Any] = None,
         priority: PipelinePriority = PipelinePriority.MEDIUM,
     ) -> List[List[float]]:
         """
@@ -434,65 +449,53 @@ class BaseAgent(ABC, Generic[T]):
         try:
             self._log_operation_start(
                 "embedding_factory_run",
-                user_id=user_id,
-                message_count=len(messages),
+                message_count=get_message_count(messages),
                 node_name=self._node_metadata.node_name,
                 node_type=self._node_metadata.node_type,
             )
 
             # Get the model configuration from pipeline factory
-            with self.pipeline_factory.pipeline(
+            embedding_model = self.pipeline_factory.get_embedding_pipeline(
                 self.profile,
-                ChatResponse,
                 priority,
-            ) as pipeline_config:
-                # Get Embeddings model from embedding model factory
-                embedding_model = embedding_model_factory.create_embedding_model(
-                    pipeline_config.model, self.profile
-                )
+            )
+            if not embedding_model:
+                raise NodeExecutionError("Failed to create embedding model")
+            # Convert messages to text list
+            normalized_messages = normalize_message_input(messages)
+            text_list = []
 
-                if not embedding_model:
-                    raise NodeExecutionError(
-                        f"Failed to create embedding model for {pipeline_config.model.name}"
-                    )
+            for message in normalized_messages:
+                if hasattr(message, "content"):
+                    if isinstance(message.content, list):
+                        # Handle multi-content messages
+                        for content in message.content:
+                            if hasattr(content, "text") and content.text:
+                                text_list.append(content.text)
+                    else:
+                        text_list.append(str(message.content))
+                elif isinstance(message, str):
+                    text_list.append(message)
 
-                # Convert messages to text list
-                normalized_messages = normalize_message_input(messages)
-                text_list = []
+            if not text_list:
+                return []
 
-                for message in normalized_messages:
-                    if hasattr(message, "content"):
-                        if isinstance(message.content, list):
-                            # Handle multi-content messages
-                            for content in message.content:
-                                if hasattr(content, "text") and content.text:
-                                    text_list.append(content.text)
-                        else:
-                            text_list.append(str(message.content))
-                    elif isinstance(message, str):
-                        text_list.append(message)
+            # Generate embeddings
+            embeddings = await embedding_model.aembed_documents(text_list)
 
-                if not text_list:
-                    return []
+            self._log_operation_success(
+                "embedding_factory_run",
+                embedding_count=len(embeddings),
+                node_name=self._node_metadata.node_name,
+            )
 
-                # Generate embeddings
-                embeddings = await embedding_model.aembed_documents(text_list)
-
-                self._log_operation_success(
-                    "embedding_factory_run",
-                    user_id=user_id,
-                    embedding_count=len(embeddings),
-                    node_name=self._node_metadata.node_name,
-                )
-
-                return embeddings
+            return embeddings
 
         except Exception as e:
             self._handle_node_error(
                 "embedding_factory_run",
                 e,
-                user_id=user_id,
-                message_count=len(messages),
+                message_count=get_message_count(messages),
             )
             # Return empty embeddings on error
             return []

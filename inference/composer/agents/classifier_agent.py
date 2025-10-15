@@ -4,21 +4,27 @@ Performs comprehensive intent analysis following the capability-driven architect
 Maps user requests to RequiredCapabilities and assesses computational complexity.
 """
 
-from email import message
 import json
-from typing import List, TYPE_CHECKING, Optional
+from typing import List, TYPE_CHECKING, cast
 
 from pydantic import BaseModel
+from langchain.agents import create_agent
+from langchain.chat_models import BaseChatModel
 
 from models import (
-    CircuitBreakerConfig,
+    ChatResponse,
     IntentAnalysis,
+    MessageRole,
     ModelProfile,
     PipelinePriority,
     Message,
     NodeMetadata,
 )
 from composer.core.errors import IntentAnalysisError
+from composer.utils.conversion import (
+    normalize_message_input,
+    convert_messages_to_langchain,
+)
 from utils.message import extract_message_text
 from utils.grammar_generator import parse_structured_output
 from .base_agent import BaseAgent
@@ -65,9 +71,7 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
         super().__init__(pipeline_factory, profile, node_metadata, "ClassifierAgent")
         self.logger.info("Intent classifier initialized with analysis model profile")
 
-    async def analyze(
-        self, user_id: str, messages: List[Message]
-    ) -> List[IntentAnalysis]:
+    async def analyze(self, messages: List[Message]) -> List[IntentAnalysis]:
         """
         Execute grammar-constrained LLM analysis with structured output.
 
@@ -118,7 +122,6 @@ If multiple intents are needed, include additional objects in the intents array.
         msgs.append(analysis_prompt)
         result = await self.run(
             messages=msgs,
-            user_id=user_id,
             tools=None,
             circuit_breaker=self.profile.circuit_breaker,
             priority=PipelinePriority.HIGH,
@@ -135,7 +138,6 @@ If multiple intents are needed, include additional objects in the intents array.
     async def generate_title(
         self,
         messages: List[Message],
-        circuit_breaker: Optional[CircuitBreakerConfig] = None,
     ) -> str:
         """
         Generate a concise, descriptive title for a conversation based on its messages.
@@ -177,44 +179,51 @@ Title:"""
 
             # Use pipeline with title generation
             with self.pipeline_factory.pipeline(
-                self.profile, str, PipelinePriority.MEDIUM, circuit_breaker
+                self.profile,
+                PipelinePriority.MEDIUM,
             ) as pipeline:
-                from runner import (  # pylint: disable=import-outside-toplevel
-                    run_pipeline,
+
+                system_prompt = getattr(self.profile, "system_prompt", "")
+                for msg in messages:
+                    if msg.role == MessageRole.SYSTEM:
+                        system_prompt += f"\n\n{extract_message_text(msg)}"
+
+                agent = create_agent(
+                    model=cast(BaseChatModel, pipeline),
+                    system_prompt=system_prompt,
                 )
 
-                result = await run_pipeline(
-                    messages=[title_prompt],
-                    pipeline=pipeline,
-                    tools=None,
-                    grammar=None,
+                normalized_messages = convert_messages_to_langchain(
+                    normalize_message_input(title_prompt)
                 )
 
-                if not result or not result.message:
-                    return "Untitled Conversation"
+                result = await agent.ainvoke({"messages": normalized_messages})
 
-                title = extract_message_text(result.message).strip()
+                # Convert agent result to ChatResponse
+                if "messages" in result and result["messages"]:
+                    last_message = result["messages"][-1]
+                    response = ChatResponse(
+                        text=(
+                            str(last_message.content)
+                            if hasattr(last_message, "content")
+                            else ""
+                        ),
+                        role=MessageRole.ASSISTANT,
+                        done=True,
+                    )
+                else:
+                    response = ChatResponse(
+                        text="Agent completed without output",
+                        role=MessageRole.ASSISTANT,
+                        done=True,
+                    )
 
-                # Clean up the title
-                title = title.replace('"', "").replace("'", "").strip()
-
-                # Ensure it's not too long
-                words = title.split()
-                if len(words) > 6:
-                    title = " ".join(words[:6])
-
-                # Fallback if empty
-                if not title:
-                    title = "New Conversation"
-
-                self.logger.info(
-                    "Title generated successfully",
-                    title=title,
-                    word_count=len(title.split()),
-                    message_count=len(messages),
+                response.channels = self._node_metadata.model_dump()
+                return (
+                    extract_message_text(response.message)
+                    if response and response.message
+                    else ""
                 )
-
-                return title
 
         except Exception as e:
             self.logger.error(

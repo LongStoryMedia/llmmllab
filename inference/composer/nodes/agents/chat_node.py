@@ -79,7 +79,6 @@ class ChatNode:
             # Execute chat completion with conversion
             assistant_message = await self.agent.chat_completion_with_conversion(
                 messages=convert_messages_to_langchain(context_messages),
-                user_id=state.user_id,
                 tools=(
                     cast(List[BaseTool], state.available_tools)
                     if state.available_tools

@@ -8,30 +8,26 @@ import logging
 import os
 import time
 import threading
-from typing import Any, Dict, List, Optional, Type, cast, TypeVar, Union
+from typing import Any, Dict, List, Optional, Type, Union, cast, TypeVar, overload
 from contextlib import contextmanager
 
+from langchain_core.language_models import BaseChatModel
+from langchain_core.embeddings import Embeddings
 
+# Type variables for proper return type hints
+T = TypeVar('T', bound=Union[BaseChatModel, Embeddings])
+ChatModelType = TypeVar('ChatModelType', bound=BaseChatModel)
+EmbeddingType = TypeVar('EmbeddingType', bound=Embeddings)
 from models import (
     Model,
     LoraWeight,
     ModelDetails,
     ModelProfile,
     ModelProvider,
-    CircuitBreakerConfig,
     PipelinePriority,
 )
-from models.default_configs import DEFAULT_CIRCUIT_BREAKER_CONFIG
-from .pipelines.base import BasePipelineCore, PipeReturn, EmbeddingPipeline
 from .pipeline_cache import LocalPipelineCacheManager
-from .pipelines.llamacpp.base_llamacpp import BaseLlamaCppPipeline
 from .utils.hardware_manager import hardware_manager
-
-# Import new factories
-from .chat_model_factory import chat_model_factory
-from .embedding_model_factory import embedding_model_factory
-
-T = TypeVar("T", bound=PipeReturn)
 
 
 class PipelineFactory:
@@ -183,69 +179,103 @@ class PipelineFactory:
 
         return model
 
+    def _infer_type(self, model: Model) -> Union[Type[BaseChatModel], Type[Embeddings]]:
+        if model.task == "TextToEmbeddings":
+            return Embeddings
+        return BaseChatModel
+
     # ---------- Public API ----------
+
+    @overload
+    def get_pipeline(
+        self,
+        profile: ModelProfile,
+        priority: PipelinePriority = PipelinePriority.NORMAL,
+    ) -> BaseChatModel: ...
+
+    @overload 
+    def get_embedding_pipeline(
+        self,
+        profile: ModelProfile,
+        priority: PipelinePriority = PipelinePriority.NORMAL,
+    ) -> Embeddings: ...
 
     def get_pipeline(
         self,
         profile: ModelProfile,
-        expected_type: Type[T],
         priority: PipelinePriority = PipelinePriority.NORMAL,
-        user_circuit_breaker: Optional[CircuitBreakerConfig] = None,
-    ) -> BasePipelineCore[T] | EmbeddingPipeline:
+    ) -> Union[BaseChatModel, Embeddings]:
         model_id = profile.model_name
         model = self._get_model_by_id(model_id)
         if not model:
             raise RuntimeError(f"Model with ID '{model_id}' not found.")
+
+                # Local providers -> managed cached path
+        if getattr(model, "provider", None) in {
+            ModelProvider.LLAMA_CPP,
+            ModelProvider.STABLE_DIFFUSION_CPP,
+        }:
+            # Use a factory function that handles coordination internally
+            def create_with_coordination(m: Model, p: ModelProfile) -> Optional[Union[BaseChatModel, Embeddings]]:
+                return self.create_pipeline(m, p)
+
+            pipeline = self.local_cache.get_or_create(
+                model, profile, priority, create_with_coordination
+            )
+            if not pipeline:
+                raise RuntimeError(f"Failed to create cached pipeline for model '{model.name}'")
+            return pipeline
+
+        # Remote / API providers -> create transient each call, no caching
+        pipeline = self.create_pipeline(model, profile)
+        if not pipeline:
+            raise RuntimeError(
+                f"Failed to create pipeline for model '{model.name}' (provider: {getattr(model, 'provider', 'unknown')})"
+            )
+        self.logger.debug(
+            f"Created transient pipeline for remote provider {getattr(model, 'provider', 'unknown')} ({model.name})"
+        )
+        return pipeline
+
+    def get_embedding_pipeline(
+        self,
+        profile: ModelProfile,
+        priority: PipelinePriority = PipelinePriority.NORMAL,
+    ) -> Embeddings:
+        """Get specifically an embedding pipeline with proper typing."""
+        model_id = profile.model_name
+        model = self._get_model_by_id(model_id)
+        if not model:
+            raise RuntimeError(f"Model with ID '{model_id}' not found.")
+
+        # For embedding models, require embedding-specific task
+        if model.task != "TextToEmbeddings":
+            raise ValueError(f"Model '{model.name}' is not an embedding model (task: {model.task})")
 
         # Local providers -> managed cached path
         if getattr(model, "provider", None) in {
             ModelProvider.LLAMA_CPP,
             ModelProvider.STABLE_DIFFUSION_CPP,
         }:
-            # Use a factory function that handles coordination internally
-            def create_with_coordination(
-                m: Model, p: ModelProfile, e: Optional[Type[PipeReturn]]
-            ) -> Optional[BasePipelineCore]:
-                required_estimate = self.local_cache.estimate_memory(m)
-                self._acquire_load_slot(required_estimate, model_id)
-                try:
-                    return self.create_pipeline(
-                        m, p, expected_type=e, user_circuit_breaker=user_circuit_breaker
-                    )
-                finally:
-                    self._release_load_slot(model_id)
+            def create_embedding_fn(m: Model, p: ModelProfile) -> Optional[Embeddings]:
+                return self._create_embedding_pipeline(m, p)
 
             pipeline = self.local_cache.get_or_create(
-                model,
-                profile,
-                expected_type,
-                priority,  # use shared PipelinePriority directly
-                create_with_coordination,
+                model, profile, priority, create_embedding_fn
             )
-            try:
-                if isinstance(pipeline, BaseLlamaCppPipeline):  # type: ignore
-                    self.logger.debug(
-                        f"Pipeline {model.name} is llama.cpp based (local cached)"
-                    )
-            except Exception:
-                pass
-            return cast(BasePipelineCore[T], pipeline)
+            if not pipeline:
+                raise RuntimeError(f"Failed to create cached embedding pipeline for model '{model.name}'")
+            if not isinstance(pipeline, Embeddings):
+                raise ValueError(f"Expected Embeddings instance, got {type(pipeline)}")
+            return pipeline
 
         # Remote / API providers -> create transient each call, no caching
-        pipeline = self.create_pipeline(
-            model,
-            profile,
-            expected_type=expected_type,
-            user_circuit_breaker=user_circuit_breaker,
-        )
+        pipeline = self._create_embedding_pipeline(model, profile)
         if not pipeline:
             raise RuntimeError(
-                f"Failed to create pipeline for remote model {getattr(model, 'name', model_id)}."
+                f"Failed to create embedding pipeline for model '{model.name}' (provider: {getattr(model, 'provider', 'unknown')})"
             )
-        self.logger.debug(
-            f"Created transient pipeline for remote provider {getattr(model, 'provider', 'unknown')} ({model.name})"
-        )
-        return cast(BasePipelineCore[T], pipeline)
+        return pipeline
 
     def clear_cache(self, model_id: Optional[str] = None) -> None:
         """Delegate to local cache manager (only impacts local models)."""
@@ -258,7 +288,7 @@ class PipelineFactory:
         return {
             "local_cache": local_stats,
             "available_models": len(self._available_models),
-            "cache_size": len(self.local_cache._cache),
+            "cache_size": local_stats.get("entries_count", 0),
             "memory_stats": {
                 device_id: {
                     "total_mb": stats.mem_total,
@@ -278,11 +308,9 @@ class PipelineFactory:
     def pipeline(
         self,
         profile: ModelProfile,
-        t: Type[T],
         priority: PipelinePriority = PipelinePriority.NORMAL,
-        user_circuit_breaker: Optional[CircuitBreakerConfig] = None,
     ):
-        pipeline = self.get_pipeline(profile, t, priority, user_circuit_breaker)
+        pipeline = self.get_pipeline(profile, priority)
         is_local = False
         try:
             provider = getattr(pipeline.model, "provider", None)  # type: ignore[attr-defined]
@@ -495,131 +523,32 @@ class PipelineFactory:
             return None
         return self._available_models[model_id]
 
-    def _merge_circuit_breaker_configs(
-        self,
-        base_config: CircuitBreakerConfig,
-        override_config: Optional[CircuitBreakerConfig],
-    ) -> CircuitBreakerConfig:
-        """
-        Merge two circuit breaker configurations, with override_config taking precedence
-        for any non-None values.
-
-        Args:
-            base_config: The base configuration (typically defaults or user global)
-            override_config: The override configuration (typically profile-specific)
-
-        Returns:
-            Merged CircuitBreakerConfig
-        """
-        if not override_config:
-            return base_config
-
-        # Create merged config by taking base values and overriding with non-None values from override
-        merged_data = {}
-
-        # Get all field names from the base config using model_dump()
-        for field_name in base_config.model_dump().keys():
-            base_value = getattr(base_config, field_name)
-            override_value = getattr(override_config, field_name, None)
-
-            # Use override value if it's not None, otherwise use base value
-            merged_data[field_name] = (
-                override_value if override_value is not None else base_value
-            )
-
-        return CircuitBreakerConfig(**merged_data)
-
-    def _build_circuit_breaker_config(
-        self,
-        profile: ModelProfile,
-        user_circuit_breaker: Optional[CircuitBreakerConfig] = None,
-    ) -> CircuitBreakerConfig:
-        """
-        Build the final circuit breaker configuration by merging in priority order:
-        1. Default config (baseline)
-        2. Global/user config (user preferences)
-        3. Profile-specific config (model-specific overrides)
-
-        Args:
-            profile: The model profile that may contain circuit breaker overrides
-            user_circuit_breaker: User's global circuit breaker configuration
-
-        Returns:
-            Final merged CircuitBreakerConfig
-        """
-        # Start with defaults
-        final_config = DEFAULT_CIRCUIT_BREAKER_CONFIG
-        self.logger.info(
-            f"Building circuit breaker config - starting with defaults: perplexity_guard={final_config.enable_perplexity_guard}"
-        )
-
-        # Apply user global config if provided
-        if user_circuit_breaker:
-            self.logger.info(
-                f"Applying user config with perplexity_guard={user_circuit_breaker.enable_perplexity_guard}"
-            )
-            final_config = self._merge_circuit_breaker_configs(
-                final_config, user_circuit_breaker
-            )
-            self.logger.info(
-                f"After user merge: perplexity_guard={final_config.enable_perplexity_guard}"
-            )
-        else:
-            self.logger.info("No user circuit breaker config provided")
-
-        # Apply profile-specific overrides if present
-        if profile and profile.circuit_breaker:
-            self.logger.info(
-                f"Applying profile config with perplexity_guard={profile.circuit_breaker.enable_perplexity_guard}"
-            )
-            final_config = self._merge_circuit_breaker_configs(
-                final_config, profile.circuit_breaker
-            )
-            self.logger.info(
-                f"After profile merge: perplexity_guard={final_config.enable_perplexity_guard}"
-            )
-        else:
-            self.logger.info("No profile circuit breaker config found")
-
-        self.logger.info(
-            f"Built circuit breaker config for {profile.model_name if profile else 'no profile'}: "
-            f"perplexity_guard={final_config.enable_perplexity_guard}, "
-            f"base_timeout={final_config.base_timeout}"
-        )
-
-        return final_config
-
     def create_pipeline(
         self,
         model: Model,
         profile: ModelProfile,
-        expected_type: Optional[Type[PipeReturn]] = None,
-        user_circuit_breaker: Optional[CircuitBreakerConfig] = None,
-    ) -> Optional[BasePipelineCore]:
+    ) -> Optional[Union[BaseChatModel, Embeddings]]:
+        """
+        Create a pipeline instance based on model task and pipeline type.
+        Args:
+            model: Model configuration
+            profile: ModelProfile with runtime settings
+        Returns:
+            An instance of BaseChatModel or Embeddings
+        """
         try:
             self.logger.info(f"Creating pipeline for {model.name} (task: {model.task})")
 
-            # Build the final circuit breaker configuration by merging defaults, user config, and profile overrides
-            circuit_config = self._build_circuit_breaker_config(
-                profile, user_circuit_breaker
-            )
-
             if model.task.endswith("TextToText"):
-                return self._create_text_pipeline(
-                    model, profile, expected_type, circuit_config
-                )
+                return self._create_text_pipeline(model, profile)
             if model.task == "TextToEmbeddings":
-                return self._create_embedding_pipeline(model, profile, circuit_config)
-            if model.task == "TextToRanking":
-                return self._create_reranking_pipeline(model, profile, circuit_config)
+                return self._create_embedding_pipeline(model, profile)
             if model.task == "TextToImage":
-                return self._create_image_pipeline(model, profile, circuit_config)
+                return self._create_image_pipeline(model, profile)
             if model.task == "ImageToImage":
-                return self._create_image_to_image_pipeline(
-                    model, profile, circuit_config
-                )
+                return self._create_image_to_image_pipeline(model, profile)
             self.logger.error(f"Unsupported task type: {model.task}")
-            return None
+            raise RuntimeError(f"Unsupported task type: {model.task}")
         except Exception as e:
             self.logger.error(f"Error creating pipeline for {model.name}: {e}")
 
@@ -635,15 +564,13 @@ class PipelineFactory:
             elif "validation error" in str(e).lower():
                 self.logger.error(f"Model {model.name} configuration validation failed")
 
-            return None
+            raise
 
     def _create_text_pipeline(
         self,
         model: Model,
         profile: ModelProfile,
-        expected_type: Optional[Type[PipeReturn]] = None,
-        circuit_config: Optional[CircuitBreakerConfig] = None,
-    ) -> Optional[BasePipelineCore]:
+    ) -> Optional[BaseChatModel]:
         self.logger.info(
             f"Creating text pipeline for model: {model.name}, pipeline: {model.pipeline}"
         )
@@ -651,15 +578,14 @@ class PipelineFactory:
             self.logger.info(
                 f"Creating Qwen pipeline, prefer_langgraph={self.prefer_langgraph}"
             )
-            from .pipelines.txt2txt.qwen3moe import Qwen3Moe
+            from .pipelines.txt2txt.qwen3moe import (  # pylint: disable=import-outside-toplevel
+                Qwen3Moe,
+            )
 
             self.logger.info("Attempting to create Qwen3Moe")
             try:
                 # Try with expected_return_type first (preferred)
-                pipeline = Qwen3Moe(
-                    model,
-                    profile,
-                )
+                pipeline = Qwen3Moe(model, profile)
             except TypeError as e:
                 self.logger.warning(f"Qwen3Moe creation failed: {e}")
                 raise
@@ -668,25 +594,25 @@ class PipelineFactory:
 
         if model.pipeline == "Qwen25VLGGUFPipeline":
             # File may not exist; fallback handled below
-            from .pipelines.imgtxt2txt.qwen25_vl import Qwen25VLPipeline
+            from .pipelines.imgtxt2txt.qwen25_vl import (  # pylint: disable=import-outside-toplevel
+                Qwen25VLPipeline,
+            )
 
             return Qwen25VLPipeline(model, profile)
 
         if model.pipeline == "LlamaChatSummPipe":
-            from .pipelines.txt2txt.llamachatsum import LlamaChatSummPipe
-
-            return LlamaChatSummPipe(
-                model,
-                profile,
+            from .pipelines.txt2txt.llamachatsum import (  # pylint: disable=import-outside-toplevel
+                LlamaChatSummPipe,
             )
+
+            return LlamaChatSummPipe(model, profile)
 
         if model.pipeline == "OpenAiGptOssPipe":
-            from .pipelines.txt2txt.openai_gpt_oss import OpenAIGptOssPipeline
-
-            return OpenAIGptOssPipeline(
-                model,
-                profile,
+            from .pipelines.txt2txt.openai_gpt_oss import (  # pylint: disable=import-outside-toplevel
+                OpenAIGptOssPipeline,
             )
+
+            return OpenAIGptOssPipeline(model, profile)
 
         return None
 
@@ -694,52 +620,43 @@ class PipelineFactory:
         self,
         model: Model,
         profile: ModelProfile,
-        _circuit_config: Optional[CircuitBreakerConfig] = None,
-    ) -> Optional[BasePipelineCore]:
+    ) -> Optional[Embeddings]:
         if model.pipeline == "NomicEmbedTextPipe":
             try:
-                from .pipelines.emb.nom2 import NomicEmbedTextPipe
+                from .pipelines.emb.nomic_embeddings import (  # pylint: disable=import-outside-toplevel
+                    NomicEmbeddings,
+                )
 
-                return NomicEmbedTextPipe(model, profile)
+                return NomicEmbeddings(model, profile)
             except Exception as e:
-                self.logger.error(f"Failed to initialize NomicEmbedTextPipe: {e}")
+                self.logger.error(f"Failed to initialize NomicEmbeddings: {e}")
                 return None
         if model.pipeline == "Qwen3EmbeddingPipe":
             try:
-                from .pipelines.emb.qwen3emb import Qwen3EmbeddingPipe
+                from .pipelines.emb.qwen3_embeddings import (  # pylint: disable=import-outside-toplevel
+                    Qwen3Embeddings,
+                )
 
-                return Qwen3EmbeddingPipe(model, profile)
+                return Qwen3Embeddings(model, profile)
             except Exception as e:
-                self.logger.error(f"Failed to initialize Qwen3EmbeddingPipe: {e}")
+                self.logger.error(f"Failed to initialize Qwen3Embeddings: {e}")
                 return None
-        return None
-
-    def _create_reranking_pipeline(
-        self,
-        model: Model,
-        _profile: ModelProfile,
-        _circuit_config: Optional[CircuitBreakerConfig] = None,
-    ) -> Optional[BasePipelineCore]:
-        """Create reranking pipeline (currently unavailable)."""
-        if model.pipeline == "Qwen3RerankerPipe":
-            # Reranker implementation is currently commented out / unavailable
-            self.logger.warning(
-                "Qwen3RerankerPipe is not available; skipping reranking pipeline creation"
-            )
-            return None
         return None
 
     def _create_image_pipeline(
         self,
         model: Model,
         profile: ModelProfile,
-        _circuit_config: Optional[CircuitBreakerConfig] = None,
-    ) -> Optional[BasePipelineCore]:
+    ) -> Optional[BaseChatModel]:
         if model.pipeline == "FluxPipeline":
             try:
-                from .pipelines.txt2img.flux import FluxPipe
+                from .pipelines.txt2img.flux import (  # pylint: disable=import-outside-toplevel
+                    FluxPipe,
+                )
 
-                return FluxPipe(model, profile)
+                return FluxPipe(  # pylint: disable=abstract-class-instantiated
+                    model, profile
+                )
             except Exception as e:
                 self.logger.error(f"Failed to initialize FluxPipe: {e}")
                 return None
@@ -749,13 +666,16 @@ class PipelineFactory:
         self,
         model: Model,
         profile: ModelProfile,
-        _circuit_config: Optional[CircuitBreakerConfig] = None,
-    ) -> Optional[BasePipelineCore]:
+    ) -> Optional[BaseChatModel]:
         if model.pipeline == "FluxKontextPipeline":
             try:
-                from .pipelines.img2img.flux import FluxKontextPipe
+                from .pipelines.img2img.flux import (  # pylint: disable=import-outside-toplevel
+                    FluxKontextPipe,
+                )
 
-                return FluxKontextPipe(model, profile)
+                return FluxKontextPipe(  # pylint: disable=abstract-class-instantiated
+                    model, profile
+                )
             except Exception as e:
                 self.logger.error(f"Failed to initialize FluxKontextPipe: {e}")
                 return None

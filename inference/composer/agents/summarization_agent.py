@@ -19,7 +19,7 @@ from models import (
     UserConfig,
     NodeMetadata,
 )
-from runner import PipelineFactory, run_pipeline
+from runner import PipelineFactory
 from composer.core.errors import NodeExecutionError
 from utils.model_profile import get_model_profile_for_task
 from utils.message import extract_message_text
@@ -28,7 +28,6 @@ from .base_agent import BaseAgent
 if TYPE_CHECKING:
     from db.summary_storage import SummaryStorage
     from db.search_storage import SearchStorage
-    from db.userconfig_storage import UserConfigStorage
 
 
 class SummarizationAgent(BaseAgent[str]):
@@ -63,47 +62,6 @@ class SummarizationAgent(BaseAgent[str]):
         self.summary_storage = summary_storage
         self.search_storage = search_storage
         self.user_config = user_config
-
-    async def execute_pipeline(self, stream: bool = False, **kwargs) -> str:
-        """
-        Execute summarization pipeline with the provided parameters.
-
-        This is the standard interface for pipeline execution required by BaseAgent.
-
-        Args:
-            stream: Whether to stream the response (not applicable for summarization)
-            **kwargs: Pipeline execution parameters, expected to include:
-                - text: Text content to summarize
-                - user_id: User identifier
-                - summary_type: Optional SummaryType
-                - max_length: Optional maximum summary length
-                - style: Optional SummaryStyle
-                - tools: Optional tools list
-                - grammar: Optional grammar constraints
-
-        Returns:
-            str: The summary text
-        """
-        text = kwargs.get("text", "")
-        user_id = kwargs.get("user_id", "")
-        summary_type = kwargs.get("summary_type", SummaryType.PRIMARY)
-        max_length = kwargs.get("max_length")
-        style = kwargs.get("style", SummaryStyle.CONCISE)
-        tools = kwargs.get("tools")
-        grammar = kwargs.get("grammar")
-
-        if not text:
-            raise NodeExecutionError("text parameter is required for summarization")
-
-        return await self.summarize_text(
-            text=text,
-            user_id=user_id,
-            summary_type=summary_type,
-            max_length=max_length,
-            style=style,
-            tools=tools,
-            grammar=grammar,
-        )
 
     async def summarize_text(
         self,
@@ -857,7 +815,6 @@ Action items and next steps:"""
     async def _execute_summarization_with_profile(
         self,
         prompt: str,
-        model_profile: ModelProfile,
         circuit_breaker: Any,
         tools: Optional[List[Any]] = None,
         grammar: Optional[Any] = None,
@@ -868,11 +825,8 @@ Action items and next steps:"""
         Extracted common pipeline execution logic to ensure consistent
         behavior across all summarization methods.
         """
-        return await self.run_generic_pipeline_with_metadata(
-            operation_name="execute_summarization",
-            pipeline_executor=self._execute_summarization_pipeline,
-            prompt=prompt,
-            model_profile=model_profile,
+        return await self.run(
+            messages=prompt,
             circuit_breaker=circuit_breaker,
             tools=tools,
             grammar=grammar,
@@ -885,7 +839,7 @@ Action items and next steps:"""
         circuit_breaker: Any,
         tools: Optional[List[Any]] = None,
         grammar: Optional[Any] = None,
-        **kwargs
+        **kwargs,
     ) -> str:
         """Internal executor for summarization pipeline operation."""
         with self.pipeline_factory.pipeline(

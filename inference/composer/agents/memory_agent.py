@@ -41,51 +41,6 @@ class MemoryAgent(BaseAgent[List[Memory]]):
         super().__init__(pipeline_factory, profile, node_metadata, "MemoryAgent")
         self.memory_storage = memory_storage
 
-    async def execute_pipeline(self, stream: bool = False, **kwargs) -> List[Memory]:
-        """
-        Execute memory search pipeline with the provided parameters.
-
-        This is the standard interface for pipeline execution required by BaseAgent.
-
-        Args:
-            stream: Whether to stream the response (not applicable for memory search)
-            **kwargs: Pipeline execution parameters, expected to include:
-                - query_embeddings: Pre-computed query embeddings
-                - user_id: User identifier
-                - conversation_id: Optional conversation identifier
-                - max_results: Optional maximum results
-                - similarity_threshold: Optional similarity threshold
-                - enable_cross_conversation: Optional cross-conversation search
-                - enable_cross_user: Optional cross-user search
-
-        Returns:
-            List[Memory]: The search results
-        """
-        query_embeddings = kwargs.get("query_embeddings", [])
-        user_id = kwargs.get("user_id", "")
-        conversation_id = kwargs.get("conversation_id")
-        max_results = kwargs.get("max_results", 3)
-        similarity_threshold = kwargs.get("similarity_threshold", 0.7)
-        enable_cross_conversation = kwargs.get("enable_cross_conversation", True)
-        enable_cross_user = kwargs.get("enable_cross_user", False)
-
-        if not query_embeddings:
-            raise NodeExecutionError(
-                "query_embeddings parameter is required for memory search"
-            )
-        if not user_id:
-            raise NodeExecutionError("user_id parameter is required for memory search")
-
-        return await self.search_memories_by_embedding(
-            query_embeddings=query_embeddings,
-            user_id=user_id,
-            conversation_id=conversation_id,
-            max_results=max_results,
-            similarity_threshold=similarity_threshold,
-            enable_cross_conversation=enable_cross_conversation,
-            enable_cross_user=enable_cross_user,
-        )
-
     async def store_memories(
         self,
         user_id: str,
@@ -104,22 +59,6 @@ class MemoryAgent(BaseAgent[List[Memory]]):
         Returns:
             True if storage succeeded, False otherwise
         """
-        return await self.run_generic_pipeline_with_metadata(
-            operation_name="store_memories",
-            pipeline_executor=self._execute_memory_storage,
-            user_id=user_id,
-            conversation_id=conversation_id,
-            memories=memories,
-        )
-
-    async def _execute_memory_storage(
-        self,
-        user_id: str,
-        conversation_id: int,
-        memories: List[Memory],
-        **kwargs
-    ) -> bool:
-        """Internal executor for memory storage operation."""
         try:
             # Use injected storage service
             memory_svc = self.memory_storage
@@ -198,30 +137,6 @@ class MemoryAgent(BaseAgent[List[Memory]]):
         Returns:
             List of Memory objects with similarity scores and paired content
         """
-        return await self.run_generic_pipeline_with_metadata(
-            operation_name="search_memories_by_embedding",
-            pipeline_executor=self._execute_memory_search,
-            query_embeddings=query_embeddings,
-            user_id=user_id,
-            conversation_id=conversation_id,
-            max_results=max_results,
-            similarity_threshold=similarity_threshold,
-            enable_cross_conversation=enable_cross_conversation,
-            enable_cross_user=enable_cross_user,
-        )
-
-    async def _execute_memory_search(
-        self,
-        query_embeddings: List[List[float]],
-        user_id: str,
-        conversation_id: Optional[int] = None,
-        max_results: int = 3,
-        similarity_threshold: float = 0.7,
-        enable_cross_conversation: bool = True,
-        enable_cross_user: bool = False,
-        **kwargs
-    ) -> List[Memory]:
-        """Internal executor for memory search operation."""
         try:
             # Use injected storage service
             memory_svc = self.memory_storage

@@ -30,6 +30,7 @@ from models import Model, ModelProfile
 from utils.grammar_generator import (
     get_grammar_for_model,
 )
+from utils.logging import llmmllogger
 from .utils import calculate_optimal_gpu_layers
 
 
@@ -56,7 +57,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
         self.model_config = model
         self.profile_config = profile
         self.llama_instance: Optional[llama_cpp.Llama] = None  # Optional[LlamaType]
-        self._logger = logging.getLogger(self.__class__.__name__)
+        self._logger = llmmllogger.bind(
+            component=self.__class__.__name__, model=model.name
+        )
         self._grammar_model_class: Optional[BaseModel] = None  # Optional[type]
 
     @property
@@ -124,13 +127,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
         return sorted(list(set(candidates)), reverse=True)
 
-    def _process_grammar_input(self, grammar: BaseModel) -> Optional[str]:
+    def _process_grammar_input(self, grammar: type[BaseModel]) -> Optional[str]:
         """Process grammar input and return GBNF string if possible."""
-        if grammar is None:
-            return None
-
         try:
-
             self._grammar_model_class = grammar
             return get_grammar_for_model(grammar)
         except Exception as e:
@@ -307,7 +306,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
     ) -> ChatResult:
         """Generate a chat response from messages."""
         tools = kwargs.get("tools")
-        grammar = kwargs.get("grammar")
+        grammar: type[BaseModel] = kwargs.get("grammar")
         llama = self.llama_instance or self._initialize_llama_with_fallback(
             self._get_gguf_path()
         )
@@ -503,7 +502,6 @@ class BaseLlamaCppPipeline(BaseChatModel):
         self.close()
 
 
-# Backwards compatibility alias
-SimpleLlamaCppPipeline = BaseLlamaCppPipeline
+BaseLlamaCppPipeline
 
-__all__ = ["BaseLlamaCppPipeline", "SimpleLlamaCppPipeline"]
+__all__ = ["BaseLlamaCppPipeline"]

@@ -13,7 +13,8 @@ from composer.utils.conversion import convert_langchain_messages_to_messages
 from utils.logging import llmmllogger
 
 if TYPE_CHECKING:
-    from composer.agents.summarization_agent import SummarizationAgent
+    from composer.agents.primary_summary_agent import PrimarySummaryAgent
+    from composer.agents.master_summary_agent import MasterSummaryAgent
 
 
 class ConsolidationNode:
@@ -24,8 +25,9 @@ class ConsolidationNode:
     combining multiple summaries into higher-level abstractions.
     """
 
-    def __init__(self, summarization_agent: "SummarizationAgent"):
-        self.summarization_agent = summarization_agent
+    def __init__(self, primary_summary_agent: "PrimarySummaryAgent", master_summary_agent: "MasterSummaryAgent"):
+        self.primary_summary_agent = primary_summary_agent
+        self.master_summary_agent = master_summary_agent
         self.logger = llmmllogger.logger.bind(component="ConsolidationNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
@@ -63,14 +65,13 @@ class ConsolidationNode:
                     user_id=state.user_id,
                     unsummarized_count=len(unsummarized_messages),
                 )
-                state.summaries.append(
-                    await self.summarization_agent.summarize_conversation(
-                        convert_langchain_messages_to_messages(unsummarized_messages),
-                        state.user_id,
-                        state.conversation_id or 0,
-                        SummaryType.PRIMARY,
-                    )
+                # Use primary summary agent for conversation summarization
+                primary_summary = await self.primary_summary_agent.summarize_conversation(
+                    convert_langchain_messages_to_messages(unsummarized_messages),
+                    state.user_id,
+                    state.conversation_id or 0,
                 )
+                state.summaries.append(primary_summary)
 
             for lvl in range(1, sc.max_summary_levels):
                 lvl_summaries = [s for s in state.summaries if s.level == lvl]
@@ -82,16 +83,15 @@ class ConsolidationNode:
                         level=lvl,
                         summary_count=len(lvl_summaries),
                     )
-                    state.summaries.append(
-                        await self.summarization_agent.consolidate_summaries(
-                            lvl_summaries,
-                            state.user_id,
-                            state.conversation_id or 0,
-                            SummaryType.MASTER,
-                            lvl,
-                            lvl + 1,
-                        )
+                    # Use master summary agent for consolidation
+                    master_summary = await self.master_summary_agent.consolidate_summaries(
+                        lvl_summaries,
+                        state.user_id,
+                        state.conversation_id or 0,
+                        lvl,
+                        lvl + 1,
                     )
+                    state.summaries.append(master_summary)
 
             state.summaries.sort(key=lambda s: s.level, reverse=True)
 

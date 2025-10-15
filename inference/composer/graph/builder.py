@@ -22,7 +22,9 @@ from composer.agents.classifier_agent import ClassifierAgent
 from composer.agents.engineering_agent import EngineeringAgent
 from composer.agents.memory_agent import MemoryAgent
 from composer.agents.embedding_agent import EmbeddingAgent
-from composer.agents.summarization_agent import SummarizationAgent
+from composer.agents.primary_summary_agent import PrimarySummaryAgent
+from composer.agents.master_summary_agent import MasterSummaryAgent
+from composer.agents.brief_summary_agent import BriefSummaryAgent
 
 # Import all nodes
 from composer.nodes.routing import IntentClassifierNode
@@ -194,10 +196,22 @@ class GraphBuilder:
                 node_type="EmbeddingAgentNode",
                 user_id=user_id,
             )
-            summarization_node_metadata = NodeMetadata(
-                node_name="SummarizationAgent",
+            primary_summary_node_metadata = NodeMetadata(
+                node_name="PrimarySummaryAgent",
                 node_id=uuid.uuid4().hex,
-                node_type="SummarizationAgentNode",
+                node_type="PrimarySummaryAgentNode",
+                user_id=user_id,
+            )
+            master_summary_node_metadata = NodeMetadata(
+                node_name="MasterSummaryAgent",
+                node_id=uuid.uuid4().hex,
+                node_type="MasterSummaryAgentNode",
+                user_id=user_id,
+            )
+            brief_summary_node_metadata = NodeMetadata(
+                node_name="BriefSummaryAgent",
+                node_id=uuid.uuid4().hex,
+                node_type="BriefSummaryAgentNode",
                 user_id=user_id,
             )
 
@@ -229,10 +243,26 @@ class GraphBuilder:
                 embedding_profile,
                 embedding_node_metadata,
             )
-            summarization_agent = SummarizationAgent(
+            primary_summary_agent = PrimarySummaryAgent(
                 self.pipeline_factory,
                 summarization_profile,
-                summarization_node_metadata,
+                primary_summary_node_metadata,
+                self.summary_storage,
+                self.search_storage,
+                self.user_config,
+            )
+            master_summary_agent = MasterSummaryAgent(
+                self.pipeline_factory,
+                summarization_profile,
+                master_summary_node_metadata,
+                self.summary_storage,
+                self.search_storage,
+                self.user_config,
+            )
+            brief_summary_agent = BriefSummaryAgent(
+                self.pipeline_factory,
+                summarization_profile,
+                brief_summary_node_metadata,
                 self.summary_storage,
                 self.search_storage,
                 self.user_config,
@@ -265,8 +295,10 @@ class GraphBuilder:
             )
             tool_composer_node = ToolComposerNode()
             tool_executor_node = ToolExecutorNode(tool_registry)
-            chat_summary_node = ConsolidationNode(summarization_agent)
-            search_summary_node = SearchSummaryNode(summarization_agent)
+            # ConsolidationNode needs both primary (for conversation summaries) and master (for consolidation)
+            chat_summary_node = ConsolidationNode(primary_summary_agent, master_summary_agent)
+            # SearchSummaryNode uses primary summaries by default
+            search_summary_node = SearchSummaryNode(primary_summary_agent)
 
             router_node = WorkflowRouter(user_id)
 

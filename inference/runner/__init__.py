@@ -28,25 +28,9 @@ __version__ = "0.1.0"
 
 from .pipeline_factory import pipeline_factory, PipeReturn, PipelineFactory
 
-from .pipelines.base import Embeddings, EmbeddingPipeline  # for typing
-from .pipelines.run import (
-    run_pipeline,
-    stream_pipeline,
-    embed_pipeline,
-    GrammarInput,
-    MessageInput,
-)
-
 
 __all__ = [
     "pipeline_factory",
     "PipeReturn",
-    "Embeddings",
-    "run_pipeline",
-    "stream_pipeline",
-    "embed_pipeline",
-    "EmbeddingPipeline",
-    "GrammarInput",
-    "MessageInput",
     "PipelineFactory",
 ]

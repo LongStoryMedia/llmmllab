@@ -24,7 +24,6 @@ from models import (
 from utils.message import extract_message_text
 from composer.utils.conversion import (
     message_to_langchain_message,
-    convert_langchain_messages_to_messages,
 )
 from .base_agent import BaseAgent
 
@@ -60,40 +59,9 @@ class ChatAgent(BaseAgent[ChatResponse]):
         self.priority = priority
         self.stream = stream
 
-    async def execute_pipeline(self, stream: bool = False, **kwargs) -> ChatResponse:
-        """
-        Execute chat pipeline with the provided parameters.
-
-        This is the standard interface for pipeline execution required by BaseAgent.
-
-        Args:
-            stream: Whether to stream the response
-            **kwargs: Pipeline execution parameters, expected to include:
-                - messages: List of LangChainMessage objects
-                - user_id: User identifier
-                - tools: Optional list of BaseTool objects
-                - circuit_breaker: Optional CircuitBreakerConfig
-
-        Returns:
-            ChatResponse: The completion result
-        """
-        messages = kwargs.get("messages", [])
-        user_id = kwargs.get("user_id", "")
-        tools = kwargs.get("tools")
-        circuit_breaker = kwargs.get("circuit_breaker")
-
-        return await self.chat_completion(
-            messages=messages,
-            user_id=user_id,
-            tools=tools,
-            circuit_breaker=circuit_breaker,
-            stream=stream,
-        )
-
     async def chat_completion(
         self,
         messages: List[LangChainMessage],
-        user_id: str,
         tools: Optional[List[BaseTool]] = None,
         circuit_breaker: Optional[CircuitBreakerConfig] = None,
         stream: Optional[bool] = None,
@@ -117,13 +85,12 @@ class ChatAgent(BaseAgent[ChatResponse]):
         if should_stream:
             # For streaming, we need to accumulate the response
             return await self._execute_streaming_completion_with_metadata(
-                messages, user_id, tools, circuit_breaker
+                messages, tools, circuit_breaker
             )
         else:
             # For non-streaming, use the base class method directly
-            return await self.run_pipeline_with_metadata(
+            return await self.run(
                 messages=messages,
-                user_id=user_id,
                 tools=tools,
                 circuit_breaker=circuit_breaker,
                 priority=self.priority,
@@ -132,7 +99,6 @@ class ChatAgent(BaseAgent[ChatResponse]):
     async def _execute_streaming_completion_with_metadata(
         self,
         messages: List[LangChainMessage],
-        user_id: str,
         tools: Optional[List[BaseTool]] = None,
         circuit_breaker: Optional[CircuitBreakerConfig] = None,
     ) -> ChatResponse:
@@ -143,22 +109,22 @@ class ChatAgent(BaseAgent[ChatResponse]):
         chunk_count = 0
 
         try:
-            async for chunk in self.stream_pipeline_with_metadata(
+            async for chunk in self.stream(
                 messages=messages,
-                user_id=user_id,
                 tools=tools,
                 circuit_breaker=circuit_breaker,
                 priority=self.priority,
             ):
                 # Skip metadata boundary chunks
-                if chunk.channels and chunk.channels.get("stream_metadata", {}).get("is_boundary"):
+                if chunk.channels and chunk.channels.get("stream_metadata", {}).get(
+                    "is_boundary"
+                ):
                     continue
 
                 chunk_count += 1
 
                 self.logger.debug(
                     "Received streaming chunk with metadata",
-                    user_id=user_id,
                     chunk_num=chunk_count,
                     has_message=bool(chunk.message),
                     chunk_done=chunk.done,
@@ -177,7 +143,6 @@ class ChatAgent(BaseAgent[ChatResponse]):
 
             self.logger.info(
                 "Streaming completion with metadata finished",
-                user_id=user_id,
                 total_chunks=chunk_count,
                 content_length=len(final_content),
                 tool_calls_count=len(tool_calls),
@@ -186,9 +151,11 @@ class ChatAgent(BaseAgent[ChatResponse]):
             # Create final response from accumulated content
             final_message = Message(
                 role=MessageRole.ASSISTANT,
-                content=[
-                    MessageContent(type=MessageContentType.TEXT, text=final_content)
-                ] if final_content else [],
+                content=(
+                    [MessageContent(type=MessageContentType.TEXT, text=final_content)]
+                    if final_content
+                    else []
+                ),
                 tool_calls=tool_calls if tool_calls else None,
             )
 
@@ -203,7 +170,6 @@ class ChatAgent(BaseAgent[ChatResponse]):
             self._handle_node_error(
                 "streaming_completion_with_metadata",
                 e,
-                user_id=user_id,
                 message_count=len(messages),
             )
             return ChatResponse(done=True, message=None, finish_reason="error")
@@ -211,14 +177,13 @@ class ChatAgent(BaseAgent[ChatResponse]):
     async def stream_chat_completion(
         self,
         messages: List[LangChainMessage],
-        user_id: str,
         tools: Optional[List[BaseTool]] = None,
         circuit_breaker: Optional[CircuitBreakerConfig] = None,
     ):
         """
         Stream chat completion with metadata injection.
-        
-        This method is designed for LangGraph integration where you want to 
+
+        This method is designed for LangGraph integration where you want to
         stream responses with node metadata for better observability.
 
         Args:
@@ -230,90 +195,17 @@ class ChatAgent(BaseAgent[ChatResponse]):
         Yields:
             ChatResponse: Streaming chunks with injected node metadata
         """
-        async for chunk in self.stream_pipeline_with_metadata(
+        async for chunk in self.stream(
             messages=messages,
-            user_id=user_id,
             tools=tools,
             circuit_breaker=circuit_breaker,
             priority=self.priority,
         ):
             yield chunk
 
-
-
-    def convert_to_langchain_message(
-        self,
-        response: ChatResponse,
-        user_id: str,
-    ) -> LangChainMessage:
-        """
-        Convert ChatResponse to LangChainMessage for workflow integration.
-
-        Args:
-            response: ChatResponse from pipeline execution
-            user_id: User identifier for logging
-
-        Returns:
-            LangChainMessage compatible with workflow state
-        """
-        try:
-            self._log_operation_start(
-                "message_conversion",
-                user_id=user_id,
-                has_response=bool(response),
-                has_message=bool(response.message if response else False),
-            )
-
-            if response and response.message:
-                # Convert using existing utility
-                langchain_message = message_to_langchain_message(response.message)
-
-                self.logger.debug(
-                    "Message conversion details",
-                    user_id=user_id,
-                    original_tool_calls=bool(response.message.tool_calls),
-                    converted_tool_calls=bool(
-                        getattr(langchain_message, "tool_calls", None)
-                    ),
-                )
-
-                self._log_operation_success(
-                    "message_conversion",
-                    user_id=user_id,
-                    has_tool_calls=bool(getattr(langchain_message, "tool_calls", None)),
-                )
-
-                return langchain_message
-            else:
-                # Fallback message
-                fallback_message = LangChainMessage(
-                    type="ai",
-                    content="No response generated from chat completion",
-                )
-
-                self.logger.warning(
-                    "Using fallback message for empty response",
-                    user_id=user_id,
-                )
-
-                return fallback_message
-
-        except Exception as e:
-            self._handle_node_error(
-                "message_conversion",
-                e,
-                user_id=user_id,
-                has_response=bool(response),
-            )
-            return LangChainMessage(
-                type="ai",
-                content="Error during message conversion",
-            )
-
     async def chat_completion_with_conversion(
         self,
         messages: List[LangChainMessage],
-        user_id: str,
         tools: Optional[List[BaseTool]] = None,
         circuit_breaker: Optional[CircuitBreakerConfig] = None,
         stream: Optional[bool] = None,
@@ -337,20 +229,18 @@ class ChatAgent(BaseAgent[ChatResponse]):
             # Execute chat completion
             response = await self.chat_completion(
                 messages=messages,
-                user_id=user_id,
                 tools=tools,
                 circuit_breaker=circuit_breaker,
                 stream=stream,
             )
 
             # Convert to LangChain message
-            return self.convert_to_langchain_message(response, user_id)
+            return message_to_langchain_message(response.message)
 
         except Exception as e:
             self._handle_node_error(
                 "chat_completion_with_conversion",
                 e,
-                user_id=user_id,
                 message_count=len(messages),
             )
             return LangChainMessage(
