@@ -114,9 +114,14 @@ class EngineeringAgent(BaseAgent[str]):
         Returns:
             Technical response content
         """
+
         async def _execute_engineering_pipeline(
-            user_id: str, query_length: int, domain: TechnicalDomain, 
-            response_format: ResponseFormat, has_tools: bool, has_grammar: bool
+            user_id: str,
+            query_length: int,
+            domain: TechnicalDomain,
+            response_format: ResponseFormat,
+            has_tools: bool,
+            has_grammar: bool,
         ) -> str:
             """Internal pipeline executor for engineering response."""
             # Lazy imports to avoid circular dependency
@@ -129,9 +134,9 @@ class EngineeringAgent(BaseAgent[str]):
 
             # Use BaseAgent's context manager with metadata
             with self.run_pipeline_with_context_manager(
-                return_type=str, 
-                priority=PipelinePriority.NORMAL, 
-                circuit_breaker=circuit_breaker
+                return_type=str,
+                priority=PipelinePriority.NORMAL,
+                circuit_breaker=circuit_breaker,
             ) as pipeline:
                 res = await run_pipeline(prompt, pipeline, tools=tools, grammar=grammar)
                 response = (

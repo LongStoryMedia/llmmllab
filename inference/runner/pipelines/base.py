@@ -145,6 +145,7 @@ class SimplePipelineCore(ABC, Generic[T]):
         messages: List[Message],
         tools: Optional[List[BaseTool]] = None,
         grammar: Optional[GrammarInput] = None,
+        metadata: Optional[dict] = None,
         **kwargs,
     ) -> Any:
         """
@@ -165,6 +166,7 @@ class SimplePipelineCore(ABC, Generic[T]):
         messages: List[Message],
         tools: Optional[List[BaseTool]] = None,
         grammar: Optional[GrammarInput] = None,
+        metadata: Optional[dict] = None,
         **kwargs,
     ) -> Any:
         """
@@ -180,7 +182,9 @@ class SimplePipelineCore(ABC, Generic[T]):
             AsyncIterator of streaming chunks
         """
         # Default implementation falls back to invoke
-        result = await self.invoke(messages, tools, grammar, **kwargs)
+        result = await self.invoke(
+            messages, tools, grammar, metadata=metadata, **kwargs
+        )
         yield result
 
     def cleanup(self) -> None:

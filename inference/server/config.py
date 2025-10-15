@@ -81,12 +81,6 @@ SUMMARY_SYSTEM_PROMPT = os.environ.get(
     "It should be as small as possible and does not need to be human readable.",
 )
 MAX_SUMMARY_LEVELS = int(os.environ.get("MAX_SUMMARY_LEVELS", "3"))
-SUMMARY_WEIGHT_COEFFICIENT = float(os.environ.get("SUMMARY_WEIGHT_COEFFICIENT", "0.7"))
-MASTER_SUMMARY_PROMPT = os.environ.get(
-    "MASTER_SUMMARY_PROMPT",
-    "Create a comprehensive summary of the conversation, giving most weight to the most recent points "
-    "and gradually less weight to older information. This is a master summary that will be used for long-term context.",
-)
 
 # Config storage
 CONFIG_DIR = os.environ.get("CONFIG_DIR", "/app/config")
@@ -311,19 +305,6 @@ def get_database_config() -> Dict[str, Any]:
         "dbname": DB_NAME,
         "sslmode": DB_SSLMODE,
         "connection_string": DB_CONNECTION_STRING,
-    }
-
-
-def get_summarization_config() -> Dict[str, Any]:
-    """Get summarization configuration."""
-    return {
-        "messages_before_summary": MESSAGES_BEFORE_SUMMARY,
-        "summaries_before_consolidation": SUMMARIES_BEFORE_CONSOLIDATION,
-        "summary_model": SUMMARY_MODEL,
-        "system_prompt": SUMMARY_SYSTEM_PROMPT,
-        "max_summary_levels": MAX_SUMMARY_LEVELS,
-        "summary_weight_coefficient": SUMMARY_WEIGHT_COEFFICIENT,
-        "master_summary_prompt": MASTER_SUMMARY_PROMPT,
     }
 
 

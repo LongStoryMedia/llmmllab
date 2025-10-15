@@ -3,12 +3,20 @@ Bidirectional message conversion utilities.
 """
 
 from typing import List, Optional, Union
-from models import Message, LangChainMessage, MessageRole
+from models import (
+    Message,
+    LangChainMessage,
+    MessageRole,
+    MessageContent,
+    MessageContentType,
+)
 from .extraction import (
     extract_content_from_message,
     extract_content_from_langchain_message,
     _text_to_message_content_list,
 )
+
+MessageInput = Union[str, Message, List[Union[str, Message]]]
 
 
 def message_to_langchain_message(msg: Message) -> LangChainMessage:
@@ -152,78 +160,55 @@ def convert_langchain_messages_to_messages(
     return messages
 
 
-def normalize_message_list(
-    messages: List[Union[Message, LangChainMessage]], target_type: str = "message"
-) -> List[Union[Message, LangChainMessage]]:
+def normalize_message_input(
+    input_data: MessageInput, role: MessageRole = MessageRole.USER
+) -> List[Message]:
     """
-    Normalize a list of mixed message types to a consistent format.
+    Normalize various input types to a List[Message].
 
     Args:
-        messages: List of mixed Message and LangChainMessage objects
-        target_type: Target type ("message" or "langchain")
+        input_data: Can be str, Message, List[str | Message]
 
     Returns:
-        List of normalized message objects
+        List[Message]: Normalized message list
     """
-    normalized = []
+    if isinstance(input_data, str):
+        # Single string -> single Message
+        return [
+            Message(
+                role=role,
+                content=[MessageContent(type=MessageContentType.TEXT, text=input_data)],
+            )
+        ]
+    elif isinstance(input_data, Message):
+        # Single Message -> list with one Message
+        return [input_data]
+    elif isinstance(input_data, list):
+        if not input_data:
+            return []
 
-    if target_type == "message":
-        for msg in messages:
-            if isinstance(msg, LangChainMessage):
-                normalized.append(langchain_message_to_message(msg))
-            elif isinstance(msg, Message):
-                normalized.append(msg)
-            else:
-                # Create Message from string or other type
-                normalized.append(
+        # Coerce each item in the list to a Message object
+        messages = []
+        for item in input_data:
+            if isinstance(item, str):
+                messages.append(
                     Message(
-                        content=_text_to_message_content_list(str(msg)),
-                        role=MessageRole.USER,
+                        role=role,
+                        content=[
+                            MessageContent(type=MessageContentType.TEXT, text=item)
+                        ],
                     )
                 )
-        return normalized
-
-    else:  # target_type == "langchain"
-        for msg in messages:
-            if isinstance(msg, Message):
-                normalized.append(message_to_langchain_message(msg))
-            elif isinstance(msg, LangChainMessage):
-                normalized.append(msg)
+            elif isinstance(item, Message):
+                messages.append(item)
             else:
-                # Create LangChainMessage from string or other type
-                normalized.append(LangChainMessage(content=str(msg), type="human"))
-        return normalized
-
-
-def convert_message_batch(
-    messages: List[Union[Message, LangChainMessage]],
-    conversation_id: Optional[int] = None,
-) -> tuple[List[Message], List[LangChainMessage]]:
-    """
-    Convert a batch of messages to both formats simultaneously.
-    Useful when you need both representations.
-
-    Args:
-        messages: List of messages in either format
-        conversation_id: Optional conversation ID for Message objects
-
-    Returns:
-        Tuple of (Message list, LangChainMessage list)
-    """
-    msg_list = normalize_message_list(messages, "message")
-    lc_msg_list = normalize_message_list(messages, "langchain")
-
-    # Ensure we have proper types
-    typed_msg_list: List[Message] = [
-        msg for msg in msg_list if isinstance(msg, Message)
-    ]
-    typed_lc_msg_list: List[LangChainMessage] = [
-        msg for msg in lc_msg_list if isinstance(msg, LangChainMessage)
-    ]
-
-    # Set conversation_id on Message objects if provided
-    if conversation_id:
-        for msg in typed_msg_list:
-            msg.conversation_id = conversation_id
-
-    return typed_msg_list, typed_lc_msg_list
+                # Convert other types to string, then to Message
+                messages.append(
+                    Message(
+                        role=role,
+                        content=[
+                            MessageContent(type=MessageContentType.TEXT, text=str(item))
+                        ],
+                    )
+                )
+        return messages

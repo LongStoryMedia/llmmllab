@@ -1,106 +1,136 @@
 """
-Simplified Qwen3 MoE pipeline - pure LLM interface, no orchestration.
-Replaced 1020 lines of LangGraph complexity with direct LLM calls.
+Qwen3 MoE pipeline as BaseChatModel implementation.
+Provides custom model-specific optimizations for Qwen MoE models.
 """
 
-import os
 import logging
-import asyncio
-from typing import List, Optional, AsyncIterator
+import re
+from typing import List, Optional, Dict, Any
 
 from langchain_core.tools import BaseTool
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import BaseMessage
 
-# (Removed unused langchain imports from simplified runner pipeline)
-
-from models import (
-    MessageContent,
-    MessageContentType,
-    MessageRole,
-    Model,
-    Message,
-    ChatResponse,
-    ModelProfile,
-)
+from models import Model, ModelProfile
 from runner.pipelines.base import GrammarInput
 from runner.pipelines.llamacpp import BaseLlamaCppPipeline
 
 
 class Qwen3Moe(BaseLlamaCppPipeline):
     """
-    Simplified Qwen3 MoE pipeline - direct LLM calls with <think> tag processing.
+    Qwen3 MoE chat model implementation.
 
     Features:
-    - Direct LlamaCpp initialization
-    - Clean message formatting with Qwen chat format
-    - Hardware optimization for MoE models
-    - Simple <think> tag extraction
+    - Optimized for Qwen3 MoE models (e.g., Qwen2.5-Coder-32B-Instruct)
+    - Custom chat format for Qwen models
+    - Hardware optimization for MoE architecture
+    - <think> tag processing for reasoning models
     """
 
-    def __init__(
-        self,
-        model: Model,
-        profile: ModelProfile,
-    ):
-        super().__init__(model, profile)
+    def __init__(self, model: Model, profile: ModelProfile, **kwargs):
+        super().__init__(model, profile, **kwargs)
         self._logger = logging.getLogger(self.__class__.__name__)
 
-    async def _create_system_prompt(
-        self, tools: Optional[List[BaseTool]] = None
-    ) -> str:
-        """Create system prompt for Qwen with tool descriptions."""
-        base_prompt = (
-            self.profile.system_prompt or "You are Qwen, a helpful AI assistant."
-        )
+    @property
+    def _llm_type(self) -> str:
+        """Get the type of language model used by this chat model."""
+        return "qwen3-moe-llamacpp"
 
-        if not tools:
-            return base_prompt
+    @property
+    def _identifying_params(self) -> Dict[str, Any]:
+        """Return a dictionary of identifying parameters."""
+        base_params = super()._identifying_params
+        base_params.update({
+            "model_type": "qwen3-moe",
+            "chat_format": "chatml",
+        })
+        return base_params
 
-        # Create tool descriptions for Qwen format
-        tool_descriptions = []
-        for tool in tools:
-            tool_desc = f"- {tool.name}: {tool.description}"
-            tool_descriptions.append(tool_desc)
+    def _get_llama_instance(
+        self, 
+        tools: Optional[List[BaseTool]] = None,
+        grammar: Optional[GrammarInput] = None
+    ) -> Any:
+        """Get or create Llama instance with Qwen-specific optimizations."""
+        if self.llama_instance is None:
+            gguf_path = self._get_gguf_path()
+            self.llama_instance = self._initialize_llama_with_qwen_optimizations(
+                gguf_path, tools, grammar
+            )
+                
+        return self.llama_instance
 
-        tools_section = "Available tools:\n" + "\n".join(tool_descriptions)
+    def _initialize_llama_with_qwen_optimizations(
+        self,
+        gguf_path: str,
+        tools: Optional[List[BaseTool]] = None,
+        grammar: Optional[GrammarInput] = None,
+    ) -> Any:
+        """Initialize Llama with Qwen-specific optimizations."""
+        from llama_cpp import Llama
+        
+        if Llama is None:
+            raise ImportError("llama-cpp-python is required but not installed")
 
-        return f"{base_prompt}\n\n{tools_section}"
+        # Get base parameters
+        requested_ctx = self.profile_config.parameters.num_ctx or 32768  # Qwen supports larger contexts
+        requested_batch = self.profile_config.parameters.batch_size or 1024  # Larger batch for MoE
+        
+        # Qwen MoE-specific optimizations
+        model_size_category = self._get_model_size_category()
+        
+        # For MoE models, be more aggressive with GPU layers
+        explicit_gpu_layers = None
+        if (
+            self.profile_config.gpu_config is not None
+            and self.profile_config.gpu_config.gpu_layers is not None
+        ):
+            explicit_gpu_layers = self.profile_config.gpu_config.gpu_layers
+        else:
+            # Default to full offload for MoE models
+            explicit_gpu_layers = -1
 
-    async def _format_messages(
-        self, messages: List[Message], tools: Optional[List[BaseTool]] = None
-    ) -> str:
-        """Format messages using Qwen chat format."""
-        formatted_parts = []
+        try:
+            # Initialize with Qwen-optimized parameters
+            llama_params = {
+                "model_path": gguf_path,
+                "n_gpu_layers": explicit_gpu_layers,
+                "n_ctx": requested_ctx,
+                "n_batch": requested_batch,
+                "n_threads": self._get_optimal_threads(),
+                "seed": self.profile_config.parameters.seed or -1,
+                "temperature": self.profile_config.parameters.temperature or 0.7,
+                "top_p": self.profile_config.parameters.top_p or 0.8,
+                "top_k": self.profile_config.parameters.top_k or 20,
+                "repeat_penalty": self.profile_config.parameters.repeat_penalty or 1.05,
+                "use_mmap": True,
+                "use_mlock": False,
+                "f16_kv": True,
+                "verbose": False,
+                "flash_attn": True,  # Enable flash attention for better performance
+                "logits_all": False,
+                "embedding": False,
+                "chat_format": "chatml",  # Qwen uses ChatML format
+                # MoE-specific parameters
+                "n_cpu_moe": getattr(self.profile_config.parameters, "n_cpu_moe", 0),
+            }
 
-        # Add system prompt
-        system_prompt = await self._create_system_prompt(tools)
-        formatted_parts.append(f"<|im_start|>system\n{system_prompt}<|im_end|>")
+            llama_instance = Llama(**llama_params)
+            
+            self._logger.info(
+                f"Initialized Qwen3 MoE model: ctx={requested_ctx}, batch={requested_batch}, "
+                f"gpu_layers={explicit_gpu_layers}, chat_format=chatml"
+            )
+            
+            return llama_instance
 
-        # Add conversation messages
-        for msg in messages:
-            content_text = ""
-            for content in msg.content:
-                if content.type == MessageContentType.TEXT and content.text:
-                    content_text += content.text
-
-            if msg.role == MessageRole.USER:
-                formatted_parts.append(f"<|im_start|>user\n{content_text}<|im_end|>")
-            elif msg.role == MessageRole.ASSISTANT:
-                formatted_parts.append(
-                    f"<|im_start|>assistant\n{content_text}<|im_end|>"
-                )
-
-        # Add assistant start for completion
-        formatted_parts.append("<|im_start|>assistant\n")
-
-        return "\n".join(formatted_parts)
+        except Exception as e:
+            self._logger.error(f"Failed to initialize Qwen3 MoE model: {e}")
+            # Fallback to base initialization
+            return super()._initialize_llama_with_fallback(gguf_path, tools, grammar)
 
     def _extract_response_content(self, raw_response: str) -> str:
-        """Extract response content and handle <think> tags."""
+        """Extract response content and handle <think> tags for reasoning models."""
         # Remove <think>...</think> blocks for cleaner output
-        import re
-
-        # Remove think tags and their content
         cleaned = re.sub(r"<think>.*?</think>", "", raw_response, flags=re.DOTALL)
 
         # Clean up extra whitespace
@@ -109,184 +139,19 @@ class Qwen3Moe(BaseLlamaCppPipeline):
 
         return cleaned or raw_response  # Fallback to original if nothing left
 
-    def _parse_tool_calls(self, content: str) -> List[dict]:
-        """Parse tool calls from XML format."""
-        import json
-        import re
+    def _format_messages_for_llama(self, messages: List[BaseMessage]) -> List[Dict[str, str]]:
+        """Override message formatting for Qwen-specific chat format."""
+        # Use base implementation but ensure proper ChatML format
+        llama_messages = super()._format_messages_for_llama(messages)
+        
+        # Qwen models work best with ChatML format, which is handled by the base class
+        # but we could add Qwen-specific message processing here if needed
+        return llama_messages
 
-        tool_calls = []
+    def _post_process_response(self, response_content: str) -> str:
+        """Post-process response to handle Qwen-specific patterns."""
+        # Extract clean content, removing think tags
+        return self._extract_response_content(response_content)
 
-        # Look for <tool_call> XML tags - handle multiline JSON
-        tool_call_pattern = r"<tool_call>\s*(\{[^<]*?\})\s*</tool_call>"
-        matches = re.findall(tool_call_pattern, content, re.DOTALL | re.IGNORECASE)
 
-        self._logger.debug(f"Parsing tool calls from content: {content[:500]}...")
-        self._logger.debug(f"Found {len(matches)} potential tool call matches")
-
-        for i, match in enumerate(matches):
-            try:
-                # Parse the JSON content
-                tool_data = json.loads(match)
-
-                if "name" in tool_data:
-                    formatted_call = {
-                        "name": tool_data["name"],
-                        "args": tool_data.get("arguments", {}),
-                        "id": f"call_{i}_{tool_data['name']}",
-                        "type": "tool_call",
-                    }
-                    tool_calls.append(formatted_call)
-                    self._logger.debug(f"Parsed XML tool call: {formatted_call}")
-                else:
-                    self._logger.warning(
-                        f"Tool call missing 'name' field: {match[:100]}..."
-                    )
-
-            except (json.JSONDecodeError, KeyError) as e:
-                self._logger.warning(
-                    f"Failed to parse XML tool call from: {match[:100]}... Error: {e}"
-                )
-                continue
-
-        self._logger.debug(f"Returning {len(tool_calls)} parsed tool calls")
-        return tool_calls
-
-    async def invoke(
-        self,
-        messages: List[Message],
-        tools: Optional[List[BaseTool]] = None,
-        grammar: Optional[GrammarInput] = None,
-        **kwargs,
-    ) -> ChatResponse:
-        """Invoke the Qwen LLM directly."""
-        _ = grammar, kwargs  # Suppress unused warnings
-
-        # Initialize LLM if needed
-        if self.llm is None:
-            self.llm = self._initialize_llm()
-
-        try:
-            # Format conversation
-            formatted_prompt = await self._format_messages(messages, tools)
-
-            # Invoke LLM directly
-            if self.llm is None:
-                raise RuntimeError("LLM not initialized")
-            response = await self.llm.ainvoke([HumanMessage(content=formatted_prompt)])
-
-            # Extract and clean content
-            raw_content = str(response.content) if response.content else ""
-            cleaned_content = self._extract_response_content(raw_content)
-
-            # Parse tool calls from raw content
-            self._logger.info(
-                f"QWEN3MOE INVOKE: tools param = {len(tools) if tools else 'None'}"
-            )
-            self._logger.info(
-                f"QWEN3MOE INVOKE: raw_content preview = {raw_content[:200]}..."
-            )
-            tool_calls = self._parse_tool_calls(raw_content) if tools else None
-            self._logger.info(
-                f"QWEN3MOE INVOKE: parsed tool_calls = {len(tool_calls) if tool_calls else 'None'}"
-            )
-
-            # Create response message
-            result_message = Message(
-                role=MessageRole.ASSISTANT,
-                content=[
-                    MessageContent(type=MessageContentType.TEXT, text=cleaned_content)
-                ],
-                tool_calls=tool_calls,
-            )
-            return ChatResponse(done=True, message=result_message)
-
-        except Exception as e:
-            self._logger.error(f"Qwen LLM invocation failed: {e}")
-            error_msg = f"Error: {str(e)}"
-            error_message = Message(
-                role=MessageRole.ASSISTANT,
-                content=[MessageContent(type=MessageContentType.TEXT, text=error_msg)],
-            )
-            return ChatResponse(done=True, message=error_message)
-
-    async def stream(
-        self,
-        messages: List[Message],
-        tools: Optional[List[BaseTool]] = None,
-        grammar: Optional[GrammarInput] = None,
-        **kwargs,
-    ) -> AsyncIterator[ChatResponse]:
-        """Stream responses from Qwen LLM."""
-        _ = grammar, kwargs  # Suppress unused warnings
-
-        self._logger.info(
-            f"QWEN3MOE STREAM START: tools param = {len(tools) if tools else 'None'}"
-        )
-
-        # Initialize LLM if needed
-        if self.llm is None:
-            self.llm = self._initialize_llm()
-
-        try:
-            # Format conversation
-            formatted_prompt = await self._format_messages(messages, tools)
-
-            # Stream from LLM
-            if self.llm is None:
-                raise RuntimeError("LLM not initialized")
-
-            accumulated_content = ""
-            async for chunk in self.llm.astream(
-                [HumanMessage(content=formatted_prompt)]
-            ):
-                if hasattr(chunk, "content") and chunk.content:
-                    chunk_text = str(chunk.content)
-                    accumulated_content += chunk_text
-
-                    # For streaming, we send raw chunks and clean at the end
-                    chunk_message = Message(
-                        role=MessageRole.ASSISTANT,
-                        content=[
-                            MessageContent(
-                                type=MessageContentType.TEXT, text=chunk_text
-                            )
-                        ],
-                    )
-                    yield ChatResponse(done=False, message=chunk_message)
-
-            # Final chunk to indicate completion with tool calls
-            cleaned_content = self._extract_response_content(accumulated_content)
-            self._logger.info(
-                f"QWEN3MOE STREAM: tools param = {len(tools) if tools else 'None'}"
-            )
-            self._logger.info(
-                f"QWEN3MOE STREAM: accumulated_content preview = {accumulated_content[:200]}..."
-            )
-            tool_calls = self._parse_tool_calls(accumulated_content) if tools else None
-            self._logger.info(
-                f"QWEN3MOE STREAM: parsed tool_calls = {len(tool_calls) if tool_calls else 'None'}"
-            )
-
-            final_message = Message(
-                role=MessageRole.ASSISTANT,
-                content=[
-                    MessageContent(type=MessageContentType.TEXT, text=cleaned_content)
-                ],
-                tool_calls=tool_calls,
-            )
-
-            # Debug: Log final message tool calls
-            self._logger.info(
-                f"QWEN3MOE STREAM: Final message created with tool_calls={len(final_message.tool_calls) if final_message.tool_calls else 0}"
-            )
-
-            yield ChatResponse(done=True, message=final_message)
-
-        except Exception as e:
-            self._logger.error(f"Qwen LLM streaming failed: {e}")
-            error_msg = f"Error: {str(e)}"
-            error_message = Message(
-                role=MessageRole.ASSISTANT,
-                content=[MessageContent(type=MessageContentType.TEXT, text=error_msg)],
-            )
-            yield ChatResponse(done=True, message=error_message)
+__all__ = ["Qwen3Moe"]

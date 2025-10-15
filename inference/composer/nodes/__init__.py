@@ -1,7 +1,7 @@
 """LangGraph workflow nodes organized by functional purpose."""
 
 # Infrastructure nodes (core workflow components)
-from .infrastructure import PipelineNode, CircuitProtectedNode
+from .infrastructure import CircuitProtectedNode
 
 # Memory and knowledge nodes
 from .memory import MemorySearchNode, MemoryStorageNode
@@ -28,7 +28,6 @@ from .tools import (
 
 __all__ = [
     # Infrastructure
-    "PipelineNode",
     "CircuitProtectedNode",
     # Tools
     "ToolExecutorNode",

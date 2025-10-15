@@ -37,33 +37,6 @@ class EmbeddingAgent(BaseAgent[List[List[float]]]):
         """
         super().__init__(pipeline_factory, profile, node_metadata, "EmbeddingAgent")
 
-    async def execute_pipeline(
-        self, stream: bool = False, **kwargs
-    ) -> List[List[float]]:
-        """
-        Execute embedding generation pipeline with the provided parameters.
-
-        This is the standard interface for pipeline execution required by BaseAgent.
-
-        Args:
-            stream: Whether to stream the response (not applicable for embeddings)
-            **kwargs: Pipeline execution parameters, expected to include:
-                - texts: List of text strings to generate embeddings for
-                - user_id: User identifier
-
-        Returns:
-            List[List[float]]: The generated embeddings
-        """
-        texts = kwargs.get("texts", [])
-        user_id = kwargs.get("user_id", "")
-
-        if not texts:
-            raise NodeExecutionError(
-                "texts parameter is required for embedding generation"
-            )
-
-        return await self.generate_embeddings(texts=texts, user_id=user_id)
-
     async def generate_embeddings(
         self,
         texts: List[str],
@@ -79,38 +52,12 @@ class EmbeddingAgent(BaseAgent[List[List[float]]]):
         Returns:
             List of embedding vectors (one per input text)
         """
-        async def _execute_embedding_pipeline(user_id: str, text_count: int) -> List[List[float]]:
-            """Internal pipeline executor for embeddings."""
-            # Use injected storage service
-            from runner import (  # pylint: disable=import-outside-toplevel
-                embed_pipeline,
-                EmbeddingPipeline,
-            )
 
-            # Get embedding pipeline - embeddings need specialized pipeline
-            pipeline = self.pipeline_factory.get_pipeline(
-                self.profile,
-                List[List[float]],
-                PipelinePriority.NORMAL,
-            )
-
-            # Generate embeddings using specialized embed_pipeline function
-            embeddings = await embed_pipeline(
-                messages=texts,  # embed_pipeline accepts text directly
-                pipeline=cast(EmbeddingPipeline, pipeline),
-            )
-
-            if embeddings:
-                return embeddings
-            else:
-                raise NodeExecutionError("No embeddings returned from pipeline")
-
-        # Use BaseAgent's generic pipeline runner with metadata
-        return await self.run_generic_pipeline_with_metadata(
-            pipeline_executor=_execute_embedding_pipeline,
-            operation_name="embedding_generation",
+        return await self.embed(
+            messages=texts,
             user_id=user_id,
-            text_count=len(texts),
+            circuit_breaker=self.profile.circuit_breaker,
+            priority=PipelinePriority.NORMAL,
         )
 
     async def generate_single_embedding(self, text: str, user_id: str) -> List[float]:
@@ -159,28 +106,3 @@ class EmbeddingAgent(BaseAgent[List[List[float]]]):
         except Exception as e:
             self.logger.error(f"Similarity computation failed: {e}")
             return 0.0
-
-    def validate_embeddings(self, embeddings: List[List[float]]) -> bool:
-        """
-        Validate that embeddings are properly formatted.
-
-        Args:
-            embeddings: List of embedding vectors to validate
-
-        Returns:
-            True if valid, False otherwise
-        """
-        if not embeddings or not isinstance(embeddings, list):
-            return False
-
-        if not all(
-            isinstance(emb, list) and all(isinstance(x, (int, float)) for x in emb)
-            for emb in embeddings
-        ):
-            return False
-
-        # Check that all embeddings have the same dimension
-        if len(set(len(emb) for emb in embeddings)) > 1:
-            return False
-
-        return True

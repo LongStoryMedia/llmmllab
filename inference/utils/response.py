@@ -3,7 +3,7 @@ Helper functions for message processing.
 """
 
 import datetime
-from typing import Optional
+from typing import Optional, Any, Dict
 
 from models import (
     MessageContent,
@@ -46,7 +46,7 @@ def create_error_response(error_message: str) -> ChatResponse:
     return ChatResponse(
         done=True,
         message=Message(
-            role=MessageRole.ASSISTANT,
+            role=MessageRole.OBSERVER,
             content=[
                 MessageContent(
                     type=MessageContentType.TEXT,
@@ -62,31 +62,3 @@ def create_error_response(error_message: str) -> ChatResponse:
 def create_error_chunk(error_message: str) -> ChatResponse:
     """Create an error chunk as a ChatResponse."""
     return create_error_response(error_message)
-
-
-def create_metadata_wrapper(
-    data: Any, node_metadata: Dict[str, Any], execution_metadata: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
-    """
-    Create a wrapper that includes both the original data and node metadata.
-    
-    This is useful for non-ChatResponse return types where we still want to
-    inject node metadata for observability.
-    
-    Args:
-        data: The original return data
-        node_metadata: Node metadata to inject
-        execution_metadata: Optional execution metadata
-        
-    Returns:
-        Dict containing both data and metadata
-    """
-    wrapper = {
-        "data": data,
-        "node_metadata": node_metadata,
-    }
-    
-    if execution_metadata:
-        wrapper["execution_metadata"] = execution_metadata
-        
-    return wrapper

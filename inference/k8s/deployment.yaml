@@ -76,46 +76,13 @@ spec:
             - name: models
               mountPath: /models
           env:
-            - name: OLLAMA_HOST
-              value: "0.0.0.0"
-            - name: OLLAMA_DEBUG
-              value: "false"
             - name: PYTHONPATH
               value: "/app"
-            # Logging configuration
-            - name: LOG_LEVEL
-              value: "debug"
-            - name: FORCE_COLOR
-              value: "1"
             - name: HF_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: hf-token
                   key: token
-            # RabbitMQ configuration
-            - name: RABBITMQ_ENABLED
-              value: "true"
-            - name: RABBITMQ_HOST
-              value: "rabbitmq-0.rabbitmq.rabbitmq.svc.cluster.local"
-            - name: RABBITMQ_PORT
-              value: "5672"
-            - name: RABBITMQ_USER
-              value: "lsm"
-            - name: RABBITMQ_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: rabbitmq
-                  key: password
-            - name: RABBITMQ_VHOST
-              value: "/"
-            # Internal service settings
-            - name: MAISTRO_INTERNAL_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: internal-api-key
-                  key: api_key
-            - name: MAISTRO_BASE_URL
-              value: "http://maistro.maistro.svc.cluster.local:8080"
 
             # Authentication configuration
             - name: AUTH_ISSUER
@@ -183,9 +150,7 @@ spec:
             - name: MAX_SUMMARY_LEVELS
               value: "3"
             - name: SUMMARY_WEIGHT_COEFFICIENT
-              value: "0.7"
-            - name: MASTER_SUMMARY_PROMPT
-              value: "Create a comprehensive summary of the conversation, giving most weight to the most recent points and gradually less weight to older information. This is a master summary that will be used for long-term context."
+              value: "192.168.0.71"
 
             # Image generation configuration
             - name: IMAGE_GENERATION_ENABLED
@@ -197,78 +162,6 @@ spec:
             - name: IMAGE_RETENTION_HOURS
               value: "24"
 
-            # Inference services configuration
-            - name: INFERENCE_SERVICES_OLLAMA_BASE_URL
-              value: "http://localhost:11434"
-            - name: INFERENCE_SERVICES_SD_BASE_URL
-              value: "http://localhost:8000"
-            - name: INFERENCE_SERVICES_HOST
-              value: "0.0.0.0"
-            - name: INFERENCE_SERVICES_PORT
-              value: "50051"
-
-            # Composer service configuration
-            - name: COMPOSER_HOST
-              value: "0.0.0.0"
-            - name: COMPOSER_PORT
-              value: "8001"
-            - name: COMPOSER_DEBUG
-              value: "false"
-            - name: COMPOSER_RELOAD
-              value: "false"
-            - name: COMPOSER_LOG_LEVEL
-              value: "INFO"
-            - name: COMPOSER_ENABLE_CORS
-              value: "true"
-            - name: COMPOSER_RATE_LIMIT_ENABLED
-              value: "true"
-            - name: COMPOSER_RATE_LIMIT_RPM
-              value: "60"
-            - name: COMPOSER_HEALTH_CHECK_ENABLED
-              value: "true"
-            - name: COMPOSER_HEALTH_CHECK_INTERVAL
-              value: "30"
-
-            # Composer workflow defaults (user-customizable via UI)
-            - name: COMPOSER_ENABLE_CACHE
-              value: "true"
-            - name: COMPOSER_CACHE_TTL
-              value: "3600"
-            - name: COMPOSER_MAX_PARALLEL_TOOLS
-              value: "5"
-            - name: COMPOSER_ENABLE_MULTI_AGENT
-              value: "false"
-            - name: COMPOSER_DEFAULT_TIMEOUT
-              value: "60.0"
-            - name: COMPOSER_MAX_CONTEXT_LENGTH
-              value: "128000"
-            - name: COMPOSER_CONTEXT_TRIM_THRESHOLD
-              value: "0.8"
-            - name: COMPOSER_ENABLE_STREAMING
-              value: "true"
-            - name: COMPOSER_STREAM_BUFFER_SIZE
-              value: "1024"
-
-            # Composer tool defaults (user-customizable via UI)
-            - name: COMPOSER_TOOL_SIMILARITY_THRESHOLD
-              value: "0.9"
-            - name: COMPOSER_TOOL_MODIFICATION_THRESHOLD
-              value: "0.6"
-            - name: COMPOSER_ENABLE_TOOL_GENERATION
-              value: "true"
-            - name: COMPOSER_MAX_TOOL_RETRIES
-              value: "3"
-            - name: COMPOSER_TOOL_TIMEOUT
-              value: "30.0"
-            - name: COMPOSER_ENABLE_TOOL_CACHING
-              value: "true"
-            - name: COMPOSER_TOOL_CACHE_TTL
-              value: "1800"
-            - name: COMPOSER_ENABLE_SEMANTIC_SEARCH
-              value: "true"
-            - name: COMPOSER_SEARCH_TOP_K
-              value: "10"
-
             # Internal security configuration
             - name: INTERNAL_API_KEY
               valueFrom:
@@ -278,24 +171,14 @@ spec:
             - name: INTERNAL_ALLOWED_IPS
               value: "192.168.0.0/24,10.43.0.0/16"
 
-            # Log level
+            # Logging configuration
             - name: LOG_LEVEL
-              value: "info"
+              value: "debug"
+            - name: FORCE_COLOR
+              value: "1"
             # API versioning configurationEL
             - name: API_VERSION
               value: "v1"
-            - name: EVALUATION_VENV
-              value: "/opt/venv/evaluation"
-            - name: SERVER_VENV
-              value: "/opt/venv/server"
-            - name: RUNNER_VENV
-              value: "/opt/venv/runner"
-            - name: COMPOSER_VENV
-              value: "/opt/venv/composer"
-            - name: BASE_VENV
-              value: "/opt/venv/base"
-            - name: LD_LIBRARY_PATH
-              value: "/usr/local/lib:/usr/local/cuda/lib64:/opt/venv/runner/lib/python3.12/site-packages/llama_cpp/lib:/opt/venv/server/lib/python3.12/site-packages/llama_cpp/lib:/opt/venv/evaluation/lib/python3.12/site-packages/llama_cpp/lib"
             - name: CUDA_VISIBLE_DEVICES
               value: "0,1,2" # Explicitly list available devices
             - name: CUDA_DEVICE_ORDER

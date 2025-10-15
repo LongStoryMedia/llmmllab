@@ -4,9 +4,7 @@ Designed for the new simplified architecture where orchestration is handled by C
 """
 
 import logging
-import uuid
-from copy import deepcopy
-from typing import Any, Dict, Optional, List, AsyncIterator, Union, Type
+from typing import Optional, List, AsyncIterator, Union, Type
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -15,14 +13,14 @@ from langchain_core.tools import BaseTool
 
 from models import (
     ChatResponse,
+    LangChainMessage,
     Message,
     MessageRole,
     MessageContent,
     MessageContentType,
-    ModelProvider,
 )
-from utils.message import extract_message_text
-from utils.response import create_streaming_chunk
+from utils.response import create_error_response
+from utils.logging import llmmllogger
 
 from .base import SimplePipelineCore, SimpleEmbeddingPipeline
 
@@ -32,143 +30,12 @@ MessageInput = Union[str, Message, List[Union[str, Message]], List[Message], Lis
 GrammarInput = Union[str, Path, Type[BaseModel], None]
 
 
-class PipelineExecutionMetadata:
-    """Tracks execution metadata for pipeline runs."""
-
-    def __init__(
-        self, pipeline: SimplePipelineCore, execution_id: Optional[str] = None
-    ):
-        self.execution_id = execution_id or str(uuid.uuid4())[:8]
-        self.pipeline_name = type(pipeline).__name__
-        self.model_name = (
-            getattr(pipeline.model, "name", "unknown")
-            if hasattr(pipeline, "model")
-            else "unknown"
-        )
-        self.model_id = (
-            getattr(pipeline.model, "id", "unknown")
-            if hasattr(pipeline, "model")
-            else "unknown"
-        )
-        self.provider = (
-            getattr(pipeline.model, "provider", ModelProvider.OTHER)
-            if hasattr(pipeline, "model")
-            else ModelProvider.OTHER
-        )
-        self.is_cached = self._determine_if_cached(pipeline)
-        self.expected_return_type = getattr(pipeline, "expected_return_type", None)
-        self.start_time = datetime.now(timezone.utc)
-        self.token_count = 0
-
-    def _determine_if_cached(self, pipeline: SimplePipelineCore) -> bool:
-        """Determine if this pipeline instance is from cache."""
-        # Local providers use caching
-        if hasattr(pipeline, "model") and hasattr(pipeline.model, "provider"):
-            return pipeline.model.provider in {
-                ModelProvider.LLAMA_CPP,
-                ModelProvider.STABLE_DIFFUSION_CPP,
-            }
-        return False
-
-    def log_start(self, logger: logging.Logger) -> None:
-        """Log pipeline execution start with metadata."""
-        cache_status = "cached" if self.is_cached else "transient"
-        logger.info(
-            f"[{self.execution_id}] Starting {self.pipeline_name} execution",
-            extra={
-                "execution_id": self.execution_id,
-                "pipeline": self.pipeline_name,
-                "model": self.model_name,
-                "model_id": self.model_id,
-                "provider": (
-                    self.provider.value
-                    if hasattr(self.provider, "value")
-                    else str(self.provider)
-                ),
-                "cache_status": cache_status,
-                "return_type": (
-                    self.expected_return_type.__name__
-                    if self.expected_return_type
-                    else None
-                ),
-            },
-        )
-
-    def log_completion(self, logger: logging.Logger, success: bool = True) -> None:
-        """Log pipeline execution completion."""
-        duration = (datetime.now(timezone.utc) - self.start_time).total_seconds()
-        status = "completed" if success else "failed"
-        logger.info(
-            f"[{self.execution_id}] Pipeline {status} in {duration:.2f}s",
-            extra={
-                "execution_id": self.execution_id,
-                "pipeline": self.pipeline_name,
-                "duration_seconds": duration,
-                "token_count": self.token_count,
-                "status": status,
-            },
-        )
-
-
-def _normalize_message_input(
-    input_data: MessageInput, role: MessageRole = MessageRole.USER
-) -> List[Message]:
-    """
-    Normalize various input types to a List[Message].
-
-    Args:
-        input_data: Can be str, Message, List[str | Message]
-
-    Returns:
-        List[Message]: Normalized message list
-    """
-    if isinstance(input_data, str):
-        # Single string -> single Message
-        return [
-            Message(
-                role=role,
-                content=[MessageContent(type=MessageContentType.TEXT, text=input_data)],
-            )
-        ]
-    elif isinstance(input_data, Message):
-        # Single Message -> list with one Message
-        return [input_data]
-    elif isinstance(input_data, list):
-        if not input_data:
-            return []
-
-        # Coerce each item in the list to a Message object
-        messages = []
-        for item in input_data:
-            if isinstance(item, str):
-                messages.append(
-                    Message(
-                        role=role,
-                        content=[
-                            MessageContent(type=MessageContentType.TEXT, text=item)
-                        ],
-                    )
-                )
-            elif isinstance(item, Message):
-                messages.append(item)
-            else:
-                # Convert other types to string, then to Message
-                messages.append(
-                    Message(
-                        role=role,
-                        content=[
-                            MessageContent(type=MessageContentType.TEXT, text=str(item))
-                        ],
-                    )
-                )
-        return messages
-
-
 async def stream_pipeline(
-    messages: MessageInput,
+    messages: List[LangChainMessage],
     pipeline: SimplePipelineCore,
     tools: Optional[List[BaseTool]] = None,
     grammar: Optional[GrammarInput] = None,
+    metadata: Optional[dict] = None,
 ) -> AsyncIterator[ChatResponse]:
     """
     Stream pipeline execution with metadata tracking.
@@ -180,79 +47,26 @@ async def stream_pipeline(
         tools: Optional tools for the pipeline
         grammar: Optional grammar constraint
     """
-    logger = logging.getLogger(__name__)
-    metadata = PipelineExecutionMetadata(pipeline)
-    metadata.log_start(logger)
+    logger = llmmllogger.logger.bind(module=__name__)
 
     try:
-        # Normalize input to List[Message]
-        normalized_messages = _normalize_message_input(messages)
+        async for chunk in pipeline.stream(messages, tools=tools, grammar=grammar):
+            yield chunk
 
-        if not normalized_messages:
-            yield create_streaming_chunk("No messages provided", done=True)
-            metadata.log_completion(logger, success=False)
-            return
-
-        # Check if pipeline supports streaming
-        if hasattr(pipeline, "stream"):
-            try:
-                async for chunk in pipeline.stream(
-                    normalized_messages, tools=tools, grammar=grammar
-                ):
-                    if isinstance(chunk, ChatResponse):
-                        # Track tokens if available
-                        if chunk.message:
-                            text = extract_message_text(chunk.message)
-                            if text:
-                                metadata.token_count += len(text.split())
-                        yield chunk
-                    else:
-                        # Convert non-ChatResponse to streaming chunk
-                        yield create_streaming_chunk(str(chunk))
-
-                metadata.log_completion(logger, success=True)
-                return
-
-            except Exception as e:
-                logger.error(f"Error in pipeline streaming: {e}")
-                yield create_streaming_chunk(f"Streaming error: {str(e)}", done=True)
-                metadata.log_completion(logger, success=False)
-                return
-
-        # Fallback to invoke for pipelines that don't support streaming
-        try:
-            result = await pipeline.invoke(
-                normalized_messages, tools=tools, grammar=grammar
-            )
-
-            if isinstance(result, ChatResponse):
-                # Track token count
-                if result.message:
-                    text = extract_message_text(result.message)
-                    if text:
-                        metadata.token_count = len(text.split())
-                yield result
-            else:
-                yield create_streaming_chunk(str(result), done=True)
-
-            metadata.log_completion(logger, success=True)
-
-        except Exception as e:
-            logger.error(f"Error in pipeline invoke: {e}")
-            yield create_streaming_chunk(f"Pipeline error: {str(e)}", done=True)
-            metadata.log_completion(logger, success=False)
+        return
 
     except Exception as e:
-        logger.error(f"Pipeline streaming error: {e}", exc_info=True)
-        yield create_streaming_chunk(f"Pipeline error: {str(e)}", done=True)
-        metadata.log_completion(logger, success=False)
+        logger.error(f"Error in pipeline streaming: {e}")
+        yield create_error_response(f"Streaming error: {str(e)}", done=True)
+        return
 
 
 async def run_pipeline(
-    messages: MessageInput,
+    messages: List[LangChainMessage],
     pipeline: SimplePipelineCore,
     tools: Optional[List[BaseTool]] = None,
     grammar: Optional[GrammarInput] = None,
+    metadata: Optional[dict] = None,
 ) -> ChatResponse:
     """
     Get a complete response from the pipeline with metadata tracking.
@@ -264,49 +78,22 @@ async def run_pipeline(
         tools: Optional tools for the pipeline
         grammar: Optional grammar constraint
     """
-    logger = logging.getLogger(__name__)
-    metadata = PipelineExecutionMetadata(pipeline)
-    metadata.log_start(logger)
+    logger = llmmllogger.logger.bind(module=__name__)
 
     try:
-        # Normalize input to List[Message]
-        normalized_messages = _normalize_message_input(messages)
-
-        if not normalized_messages:
-            metadata.log_completion(logger, success=False)
-            return ChatResponse(
-                done=True,
-                message=Message(
-                    role=MessageRole.ASSISTANT,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT, text="No messages provided"
-                        )
-                    ],
-                ),
-                created_at=datetime.now(timezone.utc),
-                finish_reason="error",
-            )
-
         # Direct pipeline invocation
         result = await pipeline.invoke(
-            normalized_messages, tools=tools, grammar=grammar
+            messages,
+            tools=tools,
+            grammar=grammar,
+            metadata=metadata,
         )
 
         # Handle different return types based on pipeline
         if isinstance(result, ChatResponse):
-            # Track token count
-            if result.message:
-                text = extract_message_text(result.message)
-                if text:
-                    metadata.token_count = len(text.split())
-            metadata.log_completion(logger, success=True)
             return result
 
         elif isinstance(result, str):
-            # Convert string result to ChatResponse
-            metadata.token_count = len(result.split())
-            metadata.log_completion(logger, success=True)
             return ChatResponse(
                 done=True,
                 message=Message(
@@ -317,8 +104,6 @@ async def run_pipeline(
                 finish_reason="stop",
             )
         else:
-            # Handle other return types (embeddings, etc.)
-            metadata.log_completion(logger, success=True)
             return ChatResponse(
                 done=True,
                 message=Message(
@@ -333,7 +118,6 @@ async def run_pipeline(
 
     except Exception as e:
         logger.error(f"Error in run_pipeline: {e}")
-        metadata.log_completion(logger, success=False)
         return ChatResponse(
             done=True,
             message=Message(

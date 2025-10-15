@@ -204,7 +204,7 @@ class MemoryCreationNode:
                 id=summary.id,
                 role=MessageRole.SYSTEM,  # Summaries are generated content
                 content=summary.content,
-                embeddings=[embeddings[0]],  # Wrap single embedding in list
+                embeddings=embeddings,
             )
 
             # Create memory object
@@ -251,7 +251,7 @@ class MemoryCreationNode:
                 id=msg.id or 0,
                 role=msg.role,
                 content=message_text,
-                embeddings=[embeddings[0]],  # Wrap single embedding in list
+                embeddings=embeddings,  # Wrap single embedding in list
             )
 
             # Create memory object
@@ -297,7 +297,7 @@ class MemoryCreationNode:
                 id=synthesis.id or 0,
                 role=MessageRole.SYSTEM,  # Search synthesis is generated content
                 content=synthesis.synthesis,
-                embeddings=[embeddings[0]],  # Wrap single embedding in list
+                embeddings=embeddings,
             )
 
             # Create memory object

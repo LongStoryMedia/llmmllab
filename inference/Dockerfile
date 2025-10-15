@@ -131,9 +131,6 @@ RUN . ${SHARED_VENV}/bin/activate && \
     pip install --no-cache-dir -e /app/runner -e /app/server -e /app/evaluation -e /app/composer && \
     deactivate
 
-# Setup cross-environment access
-RUN python3 /app/setup_cross_env_access.py
-
 # Make scripts executable and setup CUDA runtime
 RUN chmod +x /app/startup.sh /app/run_with_env.sh /app/run.sh /app/setup_cuda_runtime.sh && \
     mkdir -p /tmp/cuda_cache

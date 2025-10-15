@@ -26,17 +26,17 @@ Architectural Role:
 
 __version__ = "0.1.0"
 
-from typing import Union, Type
-from pathlib import Path
-from pydantic import BaseModel
-
 from .pipeline_factory import pipeline_factory, PipeReturn, PipelineFactory
 
 from .pipelines.base import Embeddings, EmbeddingPipeline  # for typing
-from .pipelines.run import run_pipeline, stream_pipeline, embed_pipeline
+from .pipelines.run import (
+    run_pipeline,
+    stream_pipeline,
+    embed_pipeline,
+    GrammarInput,
+    MessageInput,
+)
 
-# Grammar type definitions
-GrammarInput = Union[str, Path, Type[BaseModel], None]
 
 __all__ = [
     "pipeline_factory",
@@ -47,5 +47,6 @@ __all__ = [
     "embed_pipeline",
     "EmbeddingPipeline",
     "GrammarInput",
+    "MessageInput",
     "PipelineFactory",
 ]
