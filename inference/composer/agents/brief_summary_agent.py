@@ -4,7 +4,7 @@ Specialized agent for creating brief summaries focused on key decisions, conclus
 """
 
 import datetime
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import List, Optional, Any, TYPE_CHECKING
 
 from models import (
     ModelProfileType,
@@ -102,20 +102,18 @@ class BriefSummaryAgent(BaseAgent[str]):
             prompt = await self._create_brief_text_prompt(text, style, brief_max_length)
 
             # Get specialized brief summary model profile
-            profile = get_model_profile_for_task(
-                ModelProfileType.BriefSummary, 
-                user_id, 
-                self.user_config
+            _ = await get_model_profile_for_task(
+                config=self.user_config.model_profiles,
+                task=ModelProfileType.BriefSummary,
+                user_id=self.user_config.user_id
             )
 
             summary = await self._execute_summarization_with_profile(
-                profile, prompt, user_id, tools, grammar
-            )
-
-            # Extract focused brief data - decisions and actions only
-            decisions = await self._extract_brief_decisions(summary, user_id)
-            action_items = await self._extract_brief_action_items(summary, user_id)
-            conclusions = await self._extract_brief_conclusions(summary, user_id)
+                prompt, user_id, tools, grammar
+            )                        # Extract brief action-oriented data
+            decisions = await self._extract_brief_decisions(summary)
+            action_items = await self._extract_brief_action_items(summary)
+            conclusions = await self._extract_brief_conclusions(summary)
 
             # Store brief summary with action-oriented metadata
             await self._store_brief_summary(
@@ -139,7 +137,7 @@ class BriefSummaryAgent(BaseAgent[str]):
                 user_id=user_id,
                 error=str(e),
             )
-            raise NodeExecutionError(f"Brief text summarization failed: {e}")
+            raise NodeExecutionError(f"Brief text summarization failed: {e}") from e
 
     async def summarize_search_results_brief(
         self,
@@ -177,31 +175,37 @@ class BriefSummaryAgent(BaseAgent[str]):
             brief_max_length = min(max_length or 250, 350)
             prompt = await self._create_brief_search_prompt(content, style, brief_max_length)
 
-            # Get brief summary model profile
-            profile = get_model_profile_for_task(
-                ModelProfileType.BriefSummary,
-                user_id,
-                self.user_config
+            # Get specialized brief summary model profile for search results
+            _ = await get_model_profile_for_task(
+                config=self.user_config.model_profiles,
+                task=ModelProfileType.BriefSummary,
+                user_id=self.user_config.user_id
             )
 
             summary = await self._execute_summarization_with_profile(
-                profile, prompt, user_id, tools, grammar
+                prompt, user_id, tools, grammar
             )
 
             # Extract brief, action-focused structured data
-            key_decisions = await self._extract_brief_decisions(summary, user_id)
-            action_items = await self._extract_brief_action_items(summary, user_id)
-            conclusions = await self._extract_brief_conclusions(summary, user_id)
+            # Extract brief structured data focused on decisions and actions
+            key_decisions = await self._extract_brief_decisions(summary)
+            action_items = await self._extract_brief_action_items(summary)
+            conclusions = await self._extract_brief_conclusions(summary)
 
+            # Collect URLs from search results
+            urls = []
+            for result in search_results:
+                if result.contents:
+                    for content in result.contents:
+                        if hasattr(content, 'url') and content.url:
+                            urls.append(content.url)
+            
             synthesis = SearchTopicSynthesis(
-                summary=summary,
-                key_topics=conclusions,  # For brief summaries, topics are conclusions
-                key_points=key_decisions,  # Key points are decisions
-                decisions=key_decisions,
-                action_items=action_items,
-                sources=[result.url for result in search_results if result.url][:5],  # Limit sources for brevity
+                urls=urls[:5],  # Limit sources for brevity
+                topics=conclusions,
+                synthesis=summary,
                 created_at=datetime.datetime.now(datetime.timezone.utc),
-                synthesis_type="brief_actionable"
+                conversation_id=0
             )
 
             self.logger.info(
@@ -220,7 +224,7 @@ class BriefSummaryAgent(BaseAgent[str]):
                 user_id=user_id,
                 error=str(e),
             )
-            raise NodeExecutionError(f"Brief search synthesis failed: {e}")
+            raise NodeExecutionError(f"Brief search synthesis failed: {e}") from e
 
     async def summarize_conversation_brief(
         self,
@@ -264,44 +268,31 @@ class BriefSummaryAgent(BaseAgent[str]):
                 conversation_text, style, brief_max_length
             )
 
-            # Get brief summary model profile
-            profile = get_model_profile_for_task(
-                ModelProfileType.BriefSummary,
-                user_id,
-                self.user_config
+            # Get specialized brief summary model profile for conversations
+            _ = await get_model_profile_for_task(
+                config=self.user_config.model_profiles,
+                task=ModelProfileType.BriefSummary,
+                user_id=self.user_config.user_id
             )
 
             summary = await self._execute_summarization_with_profile(
-                profile, prompt, user_id, tools, grammar
+                prompt, user_id, tools, grammar
             )
 
             # Extract brief, action-focused insights
-            decisions = await self._extract_brief_decisions(summary, user_id)
-            action_items = await self._extract_brief_action_items(summary, user_id)
-            conclusions = await self._extract_brief_conclusions(summary, user_id)
+            # Extract structured conclusions for brief conversation summaries
+            decisions = await self._extract_brief_decisions(summary)
+            action_items = await self._extract_brief_action_items(summary)
+            _ = await self._extract_brief_conclusions(summary)
 
             # Create brief conversation summary
             brief_summary = Summary(
-                id=f"brief_conv_{conversation_id}_{datetime.datetime.now().isoformat()}",
-                user_id=user_id,
-                conversation_id=conversation_id,
+                id=hash(f"brief_conv_{conversation_id}_{datetime.datetime.now().isoformat()}") % 2**31,
                 content=summary,
-                summary_type=SummaryType.BRIEF,
-                style=style,
-                key_points=decisions,  # Key points are decisions for brief summaries
-                topics=conclusions,    # Topics are conclusions for brief summaries
-                word_count=len(summary.split()),
-                original_length=len(conversation_text.split()),
-                compression_ratio=len(summary.split()) / len(conversation_text.split()),
+                level=1,
+                conversation_id=conversation_id,
+                source_ids=[],
                 created_at=datetime.datetime.now(datetime.timezone.utc),
-                metadata={
-                    "agent_type": "brief",
-                    "focus": "decisions_and_actions",
-                    "summary_nature": "action_oriented",
-                    "decisions": decisions,
-                    "action_items": action_items,
-                    "conclusions": conclusions,
-                }
             )
 
             # Store the brief conversation summary
@@ -326,7 +317,7 @@ class BriefSummaryAgent(BaseAgent[str]):
                 conversation_id=conversation_id,
                 error=str(e),
             )
-            raise NodeExecutionError(f"Brief conversation summarization failed: {e}")
+            raise NodeExecutionError(f"Brief conversation summarization failed: {e}") from e
 
     async def consolidate_summaries_brief(
         self,
@@ -334,7 +325,7 @@ class BriefSummaryAgent(BaseAgent[str]):
         user_id: str,
         focus_area: str = "outcomes",
         max_length: Optional[int] = None,
-        grammar: Optional[Any] = None,
+        _grammar: Optional[Any] = None,
     ) -> Summary:
         """
         Consolidate multiple summaries into a brief, action-oriented overview.
@@ -362,47 +353,34 @@ class BriefSummaryAgent(BaseAgent[str]):
             )
 
             # Get brief summary model profile
-            profile = get_model_profile_for_task(
-                ModelProfileType.BriefSummary,
-                user_id,
-                self.user_config
+            _ = await get_model_profile_for_task(
+                config=self.user_config.model_profiles,
+                task=ModelProfileType.BriefSummary,
+                user_id=self.user_config.user_id
             )
 
             consolidated_content = await self._execute_summarization_with_profile(
-                profile, prompt, user_id, grammar=grammar
+                prompt, user_id
             )
 
             # Extract and consolidate action-oriented data
             all_decisions = []
             all_actions = []
-            for summary in summaries:
-                if hasattr(summary, 'metadata') and summary.metadata:
-                    all_decisions.extend(summary.metadata.get('decisions', []))
-                    all_actions.extend(summary.metadata.get('action_items', []))
+            # Note: Summary model doesn't have metadata field, 
+            # would need to extract from content or use separate storage
 
             # Consolidate briefly - only the most important items
-            key_decisions = await self._consolidate_brief_decisions(all_decisions, user_id)
-            key_actions = await self._consolidate_brief_actions(all_actions, user_id)
+            key_decisions = await self._consolidate_brief_decisions(all_decisions)
+            _ = await self._consolidate_brief_actions(all_actions)
             
             # Create brief consolidated summary
             brief_consolidated = Summary(
-                id=f"brief_consolidated_{focus_area}_{datetime.datetime.now().isoformat()}",
-                user_id=user_id,
+                id=hash(f"brief_consolidated_{focus_area}_{datetime.datetime.now().isoformat()}") % 2**31,
                 content=consolidated_content,
-                summary_type=SummaryType.BRIEF,
-                style=SummaryStyle.CONCISE,
-                key_points=key_decisions,
-                topics=[focus_area],  # Single focus topic for brief summary
-                word_count=len(consolidated_content.split()),
+                level=2,  # Consolidated level
+                conversation_id=0,
+                source_ids=[],
                 created_at=datetime.datetime.now(datetime.timezone.utc),
-                metadata={
-                    "agent_type": "brief",
-                    "consolidation_focus": focus_area,
-                    "source_summaries_count": len(summaries),
-                    "focus": "brief_actionable_outcomes",
-                    "decisions": key_decisions,
-                    "action_items": key_actions,
-                }
             )
 
             # Store the brief consolidated summary
@@ -424,7 +402,7 @@ class BriefSummaryAgent(BaseAgent[str]):
                 user_id=user_id,
                 error=str(e),
             )
-            raise NodeExecutionError(f"Brief summary consolidation failed: {e}")
+            raise NodeExecutionError(f"Brief summary consolidation failed: {e}") from e
 
     async def _create_brief_text_prompt(
         self, text: str, style: SummaryStyle, max_length: int
@@ -538,15 +516,15 @@ Create a brief consolidation focusing on decisions, conclusions, and actionable 
         """Combine search results content optimized for brief analysis."""
         content_parts = []
         for i, result in enumerate(search_results[:3], 1):  # Limit to top 3 for brevity
-            content_parts.append(f"Source {i}: {result.title or 'No title'}")
-            # Focus on snippets for brief analysis
-            if result.snippet:
-                content_parts.append(f"Key finding: {result.snippet}")
-            elif result.content:
-                # Take first 100 words of content for brief analysis
-                words = result.content.split()[:100]
-                content_parts.append(f"Content: {' '.join(words)}")
-            content_parts.append("---")
+            if result.contents:
+                for j, content in enumerate(result.contents):
+                    content_parts.append(f"Source {i}.{j}: {content.title or 'No title'}")
+                    # Focus on content for brief analysis
+                    if content.content:
+                        # Take first 100 words of content for brief analysis
+                        words = content.content.split()[:100]
+                        content_parts.append(f"Content: {' '.join(words)}")
+                    content_parts.append("---")
         
         return "\n".join(content_parts)
 
@@ -556,7 +534,7 @@ Create a brief consolidation focusing on decisions, conclusions, and actionable 
             SummaryStyle.CONCISE: "Use clear, direct language focusing on outcomes.",
             SummaryStyle.DETAILED: "Provide specific details about decisions and actions only.",
             SummaryStyle.BULLET_POINTS: "Use bullet points for decisions and action items.",
-            SummaryStyle.NARRATIVE: "Create a brief narrative focused on outcomes and next steps.",
+
         }
         return style_instructions.get(style, "Use clear, action-oriented language.")
 
@@ -564,35 +542,22 @@ Create a brief consolidation focusing on decisions, conclusions, and actionable 
         self,
         summary: str,
         user_id: str,
-        original_text: str,
-        summary_type: SummaryType,
-        style: SummaryStyle,
-        decisions: List[str],
-        action_items: List[str],
-        conclusions: List[str],
+        _original_text: str,
+        _summary_type: SummaryType,
+        _style: SummaryStyle,
+        _decisions: List[str],
+        _action_items: List[str],
+        _conclusions: List[str],
     ) -> None:
         """Store brief summary with action-oriented metadata."""
         try:
             summary_obj = Summary(
-                id=f"brief_{datetime.datetime.now().isoformat()}_{user_id}",
-                user_id=user_id,
+                id=hash(f"brief_{datetime.datetime.now().isoformat()}_{user_id}") % 2**31,
                 content=summary,
-                summary_type=summary_type,
-                style=style,
-                key_points=decisions,
-                topics=conclusions,
-                word_count=len(summary.split()),
-                original_length=len(original_text.split()),
-                compression_ratio=len(summary.split()) / len(original_text.split()),
+                level=1,
+                conversation_id=0,
+                source_ids=[],
                 created_at=datetime.datetime.now(datetime.timezone.utc),
-                metadata={
-                    "agent_type": "brief",
-                    "focus": "decisions_and_actions",
-                    "summary_nature": "action_oriented",
-                    "decisions": decisions,
-                    "action_items": action_items,
-                    "conclusions": conclusions,
-                }
             )
             
             await self.summary_storage.create_summary(summary_obj)
@@ -606,11 +571,10 @@ Create a brief consolidation focusing on decisions, conclusions, and actionable 
 
     async def _execute_summarization_with_profile(
         self,
-        profile: ModelProfile,
         prompt: str,
         user_id: str,
         tools: Optional[List[Any]] = None,
-        grammar: Optional[Any] = None,
+        _grammar: Optional[Any] = None,
     ) -> str:
         """Execute summarization using the brief summary profile."""
         try:
@@ -622,7 +586,6 @@ Create a brief consolidation focusing on decisions, conclusions, and actionable 
                 messages=messages,
                 priority=PipelinePriority.NORMAL,
                 tools=tools,
-                grammar=grammar,
             ):
                 if chunk.message and chunk.message.content:
                     for content in chunk.message.content:
@@ -637,10 +600,10 @@ Create a brief consolidation focusing on decisions, conclusions, and actionable 
                 user_id=user_id,
                 error=str(e),
             )
-            raise NodeExecutionError(f"Failed to execute brief summarization: {e}")
+            raise NodeExecutionError(f"Failed to execute brief summarization: {e}") from e
 
     # Brief-specific extraction methods
-    async def _extract_brief_decisions(self, summary: str, user_id: str) -> List[str]:
+    async def _extract_brief_decisions(self, summary: str) -> List[str]:
         """Extract decisions with brief, action-focused analysis."""
         decision_indicators = ['decided', 'determined', 'concluded', 'agreed', 'resolved', 'chosen', 'selected']
         sentences = summary.split('. ')
@@ -652,7 +615,7 @@ Create a brief consolidation focusing on decisions, conclusions, and actionable 
                 decisions.append(brief_decision + ('.' if not brief_decision.endswith('.') else ''))
         return decisions[:3]  # Max 3 for brief summaries
 
-    async def _extract_brief_action_items(self, summary: str, user_id: str) -> List[str]:
+    async def _extract_brief_action_items(self, summary: str) -> List[str]:
         """Extract action items with brief, focused analysis."""
         action_indicators = ['will', 'should', 'must', 'need to', 'plan to', 'action required', 'next step']
         sentences = summary.split('. ')
@@ -664,7 +627,7 @@ Create a brief consolidation focusing on decisions, conclusions, and actionable 
                 actions.append(brief_action + ('.' if not brief_action.endswith('.') else ''))
         return actions[:3]  # Max 3 for brief summaries
 
-    async def _extract_brief_conclusions(self, summary: str, user_id: str) -> List[str]:
+    async def _extract_brief_conclusions(self, summary: str) -> List[str]:
         """Extract conclusions with brief, outcome-focused analysis."""
         conclusion_indicators = ['conclude', 'result', 'outcome', 'finding', 'therefore', 'thus', 'finally', 'ultimately']
         sentences = summary.split('. ')
@@ -676,7 +639,7 @@ Create a brief consolidation focusing on decisions, conclusions, and actionable 
                 conclusions.append(brief_conclusion + ('.' if not brief_conclusion.endswith('.') else ''))
         return conclusions[:3]  # Max 3 for brief summaries
 
-    async def _consolidate_brief_decisions(self, all_decisions: List[str], user_id: str) -> List[str]:
+    async def _consolidate_brief_decisions(self, all_decisions: List[str]) -> List[str]:
         """Consolidate decisions for brief summary - only the most important."""
         if not all_decisions:
             return []
@@ -686,7 +649,7 @@ Create a brief consolidation focusing on decisions, conclusions, and actionable 
         unique_decisions.sort(key=len, reverse=True)
         return unique_decisions[:2]  # Only top 2 for brief consolidation
 
-    async def _consolidate_brief_actions(self, all_actions: List[str], user_id: str) -> List[str]:
+    async def _consolidate_brief_actions(self, all_actions: List[str]) -> List[str]:
         """Consolidate action items for brief summary - only the most critical."""
         if not all_actions:
             return []

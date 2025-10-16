@@ -4,7 +4,7 @@ Specialized agent for creating comprehensive primary summaries with logical prog
 """
 
 import datetime
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import List, Optional, Any, TYPE_CHECKING
 
 from models import (
     ModelProfileType,
@@ -99,19 +99,19 @@ class PrimarySummaryAgent(BaseAgent[str]):
             prompt = await self._create_primary_text_prompt(text, style, max_length)
 
             # Get specialized primary summary model profile
-            profile = get_model_profile_for_task(
-                ModelProfileType.PrimarySummary, 
-                user_id, 
-                self.user_config
+            _ = await get_model_profile_for_task(
+                config=self.user_config.model_profiles,
+                task=ModelProfileType.PrimarySummary,
+                user_id=self.user_config.user_id
             )
 
             summary = await self._execute_summarization_with_profile(
-                profile, prompt, user_id, tools, grammar
+                prompt, user_id, tools, grammar
             )
 
             # Extract structured data for primary summaries
-            key_points = await self._extract_key_points(summary, user_id)
-            topics = await self._extract_topics(summary, user_id)
+            key_points = await self._extract_key_points(summary)
+            topics = await self._extract_topics(summary)
 
             # Store primary summary with metadata
             await self._store_primary_summary(
@@ -134,7 +134,7 @@ class PrimarySummaryAgent(BaseAgent[str]):
                 user_id=user_id,
                 error=str(e),
             )
-            raise NodeExecutionError(f"Primary text summarization failed: {e}")
+            raise NodeExecutionError(f"Primary text summarization failed: {e}") from e
 
     async def summarize_search_results(
         self,
@@ -171,32 +171,37 @@ class PrimarySummaryAgent(BaseAgent[str]):
             content = await self._combine_search_content(search_results)
             prompt = await self._create_primary_search_prompt(content, style, max_length)
 
-            # Get primary summary model profile
-            profile = get_model_profile_for_task(
-                ModelProfileType.PrimarySummary,
-                user_id,
-                self.user_config
+            # Get specialized primary summary model profile for search results
+            _ = await get_model_profile_for_task(
+                config=self.user_config.model_profiles,
+                task=ModelProfileType.PrimarySummary,
+                user_id=self.user_config.user_id
             )
 
             summary = await self._execute_summarization_with_profile(
-                profile, prompt, user_id, tools, grammar
+                prompt, user_id, tools, grammar
             )
 
             # Extract comprehensive structured data
-            key_points = await self._extract_key_points(summary, user_id)
-            topics = await self._extract_topics(summary, user_id)
-            decisions = await self._extract_decisions(summary, user_id)
-            action_items = await self._extract_action_items(summary, user_id)
+            _ = await self._extract_key_points(summary)
+            topics = await self._extract_topics(summary)
+            _ = await self._extract_decisions(summary)
+            _ = await self._extract_action_items(summary)
 
+            # Collect URLs from search results
+            urls = []
+            for result in search_results:
+                if result.contents:
+                    for content in result.contents:
+                        if hasattr(content, 'url') and content.url:
+                            urls.append(content.url)
+            
             synthesis = SearchTopicSynthesis(
-                summary=summary,
-                key_topics=topics,
-                key_points=key_points,
-                decisions=decisions,
-                action_items=action_items,
-                sources=[result.url for result in search_results if result.url],
+                urls=urls,
+                topics=topics,
+                synthesis=summary,
                 created_at=datetime.datetime.now(datetime.timezone.utc),
-                synthesis_type="primary_comprehensive"
+                conversation_id=0
             )
 
             self.logger.info(
@@ -204,7 +209,7 @@ class PrimarySummaryAgent(BaseAgent[str]):
                 user_id=user_id,
                 summary_length=len(summary),
                 topics_count=len(topics),
-                sources_count=len(synthesis.sources),
+                sources_count=len(synthesis.urls),
             )
 
             return synthesis
@@ -215,7 +220,7 @@ class PrimarySummaryAgent(BaseAgent[str]):
                 user_id=user_id,
                 error=str(e),
             )
-            raise NodeExecutionError(f"Primary search synthesis failed: {e}")
+            raise NodeExecutionError(f"Primary search synthesis failed: {e}") from e
 
     async def summarize_conversation(
         self,
@@ -258,21 +263,21 @@ class PrimarySummaryAgent(BaseAgent[str]):
                 conversation_text, style, max_length
             )
 
-            # Get primary summary model profile
-            profile = get_model_profile_for_task(
-                ModelProfileType.PrimarySummary,
-                user_id,
-                self.user_config
+            # Get specialized primary summary model profile for conversations
+            _ = await get_model_profile_for_task(
+                config=self.user_config.model_profiles,
+                task=ModelProfileType.PrimarySummary,
+                user_id=self.user_config.user_id
             )
 
             summary = await self._execute_summarization_with_profile(
-                profile, prompt, user_id, tools, grammar
+                prompt, user_id, tools, grammar
             )
 
             # Extract conversation-specific insights for primary summary
-            key_points = await self._extract_key_points(summary, user_id)
-            decisions = await self._extract_decisions(summary, user_id)
-            action_items = await self._extract_action_items(summary, user_id)
+            key_points = await self._extract_key_points(summary)
+            decisions = await self._extract_decisions(summary)
+            action_items = await self._extract_action_items(summary)
 
             # Store primary conversation summary
             await self._store_primary_summary(
@@ -302,7 +307,7 @@ class PrimarySummaryAgent(BaseAgent[str]):
                 user_id=user_id,
                 error=str(e),
             )
-            raise NodeExecutionError(f"Primary conversation summarization failed: {e}")
+            raise NodeExecutionError(f"Primary conversation summarization failed: {e}") from e
 
     async def _create_primary_text_prompt(
         self, text: str, style: SummaryStyle, max_length: Optional[int]
@@ -382,7 +387,7 @@ Focus on the logical progression and evolution of topics and ideas throughout th
             SummaryStyle.CONCISE: "Provide a focused yet comprehensive analysis.",
             SummaryStyle.DETAILED: "Provide extensive detail and comprehensive coverage.",
             SummaryStyle.BULLET_POINTS: "Use structured bullet points for comprehensive analysis.",
-            SummaryStyle.NARRATIVE: "Create a flowing narrative that captures the logical progression.",
+
         }
         return style_instructions.get(style, "Provide a balanced comprehensive analysis.")
 
@@ -390,31 +395,21 @@ Focus on the logical progression and evolution of topics and ideas throughout th
         self,
         summary: str,
         user_id: str,
-        original_text: str,
-        summary_type: SummaryType,
-        style: SummaryStyle,
-        key_points: List[str],
-        topics: List[str],
+        _original_text: str,
+        _summary_type: SummaryType,
+        _style: SummaryStyle,
+        _key_points: List[str],
+        _topics: List[str],
     ) -> None:
         """Store primary summary with comprehensive metadata."""
         try:
             summary_obj = Summary(
-                id=f"primary_{datetime.datetime.now().isoformat()}_{user_id}",
-                user_id=user_id,
+                id=hash(f"primary_{datetime.datetime.now().isoformat()}_{user_id}") % 2**31,
                 content=summary,
-                summary_type=summary_type,
-                style=style,
-                key_points=key_points,
-                topics=topics,
-                word_count=len(summary.split()),
-                original_length=len(original_text.split()),
-                compression_ratio=len(summary.split()) / len(original_text.split()),
+                level=1,  # Primary level summary
+                conversation_id=0,
+                source_ids=[],
                 created_at=datetime.datetime.now(datetime.timezone.utc),
-                metadata={
-                    "agent_type": "primary",
-                    "focus": "logical_progression",
-                    "analysis_depth": "comprehensive"
-                }
             )
             
             await self.summary_storage.create_summary(summary_obj)
@@ -431,22 +426,21 @@ Focus on the logical progression and evolution of topics and ideas throughout th
         """Combine search results content for primary analysis."""
         content_parts = []
         for i, result in enumerate(search_results, 1):
-            content_parts.append(f"Source {i}: {result.title or 'No title'}")
-            if result.content:
-                content_parts.append(f"Content: {result.content}")
-            if result.snippet:
-                content_parts.append(f"Snippet: {result.snippet}")
-            content_parts.append("---")
+            if result.contents:
+                for j, content in enumerate(result.contents):
+                    content_parts.append(f"Source {i}.{j}: {content.title or 'No title'}")
+                    if content.content:
+                        content_parts.append(f"Content: {content.content}")
+                    content_parts.append("")
         
         return "\n".join(content_parts)
 
     async def _execute_summarization_with_profile(
         self,
-        profile: ModelProfile,
         prompt: str,
         user_id: str,
         tools: Optional[List[Any]] = None,
-        grammar: Optional[Any] = None,
+        _grammar: Optional[Any] = None,
     ) -> str:
         """Execute summarization using the specified profile."""
         try:
@@ -458,7 +452,6 @@ Focus on the logical progression and evolution of topics and ideas throughout th
                 messages=messages,
                 priority=PipelinePriority.NORMAL,
                 tools=tools,
-                grammar=grammar,
             ):
                 if chunk.message and chunk.message.content:
                     for content in chunk.message.content:
@@ -473,17 +466,17 @@ Focus on the logical progression and evolution of topics and ideas throughout th
                 user_id=user_id,
                 error=str(e),
             )
-            raise NodeExecutionError(f"Failed to execute primary summarization: {e}")
+            raise NodeExecutionError(f"Failed to execute primary summarization: {e}") from e
 
     # Extraction methods for primary summaries
-    async def _extract_key_points(self, summary: str, user_id: str) -> List[str]:
+    async def _extract_key_points(self, summary: str) -> List[str]:
         """Extract key points using primary analysis approach."""
         # Simplified extraction - in production could use LLM
         sentences = summary.split('. ')
         # Return first few sentences as key points for primary summaries
         return [s.strip() + '.' for s in sentences[:5] if len(s.strip()) > 20]
 
-    async def _extract_topics(self, summary: str, user_id: str) -> List[str]:
+    async def _extract_topics(self, summary: str) -> List[str]:
         """Extract topics using primary analysis approach."""
         # Simplified extraction - in production could use LLM
         # For primary summaries, focus on main conceptual areas
@@ -493,7 +486,7 @@ Focus on the logical progression and evolution of topics and ideas throughout th
         found_topics = [topic for topic in common_topics if topic in words]
         return found_topics[:3]  # Return top 3 for primary focus
 
-    async def _extract_decisions(self, summary: str, user_id: str) -> List[str]:
+    async def _extract_decisions(self, summary: str) -> List[str]:
         """Extract decisions using primary analysis approach."""
         # Look for decision indicators in text
         decision_indicators = ['decided', 'determined', 'concluded', 'agreed', 'resolved']
@@ -504,7 +497,7 @@ Focus on the logical progression and evolution of topics and ideas throughout th
                 decisions.append(sentence.strip() + '.')
         return decisions[:3]
 
-    async def _extract_action_items(self, summary: str, user_id: str) -> List[str]:
+    async def _extract_action_items(self, summary: str) -> List[str]:
         """Extract action items using primary analysis approach."""
         # Look for action indicators in text
         action_indicators = ['will', 'should', 'must', 'need to', 'plan to', 'next step']

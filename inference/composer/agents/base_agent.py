@@ -14,8 +14,6 @@ from typing import (
 )
 from abc import ABC
 from pydantic import BaseModel
-from langchain.agents.structured_output import ProviderStrategy
-from langchain.agents import create_agent
 from langchain_core.tools import BaseTool
 
 from models import (
@@ -33,7 +31,6 @@ from utils.message import extract_message_text
 from composer.core.errors import NodeExecutionError
 from composer.utils.conversion import (
     normalize_message_input,
-    convert_messages_to_langchain,
     MessageInput,
 )
 
@@ -222,9 +219,8 @@ class BaseAgent(ABC, Generic[T]):
         self,
         messages: MessageInput,
         tools: Optional[List[BaseTool]] = None,
-        circuit_breaker: Optional[Any] = None,
         priority: PipelinePriority = PipelinePriority.MEDIUM,
-        grammar: Optional[type[BaseModel]] = None,
+        _grammar: Optional[type[BaseModel]] = None,
     ) -> AsyncIterator[ChatResponse]:
         """
         Stream agent execution with node metadata injection.
@@ -267,35 +263,41 @@ class BaseAgent(ABC, Generic[T]):
                 msgs = normalize_message_input(messages)
                 convo = []
 
-                # Create LangChain agent using create_agent()
-                system_prompt = getattr(self.profile, "system_prompt", "") or ""
+                # Convert messages to LangChain format
+                system_prompt = ""
+                if self.profile.system_prompt:
+                    system_prompt = self.profile.system_prompt
+                
                 for msg in msgs:
                     if msg.role == MessageRole.SYSTEM:
                         system_prompt += f"\n\n{extract_message_text(msg)}"
                     else:
                         convo.append(msg)
 
-                agent = create_agent(
-                    model=chat_model,
-                    tools=tools or [],
-                    system_prompt=system_prompt,
-                    response_format=ProviderStrategy(grammar) if grammar else None,
-                    name=self._node_metadata.node_name,
-                )
+                # Convert messages to LangChain BaseMessage format for direct model use
+                from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+                langchain_messages = []
+                for msg in convo:
+                    msg_text = extract_message_text(msg)
+                    if msg.role == MessageRole.USER:
+                        langchain_messages.append(HumanMessage(content=msg_text))
+                    elif msg.role == MessageRole.ASSISTANT:
+                        langchain_messages.append(AIMessage(content=msg_text))
+                
+                if system_prompt:
+                    langchain_messages.insert(0, SystemMessage(content=system_prompt))
 
-                # Convert messages to LangChain format
-                normalized_messages = convert_messages_to_langchain(convo)
-
-                # Stream agent execution
+                # Stream chat completion directly
                 chunk_count = 0
-                async for chunk in agent.astream(
-                    {"messages": normalized_messages},
-                    stream_mode="messages",
-                ):
-                    # Convert agent chunk to ChatResponse
+                async for chunk in chat_model.astream(langchain_messages):
+                    # Convert chunk to ChatResponse with proper type checking
+                    content = ""
                     if hasattr(chunk, "content") and chunk.content:
+                        content = str(chunk.content)
+                    
+                    if content:  # Only yield chunks with content
                         chat_chunk = create_streaming_chunk(
-                            str(chunk.content),
+                            content,
                             done=False,
                             role=MessageRole.ASSISTANT,
                         )
@@ -329,9 +331,8 @@ class BaseAgent(ABC, Generic[T]):
         self,
         messages: MessageInput,
         tools: Optional[List[BaseTool]] = None,
-        circuit_breaker: Optional[Any] = None,
         priority: PipelinePriority = PipelinePriority.MEDIUM,
-        grammar: Optional[type[BaseModel]] = None,
+        _grammar: Optional[type[BaseModel]] = None,
     ) -> ChatResponse:
         """
         Run agent execution with node metadata injection.
@@ -349,9 +350,7 @@ class BaseAgent(ABC, Generic[T]):
         Returns:
             ChatResponse: Response with injected node metadata
         """
-        normalized_messages = convert_messages_to_langchain(
-            normalize_message_input(messages)
-        )
+
 
         try:
             self._log_operation_start(
@@ -372,48 +371,43 @@ class BaseAgent(ABC, Generic[T]):
                 msgs = normalize_message_input(messages)
                 convo = []
 
-                # Create LangChain agent using create_agent()
-                system_prompt = getattr(self.profile, "system_prompt", "") or ""
+                # Convert messages to LangChain format
+                system_prompt = ""
+                if self.profile.system_prompt:
+                    system_prompt = self.profile.system_prompt
+                
                 for msg in msgs:
                     if msg.role == MessageRole.SYSTEM:
                         system_prompt += f"\n\n{extract_message_text(msg)}"
                     else:
                         convo.append(msg)
-                # Create LangChain agent using create_agent()
 
-                agent = create_agent(
-                    model=chat_model,
-                    tools=tools or [],
-                    system_prompt=system_prompt,
-                    response_format=ProviderStrategy(grammar) if grammar else None,
-                    name=self._node_metadata.node_name,
+                # Convert messages to LangChain BaseMessage format for direct model use
+                from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+                langchain_messages = []
+                for msg in convo:
+                    msg_text = extract_message_text(msg)
+                    if msg.role == MessageRole.USER:
+                        langchain_messages.append(HumanMessage(content=msg_text))
+                    elif msg.role == MessageRole.ASSISTANT:
+                        langchain_messages.append(AIMessage(content=msg_text))
+                
+                if system_prompt:
+                    langchain_messages.insert(0, SystemMessage(content=system_prompt))
+
+                # Execute chat completion directly
+                result = await chat_model.ainvoke(langchain_messages)
+
+                # Convert result to ChatResponse with proper type checking
+                content = ""
+                if hasattr(result, "content") and result.content:
+                    content = str(result.content)
+                
+                response = create_streaming_chunk(
+                    content if content else "Model completed without output",
+                    done=True,
+                    role=MessageRole.ASSISTANT,
                 )
-
-                # Convert messages to LangChain format
-                normalized_messages = convert_messages_to_langchain(convo)
-                # Execute agent
-                result = await agent.ainvoke(
-                    {"messages": normalized_messages},
-                    grammar=grammar,
-                    tools=tools,
-                )
-
-                # Convert agent result to ChatResponse
-                if result and result.get("messages"):
-                    last_message = result["messages"][-1]
-                    response = create_streaming_chunk(
-                        str(last_message.content)
-                        if hasattr(last_message, "content")
-                        else "",
-                        done=True,
-                        role=MessageRole.ASSISTANT,
-                    )
-                else:
-                    response = create_streaming_chunk(
-                        "Agent completed without output",
-                        done=True,
-                        role=MessageRole.ASSISTANT,
-                    )
 
                 response.channels = self._node_metadata.model_dump()
                 return response
