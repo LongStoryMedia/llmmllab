@@ -6,7 +6,6 @@ Provides core business logic for technical analysis, code generation, and engine
 from typing import List, Optional, Dict, Any
 
 from models import (
-    CircuitBreakerConfig,
     ModelProfile,
     PipelinePriority,
     TechnicalDomain,
@@ -45,50 +44,7 @@ class EngineeringAgent(BaseAgent[str]):
         """
         super().__init__(pipeline_factory, profile, node_metadata, "EngineeringAgent")
 
-    async def execute_pipeline(self, stream: bool = False, **kwargs) -> str:
-        """
-        Execute engineering pipeline with the provided parameters.
 
-        This is the standard interface for pipeline execution required by BaseAgent.
-
-        Args:
-            stream: Whether to stream the response (not applicable for engineering responses)
-            **kwargs: Pipeline execution parameters, expected to include:
-                - query: Technical query to analyze
-                - user_id: User identifier
-                - domain: Optional TechnicalDomain
-                - response_format: Optional ResponseFormat
-                - tools: Optional tools list
-                - grammar: Optional grammar constraints
-                - circuit_breaker: Optional CircuitBreakerConfig
-
-        Returns:
-            str: The engineering response
-        """
-        query = kwargs.get("query", "")
-        user_id = kwargs.get("user_id", "")
-        domain = kwargs.get("domain", TechnicalDomain.GENERAL_ENGINEERING)
-        response_format = kwargs.get(
-            "response_format", ResponseFormat.DETAILED_ANALYSIS
-        )
-        tools = kwargs.get("tools")
-        grammar = kwargs.get("grammar")
-        circuit_breaker = kwargs.get("circuit_breaker")
-
-        if not query:
-            raise NodeExecutionError(
-                "query parameter is required for engineering analysis"
-            )
-
-        return await self.generate_technical_response(
-            query=query,
-            user_id=user_id,
-            domain=domain,
-            response_format=response_format,
-            tools=tools,
-            grammar=grammar,
-            circuit_breaker=circuit_breaker,
-        )
 
     async def generate_technical_response(
         self,
@@ -98,7 +54,6 @@ class EngineeringAgent(BaseAgent[str]):
         response_format: ResponseFormat = ResponseFormat.DETAILED_ANALYSIS,
         tools: Optional[List[Any]] = None,
         grammar: Optional[Any] = None,
-        circuit_breaker: Optional[CircuitBreakerConfig] = None,
     ) -> str:
         """
         Generate technical engineering response using configured engineering model.
@@ -114,47 +69,51 @@ class EngineeringAgent(BaseAgent[str]):
         Returns:
             Technical response content
         """
-
-        async def _execute_engineering_pipeline(
-            user_id: str,
-            query_length: int,
-            domain: TechnicalDomain,
-            response_format: ResponseFormat,
-            has_tools: bool,
-            has_grammar: bool,
-        ) -> str:
-            """Internal pipeline executor for engineering response."""
-            # Lazy imports to avoid circular dependency
-            from runner import run_pipeline  # pylint: disable=import-outside-toplevel
+        try:
+            self.logger.info(
+                "Generating technical response",
+                user_id=user_id,
+                query_length=len(query),
+                domain=domain,
+                response_format=response_format,
+                has_tools=bool(tools),
+                has_grammar=bool(grammar),
+            )
 
             # Create engineering prompt based on domain and format
             prompt = await self._create_engineering_prompt(
                 query=query, domain=domain, response_format=response_format
             )
 
-            # Use BaseAgent's context manager with metadata
-            with self.run_pipeline_with_context_manager(
-                return_type=str,
+            # Use BaseAgent's run method with proper parameters
+            result = await self.run(
+                messages=[prompt],
+                tools=tools,
                 priority=PipelinePriority.NORMAL,
-                circuit_breaker=circuit_breaker,
-            ) as pipeline:
-                res = await run_pipeline(prompt, pipeline, tools=tools, grammar=grammar)
-                response = (
-                    extract_message_text(res.message) if res and res.message else ""
-                )
-                return response
+                grammar=grammar,
+            )
 
-        # Use BaseAgent's generic pipeline runner with metadata
-        return await self.run_generic_pipeline_with_metadata(
-            pipeline_executor=_execute_engineering_pipeline,
-            operation_name="technical_response_generation",
-            user_id=user_id,
-            query_length=len(query),
-            domain=domain,
-            response_format=response_format,
-            has_tools=bool(tools),
-            has_grammar=bool(grammar),
-        )
+            # Extract response text
+            response_text = extract_message_text(result.message) if result and result.message else ""
+            
+            if not response_text.strip():
+                raise NodeExecutionError("Empty technical response generated")
+
+            self.logger.info(
+                "Generated technical response",
+                user_id=user_id,
+                response_length=len(response_text),
+            )
+
+            return response_text
+
+        except Exception as e:
+            self.logger.error(
+                "Technical response generation failed",
+                user_id=user_id,
+                error=str(e),
+            )
+            raise NodeExecutionError(f"Technical response generation failed: {e}") from e
 
     async def analyze_system_architecture(
         self,
