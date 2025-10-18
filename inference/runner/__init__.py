@@ -26,11 +26,10 @@ Architectural Role:
 
 __version__ = "0.1.0"
 
-from .pipeline_factory import pipeline_factory, PipeReturn, PipelineFactory
+from .pipeline_factory import PipelineFactory, pipeline_factory
 
 
 __all__ = [
-    "pipeline_factory",
-    "PipeReturn",
     "PipelineFactory",
+    "pipeline_factory",
 ]

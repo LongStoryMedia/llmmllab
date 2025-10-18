@@ -11,8 +11,8 @@ from langchain.tools import BaseTool
 from models import Tool
 from utils.logging import llmmllogger
 from composer.tools.static import (
-    MemoryRetrievalTool,
-    SummarizationTool,
+    memory_retrieval,
+    # SummarizationTool,  # Temporarily disabled due to import issues
 )
 from composer.tools.static.web_search_tool import web_search
 
@@ -44,8 +44,13 @@ class ToolRegistry:
         """Load static tools from the static tools directory."""
         try:
             self.static_tools.update({
-                "summarization": SummarizationTool,
-                "memory_retrieval": MemoryRetrievalTool,
+                # "summarization": SummarizationTool,  # Temporarily disabled
+            })
+            
+            # Add function-based tools that are already decorated with @tool
+            self.executable_tools.update({
+                "memory_retrieval": memory_retrieval,
+                "web_search": web_search,
             })
 
             # Add function-based tools directly to executable_tools
@@ -71,39 +76,37 @@ class ToolRegistry:
             List of instantiated static Tool objects
         """
         instances = []
+        
+        # Handle class-based tools
         for tool_name, tool_cls in self.static_tools.items():
             if tool_cls:
                 tool_instance = self._create_tool_instance(tool_cls, user_id)
                 if tool_instance:
                     instances.append(tool_instance)
         
-        # Add web_search tool which is already instantiated
-        if "web_search" in self.executable_tools:
-            web_search_tool = Tool(
-                name="web_search",
-                description="Search the web for current information",
-                args_schema=getattr(web_search, "args_schema", None),
-                return_direct=getattr(web_search, "return_direct", False),
-                tags=getattr(web_search, "tags", None),
-                metadata=getattr(web_search, "metadata", None),
-                handle_tool_error=getattr(web_search, "handle_tool_error", False),
-                handle_validation_error=getattr(web_search, "handle_validation_error", False),
-                response_format=getattr(web_search, "response_format", "content"),
-            )
-            instances.append(web_search_tool)
+        # Handle function-based tools (with @tool decorator)
+        for tool_name, tool_func in self.executable_tools.items():
+            if tool_func and hasattr(tool_func, "name"):  # Check if it's a @tool decorated function
+                tool_instance = Tool(
+                    name=getattr(tool_func, "name", tool_name),
+                    description=getattr(tool_func, "description", f"{tool_name} tool"),
+                    args_schema=getattr(tool_func, "args_schema", None),
+                    return_direct=getattr(tool_func, "return_direct", False),
+                    tags=getattr(tool_func, "tags", None),
+                    metadata=getattr(tool_func, "metadata", None),
+                    handle_tool_error=getattr(tool_func, "handle_tool_error", False),
+                    handle_validation_error=getattr(tool_func, "handle_validation_error", False),
+                    response_format=getattr(tool_func, "response_format", "content"),
+                )
+                instances.append(tool_instance)
         
         return instances
 
     def _create_tool_instance(self, tool_cls: Any, user_id: str) -> Optional[Tool]:
         """Create tool instance from tool class with user configuration."""
         try:
-            # Handle different constructor signatures for BaseTool instances
-            if tool_cls.__name__ == "MemoryRetrievalTool":
-                # MemoryRetrievalTool needs both user_id and conversation_id
-                base_tool = tool_cls(user_id=user_id, conversation_id=0)
-            else:
-                # Other tools need only user_id
-                base_tool = tool_cls(user_id=user_id)
+            # Create tool instance with user_id (class-based tools)
+            base_tool = tool_cls(user_id=user_id)
 
             tool_name = getattr(base_tool, "name", tool_cls.__name__)
 

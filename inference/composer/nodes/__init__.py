@@ -20,8 +20,8 @@ from .agents import EngineeringAgentNode
 from .tools import (
     ToolExecutorNode,
     ToolComposerNode,
-    StaticToolCollectionNode,
-    DynamicToolCreationNode,
+    ToolCollectionNode,
+    StaticToolLoadingNode,
 )
 
 # Note: TitleGenerationNode moved to agents directory
@@ -32,8 +32,8 @@ __all__ = [
     # Tools
     "ToolExecutorNode",
     "ToolComposerNode",
-    "StaticToolCollectionNode",
-    "DynamicToolCreationNode",
+    "ToolCollectionNode",
+    "StaticToolLoadingNode",
     # Memory & Knowledge
     "MemorySearchNode",
     "MemoryStorageNode",
