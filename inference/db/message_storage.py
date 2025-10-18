@@ -2,18 +2,16 @@
 Direct port of Maistro's message.go storage logic to Python with cache integration.
 """
 
-from typing import List, Optional, Union
-import logging
-from datetime import datetime
 import asyncpg
+from typing import List, Optional
 from models.message import Message
-from models.message_role import MessageRole
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
-from server.db.cache_storage import cache_storage
-from server.db.db_utils import TypedConnection, typed_pool
+from db.cache_storage import cache_storage
+from db.db_utils import TypedConnection, typed_pool
+from utils.logging import llmmllogger
 
-logger = logging.getLogger(__name__)
+logger = llmmllogger.bind(component="message_storage")
 
 
 class MessageStorage:
@@ -21,7 +19,7 @@ class MessageStorage:
         self.pool = pool
         self.typed_pool = typed_pool(pool)
         self.get_query = get_query
-        self.logger = logging.getLogger(__name__)
+        self.logger = llmmllogger.bind(component="message_storage_instance")
 
     async def add_message(self, message: Message) -> Optional[int]:
         # Process content to ensure it's in the right format for storage
@@ -74,6 +72,9 @@ class MessageStorage:
             return message
 
     async def get_conversation_history(self, conversation_id: int) -> List[Message]:
+        """
+        Gets messages for a conversation, ordered and without messages that have been summarized already.
+        """
         # First try to get from cache
         cached_messages = cache_storage.get_conversation_messages(conversation_id)
         if cached_messages:
@@ -121,6 +122,9 @@ class MessageStorage:
     async def get_messages_by_conversation_id(
         self, conversation_id: int, limit: int, offset: int
     ) -> List[Message]:
+        """
+        Gets messages for a conversation by conversation_id with pagination.
+        """
         # Check cache first
         cached_messages = cache_storage.get_messages_by_conversation_id_from_cache(
             conversation_id
@@ -156,8 +160,8 @@ class MessageStorage:
             logger.warning(f"Message {message_id} not found and could not be deleted")
             return
 
-            # Invalidate message cache
-            cache_storage.invalidate_message_cache(message_id)
+        # Invalidate message cache
+        cache_storage.invalidate_message_cache(message_id)
 
         # Invalidate conversation messages list cache
         if message.conversation_id:

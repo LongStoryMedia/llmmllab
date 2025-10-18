@@ -6,7 +6,7 @@ from typing import List, Optional
 from datetime import datetime
 import asyncpg
 from models.image_metadata import ImageMetadata
-from server.db.db_utils import typed_pool
+from db.db_utils import typed_pool
 import logging
 
 logger = logging.getLogger(__name__)

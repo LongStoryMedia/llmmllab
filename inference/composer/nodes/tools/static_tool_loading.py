@@ -40,10 +40,14 @@ class StaticToolLoadingNode:
             )
 
             # Step 1: Load standard static tools
-            static_tools = await self.tool_registry.get_static_tool_instances(state.user_id)
+            static_tools = await self.tool_registry.get_static_tool_instances(
+                state.user_id
+            )
 
             # Step 2: Load previously generated dynamic tools for this user
-            previous_dynamic_tools = await self._load_previous_dynamic_tools(state.user_id)
+            previous_dynamic_tools = await self._load_previous_dynamic_tools(
+                state.user_id
+            )
 
             # Step 3: Combine into unified static tool set (previous dynamic tools become static)
             all_static_tools = static_tools + previous_dynamic_tools
@@ -73,9 +77,7 @@ class StaticToolLoadingNode:
         try:
             # Get all previously generated dynamic tools for this user
             dynamic_tools, _ = await self.dynamic_tool_storage.list_tools_by_user(
-                user_id=user_id,
-                limit=100,  # Load up to 100 previous tools
-                offset=0
+                user_id=user_id, limit=100, offset=0  # Load up to 100 previous tools
             )
 
             # Convert DynamicTool instances to generic Tool instances for reuse as static tools

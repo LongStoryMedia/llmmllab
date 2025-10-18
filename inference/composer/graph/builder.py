@@ -31,6 +31,7 @@ from composer.nodes.tools import (
     ToolCollectionNode,
     ToolComposerNode,
     ToolExecutorNode,
+    StaticToolLoadingNode,
 )
 from composer.nodes.memory import (
     MemorySearchNode,
@@ -41,7 +42,6 @@ from composer.nodes.agents.chat_node import ChatNode
 from composer.nodes.agents import TitleGenerationNode
 from composer.nodes.agents.engineering import EngineeringAgentNode
 from composer.nodes.summary import ConsolidationNode, SearchSummaryNode
-
 from composer.tools.registry import ToolRegistry
 
 from .state import WorkflowState
@@ -272,8 +272,6 @@ class GraphBuilder:
                 classifier_agent,
             )
             # Import here to avoid linting issues
-            from composer.nodes.tools.static_tool_loading import StaticToolLoadingNode
-            
             static_tool_loading_node = StaticToolLoadingNode(
                 tool_registry,
                 self.dynamic_tool_storage,
@@ -318,7 +316,7 @@ class GraphBuilder:
 
             # Static tool loading node - loads static tools and previous dynamic tools early
             workflow.add_node("static_tool_loading", static_tool_loading_node)
-            
+
             # Tool collection node with injected dependencies
             workflow.add_node("tool_collection", tool_collection_node)
             workflow.add_node("tool_composer", tool_composer_node)

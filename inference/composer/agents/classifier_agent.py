@@ -5,7 +5,7 @@ Maps user requests to RequiredCapabilities and assesses computational complexity
 """
 
 import json
-from typing import List, Optional, TYPE_CHECKING, cast
+from typing import List, TYPE_CHECKING, cast
 
 from pydantic import BaseModel
 from langchain.agents import create_agent
@@ -74,7 +74,11 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
         super().__init__(pipeline_factory, profile, node_metadata, "ClassifierAgent")
         self.logger.info("Intent classifier initialized with analysis model profile")
 
-    async def analyze(self, messages: List[Message], available_static_tools: Optional[List[Tool]] = None) -> List[IntentAnalysis]:
+    async def analyze(
+        self,
+        messages: List[Message],
+        available_static_tools: List[Tool],
+    ) -> List[IntentAnalysis]:
         """
         Execute grammar-constrained LLM analysis with structured output.
 
@@ -98,11 +102,12 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
         # Build available tools context
         available_tools_context = ""
         if available_static_tools:
-            tool_names = [tool.name for tool in available_static_tools]
             tool_descriptions = []
-            for tool in available_static_tools[:10]:  # Limit to first 10 tools for context
+            for tool in available_static_tools[
+                :10
+            ]:  # Limit to first 10 tools for context
                 tool_descriptions.append(f"- {tool.name}: {tool.description}")
-            
+
             available_tools_context = f"""
 Available Static Tools ({len(available_static_tools)} total):
 {chr(10).join(tool_descriptions)}

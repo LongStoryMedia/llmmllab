@@ -4,10 +4,10 @@ Query access module similar to Maistro's GetQuery function.
 
 import os
 from typing import Dict, Optional
-import logging
+from utils.logging import llmmllogger
 
 # Configure logger
-logger = logging.getLogger(__name__)
+logger = llmmllogger.bind(component="db_queries")
 
 
 class SQLLoader:
