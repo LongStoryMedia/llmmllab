@@ -46,9 +46,11 @@ class ToolCollectionNode:
 
             # Step 1: Collect static tools
             static_tools = await self._collect_static_tools(
-                state.user_id, state.intent_classification, state.user_config
+                state.user_id,
+                state.intent_classification,
+                state.user_config,
             )
-            
+
             self.logger.info(
                 "Static tools collected",
                 user_id=state.user_id,
@@ -87,26 +89,35 @@ class ToolCollectionNode:
         return state
 
     async def _collect_static_tools(
-        self, user_id: str, _intents: List[IntentAnalysis], _user_config
+        self, user_id: str, intents: List[IntentAnalysis], user_config
     ) -> List[Tool]:
         """
         Collect static tools based on intent analysis and user configuration.
+        Uses intent-based filtering to select relevant static tools.
         """
         try:
             # Get all available static tools from registry
-            available_static_tools = await self.tool_registry.get_static_tool_instances(user_id)
-            
-            # For now, include all static tools - can add filtering logic later based on intent
-            # This is simpler and more predictable than complex intent-based filtering
-            static_tools = available_static_tools
-            
-            # Could add intent-based filtering here if needed:
-            # for intent in intents:
-            #     if self._should_include_tool_for_intent(tool, intent):
-            #         static_tools.append(tool)
-            
+            available_static_tools = await self.tool_registry.get_static_tool_instances(
+                user_id
+            )
+
+            # Apply intent-based filtering
+            static_tools = []
+            for tool in available_static_tools:
+                if self._should_include_static_tool(tool, intents, user_config):
+                    static_tools.append(tool)
+
+            # If no tools match intent filtering, fall back to basic tools for simple requests
+            if not static_tools and self._needs_basic_tools(intents):
+                # Include basic tools for simple requests
+                basic_tool_names = {"web_search", "memory_search", "basic_math"}
+                static_tools = [
+                    tool for tool in available_static_tools 
+                    if getattr(tool, 'name', '').lower() in basic_tool_names
+                ]
+
             return static_tools
-            
+
         except Exception as e:
             self.logger.error(f"Static tool collection failed: {e}")
             return []
@@ -137,11 +148,13 @@ class ToolCollectionNode:
             )
 
             # Use engineering agent to generate dynamic tool specifications
-            dynamic_tool_specs = await self.engineering_agent.generate_dynamic_tool_specification(
-                user_query=user_query,
-                user_id=user_id,
-                intents=intents,
-                static_tools=static_tools,
+            dynamic_tool_specs = (
+                await self.engineering_agent.generate_dynamic_tool_specification(
+                    user_query=user_query,
+                    user_id=user_id,
+                    intents=intents,
+                    static_tools=static_tools,
+                )
             )
 
             # Convert DynamicTool specs to generic Tool instances for workflow state
@@ -173,20 +186,99 @@ class ToolCollectionNode:
             self.logger.error(f"Dynamic tool collection failed: {e}")
             return []
 
-    def _should_generate_dynamic_tools(self, intents: List[IntentAnalysis], user_config) -> bool:
+    def _should_generate_dynamic_tools(
+        self, intents: List[IntentAnalysis], user_config
+    ) -> bool:
         """
         Determine if dynamic tools should be generated based on intent and user configuration.
+        Uses only existing IntentAnalysis properties for decision making.
         """
         # Check user configuration
-        if user_config and user_config.tool and not user_config.tool.enable_tool_generation:
+        if (
+            user_config
+            and user_config.tool
+            and not user_config.tool.enable_tool_generation
+        ):
             return False
 
-        # Check if any intent requires tools or has high complexity
+        # Check if any intent explicitly requires custom tools
         for intent in intents:
-            if (
-                getattr(intent, "requires_tools", False)
-                or getattr(intent, "complexity_level", "").lower() in ["high", "complex"]
-            ):
+            # Check if custom tools are explicitly required
+            if intent.requires_custom_tools:
+                return True
+            
+            # Check if high complexity and tool requirement suggest dynamic tools needed
+            if (intent.requires_tools and 
+                intent.complexity_level.value in ["COMPLEX", "SPECIALIZED"] and
+                intent.tool_complexity_score > 0.7):
+                return True
+            
+            # Check if domain specificity and computational requirements suggest custom tools
+            if (intent.domain_specificity > 0.8 and 
+                intent.computational_requirements.value in ["HIGH", "INTENSIVE"]):
                 return True
 
+        return False
+
+    def _should_include_static_tool(
+        self, tool: Tool, intents: List[IntentAnalysis], user_config
+    ) -> bool:
+        """
+        Determine if a static tool should be included based on intent analysis.
+        """
+        tool_name = getattr(tool, 'name', '').lower()
+        
+        for intent in intents:
+            # Always include if intent explicitly requires tools
+            if intent.requires_tools:
+                # Convert required capabilities to values for comparison
+                required_cap_values = [cap.value for cap in intent.required_capabilities]
+                
+                # Include search tools for information retrieval capabilities
+                if ('web_search' in required_cap_values or 
+                    'information_retrieval' in required_cap_values) and 'search' in tool_name:
+                    return True
+                
+                # Include memory tools for conversation memory capabilities
+                if ('conversation_memory' in required_cap_values and 
+                    'memory' in tool_name):
+                    return True
+                
+                # Include processing tools for data/file manipulation
+                processing_caps = ['data_processing', 'file_manipulation', 'text_processing']
+                if (any(cap in required_cap_values for cap in processing_caps) and
+                    any(keyword in tool_name for keyword in ['process', 'file', 'text'])):
+                    return True
+                
+                # Include API tools for integration capabilities
+                if ('api_integration' in required_cap_values and 
+                    'api' in tool_name):
+                    return True
+                
+                # Include basic math tools
+                if ('basic_math' in required_cap_values and 
+                    any(keyword in tool_name for keyword in ['math', 'calc', 'compute'])):
+                    return True
+            
+            # Include basic tools for moderate to high complexity
+            if (intent.complexity_level.value in ["MODERATE", "COMPLEX", "SPECIALIZED"] and
+                tool_name in ["web_search", "memory_search", "summarization"]):
+                return True
+        
+        return False
+
+    def _needs_basic_tools(self, intents: List[IntentAnalysis]) -> bool:
+        """
+        Determine if basic tools are needed for simple requests.
+        """
+        for intent in intents:
+            # Convert required capabilities to values for comparison
+            required_cap_values = [cap.value for cap in intent.required_capabilities]
+            
+            # Simple requests that benefit from basic tools
+            basic_caps = ['information_retrieval', 'web_search', 'basic_math']
+            if (intent.complexity_level.value in ["TRIVIAL", "SIMPLE"] and
+                any(cap in required_cap_values for cap in basic_caps)):
+                return True
+        
         return False

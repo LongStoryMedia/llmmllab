@@ -8,10 +8,10 @@ from pydantic import BaseModel, Field, AnyUrl, EmailStr, constr
 
 
 
-class ComplexityLevel(str, Enum):
-    """Complexity level assessment for requests and operations"""
-    TRIVIAL = 'TRIVIAL'
-    SIMPLE = 'SIMPLE'
+class ComputationalRequirement(str, Enum):
+    """Computational requirement levels for request processing"""
+    MINIMAL = 'MINIMAL'
+    LOW = 'LOW'
     MODERATE = 'MODERATE'
-    COMPLEX = 'COMPLEX'
-    SPECIALIZED = 'SPECIALIZED'
+    HIGH = 'HIGH'
+    INTENSIVE = 'INTENSIVE'

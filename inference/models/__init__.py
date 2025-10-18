@@ -11,6 +11,7 @@ try:
     from . import circuit_breaker_config
     from . import complexity_estimate
     from . import complexity_level
+    from . import computational_requirement
     from . import config
     from . import context_window_config
     from . import conversation
@@ -120,6 +121,7 @@ __all__ = [
     'circuit_breaker_config',
     'complexity_estimate',
     'complexity_level',
+    'computational_requirement',
     'config',
     'context_window_config',
     'conversation',
@@ -223,6 +225,7 @@ __all__ = [
     'CircuitBreakerConfig',
     'ComplexityEstimate',
     'ComplexityLevel',
+    'ComputationalRequirement',
     'Config',
     'ContextWindowConfig',
     'Optimization',
@@ -352,6 +355,9 @@ from .complexity_estimate import (
 )
 from .complexity_level import (
     ComplexityLevel,
+)
+from .computational_requirement import (
+    ComputationalRequirement,
 )
 from .config import (
     Config,

@@ -35,6 +35,22 @@ properties:
   technical_domain:
     $ref: "technical_domain.yaml"
     description: "Identified technical domain if applicable"
+  requires_tools:
+    type: boolean
+    default: false
+    description: "Whether this intent specifically requires tool execution"
+  requires_custom_tools:
+    type: boolean
+    default: false
+    description: "Whether this intent requires custom/dynamic tool generation"
+  tool_complexity_score:
+    type: number
+    minimum: 0.0
+    maximum: 1.0
+    description: "Tool complexity score (0-1, higher = more complex tools needed)"
+  computational_requirements:
+    $ref: "computational_requirement.yaml"
+    description: "Computational requirements assessment for the request"
 required:
   - workflow_type
   - complexity_level
@@ -43,4 +59,7 @@ required:
   - domain_specificity
   - reusability_potential
   - confidence
+  - requires_tools
+  - requires_custom_tools
+  - tool_complexity_score
 additionalProperties: false

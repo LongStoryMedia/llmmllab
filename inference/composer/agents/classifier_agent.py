@@ -100,17 +100,33 @@ You are an expert intent classification system. Analyze the user request and out
 Valid enumerations ONLY:
 workflow_type (choose one per intent): [ {" | ".join(intnt_schema['$defs']['WorkflowType']['enum'])} ]
 complexity_level (choose one per intent): [ {" | ".join(intnt_schema['$defs']['ComplexityLevel']['enum'])} ]
+computational_requirements (choose one per intent): [ {" | ".join(intnt_schema['$defs']['ComputationalRequirement']['enum'])} ]
 
 required_capabilities (functionality needed - choose many, one, or none):
 {", ".join(intnt_schema['$defs']['RequiredCapability']['enum'])}
 required_capabilities can be empty if none apply. It is usually empty for simple queries.
 DO NOT invent capabilities or requirements - only use those listed above.
 
+Tool Assessment Guidelines:
+- requires_tools: Set to true if the request needs external tools/APIs to be fulfilled (web search, file operations, calculations, etc.)
+- requires_custom_tools: Set to true if existing tools won't suffice and custom tool creation is needed
+- tool_complexity_score: Rate 0.0-1.0 based on how complex the required tooling would be
+  * 0.0-0.3: Basic tools (search, simple calculations)  
+  * 0.4-0.6: Moderate tools (data processing, API calls)
+  * 0.7-1.0: Complex tools (custom integrations, specialized processing)
+
+Scoring Guidelines:
+- domain_specificity: 0.0-1.0 (0.0=general, 1.0=highly domain-specific)
+- reusability_potential: 0.0-1.0 (0.0=one-time use, 1.0=highly reusable)
+- confidence: 0.0-1.0 (confidence in your analysis)
+
 Instructions:
 1. Decompose only if there are clearly separable sub-tasks; else one intent in the intents array.
 2. Each element in intents must follow the enumerations exactly.
 3. Omit response_format / technical_domain unless clearly implied.
-4. Output strictly valid JSON. No prose, no markdown, no comments.
+4. All boolean fields (requires_tools, requires_custom_tools) must be explicitly set.
+5. All required numeric fields must be provided as numbers (not strings).
+6. Output strictly valid JSON. No prose, no markdown, no comments.
 
 User Request: {user_query}
 
