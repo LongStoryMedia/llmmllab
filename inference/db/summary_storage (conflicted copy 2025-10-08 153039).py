@@ -6,8 +6,8 @@ import json
 import logging
 from typing import List, Optional
 import asyncpg
-from server.db.db_utils import typed_pool
-from server.db.cache_storage import cache_storage
+from db.db_utils import typed_pool
+from db.cache_storage import cache_storage
 from models.summary import Summary
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,10 @@ class SummaryStorage:
     async def get_summaries_for_conversation(
         self, conversation_id: int
     ) -> List[Summary]:
+        """
+        Retrieve all summaries for a given conversation, using cache if available.
+        This method excludes summaries that have been consolidated into higher-level summaries.
+        """
         # First try to get from cache
         cached_summaries = cache_storage.get_summaries_by_conversation_id_from_cache(
             conversation_id

@@ -13,11 +13,12 @@ from contextlib import contextmanager
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.embeddings import Embeddings
+from pydantic import BaseModel
 
 # Type variables for proper return type hints
-T = TypeVar('T', bound=Union[BaseChatModel, Embeddings])
-ChatModelType = TypeVar('ChatModelType', bound=BaseChatModel)
-EmbeddingType = TypeVar('EmbeddingType', bound=Embeddings)
+T = TypeVar("T", bound=Union[BaseChatModel, Embeddings])
+ChatModelType = TypeVar("ChatModelType", bound=BaseChatModel)
+EmbeddingType = TypeVar("EmbeddingType", bound=Embeddings)
 from models import (
     Model,
     LoraWeight,
@@ -186,44 +187,35 @@ class PipelineFactory:
 
     # ---------- Public API ----------
 
-    @overload
     def get_pipeline(
         self,
         profile: ModelProfile,
         priority: PipelinePriority = PipelinePriority.NORMAL,
-    ) -> BaseChatModel: ...
-
-    @overload 
-    def get_embedding_pipeline(
-        self,
-        profile: ModelProfile,
-        priority: PipelinePriority = PipelinePriority.NORMAL,
-    ) -> Embeddings: ...
-
-    def get_pipeline(
-        self,
-        profile: ModelProfile,
-        priority: PipelinePriority = PipelinePriority.NORMAL,
+        grammar: Optional[Type[BaseModel]] = None,
     ) -> Union[BaseChatModel, Embeddings]:
         model_id = profile.model_name
         model = self._get_model_by_id(model_id)
         if not model:
             raise RuntimeError(f"Model with ID '{model_id}' not found.")
 
-                # Local providers -> managed cached path
+        # Local providers -> managed cached path
         if getattr(model, "provider", None) in {
             ModelProvider.LLAMA_CPP,
             ModelProvider.STABLE_DIFFUSION_CPP,
         }:
             # Use a factory function that handles coordination internally
-            def create_with_coordination(m: Model, p: ModelProfile) -> Optional[Union[BaseChatModel, Embeddings]]:
-                return self.create_pipeline(m, p)
+            def create_with_coordination(
+                m: Model, p: ModelProfile, g: Optional[Type[BaseModel]] = grammar
+            ) -> Optional[Union[BaseChatModel, Embeddings]]:
+                return self.create_pipeline(m, p, g)
 
             pipeline = self.local_cache.get_or_create(
                 model, profile, priority, create_with_coordination
             )
             if not pipeline:
-                raise RuntimeError(f"Failed to create cached pipeline for model '{model.name}'")
+                raise RuntimeError(
+                    f"Failed to create cached pipeline for model '{model.name}'"
+                )
             return pipeline
 
         # Remote / API providers -> create transient each call, no caching
@@ -250,13 +242,16 @@ class PipelineFactory:
 
         # For embedding models, require embedding-specific task
         if model.task != "TextToEmbeddings":
-            raise ValueError(f"Model '{model.name}' is not an embedding model (task: {model.task})")
+            raise ValueError(
+                f"Model '{model.name}' is not an embedding model (task: {model.task})"
+            )
 
         # Local providers -> managed cached path
         if getattr(model, "provider", None) in {
             ModelProvider.LLAMA_CPP,
             ModelProvider.STABLE_DIFFUSION_CPP,
         }:
+
             def create_embedding_fn(m: Model, p: ModelProfile) -> Optional[Embeddings]:
                 return self._create_embedding_pipeline(m, p)
 
@@ -264,7 +259,9 @@ class PipelineFactory:
                 model, profile, priority, create_embedding_fn
             )
             if not pipeline:
-                raise RuntimeError(f"Failed to create cached embedding pipeline for model '{model.name}'")
+                raise RuntimeError(
+                    f"Failed to create cached embedding pipeline for model '{model.name}'"
+                )
             if not isinstance(pipeline, Embeddings):
                 raise ValueError(f"Expected Embeddings instance, got {type(pipeline)}")
             return pipeline
@@ -309,8 +306,9 @@ class PipelineFactory:
         self,
         profile: ModelProfile,
         priority: PipelinePriority = PipelinePriority.NORMAL,
+        grammar: Optional[Type[BaseModel]] = None,
     ):
-        pipeline = self.get_pipeline(profile, priority)
+        pipeline = self.get_pipeline(profile, priority, grammar)
         is_local = False
         try:
             provider = getattr(pipeline.model, "provider", None)  # type: ignore[attr-defined]
@@ -527,6 +525,7 @@ class PipelineFactory:
         self,
         model: Model,
         profile: ModelProfile,
+        grammar: Optional[Type[BaseModel]] = None,
     ) -> Optional[Union[BaseChatModel, Embeddings]]:
         """
         Create a pipeline instance based on model task and pipeline type.
@@ -540,7 +539,7 @@ class PipelineFactory:
             self.logger.info(f"Creating pipeline for {model.name} (task: {model.task})")
 
             if model.task.endswith("TextToText"):
-                return self._create_text_pipeline(model, profile)
+                return self._create_text_pipeline(model, profile, grammar)
             if model.task == "TextToEmbeddings":
                 return self._create_embedding_pipeline(model, profile)
             if model.task == "TextToImage":
@@ -570,7 +569,8 @@ class PipelineFactory:
         self,
         model: Model,
         profile: ModelProfile,
-    ) -> Optional[BaseChatModel]:
+        grammar: Optional[Type[BaseModel]] = None,
+    ) -> BaseChatModel:
         self.logger.info(
             f"Creating text pipeline for model: {model.name}, pipeline: {model.pipeline}"
         )
@@ -585,7 +585,7 @@ class PipelineFactory:
             self.logger.info("Attempting to create Qwen3Moe")
             try:
                 # Try with expected_return_type first (preferred)
-                pipeline = Qwen3Moe(model, profile)
+                pipeline = Qwen3Moe(model, profile, grammar)
             except TypeError as e:
                 self.logger.warning(f"Qwen3Moe creation failed: {e}")
                 raise
@@ -598,23 +598,23 @@ class PipelineFactory:
                 Qwen25VLPipeline,
             )
 
-            return Qwen25VLPipeline(model, profile)
+            return Qwen25VLPipeline(model, profile, grammar)
 
         if model.pipeline == "LlamaChatSummPipe":
             from .pipelines.txt2txt.llamachatsum import (  # pylint: disable=import-outside-toplevel
                 LlamaChatSummPipe,
             )
 
-            return LlamaChatSummPipe(model, profile)
+            return LlamaChatSummPipe(model, profile, grammar)
 
         if model.pipeline == "OpenAiGptOssPipe":
             from .pipelines.txt2txt.openai_gpt_oss import (  # pylint: disable=import-outside-toplevel
                 OpenAIGptOssPipeline,
             )
 
-            return OpenAIGptOssPipeline(model, profile)
+            return OpenAIGptOssPipeline(model, profile, grammar)
 
-        return None
+        raise RuntimeError(f"Unsupported text pipeline type: {model.pipeline}")
 
     def _create_embedding_pipeline(
         self,

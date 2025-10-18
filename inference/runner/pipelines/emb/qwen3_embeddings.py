@@ -18,9 +18,9 @@ from models import Model, ModelProfile
 class Qwen3Embeddings(Embeddings):
     """
     Direct Qwen3-Embedding-0.6B implementation using llama_cpp.Llama.
-    
+
     Features:
-    - Direct llama_cpp.Llama usage with embed() method  
+    - Direct llama_cpp.Llama usage with embed() method
     - 1024-dimensional embeddings
     - 8192 token context window with automatic text splitting
     - Optimized for multilingual text understanding
@@ -35,7 +35,7 @@ class Qwen3Embeddings(Embeddings):
         self.embedding_dim = 1024  # Qwen3 embedding dimension
         self.max_context_tokens = 8192
         self.text_splitter: Optional[RecursiveCharacterTextSplitter] = None
-        
+
     def _get_gguf_path(self) -> str:
         """Get the GGUF file path from model definition."""
         return (
@@ -163,7 +163,7 @@ class Qwen3Embeddings(Embeddings):
         """Aggregate multiple embeddings using mean pooling."""
         if not embeddings:
             return [0.0] * self.embedding_dim
-        
+
         if len(embeddings) == 1:
             return embeddings[0]
 
@@ -172,7 +172,7 @@ class Qwen3Embeddings(Embeddings):
         for embedding in embeddings:
             for i, val in enumerate(embedding):
                 aggregated[i] += val
-        
+
         return [val / len(embeddings) for val in aggregated]
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
@@ -188,22 +188,27 @@ class Qwen3Embeddings(Embeddings):
         for text in texts:
             # Split text if needed
             chunks = self._split_text_if_needed(text)
-            
+
             chunk_embeddings = []
             for chunk in chunks:
                 embedding_result = self.llama_instance.embed(chunk)
-                
+
                 # Extract embedding vector from response
                 if isinstance(embedding_result, list) and len(embedding_result) > 0:
                     if isinstance(embedding_result[0], list):
                         chunk_embeddings.append(embedding_result[0])
                     elif isinstance(embedding_result[0], (int, float)):
-                        chunk_embeddings.append([float(x) if isinstance(x, (int, float)) else 0.0 for x in embedding_result])
+                        chunk_embeddings.append(
+                            [
+                                float(x) if isinstance(x, (int, float)) else 0.0
+                                for x in embedding_result
+                            ]
+                        )
                     else:
                         chunk_embeddings.append([0.0] * self.embedding_dim)
                 else:
                     chunk_embeddings.append([0.0] * self.embedding_dim)
-            
+
             # Aggregate embeddings if multiple chunks
             final_embedding = self._aggregate_embeddings(chunk_embeddings)
             embeddings.append(final_embedding)
@@ -218,11 +223,11 @@ class Qwen3Embeddings(Embeddings):
 
         # Split text if needed
         chunks = self._split_text_if_needed(text)
-        
+
         chunk_embeddings = []
         for chunk in chunks:
             embedding_result = self.llama_instance.embed(chunk)
-            
+
             # Extract embedding vector from response
             if isinstance(embedding_result, list) and len(embedding_result) > 0:
                 if isinstance(embedding_result[0], list):
@@ -233,6 +238,6 @@ class Qwen3Embeddings(Embeddings):
                     chunk_embeddings.append([0.0] * self.embedding_dim)
             else:
                 chunk_embeddings.append([0.0] * self.embedding_dim)
-        
+
         # Aggregate embeddings if multiple chunks
         return self._aggregate_embeddings(chunk_embeddings)

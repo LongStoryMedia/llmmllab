@@ -3,20 +3,30 @@ Base Agent class providing common functionality for all workflow agents.
 Provides node metadata injection, logging setup, and common error handling patterns.
 """
 
+from pyexpat import model
+import sys
 from typing import (
     Optional,
     Any,
     Dict,
+    Tuple,
     TypeVar,
     Generic,
     AsyncIterator,
     List,
+    cast,
 )
 from abc import ABC
 from pydantic import BaseModel
+from langchain.agents.structured_output import ProviderStrategy
+from langchain.agents import create_agent
+from langchain.chat_models import BaseChatModel
+from langchain.embeddings.base import Embeddings
 from langchain_core.tools import BaseTool
 
 from models import (
+    MessageContent,
+    MessageContentType,
     MessageRole,
     NodeMetadata,
     ModelProfile,
@@ -31,6 +41,7 @@ from utils.message import extract_message_text
 from composer.core.errors import NodeExecutionError
 from composer.utils.conversion import (
     normalize_message_input,
+    convert_messages_to_base_langchain,
     MessageInput,
 )
 
@@ -220,7 +231,7 @@ class BaseAgent(ABC, Generic[T]):
         messages: MessageInput,
         tools: Optional[List[BaseTool]] = None,
         priority: PipelinePriority = PipelinePriority.MEDIUM,
-        _grammar: Optional[type[BaseModel]] = None,
+        grammar: Optional[type[BaseModel]] = None,
     ) -> AsyncIterator[ChatResponse]:
         """
         Stream agent execution with node metadata injection.
@@ -255,51 +266,64 @@ class BaseAgent(ABC, Generic[T]):
 
             # Get the model configuration from pipeline factory
             with self.pipeline_factory.pipeline(
-                self.profile, priority
+                self.profile, priority, grammar
             ) as chat_model:
                 if not chat_model:
                     raise NodeExecutionError("Failed to create chat model")
 
+                llm = cast(BaseChatModel, chat_model)
+
                 msgs = normalize_message_input(messages)
-                convo = []
+                convo: List[Message] = []
 
                 # Convert messages to LangChain format
                 system_prompt = ""
                 if self.profile.system_prompt:
                     system_prompt = self.profile.system_prompt
-                
+
                 for msg in msgs:
                     if msg.role == MessageRole.SYSTEM:
                         system_prompt += f"\n\n{extract_message_text(msg)}"
                     else:
                         convo.append(msg)
 
-                # Convert messages to LangChain BaseMessage format for direct model use
-                from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-                langchain_messages = []
-                for msg in convo:
-                    msg_text = extract_message_text(msg)
-                    if msg.role == MessageRole.USER:
-                        langchain_messages.append(HumanMessage(content=msg_text))
-                    elif msg.role == MessageRole.ASSISTANT:
-                        langchain_messages.append(AIMessage(content=msg_text))
-                
-                if system_prompt:
-                    langchain_messages.insert(0, SystemMessage(content=system_prompt))
+                agent = create_agent(
+                    model=llm,
+                    tools=tools or [],
+                    system_prompt=system_prompt,
+                    response_format=ProviderStrategy(grammar) if grammar else None,
+                    name=self._node_metadata.node_name,
+                )
+                agent.bind(system_prompt=system_prompt)
 
-                # Stream chat completion directly
+                # Convert messages to LangChain format
+                normalized_messages = convert_messages_to_base_langchain(convo)
+                npt = {"messages": normalized_messages}
+
+                # Stream agent execution
                 chunk_count = 0
-                async for chunk in chat_model.astream(langchain_messages):
-                    # Convert chunk to ChatResponse with proper type checking
-                    content = ""
-                    if hasattr(chunk, "content") and chunk.content:
-                        content = str(chunk.content)
-                    
-                    if content:  # Only yield chunks with content
-                        chat_chunk = create_streaming_chunk(
-                            content,
+                async for chunk in agent.astream(
+                    npt,  # type: ignore
+                    stream_mode="messages",
+                ):
+                    # stream_mode "messages" Will be emitted as 2-tuples `(LLM token, metadata)`.
+                    c = cast(Tuple[str, Dict[str, Any]], chunk)
+
+                    if c[0]:  # Only yield chunks with content
+                        chat_chunk = ChatResponse(
                             done=False,
-                            role=MessageRole.ASSISTANT,
+                            message=Message(
+                                role=MessageRole.ASSISTANT,
+                                content=[
+                                    MessageContent(
+                                        type=MessageContentType.TEXT, text=c[0]
+                                    )
+                                ],
+                            ),
+                            channels={
+                                "node_metadata": self._node_metadata.model_dump(),
+                                "chunk_metadata": c[1],
+                            },
                         )
                         chat_chunk.channels = self._node_metadata.model_dump()
                         chunk_count += 1
@@ -332,7 +356,7 @@ class BaseAgent(ABC, Generic[T]):
         messages: MessageInput,
         tools: Optional[List[BaseTool]] = None,
         priority: PipelinePriority = PipelinePriority.MEDIUM,
-        _grammar: Optional[type[BaseModel]] = None,
+        grammar: Optional[type[BaseModel]] = None,
     ) -> ChatResponse:
         """
         Run agent execution with node metadata injection.
@@ -351,7 +375,6 @@ class BaseAgent(ABC, Generic[T]):
             ChatResponse: Response with injected node metadata
         """
 
-
         try:
             self._log_operation_start(
                 "create_agent_run",
@@ -363,10 +386,11 @@ class BaseAgent(ABC, Generic[T]):
 
             # Get the model configuration from pipeline factory
             with self.pipeline_factory.pipeline(
-                self.profile, priority
+                self.profile, priority, grammar
             ) as chat_model:
                 if not chat_model:
                     raise NodeExecutionError("Failed to create chat model")
+                llm = cast(BaseChatModel, chat_model)
 
                 msgs = normalize_message_input(messages)
                 convo = []
@@ -375,38 +399,48 @@ class BaseAgent(ABC, Generic[T]):
                 system_prompt = ""
                 if self.profile.system_prompt:
                     system_prompt = self.profile.system_prompt
-                
+
                 for msg in msgs:
                     if msg.role == MessageRole.SYSTEM:
                         system_prompt += f"\n\n{extract_message_text(msg)}"
                     else:
                         convo.append(msg)
+                # Create LangChain agent using create_agent()
 
-                # Convert messages to LangChain BaseMessage format for direct model use
-                from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-                langchain_messages = []
-                for msg in convo:
-                    msg_text = extract_message_text(msg)
-                    if msg.role == MessageRole.USER:
-                        langchain_messages.append(HumanMessage(content=msg_text))
-                    elif msg.role == MessageRole.ASSISTANT:
-                        langchain_messages.append(AIMessage(content=msg_text))
-                
-                if system_prompt:
-                    langchain_messages.insert(0, SystemMessage(content=system_prompt))
+                agent = create_agent(
+                    model=llm,
+                    tools=tools or [],
+                    system_prompt=system_prompt,
+                    response_format=ProviderStrategy(grammar) if grammar else None,
+                    name=self._node_metadata.node_name,
+                )
 
-                # Execute chat completion directly
-                result = await chat_model.ainvoke(langchain_messages)
+                # Convert messages to LangChain format
+                normalized_messages = convert_messages_to_base_langchain(convo)
+                # Execute agent
+                result = await agent.ainvoke(
+                    {"messages": normalized_messages},  # type: ignore
+                    grammar=grammar,
+                    tools=tools,
+                )
 
-                # Convert result to ChatResponse with proper type checking
-                content = ""
-                if hasattr(result, "content") and result.content:
-                    content = str(result.content)
-                
-                response = create_streaming_chunk(
-                    content if content else "Model completed without output",
+                # Convert agent result to ChatResponse
+                last_message = result["messages"][-1]
+                response = ChatResponse(
                     done=True,
-                    role=MessageRole.ASSISTANT,
+                    message=Message(
+                        content=[
+                            MessageContent(
+                                type=MessageContentType.TEXT,
+                                text=(
+                                    str(last_message.content)
+                                    if hasattr(last_message, "content")
+                                    else ""
+                                ),
+                            )
+                        ],
+                        role=MessageRole.ASSISTANT,
+                    ),
                 )
 
                 response.channels = self._node_metadata.model_dump()
@@ -449,41 +483,34 @@ class BaseAgent(ABC, Generic[T]):
             )
 
             # Get the model configuration from pipeline factory
-            embedding_model = self.pipeline_factory.get_embedding_pipeline(
+            with self.pipeline_factory.pipeline(
                 self.profile,
                 priority,
-            )
-            if not embedding_model:
-                raise NodeExecutionError("Failed to create embedding model")
-            # Convert messages to text list
-            normalized_messages = normalize_message_input(messages)
-            text_list = []
+            ) as embedding_model:
+                if not embedding_model:
+                    raise NodeExecutionError("Failed to create embedding model")
+                llm = cast(Embeddings, embedding_model)
+                # Convert messages to text list
+                normalized_messages = normalize_message_input(messages)
+                text_list = []
 
-            for message in normalized_messages:
-                if hasattr(message, "content"):
-                    if isinstance(message.content, list):
-                        # Handle multi-content messages
-                        for content in message.content:
-                            if hasattr(content, "text") and content.text:
-                                text_list.append(content.text)
-                    else:
-                        text_list.append(str(message.content))
-                elif isinstance(message, str):
-                    text_list.append(message)
+                for message in normalized_messages:
+                    if message.content:
+                        text_list.append(extract_message_text(message))
 
-            if not text_list:
-                return []
+                if not text_list:
+                    return []
 
-            # Generate embeddings
-            embeddings = await embedding_model.aembed_documents(text_list)
+                # Generate embeddings
+                embeddings = await llm.aembed_documents(text_list)
 
-            self._log_operation_success(
-                "embedding_factory_run",
-                embedding_count=len(embeddings),
-                node_name=self._node_metadata.node_name,
-            )
+                self._log_operation_success(
+                    "embedding_factory_run",
+                    embedding_count=len(embeddings),
+                    node_name=self._node_metadata.node_name,
+                )
 
-            return embeddings
+                return embeddings
 
         except Exception as e:
             self._handle_node_error(

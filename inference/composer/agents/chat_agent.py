@@ -24,6 +24,7 @@ from models import (
 from utils.message import extract_message_text
 from composer.utils.conversion import (
     message_to_langchain_message,
+    convert_langchain_messages_to_messages,
 )
 from .base_agent import BaseAgent
 
@@ -43,7 +44,6 @@ class ChatAgent(BaseAgent[ChatResponse]):
         profile: ModelProfile,
         node_metadata: NodeMetadata,
         priority: PipelinePriority = PipelinePriority.MEDIUM,
-        stream: bool = False,
     ):
         """
         Initialize chat agent with dependency injection.
@@ -57,13 +57,11 @@ class ChatAgent(BaseAgent[ChatResponse]):
         """
         super().__init__(pipeline_factory, profile, node_metadata)
         self.priority = priority
-        self.stream = stream
 
     async def chat_completion(
         self,
         messages: List[LangChainMessage],
         tools: Optional[List[BaseTool]] = None,
-        circuit_breaker: Optional[CircuitBreakerConfig] = None,
         stream: Optional[bool] = None,
     ) -> ChatResponse:
         """
@@ -85,22 +83,21 @@ class ChatAgent(BaseAgent[ChatResponse]):
         if should_stream:
             # For streaming, we need to accumulate the response
             return await self._execute_streaming_completion_with_metadata(
-                messages, tools, circuit_breaker
+                convert_langchain_messages_to_messages(messages),
+                tools,
             )
         else:
             # For non-streaming, use the base class method directly
             return await self.run(
-                messages=messages,
+                messages=convert_langchain_messages_to_messages(messages),
                 tools=tools,
-                circuit_breaker=circuit_breaker,
                 priority=self.priority,
             )
 
     async def _execute_streaming_completion_with_metadata(
         self,
-        messages: List[LangChainMessage],
+        messages: List[Message],
         tools: Optional[List[BaseTool]] = None,
-        circuit_breaker: Optional[CircuitBreakerConfig] = None,
     ) -> ChatResponse:
         """Execute streaming chat completion using BaseAgent methods with metadata."""
         # Accumulate streaming response
@@ -112,7 +109,6 @@ class ChatAgent(BaseAgent[ChatResponse]):
             async for chunk in self.stream(
                 messages=messages,
                 tools=tools,
-                circuit_breaker=circuit_breaker,
                 priority=self.priority,
             ):
                 # Skip metadata boundary chunks
@@ -178,7 +174,6 @@ class ChatAgent(BaseAgent[ChatResponse]):
         self,
         messages: List[LangChainMessage],
         tools: Optional[List[BaseTool]] = None,
-        circuit_breaker: Optional[CircuitBreakerConfig] = None,
     ):
         """
         Stream chat completion with metadata injection.
@@ -196,9 +191,8 @@ class ChatAgent(BaseAgent[ChatResponse]):
             ChatResponse: Streaming chunks with injected node metadata
         """
         async for chunk in self.stream(
-            messages=messages,
+            messages=convert_langchain_messages_to_messages(messages),
             tools=tools,
-            circuit_breaker=circuit_breaker,
             priority=self.priority,
         ):
             yield chunk
@@ -207,7 +201,6 @@ class ChatAgent(BaseAgent[ChatResponse]):
         self,
         messages: List[LangChainMessage],
         tools: Optional[List[BaseTool]] = None,
-        circuit_breaker: Optional[CircuitBreakerConfig] = None,
         stream: Optional[bool] = None,
     ) -> LangChainMessage:
         """
@@ -230,12 +223,18 @@ class ChatAgent(BaseAgent[ChatResponse]):
             response = await self.chat_completion(
                 messages=messages,
                 tools=tools,
-                circuit_breaker=circuit_breaker,
                 stream=stream,
             )
 
             # Convert to LangChain message
-            return message_to_langchain_message(response.message)
+            return (
+                message_to_langchain_message(response.message)
+                if response.message
+                else LangChainMessage(
+                    type="ai",
+                    content="",
+                )
+            )
 
         except Exception as e:
             self._handle_node_error(

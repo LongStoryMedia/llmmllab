@@ -5,13 +5,12 @@ Direct port of Maistro's conversation.go storage logic to Python with cache inte
 from typing import List, Optional
 from datetime import datetime
 import asyncpg
-from server.db.db_utils import typed_pool
-import logging
 from models.conversation import Conversation
-from server.db.cache_storage import cache_storage
-from server.db.db_utils import TypedPool, typed_pool
+from db.cache_storage import cache_storage
+from db.db_utils import typed_pool
+from utils.logging import llmmllogger
 
-logger = logging.getLogger(__name__)
+logger = llmmllogger.bind(component="conversation_storage")
 
 
 class ConversationStorage:
@@ -24,6 +23,9 @@ class ConversationStorage:
         self, user_id: str, title: str = "New conversation"
     ) -> Optional[int]:
         async with self.typed_pool.acquire() as conn:
+            # Ensure the user exists before creating the conversation
+            await conn.execute(self.get_query("user.ensure_user"), user_id)
+
             row = await conn.fetchrow(
                 self.get_query("conversation.create_conversation"), user_id, title
             )

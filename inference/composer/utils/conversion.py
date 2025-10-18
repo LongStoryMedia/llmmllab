@@ -3,6 +3,12 @@ Bidirectional message conversion utilities.
 """
 
 from typing import List, Optional, Union
+from langchain_core.messages import (
+    BaseMessage,
+    HumanMessage,
+    AIMessage,
+    SystemMessage,
+)
 from models import (
     Message,
     LangChainMessage,
@@ -123,6 +129,24 @@ def convert_messages_to_langchain(messages: List[Message]) -> List[LangChainMess
             langchain_messages.append(msg)
 
     return langchain_messages
+
+
+def convert_messages_to_base_langchain(messages: List[Message]) -> List[BaseMessage]:
+    """Convert a list of Message objects to LangChain BaseMessage objects."""
+
+    lc_messages = convert_messages_to_langchain(messages)
+    base_messages: List[BaseMessage] = []
+    for lc_msg in lc_messages:
+        if lc_msg.type == "human":
+            base_messages.append(HumanMessage(**lc_msg.model_dump()))
+        elif lc_msg.type == "ai":
+            base_messages.append(AIMessage(**lc_msg.model_dump()))
+        elif lc_msg.type == "system":
+            base_messages.append(SystemMessage(**lc_msg.model_dump()))
+        else:
+            # Fallback to HumanMessage for unknown types
+            base_messages.append(HumanMessage(**lc_msg.model_dump()))
+    return base_messages
 
 
 def convert_langchain_messages_to_messages(

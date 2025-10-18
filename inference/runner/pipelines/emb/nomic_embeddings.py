@@ -16,7 +16,7 @@ from models import Model, ModelProfile
 class NomicEmbeddings(Embeddings):
     """
     Direct Nomic Embed Text v2 implementation using llama_cpp.Llama.
-    
+
     Features:
     - Direct llama_cpp.Llama usage with embed() method
     - Task-specific prefixes (search_query: / search_document:)
@@ -31,7 +31,7 @@ class NomicEmbeddings(Embeddings):
         self._logger = logging.getLogger(self.__class__.__name__)
         self.llama_instance: Optional[llama_cpp.Llama] = None
         self.embedding_dim = 768  # Nomic embedding dimension
-        
+
     def _get_gguf_path(self) -> str:
         """Get the GGUF file path from model definition."""
         return (
@@ -105,12 +105,12 @@ class NomicEmbeddings(Embeddings):
             # Add document prefix and generate embedding
             prefixed_text = self._add_task_prefix(text, is_query=False)
             embedding_result = self.llama_instance.embed(prefixed_text)
-            
+
             # Extract embedding vector from response
             if isinstance(embedding_result, list) and len(embedding_result) > 0:
                 if isinstance(embedding_result[0], list):
                     # Multiple embeddings returned, take the first
-                    embeddings.append(embedding_result[0])
+                    embeddings.extend(embedding_result)
                 elif isinstance(embedding_result[0], (int, float)):
                     # Single embedding vector returned
                     embeddings.append(embedding_result)
@@ -132,7 +132,7 @@ class NomicEmbeddings(Embeddings):
         # Add query prefix and generate embedding
         prefixed_text = self._add_task_prefix(text, is_query=True)
         embedding_result = self.llama_instance.embed(prefixed_text)
-        
+
         # Extract embedding vector from response
         if isinstance(embedding_result, list) and len(embedding_result) > 0:
             if isinstance(embedding_result[0], list):
@@ -140,7 +140,10 @@ class NomicEmbeddings(Embeddings):
                 return embedding_result[0]
             elif isinstance(embedding_result[0], (int, float)):
                 # Single embedding vector returned - cast to satisfy type checker
-                return [float(x) if isinstance(x, (int, float)) else 0.0 for x in embedding_result]
+                return [
+                    float(x) if isinstance(x, (int, float)) else 0.0
+                    for x in embedding_result
+                ]
             else:
                 # Fallback: zero vector
                 return [0.0] * self.embedding_dim

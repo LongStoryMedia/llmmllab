@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Optional
 import asyncpg
-from server.db.db_utils import typed_pool
+from db.db_utils import typed_pool
 from models.search_topic_synthesis import SearchTopicSynthesis
 
 logger = logging.getLogger(__name__)

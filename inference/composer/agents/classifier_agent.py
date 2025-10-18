@@ -14,11 +14,13 @@ from langchain.chat_models import BaseChatModel
 from models import (
     ChatResponse,
     IntentAnalysis,
+    MessageContent,
     MessageRole,
     ModelProfile,
     PipelinePriority,
     Message,
     NodeMetadata,
+    MessageContentType,
 )
 from composer.core.errors import IntentAnalysisError
 from composer.utils.conversion import (
@@ -123,7 +125,6 @@ If multiple intents are needed, include additional objects in the intents array.
         result = await self.run(
             messages=msgs,
             tools=None,
-            circuit_breaker=self.profile.circuit_breaker,
             priority=PipelinePriority.HIGH,
             grammar=_Intnts,
         )
@@ -197,24 +198,38 @@ Title:"""
                     normalize_message_input(title_prompt)
                 )
 
-                result = await agent.ainvoke({"messages": normalized_messages})
+                result = await agent.ainvoke({"messages": normalized_messages})  # type: ignore
 
                 # Convert agent result to ChatResponse
                 if "messages" in result and result["messages"]:
                     last_message = result["messages"][-1]
                     response = ChatResponse(
-                        text=(
-                            str(last_message.content)
-                            if hasattr(last_message, "content")
-                            else ""
+                        message=Message(
+                            content=[
+                                MessageContent(
+                                    text=(
+                                        str(last_message.content)
+                                        if hasattr(last_message, "content")
+                                        else ""
+                                    ),
+                                    type=MessageContentType.TEXT,
+                                )
+                            ],
+                            role=MessageRole.ASSISTANT,
                         ),
-                        role=MessageRole.ASSISTANT,
                         done=True,
                     )
                 else:
                     response = ChatResponse(
-                        text="Agent completed without output",
-                        role=MessageRole.ASSISTANT,
+                        message=Message(
+                            content=[
+                                MessageContent(
+                                    text="Agent completed without output",
+                                    type=MessageContentType.TEXT,
+                                )
+                            ],
+                            role=MessageRole.ASSISTANT,
+                        ),
                         done=True,
                     )
 

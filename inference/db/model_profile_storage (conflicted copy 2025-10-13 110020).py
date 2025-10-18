@@ -10,8 +10,8 @@ from typing import List, Optional
 import asyncpg
 from models.model_profile import ModelProfile
 from models.default_model_profiles import DEFAULT_PROFILES
-from server.db.db_utils import typed_pool
-from utils.serialization import serialize_to_json
+from db.db_utils import typed_pool
+from .serialization import serialize_to_json
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +194,6 @@ class ModelProfileStorage:
         async with self.typed_pool.acquire() as conn:
             await conn.execute(
                 self.get_query("modelprofile.create_profile"),
-                profile.id,
                 profile.user_id,
                 profile.name,
                 profile.description,
@@ -292,7 +291,8 @@ class ModelProfileStorage:
                 else:
                     params_json = "{}"
                 await conn.execute(
-                    self.get_query("modelprofile.create_default_profile"),
+                    self.get_query("modelprofile.upsert_default_profile"),
+                    profile.id,
                     profile.user_id,
                     profile.name,
                     profile.description,

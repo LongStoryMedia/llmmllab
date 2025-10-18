@@ -84,7 +84,6 @@ class ChatNode:
                     if state.available_tools
                     else None
                 ),
-                circuit_breaker=state.user_config.circuit_breaker,
                 # Use agent's default stream setting
                 stream=None,
             )

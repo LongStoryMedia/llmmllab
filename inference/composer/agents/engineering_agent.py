@@ -44,8 +44,6 @@ class EngineeringAgent(BaseAgent[str]):
         """
         super().__init__(pipeline_factory, profile, node_metadata, "EngineeringAgent")
 
-
-
     async def generate_technical_response(
         self,
         query: str,
@@ -94,8 +92,12 @@ class EngineeringAgent(BaseAgent[str]):
             )
 
             # Extract response text
-            response_text = extract_message_text(result.message) if result and result.message else ""
-            
+            response_text = (
+                extract_message_text(result.message)
+                if result and result.message
+                else ""
+            )
+
             if not response_text.strip():
                 raise NodeExecutionError("Empty technical response generated")
 
@@ -113,7 +115,9 @@ class EngineeringAgent(BaseAgent[str]):
                 user_id=user_id,
                 error=str(e),
             )
-            raise NodeExecutionError(f"Technical response generation failed: {e}") from e
+            raise NodeExecutionError(
+                f"Technical response generation failed: {e}"
+            ) from e
 
     async def analyze_system_architecture(
         self,
@@ -395,3 +399,161 @@ Code Solution:"""
 
         explanation = re.sub(r"```[\w]*\n.*?\n```", "", solution, flags=re.DOTALL)
         return explanation.strip()
+
+    async def generate_dynamic_tool_specification(
+        self,
+        user_query: str,
+        user_id: str,
+        intent: Any,  # IntentAnalysis type
+        static_tools: List[Any],  # List[Tool] type
+    ) -> Optional[Any]:  # Optional[DynamicTool] type
+        """
+        Generate dynamic tool specification based on user query and intent analysis.
+        
+        Args:
+            user_query: The user's query/request
+            user_id: User identifier
+            intent: Intent analysis containing workflow type, complexity, etc.
+            static_tools: List of available static tools
+        
+        Returns:
+            DynamicTool specification if needed, None if existing tools are sufficient
+        """
+        try:
+            import json
+            from models import DynamicTool  # Import here to avoid circular imports
+            
+            self.logger.info(
+                "Generating dynamic tool specification",
+                user_id=user_id,
+                query_length=len(user_query),
+                has_static_tools=bool(static_tools),
+            )
+
+            # Create prompt for dynamic tool generation
+            prompt = await self._create_tool_generation_prompt(
+                user_query=user_query,
+                intent=intent,
+                static_tools=static_tools,
+            )
+
+            # Use BaseAgent's run method to get LLM response
+            result = await self.run(
+                messages=[prompt],
+                priority=PipelinePriority.NORMAL,
+            )
+
+            # Extract response text
+            response_text = (
+                extract_message_text(result.message)
+                if result and result.message
+                else ""
+            )
+
+            if not response_text.strip():
+                self.logger.warning("Empty response from dynamic tool generation")
+                return None
+
+            # Parse response and check if we should skip tool creation
+            try:
+                parsed_response = json.loads(response_text)
+                if parsed_response.get("skip"):
+                    self.logger.info(
+                        "Skipping dynamic tool creation",
+                        user_id=user_id,
+                        reason=parsed_response.get("reason", "No reason provided"),
+                    )
+                    return None
+
+                dt = DynamicTool(**parsed_response)
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                self.logger.error(f"Failed to parse dynamic tool response: {e}")
+                return None
+
+            # Ensure user_id is set for persistence
+            if not dt.user_id:
+                dt.user_id = user_id  # type: ignore
+
+            # Persist the dynamic tool
+            await self._persist_dynamic_tool(dt, user_id)
+
+            self.logger.info(
+                "Dynamic tool specification generated successfully",
+                user_id=user_id,
+                tool_name=dt.name,
+            )
+
+            return dt
+
+        except Exception as e:
+            self.logger.error(
+                "Dynamic tool specification generation failed",
+                user_id=user_id,
+                error=str(e),
+            )
+            raise NodeExecutionError(
+                f"Dynamic tool specification generation failed: {e}"
+            ) from e
+
+    async def _create_tool_generation_prompt(
+        self, user_query: str, intent: Any, static_tools: List[Any]
+    ) -> str:
+        """Create prompt for dynamic tool generation."""
+        import json
+        from models import DynamicTool  # Import here to avoid circular imports
+
+        static_tool_names = [getattr(tool, "name", str(tool)) for tool in static_tools]
+
+        prompt = f"""As a Tool Engineering Specialist, analyze the user's request and determine if a dynamic tool is needed beyond the available static tools.
+
+User Query: {user_query}
+Primary Intent: {getattr(intent, 'workflow_type', 'unknown')}
+Complexity Level: {getattr(intent, 'complexity_level', 'unknown')}
+Required Capabilities: {[str(cap) for cap in getattr(intent, 'required_capabilities', [])]}
+
+Available Static Tools: {static_tool_names}
+
+CRITICAL ANALYSIS: Before creating any tool, determine if the user's request can be fulfilled using existing tools:
+- If web_search is available and the query needs current information, do NOT create a dynamic tool
+- If existing tools can handle the request, respond with: {{"skip": true, "reason": "Existing tools sufficient"}}
+- Only create a dynamic tool if there's a genuine capability gap
+
+If a dynamic tool is genuinely needed, create a tool specification that:
+1. Addresses specific capability gaps not covered by static tools
+2. Is tailored to the user's query and intent
+3. Has clear input/output schema definitions
+4. Uses real, functional implementation (no fake APIs)
+5. Considers security and validation requirements
+
+Tool Requirements:
+- Must be composable and re-usable
+- Should have clear, typed input/output schema
+- Should be efficient and focused on single responsibility
+- Must not duplicate existing static tool functionality
+- Use default error handling (handle_tool_error: false, handle_validation_error: false)
+
+IMPORTANT: Use these exact default values for error handling:
+- handle_tool_error: false (not true)
+- handle_validation_error: false (not true)
+- return_direct: false
+
+Generate either a skip response or a structured tool specification in JSON format matching this schema: {json.dumps(DynamicTool.model_json_schema())}. Focus on practical implementation that directly addresses the user's needs."""
+        return prompt
+
+    async def _persist_dynamic_tool(self, dynamic_tool: Any, user_id: str) -> None:
+        """Persist dynamic tool to database."""
+        try:
+            from db import storage  # Import here to avoid circular imports
+
+            tool_svc = storage.get_service(storage.dynamic_tool)
+            await tool_svc.create_tool(dynamic_tool)
+
+            self.logger.info(
+                "Dynamic tool persisted successfully",
+                user_id=user_id,
+                tool_name=dynamic_tool.name,
+            )
+
+        except Exception as pe:
+            self.logger.error(f"Dynamic tool persistence failed: {pe}")
+            raise NodeExecutionError(f"Dynamic tool persistence failed: {pe}") from pe

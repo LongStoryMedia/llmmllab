@@ -108,9 +108,9 @@ class MasterSummaryAgent(BaseAgent[str]):
             # For now, simplified approach - in production these could be extracted
             # using LLM analysis or stored as separate fields
 
-            # Deduplicate and synthesize  
+            # Deduplicate and synthesize
             synthesized_key_points = await self._synthesize_key_points(all_key_points)
-            synthesized_topics = await self._synthesize_topics(all_topics)  
+            synthesized_topics = await self._synthesize_topics(all_topics)
             # Note: decisions and actions synthesis skipped for simplicity            # Create master summary object with correct Summary schema
             master_summary = Summary(
                 id=hash(
@@ -227,7 +227,9 @@ class MasterSummaryAgent(BaseAgent[str]):
                 conversation_id=conversation_id,
                 error=str(e),
             )
-            raise NodeExecutionError(f"Master conversation synthesis failed: {e}") from e
+            raise NodeExecutionError(
+                f"Master conversation synthesis failed: {e}"
+            ) from e
 
     async def synthesize_cross_conversation_master(
         self,
@@ -301,7 +303,9 @@ class MasterSummaryAgent(BaseAgent[str]):
                 topic=topic,
                 error=str(e),
             )
-            raise NodeExecutionError(f"Cross-conversation master synthesis failed: {e}") from e
+            raise NodeExecutionError(
+                f"Cross-conversation master synthesis failed: {e}"
+            ) from e
 
     async def _create_master_consolidation_prompt(
         self, summaries: List[Summary], level: int, target_level: int
@@ -438,7 +442,9 @@ Create a master synthesis that combines and synthesizes key information from all
                 user_id=user_id,
                 error=str(e),
             )
-            raise NodeExecutionError(f"Failed to execute master summarization: {e}") from e
+            raise NodeExecutionError(
+                f"Failed to execute master summarization: {e}"
+            ) from e
 
     # Synthesis methods for master-level analysis
     async def _synthesize_key_points(self, all_key_points: List[str]) -> List[str]:
