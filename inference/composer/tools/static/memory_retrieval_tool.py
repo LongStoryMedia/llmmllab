@@ -79,8 +79,12 @@ async def memory_retrieval(
         # Ensure we have required state
         if not state.user_id:
             error_message = json.dumps(
-                {"status": "error", "error": "Missing user_id in state", "query": query}, 
-                indent=2
+                {
+                    "status": "error",
+                    "error": "Missing user_id in state",
+                    "query": query,
+                },
+                indent=2,
             )
             return Command(
                 update={
@@ -128,9 +132,7 @@ async def memory_retrieval(
 
         # If embeddings are still None, use fallback
         if query_embeddings is None:
-            logger.warning(
-                "Embedding generation returned None, using mock embeddings"
-            )
+            logger.warning("Embedding generation returned None, using mock embeddings")
             query_embeddings = [[0.1] * 768]  # Fallback mock embedding
 
         # Retrieve similar memories from storage using configuration
@@ -139,9 +141,7 @@ async def memory_retrieval(
         # Configure user and conversation filtering based on memory config
         user_filter = None if memory_config.enable_cross_user else state.user_id
         conversation_filter = (
-            None
-            if memory_config.enable_cross_conversation
-            else state.conversation_id
+            None if memory_config.enable_cross_conversation else state.conversation_id
         )
 
         memories = await memory_service.search_similarity(
@@ -197,23 +197,20 @@ async def memory_retrieval(
             update={
                 "retrieved_memories": memories,
                 "memory_query": query,
-                "messages": [
-                    ToolMessage(response_message, tool_call_id=tool_call_id)
-                ],
+                "messages": [ToolMessage(response_message, tool_call_id=tool_call_id)],
             }
         )
 
     except Exception as e:
         # Log the full exception for debugging
         logger.error(
-            f"Memory retrieval failed for query '{query}': {e}", 
+            f"Memory retrieval failed for query '{query}': {e}",
             exc_info=True,
-            query=query[:100]
+            query=query[:100],
         )
-        
+
         error_message = json.dumps(
-            {"status": "error", "error": str(e), "query": query}, 
-            indent=2
+            {"status": "error", "error": str(e), "query": query}, indent=2
         )
 
         return Command(

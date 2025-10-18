@@ -12,7 +12,7 @@ from models import Tool
 from utils.logging import llmmllogger
 from composer.tools.static import (
     memory_retrieval,
-    # SummarizationTool,  # Temporarily disabled due to import issues
+    summarization,
 )
 from composer.tools.static.web_search_tool import web_search
 
@@ -51,6 +51,7 @@ class ToolRegistry:
             self.executable_tools.update({
                 "memory_retrieval": memory_retrieval,
                 "web_search": web_search,
+                "summarization": summarization,
             })
 
             # Add function-based tools directly to executable_tools

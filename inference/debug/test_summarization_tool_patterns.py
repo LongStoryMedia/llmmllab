@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test memory retrieval tool follows agent/node patterns.
+Test summarization tool follows agent/node patterns.
 
 This test verifies:
 1. Uses @tool decorator
@@ -14,38 +14,37 @@ import sys
 import inspect
 from typing import get_type_hints
 
-def test_memory_tool_patterns():
-    """Test that memory retrieval tool follows the correct patterns."""
-    print("🧪 Testing memory retrieval tool patterns...")
+def test_summarization_tool_patterns():
+    """Test that summarization tool follows the correct patterns."""
+    print("🧪 Testing summarization tool patterns...")
     
     try:
-        # Import the memory retrieval tool
-        from composer.tools.static.memory_retrieval_tool import memory_retrieval
+        # Import the summarization tool
+        from composer.tools.static.summarization_tool import summarization
         
-        print("✅ Successfully imported memory_retrieval function")
+        print("✅ Successfully imported summarization function")
         
         # Test 1: Check it's a StructuredTool (created by @tool decorator)
-        assert hasattr(memory_retrieval, 'run'), "memory_retrieval should have 'run' method (StructuredTool)"
-        assert hasattr(memory_retrieval, 'arun'), "memory_retrieval should have 'arun' method (StructuredTool)"
-        assert not inspect.isclass(memory_retrieval), "memory_retrieval should be a tool instance, not a class"
-        print("✅ memory_retrieval is a StructuredTool instance (from @tool decorator)")
+        assert hasattr(summarization, 'run'), "summarization should have 'run' method (StructuredTool)"
+        assert hasattr(summarization, 'arun'), "summarization should have 'arun' method (StructuredTool)"
+        assert not inspect.isclass(summarization), "summarization should be a tool instance, not a class"
+        print("✅ summarization is a StructuredTool instance (from @tool decorator)")
         
-        # Test 2: Check underlying function signature for LangGraph patterns
-        # For StructuredTool, we need to check the func attribute
-        if hasattr(memory_retrieval, 'func') and memory_retrieval.func is not None:
-            sig = inspect.signature(memory_retrieval.func)
+        # Test 2: Check underlying function signature for LangGraph patterns (if available)
+        if hasattr(summarization, 'func') and summarization.func is not None:
+            sig = inspect.signature(summarization.func)
             params = list(sig.parameters.keys())
             
-            expected_params = ['query', 'tool_call_id', 'state']
+            expected_params = ['content', 'tool_call_id', 'state']
             assert params == expected_params, f"Expected parameters {expected_params}, got {params}"
-            print("✅ Underlying function has correct parameters: query, tool_call_id, state")
+            print("✅ Underlying function has correct parameters: content, tool_call_id, state")
         else:
             print("⚠️  Cannot access underlying function signature (func is None or missing)")
         
         # Test 3: Check type hints for LangGraph patterns (if available)
-        if hasattr(memory_retrieval, 'func') and memory_retrieval.func is not None:
+        if hasattr(summarization, 'func') and summarization.func is not None:
             try:
-                hints = get_type_hints(memory_retrieval.func)
+                hints = get_type_hints(summarization.func)
                 
                 # Check for Annotated types (InjectedToolCallId, InjectedState)
                 if 'tool_call_id' in hints and 'state' in hints:
@@ -62,14 +61,17 @@ def test_memory_tool_patterns():
             print("⚠️  Cannot access underlying function for type checking (func is None or missing)")
         
         # Test 5: Check it has @tool decorator by checking attributes
-        assert hasattr(memory_retrieval, 'name'), "Function should have 'name' attribute from @tool decorator"
-        assert hasattr(memory_retrieval, 'description'), "Function should have 'description' attribute from @tool decorator"
+        assert hasattr(summarization, 'name'), "Function should have 'name' attribute from @tool decorator"
+        assert hasattr(summarization, 'description'), "Function should have 'description' attribute from @tool decorator"
         print("✅ Function has @tool decorator attributes")
         
-        print("\n🎉 All memory retrieval tool pattern tests passed!")
+        print(f"✅ Tool name: {summarization.name}")
+        print(f"✅ Tool description: {summarization.description[:100]}...")
+        
+        print("\n🎉 All summarization tool pattern tests passed!")
         print("📊 Pattern compliance summary:")
         print("   ✅ StructuredTool instance (from @tool decorator)")
-        print("   ✅ Uses @tool decorator") 
+        print("   ✅ Uses @tool decorator")
         print("   ✅ Has proper tool attributes (name, description)")
         print("   ✅ Has run/arun methods for execution")
         print("   ✅ Follows LangGraph tool patterns")
@@ -84,5 +86,5 @@ def test_memory_tool_patterns():
         return False
 
 if __name__ == "__main__":
-    success = test_memory_tool_patterns()
+    success = test_summarization_tool_patterns()
     sys.exit(0 if success else 1)
