@@ -5,7 +5,7 @@ Maps user requests to RequiredCapabilities and assesses computational complexity
 """
 
 import json
-from typing import List, TYPE_CHECKING, cast
+from typing import List, Optional, TYPE_CHECKING, cast
 
 from pydantic import BaseModel
 from langchain.agents import create_agent
@@ -21,6 +21,7 @@ from models import (
     Message,
     NodeMetadata,
     MessageContentType,
+    Tool,
 )
 from composer.core.errors import IntentAnalysisError
 from composer.utils.conversion import (
@@ -73,7 +74,7 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
         super().__init__(pipeline_factory, profile, node_metadata, "ClassifierAgent")
         self.logger.info("Intent classifier initialized with analysis model profile")
 
-    async def analyze(self, messages: List[Message]) -> List[IntentAnalysis]:
+    async def analyze(self, messages: List[Message], available_static_tools: Optional[List[Tool]] = None) -> List[IntentAnalysis]:
         """
         Execute grammar-constrained LLM analysis with structured output.
 
@@ -94,6 +95,25 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
         intnt_schema = _Intnts.model_json_schema()
         user_query = messages[-1].content if messages else ""
 
+        # Build available tools context
+        available_tools_context = ""
+        if available_static_tools:
+            tool_names = [tool.name for tool in available_static_tools]
+            tool_descriptions = []
+            for tool in available_static_tools[:10]:  # Limit to first 10 tools for context
+                tool_descriptions.append(f"- {tool.name}: {tool.description}")
+            
+            available_tools_context = f"""
+Available Static Tools ({len(available_static_tools)} total):
+{chr(10).join(tool_descriptions)}
+{f"... and {len(available_static_tools) - 10} more tools" if len(available_static_tools) > 10 else ""}
+
+Consider these available tools when assessing:
+- requires_tools: Set to true if the request can be fulfilled using available tools
+- requires_custom_tools: Set to true ONLY if available tools are insufficient and custom tool creation is needed
+- tool_complexity_score: Lower scores if available tools can handle the request
+"""
+
         analysis_prompt = f"""
 You are an expert intent classification system. Analyze the user request and output ONLY JSON.
 
@@ -106,6 +126,8 @@ required_capabilities (functionality needed - choose many, one, or none):
 {", ".join(intnt_schema['$defs']['RequiredCapability']['enum'])}
 required_capabilities can be empty if none apply. It is usually empty for simple queries.
 DO NOT invent capabilities or requirements - only use those listed above.
+
+{available_tools_context}
 
 Tool Assessment Guidelines:
 - requires_tools: Set to true if the request needs external tools/APIs to be fulfilled (web search, file operations, calculations, etc.)

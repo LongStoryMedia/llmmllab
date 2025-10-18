@@ -55,8 +55,10 @@ class IntentClassifierNode:
             )
 
             # Delegate to the specialized intent classifier agent
+            # Pass available static tools for better decision making
             intent_analyses = await self.agent.analyze(
                 messages=assemble_context_messages(state),
+                available_static_tools=state.static_tools,
             )
 
             # Extend workflow state with analysis results (list reducer)

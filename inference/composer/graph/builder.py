@@ -271,6 +271,13 @@ class GraphBuilder:
                 self.pipeline_factory,
                 classifier_agent,
             )
+            # Import here to avoid linting issues
+            from composer.nodes.tools.static_tool_loading import StaticToolLoadingNode
+            
+            static_tool_loading_node = StaticToolLoadingNode(
+                tool_registry,
+                self.dynamic_tool_storage,
+            )
             tool_collection_node = ToolCollectionNode(
                 tool_registry,
                 engineering_agent,
@@ -309,6 +316,9 @@ class GraphBuilder:
             workflow.add_node("memory_creation", memory_creation_node)
             workflow.add_node("memory_storage", memory_storage_node)
 
+            # Static tool loading node - loads static tools and previous dynamic tools early
+            workflow.add_node("static_tool_loading", static_tool_loading_node)
+            
             # Tool collection node with injected dependencies
             workflow.add_node("tool_collection", tool_collection_node)
             workflow.add_node("tool_composer", tool_composer_node)
@@ -321,11 +331,14 @@ class GraphBuilder:
             workflow.add_node("chat_agent", chat_node)
 
             # Build a logical workflow graph structure:
-            # 1. Start -> Intent Analysis
-            workflow.add_edge(START, "intent_analysis")
+            # 1. Start -> Static tool loading (loads static tools + previous dynamic tools)
+            workflow.add_edge(START, "static_tool_loading")
             workflow.add_edge(START, "memory_search")
 
-            # 2. Intent Analysis -> Tool collection and memory search
+            # 2. Static tool loading -> Intent Analysis (classifier can now see available tools)
+            workflow.add_edge("static_tool_loading", "intent_analysis")
+
+            # 3. Intent Analysis -> Tool collection (filters static tools + creates dynamic tools)
             workflow.add_edge("intent_analysis", "tool_collection")
             workflow.add_edge("tool_collection", "tool_composer")
 

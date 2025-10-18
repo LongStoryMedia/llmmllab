@@ -44,11 +44,14 @@ class ToolCollectionNode:
                 intent_count=len(state.intent_classification),
             )
 
-            # Step 1: Collect static tools
+            # Step 1: Filter pre-loaded static tools based on intent
+            # Static tools should already be loaded by StaticToolLoadingNode
+            available_static_tools = state.static_tools or []
             static_tools = await self._collect_static_tools(
                 state.user_id,
                 state.intent_classification,
                 state.user_config,
+                available_static_tools,
             )
 
             self.logger.info(
@@ -69,11 +72,17 @@ class ToolCollectionNode:
                 user_config=state.user_config,
             )
 
-            # Step 3: Update state with all collected tools
-            all_tools = static_tools + dynamic_tools
-            state.available_tools.extend(all_tools)
+            # Step 3: Update state with collected tools
+            # Note: static_tools were already loaded by StaticToolLoadingNode
+            # We only need to add dynamic_tools to available_tools and update static_tools with filtered set
+            
+            # Update static tools with filtered set (removing unneeded tools)
             state.static_tools = static_tools
             state.dynamic_tools = dynamic_tools
+            
+            # Clear available_tools and rebuild with filtered static tools + new dynamic tools
+            all_tools = static_tools + dynamic_tools
+            state.available_tools = all_tools
 
             self.logger.info(
                 "Tool collection completed",
@@ -89,19 +98,14 @@ class ToolCollectionNode:
         return state
 
     async def _collect_static_tools(
-        self, user_id: str, intents: List[IntentAnalysis], user_config
+        self, user_id: str, intents: List[IntentAnalysis], user_config, available_static_tools: List[Tool]
     ) -> List[Tool]:
         """
-        Collect static tools based on intent analysis and user configuration.
-        Uses intent-based filtering to select relevant static tools.
+        Filter pre-loaded static tools based on intent analysis and user configuration.
+        Uses intent-based filtering to select relevant static tools from the pre-loaded set.
         """
         try:
-            # Get all available static tools from registry
-            available_static_tools = await self.tool_registry.get_static_tool_instances(
-                user_id
-            )
-
-            # Apply intent-based filtering
+            # Apply intent-based filtering to pre-loaded static tools
             static_tools = []
             for tool in available_static_tools:
                 if self._should_include_static_tool(tool, intents, user_config):
