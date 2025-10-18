@@ -25,7 +25,11 @@ class ConsolidationNode:
     combining multiple summaries into higher-level abstractions.
     """
 
-    def __init__(self, primary_summary_agent: "PrimarySummaryAgent", master_summary_agent: "MasterSummaryAgent"):
+    def __init__(
+        self,
+        primary_summary_agent: "PrimarySummaryAgent",
+        master_summary_agent: "MasterSummaryAgent",
+    ):
         self.primary_summary_agent = primary_summary_agent
         self.master_summary_agent = master_summary_agent
         self.logger = llmmllogger.logger.bind(component="ConsolidationNode")
@@ -66,10 +70,11 @@ class ConsolidationNode:
                     unsummarized_count=len(unsummarized_messages),
                 )
                 # Use primary summary agent for conversation summarization
-                primary_summary = await self.primary_summary_agent.summarize_conversation(
-                    convert_langchain_messages_to_messages(unsummarized_messages),
-                    state.user_id,
-                    state.conversation_id or 0,
+                primary_summary = (
+                    await self.primary_summary_agent.summarize_conversation(
+                        convert_langchain_messages_to_messages(unsummarized_messages),
+                        state.conversation_id or 0,
+                    )
                 )
                 state.summaries.append(primary_summary)
 
@@ -84,12 +89,14 @@ class ConsolidationNode:
                         summary_count=len(lvl_summaries),
                     )
                     # Use master summary agent for consolidation
-                    master_summary = await self.master_summary_agent.consolidate_summaries(
-                        lvl_summaries,
-                        state.user_id,
-                        state.conversation_id or 0,
-                        lvl,
-                        lvl + 1,
+                    master_summary = (
+                        await self.master_summary_agent.consolidate_summaries(
+                            lvl_summaries,
+                            state.user_id,
+                            state.conversation_id or 0,
+                            lvl,
+                            lvl + 1,
+                        )
                     )
                     state.summaries.append(master_summary)
 

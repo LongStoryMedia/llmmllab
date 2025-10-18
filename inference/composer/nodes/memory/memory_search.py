@@ -65,10 +65,7 @@ class MemorySearchNode:
             message_text = extract_message_text(message)
 
             # Use injected EmbeddingAgent to generate embeddings
-            embeddings = await self.embedding_agent.generate_embeddings(
-                [message_text],
-                user_id,
-            )
+            embeddings = await self.embedding_agent.generate_embeddings([message_text])
 
             if not embeddings:
                 err = "Embedding generation failed or returned empty result"

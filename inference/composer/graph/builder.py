@@ -10,7 +10,6 @@ import uuid
 from langgraph.graph.state import CompiledStateGraph, StateGraph, END, START
 
 from models import ModelProfileType, UserConfig, WorkflowType, NodeMetadata
-from openai import chat
 from runner import PipelineFactory
 
 from utils.model_profile import get_model_profile_for_task
@@ -24,14 +23,12 @@ from composer.agents.memory_agent import MemoryAgent
 from composer.agents.embedding_agent import EmbeddingAgent
 from composer.agents.primary_summary_agent import PrimarySummaryAgent
 from composer.agents.master_summary_agent import MasterSummaryAgent
-from composer.agents.brief_summary_agent import BriefSummaryAgent
 
 # Import all nodes
 from composer.nodes.routing import IntentClassifierNode
 from composer.nodes.routing.router import WorkflowRouter
 from composer.nodes.tools import (
-    StaticToolCollectionNode,
-    DynamicToolCreationNode,
+    ToolCollectionNode,
     ToolComposerNode,
     ToolExecutorNode,
 )
@@ -208,19 +205,12 @@ class GraphBuilder:
                 node_type="MasterSummaryAgentNode",
                 user_id=user_id,
             )
-            brief_summary_node_metadata = NodeMetadata(
-                node_name="BriefSummaryAgent",
-                node_id=uuid.uuid4().hex,
-                node_type="BriefSummaryAgentNode",
-                user_id=user_id,
-            )
 
             # Create agents with injected dependencies
             chat_agent = ChatAgent(
                 self.pipeline_factory,
                 profile=primary_profile,
                 node_metadata=chat_node_metadata,
-                stream=True,  # Enable streaming for primary chat
             )
             classifier_agent = ClassifierAgent(
                 self.pipeline_factory,
@@ -231,6 +221,7 @@ class GraphBuilder:
                 self.pipeline_factory,
                 engineering_profile,
                 engineering_node_metadata,
+                self.dynamic_tool_storage,
             )
             memory_agent = MemoryAgent(
                 self.pipeline_factory,
@@ -259,14 +250,6 @@ class GraphBuilder:
                 self.search_storage,
                 self.user_config,
             )
-            brief_summary_agent = BriefSummaryAgent(
-                self.pipeline_factory,
-                summarization_profile,
-                brief_summary_node_metadata,
-                self.summary_storage,
-                self.search_storage,
-                self.user_config,
-            )
 
             # Create tool registry (also depends on embedding agent)
             tool_registry = ToolRegistry(self.pipeline_factory, embedding_agent)
@@ -288,15 +271,16 @@ class GraphBuilder:
                 self.pipeline_factory,
                 classifier_agent,
             )
-            static_tool_collection_node = StaticToolCollectionNode(tool_registry)
-            dynamic_tool_collection_node = DynamicToolCreationNode(
+            tool_collection_node = ToolCollectionNode(
                 tool_registry,
-                self.pipeline_factory,
+                engineering_agent,
             )
             tool_composer_node = ToolComposerNode()
             tool_executor_node = ToolExecutorNode(tool_registry)
             # ConsolidationNode needs both primary (for conversation summaries) and master (for consolidation)
-            chat_summary_node = ConsolidationNode(primary_summary_agent, master_summary_agent)
+            chat_summary_node = ConsolidationNode(
+                primary_summary_agent, master_summary_agent
+            )
             # SearchSummaryNode uses primary summaries by default
             search_summary_node = SearchSummaryNode(primary_summary_agent)
 
@@ -325,9 +309,8 @@ class GraphBuilder:
             workflow.add_node("memory_creation", memory_creation_node)
             workflow.add_node("memory_storage", memory_storage_node)
 
-            # Tool nodes with injected dependencies
-            workflow.add_node("static_tool_collection", static_tool_collection_node)
-            workflow.add_node("dynamic_tool_collection", dynamic_tool_collection_node)
+            # Tool collection node with injected dependencies
+            workflow.add_node("tool_collection", tool_collection_node)
             workflow.add_node("tool_composer", tool_composer_node)
             workflow.add_node("tool_executor", tool_executor_node)
 
@@ -342,11 +325,9 @@ class GraphBuilder:
             workflow.add_edge(START, "intent_analysis")
             workflow.add_edge(START, "memory_search")
 
-            # 2. Intent Analysis -> Sequential tool collection and memory search
-            workflow.add_edge("intent_analysis", "static_tool_collection")
-            workflow.add_edge("intent_analysis", "dynamic_tool_collection")
-            workflow.add_edge("dynamic_tool_collection", "tool_composer")
-            workflow.add_edge("static_tool_collection", "tool_composer")
+            # 2. Intent Analysis -> Tool collection and memory search
+            workflow.add_edge("intent_analysis", "tool_collection")
+            workflow.add_edge("tool_collection", "tool_composer")
 
             # 3. Memory search -> Router for workflow selection
             workflow.add_edge("tool_composer", "workflow_router")

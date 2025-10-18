@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 
 from composer.graph.state import WorkflowState
-from composer.utils.conversion import convert_langchain_messages_to_messages
+from composer.utils.state import assemble_context_messages
 from utils.logging import llmmllogger
 
 if TYPE_CHECKING:
@@ -54,16 +54,9 @@ class IntentClassifierNode:
                 extra={"user_id": state.user_id, "message_count": len(state.messages)},
             )
 
-            # Convert WorkflowState messages to Message format expected by agent
-            messages = []
-            for msg in state.messages:
-                # Convert LangChainMessage to Message format if needed
-                messages.append(msg)
-
             # Delegate to the specialized intent classifier agent
             intent_analyses = await self.agent.analyze(
-                user_id=state.user_id,
-                messages=convert_langchain_messages_to_messages(messages),
+                messages=assemble_context_messages(state),
             )
 
             # Extend workflow state with analysis results (list reducer)

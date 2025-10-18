@@ -138,7 +138,7 @@ class PrimarySummaryAgent(BaseAgent[str]):
         conversation_id: int,
         max_length: Optional[int] = None,
         style: SummaryStyle = SummaryStyle.CONCISE,
-    ) -> str:
+    ) -> Summary:
         """
         Create primary summary of conversation messages.
 
@@ -188,7 +188,7 @@ class PrimarySummaryAgent(BaseAgent[str]):
                 summary_length=len(summary_text),
             )
 
-            return summary_text
+            return summary
 
         except Exception as e:
             self.logger.error(

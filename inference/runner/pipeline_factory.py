@@ -6,19 +6,13 @@ modern/legacy pipeline selection. Replaces the previous garbled version.
 import json
 import logging
 import os
-import time
 import threading
-from typing import Any, Dict, List, Optional, Type, Union, cast, TypeVar, overload
+from typing import Any, Dict, List, Optional, Type, Union
 from contextlib import contextmanager
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel
-
-# Type variables for proper return type hints
-T = TypeVar("T", bound=Union[BaseChatModel, Embeddings])
-ChatModelType = TypeVar("ChatModelType", bound=BaseChatModel)
-EmbeddingType = TypeVar("EmbeddingType", bound=Embeddings)
 from models import (
     Model,
     LoraWeight,
@@ -28,7 +22,6 @@ from models import (
     PipelinePriority,
 )
 from .pipeline_cache import LocalPipelineCacheManager
-from .utils.hardware_manager import hardware_manager
 
 
 class PipelineFactory:
@@ -180,11 +173,6 @@ class PipelineFactory:
 
         return model
 
-    def _infer_type(self, model: Model) -> Union[Type[BaseChatModel], Type[Embeddings]]:
-        if model.task == "TextToEmbeddings":
-            return Embeddings
-        return BaseChatModel
-
     # ---------- Public API ----------
 
     def get_pipeline(
@@ -274,33 +262,6 @@ class PipelineFactory:
             )
         return pipeline
 
-    def clear_cache(self, model_id: Optional[str] = None) -> None:
-        """Delegate to local cache manager (only impacts local models)."""
-        self.local_cache.clear_cache(model_id)
-
-    def get_cache_stats(self) -> Dict[str, Any]:
-        """Return combined stats (local cache + model availability + hardware)."""
-        local_stats = self.local_cache.stats()
-        memory_stats = hardware_manager.update_all_memory_stats()
-        return {
-            "local_cache": local_stats,
-            "available_models": len(self._available_models),
-            "cache_size": local_stats.get("entries_count", 0),
-            "memory_stats": {
-                device_id: {
-                    "total_mb": stats.mem_total,
-                    "used_mb": stats.mem_used,
-                    "free_mb": stats.mem_free,
-                    "utilization_percent": stats.mem_util,
-                    "gpu_utilization_percent": stats.gpu_util,
-                    "temperature_c": stats.temperature,
-                }
-                for device_id, stats in memory_stats.items()
-            },
-            "hardware_manager_available": hardware_manager.has_gpu,
-            "gpu_count": hardware_manager.gpu_count if hardware_manager.has_gpu else 0,
-        }
-
     @contextmanager
     def pipeline(
         self,
@@ -330,185 +291,6 @@ class PipelineFactory:
                 with self._coord_cond:
                     self._active_local_uses = max(0, self._active_local_uses - 1)
                     self._coord_cond.notify_all()
-
-    # ---------- Coordination Helpers ----------
-
-    def _acquire_load_slot(
-        self, required_bytes: float, model_id: str, timeout: float = 300.0
-    ) -> None:
-        """Serialize local pipeline loads when memory is constrained.
-
-        Waits until either memory is available AND no other load in progress,
-        or raises RuntimeError after timeout if still impossible.
-
-        This method prevents concurrent loads but allows checking memory for the same operation.
-        If the same model is already being loaded, waits for that specific load to complete.
-        """
-        start = time.time()
-
-        # Check if this specific model is already being loaded
-        with self._coord_cond:
-            if model_id in self._loading_models:
-                self.logger.info(
-                    f"Model {model_id} is already being loaded, waiting for completion..."
-                )
-                # Wait for the existing load to complete
-                load_event = self._loading_models[model_id]
-                # Release condition lock while waiting for the event
-                self._coord_cond.release()
-                try:
-                    if not load_event.wait(timeout=timeout):
-                        raise RuntimeError(
-                            f"Timeout waiting for {model_id} to finish loading"
-                        )
-                finally:
-                    self._coord_cond.acquire()
-                return
-
-            # Mark this model as being loaded
-            self._loading_models[model_id] = threading.Event()
-
-        # Initial check
-        mem_ok = hardware_manager.check_memory_available(required_bytes)
-        if not mem_ok:
-            self.logger.warning(
-                f"Initial memory check failed (need {required_bytes/1e9:.2f}GB). Forcing cache cleanup and retrying."
-            )
-            self.force_memory_cleanup()
-            mem_ok = hardware_manager.check_memory_available(required_bytes)
-
-        try:
-            with self._coord_cond:
-                while True:
-                    if mem_ok and self._active_loads == 0:
-                        self._active_loads += 1
-                        return
-                    # If memory not ok but there are active uses or active load, wait
-                    if (not mem_ok) and (
-                        self._active_local_uses > 0 or self._active_loads > 0
-                    ):
-                        remaining = timeout - (time.time() - start)
-                        if remaining <= 0:
-                            raise RuntimeError(
-                                f"Timeout waiting for memory to load pipeline (need {required_bytes/1e9:.2f}GB)"
-                            )
-                        self._coord_cond.wait(timeout=remaining)
-                        # After waiting, re-check memory and potentially force cleanup again
-                        mem_ok = hardware_manager.check_memory_available(required_bytes)
-                        if not mem_ok:
-                            self.force_memory_cleanup()
-                            mem_ok = hardware_manager.check_memory_available(
-                                required_bytes
-                            )
-                        continue
-                    # No other active load and memory still insufficient -> abort
-                    if not mem_ok:
-                        raise RuntimeError(
-                            f"Insufficient memory to load pipeline (need {required_bytes/1e9:.2f}GB)"
-                        )
-                    # Else some other load in progress
-                    remaining = timeout - (time.time() - start)
-                    if remaining <= 0:
-                        raise RuntimeError(
-                            f"Timeout waiting for prior pipeline load to finish (need {required_bytes/1e9:.2f}GB)"
-                        )
-                    self._coord_cond.wait(timeout=remaining)
-        except Exception:
-            # Clean up on error
-            with self._coord_cond:
-                if model_id in self._loading_models:
-                    self._loading_models[
-                        model_id
-                    ].set()  # Signal completion even on error
-                    del self._loading_models[model_id]
-            raise
-
-    def _release_load_slot(self, model_id: str) -> None:
-        with self._coord_cond:
-            if self._active_loads > 0:
-                self._active_loads -= 1
-            # Mark the model as loaded and clean up
-            if model_id in self._loading_models:
-                self._loading_models[model_id].set()  # Signal completion
-                del self._loading_models[model_id]
-            self._coord_cond.notify_all()
-
-    def set_pipeline_priority(self, model_id: str, priority: PipelinePriority) -> bool:
-        # Map external priority enum to local cache priority and delegate
-        success = self.local_cache.set_priority(model_id, priority)
-        if success:
-            self.logger.info(
-                f"Updated pipeline priority for {model_id} -> {priority.name}"
-            )
-        return success
-
-    def get_pipeline_info(self) -> Dict[str, Dict[str, Any]]:
-        stats = self.local_cache.stats()
-        entries = stats.get("entries", {})
-        transformed: Dict[str, Dict[str, Any]] = {}
-        now = time.time()
-        for mid, data in entries.items():
-            last = data.get("last_accessed", now)
-            transformed[mid] = {
-                "priority": data.get("priority"),
-                "age_minutes": round((now - last) / 60.0, 1),
-                "access_count": data.get("access_count"),
-            }
-        return transformed
-
-    def force_memory_cleanup(self, nuclear_fallback: bool = False) -> int:
-        """Force aggressive memory cleanup including GPU memory defragmentation."""
-        # Delegate to local cache full cleanup; ignore target bytes (future improvement)
-        evicted = self.local_cache.force_cleanup()
-        self.logger.info(f"Force cleanup evicted {evicted} local pipelines")
-
-        # Also force aggressive hardware memory cleanup
-        try:
-            if nuclear_fallback:
-                # Use nuclear clearing when aggressive has repeatedly failed
-                self.logger.warning(
-                    "Using nuclear memory cleanup due to critical memory issues"
-                )
-                hardware_manager.nuclear_clear_memory(kill_processes=False)
-                self.logger.info("Nuclear memory cleanup completed")
-            else:
-                hardware_manager.clear_memory(aggressive=True)
-                self.logger.info("Hardware memory cleanup completed")
-        except Exception as e:
-            self.logger.warning(f"Hardware memory cleanup failed: {e}")
-            # If aggressive cleanup failed due to memory issues, try nuclear as fallback
-            error_str = str(e).lower()
-            if not nuclear_fallback and (
-                "out of memory" in error_str
-                or "failed to allocate" in error_str
-                or "cuda error" in error_str
-            ):
-                self.logger.warning(
-                    "Escalating to nuclear cleanup due to memory errors"
-                )
-                try:
-                    hardware_manager.nuclear_clear_memory(kill_processes=False)
-                    self.logger.info("Nuclear fallback cleanup completed")
-                except Exception as nuclear_e:
-                    self.logger.error(
-                        f"Nuclear fallback cleanup also failed: {nuclear_e}"
-                    )
-
-        # Give GPU memory a moment to settle after cleanup
-        if evicted > 0:
-            time.sleep(2.0)  # Brief pause to allow GPU memory to be fully released
-            self.logger.debug("Waited for GPU memory to settle after cleanup")
-
-        return evicted
-
-    # Backward compatibility wrapper (legacy code may call this)
-    def force_resource_cleanup(
-        self, _target_free_memory_gb: float = 1.0
-    ) -> int:  # noqa: ARG002
-        """Alias for force_memory_cleanup kept for older callers."""
-        return self.force_memory_cleanup()
-
-    # ---------- Internals ----------
 
     def _get_model_by_id(self, model_id: str) -> Optional[Model]:
         if not self._available_models:

@@ -39,11 +39,9 @@ class SearchSummaryNode:
             Updated state with synthesized search summary and metadata
         """
         try:
-            assert state.user_id
             assert state.user_config
             assert state.user_config.web_search
             wsc = state.user_config.web_search
-            user_id = state.user_id
 
             # Extract search results and query
             search_results = state.web_search_results
@@ -55,15 +53,12 @@ class SearchSummaryNode:
             assert query is not None, "Search query must be provided"
 
             if not search_results:
-                self.logger.info(
-                    "No search results found for summarization", user_id=user_id
-                )
+                self.logger.info("No search results found for summarization")
 
                 return state
 
             self.logger.info(
                 "Performing search result synthesis",
-                user_id=user_id,
                 result_count=len(search_results),
                 query=query[:100] if query else "unknown",
             )
@@ -71,9 +66,6 @@ class SearchSummaryNode:
             # Generate search synthesis with metadata
             synthesis_result = await self.agent.summarize_search_results(
                 search_results=search_results,
-                user_id=user_id,
-                conversation_id=state.conversation_id or 0,
-                query=query or "search query",
                 max_length=wsc.max_content_length or 5000,
             )
 
@@ -82,7 +74,6 @@ class SearchSummaryNode:
 
             self.logger.info(
                 "Search result synthesis completed",
-                user_id=user_id,
                 summary_length=len(synthesis_result.synthesis),
                 key_points_count=len(synthesis_result.topics),
                 source_count=len(synthesis_result.urls),

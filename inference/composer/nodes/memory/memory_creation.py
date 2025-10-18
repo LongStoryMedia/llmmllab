@@ -60,17 +60,17 @@ class MemoryCreationNode:
         try:
             created_memories = []
             assert state.user_config
-            assert state.user_id
+            assert state.conversation_id
 
             if state.things_to_remember:
                 memories_from_things = await self._create_memories(
                     state.things_to_remember,
-                    state.user_id,
+                    state.conversation_id,
                 )
                 created_memories.extend(memories_from_things)
                 self.logger.info(
                     "Created memories from things to remember",
-                    user_id=getattr(state, "user_id", "unknown"),
+                    conversation_id=getattr(state, "conversation_id", "unknown"),
                     item_count=len(state.things_to_remember),
                     memories_created=len(memories_from_things),
                 )
@@ -103,7 +103,7 @@ class MemoryCreationNode:
         things_to_remember: List[
             Union[Message, LangChainMessage, Summary, SearchTopicSynthesis]
         ],
-        user_id: str,
+        conversation_id: int,
     ) -> List[Memory]:
         """
         Create Memory objects from a mixed list of content sources.
@@ -137,8 +137,7 @@ class MemoryCreationNode:
             tasks.append(
                 self._create_memories_from_summaries(
                     summaries,
-                    conversation_id=0,
-                    user_id=user_id,
+                    conversation_id=conversation_id,
                 )
             )
 
@@ -146,8 +145,7 @@ class MemoryCreationNode:
             tasks.append(
                 self._create_memories_from_messages(
                     messages,
-                    conversation_id=0,
-                    user_id=user_id,
+                    conversation_id=conversation_id,
                 )
             )
 
@@ -155,8 +153,7 @@ class MemoryCreationNode:
             tasks.append(
                 self._create_memories_from_search_syntheses(
                     search_syntheses,
-                    conversation_id=0,
-                    user_id=user_id,
+                    conversation_id=conversation_id,
                 )
             )
 
@@ -179,7 +176,6 @@ class MemoryCreationNode:
         self,
         summaries: List[Summary],
         conversation_id: int,
-        user_id: str,
     ) -> List[Memory]:
         """
         Create Memory objects from Summary objects.
@@ -197,7 +193,7 @@ class MemoryCreationNode:
         for summary in summaries:
             # Generate embeddings using the injected EmbeddingAgent
             embeddings = await self.embedding_agent.generate_embeddings(
-                [summary.content], user_id
+                [summary.content]
             )
 
             fragment = MemoryFragment(
@@ -225,7 +221,6 @@ class MemoryCreationNode:
         self,
         messages: List[Message],
         conversation_id: int,
-        user_id: str,
     ) -> List[Memory]:
         """
         Create Memory objects from Message objects.
@@ -243,9 +238,7 @@ class MemoryCreationNode:
         for msg in messages:
             # Generate embeddings using the injected EmbeddingAgent
             message_text = extract_message_text(msg)
-            embeddings = await self.embedding_agent.generate_embeddings(
-                [message_text], user_id
-            )
+            embeddings = await self.embedding_agent.generate_embeddings([message_text])
 
             fragment = MemoryFragment(
                 id=msg.id or 0,
@@ -272,7 +265,6 @@ class MemoryCreationNode:
         self,
         search_syntheses: List[SearchTopicSynthesis],
         conversation_id: int,
-        user_id: str,
     ) -> List[Memory]:
         """
         Create Memory objects from SearchTopicSynthesis objects.
@@ -289,7 +281,7 @@ class MemoryCreationNode:
         for synthesis in search_syntheses:
             # Generate embeddings using the injected EmbeddingAgent
             embeddings = await self.embedding_agent.generate_embeddings(
-                [synthesis.synthesis], user_id
+                [synthesis.synthesis]
             )
 
             # Create a memory fragment from the synthesis content

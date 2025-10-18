@@ -6,7 +6,8 @@ from .engineering_agent import EngineeringAgent
 from .classifier_agent import ClassifierAgent
 from .embedding_agent import EmbeddingAgent
 from .memory_agent import MemoryAgent
-from .summarization_agent import SummarizationAgent
+from .primary_summary_agent import PrimarySummaryAgent
+from .master_summary_agent import MasterSummaryAgent
 
 __all__ = [
     "BaseAgent",
@@ -15,5 +16,6 @@ __all__ = [
     "ClassifierAgent",
     "EmbeddingAgent",
     "MemoryAgent",
-    "SummarizationAgent",
+    "PrimarySummaryAgent",
+    "MasterSummaryAgent",
 ]
