@@ -1,7 +1,8 @@
--- Delete message contents first (child table)
-DELETE FROM message_contents
-WHERE message_id = $1;
-
--- Then delete the message (parent table)
-DELETE FROM messages
-WHERE id = $1;
+-- This file is deprecated - delete operations are now handled
+-- directly in message_storage.py using transactions to avoid
+-- the "cannot insert multiple commands into a prepared statement" error
+--
+-- The delete logic is now:
+-- 1. DELETE FROM message_contents WHERE message_id = $1
+-- 2. DELETE FROM messages WHERE id = $1
+-- Both executed within a transaction for data consistency

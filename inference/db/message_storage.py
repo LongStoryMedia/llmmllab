@@ -198,11 +198,11 @@ class MessageStorage:
             async with conn.transaction():
                 # Delete message contents first (child table)
                 await conn.execute(
-                    "DELETE FROM message_contents WHERE message_id = $1", message_id
+                    self.get_query("message.delete_message_contents"), message_id
                 )
                 # Then delete the message (parent table)  
                 await conn.execute(
-                    "DELETE FROM messages WHERE id = $1", message_id
+                    self.get_query("message.delete_message_record"), message_id
                 )
                 logger.info(f"Deleted message {message_id} from database")
 
