@@ -3,10 +3,6 @@ Chat Node for LangGraph workflows.
 Uses ChatAgent for LLM chat completions within workflow execution.
 """
 
-from typing import List, cast
-
-from langchain.tools import BaseTool
-
 # No additional model imports needed
 from composer.graph.state import WorkflowState
 from composer.core.errors import NodeExecutionError
@@ -31,6 +27,7 @@ class ChatNode:
         self,
         pipeline_factory: PipelineFactory,
         agent: ChatAgent,
+        tool_registry=None,  # Optional for backward compatibility
     ):
         """
         Initialize chat node with dependencies for ChatAgent creation.
@@ -38,9 +35,11 @@ class ChatNode:
         Args:
             pipeline_factory: Factory for creating chat pipelines
             agent: ChatAgent instance for handling chat operations
+            tool_registry: Optional tool registry for tool conversion
         """
         self.pipeline_factory = pipeline_factory
         self.agent = agent
+        self.tool_registry = tool_registry
         self.logger = llmmllogger.logger.bind(component="ChatNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
@@ -80,8 +79,8 @@ class ChatNode:
             assistant_message = await self.agent.chat_completion_with_conversion(
                 messages=convert_messages_to_langchain(context_messages),
                 tools=(
-                    cast(List[BaseTool], state.available_tools)
-                    if state.available_tools
+                    self.tool_registry.convert_tools_to_langchain(state.available_tools)
+                    if self.tool_registry and state.available_tools
                     else None
                 ),
                 # Use agent's default stream setting

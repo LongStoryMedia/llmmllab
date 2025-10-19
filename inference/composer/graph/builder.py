@@ -258,6 +258,7 @@ class GraphBuilder:
             chat_node = ChatNode(
                 self.pipeline_factory,
                 chat_agent,
+                tool_registry,
             )
             classifier_node = IntentClassifierNode(classifier_agent)
             engineering_node = EngineeringAgentNode(engineering_agent)

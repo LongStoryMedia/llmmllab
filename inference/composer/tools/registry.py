@@ -82,22 +82,33 @@ class ToolRegistry:
             user_id: User identifier for configuration
 
         Returns:
-            List of instantiated static Tool objects
+            List of instantiated static Tool model objects
         """
         instances = []
 
         # Handle class-based tools
         for tool_name, tool_cls in self.static_tools.items():
             if tool_cls:
-                tool_instance = self._create_tool_instance(tool_cls, user_id)
-                if tool_instance:
+                success = self._create_tool_instance(tool_cls, user_id)
+                if success and tool_name in self.executable_tools:
+                    # Create Tool model object from the executable tool
+                    executable_tool = self.executable_tools[tool_name]
+                    tool_instance = Tool(
+                        name=getattr(executable_tool, "name", tool_name),
+                        description=getattr(executable_tool, "description", f"{tool_cls.__name__} tool"),
+                        args_schema=getattr(executable_tool, "args_schema", None),
+                        return_direct=getattr(executable_tool, "return_direct", False),
+                        tags=getattr(executable_tool, "tags", None),
+                        metadata=getattr(executable_tool, "metadata", None),
+                        handle_tool_error=getattr(executable_tool, "handle_tool_error", False),
+                        handle_validation_error=getattr(executable_tool, "handle_validation_error", False),
+                        response_format=getattr(executable_tool, "response_format", "content"),
+                    )
                     instances.append(tool_instance)
 
         # Handle function-based tools (with @tool decorator)
         for tool_name, tool_func in self.executable_tools.items():
-            if tool_func and hasattr(
-                tool_func, "name"
-            ):  # Check if it's a @tool decorated function
+            if tool_func and hasattr(tool_func, "name"):  # Check if it's a @tool decorated function
                 tool_instance = Tool(
                     name=getattr(tool_func, "name", tool_name),
                     description=getattr(tool_func, "description", f"{tool_name} tool"),
@@ -106,17 +117,15 @@ class ToolRegistry:
                     tags=getattr(tool_func, "tags", None),
                     metadata=getattr(tool_func, "metadata", None),
                     handle_tool_error=getattr(tool_func, "handle_tool_error", False),
-                    handle_validation_error=getattr(
-                        tool_func, "handle_validation_error", False
-                    ),
+                    handle_validation_error=getattr(tool_func, "handle_validation_error", False),
                     response_format=getattr(tool_func, "response_format", "content"),
                 )
                 instances.append(tool_instance)
 
         return instances
 
-    def _create_tool_instance(self, tool_cls: Any, user_id: str) -> Optional[Tool]:
-        """Create tool instance from tool class with user configuration."""
+    def _create_tool_instance(self, tool_cls: Any, user_id: str) -> Optional[bool]:
+        """Create tool instance from tool class with user configuration and store in executable_tools."""
         try:
             # Create tool instance with user_id (class-based tools)
             base_tool = tool_cls(user_id=user_id)
@@ -126,30 +135,13 @@ class ToolRegistry:
             # Store the actual BaseTool instance for execution
             self.executable_tools[tool_name] = base_tool
 
-            # Convert BaseTool instance to our generic Tool model
-            tool_instance = Tool(
-                name=tool_name,
-                description=getattr(
-                    base_tool, "description", f"{tool_cls.__name__} tool"
-                ),
-                args_schema=getattr(base_tool, "args_schema", None),
-                return_direct=getattr(base_tool, "return_direct", False),
-                tags=getattr(base_tool, "tags", None),
-                metadata=getattr(base_tool, "metadata", None),
-                handle_tool_error=getattr(base_tool, "handle_tool_error", False),
-                handle_validation_error=getattr(
-                    base_tool, "handle_validation_error", False
-                ),
-                response_format=getattr(base_tool, "response_format", "content"),
-            )
-
             self.logger.debug(
                 "Created tool instance",
                 tool_class=tool_cls.__name__,
                 tool_name=tool_name,
                 user_id=user_id,
             )
-            return tool_instance
+            return True  # Just return success flag
 
         except Exception as e:
             self.logger.error(
@@ -210,6 +202,31 @@ class ToolRegistry:
     def get_all_executable_tools(self) -> Dict[str, Any]:
         """Get all executable BaseTool instances mapped by name."""
         return self.executable_tools.copy()
+
+    def convert_tools_to_langchain(self, tools: List[Tool]) -> List[Any]:
+        """
+        Convert Tool model objects to LangChain-compatible executable tools.
+        
+        Args:
+            tools: List of Tool model objects
+            
+        Returns:
+            List of LangChain-compatible tools (BaseTool instances or @tool decorated functions)
+        """
+        langchain_tools = []
+        
+        for tool in tools:
+            # Look up the executable tool by name
+            executable_tool = self.executable_tools.get(tool.name)
+            if executable_tool:
+                langchain_tools.append(executable_tool)
+            else:
+                self.logger.warning(
+                    f"Could not find executable tool for {tool.name}",
+                    available_tools=list(self.executable_tools.keys())
+                )
+                
+        return langchain_tools
 
     async def get_tool_stats(self) -> Dict[str, Any]:
         """Get tool registry statistics."""
