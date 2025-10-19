@@ -177,9 +177,14 @@ class MessageStorage:
             return
 
         async with self.typed_pool.acquire() as conn:
-            # Delete the message from database
-            await conn.execute(self.get_query("message.delete_message"), message_id)
-            logger.info(f"Deleted message {message_id} from database")
+            async with conn.transaction():
+                # Delete message contents first (child table)
+                await conn.execute(
+                    "DELETE FROM message_contents WHERE message_id = $1", message_id
+                )
+                # Then delete the message (parent table)
+                await conn.execute("DELETE FROM messages WHERE id = $1", message_id)
+                logger.info(f"Deleted message {message_id} and its contents from database")
 
         # Invalidate message cache
         cache_storage.invalidate_message_cache(message_id)
