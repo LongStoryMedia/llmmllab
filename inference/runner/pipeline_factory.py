@@ -19,6 +19,7 @@ from models import (
     ModelDetails,
     ModelProfile,
     ModelProvider,
+    ModelTask,
     PipelinePriority,
 )
 from .pipeline_cache import LocalPipelineCacheManager
@@ -240,7 +241,9 @@ class PipelineFactory:
             ModelProvider.STABLE_DIFFUSION_CPP,
         }:
 
-            def create_embedding_fn(m: Model, p: ModelProfile, g: Optional[Type[BaseModel]] = None) -> Optional[Embeddings]:
+            def create_embedding_fn(
+                m: Model, p: ModelProfile, g: Optional[Type[BaseModel]] = None
+            ) -> Optional[Embeddings]:
                 return self._create_embedding_pipeline(m, p)
 
             pipeline = self.local_cache.get_or_create(
@@ -320,13 +323,13 @@ class PipelineFactory:
         try:
             self.logger.info(f"Creating pipeline for {model.name} (task: {model.task})")
 
-            if model.task.endswith("TextToText"):
+            if model.task == ModelTask.TEXTTOTEXT:
                 return self._create_text_pipeline(model, profile, grammar)
-            if model.task == "TextToEmbeddings":
+            if model.task == ModelTask.TEXTTOEMBEDDINGS:
                 return self._create_embedding_pipeline(model, profile)
-            if model.task == "TextToImage":
+            if model.task == ModelTask.TEXTTOIMAGE:
                 return self._create_image_pipeline(model, profile)
-            if model.task == "ImageToImage":
+            if model.task == ModelTask.IMAGETOIMAGE:
                 return self._create_image_to_image_pipeline(model, profile)
             self.logger.error(f"Unsupported task type: {model.task}")
             raise RuntimeError(f"Unsupported task type: {model.task}")

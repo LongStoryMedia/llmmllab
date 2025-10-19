@@ -61,13 +61,11 @@ class BaseLlamaCppPipeline(BaseChatModel):
         grammar: Optional[Type[BaseModel]],
         **kwargs,
     ):
-        super().__init__(**kwargs)
-        self.model = model
-        self.profile = profile
+        # Pass the required fields to the parent constructor for Pydantic validation
+        super().__init__(model=model, profile=profile, grammar=grammar, **kwargs)
         self._logger = llmmllogger.bind(
             component=self.__class__.__name__, model=model.name
         )
-        self.grammar = grammar
         self.llama_instance = self._initialize_llama_with_fallback(
             self._get_gguf_path()
         )
