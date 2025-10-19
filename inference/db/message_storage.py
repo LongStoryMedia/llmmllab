@@ -58,11 +58,23 @@ class MessageStorage:
 
         # If not in cache, get from database
         async with self.typed_pool.acquire() as conn:
-            row = await conn.fetchrow(self.get_query("message.get_message"), message_id)
-            if not row:
+            # Get the basic message data
+            msg_row = await conn.fetchrow(
+                "SELECT id, conversation_id, role, created_at FROM messages WHERE id = $1", 
+                message_id
+            )
+            if not msg_row:
                 return None
 
-            message = Message(**dict(row))
+            # Build the message with proper content structure
+            msg_dict = dict(msg_row)
+            messages = await self._build_messages(msg_dict["conversation_id"], [msg_dict], conn)
+            
+            if not messages:
+                return None
+                
+            message = messages[0]
+            
             # Cache the result for future use
             try:
                 cache_storage.cache_message(message)
