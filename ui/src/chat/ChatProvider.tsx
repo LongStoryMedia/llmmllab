@@ -18,13 +18,14 @@ export interface ChatContextType {
   models: Model[];
   isPaused: boolean;
   currentObserverMessages: string[];
-  
+
   // Actions
   sendMessage: ReturnType<typeof useChatOperations>['sendMessage'];
   fetchMessages: ReturnType<typeof useChatOperations>['fetchMessages'];
   fetchConversations: ReturnType<typeof useChatOperations>['fetchConversations'];
   deleteConversation: ReturnType<typeof useChatOperations>['deleteConversation'];
   deleteMessage: ReturnType<typeof useChatOperations>['deleteMessage'];
+  replayMessage: ReturnType<typeof useChatOperations>['replayMessage'];
   startNewConversation: ReturnType<typeof useChatOperations>['startNewConversation'];
   selectConversation: ReturnType<typeof useChatOperations>['selectConversation'];
   setSelectedModel: ReturnType<typeof useChatState>[1]['setSelectedModel'];
@@ -38,12 +39,12 @@ export interface ChatContextType {
 
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(({ children }) => {
   const auth = useAuth();
-  
+
   // Use our custom hooks
   const [state, actions] = useChatState();
   const operations = useChatOperations(state, actions);
-  
-  
+
+
   // Track API request to prevent duplicates
   const apiRequestInProgress = useRef(false);
   const isFirstLoad = useRef(true);
@@ -75,13 +76,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(
     models: state.models,
     isPaused: state.isPaused,
     currentObserverMessages: state.currentObserverMessages,
-    
+
     // Actions
     sendMessage: operations.sendMessage,
     fetchMessages: operations.fetchMessages,
     fetchConversations: operations.fetchConversations,
     deleteConversation: operations.deleteConversation,
     deleteMessage: operations.deleteMessage,
+    replayMessage: operations.replayMessage,
     startNewConversation: operations.startNewConversation,
     selectConversation: operations.selectConversation,
     setSelectedModel: actions.setSelectedModel,

@@ -213,17 +213,17 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
         } else {
           // ChatChunk object with structured data
           const chatChunk = chunk as ChatChunk;
-          
+
           // Append content to response
           if (chatChunk.content) {
             actions.setResponse(r => r + chatChunk.content);
           }
-          
+
           // Handle observer messages - set them for floating notification display
           if (chatChunk.observer_messages && chatChunk.observer_messages.length > 0) {
             actions.setCurrentObserverMessages(chatChunk.observer_messages);
           }
-          
+
           // Note: thinking and channels are handled in the UI components
           // via the parseResponse utility which checks the response object
         }
@@ -305,9 +305,59 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
       actions.setError((err as Error).message);
       console.error("Error deleting message:", err);
     } finally {
-      actions.setIsLoading(false);  
+      actions.setIsLoading(false);
     }
   }, [state.isLoading, state.currentConversation, actions, auth.user]);
+
+  // Replay a message (delete it and all subsequent messages, then re-post it)
+  const replayMessage = useCallback(async (message: Message) => {
+    if (!state.currentConversation?.id) {
+      console.error("No current conversation to replay message from");
+      return;
+    }
+
+    if (state.isLoading) {
+      return;
+    }
+
+    if (!message.id) {
+      console.error("Cannot replay message without ID");
+      return;
+    }
+
+    actions.setIsLoading(true);
+    actions.setError(null);
+
+    try {
+      // Find all messages that come after this message (by ID)
+      const messagesToDelete = state.messages
+        .filter(msg => msg.id && msg.id >= message.id!)
+        .sort((a, b) => (b.id || 0) - (a.id || 0)); // Sort by ID descending (newest first)
+
+      console.log(`Replaying message ${message.id}: deleting ${messagesToDelete.length} messages`);
+
+      // Delete messages in reverse order (newest first) to avoid referential issues
+      for (const msgToDelete of messagesToDelete) {
+        if (msgToDelete.id) {
+          await deleteMessage(getToken(auth.user), state.currentConversation.id, msgToDelete.id);
+          console.log(`Deleted message ${msgToDelete.id} for replay`);
+        }
+      }
+
+      // Remove all the deleted messages from local state
+      actions.setMessages(prev => prev.filter(msg => !msg.id || msg.id < message.id!));
+
+      // Re-post the original message
+      console.log(`Re-posting message for replay: ${message.id}`);
+      await sendMessage(message);
+
+    } catch (err: unknown) {
+      actions.setError((err as Error).message);
+      console.error("Error replaying message:", err);
+    } finally {
+      actions.setIsLoading(false);
+    }
+  }, [state.isLoading, state.currentConversation, state.messages, actions, auth.user, sendMessage]);
 
   // Select an existing conversation
   const selectConversation = useCallback(async (id: number) => {
@@ -332,6 +382,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     sendMessage,
     deleteConversation,
     deleteMessage: deleteMessageFromConversation,
+    replayMessage,
     selectConversation,
     fetchModels,
     response: state.response,
