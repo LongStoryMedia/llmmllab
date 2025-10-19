@@ -24,6 +24,7 @@ export interface ChatContextType {
   fetchMessages: ReturnType<typeof useChatOperations>['fetchMessages'];
   fetchConversations: ReturnType<typeof useChatOperations>['fetchConversations'];
   deleteConversation: ReturnType<typeof useChatOperations>['deleteConversation'];
+  deleteMessage: ReturnType<typeof useChatOperations>['deleteMessage'];
   startNewConversation: ReturnType<typeof useChatOperations>['startNewConversation'];
   selectConversation: ReturnType<typeof useChatOperations>['selectConversation'];
   setSelectedModel: ReturnType<typeof useChatState>[1]['setSelectedModel'];
@@ -80,6 +81,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(
     fetchMessages: operations.fetchMessages,
     fetchConversations: operations.fetchConversations,
     deleteConversation: operations.deleteConversation,
+    deleteMessage: operations.deleteMessage,
     startNewConversation: operations.startNewConversation,
     selectConversation: operations.selectConversation,
     setSelectedModel: actions.setSelectedModel,

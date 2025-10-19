@@ -3,6 +3,7 @@ import { Box, Paper, Fade } from '@mui/material';
 import { useChat } from '../../chat';
 import MarkdownRenderer from '../Shared/MarkdownRenderer';
 import ThinkSection from './ThinkSection';
+import MessageActions from './MessageActions';
 import { sanitizeForLaTeX, parseResponse } from './utils';
 import { Message } from '../../types/Message';
 import { MessageContentTypeValues } from '../../types/MessageContentType';
@@ -54,9 +55,22 @@ const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
             borderLeftColor: isUser ? 'secondary.main' : 'primary.main',
             wordBreak: 'break-word',
             overflowWrap: 'break-word',
-            minHeight: 100
+            minHeight: 100,
+            position: 'relative'
           }}
         >
+          {/* Message actions in top-right corner */}
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 8,
+              right: 8,
+              zIndex: 1
+            }}
+          >
+            <MessageActions message={message} isUser={isUser} />
+          </Box>
+
           {!isUser && (think || inProgress) && <ThinkSection think={think || ""} inProgress={inProgress} />}
           <MarkdownRenderer sanitizeForLaTeX={sanitizeForLaTeX}>
             {rest}

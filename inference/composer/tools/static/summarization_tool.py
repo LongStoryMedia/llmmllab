@@ -17,17 +17,18 @@ Usage in LangGraph workflows:
 """
 
 import json
-from typing import Annotated
+from typing import Annotated, cast
 
 from langchain_core.tools import tool, InjectedToolCallId
 from langchain_core.messages import ToolMessage
-from langgraph.prebuilt import InjectedState
+from langchain.chat_models import BaseChatModel
+from langchain.tools.tool_node import InjectedState
 from langgraph.types import Command
 
 from composer.graph.state import WorkflowState
+from composer.utils.extraction import extract_content_from_base_langchain_message
 from runner import pipeline_factory
 from models import ModelProfileType, PipelinePriority
-from utils.message import extract_message_text
 from utils.model_profile import get_model_profile
 from utils.logging import llmmllogger
 
@@ -81,8 +82,12 @@ async def summarization(
         user_id = state.user_id
         if not user_id:
             error_message = json.dumps(
-                {"status": "error", "error": "Missing user_id in state", "content": content[:100]}, 
-                indent=2
+                {
+                    "status": "error",
+                    "error": "Missing user_id in state",
+                    "content": content[:100],
+                },
+                indent=2,
             )
             return Command(
                 update={
@@ -105,17 +110,15 @@ async def summarization(
             with pipeline_factory.pipeline(
                 model_profile, PipelinePriority.NORMAL
             ) as pipeline:
+                llm = cast(BaseChatModel, pipeline)
                 # Since run_pipeline is not available, use the pipeline directly
                 # This is a simplified approach that should work with the pipeline
-                if hasattr(pipeline, 'ainvoke'):
-                    result = await pipeline.ainvoke(summary_prompt)
-                    summary_text = extract_message_text(result) if result else ""
-                elif hasattr(pipeline, 'run'):
-                    result = await pipeline.run(summary_prompt)
-                    summary_text = extract_message_text(result) if result else ""
-                else:
-                    # Fallback if pipeline interface is different
-                    raise RuntimeError("Pipeline interface not compatible")
+                result = await llm.ainvoke(summary_prompt)
+                summary_text = (
+                    extract_content_from_base_langchain_message(result)
+                    if result
+                    else ""
+                )
 
                 if summary_text:
                     # Create response message for the conversation
@@ -154,9 +157,7 @@ async def summarization(
         # Fallback to simple processing if LLM fails
         max_length = 300
         summary_text = (
-            content[:max_length] + "..."
-            if len(content) > max_length
-            else content
+            content[:max_length] + "..." if len(content) > max_length else content
         )
 
         response_message = json.dumps(
@@ -180,20 +181,18 @@ async def summarization(
             update={
                 "summary_content": summary_text,
                 "original_content": content,
-                "messages": [
-                    ToolMessage(response_message, tool_call_id=tool_call_id)
-                ],
+                "messages": [ToolMessage(response_message, tool_call_id=tool_call_id)],
             }
         )
 
     except Exception as e:
         # Log the full exception for debugging
         logger.error(
-            f"Summarization failed for content: {e}", 
+            f"Summarization failed for content: {e}",
             exc_info=True,
-            content_length=len(content) if content else 0
+            content_length=len(content) if content else 0,
         )
-        
+
         error_message = json.dumps(
             {
                 "status": "error",

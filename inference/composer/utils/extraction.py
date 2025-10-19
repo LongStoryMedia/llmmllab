@@ -6,6 +6,14 @@ message types including Message and LangChainMessage objects.
 """
 
 from typing import List
+
+from langchain_core.messages import (
+    BaseMessage,
+    HumanMessage,
+    AIMessage,
+    SystemMessage,
+)
+
 from models import Message, LangChainMessage
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
@@ -52,6 +60,30 @@ def extract_content_from_langchain_message(msg: LangChainMessage) -> str:
     content = msg.content
 
     # Handle list content (LangChainMessage supports string or object items)
+    if isinstance(content, list):
+        content_parts = []
+        for part in content:
+            if isinstance(part, str):
+                content_parts.append(part)
+            elif isinstance(part, dict) and "text" in part:
+                content_parts.append(part["text"])
+            else:
+                # Handle any other object
+                content_parts.append(str(part))
+        return " ".join(content_parts)
+
+    # Handle single content
+    return str(content) if content else ""
+
+
+def extract_content_from_base_langchain_message(msg: BaseMessage) -> str:
+    """Extract text content from a BaseLangChainMessage object."""
+    if not hasattr(msg, "content"):
+        return str(msg) if msg else ""
+
+    content = msg.content
+
+    # Handle list content (BaseLangChainMessage supports string or object items)
     if isinstance(content, list):
         content_parts = []
         for part in content:

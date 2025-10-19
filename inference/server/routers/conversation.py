@@ -170,6 +170,59 @@ async def delete_conversation(conversation_id: int, request: Request):
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}") from e
 
 
+@router.delete("/conversations/{conversation_id}/messages/{message_id}")
+async def delete_message(conversation_id: int, message_id: int, request: Request):
+    """
+    Delete a specific message from a conversation.
+    """
+    user_id = get_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Check if database is initialized
+    if not storage.initialized or not storage.conversation or not storage.message:
+        logger.warning("Database not initialized, cannot delete message")
+        raise HTTPException(status_code=503, detail="Database service unavailable")
+
+    try:
+        # First check if conversation exists and user has access
+        conversation = await storage.conversation.get_conversation(conversation_id)
+
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        # Check if user has access to this conversation
+        if conversation.user_id != user_id and not is_admin(request):
+            raise HTTPException(
+                status_code=403, detail="Access denied to this conversation"
+            )
+
+        # Check if message exists and belongs to the conversation
+        message = await storage.message.get_message(message_id)
+        if not message:
+            raise HTTPException(status_code=404, detail="Message not found")
+
+        if message.conversation_id != conversation_id:
+            raise HTTPException(
+                status_code=400, detail="Message does not belong to this conversation"
+            )
+
+        # Delete the message
+        await storage.message.delete_message(message_id)
+
+        return {
+            "status": "success",
+            "message": f"Message {message_id} deleted from conversation {conversation_id}",
+        }
+    except HTTPException as e:
+        raise e
+    except Exception as e:  # noqa: BLE001, justified for DB errors
+        logger.error(
+            f"Error deleting message {message_id} from conversation {conversation_id}: {e}"
+        )
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}") from e
+
+
 @router.post("/conversations", response_model=Conversation)
 async def create_conversation(request: Request):
     """

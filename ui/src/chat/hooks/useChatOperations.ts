@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { ChatState, ChatActions } from './useChatState';
 import { useAuth } from '../../auth';
-import { chat, getManyConversations, getMessages, removeConversation, startConversation, getModels, getToken, getUserConversations, getLllabUsers, pause, cancel, resume, ChatChunk } from '../../api';
+import { chat, getManyConversations, getMessages, removeConversation, startConversation, getModels, getToken, getUserConversations, getLllabUsers, pause, cancel, resume, ChatChunk, deleteMessage } from '../../api';
 import { Conversation } from '../../types/Conversation';
 import { useNavigate } from 'react-router-dom';
 import { Message } from '../../types/Message';
@@ -280,6 +280,35 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     }
   }, [state.isLoading, state.currentConversation, actions, auth.user]);
 
+  // Delete a message
+  const deleteMessageFromConversation = useCallback(async (messageId: number) => {
+    if (!state.currentConversation?.id) {
+      console.error("No current conversation to delete message from");
+      return;
+    }
+
+    if (state.isLoading) {
+      return;
+    }
+
+    actions.setIsLoading(true);
+    actions.setError(null);
+
+    try {
+      await deleteMessage(getToken(auth.user), state.currentConversation.id, messageId);
+
+      // Remove the message from local state
+      actions.setMessages(prev => prev.filter(msg => msg.id !== messageId));
+
+      console.log(`Message ${messageId} deleted successfully`);
+    } catch (err: unknown) {
+      actions.setError((err as Error).message);
+      console.error("Error deleting message:", err);
+    } finally {
+      actions.setIsLoading(false);  
+    }
+  }, [state.isLoading, state.currentConversation, actions, auth.user]);
+
   // Select an existing conversation
   const selectConversation = useCallback(async (id: number) => {
     actions.setIsLoading(true);
@@ -302,6 +331,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     startNewConversation,
     sendMessage,
     deleteConversation,
+    deleteMessage: deleteMessageFromConversation,
     selectConversation,
     fetchModels,
     response: state.response,

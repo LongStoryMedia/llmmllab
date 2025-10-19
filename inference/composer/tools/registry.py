@@ -6,6 +6,8 @@ Removes complex embedding/semantic matching in favor of straightforward tool man
 import asyncio
 from typing import Dict, List, Optional, Any, TYPE_CHECKING
 
+from structlog.typing import FilteringBoundLogger
+
 from langchain.tools import BaseTool
 
 from models import Tool
@@ -26,33 +28,39 @@ class ToolRegistry:
     Focuses on clear tool instantiation and storage without complex semantic matching.
     """
 
-    def __init__(self, pipeline_factory: "PipelineFactory", embedding_agent=None):
+    logger: FilteringBoundLogger
+
+    def __init__(self, pipeline_factory: "PipelineFactory"):
         # Static tool classes for instantiation
         self.static_tools: Dict[str, type[BaseTool]] = {}
         # Dynamic tool instances for reuse (tool_id -> Tool)
         self.dynamic_tools: Dict[str, Tool] = {}
         # Executable tool instances (tool_name -> BaseTool instance)
         self.executable_tools: Dict[str, Any] = {}
-        
+
         self.pipeline_factory = pipeline_factory
         self._lock = asyncio.Lock()
-        
+
         self._load_static_tools()
         self.logger = llmmllogger.logger.bind(component="ToolRegistry")
 
     def _load_static_tools(self):
         """Load static tools from the static tools directory."""
         try:
-            self.static_tools.update({
-                # "summarization": SummarizationTool,  # Temporarily disabled
-            })
-            
+            self.static_tools.update(
+                {
+                    # "summarization": SummarizationTool,  # Temporarily disabled
+                }
+            )
+
             # Add function-based tools that are already decorated with @tool
-            self.executable_tools.update({
-                "memory_retrieval": memory_retrieval,
-                "web_search": web_search,
-                "summarization": summarization,
-            })
+            self.executable_tools.update(
+                {
+                    "memory_retrieval": memory_retrieval,
+                    "web_search": web_search,
+                    "summarization": summarization,
+                }
+            )
 
             # Add function-based tools directly to executable_tools
             self.executable_tools["web_search"] = web_search
@@ -69,25 +77,27 @@ class ToolRegistry:
     async def get_static_tool_instances(self, user_id: str) -> List[Tool]:
         """
         Get instances of all static tools for a user.
-        
+
         Args:
             user_id: User identifier for configuration
-            
+
         Returns:
             List of instantiated static Tool objects
         """
         instances = []
-        
+
         # Handle class-based tools
         for tool_name, tool_cls in self.static_tools.items():
             if tool_cls:
                 tool_instance = self._create_tool_instance(tool_cls, user_id)
                 if tool_instance:
                     instances.append(tool_instance)
-        
+
         # Handle function-based tools (with @tool decorator)
         for tool_name, tool_func in self.executable_tools.items():
-            if tool_func and hasattr(tool_func, "name"):  # Check if it's a @tool decorated function
+            if tool_func and hasattr(
+                tool_func, "name"
+            ):  # Check if it's a @tool decorated function
                 tool_instance = Tool(
                     name=getattr(tool_func, "name", tool_name),
                     description=getattr(tool_func, "description", f"{tool_name} tool"),
@@ -96,11 +106,13 @@ class ToolRegistry:
                     tags=getattr(tool_func, "tags", None),
                     metadata=getattr(tool_func, "metadata", None),
                     handle_tool_error=getattr(tool_func, "handle_tool_error", False),
-                    handle_validation_error=getattr(tool_func, "handle_validation_error", False),
+                    handle_validation_error=getattr(
+                        tool_func, "handle_validation_error", False
+                    ),
                     response_format=getattr(tool_func, "response_format", "content"),
                 )
                 instances.append(tool_instance)
-        
+
         return instances
 
     def _create_tool_instance(self, tool_cls: Any, user_id: str) -> Optional[Tool]:
@@ -117,13 +129,17 @@ class ToolRegistry:
             # Convert BaseTool instance to our generic Tool model
             tool_instance = Tool(
                 name=tool_name,
-                description=getattr(base_tool, "description", f"{tool_cls.__name__} tool"),
+                description=getattr(
+                    base_tool, "description", f"{tool_cls.__name__} tool"
+                ),
                 args_schema=getattr(base_tool, "args_schema", None),
                 return_direct=getattr(base_tool, "return_direct", False),
                 tags=getattr(base_tool, "tags", None),
                 metadata=getattr(base_tool, "metadata", None),
                 handle_tool_error=getattr(base_tool, "handle_tool_error", False),
-                handle_validation_error=getattr(base_tool, "handle_validation_error", False),
+                handle_validation_error=getattr(
+                    base_tool, "handle_validation_error", False
+                ),
                 response_format=getattr(base_tool, "response_format", "content"),
             )
 
@@ -134,7 +150,7 @@ class ToolRegistry:
                 user_id=user_id,
             )
             return tool_instance
-            
+
         except Exception as e:
             self.logger.error(
                 f"Failed to create tool instance",
@@ -149,7 +165,7 @@ class ToolRegistry:
     ) -> None:
         """
         Register a dynamic tool instance in the registry for potential reuse.
-        
+
         Args:
             tool_id: Unique identifier for the tool
             tool_instance: The Tool instance to store
@@ -164,13 +180,15 @@ class ToolRegistry:
                 user_id=user_id,
             )
 
-    async def get_dynamic_tool_instances(self, user_id: Optional[str] = None) -> List[Tool]:
+    async def get_dynamic_tool_instances(
+        self, user_id: Optional[str] = None
+    ) -> List[Tool]:
         """
         Get all dynamic tool instances, optionally filtered by user.
-        
+
         Args:
             user_id: Optional user identifier for filtering
-            
+
         Returns:
             List of dynamic Tool instances
         """
@@ -178,7 +196,8 @@ class ToolRegistry:
             if user_id:
                 # Filter by user_id prefix in tool_id
                 return [
-                    tool for tool_id, tool in self.dynamic_tools.items()
+                    tool
+                    for tool_id, tool in self.dynamic_tools.items()
                     if tool_id.startswith(f"{user_id}_")
                 ]
             else:

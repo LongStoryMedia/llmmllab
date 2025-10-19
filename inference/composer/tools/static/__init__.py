@@ -5,7 +5,7 @@ from .memory_retrieval_tool import memory_retrieval
 from .summarization_tool import summarization
 
 __all__ = [
-    "web_search", 
+    "web_search",
     "memory_retrieval",
     "summarization",
 ]

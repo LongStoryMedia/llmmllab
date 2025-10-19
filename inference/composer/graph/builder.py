@@ -252,7 +252,7 @@ class GraphBuilder:
             )
 
             # Create tool registry (also depends on embedding agent)
-            tool_registry = ToolRegistry(self.pipeline_factory, embedding_agent)
+            tool_registry = ToolRegistry(self.pipeline_factory)
 
             # Create nodes with injected agents and storage
             chat_node = ChatNode(

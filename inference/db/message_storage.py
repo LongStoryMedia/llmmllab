@@ -154,11 +154,16 @@ class MessageStorage:
             return messages
 
     async def delete_message(self, message_id: int) -> None:
-        # Get the message to find its conversation_id
+        # Get the message to find its conversation_id before deletion
         message = await self.get_message(message_id)
         if not message:
             logger.warning(f"Message {message_id} not found and could not be deleted")
             return
+
+        async with self.typed_pool.acquire() as conn:
+            # Delete the message from database
+            await conn.execute(self.get_query("message.delete_message"), message_id)
+            logger.info(f"Deleted message {message_id} from database")
 
         # Invalidate message cache
         cache_storage.invalidate_message_cache(message_id)

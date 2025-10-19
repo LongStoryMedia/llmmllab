@@ -83,3 +83,10 @@ export const getMessages = async (accessToken: string, conversationId: number) =
     headers: getHeaders(accessToken),
     path: `chat/conversations/${conversationId}/messages`
   });
+
+export const deleteMessage = async (accessToken: string, conversationId: number, messageId: number) =>
+  req<{ status: string; message: string }>({
+    method: 'DELETE',
+    headers: getHeaders(accessToken),
+    path: `chat/conversations/${conversationId}/messages/${messageId}`
+  });
