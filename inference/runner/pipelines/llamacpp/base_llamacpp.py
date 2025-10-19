@@ -66,6 +66,8 @@ class BaseLlamaCppPipeline(BaseChatModel):
         self._logger = llmmllogger.bind(
             component=self.__class__.__name__, model=model.name
         )
+        self.grammar = grammar
+        self._bound_tools = kwargs.get('_bound_tools', [])
         self.llama_instance = self._initialize_llama_with_fallback(
             self._get_gguf_path()
         )
@@ -84,6 +86,31 @@ class BaseLlamaCppPipeline(BaseChatModel):
             "n_ctx": self.profile.parameters.num_ctx or 4096,
             "temperature": self.profile.parameters.temperature or 0.7,
         }
+
+    def bind_tools(self, tools: List[Any], **kwargs: Any) -> "BaseLlamaCppPipeline":
+        """
+        Bind tools to this model for tool calling support.
+        
+        For llama-cpp-python models, tools are handled through the grammar system
+        and function calling via prompt formatting.
+        
+        Args:
+            tools: List of tools to bind to the model
+            **kwargs: Additional keyword arguments for tool binding
+            
+        Returns:
+            A new instance of the model with tools bound
+        """
+        # Create a new instance with the same configuration
+        new_instance = self.__class__(
+            model=self.model,
+            profile=self.profile,
+            grammar=self.grammar,
+            _bound_tools=tools,
+            **kwargs
+        )
+        
+        return new_instance
 
     def _get_gguf_path(self) -> str:
         """Get the GGUF file path from model definition."""
@@ -349,7 +376,10 @@ class BaseLlamaCppPipeline(BaseChatModel):
         **kwargs: Any,
     ) -> ChatResult:
         """Generate a chat response from messages."""
-        tools = kwargs.get("tools")
+        # Combine bound tools with any tools passed in kwargs
+        tools = kwargs.get("tools", [])
+        if hasattr(self, '_bound_tools') and self._bound_tools:
+            tools = list(self._bound_tools) + list(tools or [])
 
         try:
             res = self._get_res(
@@ -394,12 +424,17 @@ class BaseLlamaCppPipeline(BaseChatModel):
         **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
         """Stream chat response chunks."""
+        # Combine bound tools with any tools passed in kwargs
+        tools = kwargs.get("tools", [])
+        if hasattr(self, '_bound_tools') and self._bound_tools:
+            tools = list(self._bound_tools) + list(tools or [])
+
         try:
             # Stream response using llama-cpp-python
             res = self._get_res(
                 messages=messages,
                 stop=stop,
-                tools=kwargs.get("tools"),
+                tools=tools,
             )
             stream = cast(Iterator[llama_types.CreateChatCompletionStreamResponse], res)
 
