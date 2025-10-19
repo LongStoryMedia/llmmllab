@@ -309,6 +309,59 @@ class BaseLlamaCppPipeline(BaseChatModel):
             total_tokens=prompt_tokens + completion_tokens,
         )
 
+    def _convert_tools_to_openai_format(self, tools):
+        """Convert LangChain tools to OpenAI function calling format for llama-cpp-python."""
+        if not tools:
+            return None
+            
+        converted_tools = []
+        for tool in tools:
+            try:
+                # Handle different tool types
+                if hasattr(tool, 'args_schema') and hasattr(tool, 'name') and hasattr(tool, 'description'):
+                    # LangChain StructuredTool or similar
+                    tool_dict = {
+                        "type": "function",
+                        "function": {
+                            "name": tool.name,
+                            "description": tool.description,
+                        }
+                    }
+                    
+                    # Add parameters schema if available
+                    if tool.args_schema:
+                        try:
+                            if hasattr(tool.args_schema, 'model_json_schema'):
+                                # Pydantic model schema
+                                schema = tool.args_schema.model_json_schema()
+                            elif hasattr(tool.args_schema, 'schema'):
+                                # Other schema types
+                                schema = tool.args_schema.schema()
+                            else:
+                                schema = {"type": "object", "properties": {}}
+                                
+                            tool_dict["function"]["parameters"] = schema
+                        except Exception as e:
+                            self._logger.warning(f"Could not extract schema for tool {tool.name}: {e}")
+                            tool_dict["function"]["parameters"] = {"type": "object", "properties": {}}
+                    else:
+                        tool_dict["function"]["parameters"] = {"type": "object", "properties": {}}
+                        
+                    converted_tools.append(tool_dict)
+                    
+                elif isinstance(tool, dict):
+                    # Already in the right format
+                    converted_tools.append(tool)
+                    
+                else:
+                    self._logger.warning(f"Unknown tool type: {type(tool)}, skipping")
+                    
+            except Exception as e:
+                self._logger.error(f"Error converting tool: {e}")
+                continue
+                
+        return converted_tools if converted_tools else None
+
     def _get_res(
         self,
         messages: List[BaseMessage],
@@ -321,6 +374,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
     ):
         """Get response from llama-cpp-python, either streaming or non-streaming."""
         assert self.llama_instance
+
+        # Convert LangChain tools to OpenAI format for llama-cpp-python
+        converted_tools = self._convert_tools_to_openai_format(tools)
 
         # Format messages for llama-cpp-python
         llama_messages = self._format_messages_for_llama(messages)
@@ -340,10 +396,10 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
         return self.llama_instance.create_chat_completion(
             messages=llama_messages,
-            functions=tools,  # type: ignore
-            function_call="auto",
-            tools=tools,
-            tool_choice="auto",
+            functions=converted_tools,  # Use converted tools
+            function_call="auto" if converted_tools else None,
+            tools=converted_tools,  # Use converted tools
+            tool_choice="auto" if converted_tools else None,
             temperature=self.profile.parameters.temperature or 0.7,
             top_p=self.profile.parameters.top_p or 0.95,
             top_k=self.profile.parameters.top_k or 40,
