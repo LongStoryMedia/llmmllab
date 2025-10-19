@@ -40,9 +40,9 @@ class ToolRegistry:
 
         self.pipeline_factory = pipeline_factory
         self._lock = asyncio.Lock()
+        self.logger = llmmllogger.logger.bind(component="ToolRegistry")
 
         self._load_static_tools()
-        self.logger = llmmllogger.logger.bind(component="ToolRegistry")
 
     def _load_static_tools(self):
         """Load static tools from the static tools directory."""
