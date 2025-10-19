@@ -362,6 +362,98 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 
         return converted_tools if converted_tools else None
 
+    def _estimate_tokens(self, text: str) -> int:
+        """Estimate token count for text (rough approximation)."""
+        # Simple approximation: ~4 characters per token for most languages
+        return max(1, len(text) // 4)
+
+    def _count_message_tokens(self, messages: List[BaseMessage]) -> int:
+        """Count approximate tokens in messages."""
+        total_tokens = 0
+        for message in messages:
+            if hasattr(message, 'content') and message.content:
+                total_tokens += self._estimate_tokens(str(message.content))
+        return total_tokens
+
+    def _count_tool_tokens(self, tools: Optional[List[llama_types.ChatCompletionTool]]) -> int:
+        """Count approximate tokens in tool definitions."""
+        if not tools:
+            return 0
+        
+        total_tokens = 0
+        for tool in tools:
+            if hasattr(tool, 'function'):
+                # Count function name, description, and parameters
+                if hasattr(tool.function, 'name'):
+                    total_tokens += self._estimate_tokens(tool.function.name)
+                if hasattr(tool.function, 'description'):
+                    total_tokens += self._estimate_tokens(tool.function.description)
+                if hasattr(tool.function, 'parameters'):
+                    # Parameters schema can be quite large
+                    total_tokens += self._estimate_tokens(json.dumps(tool.function.parameters))
+        
+        return total_tokens
+
+    def _trim_messages_to_context(
+        self, 
+        messages: List[BaseMessage], 
+        tools: Optional[List[llama_types.ChatCompletionTool]] = None,
+        max_tokens: Optional[int] = None
+    ) -> List[BaseMessage]:
+        """Trim messages to fit within context window."""
+        if not max_tokens:
+            # Use llama instance context size if available, otherwise default
+            max_tokens = getattr(self.llama_instance, 'n_ctx', lambda: 4096)()
+        
+        # Reserve tokens for tools, system prompt, and response
+        tool_tokens = self._count_tool_tokens(tools)
+        system_tokens = 0
+        response_reserve = self.profile.parameters.max_tokens or 4096
+        
+        # Find system message tokens
+        if messages and hasattr(messages[0], 'content'):
+            if any(isinstance(msg, SystemMessage) for msg in messages[:1]):
+                system_tokens = self._count_message_tokens(messages[:1])
+        
+        # Available tokens for conversation history
+        available_tokens = max_tokens - tool_tokens - system_tokens - response_reserve - 500  # Safety buffer
+        
+        if available_tokens <= 0:
+            self._logger.warning(
+                f"Context window too small: max={max_tokens}, tools={tool_tokens}, "
+                f"system={system_tokens}, response={response_reserve}"
+            )
+            # Keep only system message if any
+            return [msg for msg in messages if isinstance(msg, SystemMessage)][:1]
+        
+        # Count tokens from the end (most recent messages)
+        trimmed_messages = []
+        current_tokens = 0
+        
+        # Always keep system message first
+        system_messages = [msg for msg in messages if isinstance(msg, SystemMessage)]
+        other_messages = [msg for msg in messages if not isinstance(msg, SystemMessage)]
+        
+        # Add system messages
+        trimmed_messages.extend(system_messages)
+        
+        # Add other messages from most recent, checking token limits
+        for message in reversed(other_messages):
+            message_tokens = self._count_message_tokens([message])
+            if current_tokens + message_tokens <= available_tokens:
+                trimmed_messages.insert(len(system_messages), message)  # Insert after system messages
+                current_tokens += message_tokens
+            else:
+                self._logger.info(f"Trimming message due to context limit: {message_tokens} tokens")
+                break
+        
+        if len(trimmed_messages) < len(messages):
+            self._logger.info(
+                f"Trimmed {len(messages) - len(trimmed_messages)} messages to fit context window"
+            )
+        
+        return trimmed_messages
+
     def _get_res(
         self,
         messages: List[BaseMessage],
@@ -377,9 +469,28 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
         # Convert LangChain tools to OpenAI format for llama-cpp-python
         converted_tools = self._convert_tools_to_openai_format(tools)
+        
+        # Trim messages to fit context window
+        trimmed_messages = self._trim_messages_to_context(messages, converted_tools)
 
         # Format messages for llama-cpp-python
-        llama_messages = self._format_messages_for_llama(messages)
+        llama_messages = self._format_messages_for_llama(trimmed_messages)
+
+        # Log token usage
+        message_tokens = self._count_message_tokens(trimmed_messages)
+        tool_tokens = self._count_tool_tokens(converted_tools)
+        total_estimated = message_tokens + tool_tokens
+        context_limit = getattr(self.llama_instance, 'n_ctx', lambda: 4096)()
+        
+        self._logger.info(
+            f"Token usage: messages={message_tokens}, tools={tool_tokens}, "
+            f"total_estimated={total_estimated}, context_limit={context_limit}"
+        )
+        
+        if total_estimated > context_limit * 0.9:  # Warn at 90% capacity
+            self._logger.warning(
+                f"Approaching context limit: {total_estimated}/{context_limit} tokens"
+            )
 
         response_format: Optional[llama_types.ChatCompletionRequestResponseFormat] = (
             None
