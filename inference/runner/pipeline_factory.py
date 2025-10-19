@@ -198,7 +198,7 @@ class PipelineFactory:
                 return self.create_pipeline(m, p, g)
 
             pipeline = self.local_cache.get_or_create(
-                model, profile, priority, create_with_coordination
+                model, profile, priority, create_with_coordination, grammar
             )
             if not pipeline:
                 raise RuntimeError(
@@ -240,11 +240,11 @@ class PipelineFactory:
             ModelProvider.STABLE_DIFFUSION_CPP,
         }:
 
-            def create_embedding_fn(m: Model, p: ModelProfile) -> Optional[Embeddings]:
+            def create_embedding_fn(m: Model, p: ModelProfile, g: Optional[Type[BaseModel]] = None) -> Optional[Embeddings]:
                 return self._create_embedding_pipeline(m, p)
 
             pipeline = self.local_cache.get_or_create(
-                model, profile, priority, create_embedding_fn
+                model, profile, priority, create_embedding_fn, None
             )
             if not pipeline:
                 raise RuntimeError(

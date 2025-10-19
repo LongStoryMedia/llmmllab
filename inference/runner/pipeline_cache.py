@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, Type, cast
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.embeddings import Embeddings
+from pydantic import BaseModel
 
 from models import Model, ModelProfile, ModelProvider, PipelinePriority
 from .utils.hardware_manager import hardware_manager
@@ -77,9 +78,10 @@ class LocalPipelineCacheManager:
         profile: ModelProfile,
         priority: PipelinePriority,
         create_fn: Callable[
-            [Model, ModelProfile],
+            [Model, ModelProfile, Optional[Type[BaseModel]]],
             Optional[BaseChatModel | Embeddings],
         ],
+        grammar: Optional[Type[BaseModel]] = None,
     ) -> BaseChatModel | Embeddings:
         model_id = model.id or model.model
         with self._lock:
@@ -98,7 +100,7 @@ class LocalPipelineCacheManager:
                 f"Insufficient memory for local model {model.name}: need {required/1e9:.2f}GB"
             )
 
-        pipeline = create_fn(model, profile)
+        pipeline = create_fn(model, profile, grammar)
         if not pipeline:
             raise RuntimeError(f"Failed to create pipeline for {model.name}")
 

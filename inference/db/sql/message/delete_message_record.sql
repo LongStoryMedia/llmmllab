@@ -1,3 +1,4 @@
 -- Delete message by ID
-DELETE FROM messages 
+DELETE FROM messages
 WHERE id = $1;
+

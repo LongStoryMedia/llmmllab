@@ -200,7 +200,7 @@ class MessageStorage:
                 await conn.execute(
                     self.get_query("message.delete_message_contents"), message_id
                 )
-                # Then delete the message (parent table)  
+                # Then delete the message (parent table)
                 await conn.execute(
                     self.get_query("message.delete_message_record"), message_id
                 )

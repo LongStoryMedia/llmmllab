@@ -88,8 +88,6 @@ async def chat_completion(
                         event_data = event.get("data", {})
 
                         # Log all events for debugging
-                        os.environ["DEBUG"] = "0"
-                        os.environ["LOG_LEVEL"] = "debug"
                         dbg_evt(event)
 
                         # Try to capture streaming content from various event types

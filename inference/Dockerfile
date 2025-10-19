@@ -72,7 +72,6 @@ ENV PYTHONUNBUFFERED=1 \
     CUDA_DEVICE_ORDER=PCI_BUS_ID \
     CUDA_CACHE_PATH=/tmp/cuda_cache \
     CUDA_LAUNCH_BLOCKING=0 \
-    LOG_LEVEL="debug" \
     PORT=8000 \
     IMAGE_DIR="/root/images" \
     IMAGE_GENERATION_ENABLED="true" \

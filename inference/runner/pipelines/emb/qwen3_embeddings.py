@@ -80,9 +80,55 @@ class Qwen3Embeddings(Embeddings):
                 embedding=True,  # Enable embedding mode
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "debug",
                 n_batch=512,
-                seed=self.profile.parameters.seed or -1,
                 use_mlock=False,
                 f16_kv=True,
+                split_mode=llama_cpp.LLAMA_SPLIT_MODE_LAYER,
+                # main_gpu=0,
+                tensor_split=None,
+                vocab_only=False,
+                use_mmap=True,
+                kv_overrides=None,
+                # Context Params
+                seed=self.profile.parameters.seed or llama_cpp.LLAMA_DEFAULT_SEED,
+                n_ubatch=512,
+                temperature=self.profile.parameters.temperature or 0.7,
+                top_p=self.profile.parameters.top_p or 0.8,
+                top_k=self.profile.parameters.top_k or 20,
+                repeat_penalty=self.profile.parameters.repeat_penalty or 1.05,
+                flash_attn=getattr(self.profile.parameters, "flash_attention", True),
+                chat_format=None,  # Default chat format, can be overridden
+                n_threads_batch=None,
+                rope_scaling_type=None,
+                pooling_type=llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
+                rope_freq_base=0.0,
+                rope_freq_scale=0.0,
+                yarn_ext_factor=-1.0,
+                yarn_attn_factor=1.0,
+                yarn_beta_fast=32.0,
+                yarn_beta_slow=1.0,
+                yarn_orig_ctx=0,
+                offload_kqv=False,  # Disable offload for better performance unless needed
+                op_offload=None,
+                swa_full=None,
+                # Sampling Params
+                no_perf=False,
+                last_n_tokens_size=64,
+                # LoRA Params
+                lora_base=None,
+                lora_scale=1.0,
+                lora_path=None,
+                # Backend Params
+                numa=False,
+                chat_handler=None,
+                # Speculative Decoding
+                draft_model=None,
+                # Tokenizer Override
+                tokenizer=None,
+                # KV cache quantization
+                type_k=None,
+                type_v=None,
+                # Misc
+                spm_infill=False,
             )
 
             self._logger.info(f"Qwen3 embedding model initialized from: {gguf_path}")
