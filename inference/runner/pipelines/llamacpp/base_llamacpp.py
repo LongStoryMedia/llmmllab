@@ -314,6 +314,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
         messages: List[BaseMessage],
         stop: Optional[List[str]] = None,
         tools: Optional[List[llama_types.ChatCompletionTool]] = None,
+        stream: bool = False,
     ) -> (
         llama_types.CreateChatCompletionResponse
         | Iterator[llama_types.CreateChatCompletionStreamResponse]
@@ -348,7 +349,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
             top_k=self.profile.parameters.top_k or 40,
             min_p=self.profile.parameters.min_p or 0.05,
             typical_p=1.0,
-            stream=False,
+            stream=stream,
             stop=self.profile.parameters.stop or stop or [],
             seed=self.profile.parameters.seed or llama_cpp.LLAMA_DEFAULT_SEED,
             response_format=response_format,
@@ -356,7 +357,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
             presence_penalty=0.0,
             frequency_penalty=0.0,
             repeat_penalty=self.profile.parameters.repeat_penalty or 1.05,
-            tfs_z=1.0,
+            # tfs_z=1.0,  # Commented out - not supported in all llama-cpp-python versions
             mirostat_mode=0,
             mirostat_tau=5.0,
             mirostat_eta=0.1,
@@ -386,6 +387,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 messages=messages,
                 stop=stop,
                 tools=tools,
+                stream=False,
             )
             response = cast(llama_types.CreateChatCompletionResponse, res)
 
@@ -435,6 +437,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 messages=messages,
                 stop=stop,
                 tools=tools,
+                stream=True,
             )
             stream = cast(Iterator[llama_types.CreateChatCompletionStreamResponse], res)
 
