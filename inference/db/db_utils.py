@@ -46,6 +46,10 @@ class TypedConnection:
         result = await self._connection.execute(query, *args, **kwargs)
         return cast(str, result)
 
+    def transaction(self):
+        """Return a transaction context manager."""
+        return self._connection.transaction()
+
     # Add any other methods you need from asyncpg.Connection
 
 

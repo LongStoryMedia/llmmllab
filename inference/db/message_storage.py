@@ -66,21 +66,28 @@ class MessageStorage:
             contents = []
             if row["contents"]:
                 import json
+
                 # Parse JSON string to list of objects
                 if isinstance(row["contents"], str):
                     contents_data = json.loads(row["contents"])
                 else:
                     contents_data = row["contents"]
-                    
+
                 for content_data in contents_data:
-                    contents.append(MessageContent(
-                        type=content_data.get("type", MessageContentType.TEXT),
-                        text=content_data.get("text_content", ""),
-                        url=content_data.get("url"),
-                    ))
+                    contents.append(
+                        MessageContent(
+                            type=MessageContentType(
+                                content_data.get("type", MessageContentType.TEXT)
+                            ),
+                            text=content_data.get("text_content", ""),
+                            url=content_data.get("url"),
+                        )
+                    )
             else:
                 # Default empty content if no contents
-                contents = [MessageContent(type=MessageContentType.TEXT, text="", url=None)]
+                contents = [
+                    MessageContent(type=MessageContentType.TEXT, text="", url=None)
+                ]
 
             message = Message(
                 role=row["role"],
@@ -188,9 +195,16 @@ class MessageStorage:
             return
 
         async with self.typed_pool.acquire() as conn:
-            # Delete the message from database
-            await conn.execute(self.get_query("message.delete_message"), message_id)
-            logger.info(f"Deleted message {message_id} from database")
+            async with conn.transaction():
+                # Delete message contents first (child table)
+                await conn.execute(
+                    "DELETE FROM message_contents WHERE message_id = $1", message_id
+                )
+                # Then delete the message (parent table)  
+                await conn.execute(
+                    "DELETE FROM messages WHERE id = $1", message_id
+                )
+                logger.info(f"Deleted message {message_id} from database")
 
         # Invalidate message cache
         cache_storage.invalidate_message_cache(message_id)
@@ -212,21 +226,26 @@ class MessageStorage:
                 contents = []
                 if msg.get("contents"):
                     import json
+
                     # Parse JSON string to list of objects
                     if isinstance(msg["contents"], str):
                         contents_data = json.loads(msg["contents"])
                     else:
                         contents_data = msg["contents"]
-                        
+
                     for content_data in contents_data:
-                        contents.append(MessageContent(
-                            type=content_data.get("type", MessageContentType.TEXT),
-                            text=content_data.get("text_content", ""),
-                            url=content_data.get("url"),
-                        ))
+                        contents.append(
+                            MessageContent(
+                                type=content_data.get("type", MessageContentType.TEXT),
+                                text=content_data.get("text_content", ""),
+                                url=content_data.get("url"),
+                            )
+                        )
                 else:
                     # Default empty content if no contents
-                    contents = [MessageContent(type=MessageContentType.TEXT, text="", url=None)]
+                    contents = [
+                        MessageContent(type=MessageContentType.TEXT, text="", url=None)
+                    ]
 
                 msg["content"] = contents
 

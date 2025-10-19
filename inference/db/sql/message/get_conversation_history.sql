@@ -6,32 +6,25 @@ SELECT
     m.conversation_id,
     m.role,
     m.created_at,
-    COALESCE(
-        JSON_AGG(
-            JSON_BUILD_OBJECT(
-                'type', mc.type,
-                'text_content', mc.text_content,
-                'url', mc.url,
-                'created_at', mc.created_at
-            ) ORDER BY mc.id
-        ) FILTER (WHERE mc.message_id IS NOT NULL),
-        '[]'::json
-    ) as contents
+    COALESCE(JSON_AGG(JSON_BUILD_OBJECT('type', mc.type, 'text_content', mc.text_content, 'url', mc.url, 'created_at', mc.created_at)
+        ORDER BY mc.id) FILTER (WHERE mc.message_id IS NOT NULL), '[]'::json) AS contents
 FROM
     messages m
-LEFT JOIN 
-    message_contents mc ON m.id = mc.message_id
+    LEFT JOIN message_contents mc ON m.id = mc.message_id
 WHERE
     m.conversation_id = $1
     AND m.id NOT IN (
         SELECT
-            CAST(jsonb_array_elements_text(source_ids) AS INTEGER)
+            CAST(jsonb_array_elements_text(source_ids) AS integer)
         FROM
             summaries
         WHERE
             conversation_id = $1
             AND level = 1)
-GROUP BY 
-    m.id, m.conversation_id, m.role, m.created_at
+GROUP BY
+    m.id,
+    m.conversation_id,
+    m.role,
+    m.created_at
 ORDER BY
     m.created_at ASC
