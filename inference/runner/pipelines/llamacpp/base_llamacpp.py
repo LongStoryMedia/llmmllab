@@ -444,7 +444,25 @@ class BaseLlamaCppPipeline(BaseChatModel):
                             else:
                                 schema = {"type": "object", "properties": {}}
 
-                            tool_dict["function"]["parameters"] = schema
+                            # CRITICAL FIX: Filter out injected parameters that shouldn't be sent to LLM
+                            # LangChain tools with InjectedState and InjectedToolCallId should not include
+                            # these massive schemas in the prompt sent to the LLM
+                            if 'properties' in schema:
+                                # Remove injected parameters: 'state' (WorkflowState) and 'tool_call_id'
+                                filtered_props = {k: v for k, v in schema['properties'].items() 
+                                                if k not in ['state', 'tool_call_id']}
+                                
+                                # Create filtered schema without massive injected state
+                                filtered_schema = {
+                                    "type": "object",
+                                    "properties": filtered_props,
+                                    "required": [req for req in schema.get('required', []) 
+                                               if req not in ['state', 'tool_call_id']]
+                                }
+                                
+                                tool_dict["function"]["parameters"] = filtered_schema
+                            else:
+                                tool_dict["function"]["parameters"] = schema
                         except Exception as e:
                             self._logger.warning(
                                 f"Could not extract schema for tool {tool.name}: {e}"

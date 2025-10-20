@@ -51,3 +51,5 @@ __pycache__
 .tox
 .venv/
 .*.txt
+
+debug/out/*
