@@ -18,4 +18,7 @@ enum:
   - audio_processing
   - database_access
   - network_communication
+  - scheduling
+  - temporal_reasoning
+  - personalization
 description: Types of capabilities that can be required for tool operations

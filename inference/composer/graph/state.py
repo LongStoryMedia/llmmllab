@@ -35,6 +35,13 @@ class WorkflowState(BaseModel):
         "extra": "forbid",  # Prevent extra fields for type safety
     }
 
+    current_date: Annotated[Optional[str], lambda x, y: y if y is not None else x] = (
+        Field(
+            default_factory=lambda: __import__("datetime").datetime.now().isoformat(),
+            description="Current date in ISO format",
+        )
+    )
+
     current_user_message: Annotated[
         Optional[LangChainMessage], lambda x, y: y if y is not None else x
     ] = Field(default=None, description="Most recent user message in the conversation")

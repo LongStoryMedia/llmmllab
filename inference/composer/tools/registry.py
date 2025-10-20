@@ -15,8 +15,9 @@ from utils.logging import llmmllogger
 from composer.tools.static import (
     memory_retrieval,
     summarization,
+    get_current_date,
+    web_search,
 )
-from composer.tools.static.web_search_tool import web_search
 
 if TYPE_CHECKING:
     from runner import PipelineFactory
@@ -59,11 +60,9 @@ class ToolRegistry:
                     "memory_retrieval": memory_retrieval,
                     "web_search": web_search,
                     "summarization": summarization,
+                    "get_current_date": get_current_date,
                 }
             )
-
-            # Add function-based tools directly to executable_tools
-            self.executable_tools["web_search"] = web_search
 
             self.logger.info(
                 "Loaded static tools",
@@ -95,20 +94,30 @@ class ToolRegistry:
                     executable_tool = self.executable_tools[tool_name]
                     tool_instance = Tool(
                         name=getattr(executable_tool, "name", tool_name),
-                        description=getattr(executable_tool, "description", f"{tool_cls.__name__} tool"),
+                        description=getattr(
+                            executable_tool, "description", f"{tool_cls.__name__} tool"
+                        ),
                         args_schema=getattr(executable_tool, "args_schema", None),
                         return_direct=getattr(executable_tool, "return_direct", False),
                         tags=getattr(executable_tool, "tags", None),
                         metadata=getattr(executable_tool, "metadata", None),
-                        handle_tool_error=getattr(executable_tool, "handle_tool_error", False),
-                        handle_validation_error=getattr(executable_tool, "handle_validation_error", False),
-                        response_format=getattr(executable_tool, "response_format", "content"),
+                        handle_tool_error=getattr(
+                            executable_tool, "handle_tool_error", False
+                        ),
+                        handle_validation_error=getattr(
+                            executable_tool, "handle_validation_error", False
+                        ),
+                        response_format=getattr(
+                            executable_tool, "response_format", "content"
+                        ),
                     )
                     instances.append(tool_instance)
 
         # Handle function-based tools (with @tool decorator)
         for tool_name, tool_func in self.executable_tools.items():
-            if tool_func and hasattr(tool_func, "name"):  # Check if it's a @tool decorated function
+            if tool_func and hasattr(
+                tool_func, "name"
+            ):  # Check if it's a @tool decorated function
                 tool_instance = Tool(
                     name=getattr(tool_func, "name", tool_name),
                     description=getattr(tool_func, "description", f"{tool_name} tool"),
@@ -117,7 +126,9 @@ class ToolRegistry:
                     tags=getattr(tool_func, "tags", None),
                     metadata=getattr(tool_func, "metadata", None),
                     handle_tool_error=getattr(tool_func, "handle_tool_error", False),
-                    handle_validation_error=getattr(tool_func, "handle_validation_error", False),
+                    handle_validation_error=getattr(
+                        tool_func, "handle_validation_error", False
+                    ),
                     response_format=getattr(tool_func, "response_format", "content"),
                 )
                 instances.append(tool_instance)
@@ -209,7 +220,7 @@ class ToolRegistry:
         Simplified version - just return the executable tools without LLM-safe wrapper complexity.
         """
         langchain_tools = []
-        
+
         for tool in tools:
             executable_tool = self.executable_tools.get(tool.name)
             if executable_tool:
@@ -218,9 +229,9 @@ class ToolRegistry:
             else:
                 self.logger.warning(
                     f"Tool {tool.name} not found in executable tools",
-                    tool_name=tool.name
+                    tool_name=tool.name,
                 )
-        
+
         return langchain_tools
 
     async def get_tool_stats(self) -> Dict[str, Any]:

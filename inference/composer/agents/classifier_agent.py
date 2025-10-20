@@ -162,15 +162,31 @@ IMPORTANT: Return JSON that is valid against this schema:
 
 If multiple intents are needed, include additional objects in the intents array.
 """
-        msgs = []
-        msgs.extend(messages)
-        msgs.append(analysis_prompt)
-        result = await self.run(
-            messages=msgs,
-            tools=None,
-            priority=PipelinePriority.HIGH,
-            grammar=_Intnts,
+        # Create a temporary profile with the analysis prompt as system prompt
+        # This ensures the classifier only analyzes intent and doesn't generate conversational responses
+        temp_profile = ModelProfile(
+            model_name=self.profile.model_name,
+            system_prompt=analysis_prompt,
+            parameters=self.profile.parameters,
+            user_id=self.profile.user_id,
+            name=self.profile.name,
+            type=self.profile.type,
         )
+        
+        # Temporarily replace the profile for this analysis
+        original_profile = self.profile
+        self.profile = temp_profile
+        
+        try:
+            result = await self.run(
+                messages=messages,  # Don't append analysis_prompt as message
+                tools=None,
+                priority=PipelinePriority.HIGH,
+                grammar=_Intnts,
+            )
+        finally:
+            # Restore original profile
+            self.profile = original_profile
 
         txt = extract_message_text(result.message) if result and result.message else ""
         if not txt.strip():
