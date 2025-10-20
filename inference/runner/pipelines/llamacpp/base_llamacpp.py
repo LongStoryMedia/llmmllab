@@ -476,6 +476,17 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
         # Format messages for llama-cpp-python
         llama_messages = self._format_messages_for_llama(trimmed_messages)
+        
+        # DEBUG: Log the actual messages being sent to llama.cpp if context is large
+        total_content_chars = sum(len(str(msg.get('content', ''))) for msg in llama_messages)
+        if total_content_chars > 20000:  # Debug if content is large
+            self._logger.warning(f"🚨 LARGE CONTENT DETECTED: {total_content_chars:,} characters in {len(llama_messages)} messages")
+            for i, msg in enumerate(llama_messages):
+                content = str(msg.get('content', ''))
+                content_size = len(content)
+                self._logger.warning(f"  Message {i+1} ({msg.get('role', 'unknown')}): {content_size:,} chars")
+                if content_size > 5000:  # Show preview of large content
+                    self._logger.warning(f"    Preview: {content[:500]}...")
 
         # Log token usage with more detail
         message_tokens = self._count_message_tokens(trimmed_messages)
@@ -493,6 +504,16 @@ class BaseLlamaCppPipeline(BaseChatModel):
             f"message_tokens={message_tokens}, tool_tokens={tool_tokens}, "
             f"total_estimated={total_estimated}, context_limit={context_limit}"
         )
+        
+        # Debug: Log actual content being sent to llama.cpp if it might be problematic
+        if total_estimated > context_limit * 0.5:  # Debug at 50% to catch issues early
+            self._logger.warning(f"⚠️ Context debugging enabled for {self.model.name}")
+            self._logger.warning(f"Message contents: {[msg['content'][:200] + '...' if len(str(msg['content'])) > 200 else msg['content'] for msg in llama_messages]}")
+            if converted_tools:
+                self._logger.warning(f"Tool schemas: {len(converted_tools)} tools")
+                for i, tool in enumerate(converted_tools[:2]):  # Log first 2 tools
+                    tool_str = str(tool)
+                    self._logger.warning(f"Tool {i+1}: {tool_str[:500] + '...' if len(tool_str) > 500 else tool_str}")
         
         if total_estimated > context_limit * 0.9:  # Warn at 90% capacity
             self._logger.warning(
