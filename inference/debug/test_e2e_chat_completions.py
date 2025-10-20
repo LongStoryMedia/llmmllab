@@ -26,7 +26,6 @@ class E2ETestRunner:
     def __init__(self):
         self.test_user_id = "e2e_test_user"
         self.test_conversation_id = None
-        self.invalid_conversation_id = None
 
     async def setup_test_environment(self):
         """Set up the test environment with database initialization."""
@@ -52,14 +51,6 @@ class E2ETestRunner:
                 user_id=self.test_user_id
             )
             print(f"   ✅ Created test conversation: {self.test_conversation_id}")
-            
-            # Create invalid conversation for error testing
-            self.invalid_conversation_id = await storage.conversation.create_conversation(
-                title="Invalid Test Conversation",
-                user_id=self.test_user_id
-            )
-            await storage.conversation.delete_conversation(self.invalid_conversation_id)
-            print(f"   ✅ Created invalid conversation ID: {self.invalid_conversation_id}")
 
             return True
 
@@ -148,15 +139,165 @@ class E2ETestRunner:
             traceback.print_exc()
             return False
 
+    async def test_context_window_management(self):
+        """Test that context window management prevents overflow errors."""
+        print("🧠 Testing context window management...")
+
+        try:
+            # Create a conversation with many messages that would exceed context window
+            context_test_conversation_id = await storage.conversation.create_conversation(
+                title="Context Window Test Conversation",
+                user_id=self.test_user_id
+            )
+            
+            print("   📝 Adding messages to create large context...")
+            # Add many long messages to create a context that would exceed 40960 tokens
+            for i in range(20):
+                long_user_message = Message(
+                    conversation_id=context_test_conversation_id,
+                    role=MessageRole.USER,
+                    content=[
+                        {
+                            "type": MessageContentType.TEXT,
+                            "text": f"User message {i}: " + "This is an extremely long message with lots of detailed content that consumes many tokens when processed by the language model. " * 100,
+                        }
+                    ],
+                )
+                await storage.message.add_message(long_user_message)
+                
+                long_assistant_message = Message(
+                    conversation_id=context_test_conversation_id,
+                    role=MessageRole.ASSISTANT,
+                    content=[
+                        {
+                            "type": MessageContentType.TEXT,
+                            "text": f"Assistant response {i}: " + "This is an equally long and detailed response from the assistant with comprehensive information that also consumes many tokens during processing. " * 100,
+                        }
+                    ],
+                )
+                await storage.message.add_message(long_assistant_message)
+
+            print(f"   ✅ Added {40} messages to conversation")
+
+            # Now test with a new message that should trigger context window management
+            test_message = Message(
+                conversation_id=context_test_conversation_id,
+                role=MessageRole.USER,
+                content=[
+                    {
+                        "type": MessageContentType.TEXT,
+                        "text": "Given our long conversation, please provide a brief summary.",
+                    }
+                ],
+            )
+
+            mock_request = Mock()
+            mock_request.headers = {"authorization": "Bearer test-token"}
+            mock_request.state = Mock()
+            mock_request.state.user_id = self.test_user_id
+            mock_request.state.request_id = "context-window-test-request"
+
+            print("   🚀 Testing workflow with large context (should use context window management)...")
+            
+            try:
+                response = await chat_completion(test_message, mock_request)
+                print("   ✅ Context window management working - no overflow error!")
+                print(f"   ✅ Response type: {type(response)}")
+            except Exception as e:
+                if "exceed context window" in str(e):
+                    print(f"   ❌ Context window overflow error occurred: {e}")
+                    await storage.conversation.delete_conversation(context_test_conversation_id)
+                    return False
+                else:
+                    print(f"   ❌ Other workflow error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    await storage.conversation.delete_conversation(context_test_conversation_id)
+                    return False
+            
+            # Clean up
+            await storage.conversation.delete_conversation(context_test_conversation_id)
+            print("   ✅ Context window test completed successfully")
+            return True
+
+        except Exception as e:
+            print(f"   ❌ Context window test failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
     async def test_error_handling(self):
         """Test error handling scenarios."""
         print("🚨 Testing error handling...")
 
         try:
-            # Test with invalid conversation ID
-            print("   ❌ Testing invalid conversation ID...")
+            # Create a valid conversation for testing actual workflow execution
+            print("   ✅ Testing valid conversation with large context...")
+            large_context_conversation_id = await storage.conversation.create_conversation(
+                title="Large Context Test Conversation",
+                user_id=self.test_user_id
+            )
+            
+            # Add multiple messages to create a large context
+            for i in range(10):
+                large_message = Message(
+                    conversation_id=large_context_conversation_id,
+                    role=MessageRole.USER,
+                    content=[
+                        {
+                            "type": MessageContentType.TEXT,
+                            "text": f"Message {i}: " + "This is a long message with substantial content that would consume many tokens. " * 50,
+                        }
+                    ],
+                )
+                await storage.message.add_message(large_message)
+                
+                assistant_message = Message(
+                    conversation_id=large_context_conversation_id,
+                    role=MessageRole.ASSISTANT,
+                    content=[
+                        {
+                            "type": MessageContentType.TEXT,
+                            "text": f"Response {i}: " + "This is a detailed assistant response with lots of content that also consumes many tokens. " * 50,
+                        }
+                    ],
+                )
+                await storage.message.add_message(assistant_message)
+
+            # Test the workflow with large context (should trigger context window management)
+            large_context_message = Message(
+                conversation_id=large_context_conversation_id,
+                role=MessageRole.USER,
+                content=[
+                    {
+                        "type": MessageContentType.TEXT,
+                        "text": "What is the summary of our conversation so far?",
+                    }
+                ],
+            )
+
+            mock_request = Mock()
+            mock_request.headers = {"authorization": "Bearer test-token"}
+            mock_request.state = Mock()
+            mock_request.state.user_id = self.test_user_id
+            mock_request.state.request_id = "large-context-test-request"
+
+            try:
+                response = await chat_completion(large_context_message, mock_request)
+                print(f"   ✅ Large context workflow executed successfully: {type(response)}")
+            except Exception as workflow_error:
+                print(f"   ❌ Workflow execution failed: {workflow_error}")
+                # Clean up the test conversation
+                await storage.conversation.delete_conversation(large_context_conversation_id)
+                return False
+            
+            # Clean up the test conversation
+            await storage.conversation.delete_conversation(large_context_conversation_id)
+
+            # Now test with truly invalid conversation ID (non-existent)
+            print("   ❌ Testing with non-existent conversation ID...")
             invalid_message = Message(
-                conversation_id=self.invalid_conversation_id,
+                conversation_id=99999,  # Use a clearly invalid ID
                 role=MessageRole.USER,
                 content=[
                     {
@@ -166,14 +307,14 @@ class E2ETestRunner:
                 ],
             )
 
-            mock_request = Mock()
-            mock_request.headers = {"authorization": "Bearer test-token"}
-            mock_request.state = Mock()
-            mock_request.state.user_id = self.test_user_id
-            mock_request.state.request_id = "error-test-request"
+            mock_request_invalid = Mock()
+            mock_request_invalid.headers = {"authorization": "Bearer test-token"}
+            mock_request_invalid.state = Mock()
+            mock_request_invalid.state.user_id = self.test_user_id
+            mock_request_invalid.state.request_id = "error-test-request"
 
             try:
-                await chat_completion(invalid_message, mock_request)
+                await chat_completion(invalid_message, mock_request_invalid)
                 print("   ❌ ERROR: Should have raised HTTPException")
                 return False
             except HTTPException as e:
@@ -222,6 +363,7 @@ class E2ETestRunner:
         # Run all tests
         test_results.append(await self.test_database_operations())
         test_results.append(await self.test_direct_router_function())
+        test_results.append(await self.test_context_window_management())
         test_results.append(await self.test_error_handling())
 
         # Cleanup

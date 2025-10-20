@@ -59,8 +59,14 @@ class ChatNode:
 
             if not state.user_config:
                 raise NodeExecutionError("User config required for chat execution")
-            # Assemble context messages
-            context_messages = assemble_context_messages(state)
+            # Assemble context messages with context window management
+            max_tokens = None
+            if (self.agent.profile.parameters and 
+                hasattr(self.agent.profile.parameters, 'num_ctx') and 
+                self.agent.profile.parameters.num_ctx):
+                max_tokens = self.agent.profile.parameters.num_ctx
+            
+            context_messages = assemble_context_messages(state, max_tokens=max_tokens)
             if not context_messages:
                 raise NodeExecutionError(
                     "No context messages available for chat completion"

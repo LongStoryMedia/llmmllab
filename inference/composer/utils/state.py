@@ -136,7 +136,70 @@ def _summary_to_message(summary, conversation_id: Optional[int] = None) -> Messa
     )
 
 
-def assemble_context_messages(state: WorkflowState) -> List[Message]:
+def _estimate_tokens(text: str) -> int:
+    """Estimate token count for text (rough approximation)."""
+    # Simple approximation: ~4 characters per token for most languages
+    return max(1, len(text) // 4)
+
+
+def _count_message_tokens(messages: List[Message]) -> int:
+    """Count approximate tokens in messages."""
+    total_tokens = 0
+    for message in messages:
+        if message.content:
+            for content in message.content:
+                if content.text:
+                    total_tokens += _estimate_tokens(content.text)
+    return total_tokens
+
+
+def _trim_messages_to_context_window(
+    messages: List[Message], 
+    max_tokens: int,
+    reserve_tokens: int = 4096
+) -> List[Message]:
+    """
+    Trim messages to fit within context window.
+    
+    Args:
+        messages: List of messages to trim
+        max_tokens: Maximum token count for context window
+        reserve_tokens: Tokens to reserve for response generation
+        
+    Returns:
+        Trimmed list of messages that fit within context window
+    """
+    available_tokens = max_tokens - reserve_tokens
+    if available_tokens <= 0:
+        return []
+    
+    # Always keep system messages
+    system_messages = [msg for msg in messages if msg.role == MessageRole.SYSTEM]
+    other_messages = [msg for msg in messages if msg.role != MessageRole.SYSTEM]
+    
+    # Count system message tokens
+    system_tokens = _count_message_tokens(system_messages)
+    remaining_tokens = available_tokens - system_tokens
+    
+    if remaining_tokens <= 0:
+        return system_messages
+    
+    # Add other messages from most recent, checking token limits
+    trimmed_other = []
+    current_tokens = 0
+    
+    for message in reversed(other_messages):
+        message_tokens = _count_message_tokens([message])
+        if current_tokens + message_tokens <= remaining_tokens:
+            trimmed_other.insert(0, message)  # Insert at beginning to maintain order
+            current_tokens += message_tokens
+        else:
+            break
+    
+    return system_messages + trimmed_other
+
+
+def assemble_context_messages(state: WorkflowState, max_tokens: Optional[int] = None) -> List[Message]:
     """
     Assemble a comprehensive list of Message objects from WorkflowState.
 
@@ -150,9 +213,11 @@ def assemble_context_messages(state: WorkflowState) -> List[Message]:
 
     Args:
         state: WorkflowState containing messages, memories, and summaries
+        max_tokens: Optional maximum token count for context window management
 
     Returns:
-        List of Message objects assembled in context extension priority order
+        List of Message objects assembled in context extension priority order,
+        trimmed to fit within context window if max_tokens is provided
     """
     assembled_messages: List[Message] = []
     assert state.messages
@@ -182,4 +247,10 @@ def assemble_context_messages(state: WorkflowState) -> List[Message]:
             ]
         )
 
-    return list(reversed(assembled_messages))
+    final_messages = list(reversed(assembled_messages))
+    
+    # Apply context window trimming if max_tokens is provided
+    if max_tokens:
+        final_messages = _trim_messages_to_context_window(final_messages, max_tokens)
+    
+    return final_messages
