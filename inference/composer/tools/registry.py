@@ -253,6 +253,14 @@ class ToolRegistry:
         # Get the original function
         if hasattr(executable_tool, 'func'):
             orig_func = executable_tool.func
+            # Check if func is None (invalid tool)
+            if orig_func is None:
+                self.logger.error(
+                    f"Tool {tool.name} has None func attribute, skipping LLM-safe wrapper",
+                    tool_name=tool.name,
+                    executable_tool_type=type(executable_tool).__name__
+                )
+                return executable_tool
         else:
             # For non-decorated functions, use as-is
             return executable_tool
