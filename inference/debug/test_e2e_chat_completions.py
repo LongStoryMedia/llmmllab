@@ -275,9 +275,15 @@ class E2ETestRunner:
             mock_request.state.auth.get = Mock(return_value=self.test_user_id)
 
             try:
-                await chat_completion(invalid_message, mock_request)
-                print("   ❌ ERROR: Should have raised HTTPException")
-                return False
+                # Suppress async generator cleanup warnings during testing
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", message="async generator ignored GeneratorExit")
+                    warnings.filterwarnings("ignore", message="Task exception was never retrieved")
+                    
+                    await chat_completion(invalid_message, mock_request)
+                    print("   ❌ ERROR: Should have raised HTTPException")
+                    return False
             except HTTPException as e:
                 # Validate that we get the correct status code and error message
                 if e.status_code == 400 and "Referenced conversation does not exist" in e.detail:
