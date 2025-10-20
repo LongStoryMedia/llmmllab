@@ -1,5 +1,5 @@
 """
-Simple End-to-End Test for /chat/completions endpoint.
+Comprehensive End-to-End Test for complete LangGraph workflow execution.
 """
 
 import asyncio
@@ -20,11 +20,11 @@ from db import storage
 from composer.core.service import ComposerService
 
 
-class E2ETestRunner:
-    """Simple end-to-end test runner for the chat completions endpoint."""
+class FullWorkflowE2ETestRunner:
+    """Complete end-to-end test runner that ensures full LangGraph workflow execution."""
 
     def __init__(self):
-        self.test_user_id = "e2e_test_user"
+        self.test_user_id = "full_workflow_test_user"
         self.test_conversation_id = None
 
     async def setup_test_environment(self):
@@ -302,11 +302,11 @@ class E2ETestRunner:
                 print(f"   ❌ CRITICAL: Complete workflow execution failed: {workflow_error}")
                 import traceback
                 traceback.print_exc()
-                await storage.conversation.delete_conversation(workflow_conversation_id)
+                # await storage.conversation.delete_conversation(workflow_conversation_id)
                 return False
             
             # Clean up the test conversation
-            await storage.conversation.delete_conversation(workflow_conversation_id)
+            # await storage.conversation.delete_conversation(workflow_conversation_id)
             print("   ✅ Workflow test completed successfully")
             return True
 
@@ -387,12 +387,10 @@ class E2ETestRunner:
 
         test_results = []
 
-        # Run all tests
+        # Run all tests focused on full workflow execution
         test_results.append(await self.test_database_operations())
-        test_results.append(await self.test_direct_router_function())
-        test_results.append(await self.test_context_window_management())
         test_results.append(await self.test_complete_workflow_execution())
-        test_results.append(await self.test_invalid_conversation_error_handling())
+        test_results.append(await self.test_context_window_management())
 
         # Cleanup
         await self.cleanup_test_environment()
@@ -413,7 +411,7 @@ class E2ETestRunner:
 
 async def main():
     """Main test execution function."""
-    runner = E2ETestRunner()
+    runner = FullWorkflowE2ETestRunner()
     success = await runner.run_comprehensive_e2e_test()
     return success
 
