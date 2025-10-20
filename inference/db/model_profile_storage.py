@@ -194,6 +194,7 @@ class ModelProfileStorage:
         async with self.typed_pool.acquire() as conn:
             await conn.execute(
                 self.get_query("modelprofile.create_profile"),
+                profile.id,
                 profile.user_id,
                 profile.name,
                 profile.description,
