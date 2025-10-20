@@ -29,6 +29,7 @@ from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResu
 
 from models import Model, ModelProfile
 from utils.logging import llmmllogger
+from utils.hardware_manager import EnhancedHardwareManager
 from .utils import calculate_optimal_gpu_layers
 
 
@@ -68,6 +69,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
         )
         self.grammar = grammar
         self._bound_tools = kwargs.get('_bound_tools', [])
+        self.hardware_manager = EnhancedHardwareManager()
         self.llama_instance = self._initialize_llama_with_fallback(
             self._get_gguf_path()
         )
@@ -160,6 +162,29 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 candidates.append(fallback)
 
         return sorted(list(set(candidates)), reverse=True)
+
+    def _handle_oom_recovery(self, ctx_size: int, batch_size: int, gpu_layers: int) -> None:
+        """Handle OOM recovery with progressive mitigation strategies."""
+        self._logger.warning(f"🔧 Starting OOM recovery for ctx={ctx_size}, batch={batch_size}, gpu_layers={gpu_layers}")
+        
+        # Step 1: Clear GPU memory and caches
+        try:
+            self._logger.info("🧹 Clearing GPU memory and caches...")
+            self.hardware_manager.clear_memory(aggressive=True)
+            
+            # Clear any existing pipeline caches
+            if hasattr(self, 'llama_instance') and self.llama_instance:
+                del self.llama_instance
+                self.llama_instance = None
+                
+        except Exception as e:
+            self._logger.warning(f"Error during memory clearing: {e}")
+        
+        # Step 2: Give GPU a moment to clean up
+        import time
+        time.sleep(1)
+        
+        self._logger.info("✅ OOM recovery steps completed, will retry with smaller parameters")
 
     def _initialize_llama_with_fallback(self, gguf_path: str) -> llama_cpp.Llama:
         """Initialize Llama instance with fallback strategies."""
@@ -272,10 +297,18 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     return llama_instance
 
                 except Exception as e:
-                    self._logger.warning(
-                        f"Failed to initialize with ctx={n_ctx}, batch={n_batch}, "
-                        f"gpu_layers={n_gpu_layers}: {e}"
-                    )
+                    error_str = str(e).lower()
+                    if any(oom_indicator in error_str for oom_indicator in [
+                        'out of memory', 'oom', 'cuda error', 'memory allocation failed', 
+                        'insufficient memory', 'cudamalloc failed'
+                    ]):
+                        self._logger.warning(f"🔥 OOM detected: {e}")
+                        self._handle_oom_recovery(n_ctx, n_batch, n_gpu_layers)
+                    else:
+                        self._logger.warning(
+                            f"Failed to initialize with ctx={n_ctx}, batch={n_batch}, "
+                            f"gpu_layers={n_gpu_layers}: {e}"
+                        )
                     continue
 
             # If we get here, context size failed for all GPU layer configurations

@@ -94,7 +94,7 @@ class LocalPipelineCacheManager:
             elif entry:
                 self._cache.pop(model_id, None)
 
-        required = self.estimate_memory(model)
+        required = self.estimate_memory(model, profile)
         if not self._ensure_memory(required, exclude=model_id):
             raise RuntimeError(
                 f"Insufficient memory for local model {model.name}: need {required/1e9:.2f}GB"
@@ -184,10 +184,12 @@ class LocalPipelineCacheManager:
         return count
 
     # ---- Internals ----
-    def estimate_memory(self, model: Model) -> float:
+    def estimate_memory(self, model: Model, profile: Optional['ModelProfile'] = None) -> float:
+        """Simple memory estimation - don't overthink it."""
         base = 512 * 1024 * 1024
         model_size = 0
         details = getattr(model, "details", None)
+        
         if details and getattr(details, "parameter_size", None):
             try:
                 raw = details.parameter_size.upper().strip()
@@ -229,12 +231,14 @@ class LocalPipelineCacheManager:
                 model_size = 8 * 1024 * 1024 * 1024
             else:
                 model_size = 2 * 1024 * 1024 * 1024
-        context_mem = 0
-        if str(getattr(model, "task", "")).endswith("TextToText"):
-            context_mem = min(model_size * 0.1, 2 * 1024 * 1024 * 1024)
-        total = (base + model_size + context_mem) * 1.10
+        
+        # Simple context memory - just add reasonable buffer
+        context_mem = model_size * 0.2  # 20% of model size for context/activations
+        
+        total = base + model_size + context_mem
         self.logger.debug(
-            f"Memory estimate local model {model.name}: {total/1e9:.2f}GB (model {model_size/1e9:.2f}GB)"
+            f"Memory estimate for {model.name}: {total/1e9:.2f}GB "
+            f"(model: {model_size/1e9:.2f}GB, context: {context_mem/1e9:.2f}GB)"
         )
         return total
 
