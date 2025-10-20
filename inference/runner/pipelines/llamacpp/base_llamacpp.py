@@ -200,7 +200,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
             for n_gpu_layers in gpu_candidates:
                 try:
-                    return llama_cpp.Llama(
+                    llama_instance = llama_cpp.Llama(
                         model_path=gguf_path,
                         n_gpu_layers=n_gpu_layers,
                         split_mode=llama_cpp.LLAMA_SPLIT_MODE_LAYER,
@@ -263,6 +263,13 @@ class BaseLlamaCppPipeline(BaseChatModel):
                         # Misc
                         spm_infill=False,
                     )
+                    
+                    # Success! Log the actual context size that worked
+                    self._logger.info(f"✅ Successfully initialized {self.model.name} with context={n_ctx:,}, batch={n_batch}, gpu_layers={n_gpu_layers}")
+                    if n_ctx != requested_ctx:
+                        self._logger.warning(f"🔄 Context fallback applied: requested {requested_ctx:,} → actual {n_ctx:,}")
+                    
+                    return llama_instance
 
                 except Exception as e:
                     self._logger.warning(
@@ -271,6 +278,11 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     )
                     continue
 
+            # If we get here, context size failed for all GPU layer configurations
+            self._logger.error(f"❌ All GPU layer configurations failed for context size {n_ctx}")
+
+        # If we get here, all context sizes failed
+        self._logger.error(f"💥 CRITICAL: Failed to initialize with any context size. Requested: {requested_ctx}, Tried: {context_candidates}")
         raise RuntimeError(
             f"Failed to initialize {self.model.name} with any configuration"
         )
@@ -479,13 +491,13 @@ class BaseLlamaCppPipeline(BaseChatModel):
         
         # DEBUG: Log the actual messages being sent to llama.cpp if context is large
         total_content_chars = sum(len(str(msg.get('content', ''))) for msg in llama_messages)
-        if total_content_chars > 20000:  # Debug if content is large
+        if total_content_chars > 5000:  # Debug if content is large (lowered threshold)
             self._logger.warning(f"🚨 LARGE CONTENT DETECTED: {total_content_chars:,} characters in {len(llama_messages)} messages")
             for i, msg in enumerate(llama_messages):
                 content = str(msg.get('content', ''))
                 content_size = len(content)
                 self._logger.warning(f"  Message {i+1} ({msg.get('role', 'unknown')}): {content_size:,} chars")
-                if content_size > 5000:  # Show preview of large content
+                if content_size > 1000:  # Show preview of large content (lowered threshold)
                     self._logger.warning(f"    Preview: {content[:500]}...")
 
         # Log token usage with more detail
