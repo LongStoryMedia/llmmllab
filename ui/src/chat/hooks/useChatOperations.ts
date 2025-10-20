@@ -347,9 +347,20 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
       // Remove all the deleted messages from local state
       actions.setMessages(prev => prev.filter(msg => !msg.id || msg.id < message.id!));
 
-      // Re-post the original message
+      // Re-post the original message (without the old ID so the server assigns a new one)
       console.log(`Re-posting message for replay: ${message.id}`);
-      await sendMessage(message);
+      const messageWithoutId = { ...message };
+      delete messageWithoutId.id; // Remove the old ID so server assigns a new one
+      
+      await sendMessage(messageWithoutId);
+
+      // After sending is complete, refresh messages from server to get the new IDs
+      console.log("Refreshing messages to get new IDs after replay");
+      
+      // Clear current messages and fetch fresh from server to avoid ID conflicts
+      actions.setMessages([]);
+      const freshMessages = await getMessages(getToken(auth.user), state.currentConversation.id);
+      actions.setMessages(freshMessages ?? []);
 
     } catch (err: unknown) {
       actions.setError((err as Error).message);
