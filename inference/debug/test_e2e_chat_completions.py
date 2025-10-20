@@ -33,6 +33,7 @@ class E2ETestRunner:
     def __init__(self):
         self.test_user_id = "e2e_test_user"
         self.test_conversation_id = None
+        self.invalid_conversation_id = None
         self.setup_complete = False
 
     async def setup_test_environment(self):
@@ -68,6 +69,14 @@ class E2ETestRunner:
                 self.test_user_id, "E2E Test Conversation"
             )
             print(f"   ✅ Created test conversation: {self.test_conversation_id}")
+            
+            # Also create a separate invalid conversation for error testing
+            self.invalid_conversation_id = await storage.conversation.create_conversation(
+                self.test_user_id, "Invalid Test Conversation - To Be Deleted"
+            )
+            # Delete it immediately to create a valid but non-existent conversation ID
+            await storage.conversation.delete_conversation(self.invalid_conversation_id)
+            print(f"   ✅ Created invalid conversation ID for testing: {self.invalid_conversation_id}")
 
             self.setup_complete = True
             return True
@@ -102,6 +111,9 @@ class E2ETestRunner:
             mock_request.state = Mock()
             mock_request.state.user_id = self.test_user_id
             mock_request.state.request_id = "e2e-test-request-123"
+            # Set up proper auth mock for get_user_id function
+            mock_request.state.auth = Mock()
+            mock_request.state.auth.get = Mock(return_value=self.test_user_id)
 
             print("   📡 Calling chat_completion function...")
             response = await chat_completion(
@@ -117,17 +129,21 @@ class E2ETestRunner:
                 content_received = ""
 
                 async for chunk in response.body_iterator:
-                    decoded_chunk = chunk.decode("utf-8")
-                    print(f"   📦 Chunk {event_count}: {decoded_chunk[:100]}...")
+                    # Chunk is already a string, no need to decode
+                    chunk_str = chunk if isinstance(chunk, str) else chunk.decode("utf-8")
+                    print(f"   📦 Chunk {event_count}: {chunk_str[:100]}...")
 
-                    # Parse SSE data
-                    if decoded_chunk.startswith("data: "):
-                        try:
-                            data_json = json.loads(decoded_chunk[6:])
-                            if "content" in data_json:
-                                content_received += data_json["content"]
-                        except json.JSONDecodeError:
-                            pass
+                    # Parse JSON data directly (no SSE format in our implementation)
+                    try:
+                        data_json = json.loads(chunk_str)
+                        if isinstance(data_json, dict) and "message" in data_json:
+                            message = data_json["message"]
+                            if "content" in message and isinstance(message["content"], list):
+                                for content_item in message["content"]:
+                                    if content_item.get("type") == "text":
+                                        content_received += content_item.get("text", "")
+                    except json.JSONDecodeError:
+                        pass
 
                     event_count += 1
                     if event_count >= 10:  # Test first 10 chunks
@@ -239,7 +255,7 @@ class E2ETestRunner:
             # Test with invalid conversation ID
             print("   ❌ Testing invalid conversation ID...")
             invalid_message = Message(
-                conversation_id=99999,  # Non-existent conversation
+                conversation_id=self.invalid_conversation_id,  # Previously deleted conversation
                 role=MessageRole.USER,
                 content=[
                     {
@@ -254,6 +270,9 @@ class E2ETestRunner:
             mock_request.state = Mock()
             mock_request.state.user_id = self.test_user_id
             mock_request.state.request_id = "error-test-request"
+            # Set up proper auth mock for get_user_id function
+            mock_request.state.auth = Mock()
+            mock_request.state.auth.get = Mock(return_value=self.test_user_id)
 
             try:
                 await chat_completion(invalid_message, mock_request)

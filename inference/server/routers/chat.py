@@ -248,7 +248,12 @@ async def chat_completion(
 
         # Provide specific error messages
         error_detail = f"Error in chat completion: {str(e)}"
-        if "composer service not initialized" in str(e).lower():
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        
+        if "referenced conversation does not exist" in str(e).lower():
+            error_detail = "Referenced conversation does not exist"
+            status_code = status.HTTP_400_BAD_REQUEST
+        elif "composer service not initialized" in str(e).lower():
             error_detail = "AI service not ready. Please try again in a moment."
         elif "workflow construction" in str(e).lower():
             error_detail = (
@@ -264,7 +269,7 @@ async def chat_completion(
             )
 
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status_code,
             detail=error_detail,
         ) from e
 
