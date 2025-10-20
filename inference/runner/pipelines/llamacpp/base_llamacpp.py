@@ -375,24 +375,20 @@ class BaseLlamaCppPipeline(BaseChatModel):
             f"Failed to initialize {self.model.name} after all OOM recovery attempts"
         )
 
-    def _format_messages_for_llama(
-        self, messages: List[BaseMessage]
-    ) -> List[llama_types.ChatCompletionRequestMessage]:
-        """Convert LangChain messages to llama-cpp-python chat format."""
+    def _format_messages_for_llama(self, messages: List[BaseMessage]) -> List[Dict[str, str]]:
+        """Convert LangChain messages to simple dict format for llama-cpp-python."""
         llama_messages = []
 
         for message in messages:
             if isinstance(message, SystemMessage):
-                llama_messages.append({"role": "system", "content": message.content})
+                llama_messages.append({"role": "system", "content": str(message.content)})
             elif isinstance(message, HumanMessage):
-                llama_messages.append({"role": "user", "content": message.content})
+                llama_messages.append({"role": "user", "content": str(message.content)})
             elif isinstance(message, AIMessage):
-                llama_messages.append({"role": "assistant", "content": message.content})
+                llama_messages.append({"role": "assistant", "content": str(message.content)})
             elif isinstance(message, ToolMessage):
                 # Format tool results as user messages for now
-                llama_messages.append(
-                    {"role": "user", "content": f"Tool result: {message.content}"}
-                )
+                llama_messages.append({"role": "user", "content": f"Tool result: {message.content}"})
             else:
                 # Fallback: treat as user message
                 llama_messages.append({"role": "user", "content": str(message.content)})
@@ -409,82 +405,59 @@ class BaseLlamaCppPipeline(BaseChatModel):
             total_tokens=prompt_tokens + completion_tokens,
         )
 
-    def _convert_tools_to_openai_format(self, tools):
-        """Convert LangChain tools to OpenAI function calling format for llama-cpp-python."""
+    def _convert_tools_to_simple_format(self, tools):
+        """Convert LangChain tools to simple format for llama-cpp-python."""
         if not tools:
             return None
 
         converted_tools = []
         for tool in tools:
             try:
-                # Handle different tool types
-                if (
-                    hasattr(tool, "args_schema")
-                    and hasattr(tool, "name")
-                    and hasattr(tool, "description")
-                ):
-                    # LangChain StructuredTool or similar
+                # Simple tool format - just name, description, and basic parameters
+                if hasattr(tool, "name") and hasattr(tool, "description"):
                     tool_dict = {
                         "type": "function",
                         "function": {
                             "name": tool.name,
-                            "description": tool.description,
-                        },
+                            "description": tool.description or "",
+                        }
                     }
 
-                    # Add parameters schema if available
-                    if tool.args_schema:
+                    # Add a simple parameters schema (filtered to exclude injected params)
+                    if hasattr(tool, "args_schema") and tool.args_schema:
                         try:
                             if hasattr(tool.args_schema, "model_json_schema"):
-                                # Pydantic model schema
                                 schema = tool.args_schema.model_json_schema()
-                            elif hasattr(tool.args_schema, "schema"):
-                                # Other schema types
-                                schema = tool.args_schema.schema()
                             else:
                                 schema = {"type": "object", "properties": {}}
 
-                            # CRITICAL FIX: Filter out injected parameters that shouldn't be sent to LLM
-                            # LangChain tools with InjectedState and InjectedToolCallId should not include
-                            # these massive schemas in the prompt sent to the LLM
+                            # Filter out injected LangGraph parameters
                             if 'properties' in schema:
-                                # Remove injected parameters: 'state' (WorkflowState) and 'tool_call_id'
-                                filtered_props = {k: v for k, v in schema['properties'].items() 
-                                                if k not in ['state', 'tool_call_id']}
-                                
-                                # Create filtered schema without massive injected state
-                                filtered_schema = {
-                                    "type": "object",
-                                    "properties": filtered_props,
-                                    "required": [req for req in schema.get('required', []) 
-                                               if req not in ['state', 'tool_call_id']]
+                                filtered_props = {
+                                    k: v for k, v in schema['properties'].items() 
+                                    if k not in ['state', 'tool_call_id']
                                 }
                                 
-                                tool_dict["function"]["parameters"] = filtered_schema
+                                tool_dict["function"]["parameters"] = {
+                                    "type": "object",
+                                    "properties": filtered_props,
+                                    "required": [
+                                        req for req in schema.get('required', []) 
+                                        if req not in ['state', 'tool_call_id']
+                                    ]
+                                }
                             else:
-                                tool_dict["function"]["parameters"] = schema
+                                tool_dict["function"]["parameters"] = {
+                                    "type": "object", 
+                                    "properties": {}
+                                }
                         except Exception as e:
-                            self._logger.warning(
-                                f"Could not extract schema for tool {tool.name}: {e}"
-                            )
-                            tool_dict["function"]["parameters"] = {
-                                "type": "object",
-                                "properties": {},
-                            }
+                            self._logger.warning(f"Could not extract schema for tool {tool.name}: {e}")
+                            tool_dict["function"]["parameters"] = {"type": "object", "properties": {}}
                     else:
-                        tool_dict["function"]["parameters"] = {
-                            "type": "object",
-                            "properties": {},
-                        }
+                        tool_dict["function"]["parameters"] = {"type": "object", "properties": {}}
 
                     converted_tools.append(tool_dict)
-
-                elif isinstance(tool, dict):
-                    # Already in the right format
-                    converted_tools.append(tool)
-
-                else:
-                    self._logger.warning(f"Unknown tool type: {type(tool)}, skipping")
 
             except Exception as e:
                 self._logger.error(f"Error converting tool: {e}")
@@ -492,205 +465,32 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
         return converted_tools if converted_tools else None
 
-    def _estimate_tokens(self, text: str) -> int:
-        """Estimate token count for text (more conservative approximation)."""
-        # More conservative approximation: ~3 characters per token
-        # This gives us more headroom and avoids false positives for context overflow
-        return max(1, len(text) // 3)
-
-    def _count_message_tokens(self, messages: List[BaseMessage]) -> int:
-        """Count approximate tokens in messages."""
-        total_tokens = 0
-        for message in messages:
-            if hasattr(message, "content") and message.content:
-                total_tokens += self._estimate_tokens(str(message.content))
-        return total_tokens
-
-    def _count_tool_tokens(
-        self, tools: Optional[List[llama_types.ChatCompletionTool]]
-    ) -> int:
-        """Count approximate tokens in tool definitions."""
-        if not tools:
-            return 0
-
-        total_tokens = 0
-        for tool in tools:
-            if hasattr(tool, "function"):
-                # Count function name, description, and parameters
-                if hasattr(tool.function, "name"):
-                    total_tokens += self._estimate_tokens(tool.function.name)
-                if hasattr(tool.function, "description"):
-                    total_tokens += self._estimate_tokens(tool.function.description)
-                if hasattr(tool.function, "parameters"):
-                    # Parameters schema can be quite large
-                    total_tokens += self._estimate_tokens(
-                        json.dumps(tool.function.parameters)
-                    )
-
-        return total_tokens
-
-    def _trim_messages_to_context(
-        self,
-        messages: List[BaseMessage],
-        tools: Optional[List[llama_types.ChatCompletionTool]] = None,
-        max_tokens: Optional[int] = None,
-    ) -> List[BaseMessage]:
-        """Trim messages to fit within context window."""
-        if not max_tokens:
-            # Use llama instance context size if available, otherwise default
-            max_tokens = getattr(self.llama_instance, "n_ctx", lambda: 4096)()
-
-        # Reserve tokens for tools, system prompt, and response
-        tool_tokens = self._count_tool_tokens(tools)
-        system_tokens = 0
-        response_reserve = self.profile.parameters.max_tokens or 4096
-
-        # Find system message tokens
-        if messages and hasattr(messages[0], "content"):
-            if any(isinstance(msg, SystemMessage) for msg in messages[:1]):
-                system_tokens = self._count_message_tokens(messages[:1])
-
-        # Available tokens for conversation history - minimal buffer for template overhead
-        if max_tokens:
-            template_overhead = max(
-                500, int(max_tokens * 0.02)
-            )  # 2% or min 500 tokens for template
-            available_tokens = (
-                max_tokens
-                - tool_tokens
-                - system_tokens
-                - response_reserve
-                - template_overhead
-            )
-        else:
-            # Fallback if max_tokens is None
-            available_tokens = 50000  # Large default to avoid premature trimming
-
-        if available_tokens <= 0:
-            self._logger.warning(
-                f"Context window too small: max={max_tokens}, tools={tool_tokens}, "
-                f"system={system_tokens}, response={response_reserve}"
-            )
-            # Keep only system message if any - cast to satisfy type checker
-            system_msgs = [msg for msg in messages if isinstance(msg, SystemMessage)][
-                :1
-            ]
-            return system_msgs
-
-        # Count tokens from the end (most recent messages)
-        trimmed_messages = []
-        current_tokens = 0
-
-        # Always keep system message first
-        system_messages = [msg for msg in messages if isinstance(msg, SystemMessage)]
-        other_messages = [msg for msg in messages if not isinstance(msg, SystemMessage)]
-
-        # Add system messages
-        trimmed_messages.extend(system_messages)
-
-        # Add other messages from most recent, checking token limits
-        for message in reversed(other_messages):
-            message_tokens = self._count_message_tokens([message])
-            if current_tokens + message_tokens <= available_tokens:
-                trimmed_messages.insert(
-                    len(system_messages), message
-                )  # Insert after system messages
-                current_tokens += message_tokens
-            else:
-                self._logger.info(
-                    f"Trimming message due to context limit: {message_tokens} tokens"
-                )
-                break
-
-        if len(trimmed_messages) < len(messages):
-            self._logger.info(
-                f"Trimmed {len(messages) - len(trimmed_messages)} messages to fit context window"
-            )
-
-        return trimmed_messages
-
     def _get_res(
         self,
         messages: List[BaseMessage],
         stop: Optional[List[str]] = None,
-        tools: Optional[List[llama_types.ChatCompletionTool]] = None,
+        tools: Optional[List[Any]] = None,
         stream: bool = False,
-    ) -> (
-        llama_types.CreateChatCompletionResponse
-        | Iterator[llama_types.CreateChatCompletionStreamResponse]
     ):
-        """Get response from llama-cpp-python, either streaming or non-streaming."""
+        """Get response from llama-cpp-python with simplified formatting."""
         assert self.llama_instance
 
-        # Convert LangChain tools to OpenAI format for llama-cpp-python
-        converted_tools = self._convert_tools_to_openai_format(tools)
+        # Convert tools to simple format (keeping the fix for injected params)
+        converted_tools = self._convert_tools_to_simple_format(tools)
 
-        # Trim messages to fit context window
-        trimmed_messages = self._trim_messages_to_context(messages, converted_tools)
+        # Simple message conversion - let llama-cpp-python handle context limits
+        llama_messages = self._format_messages_for_llama(messages)
 
-        # Format messages for llama-cpp-python
-        llama_messages = self._format_messages_for_llama(trimmed_messages)
-
-        # DEBUG: Log the actual messages being sent to llama.cpp if context is large
-        total_content_chars = sum(
-            len(str(msg.get("content", ""))) for msg in llama_messages
-        )
-        if total_content_chars > 5000:  # Debug if content is large (lowered threshold)
-            self._logger.warning(
-                f"🚨 LARGE CONTENT DETECTED: {total_content_chars:,} characters in {len(llama_messages)} messages"
-            )
-            for i, msg in enumerate(llama_messages):
-                content = str(msg.get("content", ""))
-                content_size = len(content)
-                self._logger.warning(
-                    f"  Message {i+1} ({msg.get('role', 'unknown')}): {content_size:,} chars"
-                )
-                if (
-                    content_size > 1000
-                ):  # Show preview of large content (lowered threshold)
-                    self._logger.warning(f"    Preview: {content[:500]}...")
-
-        # Log token usage with more detail
-        message_tokens = self._count_message_tokens(trimmed_messages)
-        tool_tokens = self._count_tool_tokens(converted_tools)
-        total_estimated = message_tokens + tool_tokens
-        context_limit = getattr(self.llama_instance, "n_ctx", lambda: 4096)()
-
-        # Count how many messages were trimmed
-        original_count = len(messages)
-        trimmed_count = len(trimmed_messages)
-
+        # Basic logging without excessive detail
         self._logger.info(
-            f"Context management: model={self.model.name}, "
-            f"messages={trimmed_count}/{original_count}, "
-            f"message_tokens={message_tokens}, tool_tokens={tool_tokens}, "
-            f"total_estimated={total_estimated}, context_limit={context_limit}"
+            f"Chat completion: model={self.model.name}, "
+            f"messages={len(llama_messages)}, "
+            f"tools={len(converted_tools) if converted_tools else 0}"
         )
 
-        # Debug: Log actual content being sent to llama.cpp if it might be problematic
-        if total_estimated > context_limit * 0.5:  # Debug at 50% to catch issues early
-            self._logger.warning(f"⚠️ Context debugging enabled for {self.model.name}")
-            self._logger.warning(
-                f"Message contents: {[msg['content'][:200] + '...' if len(str(msg['content'])) > 200 else msg['content'] for msg in llama_messages]}"
-            )
-            if converted_tools:
-                self._logger.warning(f"Tool schemas: {len(converted_tools)} tools")
-                for i, tool in enumerate(converted_tools[:2]):  # Log first 2 tools
-                    tool_str = str(tool)
-                    self._logger.warning(
-                        f"Tool {i+1}: {tool_str[:500] + '...' if len(tool_str) > 500 else tool_str}"
-                    )
-
-        if total_estimated > context_limit * 0.9:  # Warn at 90% capacity
-            self._logger.warning(
-                f"APPROACHING CONTEXT LIMIT: {total_estimated}/{context_limit} tokens "
-                f"({total_estimated/context_limit*100:.1f}%) - may still exceed due to template overhead"
-            )
-
-        response_format: Optional[llama_types.ChatCompletionRequestResponseFormat] = (
-            None
-        )
-        grammar: Optional[llama_grammar.LlamaGrammar] = None
+        # Setup grammar if needed
+        response_format = None
+        grammar = None
         if self.grammar:
             response_format = {
                 "type": "json_object",
@@ -700,35 +500,20 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 json.dumps(self.grammar.model_json_schema())
             )
 
-        # Make the call - let llama-cpp-python handle context validation
+        # Simple call to llama-cpp-python - let it handle the complexity
         return self.llama_instance.create_chat_completion(
             messages=llama_messages,
-            functions=converted_tools,
-            function_call="auto" if converted_tools else None,
             tools=converted_tools,
             tool_choice="auto" if converted_tools else None,
             temperature=self.profile.parameters.temperature or 0.7,
             top_p=self.profile.parameters.top_p or 0.95,
             top_k=self.profile.parameters.top_k or 40,
-            min_p=self.profile.parameters.min_p or 0.05,
-            typical_p=1.0,
             stream=stream,
             stop=self.profile.parameters.stop or stop or [],
-            seed=self.profile.parameters.seed or llama_cpp.LLAMA_DEFAULT_SEED,
-            response_format=response_format,
             max_tokens=self.profile.parameters.max_tokens or 4096,
-            presence_penalty=0.0,
-            frequency_penalty=0.0,
             repeat_penalty=self.profile.parameters.repeat_penalty or 1.05,
-            mirostat_mode=0,
-            mirostat_tau=5.0,
-            mirostat_eta=0.1,
-            model=self.model.name,
-            logits_processor=None,
+            response_format=response_format,
             grammar=grammar,
-            logit_bias=None,
-            logprobs=None,
-            top_logprobs=None,
         )
 
     def _generate(
@@ -745,36 +530,38 @@ class BaseLlamaCppPipeline(BaseChatModel):
             tools = list(self._bound_tools) + list(tools or [])
 
         try:
-            res = self._get_res(
+            response = self._get_res(
                 messages=messages,
                 stop=stop,
                 tools=tools,
                 stream=False,
             )
-            response = cast(llama_types.CreateChatCompletionResponse, res)
 
-            # Extract content and usage
-            content = response["choices"][0]["message"]["content"]
-            usage = response.get("usage", {})
+            # For non-streaming, response should be a dict
+            if isinstance(response, dict):
+                content = response["choices"][0]["message"]["content"]
+                usage = response.get("usage", {})
 
-            # Create usage metadata
-            usage_metadata = self._calculate_usage_metadata(
-                prompt_tokens=usage.get("prompt_tokens", 0),
-                completion_tokens=usage.get("completion_tokens", 0),
-            )
+                # Create usage metadata
+                usage_metadata = self._calculate_usage_metadata(
+                    prompt_tokens=usage.get("prompt_tokens", 0),
+                    completion_tokens=usage.get("completion_tokens", 0),
+                )
 
-            # Create AI message
-            message = AIMessage(
-                content=content,
-                usage_metadata=usage_metadata,
-                response_metadata={
-                    "model_name": self.model.name,
-                    "finish_reason": response["choices"][0].get("finish_reason"),
-                },
-            )
+                # Create AI message
+                message = AIMessage(
+                    content=content,
+                    usage_metadata=usage_metadata,
+                    response_metadata={
+                        "model_name": self.model.name,
+                        "finish_reason": response["choices"][0].get("finish_reason"),
+                    },
+                )
 
-            generation = ChatGeneration(message=message)
-            return ChatResult(generations=[generation])
+                generation = ChatGeneration(message=message)
+                return ChatResult(generations=[generation])
+            else:
+                raise ValueError("Expected dict response for non-streaming generation")
 
         except Exception as e:
             self._logger.error(f"Generation failed: {e}")
@@ -794,51 +581,54 @@ class BaseLlamaCppPipeline(BaseChatModel):
             tools = list(self._bound_tools) + list(tools or [])
 
         try:
-            # Stream response using llama-cpp-python
-            res = self._get_res(
+            # Stream response using llama-cpp-python - simple dict iteration
+            response_stream = self._get_res(
                 messages=messages,
                 stop=stop,
                 tools=tools,
                 stream=True,
             )
-            stream = cast(Iterator[llama_types.CreateChatCompletionStreamResponse], res)
 
-            for chunk in stream:
-                delta = chunk["choices"][0]["delta"]
-                content = delta.get("content", "") or ""
-                finish_reason = chunk["choices"][0].get("finish_reason")
+            # For streaming, response should be an iterator
+            for chunk in response_stream:
+                # Handle chunk as a dict
+                if isinstance(chunk, dict) and "choices" in chunk:
+                    delta = chunk["choices"][0].get("delta", {})
+                    content = delta.get("content", "") or ""
+                    finish_reason = chunk["choices"][0].get("finish_reason")
 
-                # Create usage metadata if available
-                usage_metadata = None
-                if "usage" in chunk:
-                    usage = chunk["usage"]
-                    usage_metadata = self._calculate_usage_metadata(
-                        prompt_tokens=usage.get("prompt_tokens", 0),
-                        completion_tokens=usage.get("completion_tokens", 0),
+                    # Create usage metadata if available
+                    usage_metadata = None
+                    if "usage" in chunk:
+                        usage = chunk["usage"]
+                        if isinstance(usage, dict):
+                            usage_metadata = self._calculate_usage_metadata(
+                                prompt_tokens=usage.get("prompt_tokens", 0),
+                                completion_tokens=usage.get("completion_tokens", 0),
+                            )
+
+                    # Create chunk message
+                    chunk_message = AIMessageChunk(
+                        content=content,
+                        usage_metadata=usage_metadata,
+                        response_metadata=(
+                            {
+                                "model_name": self.model.name,
+                                "finish_reason": finish_reason,
+                            }
+                            if finish_reason
+                            else {}
+                        ),
+                        chunk_position="last" if finish_reason == "stop" else None,
                     )
 
-                # Create chunk message
-                chunk_message = AIMessageChunk(
-                    content=content,
-                    usage_metadata=usage_metadata,
-                    response_metadata=(
-                        {
-                            "model_name": self.model.name,
-                            "finish_reason": finish_reason,
-                        }
-                        if finish_reason
-                        else {}
-                    ),
-                    chunk_position="last" if finish_reason == "stop" else None,
-                )
+                    # Create and yield generation chunk
+                    generation_chunk = ChatGenerationChunk(message=chunk_message)
 
-                # Create and yield generation chunk
-                generation_chunk = ChatGenerationChunk(message=chunk_message)
+                    if run_manager:
+                        run_manager.on_llm_new_token(content, chunk=generation_chunk)
 
-                if run_manager:
-                    run_manager.on_llm_new_token(content, chunk=generation_chunk)
-
-                yield generation_chunk
+                    yield generation_chunk
 
         except Exception as e:
             self._logger.error(f"Streaming failed: {e}")
