@@ -9,7 +9,7 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 
 import json
 import os
-import os
+import re
 from typing import AsyncGenerator, Any, Dict
 
 from langchain_core.runnables.schema import StandardStreamEvent, CustomStreamEvent
@@ -32,6 +32,50 @@ from models import (
 import composer
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+def parse_tool_calls_from_content(content: str) -> tuple[str, list]:
+    """
+    Parse tool calls from content and return cleaned content and tool calls.
+    Adapted from LlamaCpp pipeline tool call parsing.
+    """
+    if not content or not isinstance(content, str):
+        return content, []
+    
+    # Regex pattern to match both <tool_call> and <function-call> tags
+    pattern = r'<(?:tool_call|function-call)>\s*(\{.*?\})\s*</(?:tool_call|function-call)>'
+    
+    tool_calls = []
+    matches = re.finditer(pattern, content, re.DOTALL)
+    
+    for i, match in enumerate(matches):
+        try:
+            json_str = match.group(1)
+            tool_call_data = json.loads(json_str)
+            
+            # Convert to LangChain tool call format
+            tool_call = {
+                "id": f"call_{i}",
+                "name": tool_call_data.get("name", ""),
+                "args": tool_call_data.get("args", tool_call_data.get("arguments", {})),
+                "type": "tool_call"
+            }
+            tool_calls.append(tool_call)
+            
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning(f"Failed to parse tool call: {e}")
+            continue
+    
+    # Remove tool call tags from content
+    cleaned_content = re.sub(pattern, '', content, flags=re.DOTALL)
+    
+    # Also remove <think> tags and their contents
+    cleaned_content = re.sub(r'<think>.*?</think>', '', cleaned_content, flags=re.DOTALL)
+    
+    # Clean up extra whitespace
+    cleaned_content = re.sub(r'\n\s*\n', '\n\n', cleaned_content).strip()
+    
+    return cleaned_content, tool_calls
 
 
 @router.post("/completions", response_model=ChatResponse)
@@ -78,8 +122,11 @@ async def chat_completion(
                     user_id, conversation_id
                 )
 
-                # Execute workflow and stream events
+                # Track accumulated content for final response
+                accumulated_content = ""
                 final_state = None
+
+                # Execute workflow and stream events
                 async for event in composer.execute_workflow(
                     workflow, initial_state, stream=True
                 ):
@@ -87,7 +134,7 @@ async def chat_completion(
                         event_type = event.get("event", "")
                         event_data = event.get("data", {})
 
-                        # Try to capture streaming content from various event types
+                        # Only stream from chat model events to avoid duplication
                         if event_type == "on_chat_model_stream":
                             chunk = event_data.get("chunk", {})
                             content = ""
@@ -98,6 +145,9 @@ async def chat_completion(
                                 content = str(chunk.content)
 
                             if content:
+                                accumulated_content += content
+                                
+                                # Stream raw content chunks (tool calls will be parsed at the end)
                                 chat_response = {
                                     "message": {
                                         "role": "assistant",
@@ -111,40 +161,9 @@ async def chat_completion(
                             # Capture final state for response extraction
                             final_state = event_data.get("output", {})
 
-                        # Also try to extract streaming content from other event types
-                        elif event_type in [
-                            "on_chain_stream",
-                            "on_tool_end",
-                            "on_chain_start",
-                        ]:
-                            # Look for streaming content in various places
-                            output = event_data.get("output", {})
-                            if isinstance(output, dict):
-                                # Check for message content
-                                messages = output.get("messages", [])
-                                if messages and isinstance(messages, list):
-                                    for msg in messages:
-                                        if (
-                                            isinstance(msg, dict)
-                                            and msg.get("type") == "ai"
-                                        ):
-                                            content = msg.get("content", "")
-                                            if content and isinstance(content, str):
-                                                chat_response = {
-                                                    "message": {
-                                                        "role": "assistant",
-                                                        "content": [
-                                                            {
-                                                                "type": "text",
-                                                                "text": content,
-                                                            }
-                                                        ],
-                                                    },
-                                                    "done": False,
-                                                }
-                                                yield f"{safe_json_serialize(chat_response)}\n"
-
-                # Extract final response from workflow state
+                # Extract final response from workflow state or accumulated content
+                final_content = ""
+                
                 if final_state and isinstance(final_state, dict):
                     messages = final_state.get("messages", [])
                     if messages and isinstance(messages, list) and len(messages) > 0:
@@ -152,9 +171,7 @@ async def chat_completion(
                         last_message = None
                         for msg in reversed(messages):
                             if isinstance(msg, dict):
-                                role = msg.get(
-                                    "type", ""
-                                ).lower()  # LangChain message type
+                                role = msg.get("type", "").lower()  # LangChain message type
                                 if role == "ai" or role == "assistant":
                                     last_message = msg
                                     break
@@ -167,47 +184,56 @@ async def chat_completion(
 
                         if last_message:
                             # Extract content from LangChain message
-                            content = ""
                             if isinstance(last_message, dict):
-                                content = last_message.get("content", "")
+                                final_content = last_message.get("content", "")
                             elif hasattr(last_message, "content"):
-                                content = str(last_message.content)
+                                final_content = str(last_message.content)
+                
+                # Use accumulated content if no final state content
+                if not final_content and accumulated_content:
+                    final_content = accumulated_content
 
-                            if content:
-                                # Save assistant response to database
-                                if storage.message:
-                                    try:
+                if final_content:
+                    # Parse tool calls from the final content
+                    cleaned_content, tool_calls = parse_tool_calls_from_content(final_content)
+                    
+                    # Create final response with parsed tool calls
+                    final_response = {
+                        "message": {
+                            "role": "assistant",
+                            "content": [{"type": "text", "text": cleaned_content}],
+                        },
+                        "done": True,
+                    }
+                    
+                    # Add tool calls if any were found
+                    if tool_calls:
+                        final_response["message"]["tool_calls"] = tool_calls
+                    
+                    # Save assistant response to database
+                    if storage.message:
+                        try:
+                            assistant_message = Message(
+                                conversation_id=conversation_id,
+                                role=MessageRole.ASSISTANT,
+                                content=[
+                                    MessageContent(
+                                        type=MessageContentType.TEXT,
+                                        text=cleaned_content,
+                                    )
+                                ],
+                            )
+                            await storage.message.add_message(assistant_message)
+                            logger.debug(
+                                f"Assistant response stored for conversation {conversation_id}"
+                            )
+                        except Exception as storage_error:
+                            logger.warning(
+                                f"Failed to store assistant response: {storage_error}"
+                            )
 
-                                        assistant_message = Message(
-                                            conversation_id=conversation_id,
-                                            role=MessageRole.ASSISTANT,
-                                            content=[
-                                                MessageContent(
-                                                    type=MessageContentType.TEXT,
-                                                    text=content,
-                                                )
-                                            ],
-                                        )
-                                        await storage.message.add_message(
-                                            assistant_message
-                                        )
-                                        logger.debug(
-                                            f"Assistant response stored for conversation {conversation_id}"
-                                        )
-                                    except Exception as storage_error:
-                                        logger.warning(
-                                            f"Failed to store assistant response: {storage_error}"
-                                        )
-
-                                final_response = {
-                                    "message": {
-                                        "role": "assistant",
-                                        "content": [{"type": "text", "text": content}],
-                                    },
-                                    "done": True,
-                                }
-                                yield f"{safe_json_serialize(final_response)}\n"
-                                return
+                    yield f"{safe_json_serialize(final_response)}\n"
+                    return
 
                 # Fallback if no response was extracted
                 fallback_response = {
