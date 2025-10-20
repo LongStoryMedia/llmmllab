@@ -10,6 +10,7 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 import json
 import os
 import os
+from datetime import datetime
 from typing import AsyncGenerator, Any, Dict
 
 from langchain_core.runnables.schema import StandardStreamEvent, CustomStreamEvent
@@ -320,10 +321,55 @@ def safe_json_serialize(obj: Any) -> str:
 
 
 def dbg_evt(evt: StandardStreamEvent | CustomStreamEvent | Dict[str, Any]):
-    """Debug and log all events from the composer workflow."""
+    """Debug and log workflow events with selective detail to avoid log spam."""
     if isinstance(evt, dict):
         event_type = evt.get("event", "")
         event_data = evt.get("data", {})
-
-        for k, v in event_data.items():
-            logger.debug(f"Event {event_type} - {k}: {safe_json_serialize(v)}")
+        
+        # Only log significant events to reduce noise
+        significant_events = {
+            "on_chain_start", "on_chain_end", 
+            "on_chat_model_start", "on_chat_model_end", "on_chat_model_stream",
+            "on_tool_start", "on_tool_end",
+            "workflow_error"
+        }
+        
+        if event_type in significant_events:
+            # Create concise summary instead of dumping everything
+            summary = {
+                "event": event_type,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            # Add selective details based on event type
+            if event_type == "on_chat_model_stream":
+                chunk = event_data.get("chunk", {})
+                content = ""
+                
+                if isinstance(chunk, dict):
+                    content = chunk.get("content", "")
+                elif hasattr(chunk, "content"):
+                    content = str(chunk.content)
+                    
+                if content:
+                    summary["content_length"] = len(content)
+                    summary["content_preview"] = content[:50] + "..." if len(content) > 50 else content
+            elif event_type in ["on_chain_start", "on_chain_end"]:
+                # Only log node name and basic metadata, not full state
+                summary["name"] = evt.get("name", "")
+                if "metadata" in event_data:
+                    summary["node_metadata"] = event_data.get("metadata", {})
+            elif event_type in ["on_tool_start", "on_tool_end"]:
+                summary["name"] = evt.get("name", "")
+                if "input" in event_data:
+                    # Summarize tool input instead of full dump
+                    tool_input = event_data["input"]
+                    if isinstance(tool_input, dict):
+                        summary["tool_input_keys"] = list(tool_input.keys())
+                    else:
+                        summary["tool_input_type"] = type(tool_input).__name__
+            elif event_type == "workflow_error":
+                summary["error"] = str(event_data.get("error", "Unknown error"))
+            
+            logger.debug("Workflow event", **summary)
+        # Skip logging for non-significant events to reduce noise

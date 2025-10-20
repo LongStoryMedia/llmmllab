@@ -103,14 +103,9 @@ class E2ETestRunner:
             mock_request.state.user_id = self.test_user_id
             mock_request.state.request_id = "e2e-test-request-123"
 
-            # Mock background tasks
-            from fastapi import BackgroundTasks
-
-            background_tasks = BackgroundTasks()
-
             print("   📡 Calling chat_completion function...")
             response = await chat_completion(
-                test_message, mock_request, background_tasks
+                test_message, mock_request
             )
 
             print(f"   ✅ Response type: {type(response)}")
@@ -260,12 +255,8 @@ class E2ETestRunner:
             mock_request.state.user_id = self.test_user_id
             mock_request.state.request_id = "error-test-request"
 
-            from fastapi import BackgroundTasks
-
-            background_tasks = BackgroundTasks()
-
             try:
-                await chat_completion(invalid_message, mock_request, background_tasks)
+                await chat_completion(invalid_message, mock_request)
                 print("   ❌ ERROR: Should have raised HTTPException")
                 return False
             except HTTPException as e:
