@@ -205,106 +205,23 @@ class ToolRegistry:
 
     def convert_tools_to_langchain(self, tools: List[Tool]) -> List[Any]:
         """
-        Convert Tool model objects to LangChain-compatible executable tools.
-        
-        This method creates LLM-safe versions of tools by excluding state injection
-        parameters that would cause massive token overhead when serialized.
-        
-        Args:
-            tools: List of Tool model objects
-            
-        Returns:
-            List of LangChain-compatible tools with state injection stripped for LLM use
+        Convert Tool models to LangChain StructuredTool instances.
+        Simplified version - just return the executable tools without LLM-safe wrapper complexity.
         """
         langchain_tools = []
         
         for tool in tools:
-            # Look up the executable tool by name
             executable_tool = self.executable_tools.get(tool.name)
             if executable_tool:
-                # Create LLM-safe version that excludes injected state parameters
-                llm_safe_tool = self._create_llm_safe_tool(executable_tool, tool)
-                langchain_tools.append(llm_safe_tool)
+                # Just use the tool as-is - no complex wrapper
+                langchain_tools.append(executable_tool)
             else:
                 self.logger.warning(
-                    f"Could not find executable tool for {tool.name}",
-                    available_tools=list(self.executable_tools.keys())
+                    f"Tool {tool.name} not found in executable tools",
+                    tool_name=tool.name
                 )
-                
+        
         return langchain_tools
-
-    def _create_llm_safe_tool(self, executable_tool: Any, tool_model: Tool) -> Any:
-        """
-        Create an LLM-safe version of a tool that excludes state injection parameters.
-        
-        The issue: Tools with @tool decorator that have parameters like:
-        state: Annotated[WorkflowState, InjectedState]
-        
-        These cause massive token overhead (40K+ tokens) when LangChain serializes
-        the tool schema for function calling, because it tries to serialize the
-        entire WorkflowState schema including user_config.
-        
-        Solution: Create wrapper tools with only the user-facing parameters.
-        """
-        from langchain_core.tools import tool
-        import inspect
-        from typing import get_type_hints, get_origin, get_args
-        
-        # Get the original function
-        if hasattr(executable_tool, 'func'):
-            orig_func = executable_tool.func
-            # Check if func is None (invalid tool)
-            if orig_func is None:
-                self.logger.error(
-                    f"Tool {tool_model.name} has None func attribute, skipping LLM-safe wrapper",
-                    tool_name=tool_model.name,
-                    executable_tool_type=type(executable_tool).__name__
-                )
-                return executable_tool
-        else:
-            # For non-decorated functions, use as-is
-            return executable_tool
-            
-        # Get signature and filter out injected parameters
-        sig = inspect.signature(orig_func)
-        filtered_params = []
-        
-        for param_name, param in sig.parameters.items():
-            # Skip parameters that are injected state or internal
-            if (hasattr(param.annotation, '__metadata__') and 
-                any('InjectedState' in str(meta) or 'InjectedToolCallId' in str(meta) 
-                    for meta in getattr(param.annotation, '__metadata__', []))):
-                continue
-            # Keep user-facing parameters
-            filtered_params.append(param)
-        
-        # If no filtering needed, return original
-        if len(filtered_params) == len(sig.parameters):
-            return executable_tool
-            
-        # Create new signature with only user-facing parameters
-        new_sig = sig.replace(parameters=filtered_params)
-        
-        # Create wrapper function with filtered signature
-        async def llm_safe_wrapper(**kwargs):
-            # For actual execution, we need to get state from current context
-            # This is a simplified approach - in real execution, state would be
-            # injected by LangGraph when the tool runs in workflow context
-            return await orig_func(**kwargs)
-        
-        # Apply the filtered signature to wrapper
-        llm_safe_wrapper.__signature__ = new_sig
-        llm_safe_wrapper.__name__ = orig_func.__name__
-        llm_safe_wrapper.__doc__ = orig_func.__doc__
-        
-        # Create new @tool decorated function with filtered signature
-        decorated_tool = tool(llm_safe_wrapper)
-        
-        # Override the name and description
-        decorated_tool.name = tool_model.name
-        decorated_tool.description = tool_model.description
-        
-        return decorated_tool
 
     async def get_tool_stats(self) -> Dict[str, Any]:
         """Get tool registry statistics."""
