@@ -326,23 +326,30 @@ class EnhancedHardwareManager:
                     # Second: ACTUAL CUDA context reset using cupy if available
                     try:
                         import cupy
+
                         with cupy.cuda.Device(i):
                             # This actually destroys and recreates the CUDA context
                             cupy.cuda.runtime.deviceReset()
-                        self.logger.info(f"Reset CUDA context for device {i} using cupy")
+                        self.logger.info(
+                            f"Reset CUDA context for device {i} using cupy"
+                        )
                     except ImportError:
                         # Fallback: Try using pynvml to reset the GPU
                         try:
                             import pynvml
+
                             pynvml.nvmlInit()
                             handle = pynvml.nvmlDeviceGetHandleByIndex(i)
                             # Force a memory operation that should clear context
                             pynvml.nvmlDeviceResetApplicationsClocks(handle)
-                            self.logger.info(f"Reset CUDA context for device {i} using pynvml")
+                            self.logger.info(
+                                f"Reset CUDA context for device {i} using pynvml"
+                            )
                         except (ImportError, Exception) as pynvml_e:
                             # Ultimate fallback: Try ctypes direct CUDA call
                             try:
                                 import ctypes
+
                                 # Load CUDA runtime library
                                 try:
                                     cuda = ctypes.CDLL("libcudart.so")
@@ -351,22 +358,30 @@ class EnhancedHardwareManager:
                                         cuda = ctypes.CDLL("cudart64_*.dll")
                                     except OSError:
                                         cuda = ctypes.CDLL("libcudart.dylib")
-                                
+
                                 # cudaSetDevice and cudaDeviceReset
                                 cuda.cudaSetDevice(i)
                                 result = cuda.cudaDeviceReset()
                                 if result == 0:  # cudaSuccess
-                                    self.logger.info(f"Reset CUDA context for device {i} using direct CUDA call")
+                                    self.logger.info(
+                                        f"Reset CUDA context for device {i} using direct CUDA call"
+                                    )
                                 else:
-                                    self.logger.warning(f"CUDA reset returned error code {result} for device {i}")
+                                    self.logger.warning(
+                                        f"CUDA reset returned error code {result} for device {i}"
+                                    )
                             except Exception as cuda_e:
-                                self.logger.warning(f"Could not perform true CUDA context reset for device {i}: {cuda_e}")
+                                self.logger.warning(
+                                    f"Could not perform true CUDA context reset for device {i}: {cuda_e}"
+                                )
                                 # Final fallback: reinitialize PyTorch context
                                 with torch.cuda.device(i):
                                     temp = torch.ones(1, device=f"cuda:{i}")
                                     del temp
                                     torch.cuda.synchronize(i)
-                                self.logger.info(f"Performed PyTorch context refresh for device {i}")
+                                self.logger.info(
+                                    f"Performed PyTorch context refresh for device {i}"
+                                )
 
                     self.last_device_reset = i
 
@@ -661,7 +676,7 @@ class EnhancedHardwareManager:
 
         total_available = 0
         gpu_details = []
-        
+
         for name, stats in self.update_all_memory_stats().items():
             try:
                 total_mem = stats.mem_total * 1024 * 1024
@@ -670,7 +685,7 @@ class EnhancedHardwareManager:
 
                 gpu_details.append(f"GPU {name}: {available_mem/1e9:.2f}GB available")
                 total_available += available_mem
-                
+
                 self.logger.debug(
                     f"GPU {name}: Total: {total_mem/1e9:.2f}GB, "
                     f"Free: {free_mem/1e9:.2f}GB, Available: {available_mem/1e9:.2f}GB"
@@ -686,7 +701,9 @@ class EnhancedHardwareManager:
         )
 
         if total_available >= required_bytes:
-            self.logger.debug(f"✅ Sufficient distributed memory available: {gpu_details}")
+            self.logger.debug(
+                f"✅ Sufficient distributed memory available: {gpu_details}"
+            )
             return True
         else:
             self.logger.warning(

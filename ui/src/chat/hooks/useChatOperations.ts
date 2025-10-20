@@ -351,12 +351,12 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
       console.log(`Re-posting message for replay: ${message.id}`);
       const messageWithoutId = { ...message };
       delete messageWithoutId.id; // Remove the old ID so server assigns a new one
-      
+
       await sendMessage(messageWithoutId);
 
       // After sending is complete, refresh messages from server to get the new IDs
       console.log("Refreshing messages to get new IDs after replay");
-      
+
       // Clear current messages and fetch fresh from server to avoid ID conflicts
       actions.setMessages([]);
       const freshMessages = await getMessages(getToken(auth.user), state.currentConversation.id);

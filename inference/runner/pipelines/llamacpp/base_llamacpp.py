@@ -7,7 +7,7 @@ import json
 import os
 import multiprocessing
 
-from typing import Optional, List, Any, Dict, Iterator, Type, cast
+from typing import Optional, List, Any, Dict, Iterator, Type, cast, Tuple
 
 from pydantic import BaseModel
 import llama_cpp
@@ -64,7 +64,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
         **kwargs,
     ):
         # Pass the required fields to the parent constructor for Pydantic validation
-        super().__init__(model=model, profile=profile, grammar=grammar, **kwargs)
+        super().__init__(model=model, profile=profile, grammar=grammar, **kwargs) # type: ignore
         self._logger = llmmllogger.bind(
             component=self.__class__.__name__, model=model.name
         )
@@ -465,6 +465,51 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
         return converted_tools if converted_tools else None
 
+    def _parse_tool_calls_from_content(self, content: str) -> Tuple[str, List[Dict[str, Any]]]:
+        """
+        Parse tool calls from LlamaCpp text output and clean content.
+        
+        Returns:
+            Tuple of (cleaned_content, tool_calls_list)
+        """
+        import re
+        
+        tool_calls = []
+        cleaned_content = content
+        
+        # Pattern to match both <tool_call> and <function-call> blocks
+        tool_call_pattern = r'<(?:tool_call|function-call)>\s*(\{.*?\})\s*</(?:tool_call|function-call)>'
+        
+        matches = re.finditer(tool_call_pattern, content, re.DOTALL)
+        
+        for match in matches:
+            try:
+                # Parse the JSON inside the tool_call tags
+                json_str = match.group(1).strip()
+                tool_data = json.loads(json_str)
+                
+                # Convert to LangChain flat format
+                tool_call = {
+                    "id": f"call_{len(tool_calls)}",  # Generate ID
+                    "name": tool_data.get("name", ""),
+                    "args": tool_data.get("arguments", {}),
+                    "type": "tool_call"
+                }
+                tool_calls.append(tool_call)
+                
+                # Remove this tool call from content
+                cleaned_content = cleaned_content.replace(match.group(0), "").strip()
+                
+            except (json.JSONDecodeError, KeyError) as e:
+                self._logger.warning(f"Failed to parse tool call: {e}, content: {match.group(1)}")
+                continue
+        
+        # Also clean up <think> tags if present
+        think_pattern = r'<think>.*?</think>'
+        cleaned_content = re.sub(think_pattern, '', cleaned_content, flags=re.DOTALL).strip()
+        
+        return cleaned_content, tool_calls
+
     def _get_res(
         self,
         messages: List[BaseMessage],
@@ -542,15 +587,19 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 content = response["choices"][0]["message"]["content"]
                 usage = response.get("usage", {})
 
+                # Parse tool calls from content if present
+                cleaned_content, tool_calls = self._parse_tool_calls_from_content(content or "")
+
                 # Create usage metadata
                 usage_metadata = self._calculate_usage_metadata(
                     prompt_tokens=usage.get("prompt_tokens", 0),
                     completion_tokens=usage.get("completion_tokens", 0),
                 )
 
-                # Create AI message
+                # Create AI message with tool calls
                 message = AIMessage(
-                    content=content,
+                    content=cleaned_content,
+                    tool_calls=tool_calls if tool_calls else None,
                     usage_metadata=usage_metadata,
                     response_metadata={
                         "model_name": self.model.name,
@@ -590,12 +639,17 @@ class BaseLlamaCppPipeline(BaseChatModel):
             )
 
             # For streaming, response should be an iterator
+            accumulated_content = ""
             for chunk in response_stream:
                 # Handle chunk as a dict
                 if isinstance(chunk, dict) and "choices" in chunk:
                     delta = chunk["choices"][0].get("delta", {})
                     content = delta.get("content", "") or ""
                     finish_reason = chunk["choices"][0].get("finish_reason")
+
+                    # Accumulate content for tool call parsing
+                    if content:
+                        accumulated_content += content
 
                     # Create usage metadata if available
                     usage_metadata = None
@@ -607,7 +661,30 @@ class BaseLlamaCppPipeline(BaseChatModel):
                                 completion_tokens=usage.get("completion_tokens", 0),
                             )
 
-                    # Create chunk message
+                    # For final chunk, parse tool calls and clean content
+                    if finish_reason == "stop":
+                        cleaned_content, tool_calls = self._parse_tool_calls_from_content(accumulated_content)
+                        
+                        # Send final chunk with tool calls if any were found
+                        if tool_calls:
+                            final_chunk_message = AIMessageChunk(
+                                content=cleaned_content,
+                                tool_calls=tool_calls,
+                                usage_metadata=usage_metadata,
+                                response_metadata={
+                                    "model_name": self.model.name,
+                                    "finish_reason": finish_reason,
+                                },
+                                chunk_position="last",
+                            )
+                            
+                            final_generation_chunk = ChatGenerationChunk(message=final_chunk_message)
+                            if run_manager:
+                                run_manager.on_llm_new_token("", chunk=final_generation_chunk)
+                            yield final_generation_chunk
+                            continue
+
+                    # Create regular chunk message
                     chunk_message = AIMessageChunk(
                         content=content,
                         usage_metadata=usage_metadata,

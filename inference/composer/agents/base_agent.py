@@ -276,30 +276,16 @@ class BaseAgent(ABC, Generic[T]):
                 msgs = normalize_message_input(messages)
                 convo: List[Message] = []
 
-                # Use only the profile system prompt, don't concatenate conversation system messages
-                # This prevents massive system prompts when summaries or other large content 
-                # are passed as system messages in the conversation
+                # Convert messages to LangChain format
                 system_prompt = ""
                 if self.profile.system_prompt:
                     system_prompt = self.profile.system_prompt
 
-                # Debug: Log system prompt size
-                if len(system_prompt) > 1000:
-                    self.logger.warning(f"🔍 Large profile system prompt: {len(system_prompt):,} characters")
-
-                # Add ALL messages to conversation - let langchain handle system message formatting
-                # instead of concatenating them to the profile system prompt
                 for msg in msgs:
-                    convo.append(msg)
-
-                # Debug: Log conversation size  
-                total_convo_chars = sum(len(extract_message_text(msg)) for msg in convo)
-                if total_convo_chars > 5000:
-                    self.logger.warning(f"🔍 Large conversation: {total_convo_chars:,} characters in {len(convo)} messages")
-
-                # Debug: Log what we're about to pass to create_agent
-                self.logger.info(f"🔍 About to create_agent with system_prompt len={len(system_prompt)} convo_len={len(convo)}")
-                self.logger.info(f"🔍 System prompt preview: {system_prompt[:200]}...")
+                    if msg.role == MessageRole.SYSTEM:
+                        system_prompt += f"\n\n{extract_message_text(msg)}"
+                    else:
+                        convo.append(msg)
 
                 agent = create_agent(
                     model=llm,
@@ -322,10 +308,13 @@ class BaseAgent(ABC, Generic[T]):
                 ):
                     # stream_mode "messages" returns AIMessageChunk objects with metadata
                     from langchain_core.messages import AIMessageChunk
+
                     if isinstance(chunk, tuple) and len(chunk) >= 2:
                         msg_chunk, metadata = chunk
                         if isinstance(msg_chunk, AIMessageChunk) and msg_chunk.content:
-                            text_content = str(msg_chunk.content) if msg_chunk.content else ""
+                            text_content = (
+                                str(msg_chunk.content) if msg_chunk.content else ""
+                            )
                             if text_content:  # Only yield chunks with content
                                 chat_chunk = ChatResponse(
                                     done=False,
@@ -333,7 +322,8 @@ class BaseAgent(ABC, Generic[T]):
                                         role=MessageRole.ASSISTANT,
                                         content=[
                                             MessageContent(
-                                                type=MessageContentType.TEXT, text=text_content
+                                                type=MessageContentType.TEXT,
+                                                text=text_content,
                                             )
                                         ],
                                     ),
@@ -412,17 +402,16 @@ class BaseAgent(ABC, Generic[T]):
                 msgs = normalize_message_input(messages)
                 convo = []
 
-                # Use only the profile system prompt, don't concatenate conversation system messages
-                # This prevents massive system prompts when summaries or other large content 
-                # are passed as system messages in the conversation
+                # Convert messages to LangChain format
                 system_prompt = ""
                 if self.profile.system_prompt:
                     system_prompt = self.profile.system_prompt
 
-                # Add ALL messages to conversation - let langchain handle system message formatting
-                # instead of concatenating them to the profile system prompt
                 for msg in msgs:
-                    convo.append(msg)
+                    if msg.role == MessageRole.SYSTEM:
+                        system_prompt += f"\n\n{extract_message_text(msg)}"
+                    else:
+                        convo.append(msg)
                 # Create LangChain agent using create_agent()
 
                 agent = create_agent(

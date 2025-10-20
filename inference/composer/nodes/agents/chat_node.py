@@ -59,25 +59,8 @@ class ChatNode:
 
             if not state.user_config:
                 raise NodeExecutionError("User config required for chat execution")
-            # Assemble context messages with context window management
-            max_tokens = None
-            if (self.agent.profile.parameters and 
-                hasattr(self.agent.profile.parameters, 'num_ctx') and 
-                self.agent.profile.parameters.num_ctx):
-                max_tokens = self.agent.profile.parameters.num_ctx
-            
-            # Debug: Check context size before assembly if it might be large
-            if max_tokens and max_tokens > 50000:  # Only debug very large context windows
-                try:
-                    from debug.debug_context_size import analyze_context_components, print_analysis
-                    analysis = analyze_context_components(state)
-                    if analysis["total_estimated_tokens"] > 30000:  # Only print if actually large
-                        self.logger.warning(f"⚠️  Large context detected: {analysis['total_estimated_tokens']:,} tokens")
-                        print_analysis(analysis)
-                except Exception as debug_error:
-                    self.logger.warning(f"Debug analysis failed: {debug_error}")
-            
-            context_messages = assemble_context_messages(state, max_tokens=max_tokens)
+            # Assemble context messages
+            context_messages = assemble_context_messages(state)
             if not context_messages:
                 raise NodeExecutionError(
                     "No context messages available for chat completion"

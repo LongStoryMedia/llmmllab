@@ -141,7 +141,7 @@ def convert_messages_to_base_langchain(messages: List[Message]) -> List[BaseMess
         msg_data = lc_msg.model_dump()
         if lc_msg.type == "ai" and msg_data.get("tool_calls") is None:
             msg_data["tool_calls"] = []
-            
+
         if lc_msg.type == "human":
             base_messages.append(HumanMessage(**msg_data))
         elif lc_msg.type == "ai":

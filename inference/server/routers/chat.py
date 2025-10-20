@@ -7,12 +7,9 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 - Versioned: /v1/chat/...
 """
 
-import asyncio
 import json
 import os
 import os
-import warnings
-from datetime import datetime
 from typing import AsyncGenerator, Any, Dict
 
 from langchain_core.runnables.schema import StandardStreamEvent, CustomStreamEvent
@@ -33,41 +30,6 @@ from models import (
 
 # Import composer interface
 import composer
-
-# Filter out async generator cleanup warnings that occur during testing
-warnings.filterwarnings("ignore", message="async generator ignored GeneratorExit")
-warnings.filterwarnings("ignore", message="Task exception was never retrieved")
-
-# Also suppress RuntimeError warnings for async generator cleanup  
-warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*async generator.*")
-
-# Add stderr filter to suppress runtime error messages
-import logging
-import sys
-from io import StringIO
-
-class FilteredStderr:
-    """Stderr wrapper that filters out specific async generator warnings."""
-    def __init__(self, original_stderr):
-        self.original_stderr = original_stderr
-        
-    def write(self, text):
-        # Filter out specific async generator error messages
-        if (
-            "async generator ignored GeneratorExit" not in text and
-            "Task exception was never retrieved" not in text and
-            "RuntimeError: async generator ignored GeneratorExit" not in text
-        ):
-            self.original_stderr.write(text)
-            
-    def flush(self):
-        self.original_stderr.flush()
-        
-    def __getattr__(self, name):
-        return getattr(self.original_stderr, name)
-
-# Replace stderr with filtered version to suppress async generator warnings
-sys.stderr = FilteredStderr(sys.stderr)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -97,24 +59,7 @@ async def chat_completion(
 
     try:
         # Store the user message in database first (with fallback for connection issues)
-        try:
-            await storage.get_service(storage.message).add_message(msg)
-        except Exception as db_error:
-            # Handle database errors early with specific HTTPException
-            if "referenced conversation does not exist" in str(db_error).lower():
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Referenced conversation does not exist"
-                )
-            elif "storage not initialized" in str(db_error).lower():
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Storage not initialized"
-                )
-            else:
-                # Re-raise other database errors to be handled by outer catch
-                raise
-        
+        await storage.get_service(storage.message).add_message(msg)
         # Capture variables for the async generator
         conversation_id = msg.conversation_id
 
@@ -141,9 +86,6 @@ async def chat_completion(
                     if isinstance(event, dict):
                         event_type = event.get("event", "")
                         event_data = event.get("data", {})
-
-                        # Log all events for debugging
-                        dbg_evt(event)
 
                         # Try to capture streaming content from various event types
                         if event_type == "on_chat_model_stream":
@@ -302,12 +244,7 @@ async def chat_completion(
 
         # Provide specific error messages
         error_detail = f"Error in chat completion: {str(e)}"
-        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-        
-        if "referenced conversation does not exist" in str(e).lower():
-            error_detail = "Referenced conversation does not exist"
-            status_code = status.HTTP_400_BAD_REQUEST
-        elif "composer service not initialized" in str(e).lower():
+        if "composer service not initialized" in str(e).lower():
             error_detail = "AI service not ready. Please try again in a moment."
         elif "workflow construction" in str(e).lower():
             error_detail = (
@@ -323,7 +260,7 @@ async def chat_completion(
             )
 
         raise HTTPException(
-            status_code=status_code,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=error_detail,
         ) from e
 
@@ -377,52 +314,3 @@ def safe_json_serialize(obj: Any) -> str:
                 "original_type": str(type(obj)),
             }
         )
-
-
-def dbg_evt(evt: StandardStreamEvent | CustomStreamEvent | Dict[str, Any]):
-    """Debug and log workflow events with selective detail to avoid log spam."""
-    if isinstance(evt, dict):
-        event_type = evt.get("event", "")
-        event_data = evt.get("data", {})
-        
-        # Only log significant events to reduce noise - chain events removed to reduce spam
-        significant_events = {
-            "on_chat_model_start", "on_chat_model_end", "on_chat_model_stream",
-            "on_tool_start", "on_tool_end",
-            "workflow_error"
-        }
-        
-        if event_type in significant_events:
-            # Create concise summary instead of dumping everything
-            summary = {
-                "event_type": event_type,
-                "timestamp": datetime.now().isoformat()
-            }
-            
-            # Add selective details based on event type
-            if event_type == "on_chat_model_stream":
-                chunk = event_data.get("chunk", {})
-                content = ""
-                
-                if isinstance(chunk, dict):
-                    content = chunk.get("content", "")
-                elif hasattr(chunk, "content"):
-                    content = str(chunk.content)
-                    
-                if content:
-                    summary["content_length"] = len(content)
-                    summary["content_preview"] = content[:50] + "..." if len(content) > 50 else content
-            elif event_type in ["on_tool_start", "on_tool_end"]:
-                summary["name"] = evt.get("name", "")
-                if "input" in event_data:
-                    # Summarize tool input instead of full dump
-                    tool_input = event_data["input"]
-                    if isinstance(tool_input, dict):
-                        summary["tool_input_keys"] = list(tool_input.keys())
-                    else:
-                        summary["tool_input_type"] = type(tool_input).__name__
-            elif event_type == "workflow_error":
-                summary["error"] = str(event_data.get("error", "Unknown error"))
-            
-            logger.debug("Workflow event", **summary)
-        # Skip logging for non-significant events to reduce noise

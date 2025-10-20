@@ -86,7 +86,7 @@ async def get_model_profile_for_task(
     # Retrieve the model profile from storage
     from db import storage  # pylint: disable=import-outside-toplevel
 
-    mp = await storage.model_profile.get_model_profile_by_id(
+    mp = await storage.get_service(storage.model_profile).get_model_profile_by_id(
         profile_id, user_id
     )
 
