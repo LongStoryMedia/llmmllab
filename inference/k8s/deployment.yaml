@@ -173,7 +173,7 @@ spec:
 
             # Logging configuration
             - name: LOG_LEVEL
-              value: "info"
+              value: "debug"
             - name: FORCE_COLOR
               value: "1"
             # API versioning configurationEL

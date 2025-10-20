@@ -205,6 +205,8 @@ class LocalPipelineCacheManager:
                     bpp = 0.5
                 elif "q5" in q:
                     bpp = 0.625
+                elif "q6" in q:
+                    bpp = 0.75
                 elif "q8" in q:
                     bpp = 1.0
                 elif any(x in q for x in ["fp16", "bf16", "f16"]):
