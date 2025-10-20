@@ -415,8 +415,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
             if any(isinstance(msg, SystemMessage) for msg in messages[:1]):
                 system_tokens = self._count_message_tokens(messages[:1])
         
-        # Available tokens for conversation history
-        available_tokens = max_tokens - tool_tokens - system_tokens - response_reserve - 500  # Safety buffer
+        # Available tokens for conversation history - more aggressive buffer for template overhead
+        template_overhead = max(1000, max_tokens * 0.05)  # 5% or min 1000 tokens for template
+        available_tokens = max_tokens - tool_tokens - system_tokens - response_reserve - template_overhead
         
         if available_tokens <= 0:
             self._logger.warning(
@@ -476,20 +477,27 @@ class BaseLlamaCppPipeline(BaseChatModel):
         # Format messages for llama-cpp-python
         llama_messages = self._format_messages_for_llama(trimmed_messages)
 
-        # Log token usage
+        # Log token usage with more detail
         message_tokens = self._count_message_tokens(trimmed_messages)
         tool_tokens = self._count_tool_tokens(converted_tools)
         total_estimated = message_tokens + tool_tokens
         context_limit = getattr(self.llama_instance, 'n_ctx', lambda: 4096)()
         
+        # Count how many messages were trimmed
+        original_count = len(messages)
+        trimmed_count = len(trimmed_messages)
+        
         self._logger.info(
-            f"Token usage: messages={message_tokens}, tools={tool_tokens}, "
+            f"Context management: model={self.model.name}, "
+            f"messages={trimmed_count}/{original_count}, "
+            f"message_tokens={message_tokens}, tool_tokens={tool_tokens}, "
             f"total_estimated={total_estimated}, context_limit={context_limit}"
         )
         
         if total_estimated > context_limit * 0.9:  # Warn at 90% capacity
             self._logger.warning(
-                f"Approaching context limit: {total_estimated}/{context_limit} tokens"
+                f"APPROACHING CONTEXT LIMIT: {total_estimated}/{context_limit} tokens "
+                f"({total_estimated/context_limit*100:.1f}%) - may still exceed due to template overhead"
             )
 
         response_format: Optional[llama_types.ChatCompletionRequestResponseFormat] = (
