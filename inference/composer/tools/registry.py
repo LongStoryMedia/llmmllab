@@ -256,8 +256,8 @@ class ToolRegistry:
             # Check if func is None (invalid tool)
             if orig_func is None:
                 self.logger.error(
-                    f"Tool {tool.name} has None func attribute, skipping LLM-safe wrapper",
-                    tool_name=tool.name,
+                    f"Tool {tool_model.name} has None func attribute, skipping LLM-safe wrapper",
+                    tool_name=tool_model.name,
                     executable_tool_type=type(executable_tool).__name__
                 )
                 return executable_tool
