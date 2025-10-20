@@ -1,0 +1,71 @@
+{
+  "overall_success": false,
+  "execution_time": 20.52445650100708,
+  "workflow_time": 0,
+  "components_passed": 6,
+  "total_components": 8,
+  "results": {
+    "infrastructure_setup": {
+      "success": true,
+      "database_connected": true,
+      "target_model": "qwen3-30b-a3b-q4-k-m"
+    },
+    "composer_initialization": {
+      "success": true,
+      "service_initialized": true,
+      "service_type": "ComposerService"
+    },
+    "user_profile_creation": {
+      "success": true,
+      "user_id": "test_composer_user_71e8b08b",
+      "model_profile_id": "cab3eb25-85b7-4ffd-bdef-2209965180fa",
+      "model_name": "qwen3-30b-a3b-q4-k-m"
+    },
+    "conversation_creation": {
+      "success": true,
+      "conversation_id": 820
+    },
+    "message_creation": {
+      "success": true,
+      "message_id": 3095,
+      "message_length": 318
+    },
+    "workflow_execution": {
+      "success": false,
+      "execution_time": 8.589903831481934,
+      "response_chunks": 0,
+      "tool_calls_detected": true,
+      "response_length": 0,
+      "workflow_type": "composer_langgraph",
+      "final_response_raw": "",
+      "final_response": "",
+      "validation_errors": [
+        "Encountered 1 workflow error events (first type: workflow_error)",
+        "No response content generated",
+        "No response chunks captured from workflow",
+        "Response too short (0 chars), likely incomplete",
+        "Output file shows 0 captured responses despite workflow execution",
+        "Workflow ran for 8.6s but generated no output (likely internal error)"
+      ],
+      "tool_availability_correct": true,
+      "dynamic_tool_error_free": true
+    },
+    "output_validation": {
+      "success": false,
+      "error": "No assistant responses generated - workflow execution failed",
+      "conversation_valid": true,
+      "model_profile_valid": true,
+      "message_count": 1,
+      "assistant_messages": 0,
+      "response_quality_score": 0
+    },
+    "data_cleanup": {
+      "success": true,
+      "cleaned_count": 7,
+      "errors": [],
+      "total_entities": 4
+    }
+  },
+  "entities_created": 0,
+  "entities_cleaned": 7
+}

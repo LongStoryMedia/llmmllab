@@ -14,41 +14,6 @@ import structlog.stdlib
 import structlog.processors
 
 
-# Add global stderr filter to suppress async generator cleanup warnings
-class FilteredStderr:
-    """Stderr wrapper that filters out specific async generator warnings."""
-
-    def __init__(self, original_stderr):
-        self.original_stderr = original_stderr
-
-    def write(self, text):
-        # Filter out specific async generator error messages
-        filtered_phrases = [
-            "async generator ignored GeneratorExit",
-            "Task exception was never retrieved",
-            "RuntimeError: async generator ignored GeneratorExit",
-            "future: <Task finished name='Task-",  # Filter the future task lines too
-        ]
-
-        # Check if any filtered phrase is in the text
-        should_filter = any(phrase in text for phrase in filtered_phrases)
-
-        if not should_filter:
-            self.original_stderr.write(text)
-
-    def flush(self):
-        self.original_stderr.flush()
-
-    def __getattr__(self, name):
-        return getattr(self.original_stderr, name)
-
-
-# Replace stderr globally to suppress async generator warnings
-if not hasattr(sys.stderr, "_is_filtered"):
-    sys.stderr = FilteredStderr(sys.stderr)
-    sys.stderr._is_filtered = True
-
-
 class LlmmlLogger:
     """Structured logging with colorized output for both direct execution and Kubernetes logs."""
 
@@ -80,16 +45,30 @@ class LlmmlLogger:
             structlog.stdlib.add_log_level,
             structlog.stdlib.PositionalArgumentsFormatter(),
             structlog.processors.TimeStamper(fmt="iso"),
-            # structlog.processors.StackInfoRenderer(),
-            # Removed format_exc_info to prevent pretty exception warnings
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
             structlog.processors.UnicodeDecoder(),
         ]
 
         # Add colorized console renderer if colors are enabled
         if use_colors:
-            processors.append(structlog.dev.ConsoleRenderer(colors=True))
+            processors.append(
+                structlog.dev.ConsoleRenderer(
+                    colors=True,
+                    exception_formatter=structlog.dev.RichTracebackFormatter(
+                        show_locals=False
+                    ),
+                )
+            )
         else:
-            processors.append(structlog.dev.ConsoleRenderer(colors=False))
+            processors.append(
+                structlog.dev.ConsoleRenderer(
+                    colors=True,
+                    exception_formatter=structlog.dev.RichTracebackFormatter(
+                        show_locals=False
+                    ),
+                )
+            )
 
         # Configure structlog
         structlog.configure(

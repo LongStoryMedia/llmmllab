@@ -1,0 +1,93 @@
+{
+  "overall_success": false,
+  "execution_time": 34.71426725387573,
+  "workflow_time": 0,
+  "components_passed": 7,
+  "total_components": 8,
+  "results": {
+    "infrastructure_setup": {
+      "success": true,
+      "database_connected": true,
+      "target_model": "qwen3-30b-a3b-q4-k-m"
+    },
+    "composer_initialization": {
+      "success": true,
+      "service_initialized": true,
+      "service_type": "ComposerService"
+    },
+    "user_profile_creation": {
+      "success": true,
+      "user_id": "test_composer_user_f9e98779",
+      "model_profile_id": "f859733a-09de-4d83-ad89-6e33f314fec4",
+      "model_name": "qwen3-30b-a3b-q4-k-m"
+    },
+    "conversation_creation": {
+      "success": true,
+      "conversation_id": 822
+    },
+    "message_creation": {
+      "success": true,
+      "message_id": 3098,
+      "message_length": 318
+    },
+    "workflow_execution": {
+      "success": false,
+      "execution_time": 22.730613231658936,
+      "response_chunks": 106,
+      "tool_calls_detected": true,
+      "response_length": 364,
+      "workflow_type": "composer_langgraph",
+      "final_response_raw": "{\"intents\": [{\"workflow_type\": \"research\", \"complexity_level\": \"MODERATE\", \"required_capabilities\": [\"information_retrieval\", \"web_search\", \"summarization\"], \"domain_specificity\": 0.8, \"reusability_potential\": 0.5, \"confidence\": 0.95, \"tool_complexity_score\": 0.6, \"computational_requirements\": \"MODERATE\", \"requires_tools\": true, \"requires_custom_tools\": false}]}",
+      "final_response": {
+        "intents": [
+          {
+            "workflow_type": "research",
+            "complexity_level": "MODERATE",
+            "required_capabilities": [
+              "information_retrieval",
+              "web_search",
+              "summarization"
+            ],
+            "domain_specificity": 0.8,
+            "reusability_potential": 0.5,
+            "confidence": 0.95,
+            "tool_complexity_score": 0.6,
+            "computational_requirements": "MODERATE",
+            "requires_tools": true,
+            "requires_custom_tools": false
+          }
+        ]
+      },
+      "validation_errors": [
+        "Encountered 1 workflow error events (first type: workflow_error)"
+      ],
+      "tool_availability_correct": true,
+      "dynamic_tool_error_free": true
+    },
+    "output_validation": {
+      "success": true,
+      "conversation_valid": true,
+      "model_profile_valid": true,
+      "message_count": 2,
+      "assistant_messages": 1,
+      "response_quality_score": 50,
+      "title_validation": {
+        "valid": true,
+        "title": "Composer Real End-to-End Test Conversation",
+        "word_count": 5,
+        "meets_word_limit": true,
+        "has_content": true,
+        "no_quotes": true,
+        "properly_capitalized": true
+      }
+    },
+    "data_cleanup": {
+      "success": true,
+      "cleaned_count": 9,
+      "errors": [],
+      "total_entities": 5
+    }
+  },
+  "entities_created": 0,
+  "entities_cleaned": 9
+}

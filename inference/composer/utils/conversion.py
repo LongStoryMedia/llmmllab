@@ -137,15 +137,20 @@ def convert_messages_to_base_langchain(messages: List[Message]) -> List[BaseMess
     lc_messages = convert_messages_to_langchain(messages)
     base_messages: List[BaseMessage] = []
     for lc_msg in lc_messages:
+        # Get the model dump and fix tool_calls for AI messages
+        msg_data = lc_msg.model_dump()
+        if lc_msg.type == "ai" and msg_data.get("tool_calls") is None:
+            msg_data["tool_calls"] = []
+            
         if lc_msg.type == "human":
-            base_messages.append(HumanMessage(**lc_msg.model_dump()))
+            base_messages.append(HumanMessage(**msg_data))
         elif lc_msg.type == "ai":
-            base_messages.append(AIMessage(**lc_msg.model_dump()))
+            base_messages.append(AIMessage(**msg_data))
         elif lc_msg.type == "system":
-            base_messages.append(SystemMessage(**lc_msg.model_dump()))
+            base_messages.append(SystemMessage(**msg_data))
         else:
             # Fallback to HumanMessage for unknown types
-            base_messages.append(HumanMessage(**lc_msg.model_dump()))
+            base_messages.append(HumanMessage(**msg_data))
     return base_messages
 
 

@@ -320,28 +320,31 @@ class BaseAgent(ABC, Generic[T]):
                     npt,  # type: ignore
                     stream_mode="messages",
                 ):
-                    # stream_mode "messages" Will be emitted as 2-tuples `(LLM token, metadata)`.
-                    c = cast(Tuple[str, Dict[str, Any]], chunk)
-
-                    if c[0]:  # Only yield chunks with content
-                        chat_chunk = ChatResponse(
-                            done=False,
-                            message=Message(
-                                role=MessageRole.ASSISTANT,
-                                content=[
-                                    MessageContent(
-                                        type=MessageContentType.TEXT, text=c[0]
-                                    )
-                                ],
-                            ),
-                            channels={
-                                "node_metadata": self._node_metadata.model_dump(),
-                                "chunk_metadata": c[1],
-                            },
-                        )
-                        chat_chunk.channels = self._node_metadata.model_dump()
-                        chunk_count += 1
-                        yield chat_chunk
+                    # stream_mode "messages" returns AIMessageChunk objects with metadata
+                    from langchain_core.messages import AIMessageChunk
+                    if isinstance(chunk, tuple) and len(chunk) >= 2:
+                        msg_chunk, metadata = chunk
+                        if isinstance(msg_chunk, AIMessageChunk) and msg_chunk.content:
+                            text_content = str(msg_chunk.content) if msg_chunk.content else ""
+                            if text_content:  # Only yield chunks with content
+                                chat_chunk = ChatResponse(
+                                    done=False,
+                                    message=Message(
+                                        role=MessageRole.ASSISTANT,
+                                        content=[
+                                            MessageContent(
+                                                type=MessageContentType.TEXT, text=text_content
+                                            )
+                                        ],
+                                    ),
+                                    channels={
+                                        "node_metadata": self._node_metadata.model_dump(),
+                                        "chunk_metadata": metadata,
+                                    },
+                                )
+                                chat_chunk.channels = self._node_metadata.model_dump()
+                                chunk_count += 1
+                                yield chat_chunk
 
                 # Yield end chunk with node metadata
                 yield create_streaming_chunk(

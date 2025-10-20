@@ -185,7 +185,7 @@ class LocalPipelineCacheManager:
 
     # ---- Internals ----
     def estimate_memory(self, model: Model, profile: Optional['ModelProfile'] = None) -> float:
-        """Simple memory estimation - don't overthink it."""
+        """Estimate memory usage based on model size and actual context parameters."""
         base = 512 * 1024 * 1024
         model_size = 0
         details = getattr(model, "details", None)
@@ -232,8 +232,16 @@ class LocalPipelineCacheManager:
             else:
                 model_size = 2 * 1024 * 1024 * 1024
         
-        # Simple context memory - just add reasonable buffer
-        context_mem = model_size * 0.2  # 20% of model size for context/activations
+        # Calculate context memory based on actual context size from profile
+        context_mem = model_size * 0.2  # Default 20% fallback
+        if profile and profile.parameters and profile.parameters.num_ctx:
+            # More accurate context memory calculation
+            # Context memory scales with context size and model dimensions
+            ctx_size = profile.parameters.num_ctx
+            if ctx_size > 32768:  # Large context needs more memory
+                context_multiplier = min(ctx_size / 32768 * 0.3, 1.0)  # Cap at 100% of model size
+                context_mem = model_size * context_multiplier
+                self.logger.debug(f"Large context detected ({ctx_size}), using {context_multiplier:.2f}x model size for context memory")
         
         total = base + model_size + context_mem
         self.logger.debug(
@@ -243,11 +251,37 @@ class LocalPipelineCacheManager:
         return total
 
     def _ensure_memory(self, required: float, exclude: Optional[str]) -> bool:
+        """Ensure sufficient memory is available, with aggressive upfront eviction for large models."""
+        # For large models (>10GB), be proactive and clear cache immediately
+        large_model = required > 10 * 1024 * 1024 * 1024  # 10GB threshold
+        if large_model:
+            self.logger.info(f"🚀 Large model detected ({required/1e9:.2f}GB), proactively clearing cache")
+            # Clear ALL other models immediately for large models
+            with self._lock:
+                evict_targets = [mid for mid in self._cache.keys() if mid != exclude]
+            
+            if evict_targets:
+                self.logger.info(f"🧹 Proactively evicting {len(evict_targets)} models: {evict_targets}")
+                for mid in evict_targets:
+                    with self._lock:
+                        removed = self._cache.pop(mid, None)
+                    if removed and removed.pipeline:
+                        self._cleanup_pipeline(removed.pipeline)
+                
+                # Nuclear memory clear after eviction
+                hardware_manager.clear_memory(aggressive=True, nuclear=True)
+                self.logger.info("🧹 Completed proactive cache clearing for large model")
+        
+        # Check if we now have enough memory
         if hardware_manager.check_memory_available(required):
             return True
+            
+        # If still not enough, continue with standard eviction
         self.logger.info(
-            f"Memory low; attempting eviction for local models (need {required/1e9:.2f}GB)"
+            f"Memory still low after proactive clearing; attempting additional eviction (need {required/1e9:.2f}GB)"
         )
+        
+        # Step 1: Clear dead entries
         with self._lock:
             dead = [mid for mid, e in self._cache.items() if not e.is_alive()]
             for mid in dead:
@@ -255,6 +289,8 @@ class LocalPipelineCacheManager:
         hardware_manager.clear_memory(aggressive=False)
         if hardware_manager.check_memory_available(required):
             return True
+        
+        # Step 2: Progressive eviction by priority
         now = time.time()
         with self._lock:
             candidates = [
@@ -263,6 +299,8 @@ class LocalPipelineCacheManager:
                 if e.is_alive() and mid != exclude
             ]
         candidates.sort(key=lambda x: (x[2], x[1].priority, x[1].last_accessed))
+        
+        # Standard eviction - one at a time
         for mid, _, score in candidates:
             with self._lock:
                 removed = self._cache.pop(mid, None)
@@ -274,6 +312,7 @@ class LocalPipelineCacheManager:
                     f"Freed memory after evicting {mid} (score {score:.2f}); proceeding"
                 )
                 return True
+        
         return hardware_manager.check_memory_available(required)
 
     # ---- Background cleanup ----

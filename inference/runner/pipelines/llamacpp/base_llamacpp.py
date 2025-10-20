@@ -28,8 +28,9 @@ from langchain_core.messages.ai import UsageMetadata
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 
 from models import Model, ModelProfile
+from models.default_configs import DEFAULT_GPU_CONFIG
 from utils.logging import llmmllogger
-from utils.hardware_manager import EnhancedHardwareManager
+from runner.utils.hardware_manager import EnhancedHardwareManager
 from .utils import calculate_optimal_gpu_layers
 
 
@@ -68,7 +69,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
             component=self.__class__.__name__, model=model.name
         )
         self.grammar = grammar
-        self._bound_tools = kwargs.get('_bound_tools', [])
+        self._bound_tools = kwargs.get("_bound_tools", [])
         self.hardware_manager = EnhancedHardwareManager()
         self.llama_instance = self._initialize_llama_with_oom_retry(
             self._get_gguf_path()
@@ -92,27 +93,37 @@ class BaseLlamaCppPipeline(BaseChatModel):
     def bind_tools(self, tools: List[Any], **kwargs: Any) -> "BaseLlamaCppPipeline":
         """
         Bind tools to this model for tool calling support.
-        
+
         For llama-cpp-python models, tools are handled through the grammar system
         and function calling via prompt formatting.
-        
+
         Args:
             tools: List of tools to bind to the model
             **kwargs: Additional keyword arguments for tool binding
-            
+
         Returns:
             A new instance of the model with tools bound
         """
-        # Create a new instance with the same configuration
-        new_instance = self.__class__(
-            model=self.model,
-            profile=self.profile,
-            grammar=self.grammar,
-            _bound_tools=tools,
-            **kwargs
-        )
+        # For large models, reuse the existing instance instead of creating a new one
+        # to avoid OOM when both instances exist simultaneously
+        model_size_gb = self.model.size / (1024**3) if self.model.size else 0
         
-        return new_instance
+        if model_size_gb > 10:  # Large models (>10GB)
+            self._logger.info(f"🔄 Reusing existing instance for large model {self.model.name} ({model_size_gb:.1f}GB)")
+            # Update bound tools on the existing instance
+            self._bound_tools = tools
+            return self
+        else:
+            # For smaller models, create a new instance as before
+            self._logger.debug(f"🆕 Creating new instance for small model {self.model.name} ({model_size_gb:.1f}GB)")
+            new_instance = self.__class__(
+                model=self.model,
+                profile=self.profile,
+                grammar=self.grammar,
+                _bound_tools=tools,
+                **kwargs,
+            )
+            return new_instance
 
     def _get_gguf_path(self) -> str:
         """Get the GGUF file path from model definition."""
@@ -139,22 +150,23 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
     def _clear_pipeline_and_memory(self):
         """Clear pipeline instance and GPU memory."""
-        if hasattr(self, 'llama_instance') and self.llama_instance:
+        if hasattr(self, "llama_instance") and self.llama_instance:
             try:
                 self.llama_instance.close()
             except:
                 pass
             del self.llama_instance
             self.llama_instance = None
-        
+
         # Clear GPU memory
         try:
             self.hardware_manager.clear_memory(aggressive=True)
         except Exception as e:
             self._logger.warning(f"Error clearing GPU memory: {e}")
-        
+
         # Give GPU a moment to clean up
         import time
+
         time.sleep(1)
 
     def _initialize_llama_with_oom_retry(self, gguf_path: str) -> llama_cpp.Llama:
@@ -166,11 +178,13 @@ class BaseLlamaCppPipeline(BaseChatModel):
         n_ctx = self.profile.parameters.num_ctx or 32768
         n_batch = self.profile.parameters.batch_size or 512
         n_ubatch = 512
-        
+
         # GPU layers
         n_gpu_layers = -1  # Default to full offload
-        if (self.profile.gpu_config is not None and 
-            self.profile.gpu_config.gpu_layers is not None):
+        if (
+            self.profile.gpu_config is not None
+            and self.profile.gpu_config.gpu_layers is not None
+        ):
             n_gpu_layers = self.profile.gpu_config.gpu_layers
 
         # Perplexity / logits guard
@@ -181,16 +195,21 @@ class BaseLlamaCppPipeline(BaseChatModel):
         # Retry parameters for OOM handling
         oom_attempts = 0
         max_oom_attempts = 6
-        
+
+        gcfg = self.profile.gpu_config or DEFAULT_GPU_CONFIG
+
         while oom_attempts < max_oom_attempts:
+            failed_instance = None
             try:
-                self._logger.info(f"Attempting to initialize {self.model.name} with n_ctx={n_ctx}, n_batch={n_batch}, n_ubatch={n_ubatch}, gpu_layers={n_gpu_layers}")
-                
+                self._logger.info(
+                    f"Attempting to initialize {self.model.name} with n_ctx={n_ctx}, n_batch={n_batch}, n_ubatch={n_ubatch}, gpu_layers={n_gpu_layers}"
+                )
+
                 llama_instance = llama_cpp.Llama(
                     model_path=gguf_path,
                     n_gpu_layers=n_gpu_layers,
-                    split_mode=llama_cpp.LLAMA_SPLIT_MODE_LAYER,
-                    tensor_split=None,
+                    split_mode=llama_cpp.LLAMA_SPLIT_MODE_ROW,
+                    tensor_split=gcfg.tensor_split,
                     vocab_only=False,
                     use_mmap=True,
                     use_mlock=False,
@@ -207,7 +226,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     repeat_penalty=self.profile.parameters.repeat_penalty or 1.05,
                     f16_kv=True,
                     verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
-                    flash_attn=getattr(self.profile.parameters, "flash_attention", True),
+                    flash_attn=getattr(
+                        self.profile.parameters, "flash_attention", True
+                    ),
                     logits_all=perplexity_enabled,
                     logprobs=1 if perplexity_enabled else 0,
                     embedding=False,
@@ -238,55 +259,121 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     type_v=None,
                     spm_infill=False,
                 )
-                
-                self._logger.info(f"✅ Successfully initialized {self.model.name} with n_ctx={n_ctx:,}, n_batch={n_batch}, n_ubatch={n_ubatch}, gpu_layers={n_gpu_layers}")
+
+                self._logger.info(
+                    f"✅ Successfully initialized {self.model.name} with n_ctx={n_ctx:,}, n_batch={n_batch}, n_ubatch={n_ubatch}, gpu_layers={n_gpu_layers}"
+                )
                 return llama_instance
 
             except Exception as e:
                 error_str = str(e).lower()
-                is_oom = any(oom_indicator in error_str for oom_indicator in [
-                    'out of memory', 'oom', 'cuda error', 'memory allocation failed', 
-                    'insufficient memory', 'cudamalloc failed'
-                ])
-                
+                is_oom = any(
+                    oom_indicator in error_str
+                    for oom_indicator in [
+                        "out of memory",
+                        "oom",
+                        "cuda error",
+                        "memory allocation failed",
+                        "insufficient memory",
+                        "cudamalloc failed",
+                        "failed to create llama_context",
+                        "context creation failed",
+                        "failed to allocate",
+                        "allocation failed",
+                        "ggml_cuda_alloc_buffer",
+                    ]
+                )
+
                 if is_oom:
                     oom_attempts += 1
-                    self._logger.warning(f"🔥 OOM detected (attempt {oom_attempts}/{max_oom_attempts}): {e}")
-                    
+                    self._logger.warning(
+                        f"🔥 OOM detected (attempt {oom_attempts}/{max_oom_attempts}): {error_str}"
+                    )
+
+                    # CRITICAL: Immediately cleanup any failed instance that may have partial CUDA state
+                    # Even if llama_cpp.Llama() constructor failed, it may have allocated GPU memory
+                    try:
+                        # Try to capture and close the failed instance if it exists in local scope
+                        if "llama_instance" in locals():
+                            try:
+                                llama_instance.close()
+                                self._logger.debug("🧹 Closed failed llama_instance")
+                            except:
+                                pass
+                            del llama_instance
+
+                        # Force aggressive cleanup
+                        import gc
+
+                        gc.collect()
+
+                        # Nuclear memory clear to remove any GPU allocations
+                        self.hardware_manager.clear_memory(
+                            aggressive=True, nuclear=True
+                        )
+                        self._logger.info(
+                            f"🧹 Cleaned up failed pipeline instance (attempt {oom_attempts})"
+                        )
+                    except Exception as cleanup_e:
+                        self._logger.warning(
+                            f"Error during failed pipeline cleanup: {cleanup_e}"
+                        )
+
                     if oom_attempts >= max_oom_attempts:
-                        raise RuntimeError(f"Failed to initialize after {max_oom_attempts} OOM recovery attempts")
-                    
-                    # Clear memory and reduce parameters
+                        self._logger.error(
+                            f"❌ Failed to initialize after {max_oom_attempts} OOM recovery attempts"
+                        )
+                        raise RuntimeError(
+                            f"Failed to initialize after {max_oom_attempts} OOM recovery attempts"
+                        )
+
+                    # Clear any remaining memory and reduce parameters
+                    self._logger.info(
+                        f"🧹 Final memory clear before attempt {oom_attempts + 1}"
+                    )
                     self._clear_pipeline_and_memory()
-                    
+
                     if oom_attempts == 1:
                         # First OOM - just clear and retry (might be stale memory)
-                        self._logger.info("First OOM - clearing memory and retrying with same parameters")
+                        self._logger.info(
+                            "🔄 Attempt 1: Clearing memory and retrying with same parameters"
+                        )
                         continue
                     elif oom_attempts == 2:
                         # Second OOM - reduce batch sizes
                         n_batch = max(128, n_batch // 2)
                         n_ubatch = max(128, n_ubatch // 2)
-                        self._logger.info(f"Second OOM - reducing batch sizes: n_batch={n_batch}, n_ubatch={n_ubatch}")
+                        self._logger.info(
+                            f"🔄 Attempt 2: Reducing batch sizes: n_batch={n_batch}, n_ubatch={n_ubatch}"
+                        )
                     elif oom_attempts == 3:
                         # Third OOM - reduce batch sizes more
                         n_batch = max(64, n_batch // 2)
                         n_ubatch = max(64, n_ubatch // 2)
-                        self._logger.info(f"Third OOM - reducing batch sizes further: n_batch={n_batch}, n_ubatch={n_ubatch}")
+                        self._logger.info(
+                            f"🔄 Attempt 3: Reducing batch sizes further: n_batch={n_batch}, n_ubatch={n_ubatch}"
+                        )
                     elif oom_attempts == 4:
                         # Fourth OOM - reduce context size
                         n_ctx = max(4096, n_ctx // 2)
-                        self._logger.info(f"Fourth OOM - reducing context size: n_ctx={n_ctx}")
+                        self._logger.info(
+                            f"🔄 Attempt 4: Reducing context size: n_ctx={n_ctx}"
+                        )
                     elif oom_attempts == 5:
                         # Fifth OOM - reduce context size more
                         n_ctx = max(2048, n_ctx // 2)
-                        self._logger.info(f"Fifth OOM - reducing context size further: n_ctx={n_ctx}")
-                    
+                        self._logger.info(
+                            f"🔄 Attempt 5: Reducing context size further: n_ctx={n_ctx}"
+                        )
+
                 else:
                     # Not an OOM error, re-raise immediately
+                    self._logger.error(f"❌ Non-OOM error during initialization: {e}")
                     raise e
-        
-        raise RuntimeError(f"Failed to initialize {self.model.name} after all OOM recovery attempts")
+
+        raise RuntimeError(
+            f"Failed to initialize {self.model.name} after all OOM recovery attempts"
+        )
 
     def _format_messages_for_llama(
         self, messages: List[BaseMessage]
@@ -326,53 +413,65 @@ class BaseLlamaCppPipeline(BaseChatModel):
         """Convert LangChain tools to OpenAI function calling format for llama-cpp-python."""
         if not tools:
             return None
-            
+
         converted_tools = []
         for tool in tools:
             try:
                 # Handle different tool types
-                if hasattr(tool, 'args_schema') and hasattr(tool, 'name') and hasattr(tool, 'description'):
+                if (
+                    hasattr(tool, "args_schema")
+                    and hasattr(tool, "name")
+                    and hasattr(tool, "description")
+                ):
                     # LangChain StructuredTool or similar
                     tool_dict = {
                         "type": "function",
                         "function": {
                             "name": tool.name,
                             "description": tool.description,
-                        }
+                        },
                     }
-                    
+
                     # Add parameters schema if available
                     if tool.args_schema:
                         try:
-                            if hasattr(tool.args_schema, 'model_json_schema'):
+                            if hasattr(tool.args_schema, "model_json_schema"):
                                 # Pydantic model schema
                                 schema = tool.args_schema.model_json_schema()
-                            elif hasattr(tool.args_schema, 'schema'):
+                            elif hasattr(tool.args_schema, "schema"):
                                 # Other schema types
                                 schema = tool.args_schema.schema()
                             else:
                                 schema = {"type": "object", "properties": {}}
-                                
+
                             tool_dict["function"]["parameters"] = schema
                         except Exception as e:
-                            self._logger.warning(f"Could not extract schema for tool {tool.name}: {e}")
-                            tool_dict["function"]["parameters"] = {"type": "object", "properties": {}}
+                            self._logger.warning(
+                                f"Could not extract schema for tool {tool.name}: {e}"
+                            )
+                            tool_dict["function"]["parameters"] = {
+                                "type": "object",
+                                "properties": {},
+                            }
                     else:
-                        tool_dict["function"]["parameters"] = {"type": "object", "properties": {}}
-                        
+                        tool_dict["function"]["parameters"] = {
+                            "type": "object",
+                            "properties": {},
+                        }
+
                     converted_tools.append(tool_dict)
-                    
+
                 elif isinstance(tool, dict):
                     # Already in the right format
                     converted_tools.append(tool)
-                    
+
                 else:
                     self._logger.warning(f"Unknown tool type: {type(tool)}, skipping")
-                    
+
             except Exception as e:
                 self._logger.error(f"Error converting tool: {e}")
                 continue
-                
+
         return converted_tools if converted_tools else None
 
     def _estimate_tokens(self, text: str) -> int:
@@ -385,93 +484,111 @@ class BaseLlamaCppPipeline(BaseChatModel):
         """Count approximate tokens in messages."""
         total_tokens = 0
         for message in messages:
-            if hasattr(message, 'content') and message.content:
+            if hasattr(message, "content") and message.content:
                 total_tokens += self._estimate_tokens(str(message.content))
         return total_tokens
 
-    def _count_tool_tokens(self, tools: Optional[List[llama_types.ChatCompletionTool]]) -> int:
+    def _count_tool_tokens(
+        self, tools: Optional[List[llama_types.ChatCompletionTool]]
+    ) -> int:
         """Count approximate tokens in tool definitions."""
         if not tools:
             return 0
-        
+
         total_tokens = 0
         for tool in tools:
-            if hasattr(tool, 'function'):
+            if hasattr(tool, "function"):
                 # Count function name, description, and parameters
-                if hasattr(tool.function, 'name'):
+                if hasattr(tool.function, "name"):
                     total_tokens += self._estimate_tokens(tool.function.name)
-                if hasattr(tool.function, 'description'):
+                if hasattr(tool.function, "description"):
                     total_tokens += self._estimate_tokens(tool.function.description)
-                if hasattr(tool.function, 'parameters'):
+                if hasattr(tool.function, "parameters"):
                     # Parameters schema can be quite large
-                    total_tokens += self._estimate_tokens(json.dumps(tool.function.parameters))
-        
+                    total_tokens += self._estimate_tokens(
+                        json.dumps(tool.function.parameters)
+                    )
+
         return total_tokens
 
     def _trim_messages_to_context(
-        self, 
-        messages: List[BaseMessage], 
+        self,
+        messages: List[BaseMessage],
         tools: Optional[List[llama_types.ChatCompletionTool]] = None,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
     ) -> List[BaseMessage]:
         """Trim messages to fit within context window."""
         if not max_tokens:
             # Use llama instance context size if available, otherwise default
-            max_tokens = getattr(self.llama_instance, 'n_ctx', lambda: 4096)()
-        
+            max_tokens = getattr(self.llama_instance, "n_ctx", lambda: 4096)()
+
         # Reserve tokens for tools, system prompt, and response
         tool_tokens = self._count_tool_tokens(tools)
         system_tokens = 0
         response_reserve = self.profile.parameters.max_tokens or 4096
-        
+
         # Find system message tokens
-        if messages and hasattr(messages[0], 'content'):
+        if messages and hasattr(messages[0], "content"):
             if any(isinstance(msg, SystemMessage) for msg in messages[:1]):
                 system_tokens = self._count_message_tokens(messages[:1])
-        
+
         # Available tokens for conversation history - minimal buffer for template overhead
         if max_tokens:
-            template_overhead = max(500, int(max_tokens * 0.02))  # 2% or min 500 tokens for template
-            available_tokens = max_tokens - tool_tokens - system_tokens - response_reserve - template_overhead
+            template_overhead = max(
+                500, int(max_tokens * 0.02)
+            )  # 2% or min 500 tokens for template
+            available_tokens = (
+                max_tokens
+                - tool_tokens
+                - system_tokens
+                - response_reserve
+                - template_overhead
+            )
         else:
             # Fallback if max_tokens is None
             available_tokens = 50000  # Large default to avoid premature trimming
-        
+
         if available_tokens <= 0:
             self._logger.warning(
                 f"Context window too small: max={max_tokens}, tools={tool_tokens}, "
                 f"system={system_tokens}, response={response_reserve}"
             )
             # Keep only system message if any - cast to satisfy type checker
-            system_msgs = [msg for msg in messages if isinstance(msg, SystemMessage)][:1]
+            system_msgs = [msg for msg in messages if isinstance(msg, SystemMessage)][
+                :1
+            ]
             return system_msgs
-        
+
         # Count tokens from the end (most recent messages)
         trimmed_messages = []
         current_tokens = 0
-        
+
         # Always keep system message first
         system_messages = [msg for msg in messages if isinstance(msg, SystemMessage)]
         other_messages = [msg for msg in messages if not isinstance(msg, SystemMessage)]
-        
+
         # Add system messages
         trimmed_messages.extend(system_messages)
-        
+
         # Add other messages from most recent, checking token limits
         for message in reversed(other_messages):
             message_tokens = self._count_message_tokens([message])
             if current_tokens + message_tokens <= available_tokens:
-                trimmed_messages.insert(len(system_messages), message)  # Insert after system messages
+                trimmed_messages.insert(
+                    len(system_messages), message
+                )  # Insert after system messages
                 current_tokens += message_tokens
             else:
-                self._logger.info(f"Trimming message due to context limit: {message_tokens} tokens")
+                self._logger.info(
+                    f"Trimming message due to context limit: {message_tokens} tokens"
+                )
                 break
-        
+
         if len(trimmed_messages) < len(messages):
             self._logger.info(
                 f"Trimmed {len(messages) - len(trimmed_messages)} messages to fit context window"
             )
-        
+
         return trimmed_messages
 
     def _get_res(
@@ -489,51 +606,63 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
         # Convert LangChain tools to OpenAI format for llama-cpp-python
         converted_tools = self._convert_tools_to_openai_format(tools)
-        
+
         # Trim messages to fit context window
         trimmed_messages = self._trim_messages_to_context(messages, converted_tools)
 
         # Format messages for llama-cpp-python
         llama_messages = self._format_messages_for_llama(trimmed_messages)
-        
+
         # DEBUG: Log the actual messages being sent to llama.cpp if context is large
-        total_content_chars = sum(len(str(msg.get('content', ''))) for msg in llama_messages)
+        total_content_chars = sum(
+            len(str(msg.get("content", ""))) for msg in llama_messages
+        )
         if total_content_chars > 5000:  # Debug if content is large (lowered threshold)
-            self._logger.warning(f"🚨 LARGE CONTENT DETECTED: {total_content_chars:,} characters in {len(llama_messages)} messages")
+            self._logger.warning(
+                f"🚨 LARGE CONTENT DETECTED: {total_content_chars:,} characters in {len(llama_messages)} messages"
+            )
             for i, msg in enumerate(llama_messages):
-                content = str(msg.get('content', ''))
+                content = str(msg.get("content", ""))
                 content_size = len(content)
-                self._logger.warning(f"  Message {i+1} ({msg.get('role', 'unknown')}): {content_size:,} chars")
-                if content_size > 1000:  # Show preview of large content (lowered threshold)
+                self._logger.warning(
+                    f"  Message {i+1} ({msg.get('role', 'unknown')}): {content_size:,} chars"
+                )
+                if (
+                    content_size > 1000
+                ):  # Show preview of large content (lowered threshold)
                     self._logger.warning(f"    Preview: {content[:500]}...")
 
         # Log token usage with more detail
         message_tokens = self._count_message_tokens(trimmed_messages)
         tool_tokens = self._count_tool_tokens(converted_tools)
         total_estimated = message_tokens + tool_tokens
-        context_limit = getattr(self.llama_instance, 'n_ctx', lambda: 4096)()
-        
+        context_limit = getattr(self.llama_instance, "n_ctx", lambda: 4096)()
+
         # Count how many messages were trimmed
         original_count = len(messages)
         trimmed_count = len(trimmed_messages)
-        
+
         self._logger.info(
             f"Context management: model={self.model.name}, "
             f"messages={trimmed_count}/{original_count}, "
             f"message_tokens={message_tokens}, tool_tokens={tool_tokens}, "
             f"total_estimated={total_estimated}, context_limit={context_limit}"
         )
-        
+
         # Debug: Log actual content being sent to llama.cpp if it might be problematic
         if total_estimated > context_limit * 0.5:  # Debug at 50% to catch issues early
             self._logger.warning(f"⚠️ Context debugging enabled for {self.model.name}")
-            self._logger.warning(f"Message contents: {[msg['content'][:200] + '...' if len(str(msg['content'])) > 200 else msg['content'] for msg in llama_messages]}")
+            self._logger.warning(
+                f"Message contents: {[msg['content'][:200] + '...' if len(str(msg['content'])) > 200 else msg['content'] for msg in llama_messages]}"
+            )
             if converted_tools:
                 self._logger.warning(f"Tool schemas: {len(converted_tools)} tools")
                 for i, tool in enumerate(converted_tools[:2]):  # Log first 2 tools
                     tool_str = str(tool)
-                    self._logger.warning(f"Tool {i+1}: {tool_str[:500] + '...' if len(tool_str) > 500 else tool_str}")
-        
+                    self._logger.warning(
+                        f"Tool {i+1}: {tool_str[:500] + '...' if len(tool_str) > 500 else tool_str}"
+                    )
+
         if total_estimated > context_limit * 0.9:  # Warn at 90% capacity
             self._logger.warning(
                 f"APPROACHING CONTEXT LIMIT: {total_estimated}/{context_limit} tokens "
@@ -594,7 +723,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
         """Generate a chat response from messages."""
         # Combine bound tools with any tools passed in kwargs
         tools = kwargs.get("tools", [])
-        if hasattr(self, '_bound_tools') and self._bound_tools:
+        if hasattr(self, "_bound_tools") and self._bound_tools:
             tools = list(self._bound_tools) + list(tools or [])
 
         try:
@@ -643,7 +772,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
         """Stream chat response chunks."""
         # Combine bound tools with any tools passed in kwargs
         tools = kwargs.get("tools", [])
-        if hasattr(self, '_bound_tools') and self._bound_tools:
+        if hasattr(self, "_bound_tools") and self._bound_tools:
             tools = list(self._bound_tools) + list(tools or [])
 
         try:

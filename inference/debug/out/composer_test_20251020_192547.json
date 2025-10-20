@@ -1,0 +1,74 @@
+{
+  "overall_success": false,
+  "execution_time": 116.69861006736755,
+  "workflow_time": 0,
+  "components_passed": 7,
+  "total_components": 8,
+  "results": {
+    "infrastructure_setup": {
+      "success": true,
+      "database_connected": true,
+      "target_model": "qwen3-30b-a3b-q4-k-m"
+    },
+    "composer_initialization": {
+      "success": true,
+      "service_initialized": true,
+      "service_type": "ComposerService"
+    },
+    "user_profile_creation": {
+      "success": true,
+      "user_id": "test_composer_user_ed59edb8",
+      "model_profile_id": "ae710634-deae-45cb-a9b0-9a2dbd38f8af",
+      "model_name": "qwen3-30b-a3b-q4-k-m"
+    },
+    "conversation_creation": {
+      "success": true,
+      "conversation_id": 830
+    },
+    "message_creation": {
+      "success": true,
+      "message_id": 3114,
+      "message_length": 318
+    },
+    "workflow_execution": {
+      "success": false,
+      "execution_time": 104.66440844535828,
+      "response_chunks": 477,
+      "tool_calls_detected": true,
+      "response_length": 2048,
+      "workflow_type": "composer_langgraph",
+      "final_response_raw": "{\"intents\": [{\"workflow_type\": \"research\", \"complexity_level\": \"MODERATE\", \"required_capabilities\": [\"information_retrieval\", \"web_search\", \"summarization\"], \"domain_specificity\": 0.8, \"reusability_potential\": 0.6, \"confidence\": 0.95, \"tool_complexity_score\": 0.5, \"computational_requirements\": \"MODERATE\", \"requires_tools\": true, \"requires_custom_tools\": false}]}<think>\nOkay, the user is asking for the latest developments in AI in 2024, specifically major model releases, research breakthroughs, and safety developments. Since the knowledge cutoff is 2024-06, I need to use the web_search tool to get the most recent info.\n\nFirst, I'll break down the query into three parts. Each part requires a separate search to ensure comprehensive results. \n\nFor the first part about major AI model releases in 2024, I'll search for \"major AI model releases 2024\". That should bring up any new models from companies or research labs.\n\nNext, for recent breakthroughs in AI research, a search on \"Recent AI research breakthroughs 2024\" would be appropriate. This might include advancements in various fields like machine learning, NLP, computer vision, etc.\n\nLastly, for AI safety developments, the search query \"Current AI safety developments 2024\" should yield information on new policies, frameworks, or research aimed at ensuring AI systems are safe and ethical.\n\nI need to make sure each search is conducted separately to get the most relevant and up-to-date information. After retrieving the results, I can compile a summary covering all three areas. Since the user wants a comprehensive summary, I should ensure that each part of their query is addressed with the latest information available through the searches.\n</think>\n\n<tool_call>\n{\"name\": \"web_search\", \"arguments\": {\"query\": \"major AI model releases 2024\"}}\n</tool_call>\n<tool_call>\n{\"name\": \"web_search\", \"arguments\": {\"query\": \"Recent AI research breakthroughs 2024\"}}\n</tool_call>\n<tool_call>\n{\"name\": \"web_search\", \"arguments\": {\"query\": \"Current AI safety developments 2024\"}}\n</tool_call>",
+      "final_response": "{\"intents\": [{\"workflow_type\": \"research\", \"complexity_level\": \"MODERATE\", \"required_capabilities\": [\"information_retrieval\", \"web_search\", \"summarization\"], \"domain_specificity\": 0.8, \"reusability_potential\": 0.6, \"confidence\": 0.95, \"tool_complexity_score\": 0.5, \"computational_requirements\": \"MODERATE\", \"requires_tools\": true, \"requires_custom_tools\": false}]}<think>\nOkay, the user is asking for the latest developments in AI in 2024, specifically major model releases, research breakthroughs, and safety developments. Since the knowledge cutoff is 2024-06, I need to use the web_search tool to get the most recent info.\n\nFirst, I'll break down the query into three parts. Each part requires a separate search to ensure comprehensive results. \n\nFor the first part about major AI model releases in 2024, I'll search for \"major AI model releases 2024\". That should bring up any new models from companies or research labs.\n\nNext, for recent breakthroughs in AI research, a search on \"Recent AI research breakthroughs 2024\" would be appropriate. This might include advancements in various fields like machine learning, NLP, computer vision, etc.\n\nLastly, for AI safety developments, the search query \"Current AI safety developments 2024\" should yield information on new policies, frameworks, or research aimed at ensuring AI systems are safe and ethical.\n\nI need to make sure each search is conducted separately to get the most relevant and up-to-date information. After retrieving the results, I can compile a summary covering all three areas. Since the user wants a comprehensive summary, I should ensure that each part of their query is addressed with the latest information available through the searches.\n</think>\n\n<tool_call>\n{\"name\": \"web_search\", \"arguments\": {\"query\": \"major AI model releases 2024\"}}\n</tool_call>\n<tool_call>\n{\"name\": \"web_search\", \"arguments\": {\"query\": \"Recent AI research breakthroughs 2024\"}}\n</tool_call>\n<tool_call>\n{\"name\": \"web_search\", \"arguments\": {\"query\": \"Current AI safety developments 2024\"}}\n</tool_call>",
+      "validation_errors": [
+        "Encountered 1 workflow error events (first type: workflow_error)"
+      ],
+      "tool_availability_correct": true,
+      "dynamic_tool_error_free": true
+    },
+    "output_validation": {
+      "success": true,
+      "conversation_valid": true,
+      "model_profile_valid": true,
+      "message_count": 2,
+      "assistant_messages": 1,
+      "response_quality_score": 100,
+      "title_validation": {
+        "valid": true,
+        "title": "Composer Real End-to-End Test Conversation",
+        "word_count": 5,
+        "meets_word_limit": true,
+        "has_content": true,
+        "no_quotes": true,
+        "properly_capitalized": true
+      }
+    },
+    "data_cleanup": {
+      "success": true,
+      "cleaned_count": 9,
+      "errors": [],
+      "total_entities": 5
+    }
+  },
+  "entities_created": 0,
+  "entities_cleaned": 9
+}
