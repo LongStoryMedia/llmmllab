@@ -337,7 +337,7 @@ def dbg_evt(evt: StandardStreamEvent | CustomStreamEvent | Dict[str, Any]):
         if event_type in significant_events:
             # Create concise summary instead of dumping everything
             summary = {
-                "event": event_type,
+                "event_type": event_type,
                 "timestamp": datetime.now().isoformat()
             }
             
