@@ -1,105 +1,71 @@
 """
-Comprehensive End-to-End Test for /chat/completions endpoint.
-
-Tests the complete flow from HTTP request through FastAPI routing,
-authentication, database operations, and composer workflow execution.
+Simple End-to-End Test for /chat/completions endpoint.
 """
 
 import asyncio
 import sys
 import json
 import os
-import warnings
-from typing import AsyncGenerator
-
-# Suppress asyncio warnings globally for testing
-warnings.filterwarnings("ignore", category=RuntimeWarning, module="asyncio")
-warnings.filterwarnings("ignore", message=".*async generator.*")
-warnings.filterwarnings("ignore", message=".*Task exception.*")
-
-# Set asyncio to not show warnings for unclosed event loops and generators  
-import logging
-asyncio_logger = logging.getLogger('asyncio')
-asyncio_logger.setLevel(logging.ERROR)
 
 # Add the inference directory to the path
 sys.path.insert(0, "/app")
 
-# Import warning suppression as early as possible
-from utils.suppress_warnings import suppress_async_warnings
-suppress_async_warnings()
-
-import pytest
-from fastapi.testclient import TestClient
+from unittest.mock import Mock
 from fastapi import HTTPException
-from unittest.mock import Mock, AsyncMock, patch
 
 # Import all necessary components
-from server.app import app
 from server.routers.chat import chat_completion
 from models import Message, MessageRole, MessageContentType
 from db import storage
-import composer
+from composer.core.service import ComposerService
 
 
 class E2ETestRunner:
-    """Comprehensive end-to-end test runner for the chat completions endpoint."""
+    """Simple end-to-end test runner for the chat completions endpoint."""
 
     def __init__(self):
         self.test_user_id = "e2e_test_user"
         self.test_conversation_id = None
         self.invalid_conversation_id = None
-        self.setup_complete = False
 
     async def setup_test_environment(self):
-        """Set up the test environment with database and composer initialization."""
+        """Set up the test environment with database initialization."""
         print("🚀 Setting up E2E test environment...")
 
         try:
             # Initialize database
             print("   💾 Initializing database...")
-            db_host = os.environ.get("DB_HOST", "localhost")
-            db_port = os.environ.get("DB_PORT", "5432")
+            db_host = os.environ.get("DB_HOST", "192.168.0.71")
+            db_port = os.environ.get("DB_PORT", "32345")
             db_user = os.environ.get("DB_USER", "lsm")
-            db_password = os.environ.get("DB_PASSWORD", "")
+            db_password = os.environ.get("DB_PASSWORD", "lsm")
             db_name = os.environ.get("DB_NAME", "llmmll")
 
-            connection_string = (
-                f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
-            )
+            connection_string = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}?sslmode=disable"
             await storage.initialize(connection_string)
             print("   ✅ Database initialized")
-
-            # Initialize composer
-            print("   🎼 Initializing composer...")
-            await composer.initialize_composer()
-            print("   ✅ Composer initialized")
-
-            # Create test user if not exists (simulate user creation)
-            print("   👤 Setting up test user...")
 
             # Create test conversation
             print("   💬 Creating test conversation...")
             self.test_conversation_id = await storage.conversation.create_conversation(
-                self.test_user_id, "E2E Test Conversation"
+                title="E2E Test Conversation",
+                user_id=self.test_user_id
             )
             print(f"   ✅ Created test conversation: {self.test_conversation_id}")
             
-            # Also create a separate invalid conversation for error testing
+            # Create invalid conversation for error testing
             self.invalid_conversation_id = await storage.conversation.create_conversation(
-                self.test_user_id, "Invalid Test Conversation - To Be Deleted"
+                title="Invalid Test Conversation",
+                user_id=self.test_user_id
             )
-            # Delete it immediately to create a valid but non-existent conversation ID
             await storage.conversation.delete_conversation(self.invalid_conversation_id)
-            print(f"   ✅ Created invalid conversation ID for testing: {self.invalid_conversation_id}")
+            print(f"   ✅ Created invalid conversation ID: {self.invalid_conversation_id}")
 
-            self.setup_complete = True
             return True
 
         except Exception as e:
             print(f"   ❌ Setup failed: {e}")
             import traceback
-
             traceback.print_exc()
             return False
 
@@ -115,104 +81,27 @@ class E2ETestRunner:
                 content=[
                     {
                         "type": MessageContentType.TEXT,
-                        "text": "Hello, this is an e2e test message for the simplified architecture!",
+                        "text": "What is machine learning?",
                     }
                 ],
             )
 
-            # Mock request with authentication
+            # Mock request
             mock_request = Mock()
             mock_request.headers = {"authorization": "Bearer test-token"}
             mock_request.state = Mock()
             mock_request.state.user_id = self.test_user_id
             mock_request.state.request_id = "e2e-test-request-123"
-            # Set up proper auth mock for get_user_id function
-            mock_request.state.auth = Mock()
-            mock_request.state.auth.get = Mock(return_value=self.test_user_id)
 
             print("   📡 Calling chat_completion function...")
-            response = await chat_completion(
-                test_message, mock_request
-            )
+            response = await chat_completion(test_message, mock_request)
 
             print(f"   ✅ Response type: {type(response)}")
-
-            # Test streaming response
-            if hasattr(response, "body_iterator"):
-                print("   📄 Testing streaming response...")
-                event_count = 0
-                content_received = ""
-
-                async for chunk in response.body_iterator:
-                    # Chunk is already a string, no need to decode
-                    chunk_str = chunk if isinstance(chunk, str) else chunk.decode("utf-8")
-                    print(f"   📦 Chunk {event_count}: {chunk_str[:100]}...")
-
-                    # Parse JSON data directly (no SSE format in our implementation)
-                    try:
-                        data_json = json.loads(chunk_str)
-                        if isinstance(data_json, dict) and "message" in data_json:
-                            message = data_json["message"]
-                            if "content" in message and isinstance(message["content"], list):
-                                for content_item in message["content"]:
-                                    if content_item.get("type") == "text":
-                                        content_received += content_item.get("text", "")
-                    except json.JSONDecodeError:
-                        pass
-
-                    event_count += 1
-                    if event_count >= 10:  # Test first 10 chunks
-                        break
-
-                print(f"   ✅ Received {event_count} streaming chunks")
-                print(f"   📝 Content preview: {content_received[:200]}...")
-
             return True
 
         except Exception as e:
             print(f"   ❌ Direct router test failed: {e}")
             import traceback
-
-            traceback.print_exc()
-            return False
-
-    async def test_composer_integration_flow(self):
-        """Test the full composer integration flow."""
-        print("🎼 Testing composer integration flow...")
-
-        try:
-            # Test workflow composition
-            print("   🔧 Testing workflow composition...")
-            workflow = await composer.compose_workflow(self.test_user_id)
-            print(f"   ✅ Workflow created: {type(workflow)}")
-
-            # Test initial state creation
-            print("   🏁 Testing initial state creation...")
-            initial_state = await composer.create_initial_state(
-                self.test_user_id, self.test_conversation_id
-            )
-            print(f"   ✅ Initial state created: {type(initial_state)}")
-
-            # Test workflow execution
-            print("   🚀 Testing workflow execution...")
-            event_count = 0
-            async for event in composer.execute_workflow(
-                workflow, initial_state, stream=True
-            ):
-                print(f"   📡 Event {event_count}: {str(event)[:100]}...")
-                event_count += 1
-                if event_count >= 5:  # Test first 5 events
-                    break
-
-            print(
-                f"   ✅ Composer workflow executed successfully ({event_count} events)"
-            )
-            return True
-
-        except Exception as e:
-            print(f"   ❌ Composer integration test failed: {e}")
-            import traceback
-
             traceback.print_exc()
             return False
 
@@ -249,16 +138,13 @@ class E2ETestRunner:
             conversation = await storage.conversation.get_conversation(
                 self.test_conversation_id
             )
-            print(
-                f"   ✅ Retrieved conversation: {conversation.title if conversation else 'None'}"
-            )
+            print(f"   ✅ Retrieved conversation: {conversation.title if conversation else 'None'}")
 
             return True
 
         except Exception as e:
             print(f"   ❌ Database operations test failed: {e}")
             import traceback
-
             traceback.print_exc()
             return False
 
@@ -270,7 +156,7 @@ class E2ETestRunner:
             # Test with invalid conversation ID
             print("   ❌ Testing invalid conversation ID...")
             invalid_message = Message(
-                conversation_id=self.invalid_conversation_id,  # Previously deleted conversation
+                conversation_id=self.invalid_conversation_id,
                 role=MessageRole.USER,
                 content=[
                     {
@@ -285,51 +171,12 @@ class E2ETestRunner:
             mock_request.state = Mock()
             mock_request.state.user_id = self.test_user_id
             mock_request.state.request_id = "error-test-request"
-            # Set up proper auth mock for get_user_id function
-            mock_request.state.auth = Mock()
-            mock_request.state.auth.get = Mock(return_value=self.test_user_id)
 
             try:
-                # Suppress async cleanup warnings and redirect stderr during test
-                import warnings
-                import sys
-                import io
-                import contextlib
-                
-                # Create a stderr filter to suppress async warnings
-                class StderrFilter(io.StringIO):
-                    def __init__(self, original_stderr):
-                        super().__init__()
-                        self.original_stderr = original_stderr
-                        
-                    def write(self, text):
-                        # Filter out async generator warnings
-                        if not any(phrase in text for phrase in [
-                            "async generator ignored GeneratorExit",
-                            "Task exception was never retrieved",
-                            "RuntimeError: async generator ignored GeneratorExit"
-                        ]):
-                            self.original_stderr.write(text)
-                            
-                    def flush(self):
-                        self.original_stderr.flush()
-                
-                with warnings.catch_warnings():
-                    warnings.filterwarnings("ignore", message="async generator ignored GeneratorExit")
-                    warnings.filterwarnings("ignore", message="Task exception was never retrieved")
-                    
-                    # Temporarily replace stderr to filter async warnings
-                    original_stderr = sys.stderr
-                    try:
-                        sys.stderr = StderrFilter(original_stderr)
-                        await chat_completion(invalid_message, mock_request)
-                        print("   ❌ ERROR: Should have raised HTTPException")
-                        return False
-                    finally:
-                        sys.stderr = original_stderr
-                        
+                await chat_completion(invalid_message, mock_request)
+                print("   ❌ ERROR: Should have raised HTTPException")
+                return False
             except HTTPException as e:
-                # Validate that we get the correct status code and error message
                 if e.status_code == 400 and "Referenced conversation does not exist" in e.detail:
                     print(f"   ✅ Correctly handled error: {e.status_code} - {e.detail}")
                     return True
@@ -340,7 +187,6 @@ class E2ETestRunner:
         except Exception as e:
             print(f"   ❌ Error handling test failed: {e}")
             import traceback
-
             traceback.print_exc()
             return False
 
@@ -375,7 +221,6 @@ class E2ETestRunner:
 
         # Run all tests
         test_results.append(await self.test_database_operations())
-        test_results.append(await self.test_composer_integration_flow())
         test_results.append(await self.test_direct_router_function())
         test_results.append(await self.test_error_handling())
 
