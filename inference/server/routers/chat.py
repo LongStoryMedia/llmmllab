@@ -60,7 +60,24 @@ async def chat_completion(
 
     try:
         # Store the user message in database first (with fallback for connection issues)
-        await storage.get_service(storage.message).add_message(msg)
+        try:
+            await storage.get_service(storage.message).add_message(msg)
+        except Exception as db_error:
+            # Handle database errors early with specific HTTPException
+            if "referenced conversation does not exist" in str(db_error).lower():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Referenced conversation does not exist"
+                )
+            elif "storage not initialized" in str(db_error).lower():
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Storage not initialized"
+                )
+            else:
+                # Re-raise other database errors to be handled by outer catch
+                raise
+        
         # Capture variables for the async generator
         conversation_id = msg.conversation_id
 

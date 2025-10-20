@@ -279,8 +279,13 @@ class E2ETestRunner:
                 print("   ❌ ERROR: Should have raised HTTPException")
                 return False
             except HTTPException as e:
-                print(f"   ✅ Correctly handled error: {e.detail}")
-                return True
+                # Validate that we get the correct status code and error message
+                if e.status_code == 400 and "Referenced conversation does not exist" in e.detail:
+                    print(f"   ✅ Correctly handled error: {e.status_code} - {e.detail}")
+                    return True
+                else:
+                    print(f"   ❌ Wrong error response: {e.status_code} - {e.detail}")
+                    return False
 
         except Exception as e:
             print(f"   ❌ Error handling test failed: {e}")
