@@ -226,52 +226,55 @@ class E2ETestRunner:
             traceback.print_exc()
             return False
 
-    async def test_error_handling(self):
-        """Test error handling scenarios."""
-        print("🚨 Testing error handling...")
+    async def test_complete_workflow_execution(self):
+        """Test complete workflow execution with a real conversation."""
+        print("� Testing complete workflow execution...")
 
         try:
-            # Create a valid conversation for testing actual workflow execution
-            print("   ✅ Testing valid conversation with large context...")
-            large_context_conversation_id = await storage.conversation.create_conversation(
-                title="Large Context Test Conversation",
+            # Create a new conversation specifically for workflow testing
+            print("   💬 Creating conversation for workflow test...")
+            workflow_conversation_id = await storage.conversation.create_conversation(
+                title="Complete Workflow Test Conversation",
                 user_id=self.test_user_id
             )
             
-            # Add multiple messages to create a large context
-            for i in range(10):
-                large_message = Message(
-                    conversation_id=large_context_conversation_id,
+            # Add some initial context messages to the conversation
+            print("   📝 Adding initial context to conversation...")
+            for i in range(3):
+                context_message = Message(
+                    conversation_id=workflow_conversation_id,
                     role=MessageRole.USER,
                     content=[
                         {
                             "type": MessageContentType.TEXT,
-                            "text": f"Message {i}: " + "This is a long message with substantial content that would consume many tokens. " * 50,
+                            "text": f"Context message {i}: Tell me about artificial intelligence and machine learning.",
                         }
                     ],
                 )
-                await storage.message.add_message(large_message)
+                await storage.message.add_message(context_message)
                 
-                assistant_message = Message(
-                    conversation_id=large_context_conversation_id,
+                assistant_context = Message(
+                    conversation_id=workflow_conversation_id,
                     role=MessageRole.ASSISTANT,
                     content=[
                         {
                             "type": MessageContentType.TEXT,
-                            "text": f"Response {i}: " + "This is a detailed assistant response with lots of content that also consumes many tokens. " * 50,
+                            "text": f"Response {i}: AI and ML are fascinating fields that involve creating systems that can learn and make decisions.",
                         }
                     ],
                 )
-                await storage.message.add_message(assistant_message)
+                await storage.message.add_message(assistant_context)
 
-            # Test the workflow with large context (should trigger context window management)
-            large_context_message = Message(
-                conversation_id=large_context_conversation_id,
+            print(f"   ✅ Added context messages to conversation {workflow_conversation_id}")
+
+            # Now test the complete workflow with a real message
+            workflow_test_message = Message(
+                conversation_id=workflow_conversation_id,
                 role=MessageRole.USER,
                 content=[
                     {
                         "type": MessageContentType.TEXT,
-                        "text": "What is the summary of our conversation so far?",
+                        "text": "Based on our conversation, can you explain the key differences between supervised and unsupervised learning?",
                     }
                 ],
             )
@@ -280,22 +283,46 @@ class E2ETestRunner:
             mock_request.headers = {"authorization": "Bearer test-token"}
             mock_request.state = Mock()
             mock_request.state.user_id = self.test_user_id
-            mock_request.state.request_id = "large-context-test-request"
+            mock_request.state.request_id = "complete-workflow-test-request"
 
+            print("   🎯 Executing complete LangGraph workflow...")
+            
             try:
-                response = await chat_completion(large_context_message, mock_request)
-                print(f"   ✅ Large context workflow executed successfully: {type(response)}")
+                response = await chat_completion(workflow_test_message, mock_request)
+                print("   ✅ Complete workflow executed successfully!")
+                print(f"   ✅ Response type: {type(response)}")
+                
+                # Verify the response is a streaming response (indicates successful execution)
+                if "StreamingResponse" in str(type(response)):
+                    print("   ✅ Received proper streaming response from workflow")
+                else:
+                    print(f"   ⚠️  Unexpected response type: {type(response)}")
+                    
             except Exception as workflow_error:
-                print(f"   ❌ Workflow execution failed: {workflow_error}")
-                # Clean up the test conversation
-                await storage.conversation.delete_conversation(large_context_conversation_id)
+                print(f"   ❌ CRITICAL: Complete workflow execution failed: {workflow_error}")
+                import traceback
+                traceback.print_exc()
+                await storage.conversation.delete_conversation(workflow_conversation_id)
                 return False
             
             # Clean up the test conversation
-            await storage.conversation.delete_conversation(large_context_conversation_id)
+            await storage.conversation.delete_conversation(workflow_conversation_id)
+            print("   ✅ Workflow test completed successfully")
+            return True
 
-            # Now test with truly invalid conversation ID (non-existent)
-            print("   ❌ Testing with non-existent conversation ID...")
+        except Exception as e:
+            print(f"   ❌ Complete workflow test failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    async def test_invalid_conversation_error_handling(self):
+        """Test error handling with invalid conversation ID."""
+        print("❌ Testing invalid conversation error handling...")
+
+        try:
+            # Test with truly invalid conversation ID (non-existent)
+            print("   🚨 Testing with non-existent conversation ID...")
             invalid_message = Message(
                 conversation_id=99999,  # Use a clearly invalid ID
                 role=MessageRole.USER,
@@ -315,11 +342,11 @@ class E2ETestRunner:
 
             try:
                 await chat_completion(invalid_message, mock_request_invalid)
-                print("   ❌ ERROR: Should have raised HTTPException")
+                print("   ❌ ERROR: Should have raised HTTPException for invalid conversation")
                 return False
             except HTTPException as e:
                 if e.status_code == 400 and "Referenced conversation does not exist" in e.detail:
-                    print(f"   ✅ Correctly handled error: {e.status_code} - {e.detail}")
+                    print(f"   ✅ Correctly handled invalid conversation error: {e.status_code} - {e.detail}")
                     return True
                 else:
                     print(f"   ❌ Wrong error response: {e.status_code} - {e.detail}")
@@ -364,7 +391,8 @@ class E2ETestRunner:
         test_results.append(await self.test_database_operations())
         test_results.append(await self.test_direct_router_function())
         test_results.append(await self.test_context_window_management())
-        test_results.append(await self.test_error_handling())
+        test_results.append(await self.test_complete_workflow_execution())
+        test_results.append(await self.test_invalid_conversation_error_handling())
 
         # Cleanup
         await self.cleanup_test_environment()
