@@ -385,9 +385,8 @@ def dbg_evt(evt: StandardStreamEvent | CustomStreamEvent | Dict[str, Any]):
         event_type = evt.get("event", "")
         event_data = evt.get("data", {})
         
-        # Only log significant events to reduce noise
+        # Only log significant events to reduce noise - chain events removed to reduce spam
         significant_events = {
-            "on_chain_start", "on_chain_end", 
             "on_chat_model_start", "on_chat_model_end", "on_chat_model_stream",
             "on_tool_start", "on_tool_end",
             "workflow_error"
@@ -413,11 +412,6 @@ def dbg_evt(evt: StandardStreamEvent | CustomStreamEvent | Dict[str, Any]):
                 if content:
                     summary["content_length"] = len(content)
                     summary["content_preview"] = content[:50] + "..." if len(content) > 50 else content
-            elif event_type in ["on_chain_start", "on_chain_end"]:
-                # Only log node name and basic metadata, not full state
-                summary["name"] = evt.get("name", "")
-                if "metadata" in event_data:
-                    summary["node_metadata"] = event_data.get("metadata", {})
             elif event_type in ["on_tool_start", "on_tool_end"]:
                 summary["name"] = evt.get("name", "")
                 if "input" in event_data:
