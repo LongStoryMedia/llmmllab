@@ -4,6 +4,9 @@ NO GUESSWORK!
 ALWAYS be certain and check the codebase!
 ALWAYS create a git commit with a descriptive message after making changes.
 ALWAYS sync code after making changes.
+NEVER leave the kubernetes pod in a crash loop or bad state.
+NEVER use complex nested commands; use simple commands or scripts instead.
+NEVER leave code that didn't help solve the problem, or create the feature. (cleanup)
 
 ## Architecture Overview
 
@@ -169,7 +172,12 @@ kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh runner python debug/test_qwen
 - the kubernetes pod is not running correctly
 - the pattern does not follow the documented architecture or patterns in existing code
 
+# REMEMBER:
+
 NO GUESSWORK!
 ALWAYS be certain and check the codebase!
 ALWAYS create a git commit with a descriptive message after making changes.
 ALWAYS sync code after making changes.
+NEVER leave the kubernetes pod in a crash loop or bad state.
+NEVER use complex nested commands; use simple commands or scripts instead.
+NEVER leave code that didn't help solve the problem, or create the feature. (cleanup)

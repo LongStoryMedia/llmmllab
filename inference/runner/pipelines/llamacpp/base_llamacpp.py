@@ -70,7 +70,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
         self.grammar = grammar
         self._bound_tools = kwargs.get('_bound_tools', [])
         self.hardware_manager = EnhancedHardwareManager()
-        self.llama_instance = self._initialize_llama_with_fallback(
+        self.llama_instance = self._initialize_llama_with_oom_retry(
             self._get_gguf_path()
         )
 
@@ -137,188 +137,156 @@ class BaseLlamaCppPipeline(BaseChatModel):
             )
             return 4
 
-    def _get_model_size_category(self) -> str:
-        """Determine model size category from model name."""
-        model_name = self.model.name.lower()
-
-        if any(x in model_name for x in ["1b", "1.5b", "3b"]):
-            return "small"
-        elif any(x in model_name for x in ["7b", "8b", "13b"]):
-            return "medium"
-        elif any(x in model_name for x in ["20b", "30b"]):
-            return "large"
-        elif any(x in model_name for x in ["70b", "120b"]):
-            return "xlarge"
-        else:
-            return "medium"
-
-    def _build_context_candidates(self, requested_ctx: int) -> List[int]:
-        """Build context size candidates for fallback."""
-        candidates = [requested_ctx]
-
-        fallbacks = [32768, 16384, 8192, 4096, 2048]
-        for fallback in fallbacks:
-            if fallback < requested_ctx and fallback not in candidates:
-                candidates.append(fallback)
-
-        return sorted(list(set(candidates)), reverse=True)
-
-    def _handle_oom_recovery(self, ctx_size: int, batch_size: int, gpu_layers: int) -> None:
-        """Handle OOM recovery with progressive mitigation strategies."""
-        self._logger.warning(f"🔧 Starting OOM recovery for ctx={ctx_size}, batch={batch_size}, gpu_layers={gpu_layers}")
+    def _clear_pipeline_and_memory(self):
+        """Clear pipeline instance and GPU memory."""
+        if hasattr(self, 'llama_instance') and self.llama_instance:
+            try:
+                self.llama_instance.close()
+            except:
+                pass
+            del self.llama_instance
+            self.llama_instance = None
         
-        # Step 1: Clear GPU memory and caches
+        # Clear GPU memory
         try:
-            self._logger.info("🧹 Clearing GPU memory and caches...")
             self.hardware_manager.clear_memory(aggressive=True)
-            
-            # Clear any existing pipeline caches
-            if hasattr(self, 'llama_instance') and self.llama_instance:
-                del self.llama_instance
-                self.llama_instance = None
-                
         except Exception as e:
-            self._logger.warning(f"Error during memory clearing: {e}")
+            self._logger.warning(f"Error clearing GPU memory: {e}")
         
-        # Step 2: Give GPU a moment to clean up
+        # Give GPU a moment to clean up
         import time
         time.sleep(1)
-        
-        self._logger.info("✅ OOM recovery steps completed, will retry with smaller parameters")
 
-    def _initialize_llama_with_fallback(self, gguf_path: str) -> llama_cpp.Llama:
-        """Initialize Llama instance with fallback strategies."""
+    def _initialize_llama_with_oom_retry(self, gguf_path: str) -> llama_cpp.Llama:
+        """Initialize Llama instance - try with requested parameters, handle OOM reactively."""
         if llama_cpp.Llama is None:
             raise ImportError("llama-cpp-python is required but not installed")
 
-        # Get base parameters
-        requested_ctx = self.profile.parameters.num_ctx or 4096
-        requested_batch = self.profile.parameters.batch_size or 512
+        # Start with requested parameters
+        n_ctx = self.profile.parameters.num_ctx or 32768
+        n_batch = self.profile.parameters.batch_size or 512
+        n_ubatch = 512
+        
+        # GPU layers
+        n_gpu_layers = -1  # Default to full offload
+        if (self.profile.gpu_config is not None and 
+            self.profile.gpu_config.gpu_layers is not None):
+            n_gpu_layers = self.profile.gpu_config.gpu_layers
 
-        # Model size and GPU layer candidates
-        model_size_category = self._get_model_size_category()
-        context_candidates = self._build_context_candidates(requested_ctx)
-        # Perplexity / logits guard (mirrors advanced base logic simplified)
+        # Perplexity / logits guard
         perplexity_enabled = bool(
             getattr(self.profile.parameters, "enable_perplexity_guard", False)
         )
 
-        # GPU layers strategy
-        explicit_gpu_layers = None
-        if (
-            self.profile.gpu_config is not None
-            and self.profile.gpu_config.gpu_layers is not None
-        ):
-            explicit_gpu_layers = self.profile.gpu_config.gpu_layers
+        # Retry parameters for OOM handling
+        oom_attempts = 0
+        max_oom_attempts = 6
+        
+        while oom_attempts < max_oom_attempts:
+            try:
+                self._logger.info(f"Attempting to initialize {self.model.name} with n_ctx={n_ctx}, n_batch={n_batch}, n_ubatch={n_ubatch}, gpu_layers={n_gpu_layers}")
+                
+                llama_instance = llama_cpp.Llama(
+                    model_path=gguf_path,
+                    n_gpu_layers=n_gpu_layers,
+                    split_mode=llama_cpp.LLAMA_SPLIT_MODE_LAYER,
+                    tensor_split=None,
+                    vocab_only=False,
+                    use_mmap=True,
+                    use_mlock=False,
+                    kv_overrides=None,
+                    # Context Params
+                    seed=self.profile.parameters.seed or llama_cpp.LLAMA_DEFAULT_SEED,
+                    n_ctx=n_ctx,
+                    n_batch=n_batch,
+                    n_ubatch=n_ubatch,
+                    n_threads=self._get_optimal_threads(),
+                    temperature=self.profile.parameters.temperature or 0.7,
+                    top_p=self.profile.parameters.top_p or 0.8,
+                    top_k=self.profile.parameters.top_k or 20,
+                    repeat_penalty=self.profile.parameters.repeat_penalty or 1.05,
+                    f16_kv=True,
+                    verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
+                    flash_attn=getattr(self.profile.parameters, "flash_attention", True),
+                    logits_all=perplexity_enabled,
+                    logprobs=1 if perplexity_enabled else 0,
+                    embedding=False,
+                    chat_format=None,
+                    n_threads_batch=None,
+                    rope_scaling_type=None,
+                    pooling_type=llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
+                    rope_freq_base=0.0,
+                    rope_freq_scale=0.0,
+                    yarn_ext_factor=-1.0,
+                    yarn_attn_factor=1.0,
+                    yarn_beta_fast=32.0,
+                    yarn_beta_slow=1.0,
+                    yarn_orig_ctx=0,
+                    offload_kqv=False,
+                    op_offload=None,
+                    swa_full=None,
+                    no_perf=False,
+                    last_n_tokens_size=64,
+                    lora_base=None,
+                    lora_scale=1.0,
+                    lora_path=None,
+                    numa=False,
+                    chat_handler=None,
+                    draft_model=None,
+                    tokenizer=None,
+                    type_k=None,
+                    type_v=None,
+                    spm_infill=False,
+                )
+                
+                self._logger.info(f"✅ Successfully initialized {self.model.name} with n_ctx={n_ctx:,}, n_batch={n_batch}, n_ubatch={n_ubatch}, gpu_layers={n_gpu_layers}")
+                return llama_instance
 
-        # Try different configurations
-        for n_ctx in context_candidates:
-            n_batch = min(requested_batch, max(256, n_ctx // 64))
-
-            # GPU layer candidates
-            if explicit_gpu_layers is not None:
-                gpu_candidates = [explicit_gpu_layers]
-            else:
-                # Try full offload first, then calculated layers
-                heuristic = calculate_optimal_gpu_layers(n_ctx, model_size_category)
-                gpu_candidates = [-1, heuristic, max(1, int(heuristic * 0.8)), 16]
-
-            for n_gpu_layers in gpu_candidates:
-                try:
-                    llama_instance = llama_cpp.Llama(
-                        model_path=gguf_path,
-                        n_gpu_layers=n_gpu_layers,
-                        split_mode=llama_cpp.LLAMA_SPLIT_MODE_LAYER,
-                        # main_gpu=0,
-                        tensor_split=None,
-                        vocab_only=False,
-                        use_mmap=True,
-                        use_mlock=False,
-                        kv_overrides=None,
-                        # Context Params
-                        seed=self.profile.parameters.seed
-                        or llama_cpp.LLAMA_DEFAULT_SEED,
-                        n_ctx=n_ctx,
-                        n_batch=n_batch,
-                        n_ubatch=512,
-                        n_threads=self._get_optimal_threads(),
-                        temperature=self.profile.parameters.temperature or 0.7,
-                        top_p=self.profile.parameters.top_p or 0.8,
-                        top_k=self.profile.parameters.top_k or 20,
-                        repeat_penalty=self.profile.parameters.repeat_penalty or 1.05,
-                        f16_kv=True,
-                        verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
-                        flash_attn=getattr(
-                            self.profile.parameters, "flash_attention", True
-                        ),
-                        logits_all=perplexity_enabled,  # Only enable if needed for specific features
-                        logprobs=1 if perplexity_enabled else 0,
-                        embedding=False,  # This is for chat, not embeddings
-                        chat_format=None,  # Default chat format, can be overridden
-                        n_threads_batch=None,
-                        rope_scaling_type=None,
-                        pooling_type=llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
-                        rope_freq_base=0.0,
-                        rope_freq_scale=0.0,
-                        yarn_ext_factor=-1.0,
-                        yarn_attn_factor=1.0,
-                        yarn_beta_fast=32.0,
-                        yarn_beta_slow=1.0,
-                        yarn_orig_ctx=0,
-                        offload_kqv=False,  # Disable offload for better performance unless needed
-                        op_offload=None,
-                        swa_full=None,
-                        # Sampling Params
-                        no_perf=False,
-                        last_n_tokens_size=64,
-                        # LoRA Params
-                        lora_base=None,
-                        lora_scale=1.0,
-                        lora_path=None,
-                        # Backend Params
-                        numa=False,
-                        chat_handler=None,
-                        # Speculative Decoding
-                        draft_model=None,
-                        # Tokenizer Override
-                        tokenizer=None,
-                        # KV cache quantization
-                        type_k=None,
-                        type_v=None,
-                        # Misc
-                        spm_infill=False,
-                    )
+            except Exception as e:
+                error_str = str(e).lower()
+                is_oom = any(oom_indicator in error_str for oom_indicator in [
+                    'out of memory', 'oom', 'cuda error', 'memory allocation failed', 
+                    'insufficient memory', 'cudamalloc failed'
+                ])
+                
+                if is_oom:
+                    oom_attempts += 1
+                    self._logger.warning(f"🔥 OOM detected (attempt {oom_attempts}/{max_oom_attempts}): {e}")
                     
-                    # Success! Log the actual context size that worked
-                    self._logger.info(f"✅ Successfully initialized {self.model.name} with context={n_ctx:,}, batch={n_batch}, gpu_layers={n_gpu_layers}")
-                    if n_ctx != requested_ctx:
-                        self._logger.warning(f"🔄 Context fallback applied: requested {requested_ctx:,} → actual {n_ctx:,}")
+                    if oom_attempts >= max_oom_attempts:
+                        raise RuntimeError(f"Failed to initialize after {max_oom_attempts} OOM recovery attempts")
                     
-                    return llama_instance
-
-                except Exception as e:
-                    error_str = str(e).lower()
-                    if any(oom_indicator in error_str for oom_indicator in [
-                        'out of memory', 'oom', 'cuda error', 'memory allocation failed', 
-                        'insufficient memory', 'cudamalloc failed'
-                    ]):
-                        self._logger.warning(f"🔥 OOM detected: {e}")
-                        self._handle_oom_recovery(n_ctx, n_batch, n_gpu_layers)
-                    else:
-                        self._logger.warning(
-                            f"Failed to initialize with ctx={n_ctx}, batch={n_batch}, "
-                            f"gpu_layers={n_gpu_layers}: {e}"
-                        )
-                    continue
-
-            # If we get here, context size failed for all GPU layer configurations
-            self._logger.error(f"❌ All GPU layer configurations failed for context size {n_ctx}")
-
-        # If we get here, all context sizes failed
-        self._logger.error(f"💥 CRITICAL: Failed to initialize with any context size. Requested: {requested_ctx}, Tried: {context_candidates}")
-        raise RuntimeError(
-            f"Failed to initialize {self.model.name} with any configuration"
-        )
+                    # Clear memory and reduce parameters
+                    self._clear_pipeline_and_memory()
+                    
+                    if oom_attempts == 1:
+                        # First OOM - just clear and retry (might be stale memory)
+                        self._logger.info("First OOM - clearing memory and retrying with same parameters")
+                        continue
+                    elif oom_attempts == 2:
+                        # Second OOM - reduce batch sizes
+                        n_batch = max(128, n_batch // 2)
+                        n_ubatch = max(128, n_ubatch // 2)
+                        self._logger.info(f"Second OOM - reducing batch sizes: n_batch={n_batch}, n_ubatch={n_ubatch}")
+                    elif oom_attempts == 3:
+                        # Third OOM - reduce batch sizes more
+                        n_batch = max(64, n_batch // 2)
+                        n_ubatch = max(64, n_ubatch // 2)
+                        self._logger.info(f"Third OOM - reducing batch sizes further: n_batch={n_batch}, n_ubatch={n_ubatch}")
+                    elif oom_attempts == 4:
+                        # Fourth OOM - reduce context size
+                        n_ctx = max(4096, n_ctx // 2)
+                        self._logger.info(f"Fourth OOM - reducing context size: n_ctx={n_ctx}")
+                    elif oom_attempts == 5:
+                        # Fifth OOM - reduce context size more
+                        n_ctx = max(2048, n_ctx // 2)
+                        self._logger.info(f"Fifth OOM - reducing context size further: n_ctx={n_ctx}")
+                    
+                else:
+                    # Not an OOM error, re-raise immediately
+                    raise e
+        
+        raise RuntimeError(f"Failed to initialize {self.model.name} after all OOM recovery attempts")
 
     def _format_messages_for_llama(
         self, messages: List[BaseMessage]
@@ -408,9 +376,10 @@ class BaseLlamaCppPipeline(BaseChatModel):
         return converted_tools if converted_tools else None
 
     def _estimate_tokens(self, text: str) -> int:
-        """Estimate token count for text (rough approximation)."""
-        # Simple approximation: ~4 characters per token for most languages
-        return max(1, len(text) // 4)
+        """Estimate token count for text (more conservative approximation)."""
+        # More conservative approximation: ~3 characters per token
+        # This gives us more headroom and avoids false positives for context overflow
+        return max(1, len(text) // 3)
 
     def _count_message_tokens(self, messages: List[BaseMessage]) -> int:
         """Count approximate tokens in messages."""
@@ -460,17 +429,22 @@ class BaseLlamaCppPipeline(BaseChatModel):
             if any(isinstance(msg, SystemMessage) for msg in messages[:1]):
                 system_tokens = self._count_message_tokens(messages[:1])
         
-        # Available tokens for conversation history - more aggressive buffer for template overhead
-        template_overhead = max(1000, max_tokens * 0.05)  # 5% or min 1000 tokens for template
-        available_tokens = max_tokens - tool_tokens - system_tokens - response_reserve - template_overhead
+        # Available tokens for conversation history - minimal buffer for template overhead
+        if max_tokens:
+            template_overhead = max(500, int(max_tokens * 0.02))  # 2% or min 500 tokens for template
+            available_tokens = max_tokens - tool_tokens - system_tokens - response_reserve - template_overhead
+        else:
+            # Fallback if max_tokens is None
+            available_tokens = 50000  # Large default to avoid premature trimming
         
         if available_tokens <= 0:
             self._logger.warning(
                 f"Context window too small: max={max_tokens}, tools={tool_tokens}, "
                 f"system={system_tokens}, response={response_reserve}"
             )
-            # Keep only system message if any
-            return [msg for msg in messages if isinstance(msg, SystemMessage)][:1]
+            # Keep only system message if any - cast to satisfy type checker
+            system_msgs = [msg for msg in messages if isinstance(msg, SystemMessage)][:1]
+            return system_msgs
         
         # Count tokens from the end (most recent messages)
         trimmed_messages = []
@@ -579,11 +553,12 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 json.dumps(self.grammar.model_json_schema())
             )
 
+        # Make the call - let llama-cpp-python handle context validation
         return self.llama_instance.create_chat_completion(
             messages=llama_messages,
-            functions=converted_tools,  # Use converted tools
+            functions=converted_tools,
             function_call="auto" if converted_tools else None,
-            tools=converted_tools,  # Use converted tools
+            tools=converted_tools,
             tool_choice="auto" if converted_tools else None,
             temperature=self.profile.parameters.temperature or 0.7,
             top_p=self.profile.parameters.top_p or 0.95,
@@ -598,7 +573,6 @@ class BaseLlamaCppPipeline(BaseChatModel):
             presence_penalty=0.0,
             frequency_penalty=0.0,
             repeat_penalty=self.profile.parameters.repeat_penalty or 1.05,
-            # tfs_z=1.0,  # Commented out - not supported in all llama-cpp-python versions
             mirostat_mode=0,
             mirostat_tau=5.0,
             mirostat_eta=0.1,
