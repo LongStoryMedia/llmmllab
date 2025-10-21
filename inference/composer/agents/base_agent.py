@@ -287,17 +287,10 @@ class BaseAgent(ABC, Generic[T]):
                     else:
                         convo.append(msg)
 
-                # Apply schema filtering to tools to prevent injection parameter issues
-                filtered_tools = []
-                if tools:
-                    from composer.tools.utils.schema_filter import patch_tool_schema
-                    for tool in tools:
-                        filtered_tool = patch_tool_schema(tool)
-                        filtered_tools.append(filtered_tool)
-
+                # ToolRuntime handles parameter injection automatically - use tools directly
                 agent = create_agent(
                     model=llm,
-                    tools=filtered_tools,
+                    tools=tools or [],
                     system_prompt=system_prompt,
                     response_format=ProviderStrategy(grammar) if grammar else None,
                     name=self._node_metadata.node_name,

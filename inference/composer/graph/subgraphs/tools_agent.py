@@ -57,8 +57,8 @@ class ToolsState(TypedDict):
     user_id: str
     conversation_id: int
     
-    # User configuration (serialized for minimal overhead)
-    user_config: Optional[Dict[str, Any]]
+    # User configuration (full object for tool access)  
+    user_config: Optional[Any]  # UserConfig object, avoiding circular import
     system_config: Optional[Dict[str, Any]]
     
     # Current operation tracking
@@ -185,10 +185,11 @@ class ToolsAgentSubgraph:
             # Create ChatAgent with runtime context
             chat_agent = self._create_chat_agent(user_id, conversation_id)
             
-            # Convert BaseMessage list to LangChainMessage format for ChatAgent
-            from models import LangChainMessage
-            
+            # Use messages directly - ChatAgent should handle LangChain core messages
             messages = state["messages"]
+            
+            # For now, we need to convert to our format but this should be simplified
+            from models import LangChainMessage
             langchain_messages = []
             
             for msg in messages:
@@ -215,8 +216,30 @@ class ToolsAgentSubgraph:
                 tools=tools_list
             )
             
+            # Convert response back to LangChain core message format for ToolsState
+            # AIMessage already imported at module level
+            
+            # Extract tool calls if present
+            tool_calls = []
+            if hasattr(response_msg, 'tool_calls') and response_msg.tool_calls:
+                for tc in response_msg.tool_calls:
+                    tool_calls.append({
+                        "name": tc.get("name", ""),
+                        "args": tc.get("args", {}),
+                        "id": tc.get("id", ""),
+                        "type": "tool_call"
+                    })
+            
+            # Create AIMessage compatible with LangGraph
+            ai_message = AIMessage(
+                content=response_msg.content,
+                tool_calls=tool_calls if tool_calls else [],
+                additional_kwargs=getattr(response_msg, 'additional_kwargs', {}),
+                response_metadata=getattr(response_msg, 'response_metadata', {})
+            )
+            
             # Return new message in state update format
-            return {"messages": [response_msg]}
+            return {"messages": [ai_message]}
             
         except Exception as e:
             logger.error(f"Chat agent wrapper failed: {e}")
@@ -276,19 +299,14 @@ class ToolsAgentSubgraph:
                 # Already a proper LangChain message, use as-is
                 langchain_messages.append(msg)
         
-        # Serialize configs to dict format for minimal state
-        user_config_dict = None
-        if hasattr(main_state, "user_config") and main_state.user_config:
-            try:
-                user_config_dict = main_state.user_config.model_dump()
-            except:
-                user_config_dict = None
+        # Pass full user_config object for tool access (tools need full config objects)
+        user_config = getattr(main_state, "user_config", None)
         
         return {
             "messages": langchain_messages,
             "user_id": getattr(main_state, "user_id", ""),
             "conversation_id": getattr(main_state, "conversation_id", 0),
-            "user_config": user_config_dict,
+            "user_config": user_config,
             "system_config": None,  # Not available in WorkflowState
             "current_date": getattr(main_state, "current_date", ""),
             "tool_call_count": 0

@@ -179,13 +179,14 @@ async def web_search(
         state = tool_runtime.state
         tool_call_id = tool_runtime.tool_call_id
         
-        # Get user_config directly from runtime state (much more efficient!)
-        if state.user_config and hasattr(state.user_config, "web_search"):
-            web_config = state.user_config.web_search
+        # Get user_config from state - fallback to default if not available
+        user_config = state.get("user_config") if hasattr(state, 'get') else getattr(state, 'user_config', None)
+        if user_config and hasattr(user_config, "web_search"):
+            web_config = user_config.web_search
             logger.debug("Using web search config from runtime state")
         else:
             web_config = DEFAULT_WEB_SEARCH_CONFIG
-            logger.debug("Using default web search config - no user_config in state")
+            logger.debug("Using default web search config - no user_config in tool runtime state")
 
         # Use SearxNG provider with WebSearchConfig
         provider = SearxNG(web_config=web_config)
