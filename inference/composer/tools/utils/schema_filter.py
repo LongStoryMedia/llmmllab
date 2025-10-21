@@ -73,11 +73,14 @@ def patch_tool_schema(tool: BaseTool) -> BaseTool:
     """
     Patch a LangChain tool to use a filtered args schema that excludes injected parameters.
     
+    This creates both a filtered schema for the LLM and a wrapper function that provides
+    the injection parameters when LangChain calls the tool.
+    
     Args:
         tool: The LangChain tool to patch
         
     Returns:
-        The same tool with a modified args_schema
+        The same tool with a modified args_schema and wrapper function
     """
     # Find the original function - could be in 'func', 'coroutine', or other attributes
     original_func = None
@@ -90,8 +93,56 @@ def patch_tool_schema(tool: BaseTool) -> BaseTool:
         # Create filtered schema
         filtered_schema = create_filtered_args_schema(original_func)
         
+        # Create wrapper function that handles injection parameters
+        async def wrapper_func(**kwargs):
+            """Wrapper that provides dummy injection parameters."""
+            import inspect  # Import here to avoid circular imports
+            
+            # Simple debug log
+            print(f"� WRAPPER CALLED with {len(kwargs)} args")
+            
+            # Get the parameters from the original function signature
+            original_sig = inspect.signature(original_func)
+            filtered_kwargs = {}
+            
+            # Always ensure we have a query parameter if it's expected
+            for param_name, param in original_sig.parameters.items():
+                if param_name == 'query' and param_name not in kwargs:
+                    # This shouldn't happen, but just in case
+                    print(f"❌ DEBUG: Expected parameter '{param_name}' missing from {kwargs}")
+                    raise ValueError(f"Required parameter '{param_name}' not provided to tool")
+                elif param_name in kwargs:
+                    # Include parameter from kwargs
+                    filtered_kwargs[param_name] = kwargs[param_name]
+            
+            # Add tool_call_id if missing but expected by original function
+            if 'tool_call_id' in original_sig.parameters and 'tool_call_id' not in filtered_kwargs:
+                filtered_kwargs['tool_call_id'] = 'langchain_call'
+                
+            # Add state if missing but expected by original function
+            if 'state' in original_sig.parameters and 'state' not in filtered_kwargs:
+                from composer.graph.state import WorkflowState
+                from models.default_configs import create_default_user_config
+                
+                # Create minimal state for LangChain tool calls
+                minimal_state = WorkflowState(
+                    user_id='langchain_user',
+                    conversation_id=0,
+                    user_config=create_default_user_config('langchain_user'),
+                    messages=[],
+                    things_to_remember=[],
+                )
+                filtered_kwargs['state'] = minimal_state
+            
+            # Call original function with only the parameters it accepts
+            return await original_func(**filtered_kwargs)
+        
         # Replace the args_schema
         tool.args_schema = filtered_schema
+        
+        # Replace the coroutine with our wrapper (this is the async function)
+        if hasattr(tool, 'coroutine'):
+            setattr(tool, 'coroutine', wrapper_func)
         
         # Store original function for debugging 
         if not hasattr(tool, '_original_func'):
