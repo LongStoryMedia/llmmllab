@@ -1,10 +1,10 @@
 # LangChain/LangGraph V1.0 alpha
-langchain>=1.0.0a13
-langchain-core>=1.0.0a8
-langgraph>=1.0.0a4
-langchain-openai>=1.0.0a1
-langchain-anthropic>=1.0.0a1
-langchain-classic>=1.0.0a1
+langchain>=1.0.0
+langchain-core>=1.0.0
+langgraph>=1.0.0
+langchain-openai>=1.0.0
+langchain-anthropic>=1.0.0
+langchain-classic>=1.0.0
 langchain-community>=0.3.31
 
 # Database and caching

@@ -1,37 +1,42 @@
 """
-Tools Agent Subgraph for efficient tool execution with minimal state.
+Tools Agent Subgraph - Complete agent workflow with chat_agent + tool_node cycling.
 
-This subgraph provides a lightweight environment for executing tools with a simplified
-state structure to minimize context window usage and prevent schema bloat. It uses
-the new ToolRuntime pattern instead of InjectedState to access necessary context.
+This subgraph implements the proper LangGraph agent pattern with both chat_agent and 
+tool_node, allowing the full agent workflow to execute internally with minimal state.
+The agent cycles between LLM calls and tool execution until completion, then returns
+results to the main workflow via middleware-controlled ingress/egress.
 
 Key Benefits:
-1. Minimal state - only essential data for tool execution
-2. State isolation - tool execution doesn't affect main workflow state directly  
-3. Clean tool schemas - no massive state injection in tool definitions
-4. Easy integration - returns results to main workflow via Command pattern
+1. Complete agent workflow - chat_agent <-> tool_node cycling within subgraph
+2. Minimal state - ToolsState with only essential fields to minimize context usage
+3. Proper tool integration - uses ToolNode with ToolRuntime pattern
+4. Middleware control - clean ingress/egress boundaries with main workflow
+5. State isolation - agent operations don't bloat main workflow state
 
 Architecture:
-- ToolsState: Minimal state with only required fields
-- Tool execution node: Handles tool calls with ToolRuntime access
-- Result aggregation: Collects tool outputs for return to main workflow
-- State transformation: Converts between main WorkflowState and ToolsState
+- ToolsState: Minimal state optimized for agent operations
+- chat_agent: LLM node that can make tool calls using available tools
+- tool_node: ToolNode that executes tools with ToolRuntime[ToolsState] access
+- Conditional routing: should_continue logic for agent cycling
+- Middleware boundaries: controlled data flow to/from main workflow
 """
 
-import asyncio
-import inspect
-from typing import Dict, List, Any, Optional, Sequence
-from typing_extensions import TypedDict
-from dataclasses import dataclass
+from typing import Dict, List, Any, Optional, Literal
+from typing_extensions import TypedDict, Annotated
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
 from langchain_core.tools import BaseTool
+from langchain_core.language_models import BaseChatModel
 from langgraph.graph import StateGraph, START, END
+from langgraph.prebuilt import ToolNode, create_react_agent
 from langgraph.types import Command
-from langgraph.prebuilt import ToolNode
+from langgraph.graph.message import add_messages
 
-from models import MessageRole, MessageContent, MessageContentType, Tool
+from models import MessageRole, MessageContent, MessageContentType, NodeMetadata, PipelinePriority
 from composer.graph.state import WorkflowState
+from composer.agents.chat_agent import ChatAgent
+from composer.tools.registry import ToolRegistry
+from runner import PipelineFactory
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="ToolsAgentSubgraph")
@@ -39,451 +44,338 @@ logger = llmmllogger.bind(component="ToolsAgentSubgraph")
 
 class ToolsState(TypedDict):
     """
-    Minimal state for tool execution subgraph.
+    Minimal state for agent subgraph with chat_agent + tool_node workflow.
     
-    Contains only the essential data needed for tool execution to minimize
-    context window usage and prevent schema bloat.
+    Contains only essential data for the agent to operate efficiently while
+    minimizing context window usage. The agent cycles between chat_agent and
+    tool_node until completion, then returns results via Command.
     """
-    # Essential tool execution data
-    messages: List[BaseMessage]  # Only recent messages needed for tool context
-    user_id: str  # User identifier for tool operations
-    conversation_id: int  # Conversation context
+    # Message thread for agent conversation (using LangChain core messages for proper serialization)
+    messages: Annotated[List[BaseMessage], add_messages]
     
-    # User configuration subset (only tool-relevant settings)
-    web_search_config: Optional[Dict[str, Any]]  # Web search preferences
-    memory_config: Optional[Dict[str, Any]]  # Memory retrieval settings
-    
-    # Tool execution results
-    tool_results: List[Dict[str, Any]]  # Collected tool outputs
-    
-
-@dataclass
-class ToolExecutionContext:
-    """Context data for tool execution that doesn't need to be in state."""
+    # Essential context for tool operations
     user_id: str
     conversation_id: int
-    web_search_config: Dict[str, Any]
-    memory_config: Dict[str, Any]
+    
+    # User configuration (serialized for minimal overhead)
+    user_config: Optional[Dict[str, Any]]
+    system_config: Optional[Dict[str, Any]]
+    
+    # Current operation tracking
+    current_date: str
+    tool_call_count: int
 
 
 class ToolsAgentSubgraph:
     """
-    Subgraph for efficient tool execution with minimal state overhead.
+    Complete agent subgraph with chat_agent + tool_node cycling workflow.
     
-    This subgraph handles tool execution in an isolated environment with a
-    simplified state structure to prevent context window bloat while maintaining
-    full tool functionality via ToolRuntime access patterns.
+    Uses proper dependency injection pattern like the main graph builder,
+    importing ChatAgent and ToolExecutorNode with their required dependencies.
     """
     
-    def __init__(self):
+    def __init__(
+        self,
+        pipeline_factory: PipelineFactory,
+        tool_registry: ToolRegistry,
+    ):
+        """Initialize subgraph with dependency injection."""
+        self.pipeline_factory = pipeline_factory
+        self.tool_registry = tool_registry
         self.graph = None
+        
+        # Create node metadata for the subgraph agents
+        self.subgraph_metadata = NodeMetadata(
+            node_name="tools_agent_subgraph",
+            node_id="tools_agent_subgraph",
+            node_type="subgraph",
+            user_id="system",  # Will be updated at runtime
+            conversation_id=0   # Will be updated at runtime
+        )
+        
         self._build_graph()
     
-    def _build_graph(self) -> None:
-        """Build the tools execution subgraph."""
-        builder = StateGraph(ToolsState)
+    def _create_chat_agent(self, user_id: str, conversation_id: int) -> ChatAgent:
+        """Create ChatAgent instance with proper dependency injection."""
+        from models.default_model_profiles import DEFAULT_PRIMARY_PROFILE
         
-        # Add the tool execution node
-        builder.add_node("execute_tools", self._execute_tools_node)
+        # Update metadata with runtime context
+        runtime_metadata = NodeMetadata(
+            node_name="subgraph_chat_agent",
+            node_id="subgraph_chat_agent", 
+            node_type="agent",
+            user_id=user_id,
+            conversation_id=conversation_id
+        )
         
-        # Simple linear flow
-        builder.add_edge(START, "execute_tools")
-        builder.add_edge("execute_tools", END)
-        
-        # Compile the subgraph
-        self.graph = builder.compile()
-        logger.info("Tools agent subgraph compiled successfully")
+        return ChatAgent(
+            pipeline_factory=self.pipeline_factory,
+            profile=DEFAULT_PRIMARY_PROFILE,
+            node_metadata=runtime_metadata,
+            priority=PipelinePriority.MEDIUM
+        )
     
-    async def _execute_tools_node(self, state: ToolsState) -> Dict[str, Any]:
-        """
-        Execute tools using the existing tool pattern with state injection.
-        
-        This node works with the current InjectedState pattern by creating a
-        compatible execution environment for tools.
-        """
+    async def _tool_executor_wrapper(self, state: ToolsState) -> Dict[str, Any]:
+        """Tool executor wrapper using LangGraph's ToolNode."""
         try:
-            # Get the tools that need to be executed from the messages
-            # Handle both LangChain core messages and LangChainMessage format
-            tool_messages = []
-            for msg in state["messages"]:
-                has_tool_calls = False
-                if isinstance(msg, AIMessage) and msg.tool_calls:
-                    has_tool_calls = True
-                elif hasattr(msg, 'type') and msg.type == 'ai' and hasattr(msg, 'tool_calls') and msg.tool_calls:
-                    has_tool_calls = True
-                
-                if has_tool_calls:
-                    tool_messages.append(msg)
+            # Get executable tools from registry
+            executable_tools = self.tool_registry.get_all_executable_tools()
+            tools_list = list(executable_tools.values()) if executable_tools else []
             
-            if not tool_messages:
-                logger.warning("No tool calls found in messages")
-                return {"tool_results": []}
+            if not tools_list:
+                logger.warning("No tools available for execution")
+                return state
             
-            # Extract tool calls from the latest AI message
-            latest_ai_message = tool_messages[-1]
-            tool_calls = latest_ai_message.tool_calls
+            # Create ToolNode with available tools
+            tool_node = ToolNode(tools_list)
             
-            if not tool_calls:
-                logger.warning("No tool calls in latest AI message")
-                return {"tool_results": []}
+            # Execute tools using ToolNode
+            result = await tool_node.ainvoke(state)
             
-            logger.info(f"Executing {len(tool_calls)} tool calls", tool_names=[call["name"] for call in tool_calls])
-            
-            # Get available tools from the registry
-            from composer.tools.registry import ToolRegistry
-            from runner.pipeline_factory import pipeline_factory
-            
-            registry = ToolRegistry(pipeline_factory)
-            executable_tools = registry.get_all_executable_tools()
-            
-            if not executable_tools:
-                logger.error("No executable tools available")
-                return {"tool_results": []}
-            
-            # Execute each tool call
-            tool_results = []
-            new_messages = list(state["messages"])  # Copy existing messages
-            
-            for call in tool_calls:
-                tool_name = call.get("name")
-                args = call.get("args") or call.get("arguments") or {}
-                tool_call_id = call.get("id", f"call_{tool_name}")
-                
-                if tool_name not in executable_tools:
-                    logger.error(f"Tool '{tool_name}' not found in available tools")
-                    tool_results.append({
-                        "tool_call_id": tool_call_id,
-                        "name": tool_name,
-                        "content": f"Error: Tool '{tool_name}' not available",
-                        "status": "failed"
-                    })
-                    continue
-                
-                tool = executable_tools[tool_name]
-                
-                try:
-                    # Check tool function signature to determine execution method
-                    import inspect
-                    
-                    # Get the actual function to inspect its signature
-                    # Check both 'func' and 'coroutine' attributes for LangGraph tools
-                    tool_func = getattr(tool, 'func', None) or getattr(tool, 'coroutine', None)
-                    if tool_func and (inspect.isfunction(tool_func) or inspect.iscoroutinefunction(tool_func)):
-                        sig = inspect.signature(tool_func)
-                        param_names = list(sig.parameters.keys())
-                        
-                        # Check if this tool expects injected parameters
-                        if 'tool_call_id' in param_names and 'state' in param_names:
-                            # This is a LangGraph tool with injection - call directly with injected params
-                            minimal_state = self._create_minimal_workflow_state(state)
-                            
-                            # Call the function directly with injected parameters
-                            if inspect.iscoroutinefunction(tool_func):
-                                # Async function - call directly
-                                result = await tool_func(
-                                    tool_call_id=tool_call_id,
-                                    state=minimal_state,
-                                    **args
-                                )
-                            else:
-                                # Sync function - use thread
-                                result = await asyncio.create_task(
-                                    asyncio.to_thread(
-                                        tool_func,
-                                        tool_call_id=tool_call_id,
-                                        state=minimal_state,
-                                        **args
-                                    )
-                                )
-                            
-                            # Handle Command returns (like web_search)
-                            if hasattr(result, 'update') and result.update:
-                                # Apply command updates to our minimal state
-                                for key, value in result.update.items():
-                                    if hasattr(minimal_state, key):
-                                        # Special handling for messages - convert LangChain messages to LangChainMessage schema
-                                        if key == 'messages' and isinstance(value, list):
-                                            from composer.utils.langchain_compat import _coerce_to_langchain_message_dict
-                                            converted_messages = []
-                                            for msg in value:
-                                                converted_messages.append(_coerce_to_langchain_message_dict(msg))
-                                            setattr(minimal_state, key, converted_messages)
-                                        else:
-                                            setattr(minimal_state, key, value)
-                                        
-                                # Extract the actual result content
-                                result_content = "Tool completed and results added to state"
-                            else:
-                                result_content = str(result)
-                        else:
-                            # Regular LangChain tool - use the standard execution pattern
-                            from langchain_core.runnables import RunnableConfig
-                            
-                            tool_config = RunnableConfig()
-                            
-                            if hasattr(tool, "_arun"):
-                                result_content = await tool._arun(config=tool_config, **args)
-                            else:
-                                # Fallback to sync _run
-                                run_fn = getattr(tool, "_run", None) or getattr(tool, "run", None)
-                                if run_fn is None:
-                                    raise RuntimeError(f"Tool '{tool_name}' has no runnable method")
-                                result_content = run_fn(**args)
-                    else:
-                        # Fallback: try different execution methods
-                        if hasattr(tool, "_arun"):
-                            # Try with injection parameters first
-                            try:
-                                minimal_state = self._create_minimal_workflow_state(state)
-                                result_content = await tool._arun(
-                                    tool_call_id=tool_call_id,
-                                    state=minimal_state,
-                                    **args
-                                )
-                            except TypeError:
-                                # If that fails, try without injection
-                                from langchain_core.runnables import RunnableConfig
-                                tool_config = RunnableConfig()
-                                result_content = await tool._arun(config=tool_config, **args)
-                        else:
-                            run_fn = getattr(tool, "_run", None) or getattr(tool, "run", None)
-                            if run_fn is None:
-                                raise RuntimeError(f"Tool '{tool_name}' has no runnable method")
-                            result_content = run_fn(**args)
-                    
-                    # Create tool message
-                    tool_message = ToolMessage(
-                        content=str(result_content),
-                        tool_call_id=tool_call_id,
-                        name=tool_name
-                    )
-                    new_messages.append(tool_message)
-                    
-                    tool_results.append({
-                        "tool_call_id": tool_call_id,
-                        "name": tool_name,
-                        "content": str(result_content),
-                        "status": "success"
-                    })
-                    
-                    logger.info(f"Successfully executed tool '{tool_name}'")
-                    
-                except Exception as e:
-                    logger.error(f"Tool '{tool_name}' execution failed: {e}", exc_info=True)
-                    
-                    error_message = ToolMessage(
-                        content=f"Error executing {tool_name}: {str(e)}",
-                        tool_call_id=tool_call_id,
-                        name=tool_name
-                    )
-                    new_messages.append(error_message)
-                    
-                    tool_results.append({
-                        "tool_call_id": tool_call_id,
-                        "name": tool_name,
-                        "content": f"Error: {str(e)}",
-                        "status": "failed"
-                    })
-            
-            logger.info(f"Successfully executed {len(tool_results)} tools")
-            return {"tool_results": tool_results, "messages": new_messages}
+            return result
             
         except Exception as e:
-            logger.error(f"Tool execution failed: {e}", exc_info=True)
-            return {
-                "tool_results": [{
-                    "error": str(e),
-                    "status": "failed"
-                }]
-            }
+            logger.error(f"Tool executor wrapper failed: {e}")
+            # Return current state on error
+            return state
     
-    def _create_minimal_workflow_state(self, tools_state: ToolsState) -> 'WorkflowState':
-        """
-        Create a minimal WorkflowState for tool injection from ToolsState.
+    def _build_graph(self) -> None:
+        """Build the complete agent subgraph using proper dependency injection."""
+        try:
+            # Build graph with StateGraph pattern like main builder
+            builder = StateGraph(ToolsState)
+            
+            # Add chat agent node - will be created at runtime with proper context
+            builder.add_node("chat_agent", self._chat_agent_wrapper)
+            
+            # Add tool executor node - using wrapper for ToolNode
+            builder.add_node("tool_executor", self._tool_executor_wrapper)
+            
+            # Add conditional routing between chat agent and tool executor
+            builder.add_conditional_edges(
+                "chat_agent",
+                self._should_continue,
+                {
+                    "continue": "tool_executor", 
+                    "end": END
+                }
+            )
+            
+            # Tool executor always goes back to chat agent for potential follow-up
+            builder.add_edge("tool_executor", "chat_agent")
+            
+            # Start with chat agent
+            builder.add_edge(START, "chat_agent")
+            
+            # Compile the graph
+            self.graph = builder.compile()
+            logger.info("Agent subgraph built with proper dependency injection")
+            
+        except Exception as e:
+            logger.error(f"Failed to build agent subgraph: {e}")
+            raise
+    
+    async def _chat_agent_wrapper(self, state: ToolsState) -> Dict[str, Any]:
+        """Wrapper that creates ChatAgent at runtime and executes it."""
+        try:
+            # Extract user context from state
+            user_id = state.get("user_id", "system")
+            conversation_id = state.get("conversation_id", 0)
+            
+            # Create ChatAgent with runtime context
+            chat_agent = self._create_chat_agent(user_id, conversation_id)
+            
+            # Convert BaseMessage list to LangChainMessage format for ChatAgent
+            from models import LangChainMessage
+            
+            messages = state["messages"]
+            langchain_messages = []
+            
+            for msg in messages:
+                if isinstance(msg, (HumanMessage, AIMessage, ToolMessage)):
+                    # Convert to LangChainMessage format
+                    langchain_msg = LangChainMessage(
+                        content=msg.content,
+                        type=msg.type,
+                        additional_kwargs=getattr(msg, 'additional_kwargs', {}),
+                        response_metadata=getattr(msg, 'response_metadata', {})
+                    )
+                    langchain_messages.append(langchain_msg)
+                else:
+                    # Already in correct format or compatible
+                    langchain_messages.append(msg)
+            
+            # Get tools from registry for the agent
+            executable_tools = self.tool_registry.get_all_executable_tools()
+            tools_list = list(executable_tools.values()) if executable_tools else None
+            
+            # Execute chat completion with tools
+            response_msg = await chat_agent.chat_completion_with_conversion(
+                messages=langchain_messages,
+                tools=tools_list
+            )
+            
+            # Return new message in state update format
+            return {"messages": [response_msg]}
+            
+        except Exception as e:
+            logger.error(f"Chat agent wrapper failed: {e}")
+            # Return error message
+            error_msg = AIMessage(content=f"Agent error: {str(e)}")
+            return {"messages": [error_msg]}
+    
+    def _should_continue(self, state: ToolsState) -> Literal["continue", "end"]:
+        """Determine if agent should continue to tools or end."""
+        messages = state["messages"]
+        if not messages:
+            return "end"
+            
+        last_message = messages[-1]
         
-        This allows tools that expect InjectedState to work with our subgraph.
-        """
-        # Import WorkflowState here to avoid circular imports
-        from composer.graph.state import WorkflowState
-        from models import LangChainMessage, UserConfig
-        from models.default_configs import (
-            DEFAULT_SUMMARIZATION_CONFIG,
-            DEFAULT_MEMORY_CONFIG, 
-            DEFAULT_WEB_SEARCH_CONFIG,
-            DEFAULT_PREFERENCES_CONFIG,
-            DEFAULT_MODEL_PROFILE_CONFIG,
-            DEFAULT_REFINEMENT_CONFIG,
-            DEFAULT_IMAGE_GENERATION_CONFIG,
-            DEFAULT_CIRCUIT_BREAKER_CONFIG,
-            DEFAULT_GPU_CONFIG,
-            DEFAULT_WORKFLOW_CONFIG,
-            DEFAULT_TOOL_CONFIG,
-            DEFAULT_CONTEXT_WINDOW_CONFIG
-        )
+        # Check if last message has tool calls
+        if isinstance(last_message, AIMessage) and last_message.tool_calls:
+            return "continue"
         
-        # Create a minimal state object with required fields
-        minimal_state = WorkflowState()
-        
-        # Convert LangChain core messages to LangChainMessage format
-        converted_messages = []
-        for msg in tools_state["messages"]:
-            if isinstance(msg, (HumanMessage, AIMessage, ToolMessage)):
-                # Convert to LangChainMessage format
-                lang_chain_msg = LangChainMessage(
-                    content=msg.content,
-                    type=msg.type,
-                    additional_kwargs=getattr(msg, 'additional_kwargs', {}),
-                    response_metadata=getattr(msg, 'response_metadata', {})
-                )
-                converted_messages.append(lang_chain_msg)
-            else:
-                # Already in correct format
-                converted_messages.append(msg)
-        
-        # Set essential fields from tools_state
-        minimal_state.messages = converted_messages
-        minimal_state.user_id = tools_state["user_id"]
-        minimal_state.conversation_id = tools_state["conversation_id"]
-        
-        # Create a minimal but valid UserConfig using defaults and subsets
-        web_search_config = tools_state.get("web_search_config", {})
-        memory_config = tools_state.get("memory_config", {})
-        
-        # Merge with defaults
-        merged_web_search = {**DEFAULT_WEB_SEARCH_CONFIG.model_dump(), **web_search_config}
-        merged_memory = {**DEFAULT_MEMORY_CONFIG.model_dump(), **memory_config}
-        
-        minimal_user_config = UserConfig(
-            user_id=tools_state["user_id"],
-            summarization=DEFAULT_SUMMARIZATION_CONFIG,
-            memory=type(DEFAULT_MEMORY_CONFIG)(**merged_memory),
-            web_search=type(DEFAULT_WEB_SEARCH_CONFIG)(**merged_web_search),
-            preferences=DEFAULT_PREFERENCES_CONFIG,
-            model_profiles=DEFAULT_MODEL_PROFILE_CONFIG,
-            refinement=DEFAULT_REFINEMENT_CONFIG,
-            image_generation=DEFAULT_IMAGE_GENERATION_CONFIG,
-            circuit_breaker=DEFAULT_CIRCUIT_BREAKER_CONFIG,
-            gpu_config=DEFAULT_GPU_CONFIG,
-            workflow=DEFAULT_WORKFLOW_CONFIG,
-            tool=DEFAULT_TOOL_CONFIG,
-            context_window=DEFAULT_CONTEXT_WINDOW_CONFIG
-        )
-        
-        minimal_state.user_config = minimal_user_config
-        
-        # Set other required fields to defaults
-        minimal_state.current_date = ""
-        minimal_state.things_to_remember = []
-        minimal_state.web_search_results = []
-        minimal_state.tool_calls = []
-        
-        return minimal_state
+        return "end"
+    
+
+    
+
+    
+
     
     def transform_to_tools_state(self, main_state: WorkflowState) -> ToolsState:
-        """
-        Transform main WorkflowState to minimal ToolsState.
-        
-        Extracts only the essential data needed for tool execution to minimize
-        context window usage.
-        """
-        # Get only recent messages (last 10 to keep context minimal)
+        """Transform main WorkflowState to minimal ToolsState for agent subgraph."""
+        # Get recent messages for agent context and convert to LangChain core messages
         recent_messages = getattr(main_state, "messages", [])[-10:]
+        langchain_messages = []
         
-        # Extract user config subsets
-        user_config = getattr(main_state, "user_config", None)
-        web_search_config = {}
-        memory_config = {}
+        for msg in recent_messages:
+            if hasattr(msg, 'type') and hasattr(msg, 'content'):
+                # Convert custom LangChainMessage to proper LangChain core message
+                if msg.type == "human":
+                    langchain_messages.append(HumanMessage(content=msg.content))
+                elif msg.type == "ai":
+                    # Check if this AI message has tool calls
+                    if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                        langchain_messages.append(AIMessage(
+                            content=msg.content,
+                            tool_calls=msg.tool_calls
+                        ))
+                    else:
+                        langchain_messages.append(AIMessage(content=msg.content))
+                elif msg.type == "tool":
+                    langchain_messages.append(ToolMessage(
+                        content=msg.content,
+                        tool_call_id=getattr(msg, 'id', None) or "unknown"
+                    ))
+                else:
+                    # Default to human message for unknown types
+                    langchain_messages.append(HumanMessage(content=str(msg.content)))
+            else:
+                # Already a proper LangChain message, use as-is
+                langchain_messages.append(msg)
         
-        if user_config:
-            web_search_config = getattr(user_config, "web_search", {})
-            memory_config = getattr(user_config, "memory", {})
+        # Serialize configs to dict format for minimal state
+        user_config_dict = None
+        if hasattr(main_state, "user_config") and main_state.user_config:
+            try:
+                user_config_dict = main_state.user_config.model_dump()
+            except:
+                user_config_dict = None
         
-        return ToolsState(
-            messages=recent_messages,
-            user_id=getattr(main_state, "user_id", ""),
-            conversation_id=getattr(main_state, "conversation_id", 0),
-            web_search_config=web_search_config,
-            memory_config=memory_config,
-            tool_results=[]
-        )
+        return {
+            "messages": langchain_messages,
+            "user_id": getattr(main_state, "user_id", ""),
+            "conversation_id": getattr(main_state, "conversation_id", 0),
+            "user_config": user_config_dict,
+            "system_config": None,  # Not available in WorkflowState
+            "current_date": getattr(main_state, "current_date", ""),
+            "tool_call_count": 0
+        }
     
-    def transform_to_main_state(self, tools_state: ToolsState, main_state: WorkflowState) -> Dict[str, Any]:
-        """
-        Transform ToolsState results back to main WorkflowState updates.
-        
-        Returns a state update dictionary that can be applied to the main workflow.
-        """
+    def transform_to_main_state(self, agent_result: Dict[str, Any], main_state: WorkflowState) -> Dict[str, Any]:
+        """Transform agent subgraph results back to main WorkflowState updates."""
         from models import LangChainMessage
         
         updates = {}
         
-        # Add tool messages to main state
-        if tools_state.get("messages"):
-            # Only add new tool messages
+        # Add new messages from agent execution
+        if agent_result.get("messages"):
             main_messages = getattr(main_state, "messages", [])
-            tools_messages = tools_state["messages"]
+            agent_messages = agent_result["messages"]
             
-            # Find new messages (tool responses) and convert to LangChainMessage format
+            # Find messages that weren't in the original main state
+            original_count = len(main_messages)
             new_messages = []
-            for msg in tools_messages:
-                if isinstance(msg, ToolMessage) and msg not in main_messages:
-                    # Convert ToolMessage to LangChainMessage format
-                    lang_chain_msg = LangChainMessage(
-                        content=msg.content,
-                        type="tool",
-                        name=getattr(msg, 'name', None),
-                        id=getattr(msg, 'tool_call_id', None),
-                        additional_kwargs=getattr(msg, 'additional_kwargs', {}),
-                        response_metadata=getattr(msg, 'response_metadata', {})
-                    )
-                    new_messages.append(lang_chain_msg)
-                elif not isinstance(msg, ToolMessage) and msg not in main_messages:
-                    # For non-tool messages, add as-is if they're already LangChainMessage
-                    new_messages.append(msg)
+            
+            for i, msg in enumerate(agent_messages):
+                if i >= original_count:  # This is a new message from agent
+                    if isinstance(msg, (AIMessage, ToolMessage)):
+                        # Convert to LangChainMessage format for main state
+                        lang_chain_msg = LangChainMessage(
+                            content=msg.content,
+                            type=msg.type,
+                            name=getattr(msg, 'name', None),
+                            id=getattr(msg, 'id', None) or getattr(msg, 'tool_call_id', None),
+                            additional_kwargs=getattr(msg, 'additional_kwargs', {}),
+                            response_metadata=getattr(msg, 'response_metadata', {})
+                        )
+                        new_messages.append(lang_chain_msg)
             
             if new_messages:
                 updates["messages"] = main_messages + new_messages
         
-        # Add tool results to things_to_remember if they have useful content
-        tool_results = tools_state.get("tool_results", [])
-        if tool_results:
-            things_to_remember = getattr(main_state, "things_to_remember", [])
-            for result in tool_results:
-                if result.get("status") == "success" and result.get("content"):
-                    things_to_remember.append({
-                        "type": "tool_result",
-                        "tool_name": result.get("name", "unknown"),
-                        "content": result["content"],
-                        "timestamp": getattr(main_state, "current_date", "")
-                    })
-            updates["things_to_remember"] = things_to_remember
-        
         return updates
     
     async def execute(self, main_state: WorkflowState) -> Command:
-        """
-        Execute the tools subgraph and return a Command with state updates.
-        
-        This is the main entry point for using the subgraph from the main workflow.
-        """
+        """Execute the agent subgraph and return Command with state updates."""
         try:
-            # Transform to minimal tools state
+            if not self.graph:
+                logger.error("Agent subgraph not initialized")
+                return Command(update={})
+            
+            # Transform to agent state
             tools_state = self.transform_to_tools_state(main_state)
             
-            # Execute the subgraph
+            # Execute the agent subgraph
             result = await self.graph.ainvoke(tools_state)
             
             # Transform results back to main state updates
             updates = self.transform_to_main_state(result, main_state)
             
-            logger.info(f"Tools subgraph completed with {len(updates)} state updates")
+            logger.info(f"Agent subgraph completed with {len(updates)} state updates")
             return Command(update=updates)
             
         except Exception as e:
-            logger.error(f"Tools subgraph execution failed: {e}", exc_info=True)
-            # Return empty update on failure
+            logger.error(f"Agent subgraph execution failed: {e}", exc_info=True)
             return Command(update={})
 
 
-# Global instance for use in main workflow
-tools_agent_subgraph = ToolsAgentSubgraph()
+class _LazyToolsAgentSubgraph:
+    """Lazy initializer for tools agent subgraph with dependency injection."""
+    
+    def __init__(self):
+        self._subgraph = None
+    
+    def _ensure_initialized(self):
+        """Initialize the subgraph if not already done."""
+        if self._subgraph is None:
+            # Import here to avoid circular imports
+            from runner.pipeline_factory import pipeline_factory
+            from composer.tools.registry import ToolRegistry
+            
+            # Create registry - this should be improved to use proper DI in the future
+            tool_registry = ToolRegistry(pipeline_factory)
+            
+            self._subgraph = ToolsAgentSubgraph(pipeline_factory, tool_registry)
+        return self._subgraph
+    
+    async def execute(self, main_state: WorkflowState):
+        """Execute the subgraph (lazy initialization)."""
+        subgraph = self._ensure_initialized()
+        return await subgraph.execute(main_state)
+
+
+# Global instance for backward compatibility
+tools_agent_subgraph = _LazyToolsAgentSubgraph()

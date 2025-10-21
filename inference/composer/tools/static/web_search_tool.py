@@ -34,9 +34,9 @@ import json
 import os
 from typing import Annotated
 
-from langchain_core.tools import tool, InjectedToolCallId
+from langchain_core.tools import tool
+from langchain.tools import ToolRuntime
 from langchain_core.messages import ToolMessage
-from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
 from composer.graph.state import WorkflowState
 from utils.logging import llmmllogger
@@ -149,12 +149,11 @@ class SearxNG:
             )
 
 
-# Single web search tool using Command pattern with strong typing
+# Single web search tool using ToolRuntime pattern for clean state access
 @tool
 async def web_search(
     query: str,
-    tool_call_id: Annotated[str, InjectedToolCallId],
-    state: Annotated[WorkflowState, InjectedState],
+    tool_runtime: ToolRuntime,
 ) -> Command:
     """
     Search the web for information and automatically add results to workflow state.
@@ -176,10 +175,14 @@ async def web_search(
     logger = llmmllogger.logger.bind(component="WebSearch")
 
     try:
-        # Get user_config directly from injected state (much more efficient!)
+        # Access state and tool_call_id through runtime
+        state = tool_runtime.state
+        tool_call_id = tool_runtime.tool_call_id
+        
+        # Get user_config directly from runtime state (much more efficient!)
         if state.user_config and hasattr(state.user_config, "web_search"):
             web_config = state.user_config.web_search
-            logger.debug("Using web search config from injected state")
+            logger.debug("Using web search config from runtime state")
         else:
             web_config = DEFAULT_WEB_SEARCH_CONFIG
             logger.debug("Using default web search config - no user_config in state")

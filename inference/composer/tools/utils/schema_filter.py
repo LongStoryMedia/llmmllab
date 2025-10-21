@@ -32,7 +32,7 @@ def create_filtered_args_schema(tool_func) -> Type[BaseModel]:
         param_type = param.annotation
         
         # Skip parameters that are clearly injection parameters by name
-        if param_name in ['tool_call_id', 'state']:
+        if param_name in ['tool_call_id', 'state', 'tool_runtime']:
             print(f"    🚫 Skipping injection parameter: {param_name}")
             continue
             
