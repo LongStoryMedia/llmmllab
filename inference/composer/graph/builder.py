@@ -382,7 +382,19 @@ class GraphBuilder:
                 ):
                     return "tool_executor"
 
-                # Otherwise, proceed to chat summary
+                # Check if we have any tool results in recent messages (indicating we came back from tool execution)
+                has_recent_tool_results = False
+                for msg in state.messages[-5:]:  # Check last 5 messages for tool results
+                    if hasattr(msg, "type") and msg.type == "tool":
+                        has_recent_tool_results = True
+                        break
+
+                # If we have tool results but no new tool calls, proceed to memory creation
+                # This handles the case where the agent is done with tool iterations
+                if has_recent_tool_results:
+                    return "memory_creation"
+
+                # Otherwise, proceed to chat summary (initial flow)
                 return "chat_summary"
 
             workflow.add_conditional_edges(
@@ -390,24 +402,31 @@ class GraphBuilder:
                 should_execute_tools,
                 {
                     "tool_executor": "tool_executor",
-                    "memory_creation": "memory_creation",
+                    "memory_creation": "memory_creation", 
                     "chat_summary": "chat_summary",
                 },
             )
 
-            # 8. Conditional routing from tool executor - check if web search added results to state
-            def should_synthesize_search_results(state: WorkflowState):
-                # Check if any search results were added to state (by Command from web search tool)
+            # 8. Agent pattern: tool_executor routes back to chat_agent or search processing
+            def should_continue_agent_loop(state: WorkflowState):
+                """
+                Route after tool execution - either back to chat_agent for more iterations
+                or to search_summary if web search results need processing.
+                """
+                # Check if web search was performed and needs summarization
                 if state.web_search_results:
                     return "search_summary"
-                return "memory_creation"
+                
+                # Otherwise, always return to chat_agent for tool result processing
+                # This enables the LangGraph agent pattern for iterative tool calling
+                return "chat_agent"
 
             workflow.add_conditional_edges(
-                "tool_executor",
-                should_synthesize_search_results,
+                "tool_executor",  
+                should_continue_agent_loop,
                 {
-                    "search_summary": "search_summary",
-                    "memory_creation": "memory_creation",
+                    "chat_agent": "chat_agent",    # Cycle back to LLM for more tool calls
+                    "search_summary": "search_summary",  # Process web search results
                 },
             )
 

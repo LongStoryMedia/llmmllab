@@ -31,6 +31,11 @@ def create_filtered_args_schema(tool_func) -> Type[BaseModel]:
         # Use raw annotation to preserve Annotated types
         param_type = param.annotation
         
+        # Skip parameters that are clearly injection parameters by name
+        if param_name in ['tool_call_id', 'state']:
+            print(f"    🚫 Skipping injection parameter: {param_name}")
+            continue
+            
         # Check if this is an Annotated type with injection markers
         if hasattr(param_type, '__origin__') and get_origin(param_type) is not None:
             # This is likely Annotated[Type, InjectedState] or similar
@@ -43,28 +48,25 @@ def create_filtered_args_schema(tool_func) -> Type[BaseModel]:
                         'Injected' in str(arg) for arg in args[1:]
                     )
                     if has_injection:
-                        # Special case: keep tool_call_id in the schema for LangGraph compatibility
-                        if param_name == 'tool_call_id':
-                            # Use string type with optional for tool_call_id
-                            from typing import Optional
-                            schema_fields[param_name] = (Optional[str], None)
-                        else:
-                            continue  # Skip other injected parameters
+                        print(f"    🚫 Skipping injection parameter: {param_name} (has injection annotation)")
+                        continue  # Skip injected parameters entirely
                     else:
                         # Use the first type arg (the actual type)
                         param_type = args[0]
         
         # Skip if parameter type is still an injection type after resolution
         if 'Injected' in str(param_type):
+            print(f"    🚫 Skipping injection parameter: {param_name} (injection type)")
             continue
             
         # Handle case where param_type is still annotated but should be included
         if param_type == inspect.Parameter.empty:
             param_type = Any
             
-        # Add to schema if not injected
+        # Add to schema - this parameter should be visible to LLM
         default_value = param.default if param.default != inspect.Parameter.empty else ...
         schema_fields[param_name] = (param_type, default_value)
+        print(f"    ✅ Including parameter: {param_name} ({param_type})")
     
     # Create a dynamic Pydantic model with only the non-injected fields
     filtered_model = create_model(
@@ -116,32 +118,33 @@ def patch_tool_schema(tool: BaseTool) -> BaseTool:
         print(f"❌ Could not find callable function in tool: {tool}")
         return tool
         
-    # CRITICAL: Check if this tool uses LangGraph's injection system
-    # If it does, we should NOT apply schema filtering because it breaks the injection
+    # ENHANCED: Check if this tool uses LangGraph's injection system
+    # If it does, we need to create a clean schema for the LLM while preserving injection
     import inspect
     try:
         sig = inspect.signature(original_func)
-        uses_langgraph_injection = False
+        injection_params = set()
         
         # Check if the function uses InjectedToolCallId or InjectedState annotations
         for param_name, param in sig.parameters.items():
             if hasattr(param, 'annotation') and param.annotation != inspect.Parameter.empty:
                 annotation_str = str(param.annotation)
                 if 'InjectedToolCallId' in annotation_str or 'InjectedState' in annotation_str:
-                    uses_langgraph_injection = True
-                    break
+                    injection_params.add(param_name)
         
-        if uses_langgraph_injection:
-            print(f"🚫 Tool {tool.name} uses LangGraph injection system - skipping schema filtering")
-            print(f"🚫 Reason: LangGraph's Command Pattern requires direct injection access")
-            return tool
+        if injection_params:
+            print(f"🔧 Tool {tool.name} uses LangGraph injection - creating clean schema for LLM")
+            print(f"🔧 Hiding injection parameters: {injection_params}")
+            # Continue with filtering to create clean schema that hides injection params
+        else:
+            print(f"✅ Tool {tool.name} has no injection parameters - applying standard filtering")
             
     except Exception as e:
         print(f"⚠️  Could not check injection annotations for {tool.name}: {e}")
         # Continue with filtering as fallback
         
     print(f"🔧 Creating filtered schema...")
-    # Create filtered schema
+    # Create filtered schema (this will hide injection parameters)
     filtered_schema = create_filtered_args_schema(original_func)
     
     # Create wrapper function that handles injection parameters
@@ -222,6 +225,29 @@ def patch_tool_schema(tool: BaseTool) -> BaseTool:
         print(f"📞 Is callable: {callable(original_func)}")
         result = await original_func(**filtered_kwargs)
         print(f"✅ Function call completed successfully")
+        
+        # CRITICAL FIX: Handle Command returns from LangGraph tools
+        # LangGraph's ToolNode expects simple return values, not Command objects
+        if hasattr(result, 'update') and hasattr(result.update, 'get'):
+            # This is a Command object with messages - extract the ToolMessage content
+            messages = result.update.get('messages', [])
+            if messages and hasattr(messages[0], 'content'):
+                tool_message_content = messages[0].content
+                print(f"🔧 Extracted ToolMessage content from Command: {len(tool_message_content)} chars")
+                return tool_message_content
+            elif 'messages' in result.update and isinstance(result.update['messages'], list):
+                # Handle case where messages is in the update dict
+                for msg in result.update['messages']:
+                    if hasattr(msg, 'content'):
+                        print(f"🔧 Extracted ToolMessage content from Command update: {len(msg.content)} chars")
+                        return msg.content
+        
+        # Handle simple Command objects that just have content
+        if hasattr(result, 'content'):
+            print(f"🔧 Extracted content from result: {len(result.content)} chars")
+            return result.content
+            
+        # Return result as-is if it's not a Command
         return result
     
     # Replace the args_schema
