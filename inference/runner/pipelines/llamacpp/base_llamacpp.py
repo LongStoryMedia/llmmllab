@@ -7,11 +7,10 @@ import json
 import os
 import multiprocessing
 
-from typing import Optional, List, Any, Dict, Iterator, Type, cast, Tuple
+from typing import Optional, List, Any, Dict, Iterator, Type, Tuple
 
 from pydantic import BaseModel
 import llama_cpp
-from llama_cpp import llama_types
 from llama_cpp import llama_grammar
 
 from langchain_core.language_models import BaseChatModel
@@ -31,7 +30,6 @@ from models import Model, ModelProfile
 from models.default_configs import DEFAULT_GPU_CONFIG
 from utils.logging import llmmllogger
 from runner.utils.hardware_manager import EnhancedHardwareManager
-from .utils import calculate_optimal_gpu_layers
 
 
 class BaseLlamaCppPipeline(BaseChatModel):
@@ -153,7 +151,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
         if hasattr(self, "llama_instance") and self.llama_instance:
             try:
                 self.llama_instance.close()
-            except:
+            except Exception:
                 pass
             del self.llama_instance
             self.llama_instance = None
@@ -199,7 +197,6 @@ class BaseLlamaCppPipeline(BaseChatModel):
         gcfg = self.profile.gpu_config or DEFAULT_GPU_CONFIG
 
         while oom_attempts < max_oom_attempts:
-            failed_instance = None
             try:
                 self._logger.info(
                     f"Attempting to initialize {self.model.name} with n_ctx={n_ctx}, n_batch={n_batch}, n_ubatch={n_ubatch}, gpu_layers={n_gpu_layers}"
@@ -298,7 +295,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
                             try:
                                 llama_instance.close()
                                 self._logger.debug("🧹 Closed failed llama_instance")
-                            except:
+                            except Exception:
                                 pass
                             del llama_instance
 
