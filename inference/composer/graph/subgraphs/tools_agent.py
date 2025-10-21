@@ -103,7 +103,17 @@ class ToolsAgentSubgraph:
         """
         try:
             # Get the tools that need to be executed from the messages
-            tool_messages = [msg for msg in state["messages"] if isinstance(msg, AIMessage) and msg.tool_calls]
+            # Handle both LangChain core messages and LangChainMessage format
+            tool_messages = []
+            for msg in state["messages"]:
+                has_tool_calls = False
+                if isinstance(msg, AIMessage) and msg.tool_calls:
+                    has_tool_calls = True
+                elif hasattr(msg, 'type') and msg.type == 'ai' and hasattr(msg, 'tool_calls') and msg.tool_calls:
+                    has_tool_calls = True
+                
+                if has_tool_calls:
+                    tool_messages.append(msg)
             
             if not tool_messages:
                 logger.warning("No tool calls found in messages")
@@ -385,6 +395,8 @@ class ToolsAgentSubgraph:
         
         Returns a state update dictionary that can be applied to the main workflow.
         """
+        from models import LangChainMessage
+        
         updates = {}
         
         # Add tool messages to main state
@@ -393,10 +405,22 @@ class ToolsAgentSubgraph:
             main_messages = getattr(main_state, "messages", [])
             tools_messages = tools_state["messages"]
             
-            # Find new messages (tool responses)
+            # Find new messages (tool responses) and convert to LangChainMessage format
             new_messages = []
             for msg in tools_messages:
                 if isinstance(msg, ToolMessage) and msg not in main_messages:
+                    # Convert ToolMessage to LangChainMessage format
+                    lang_chain_msg = LangChainMessage(
+                        content=msg.content,
+                        type="tool",
+                        name=getattr(msg, 'name', None),
+                        id=getattr(msg, 'tool_call_id', None),
+                        additional_kwargs=getattr(msg, 'additional_kwargs', {}),
+                        response_metadata=getattr(msg, 'response_metadata', {})
+                    )
+                    new_messages.append(lang_chain_msg)
+                elif not isinstance(msg, ToolMessage) and msg not in main_messages:
+                    # For non-tool messages, add as-is if they're already LangChainMessage
                     new_messages.append(msg)
             
             if new_messages:
