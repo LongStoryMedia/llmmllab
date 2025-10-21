@@ -18,6 +18,7 @@ from composer.tools.static import (
     get_current_date,
     web_search,
 )
+from composer.tools.utils.schema_filter import patch_tool_schema
 
 if TYPE_CHECKING:
     from runner import PipelineFactory
@@ -55,14 +56,15 @@ class ToolRegistry:
             )
 
             # Add function-based tools that are already decorated with @tool
-            self.executable_tools.update(
-                {
-                    "memory_retrieval": memory_retrieval,
-                    "web_search": web_search,
-                    "summarization": summarization,
-                    "get_current_date": get_current_date,
-                }
-            )
+            # Apply schema filtering to remove InjectedState from tool schemas
+            tools_to_add = {
+                "memory_retrieval": patch_tool_schema(memory_retrieval),
+                "web_search": patch_tool_schema(web_search),
+                "summarization": patch_tool_schema(summarization),
+                "get_current_date": patch_tool_schema(get_current_date),
+            }
+            
+            self.executable_tools.update(tools_to_add)
 
             self.logger.info(
                 "Loaded static tools",
