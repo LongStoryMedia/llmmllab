@@ -116,6 +116,30 @@ def patch_tool_schema(tool: BaseTool) -> BaseTool:
         print(f"❌ Could not find callable function in tool: {tool}")
         return tool
         
+    # CRITICAL: Check if this tool uses LangGraph's injection system
+    # If it does, we should NOT apply schema filtering because it breaks the injection
+    import inspect
+    try:
+        sig = inspect.signature(original_func)
+        uses_langgraph_injection = False
+        
+        # Check if the function uses InjectedToolCallId or InjectedState annotations
+        for param_name, param in sig.parameters.items():
+            if hasattr(param, 'annotation') and param.annotation != inspect.Parameter.empty:
+                annotation_str = str(param.annotation)
+                if 'InjectedToolCallId' in annotation_str or 'InjectedState' in annotation_str:
+                    uses_langgraph_injection = True
+                    break
+        
+        if uses_langgraph_injection:
+            print(f"🚫 Tool {tool.name} uses LangGraph injection system - skipping schema filtering")
+            print(f"🚫 Reason: LangGraph's Command Pattern requires direct injection access")
+            return tool
+            
+    except Exception as e:
+        print(f"⚠️  Could not check injection annotations for {tool.name}: {e}")
+        # Continue with filtering as fallback
+        
     print(f"🔧 Creating filtered schema...")
     # Create filtered schema
     filtered_schema = create_filtered_args_schema(original_func)
@@ -126,7 +150,8 @@ def patch_tool_schema(tool: BaseTool) -> BaseTool:
         import inspect  # Import here to avoid circular imports
         
         # Enhanced debug log
-        print(f"🔧 WRAPPER CALLED with {len(kwargs)} args: {list(kwargs.keys())}")
+        print(f"🔧 WRAPPER CALLED with {len(kwargs)} kwargs: {list(kwargs.keys())}")
+        print(f"🔧 ALL KWARGS: {kwargs}")
         print(f"🔧 WRAPPER: original_func is: {original_func}")
         print(f"🔧 WRAPPER: original_func type: {type(original_func)}")
         
@@ -151,6 +176,7 @@ def patch_tool_schema(tool: BaseTool) -> BaseTool:
         
         # Extract tool_call_id from the kwargs if provided (LangGraph passes this)
         tool_call_id = actual_kwargs.get('tool_call_id')
+        print(f"🔍 Extracted tool_call_id from kwargs: {tool_call_id}")
         
         # Always ensure we have a query parameter if it's expected
         for param_name, param in original_sig.parameters.items():

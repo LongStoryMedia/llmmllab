@@ -166,8 +166,9 @@ class ToolsAgentSubgraph:
                     import inspect
                     
                     # Get the actual function to inspect its signature
-                    tool_func = getattr(tool, 'func', None)
-                    if tool_func and inspect.isfunction(tool_func):
+                    # Check both 'func' and 'coroutine' attributes for LangGraph tools
+                    tool_func = getattr(tool, 'func', None) or getattr(tool, 'coroutine', None)
+                    if tool_func and (inspect.isfunction(tool_func) or inspect.iscoroutinefunction(tool_func)):
                         sig = inspect.signature(tool_func)
                         param_names = list(sig.parameters.keys())
                         
@@ -177,21 +178,38 @@ class ToolsAgentSubgraph:
                             minimal_state = self._create_minimal_workflow_state(state)
                             
                             # Call the function directly with injected parameters
-                            result = await asyncio.create_task(
-                                asyncio.to_thread(
-                                    tool_func,
+                            if inspect.iscoroutinefunction(tool_func):
+                                # Async function - call directly
+                                result = await tool_func(
                                     tool_call_id=tool_call_id,
                                     state=minimal_state,
                                     **args
                                 )
-                            )
+                            else:
+                                # Sync function - use thread
+                                result = await asyncio.create_task(
+                                    asyncio.to_thread(
+                                        tool_func,
+                                        tool_call_id=tool_call_id,
+                                        state=minimal_state,
+                                        **args
+                                    )
+                                )
                             
                             # Handle Command returns (like web_search)
                             if hasattr(result, 'update') and result.update:
                                 # Apply command updates to our minimal state
                                 for key, value in result.update.items():
                                     if hasattr(minimal_state, key):
-                                        setattr(minimal_state, key, value)
+                                        # Special handling for messages - convert LangChain messages to LangChainMessage schema
+                                        if key == 'messages' and isinstance(value, list):
+                                            from composer.utils.langchain_compat import _coerce_to_langchain_message_dict
+                                            converted_messages = []
+                                            for msg in value:
+                                                converted_messages.append(_coerce_to_langchain_message_dict(msg))
+                                            setattr(minimal_state, key, converted_messages)
+                                        else:
+                                            setattr(minimal_state, key, value)
                                         
                                 # Extract the actual result content
                                 result_content = "Tool completed and results added to state"
