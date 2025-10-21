@@ -119,14 +119,6 @@ class ChatAgent(BaseAgent[ChatResponse]):
 
                 chunk_count += 1
 
-                self.logger.debug(
-                    "Received streaming chunk with metadata",
-                    chunk_num=chunk_count,
-                    has_message=bool(chunk.message),
-                    chunk_done=chunk.done,
-                    has_metadata=bool(chunk.channels),
-                )
-
                 # Accumulate content
                 if chunk.message and chunk.message.content:
                     content_text = extract_message_text(chunk.message)

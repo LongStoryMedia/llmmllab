@@ -1,21 +1,21 @@
 """
 Tool Executor Node for LangGraph workflows.
-Wraps LangChain v1.0 ToolNode for reliable tool execution within workflows.
+Uses the ToolsAgentSubgraph for efficient tool execution with minimal state overhead.
 """
-
-# No additional imports needed - using LangChain message types and registry tools
 
 from models import LangChainMessage
 from composer.graph.state import WorkflowState
 from composer.tools.registry import ToolRegistry
+from composer.graph.subgraphs import tools_agent_subgraph
 from utils.logging import llmmllogger
 
 
 class ToolExecutorNode:
     """
-    Executes tool calls produced by the previous agent or tool node.
+    Executes tool calls using the ToolsAgentSubgraph for clean state isolation.
 
-    Executes tool calls directly without relying on LangChain ToolNode (removed dependency).
+    This node delegates tool execution to a specialized subgraph that handles
+    tools with minimal state overhead to prevent context window bloat.
     """
 
     def __init__(self, tool_registry: "ToolRegistry"):
@@ -30,7 +30,7 @@ class ToolExecutorNode:
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
-        Execute tool calls from the last message.
+        Execute tool calls using the subgraph architecture.
 
         Args:
             state: Current workflow state
@@ -53,106 +53,34 @@ class ToolExecutorNode:
                 )
                 return state
 
-            # Get executable tools from registry instead of state
-            executable_tools = {}
-            if self.tool_registry:
-                executable_tools = self.tool_registry.get_all_executable_tools()
-
-            if not executable_tools:
-                msg = "No executable tools available from registry"
-                self.logger.error(
-                    msg,
-                    user_id=getattr(state, "user_id", "unknown"),
-                    registry_available=bool(self.tool_registry),
-                )
-                raise RuntimeError(msg)
-
             self.logger.info(
-                "Executing tool calls",
+                "Delegating tool execution to subgraph",
                 user_id=getattr(state, "user_id", "unknown"),
                 tool_count=len(last_message.tool_calls),
                 tools=[call.get("name", "unknown") for call in last_message.tool_calls],
-                available_tool_count=len(executable_tools),
             )
 
-            # Use executable tools from registry
-            name_to_tool = executable_tools  # This is already a name->BaseTool mapping
-            self.logger.info(
-                "Available tools debugging",
-                user_id=getattr(state, "user_id", "unknown"),
-                available_tools=list(name_to_tool.keys())[
-                    :10
-                ],  # Show first 10 for debugging
-                total_available=len(name_to_tool),
-                raw_tool_classes=[type(t).__name__ for t in name_to_tool.values()][
-                    :5
-                ],  # Show class names for debugging
-                raw_tool_names=[
-                    getattr(t, "name", "NO_NAME") for t in name_to_tool.values()
-                ][
-                    :5
-                ],  # Show .name attrs
-            )
-            for call in last_message.tool_calls:
-                tool_name = call.get("name")
-                args = call.get("args") or call.get("arguments") or {}
-                if tool_name not in name_to_tool:
-                    self.logger.error(
-                        "Tool not found debugging",
-                        user_id=getattr(state, "user_id", "unknown"),
-                        requested_tool=tool_name,
-                        available_tools=sorted(list(name_to_tool.keys())),
-                    )
-                    raise RuntimeError(f"Requested tool '{tool_name}' not available")
-                tool = name_to_tool[tool_name]
-                try:
-                    # Check if this is a LangGraph tool with injection (has coroutine attribute)
-                    if hasattr(tool, "coroutine") and tool.coroutine:
-                        # This is a LangGraph @tool decorated function - call it directly with injected params
-                        tool_call_id = call.get("id", f"call_{tool_name}")
-                        result = await tool.coroutine(
-                            tool_call_id=tool_call_id, state=state, **args
-                        )
-                    else:
-                        # Regular LangChain tool - use the standard execution pattern
-                        from langchain_core.runnables import RunnableConfig
-
-                        tool_config = RunnableConfig()
-
-                        if hasattr(tool, "_arun"):
-                            result = await tool._arun(config=tool_config, **args)  # type: ignore
-                        else:
-                            # Some community tools expose arun
-                            arun = getattr(tool, "arun", None)
-                            if arun:
-                                result = await arun(config=tool_config, **args)
-                            else:
-                                # Fallback to sync _run executed in threadpool? For now invoke directly
-                                run_fn = getattr(tool, "_run", None) or getattr(
-                                    tool, "run", None
-                                )
-                                if run_fn is None:
-                                    raise RuntimeError(
-                                        f"Tool '{tool_name}' has no runnable method"
-                                    )
-                                result = run_fn(**args)
-                except Exception as te:
-                    raise RuntimeError(
-                        f"Tool '{tool_name}' execution failed: {te}"
-                    ) from te
-
-                # Append tool result as assistant message for downstream consumption
-                tool_message = LangChainMessage(type="tool", content=str(result))
-                state.messages.append(tool_message)
-
-            # Log tool execution completion
-            self.logger.info(
-                "Tool execution completed",
-                user_id=getattr(state, "user_id", "unknown"),
-                completed_tools=[
-                    call.get("name", "unknown") for call in last_message.tool_calls
-                ],
-            )
+            # Execute tools via subgraph
+            command = await tools_agent_subgraph.execute(state)
+            
+            # Apply the command updates to the state
+            if command and command.update:
+                for key, value in command.update.items():
+                    setattr(state, key, value)
+                
+                self.logger.info(
+                    "Tool execution completed via subgraph",
+                    user_id=getattr(state, "user_id", "unknown"),
+                    completed_tools=[
+                        call.get("name", "unknown") for call in last_message.tool_calls
+                    ],
+                    state_updates=list(command.update.keys())
+                )
+            else:
+                self.logger.warning(
+                    "Tool execution returned no updates",
+                    user_id=getattr(state, "user_id", "unknown"),
+                )
 
             return state
 
