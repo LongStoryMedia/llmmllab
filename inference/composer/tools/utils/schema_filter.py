@@ -88,6 +88,11 @@ def patch_tool_schema(tool: BaseTool) -> BaseTool:
     Returns:
         The same tool with a modified args_schema and wrapper function
     """
+    # Check if tool is already patched to avoid double-wrapping
+    if hasattr(tool, '_schema_filter_patched'):
+        print(f"🔄 Tool {tool.name} already patched, skipping")
+        return tool
+    
     # Find the original function - could be in 'func', 'coroutine', or other attributes
     original_func = None
     
@@ -144,6 +149,9 @@ def patch_tool_schema(tool: BaseTool) -> BaseTool:
             
         filtered_kwargs = {}
         
+        # Extract tool_call_id from the kwargs if provided (LangGraph passes this)
+        tool_call_id = actual_kwargs.get('tool_call_id')
+        
         # Always ensure we have a query parameter if it's expected
         for param_name, param in original_sig.parameters.items():
             if param_name == 'query' and param_name not in actual_kwargs:
@@ -158,12 +166,14 @@ def patch_tool_schema(tool: BaseTool) -> BaseTool:
         print(f"🎯 Calling original function with: {list(filtered_kwargs.keys())}")
         
         # Add tool_call_id if missing but expected by original function
-        if 'tool_call_id' in original_sig.parameters and 'tool_call_id' not in filtered_kwargs:
-            # This should now be rare since tool_call_id is kept in the schema
-            filtered_kwargs['tool_call_id'] = 'langchain_call'
-            print(f"🎯 Injected fallback tool_call_id: langchain_call")
-        elif 'tool_call_id' in filtered_kwargs:
-            print(f"🎯 Using provided tool_call_id: {filtered_kwargs['tool_call_id']}")
+        if 'tool_call_id' in original_sig.parameters:
+            if tool_call_id:
+                filtered_kwargs['tool_call_id'] = tool_call_id
+                print(f"🎯 Using provided tool_call_id: {tool_call_id}")
+            else:
+                # Fallback if no tool_call_id provided
+                filtered_kwargs['tool_call_id'] = 'langchain_call'
+                print(f"🎯 Injected fallback tool_call_id: langchain_call")
             
         # Add state if missing but expected by original function
         if 'state' in original_sig.parameters and 'state' not in filtered_kwargs:
@@ -197,10 +207,10 @@ def patch_tool_schema(tool: BaseTool) -> BaseTool:
     print(f"🔧 tool.coroutine: {getattr(tool, 'coroutine', 'NOT_FOUND')}")
     
     if hasattr(tool, 'coroutine'):
-        print(f"🔧 Setting coroutine from {tool.coroutine} to {wrapper_func}")
+        print(f"🔧 Setting coroutine from {getattr(tool, 'coroutine', None)} to {wrapper_func}")
         try:
             setattr(tool, 'coroutine', wrapper_func)
-            print(f"🔧 After setting: {tool.coroutine}")
+            print(f"🔧 After setting: {getattr(tool, 'coroutine', None)}")
         except Exception as e:
             print(f"❌ Failed to set coroutine: {e}")
             # Try alternative approach - maybe coroutine is readonly
@@ -217,5 +227,8 @@ def patch_tool_schema(tool: BaseTool) -> BaseTool:
     # Store original function for debugging 
     if not hasattr(tool, '_original_func'):
         setattr(tool, '_original_func', original_func)
+    
+    # Mark tool as patched to prevent double-wrapping
+    setattr(tool, '_schema_filter_patched', True)
     
     return tool
