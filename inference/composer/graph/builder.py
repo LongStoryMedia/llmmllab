@@ -400,19 +400,19 @@ class GraphBuilder:
                 # Check if any search results were added to state (by Command from web search tool)
                 if state.web_search_results:
                     return "search_summary"
-                return "chat_agent"
+                return "memory_creation"
 
             workflow.add_conditional_edges(
                 "tool_executor",
                 should_synthesize_search_results,
                 {
                     "search_summary": "search_summary",
-                    "chat_agent": "chat_agent",
+                    "memory_creation": "memory_creation",
                 },
             )
 
-            # 8b. Search summary -> Chat agent (for final response with synthesized search results)
-            workflow.add_edge("search_summary", "chat_agent")
+            # 8b. Search summary -> Memory creation (skip second chat_agent call)
+            workflow.add_edge("search_summary", "memory_creation")
 
             workflow.add_edge("chat_summary", "title_generation")
 

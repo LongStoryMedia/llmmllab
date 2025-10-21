@@ -21,9 +21,9 @@ def get_current_date(
 ) -> str:
     """
     Get the current date in ISO format.
-    Args:
-        tool_call_id: Injected tool call ID for message tracking (auto-injected by LangGraph)
-        state: Injected WorkflowState for accessing user_config (auto-injected by LangGraph)
+
+    This tool returns the current date and time for reference when you need
+    to know the current time context for your response.
 
     Returns:
         str: Current date in ISO format

@@ -49,21 +49,15 @@ async def memory_retrieval(
     """
     Retrieve relevant memories based on text query and automatically add results to workflow state.
 
-    This tool performs memory retrieval using embeddings and similarity search, then
-    returns a Command that updates the WorkflowState with memory results, enabling
-    automatic routing to memory synthesis nodes.
-
-    Uses the official LangGraph Command pattern for state updates and strong typing
-    with WorkflowState. Efficiently accesses user_config directly from injected state
-    instead of database retrieval.
+    This tool searches through stored conversation memories and previous interactions
+    to find relevant information based on semantic similarity. Use this tool when
+    you need to recall previous conversations or information from past interactions.
 
     Args:
         query: The search query to execute for memory retrieval
-        tool_call_id: Injected tool call ID for message tracking (auto-injected by LangGraph)
-        state: Injected WorkflowState for accessing user_config (auto-injected by LangGraph)
 
     Returns:
-        Command object that updates state with memory results
+        Relevant memories with content, timestamps, and similarity scores
     """
     logger = llmmllogger.logger.bind(component="MemoryRetrieval")
 

@@ -43,21 +43,15 @@ async def summarization(
     """
     Summarize content using LLM and automatically add results to workflow state.
 
-    This tool performs content summarization using the configured LLM, then
-    returns a Command that updates the WorkflowState with summary results, enabling
-    automatic routing to summary synthesis nodes.
-
-    Uses the official LangGraph Command pattern for state updates and strong typing
-    with WorkflowState. Efficiently accesses user_config directly from injected state
-    instead of database retrieval.
+    This tool creates concise summaries of long text content while preserving
+    key information and main points. Use this tool when you need to condense
+    lengthy text, articles, or documents into digestible summaries.
 
     Args:
         content: The text content to summarize
-        tool_call_id: Injected tool call ID for message tracking (auto-injected by LangGraph)
-        state: Injected WorkflowState for accessing user_config (auto-injected by LangGraph)
 
     Returns:
-        Command object that updates state with summary results
+        Summarized content with key points and main themes preserved
     """
     logger = llmmllogger.logger.bind(component="Summarization")
 

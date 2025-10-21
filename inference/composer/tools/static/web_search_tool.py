@@ -159,21 +159,15 @@ async def web_search(
     """
     Search the web for information and automatically add results to workflow state.
 
-    This is the single, streamlined web search tool that performs searches using SearxNG
-    and returns a Command that updates the WorkflowState with search results, enabling
-    automatic routing to search synthesis nodes.
-
-    Uses the official LangGraph Command pattern for state updates and strong typing
-    with WorkflowState. Efficiently accesses user_config directly from injected state
-    instead of database retrieval.
+    This tool performs comprehensive web searches using multiple search engines
+    and returns structured results. Use this tool when you need current information
+    from the internet about any topic.
 
     Args:
         query: The search query to execute
-        tool_call_id: Injected tool call ID for message tracking (auto-injected by LangGraph)
-        state: Injected WorkflowState for accessing user_config (auto-injected by LangGraph)
 
     Returns:
-        Command object that updates state with search results
+        Search results with titles, URLs, content snippets, and relevance scores
     """
     from models.default_configs import (  # pylint: disable=import-outside-toplevel
         DEFAULT_WEB_SEARCH_CONFIG,
