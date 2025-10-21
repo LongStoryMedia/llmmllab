@@ -82,6 +82,11 @@ def patch_tool_schema(tool: BaseTool) -> BaseTool:
     Returns:
         The same tool with a modified args_schema and wrapper function
     """
+    # Check if already patched
+    if hasattr(tool, '_original_func'):
+        # Already patched, return as-is
+        return tool
+    
     # Find the original function - could be in 'func', 'coroutine', or other attributes
     original_func = None
     if hasattr(tool, 'func') and callable(getattr(tool, 'func', None)):
@@ -90,36 +95,79 @@ def patch_tool_schema(tool: BaseTool) -> BaseTool:
         original_func = getattr(tool, 'coroutine')
     
     if original_func:
+        # Get the original function signature ONCE
+        import inspect
+        original_sig = inspect.signature(original_func)
+        
+        # Pre-compute required parameters (excluding injected ones) from the ORIGINAL signature
+        required_params = []
+        for name, param in original_sig.parameters.items():
+            # Skip parameters with defaults
+            if param.default != param.empty:
+                continue
+                
+            # Skip injection parameters by checking the annotation
+            annotation = param.annotation
+            is_injected = False
+            
+            # Handle Annotated types
+            if hasattr(annotation, '__origin__') and hasattr(annotation, '__metadata__'):
+                # This is an Annotated type, check metadata for injection markers
+                metadata = getattr(annotation, '__metadata__', ())
+                for meta in metadata:
+                    if hasattr(meta, '__name__'):
+                        if meta.__name__ in ['InjectedState', 'InjectedToolCallId']:
+                            is_injected = True
+                            break
+            
+            # Handle string annotations
+            elif isinstance(annotation, str):
+                if 'InjectedState' in annotation or 'InjectedToolCallId' in annotation:
+                    is_injected = True
+            
+            if not is_injected:
+                required_params.append(name)
+        
+        print(f"🔍 DEBUG: Tool '{tool.name}' original signature: {original_sig}")
+        print(f"🔍 DEBUG: Identified required parameters: {required_params}")
+        
         # Create filtered schema
         filtered_schema = create_filtered_args_schema(original_func)
         
         # Create wrapper function that handles injection parameters
         async def wrapper_func(**kwargs):
             """Wrapper that provides dummy injection parameters."""
-            import inspect  # Import here to avoid circular imports
-            
             # Simple debug log
             print(f"🔧 WRAPPER CALLED with {len(kwargs)} args")
+            print(f"🔍 Raw kwargs: {kwargs}")
             
             # Handle the case where LLM wraps arguments in 'kwargs'
             actual_kwargs = kwargs
             if len(kwargs) == 1 and 'kwargs' in kwargs:
                 print("🔄 Unwrapping nested kwargs structure")
                 actual_kwargs = kwargs['kwargs']
+                print(f"🔍 Unwrapped kwargs: {actual_kwargs}")
             
-            # Get the parameters from the original function signature
-            original_sig = inspect.signature(original_func)
+            # Use the pre-computed required_params instead of computing them again
+            print(f"🎯 Required parameters: {required_params}")
+            print(f"🎯 Available parameters: {list(actual_kwargs.keys())}")
+            
+            # Build filtered kwargs
             filtered_kwargs = {}
-            
-            # Always ensure we have a query parameter if it's expected
             for param_name, param in original_sig.parameters.items():
-                if param_name == 'query' and param_name not in actual_kwargs:
-                    # This shouldn't happen, but just in case
-                    print(f"❌ DEBUG: Expected parameter '{param_name}' missing from {actual_kwargs}")
-                    raise ValueError(f"Required parameter '{param_name}' not provided to tool")
-                elif param_name in actual_kwargs:
+                if param_name in actual_kwargs:
                     # Include parameter from actual_kwargs
                     filtered_kwargs[param_name] = actual_kwargs[param_name]
+                elif param_name in required_params:
+                    # Missing required parameter - this is a problem
+                    print(f"❌ DEBUG: Required parameter '{param_name}' missing from {actual_kwargs}")
+                    # Try to provide a helpful error message
+                    if param_name == 'query' and not actual_kwargs:
+                        raise ValueError(f"Tool called without parameters. Expected 'query' parameter for web search.")
+                    else:
+                        raise ValueError(f"Required parameter '{param_name}' not provided to tool")
+                    
+            print(f"🎯 Final filtered kwargs: {filtered_kwargs}")
             
             # Add tool_call_id if missing but expected by original function
             if 'tool_call_id' in original_sig.parameters and 'tool_call_id' not in filtered_kwargs:
