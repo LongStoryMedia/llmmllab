@@ -99,7 +99,13 @@ def patch_tool_schema(tool: BaseTool) -> BaseTool:
             import inspect  # Import here to avoid circular imports
             
             # Simple debug log
-            print(f"� WRAPPER CALLED with {len(kwargs)} args")
+            print(f"🔧 WRAPPER CALLED with {len(kwargs)} args")
+            
+            # Handle the case where LLM wraps arguments in 'kwargs'
+            actual_kwargs = kwargs
+            if len(kwargs) == 1 and 'kwargs' in kwargs:
+                print("🔄 Unwrapping nested kwargs structure")
+                actual_kwargs = kwargs['kwargs']
             
             # Get the parameters from the original function signature
             original_sig = inspect.signature(original_func)
@@ -107,13 +113,13 @@ def patch_tool_schema(tool: BaseTool) -> BaseTool:
             
             # Always ensure we have a query parameter if it's expected
             for param_name, param in original_sig.parameters.items():
-                if param_name == 'query' and param_name not in kwargs:
+                if param_name == 'query' and param_name not in actual_kwargs:
                     # This shouldn't happen, but just in case
-                    print(f"❌ DEBUG: Expected parameter '{param_name}' missing from {kwargs}")
+                    print(f"❌ DEBUG: Expected parameter '{param_name}' missing from {actual_kwargs}")
                     raise ValueError(f"Required parameter '{param_name}' not provided to tool")
-                elif param_name in kwargs:
-                    # Include parameter from kwargs
-                    filtered_kwargs[param_name] = kwargs[param_name]
+                elif param_name in actual_kwargs:
+                    # Include parameter from actual_kwargs
+                    filtered_kwargs[param_name] = actual_kwargs[param_name]
             
             # Add tool_call_id if missing but expected by original function
             if 'tool_call_id' in original_sig.parameters and 'tool_call_id' not in filtered_kwargs:
