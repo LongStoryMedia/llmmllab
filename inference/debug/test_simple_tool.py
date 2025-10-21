@@ -5,7 +5,6 @@ Simple debug test to isolate the tool calling issue.
 
 import asyncio
 import logging
-from composer.tools.static.web_search_tool import web_search
 from composer.tools.utils.schema_filter import patch_tool_schema
 from langchain_core.tools import tool
 
@@ -15,11 +14,16 @@ logging.basicConfig(level=logging.DEBUG)
 async def test_tool_issue():
     print("🧪 Testing tool calling issue...")
     
+    # Create a proper test function that mimics web_search  
+    async def raw_web_search_func(query: str, tool_call_id: str = "test", state=None):
+        """A simple test function that mimics web search."""
+        return f"Search results for: {query} (tool_call_id: {tool_call_id})"
+    
     # Convert function to tool
     @tool
     async def web_search_tool(query: str):
         """Search the web for information."""
-        return await web_search(query=query, tool_call_id="test", state=None)
+        return await raw_web_search_func(query=query, tool_call_id="test", state=None)
     
     # Apply schema filtering
     print("🔧 Applying schema filtering...")
@@ -27,15 +31,6 @@ async def test_tool_issue():
     
     # Print the filtered schema
     print(f"📋 Filtered schema: {patched_tool.args_schema.model_fields}")
-    
-    # Test direct tool call
-    print("📞 Testing direct tool call...")
-    try:
-        # Call the tool directly with expected arguments
-        result = await patched_tool.ainvoke({"query": "test search"})
-        print(f"✅ Direct call succeeded: {result}")
-    except Exception as e:
-        print(f"❌ Direct call failed: {e}")
     
     # Check if wrapper was applied correctly
     print(f"📋 Tool coroutine after patching: {patched_tool.coroutine}")
@@ -50,6 +45,16 @@ async def test_tool_issue():
         print(f"✅ Wrapper call succeeded: {result}")
     except Exception as e:
         print(f"❌ Wrapper call failed: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    # Test direct tool call through ainvoke 
+    print("📞 Testing tool ainvoke...")
+    try:
+        result = await patched_tool.ainvoke({"query": "test search"})
+        print(f"✅ Tool ainvoke succeeded: {result}")
+    except Exception as e:
+        print(f"❌ Tool ainvoke failed: {e}")
         import traceback
         traceback.print_exc()
 

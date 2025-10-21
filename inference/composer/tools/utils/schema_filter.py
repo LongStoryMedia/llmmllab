@@ -124,96 +124,98 @@ def patch_tool_schema(tool: BaseTool) -> BaseTool:
         print(f"🔧 WRAPPER CALLED with {len(kwargs)} args: {list(kwargs.keys())}")
         print(f"🔧 WRAPPER: original_func is: {original_func}")
         print(f"🔧 WRAPPER: original_func type: {type(original_func)}")
-            
-            # Handle the case where LLM wraps arguments in 'kwargs'
-            actual_kwargs = kwargs
-            if len(kwargs) == 1 and 'kwargs' in kwargs:
-                print("🔄 Unwrapping nested kwargs structure")
-                actual_kwargs = kwargs['kwargs']
-                print(f"🔧 After unwrapping: {len(actual_kwargs)} args: {list(actual_kwargs.keys())}")
-            else:
-                print(f"🔧 Direct args: {list(actual_kwargs.keys())}")
-
-            # Get the parameters from the original function signature
-            try:
-                original_sig = inspect.signature(original_func)
-            except Exception as e:
-                print(f"❌ Could not get signature of original_func: {e}")
-                print(f"❌ original_func = {original_func}")
-                raise
-                
-            filtered_kwargs = {}            # Always ensure we have a query parameter if it's expected
-            for param_name, param in original_sig.parameters.items():
-                if param_name == 'query' and param_name not in actual_kwargs:
-                    # This shouldn't happen, but just in case
-                    print(f"❌ DEBUG: Expected parameter '{param_name}' missing from {actual_kwargs}")
-                    raise ValueError(f"Required parameter '{param_name}' not provided to tool")
-                elif param_name in actual_kwargs:
-                    # Include parameter from actual_kwargs
-                    filtered_kwargs[param_name] = actual_kwargs[param_name]
-                    print(f"✅ DEBUG: Added parameter '{param_name}': {repr(actual_kwargs[param_name])[:50]}")
-            
-            print(f"🎯 Calling original function with: {list(filtered_kwargs.keys())}")
-            
-            # Add tool_call_id if missing but expected by original function
-            if 'tool_call_id' in original_sig.parameters and 'tool_call_id' not in filtered_kwargs:
-                # This should now be rare since tool_call_id is kept in the schema
-                filtered_kwargs['tool_call_id'] = 'langchain_call'
-                print(f"🎯 Injected fallback tool_call_id: langchain_call")
-            elif 'tool_call_id' in filtered_kwargs:
-                print(f"🎯 Using provided tool_call_id: {filtered_kwargs['tool_call_id']}")
-                
-            # Add state if missing but expected by original function
-            if 'state' in original_sig.parameters and 'state' not in filtered_kwargs:
-                from composer.graph.state import WorkflowState
-                from models.default_configs import create_default_user_config
-                
-                # Create minimal state for LangChain tool calls
-                minimal_state = WorkflowState(
-                    user_id='langchain_user',
-                    conversation_id=0,
-                    user_config=create_default_user_config('langchain_user'),
-                    messages=[],
-                    things_to_remember=[],
-                )
-                filtered_kwargs['state'] = minimal_state
-            
-            # Call original function with only the parameters it accepts
-            print(f"📞 About to call original function: {original_func}")
-            print(f"📞 Original function type: {type(original_func)}")
-            print(f"📞 Is callable: {callable(original_func)}")
-            result = await original_func(**filtered_kwargs)
-            print(f"✅ Function call completed successfully")
-            return result
         
-        # Replace the args_schema
-        tool.args_schema = filtered_schema
-        
-        # Replace the coroutine with our wrapper (this is the async function)
-        print(f"🔧 Checking coroutine attribute...")
-        print(f"🔧 hasattr(tool, 'coroutine'): {hasattr(tool, 'coroutine')}")
-        print(f"🔧 tool.coroutine: {getattr(tool, 'coroutine', 'NOT_FOUND')}")
-        
-        if hasattr(tool, 'coroutine'):
-            print(f"🔧 Setting coroutine from {tool.coroutine} to {wrapper_func}")
-            try:
-                setattr(tool, 'coroutine', wrapper_func)
-                print(f"🔧 After setting: {tool.coroutine}")
-            except Exception as e:
-                print(f"❌ Failed to set coroutine: {e}")
-                # Try alternative approach - maybe coroutine is readonly
-                print("🔧 Attempting to use func instead...")
-                if hasattr(tool, 'func'):
-                    print(f"🔧 Setting func from {tool.func} to {wrapper_func}")
-                    setattr(tool, 'func', wrapper_func)
+        # Handle the case where LLM wraps arguments in 'kwargs'
+        actual_kwargs = kwargs
+        if len(kwargs) == 1 and 'kwargs' in kwargs:
+            print("🔄 Unwrapping nested kwargs structure")
+            actual_kwargs = kwargs['kwargs']
+            print(f"🔧 After unwrapping: {len(actual_kwargs)} args: {list(actual_kwargs.keys())}")
         else:
-            print("🔧 No coroutine attribute, trying func...")
-            if hasattr(tool, 'func'):
-                print(f"🔧 Setting func from {tool.func} to {wrapper_func}")
-                setattr(tool, 'func', wrapper_func)
+            print(f"🔧 Direct args: {list(actual_kwargs.keys())}")
+
+        # Get the parameters from the original function signature
+        try:
+            original_sig = inspect.signature(original_func)
+        except Exception as e:
+            print(f"❌ Could not get signature of original_func: {e}")
+            print(f"❌ original_func = {original_func}")
+            raise
+            
+        filtered_kwargs = {}
         
-        # Store original function for debugging 
-        if not hasattr(tool, '_original_func'):
-            setattr(tool, '_original_func', original_func)
+        # Always ensure we have a query parameter if it's expected
+        for param_name, param in original_sig.parameters.items():
+            if param_name == 'query' and param_name not in actual_kwargs:
+                # This shouldn't happen, but just in case
+                print(f"❌ DEBUG: Expected parameter '{param_name}' missing from {actual_kwargs}")
+                raise ValueError(f"Required parameter '{param_name}' not provided to tool")
+            elif param_name in actual_kwargs:
+                # Include parameter from actual_kwargs
+                filtered_kwargs[param_name] = actual_kwargs[param_name]
+                print(f"✅ DEBUG: Added parameter '{param_name}': {repr(actual_kwargs[param_name])[:50]}")
+        
+        print(f"🎯 Calling original function with: {list(filtered_kwargs.keys())}")
+        
+        # Add tool_call_id if missing but expected by original function
+        if 'tool_call_id' in original_sig.parameters and 'tool_call_id' not in filtered_kwargs:
+            # This should now be rare since tool_call_id is kept in the schema
+            filtered_kwargs['tool_call_id'] = 'langchain_call'
+            print(f"🎯 Injected fallback tool_call_id: langchain_call")
+        elif 'tool_call_id' in filtered_kwargs:
+            print(f"🎯 Using provided tool_call_id: {filtered_kwargs['tool_call_id']}")
+            
+        # Add state if missing but expected by original function
+        if 'state' in original_sig.parameters and 'state' not in filtered_kwargs:
+            from composer.graph.state import WorkflowState
+            from models.default_configs import create_default_user_config
+            
+            # Create minimal state for LangChain tool calls
+            minimal_state = WorkflowState(
+                user_id='langchain_user',
+                conversation_id=0,
+                user_config=create_default_user_config('langchain_user'),
+                messages=[],
+                things_to_remember=[],
+            )
+            filtered_kwargs['state'] = minimal_state
+        
+        # Call original function with only the parameters it accepts
+        print(f"📞 About to call original function: {original_func}")
+        print(f"📞 Original function type: {type(original_func)}")
+        print(f"📞 Is callable: {callable(original_func)}")
+        result = await original_func(**filtered_kwargs)
+        print(f"✅ Function call completed successfully")
+        return result
+    
+    # Replace the args_schema
+    tool.args_schema = filtered_schema
+    
+    # Replace the coroutine with our wrapper (this is the async function)
+    print(f"🔧 Checking coroutine attribute...")
+    print(f"🔧 hasattr(tool, 'coroutine'): {hasattr(tool, 'coroutine')}")
+    print(f"🔧 tool.coroutine: {getattr(tool, 'coroutine', 'NOT_FOUND')}")
+    
+    if hasattr(tool, 'coroutine'):
+        print(f"🔧 Setting coroutine from {tool.coroutine} to {wrapper_func}")
+        try:
+            setattr(tool, 'coroutine', wrapper_func)
+            print(f"🔧 After setting: {tool.coroutine}")
+        except Exception as e:
+            print(f"❌ Failed to set coroutine: {e}")
+            # Try alternative approach - maybe coroutine is readonly
+            print("🔧 Attempting to use func instead...")
+            if hasattr(tool, 'func'):
+                print(f"🔧 Setting func from {getattr(tool, 'func', 'NOT_FOUND')} to {wrapper_func}")
+                setattr(tool, 'func', wrapper_func)
+    else:
+        print("🔧 No coroutine attribute, trying func...")
+        if hasattr(tool, 'func'):
+            print(f"🔧 Setting func from {getattr(tool, 'func', 'NOT_FOUND')} to {wrapper_func}")
+            setattr(tool, 'func', wrapper_func)
+    
+    # Store original function for debugging 
+    if not hasattr(tool, '_original_func'):
+        setattr(tool, '_original_func', original_func)
     
     return tool
