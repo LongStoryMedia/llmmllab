@@ -376,7 +376,14 @@ class ToolsAgentSubgraph:
                             'in conclusion', 
                             'to summarize',
                             'here\'s what i found',
-                            'the research shows'
+                            'the research shows',
+                            'summary of',
+                            'developments in',
+                            'latest developments',
+                            'can\'t provide more details',
+                            'limited to the titles and snippets',
+                            'for detailed insights',
+                            'further targeted investigation'
                         ]
                         
                         if any(signal in content for signal in completion_signals):
@@ -384,7 +391,7 @@ class ToolsAgentSubgraph:
                             return "__end__"
                         
                         # If content is substantial (agent provided comprehensive response)
-                        if len(content) > 500:
+                        if len(content) > 300:
                             logger.info("🔀 Subgraph: Agent provided comprehensive response, finishing")
                             return "__end__"
                     
