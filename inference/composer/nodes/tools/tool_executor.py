@@ -61,20 +61,33 @@ class ToolExecutorNode:
             )
 
             # Execute tools via subgraph
+            self.logger.info(
+                f"🔄 ToolExecutorNode: Calling tools_agent_subgraph.execute"
+            )
             command = await tools_agent_subgraph.execute(state)
-            
+
             # Apply the command updates to the state
             if command and command.update:
+                self.logger.info(
+                    f"🔄 ToolExecutorNode: Got command with {len(command.update)} updates: {list(command.update.keys())}"
+                )
+                if "messages" in command.update:
+                    old_count = len(state.messages)
+                    new_count = len(command.update["messages"])
+                    self.logger.info(
+                        f"🔄 ToolExecutorNode: Messages update - old: {old_count}, new: {new_count}"
+                    )
+
                 for key, value in command.update.items():
                     setattr(state, key, value)
-                
+
                 self.logger.info(
                     "Tool execution completed via subgraph",
                     user_id=getattr(state, "user_id", "unknown"),
                     completed_tools=[
                         call.get("name", "unknown") for call in last_message.tool_calls
                     ],
-                    state_updates=list(command.update.keys())
+                    state_updates=list(command.update.keys()),
                 )
             else:
                 self.logger.warning(

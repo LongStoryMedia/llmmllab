@@ -8,7 +8,7 @@ ensuring proper termination conditions.
 
 Key Benefits:
 1. Built-in middleware - uses LangGraph's tools_condition for proper routing
-2. Prevents duplicate execution - proper termination logic prevents agent loops  
+2. Prevents duplicate execution - proper termination logic prevents agent loops
 3. Minimal state - ToolsState with only essential fields to minimize context usage
 4. ToolRuntime pattern - all tools use modern ToolRuntime[ToolsState] injection
 5. State isolation - agent operations don't bloat main workflow state
@@ -46,7 +46,6 @@ from runner import PipelineFactory
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="ToolsAgentSubgraph")
-
 
 
 class ToolsAgentSubgraph:
@@ -156,7 +155,9 @@ class ToolsAgentSubgraph:
 
             # Compile the graph with safeguards
             self.graph = builder.compile()
-            logger.info("Agent subgraph built with LangGraph tools_condition middleware")
+            logger.info(
+                "Agent subgraph built with LangGraph tools_condition middleware"
+            )
 
         except Exception as e:
             logger.error(f"Failed to build agent subgraph: {e}")
@@ -236,7 +237,7 @@ class ToolsAgentSubgraph:
             error_msg = AIMessage(content=f"Agent error: {str(e)}")
             return {"messages": [error_msg]}
 
-# Removed _should_continue - using LangGraph's built-in tools_condition instead
+    # Removed _should_continue - using LangGraph's built-in tools_condition instead
 
     def transform_to_tools_state(self, main_state: WorkflowState) -> ToolsState:
         """Transform main WorkflowState to minimal ToolsState for agent subgraph."""
@@ -305,6 +306,9 @@ class ToolsAgentSubgraph:
                 if i >= original_count:  # This is a new message from agent
                     if isinstance(msg, (AIMessage, ToolMessage)):
                         # Convert to LangChainMessage format for main state
+                        logger.info(
+                            f"🔄 transform_to_main_state: Converting {type(msg).__name__} with type='{msg.type}' to LangChainMessage"
+                        )
                         lang_chain_msg = LangChainMessage(
                             content=msg.content,
                             type=msg.type,
@@ -313,6 +317,9 @@ class ToolsAgentSubgraph:
                             or getattr(msg, "tool_call_id", None),
                             additional_kwargs=getattr(msg, "additional_kwargs", {}),
                             response_metadata=getattr(msg, "response_metadata", {}),
+                        )
+                        logger.info(
+                            f"🔄 transform_to_main_state: Created LangChainMessage with type='{lang_chain_msg.type}'"
                         )
                         new_messages.append(lang_chain_msg)
 
@@ -333,14 +340,23 @@ class ToolsAgentSubgraph:
 
             # Execute the agent subgraph with recursion limit to prevent infinite loops
             result = await self.graph.ainvoke(
-                tools_state, 
-                config={"recursion_limit": 10}  # Prevent infinite agent loops
+                tools_state,
+                config={"recursion_limit": 10},  # Prevent infinite agent loops
             )
 
             # Transform results back to main state updates
+            logger.info(
+                f"🔄 ToolsAgentSubgraph: Calling transform_to_main_state with result containing {len(result.get('messages', []))} messages"
+            )
             updates = self.transform_to_main_state(result, main_state)
 
-            logger.info(f"Agent subgraph completed with {len(updates)} state updates")
+            logger.info(
+                f"🔄 ToolsAgentSubgraph: Agent subgraph completed with {len(updates)} state updates"
+            )
+            if "messages" in updates:
+                logger.info(
+                    f"🔄 ToolsAgentSubgraph: Returning {len(updates['messages']) - len(main_state.messages)} new messages"
+                )
             return Command(update=updates)
 
         except Exception as e:
