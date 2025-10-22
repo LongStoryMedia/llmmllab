@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import uuid
 
 from langgraph.graph.state import CompiledStateGraph, StateGraph, END, START
+from langchain_core.messages import ToolMessage
 
 from models import ModelProfileType, UserConfig, WorkflowType, NodeMetadata
 from runner import PipelineFactory
@@ -375,7 +376,7 @@ class GraphBuilder:
                 # If we do, we've already completed tool execution and should not cycle back
                 has_recent_tool_results = False
                 for msg in state.messages[-10:]:  # Check last 10 messages for tool results
-                    if hasattr(msg, "type") and msg.type == "tool":
+                    if isinstance(msg, ToolMessage):
                         has_recent_tool_results = True
                         break
 
@@ -428,7 +429,6 @@ class GraphBuilder:
                 "tool_executor",  
                 should_continue_agent_loop,
                 {
-                    "chat_agent": "chat_agent",    # Cycle back to LLM for more tool calls
                     "search_summary": "search_summary",  # Process web search results
                     "memory_creation": "memory_creation",  # Skip to memory if done with tools
                 },
