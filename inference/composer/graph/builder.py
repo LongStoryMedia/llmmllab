@@ -417,9 +417,36 @@ class GraphBuilder:
                 if state.web_search_results:
                     return "search_summary"
                 
-                # Otherwise, always return to chat_agent for tool result processing
-                # This enables the LangGraph agent pattern for iterative tool calling
-                return "chat_agent"
+                # Check if we need to continue the agent loop or proceed with workflow
+                # Look at the last AI message to see if it made tool calls
+                if not state.messages:
+                    return "memory_creation"
+                
+                # Find the last AI message before tool execution
+                last_ai_message = None
+                for msg in reversed(state.messages):
+                    if hasattr(msg, "type") and msg.type == "ai":
+                        last_ai_message = msg
+                        break
+                
+                # If the last AI message had tool calls, we should return to chat_agent
+                # for potential additional tool calls or final response synthesis
+                if (last_ai_message and 
+                    hasattr(last_ai_message, "tool_calls") and 
+                    last_ai_message.tool_calls):
+                    
+                    # Count recent tool executions to prevent infinite loops
+                    recent_tool_count = sum(1 for msg in state.messages[-10:] 
+                                          if hasattr(msg, "type") and msg.type == "tool")
+                    
+                    # If we've had too many tool executions, proceed to memory creation
+                    if recent_tool_count >= 6:  # Allow up to 6 tool calls per conversation
+                        return "memory_creation"
+                    
+                    return "chat_agent"
+                
+                # If no tool calls were made, proceed to memory creation
+                return "memory_creation"
 
             workflow.add_conditional_edges(
                 "tool_executor",  
@@ -427,6 +454,7 @@ class GraphBuilder:
                 {
                     "chat_agent": "chat_agent",    # Cycle back to LLM for more tool calls
                     "search_summary": "search_summary",  # Process web search results
+                    "memory_creation": "memory_creation",  # Skip to memory if done with tools
                 },
             )
 
