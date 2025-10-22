@@ -157,53 +157,100 @@ class ToolsAgentSubgraph:
             # Add tool executor node - using wrapper for ToolNode
             builder.add_node("tool_executor", self._tool_executor_wrapper)
 
-            # Add conditional routing with iteration limiting
-            def should_continue_with_tools(state: ToolsState):
-                """Decide whether to continue with tools or finish."""
+            # Sophisticated routing for intelligent agent cycling with tools
+            def should_execute_tools(state: ToolsState):
+                """Decide whether to execute tools or finish agent loop."""
                 messages = state.get("messages", [])
-                tool_executions = 0
-                recent_tool_calls = set()
-                
-                # Count tool executions and track recent calls
-                for msg in messages[-10:]:  # Check last 10 messages
-                    if isinstance(msg, ToolMessage):
-                        tool_executions += 1
-                    elif isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls:
-                        for tc in msg.tool_calls:
-                            query = tc.get("args", {}).get("query", "")
-                            if query:
-                                recent_tool_calls.add(query.lower())
-                
-                # Check for excessive iterations
-                if tool_executions >= 3:  # Limit to 3 tool executions maximum
-                    logger.info(f"🛑 Stopping agent loop: reached {tool_executions} tool executions")
+                if not messages:
+                    logger.info("🔀 Subgraph: No messages, finishing")
                     return "__end__"
                 
-                # Check for repeated tool calls (same query)
-                if len(recent_tool_calls) == 1 and tool_executions >= 2:
-                    logger.info(f"🛑 Stopping agent loop: detected repeated tool calls")
+                last_message = messages[-1]
+                
+                # Check if last message has tool calls
+                if (isinstance(last_message, AIMessage) and 
+                    hasattr(last_message, "tool_calls") and 
+                    last_message.tool_calls):
+                    
+                    # Count AI messages with tool calls to prevent infinite loops
+                    ai_with_tools_count = 0
+                    for msg in messages:
+                        if (isinstance(msg, AIMessage) and
+                            hasattr(msg, "tool_calls") and msg.tool_calls):
+                            ai_with_tools_count += 1
+                    
+                    # Prevent infinite tool calling loops
+                    if ai_with_tools_count > 4:
+                        logger.info(f"🔀 Subgraph: Too many tool calls ({ai_with_tools_count}), finishing")
+                        return "__end__"
+                    
+                    logger.info(f"🔀 Subgraph: Found tool calls, routing to tools (count: {ai_with_tools_count})")
+                    return "tools"
+                
+                # No tool calls, finish
+                logger.info("🔀 Subgraph: No tool calls found, finishing") 
+                return "__end__"
+            
+            def should_continue_agent_loop(state: ToolsState):
+                """Decide whether to continue agent loop after tool execution."""
+                messages = state.get("messages", [])
+                if not messages:
+                    logger.info("🔀 Subgraph: No messages after tools, finishing")
                     return "__end__"
                 
-                # Check last message for tool calls manually (since tools_condition expects different format)
-                if messages:
-                    last_msg = messages[-1]
-                    if isinstance(last_msg, AIMessage) and hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
-                        logger.info(f"🔀 Found tool calls in last message, routing to tools")
-                        return "tools"
+                # Count recent tool messages to understand if we just executed tools
+                recent_messages = messages[-5:]  # Check last 5 messages
+                tool_message_count = sum(1 for msg in recent_messages 
+                                       if isinstance(msg, ToolMessage))
                 
-                logger.info(f"🔀 No tool calls found, finishing agent loop")
+                # If we just executed tools, continue agent loop for processing
+                if tool_message_count > 0:
+                    # But check for excessive cycling
+                    ai_message_count = sum(1 for msg in messages[-10:] 
+                                         if isinstance(msg, AIMessage))
+                    
+                    if ai_message_count > 6:  # Prevent excessive cycling
+                        logger.info(f"🔀 Subgraph: Too many AI messages ({ai_message_count}), finishing")
+                        return "__end__"
+                    
+                    # Check if we have a good stopping point (no pending tool calls in last AI message)
+                    last_ai_msg = None
+                    for msg in reversed(messages):
+                        if isinstance(msg, AIMessage):
+                            last_ai_msg = msg
+                            break
+                    
+                    # If last AI message has no tool calls, agent is likely done
+                    if last_ai_msg and (not hasattr(last_ai_msg, "tool_calls") or not last_ai_msg.tool_calls):
+                        logger.info("🔀 Subgraph: Agent provided final response, finishing")
+                        return "__end__"
+                    
+                    logger.info("🔀 Subgraph: Tool results present, continuing agent loop")
+                    return "chat_agent"
+                
+                # Default to finishing
+                logger.info("🔀 Subgraph: No recent tool results, finishing")
                 return "__end__"
 
+            # Add conditional routing for intelligent agent cycling
             builder.add_conditional_edges(
                 "chat_agent",
-                should_continue_with_tools,
-                # Returns "tools" for tool calls, "__end__" to finish
-                {"tools": "tool_executor", "__end__": END},
+                should_execute_tools,
+                {
+                    "tools": "tool_executor",
+                    "__end__": END,
+                },
             )
 
-            # Tool executor loops back to chat_agent for proper agent behavior
-            # This allows the agent to process tool results and decide if more tools are needed
-            builder.add_edge("tool_executor", "chat_agent")
+            # Tool executor uses intelligent routing to decide next step
+            builder.add_conditional_edges(
+                "tool_executor", 
+                should_continue_agent_loop,
+                {
+                    "chat_agent": "chat_agent",  # Continue agent loop
+                    "__end__": END,  # Finish subgraph
+                },
+            )
 
             # Start with chat agent
             builder.add_edge(START, "chat_agent")
@@ -431,10 +478,10 @@ class ToolsAgentSubgraph:
             # Transform to agent state
             tools_state = self.transform_to_tools_state(main_state)
 
-            # Execute the agent subgraph with recursion limit to prevent infinite loops
+            # Execute the agent subgraph with higher recursion limit for intelligent cycling
             result = await self.graph.ainvoke(
                 tools_state,
-                config={"recursion_limit": 10},  # Prevent infinite agent loops
+                config={"recursion_limit": 20},  # Allow intelligent agent cycling with tools
             )
 
             # Transform results back to main state updates

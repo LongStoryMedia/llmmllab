@@ -326,12 +326,12 @@ class GraphBuilder:
             workflow.add_node("chat_summary", chat_summary_node)
             workflow.add_node("search_summary", search_summary_node)
 
-            # Import and add the tools agent subgraph as a node
+            # Import and add the intelligent tools agent subgraph as a single node
             from composer.graph.subgraphs.tools_agent import tools_agent_subgraph
             
-            # Create wrapper for subgraph execution
+            # Create wrapper for subgraph execution  
             async def tools_agent_node(state: WorkflowState) -> WorkflowState:
-                """Execute the tools agent subgraph and return updated state."""
+                """Execute the intelligent tools agent subgraph and return updated state."""
                 command = await tools_agent_subgraph.execute(state)
                 if command and command.update:
                     for key, value in command.update.items():
@@ -361,7 +361,7 @@ class GraphBuilder:
                 # add more workflows here as needed
                 if WorkflowType.ENGINEERING in state.selected_workflows:
                     return "engineering_agent"
-                # Otherwise go straight to tools agent subgraph (chat + tools)
+                # Otherwise go to intelligent tools agent subgraph (handles chat + tools + cycling)
                 return "tools_agent"
 
             workflow.add_conditional_edges(
@@ -373,14 +373,14 @@ class GraphBuilder:
                 },
             )
 
-            # 6. Engineering agent -> Tools agent (for final response with tools)
+            # 6. Engineering agent -> Tools agent (subgraph handles intelligent agent cycling)
             workflow.add_edge("engineering_agent", "tools_agent")
 
-            # 7. Simplified routing: tools_agent -> search_summary (if web search) or chat_summary  
+            # 7. Simple routing: tools_agent -> search_summary (if web search) or chat_summary  
             def route_after_tools_agent(state: WorkflowState):
-                """Route after tools agent completes."""
+                """Route after intelligent tools agent completes."""
                 # Check if web search was performed and needs summarization
-                if state.web_search_results:
+                if hasattr(state, 'web_search_results') and state.web_search_results:
                     self.logger.info("🔀 Tools agent completed with web search results - routing to search_summary")
                     return "search_summary"
                 
@@ -397,15 +397,12 @@ class GraphBuilder:
                 },
             )
 
-            # 8. Linear flow after agent completion
+            # 9. Linear flow after agent completion
             workflow.add_edge("search_summary", "chat_summary")
-
             workflow.add_edge("chat_summary", "title_generation")
-
-            # 9. Memory and title generation happen after final response
             workflow.add_edge("title_generation", "memory_creation")
 
-            # 10. Title generation -> Memory storage -> End
+            # 10. Memory storage -> End (both from dual-loop exit and normal flow)
             workflow.add_edge("memory_creation", "memory_storage")
             workflow.add_edge("memory_storage", END)
 
