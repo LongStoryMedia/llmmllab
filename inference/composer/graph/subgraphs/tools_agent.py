@@ -141,14 +141,9 @@ class ToolsAgentSubgraph:
                 {"tools": "tool_executor", "__end__": END},
             )
 
-            # Tool executor goes back to chat agent ONLY if more tool calls are needed
-            # Use tools_condition again to check if the agent wants to make more tool calls
-            builder.add_conditional_edges(
-                "tool_executor",
-                tools_condition,
-                # After tool execution, check if agent wants to continue or finish
-                {"tools": "chat_agent", "__end__": END},
-            )
+            # Tool executor should finish after execution - don't loop back to chat_agent
+            # The main graph will handle any additional interactions needed
+            builder.add_edge("tool_executor", END)
 
             # Start with chat agent
             builder.add_edge(START, "chat_agent")

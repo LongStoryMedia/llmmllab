@@ -332,8 +332,8 @@ class GraphBuilder:
 
             # Build a logical workflow graph structure:
             # 1. Start -> Static tool loading (loads static tools + previous dynamic tools)
-            workflow.add_edge(START, "static_tool_loading")
             workflow.add_edge(START, "memory_search")
+            workflow.add_edge("memory_search", "static_tool_loading")
 
             # 2. Static tool loading -> Intent Analysis (classifier can now see available tools)
             workflow.add_edge("static_tool_loading", "intent_analysis")
@@ -344,7 +344,7 @@ class GraphBuilder:
 
             # 3. Memory search -> Router for workflow selection
             workflow.add_edge("tool_composer", "workflow_router")
-            workflow.add_edge("memory_search", "workflow_router")
+            # workflow.add_edge("memory_search", "workflow_router")
 
             # 5. Conditional routing: router decides next step based on complexity
             def route_post_router(state: WorkflowState):
@@ -373,35 +373,51 @@ class GraphBuilder:
                     return "memory_creation"
 
                 # Debug logging to understand routing decisions
-                self.logger.info(f"🔀 should_execute_tools: Checking {len(state.messages)} messages")
-                for i, msg in enumerate(state.messages[-5:], start=max(0, len(state.messages)-5)):
+                self.logger.info(
+                    f"🔀 should_execute_tools: Checking {len(state.messages)} messages"
+                )
+                for i, msg in enumerate(
+                    state.messages[-5:], start=max(0, len(state.messages) - 5)
+                ):
                     msg_type = type(msg).__name__
-                    msg_role = getattr(msg, 'role', 'unknown')
-                    has_tool_calls = getattr(msg, 'tool_calls', None) is not None
-                    is_tool_type = getattr(msg, 'type', None) == 'tool'
-                    self.logger.info(f"  📝 Message {i}: {msg_type}, role={msg_role}, has_tool_calls={has_tool_calls}, type={getattr(msg, 'type', 'none')}")
+                    msg_role = getattr(msg, "role", "unknown")
+                    has_tool_calls = getattr(msg, "tool_calls", None) is not None
+                    is_tool_type = getattr(msg, "type", None) == "tool"
+                    self.logger.info(
+                        f"  📝 Message {i}: {msg_type}, role={msg_role}, has_tool_calls={has_tool_calls}, type={getattr(msg, 'type', 'none')}"
+                    )
 
                 # Check if we have any tool results in recent messages
                 # If we do, we've already completed tool execution and should not cycle back
                 has_recent_tool_results = False
-                for msg in state.messages[-10:]:  # Check last 10 messages for tool results
+                for msg in state.messages[
+                    -10:
+                ]:  # Check last 10 messages for tool results
                     # Check for both actual ToolMessage instances and LangChainMessage with type="tool"
                     if isinstance(msg, ToolMessage):
                         has_recent_tool_results = True
-                        self.logger.info(f"🔀 should_execute_tools: Found ToolMessage instance - routing to memory_creation")
+                        self.logger.info(
+                            f"🔀 should_execute_tools: Found ToolMessage instance - routing to memory_creation"
+                        )
                         break
                     elif hasattr(msg, "type") and msg.type == "tool":
                         has_recent_tool_results = True
-                        self.logger.info(f"🔀 should_execute_tools: Found LangChainMessage with type='tool' - routing to memory_creation")
+                        self.logger.info(
+                            f"🔀 should_execute_tools: Found LangChainMessage with type='tool' - routing to memory_creation"
+                        )
                         break
 
                 # If we have tool results, we've completed tool execution - proceed to memory creation
                 if has_recent_tool_results:
-                    self.logger.info(f"🔀 should_execute_tools: Found tool results - routing to memory_creation")
+                    self.logger.info(
+                        f"🔀 should_execute_tools: Found tool results - routing to memory_creation"
+                    )
                     return "memory_creation"
 
                 last_message = state.messages[-1]
-                self.logger.info(f"🔀 should_execute_tools: Last message type={getattr(last_message, 'type', 'none')}, has_tool_calls={hasattr(last_message, 'tool_calls') and bool(getattr(last_message, 'tool_calls', None))}")
+                self.logger.info(
+                    f"🔀 should_execute_tools: Last message type={getattr(last_message, 'type', 'none')}, has_tool_calls={hasattr(last_message, 'tool_calls') and bool(getattr(last_message, 'tool_calls', None))}"
+                )
 
                 # If last message is from assistant and has tool calls, execute tools (first time only)
                 if (
@@ -410,11 +426,15 @@ class GraphBuilder:
                     and hasattr(last_message, "tool_calls")
                     and last_message.tool_calls
                 ):
-                    self.logger.info(f"🔀 should_execute_tools: Found AI message with tool calls - routing to tool_executor")
+                    self.logger.info(
+                        f"🔀 should_execute_tools: Found AI message with tool calls - routing to tool_executor"
+                    )
                     return "tool_executor"
 
                 # Otherwise, proceed to chat summary (initial flow)
-                self.logger.info(f"🔀 should_execute_tools: No tool calls found - routing to chat_summary")
+                self.logger.info(
+                    f"🔀 should_execute_tools: No tool calls found - routing to chat_summary"
+                )
                 return "chat_summary"
 
             workflow.add_conditional_edges(
@@ -422,7 +442,7 @@ class GraphBuilder:
                 should_execute_tools,
                 {
                     "tool_executor": "tool_executor",
-                    "memory_creation": "memory_creation", 
+                    "memory_creation": "memory_creation",
                     "chat_summary": "chat_summary",
                 },
             )
@@ -431,7 +451,7 @@ class GraphBuilder:
             def should_continue_agent_loop(state: WorkflowState):
                 """
                 Route after tool execution.
-                
+
                 After tools are executed, the workflow should proceed to memory creation
                 since the agent has completed its task. The only exception is if web
                 search results need special summarization processing.
@@ -439,13 +459,13 @@ class GraphBuilder:
                 # Check if web search was performed and needs summarization
                 if state.web_search_results:
                     return "search_summary"
-                
+
                 # After tool execution, proceed directly to memory creation
                 # The agent should have already synthesized results during tool execution
                 return "memory_creation"
 
             workflow.add_conditional_edges(
-                "tool_executor",  
+                "tool_executor",
                 should_continue_agent_loop,
                 {
                     "search_summary": "search_summary",  # Process web search results
