@@ -22,12 +22,8 @@ Usage in LangGraph workflows:
     # LangGraph handles injection of tool_call_id and WorkflowState
 """
 
-import json
-
 from langchain_core.tools import tool
 from langchain.tools import ToolRuntime
-from langchain_core.messages import ToolMessage
-from langgraph.types import Command
 
 from composer.graph.state import ToolsState
 from runner import pipeline_factory
@@ -42,8 +38,8 @@ from utils.logging import llmmllogger
 @tool
 async def memory_retrieval(
     query: str,
-    tool_runtime: ToolRuntime[ToolsState],
-) -> Command:
+    runtime: ToolRuntime,
+) -> str:
     """
     Retrieve relevant memories based on text query and automatically add results to workflow state.
 
@@ -61,8 +57,8 @@ async def memory_retrieval(
 
     try:
         # Access state and tool_call_id through runtime
-        state = tool_runtime.state
-        tool_call_id = tool_runtime.tool_call_id
+        state = runtime.state
+        tool_call_id = runtime.tool_call_id
 
         # Get user_config from tool runtime state
         if state.get("user_config") and hasattr(state["user_config"], "memory"):
@@ -76,35 +72,13 @@ async def memory_retrieval(
 
         # Ensure we have required state
         if not state.get("user_id"):
-            error_message = json.dumps(
-                {
-                    "status": "error",
-                    "error": "Missing user_id in state",
-                    "query": query,
-                },
-                indent=2,
-            )
-            return Command(
-                update={
-                    "messages": [ToolMessage(error_message, tool_call_id=tool_call_id)]
-                }
-            )
+            error_message = "❌ Memory retrieval failed: Missing user_id in state"
+            return error_message
 
         # Initialize storage if not done
         if not storage.pool:
-            error_message = json.dumps(
-                {
-                    "status": "error",
-                    "error": "Database not initialized",
-                    "query": query,
-                },
-                indent=2,
-            )
-            return Command(
-                update={
-                    "messages": [ToolMessage(error_message, tool_call_id=tool_call_id)]
-                }
-            )
+            error_message = "❌ Memory retrieval failed: Database not initialized"
+            return error_message
 
         # Generate embeddings for the query with fallback handling
         query_embeddings = None
@@ -175,16 +149,16 @@ async def memory_retrieval(
             for memory in memories[: memory_config.limit]  # Use configured limit
         ]
 
-        # Create response message for the conversation
-        response_message = json.dumps(
-            {
-                "status": "success",
-                "memories": formatted_memories,
-                "query": query,
-                "count": len(formatted_memories),
-            },
-            indent=2,
-        )
+        # Create response message
+        if formatted_memories:
+            response_message = f"🧠 **Memory Search Results for: '{query}'**\n\n"
+            for i, memory in enumerate(formatted_memories, 1):
+                response_message += f"**{i}. Memory from {memory['source']}**\n"
+                response_message += f"   Content: {memory['content'][:200]}...\n"
+                response_message += f"   Timestamp: {memory['timestamp']}\n"
+                response_message += f"   Similarity: {memory['similarity']:.2f}\n\n"
+        else:
+            response_message = f"🧠 No relevant memories found for query: '{query}'"
 
         logger.info(
             f"Memory retrieval completed successfully with {len(formatted_memories)} memories",
@@ -192,14 +166,8 @@ async def memory_retrieval(
             memory_count=len(formatted_memories),
         )
 
-        # Return Command that updates state with memory results
-        return Command(
-            update={
-                "retrieved_memories": memories,
-                "memory_query": query,
-                "messages": [ToolMessage(response_message, tool_call_id=tool_call_id)],
-            }
-        )
+        # Return string result - ToolNode will automatically create ToolMessage
+        return response_message
 
     except Exception as e:
         # Log the full exception for debugging
@@ -209,13 +177,5 @@ async def memory_retrieval(
             query=query[:100],
         )
 
-        error_message = json.dumps(
-            {"status": "error", "error": str(e), "query": query}, indent=2
-        )
-
-        return Command(
-            update={
-                "memory_query": query,
-                "messages": [ToolMessage(error_message, tool_call_id=tool_call_id)],
-            }
-        )
+        error_message = f"❌ Memory retrieval failed: {str(e)}"
+        return error_message

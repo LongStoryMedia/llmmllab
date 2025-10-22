@@ -21,11 +21,7 @@ from typing import cast
 
 from langchain_core.tools import tool
 from langchain.tools import ToolRuntime
-from langchain_core.messages import ToolMessage
 from langchain.chat_models import BaseChatModel
-from langgraph.types import Command
-
-from composer.graph.state import ToolsState
 from composer.utils.extraction import extract_content_from_base_langchain_message
 from runner import pipeline_factory
 from models import ModelProfileType, PipelinePriority
@@ -37,8 +33,8 @@ from utils.logging import llmmllogger
 @tool
 async def summarization(
     content: str,
-    tool_runtime: ToolRuntime[ToolsState],
-) -> Command:
+    runtime: ToolRuntime,
+) -> str:
     """
     Summarize content using LLM and automatically add results to workflow state.
 
@@ -56,41 +52,17 @@ async def summarization(
 
     try:
         # Access state and tool_call_id through runtime
-        state = tool_runtime.state
-        tool_call_id = tool_runtime.tool_call_id
+        state = runtime.state
+        tool_call_id = runtime.tool_call_id
         
         # Validate input content
         if not content.strip():
-            error_message = json.dumps(
-                {
-                    "status": "error",
-                    "error": "No content provided for summarization",
-                    "content": content,
-                },
-                indent=2,
-            )
-            return Command(
-                update={
-                    "messages": [ToolMessage(error_message, tool_call_id=tool_call_id)]
-                }
-            )
+            return "❌ Summarization failed: No content provided"
 
         # Ensure we have required state
         user_id = state.get("user_id")
         if not user_id:
-            error_message = json.dumps(
-                {
-                    "status": "error",
-                    "error": "Missing user_id in state",
-                    "content": content[:100],
-                },
-                indent=2,
-            )
-            return Command(
-                update={
-                    "messages": [ToolMessage(error_message, tool_call_id=tool_call_id)]
-                }
-            )
+            return "❌ Summarization failed: Missing user_id in state"
 
         # Use LLM pipeline for proper summarization
         try:
@@ -135,16 +107,8 @@ async def summarization(
                         summary_length=len(summary_text),
                     )
 
-                    # Return Command that updates state with summary results
-                    return Command(
-                        update={
-                            "summary_content": summary_text,
-                            "original_content": content,
-                            "messages": [
-                                ToolMessage(response_message, tool_call_id=tool_call_id)
-                            ],
-                        }
-                    )
+                    # Return summary result - ToolNode will automatically create ToolMessage
+                    return f"📝 **Summary of Content**\n\n{summary_text}"
 
         except Exception as llm_error:
             logger.warning(
@@ -174,13 +138,7 @@ async def summarization(
             summary_length=len(summary_text),
         )
 
-        return Command(
-            update={
-                "summary_content": summary_text,
-                "original_content": content,
-                "messages": [ToolMessage(response_message, tool_call_id=tool_call_id)],
-            }
-        )
+        return f"📝 **Summary of Content**\n\n{summary_text}"
 
     except Exception as e:
         # Log the full exception for debugging
@@ -199,9 +157,4 @@ async def summarization(
             indent=2,
         )
 
-        return Command(
-            update={
-                "original_content": content,
-                "messages": [ToolMessage(error_message, tool_call_id=tool_call_id)],
-            }
-        )
+        return f"❌ Summarization failed: {str(e)}"

@@ -97,149 +97,33 @@ class ToolsAgentSubgraph:
             priority=PipelinePriority.MEDIUM,
         )
 
-    async def _tool_executor_wrapper(self, state: ToolsState) -> ToolsState:
+    def _create_tool_node(self) -> ToolNode:
         """
-        Custom tool executor with proper ToolRuntime injection for our tool pattern.
+        Create LangGraph ToolNode with proper tools list and ToolRuntime injection.
         
-        Our tools expect ToolRuntime injection, which LangGraph's ToolNode doesn't support.
-        This executor:
-        1. Creates proper ToolRuntime instances with all required parameters
-        2. Handles tool call execution with our custom signature pattern
-        3. Provides intelligent grouping detection and logging
+        LangChain will automatically inject ToolRuntime for tools with `runtime: ToolRuntime` parameter.
+        This is the correct pattern - no manual ToolRuntime creation needed.
         """
         try:
-            # Get executable tools from registry
+            # Get executable tools from registry  
             executable_tools = self.tool_registry.get_all_executable_tools()
-            tools_dict = executable_tools if executable_tools else {}
+            tools_dict: dict[str, Any] = executable_tools if executable_tools else {}
 
             if not tools_dict:
-                logger.warning("No tools available for execution")
-                return state
+                logger.warning("No tools available for ToolNode creation")
+                return ToolNode([])  # Empty tool node
 
-            # Find the last AI message with tool calls
-            messages = state.get("messages", [])
-            last_ai_msg = None
-            for msg in reversed(messages):
-                if isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls:
-                    last_ai_msg = msg
-                    break
-
-            if not last_ai_msg or not last_ai_msg.tool_calls:
-                logger.warning("🛠️ No AI message with tool calls found")
-                return state
-
-            tool_calls = last_ai_msg.tool_calls
-            logger.info(f"🛠️ Processing {len(tool_calls)} tool calls")
-
-            # Group tool calls by type for logging
-            grouped_calls = {}
-            for tc in tool_calls:
-                tool_name = tc.get("name", "unknown")
-                if tool_name not in grouped_calls:
-                    grouped_calls[tool_name] = []
-                grouped_calls[tool_name].append(tc)
-
-            # Log grouping information  
-            for tool_name, calls in grouped_calls.items():
-                if len(calls) > 1:
-                    logger.info(f"🛠️ Grouped {len(calls)} calls for {tool_name}")
-                    # For web search, log the queries being grouped
-                    if tool_name == "web_search":
-                        queries = [tc.get("args", {}).get("query", "")[:50] for tc in calls]
-                        logger.info(f"🛠️ Web search queries: {queries}")
-
-            # Execute each tool call with proper ToolRuntime injection
-            tool_results = []
+            # Convert to list of tool functions for ToolNode
+            tools_list = list(tools_dict.values())
             
-            for tc in tool_calls:
-                try:
-                    tool_name = tc.get("name")
-                    tool_call_id = tc.get("id")
-                    args = tc.get("args", {})
-
-                    if tool_name not in tools_dict:
-                        error_msg = f"Tool '{tool_name}' not found in registry"
-                        logger.error(error_msg)
-                        tool_results.append(ToolMessage(
-                            content=f"Error: {error_msg}",
-                            tool_call_id=tool_call_id,
-                            name=tool_name
-                        ))
-                        continue
-
-                    tool_func = tools_dict[tool_name]
-                    
-                    # Create ToolRuntime instance with required parameters
-                    from langchain.tools import ToolRuntime
-                    from langchain_core.runnables import RunnableConfig
-                    
-                    config = RunnableConfig()
-                    
-                    # Create a mock StreamWriter for ToolRuntime
-                    class MockStreamWriter:
-                        async def write(self, data): pass
-                    
-                    # Create ToolRuntime with proper parameters
-                    tool_runtime = ToolRuntime(
-                        state=state,
-                        context={},  # Empty context
-                        config=config,
-                        stream_writer=MockStreamWriter(),  # Mock stream writer
-                        tool_call_id=tool_call_id,
-                        store=None  # No store needed
-                    )
-
-                    # Call LangChain StructuredTool with proper arguments
-                    # Our tools expect tool_runtime as a parameter, so we add it to args
-                    tool_args = {**args, "tool_runtime": tool_runtime}
-                    
-                    # Use LangChain's ainvoke method for proper tool execution
-                    result = await tool_func.ainvoke(tool_args)
-
-                    # Handle different result types
-                    if hasattr(result, 'content'):
-                        content = result.content
-                    elif isinstance(result, str):
-                        content = result
-                    else:
-                        content = str(result)
-
-                    tool_results.append(ToolMessage(
-                        content=content,
-                        tool_call_id=tool_call_id,
-                        name=tool_name
-                    ))
-                    
-                    logger.info(f"✅ Successfully executed {tool_name}")
-
-                except Exception as e:
-                    error_msg = f"Error executing {tool_name}: {str(e)}"
-                    logger.error(error_msg)
-                    tool_results.append(ToolMessage(
-                        content=f"Error: {error_msg}",
-                        tool_call_id=tool_call_id,
-                        name=tool_name
-                    ))
-
-            logger.info(f"🛠️ Tool execution completed: {len(tool_results)} messages in result")
+            logger.info(f"🛠️ Creating ToolNode with {len(tools_list)} tools: {list(tools_dict.keys())}")
             
-            # Count success vs errors
-            error_count = sum(1 for msg in tool_results if 'error' in msg.content.lower())
-            success_count = len(tool_results) - error_count
-            logger.info(f"🛠️ Tool execution summary: {success_count} successful, {error_count} errors")
-
-            # Return updated state with new messages 
-            updated_messages = list(state.get('messages', [])) + tool_results
-            updated_state = state.copy()
-            updated_state['messages'] = updated_messages
-            return updated_state
-
+            # Create ToolNode - LangChain will handle ToolRuntime injection automatically
+            return ToolNode(tools_list)
+            
         except Exception as e:
-            logger.error(f"Tool executor wrapper failed: {e}")
-            import traceback
-            traceback.print_exc()
-            # Return current state on error
-            return state
+            logger.error(f"Failed to create ToolNode: {e}")
+            return ToolNode([])  # Return empty tool node on error
 
     def _build_graph(self) -> None:
         """Build the complete agent subgraph using proper dependency injection."""
@@ -250,8 +134,9 @@ class ToolsAgentSubgraph:
             # Add chat agent node - will be created at runtime with proper context
             builder.add_node("chat_agent", self._chat_agent_wrapper)
 
-            # Add tool executor node - using wrapper for ToolNode
-            builder.add_node("tool_executor", self._tool_executor_wrapper)
+            # Add tool executor node - using LangGraph's ToolNode with automatic ToolRuntime injection
+            tool_node = self._create_tool_node()
+            builder.add_node("tool_executor", tool_node)
 
             # Sophisticated routing for intelligent agent cycling with tools
             def should_execute_tools(state: ToolsState):
@@ -275,6 +160,23 @@ class ToolsAgentSubgraph:
                     hasattr(last_message, "tool_calls") and 
                     last_message.tool_calls):
                     
+                    # Log tool call grouping information
+                    tool_calls = last_message.tool_calls
+                    grouped_calls = {}
+                    for tc in tool_calls:
+                        tool_name = tc.get("name", "unknown")
+                        if tool_name not in grouped_calls:
+                            grouped_calls[tool_name] = []
+                        grouped_calls[tool_name].append(tc)
+                    
+                    # Log grouping details
+                    for tool_name, calls in grouped_calls.items():
+                        if len(calls) > 1:
+                            logger.info(f"🛠️ Agent routing: Detected {len(calls)} grouped {tool_name} calls")
+                            if tool_name == "web_search":
+                                queries = [tc.get("args", {}).get("query", "")[:30] for tc in calls]
+                                logger.info(f"🛠️ Web search topics: {queries}")
+                    
                     # Tool call limiting middleware - count various metrics
                     ai_with_tools_count = 0
                     total_tool_calls = 0
@@ -294,25 +196,25 @@ class ToolsAgentSubgraph:
                             for tc in msg.tool_calls:
                                 tool_call_types.add(tc.get("name", "unknown"))
                     
-                    # Apply limiting middleware rules
+                    # Apply limiting middleware rules (relaxed to allow natural multiple tool calls)
                     
-                    # Rule 1: Total AI messages with tools limit
-                    if ai_with_tools_count >= 6:
+                    # Rule 1: Total AI messages with tools limit (increased)
+                    if ai_with_tools_count >= 8:
                         logger.info(f"🔀 Subgraph: Tool limit reached - too many AI messages with tools ({ai_with_tools_count})")
                         return "__end__"
                     
-                    # Rule 2: Total tool calls limit
-                    if total_tool_calls >= 15:
+                    # Rule 2: Total tool calls limit (increased) 
+                    if total_tool_calls >= 25:
                         logger.info(f"🔀 Subgraph: Tool limit reached - too many total tool calls ({total_tool_calls})")
                         return "__end__"
                     
-                    # Rule 3: Recent tool calls limit (prevent rapid-fire)
-                    if recent_tool_calls >= 8:
+                    # Rule 3: Recent tool calls limit - only prevent extreme rapid-fire
+                    if recent_tool_calls >= 12:
                         logger.info(f"🔀 Subgraph: Tool limit reached - too many recent tool calls ({recent_tool_calls})")
                         return "__end__"
                     
-                    # Rule 4: Planning middleware - check for tool diversity
-                    if len(tool_call_types) == 1 and total_tool_calls >= 5:
+                    # Rule 4: Planning middleware - allow more calls of same type (natural for web search)
+                    if len(tool_call_types) == 1 and total_tool_calls >= 8:
                         logger.info(f"🔀 Subgraph: Planning limit - too many calls of same tool type ({list(tool_call_types)})")
                         return "__end__"
                     

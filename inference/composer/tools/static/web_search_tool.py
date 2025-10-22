@@ -36,8 +36,6 @@ from typing import Annotated
 
 from langchain_core.tools import tool
 from langchain.tools import ToolRuntime
-from langchain_core.messages import ToolMessage
-from langgraph.types import Command
 from composer.graph.state import WorkflowState
 from utils.logging import llmmllogger
 from models import SearchResult, SearchResultContent, WebSearchConfig
@@ -149,12 +147,12 @@ class SearxNG:
             )
 
 
-# Single web search tool using ToolRuntime pattern for clean state access
+# Single web search tool using ToolRuntime pattern for LangGraph ToolNode compatibility  
 @tool
 async def web_search(
     query: str,
-    tool_runtime: ToolRuntime,
-) -> Command:
+    runtime: ToolRuntime,
+) -> str:
     """
     Search the web for information and automatically add results to workflow state.
 
@@ -175,9 +173,8 @@ async def web_search(
     logger = llmmllogger.logger.bind(component="WebSearch")
 
     try:
-        # Access state and tool_call_id through runtime
-        state = tool_runtime.state
-        tool_call_id = tool_runtime.tool_call_id
+        # Access state through runtime (tool_call_id will be handled by ToolNode)
+        state = runtime.state
 
         # Get user_config from state - fallback to default if not available
         user_config = (
@@ -214,64 +211,34 @@ async def web_search(
                 for content in search_result.contents
             ]
 
-            # Create response message for the conversation
-            response_message = json.dumps(
-                {
-                    "status": "success",
-                    "results": formatted_results,
-                    "query": query,
-                    "count": len(formatted_results),
-                },
-                indent=2,
-            )
+            # Create response message
+            response_message = f"🔍 **Web Search Results for: '{query}'**\n\n"
+            for i, result in enumerate(formatted_results, 1):
+                response_message += f"**{i}. {result['title']}**\n"
+                response_message += f"   URL: {result['url']}\n"
+                response_message += f"   Content: {result['content']}\n"
+                response_message += f"   Relevance: {result['relevance']:.2f}\n\n"
 
             logger.info(
                 f"Web search completed successfully with {len(formatted_results)} results",
-                query=query[:100],
+                query=query,
                 result_count=len(formatted_results),
             )
 
-            # Return Command that updates state with search results
-            return Command(
-                update={
-                    "web_search_results": [search_result],
-                    "search_query": query,
-                    "messages": [
-                        ToolMessage(response_message, tool_call_id=tool_call_id)
-                    ],
-                }
-            )
+            # Return string result - ToolNode will automatically create ToolMessage
+            return response_message
 
-        # No results case
-        response_message = json.dumps(
-            {
-                "status": "success",
-                "results": [],
-                "query": query,
-                "message": "No search results found",
-            },
-            indent=2,
-        )
+        else:
+            # No results found
+            if search_result and search_result.error:
+                response_message = f"⚠️ Web search error: {search_result.error}"
+            else:
+                response_message = f"🔍 No results found for query: '{query}'"
 
-        logger.info("Web search completed with no results", query=query[:100])
-
-        return Command(
-            update={
-                "search_query": query,
-                "messages": [ToolMessage(response_message, tool_call_id=tool_call_id)],
-            }
-        )
+            logger.warning(f"Web search returned no results", query=query)
+            return response_message
 
     except Exception as e:
-        error_message = json.dumps(
-            {"status": "error", "error": str(e), "query": query}, indent=2
-        )
-
-        logger.error(f"Web search failed: {e}", query=query[:100])
-
-        return Command(
-            update={
-                "search_query": query,
-                "messages": [ToolMessage(error_message, tool_call_id=tool_call_id)],
-            }
-        )
+        error_message = f"❌ Web search failed: {str(e)}"
+        logger.error(f"Web search error: {e}", query=query, error=str(e))
+        return error_message
