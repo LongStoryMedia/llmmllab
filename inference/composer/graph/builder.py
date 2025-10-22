@@ -382,35 +382,51 @@ class GraphBuilder:
                     msg_type = type(msg).__name__
                     msg_role = getattr(msg, "role", "unknown")
                     has_tool_calls = getattr(msg, "tool_calls", None) is not None
-                    is_tool_type = getattr(msg, "type", None) == "tool"
                     self.logger.info(
                         f"  📝 Message {i}: {msg_type}, role={msg_role}, has_tool_calls={has_tool_calls}, type={getattr(msg, 'type', 'none')}"
                     )
 
-                # Check if we have any tool results in recent messages
+                                # Check if we have any tool results in recent messages
                 # If we do, we've already completed tool execution and should not cycle back
                 has_recent_tool_results = False
-                for msg in state.messages[
-                    -10:
-                ]:  # Check last 10 messages for tool results
-                    # Check for both actual ToolMessage instances and LangChainMessage with type="tool"
+                tool_execution_count = 0
+                ai_with_tools_count = 0
+                
+                for msg in state.messages[-15:]:  # Check last 15 messages for comprehensive analysis
+                    # Count AI messages with tool calls to detect cycles
+                    if (hasattr(msg, "type") and msg.type == "ai" 
+                        and hasattr(msg, "tool_calls") and msg.tool_calls):
+                        ai_with_tools_count += 1
+                        
+                    # Check for tool results/responses
                     if isinstance(msg, ToolMessage):
                         has_recent_tool_results = True
+                        tool_execution_count += 1
                         self.logger.info(
-                            f"🔀 should_execute_tools: Found ToolMessage instance - routing to memory_creation"
+                            f"🔀 should_execute_tools: Found ToolMessage instance #{tool_execution_count}"
                         )
-                        break
                     elif hasattr(msg, "type") and msg.type == "tool":
                         has_recent_tool_results = True
+                        tool_execution_count += 1
                         self.logger.info(
-                            f"🔀 should_execute_tools: Found LangChainMessage with type='tool' - routing to memory_creation"
+                            f"🔀 should_execute_tools: Found LangChainMessage with type='tool' #{tool_execution_count}"
                         )
-                        break
+
+                self.logger.info(
+                    f"🔀 should_execute_tools: Analysis - AI with tools: {ai_with_tools_count}, Tool results: {tool_execution_count}"
+                )
+
+                # If we have multiple AI messages with tool calls, we're in a cycle - break it
+                if ai_with_tools_count > 1:
+                    self.logger.info(
+                        f"🔀 should_execute_tools: Detected cycle - {ai_with_tools_count} AI messages with tool calls - routing to memory_creation"
+                    )
+                    return "memory_creation"
 
                 # If we have tool results, we've completed tool execution - proceed to memory creation
                 if has_recent_tool_results:
                     self.logger.info(
-                        f"🔀 should_execute_tools: Found tool results - routing to memory_creation"
+                        f"🔀 should_execute_tools: Found {tool_execution_count} tool results - routing to memory_creation"
                     )
                     return "memory_creation"
 
@@ -427,13 +443,13 @@ class GraphBuilder:
                     and last_message.tool_calls
                 ):
                     self.logger.info(
-                        f"🔀 should_execute_tools: Found AI message with tool calls - routing to tool_executor"
+                        "🔀 should_execute_tools: Found AI message with tool calls - routing to tool_executor"
                     )
                     return "tool_executor"
 
                 # Otherwise, proceed to chat summary (initial flow)
                 self.logger.info(
-                    f"🔀 should_execute_tools: No tool calls found - routing to chat_summary"
+                    "🔀 should_execute_tools: No tool calls found - routing to chat_summary"
                 )
                 return "chat_summary"
 
