@@ -410,42 +410,47 @@ class GraphBuilder:
             # 8. Agent pattern: tool_executor routes back to chat_agent or search processing
             def should_continue_agent_loop(state: WorkflowState):
                 """
-                Route after tool execution - either back to chat_agent for more iterations
-                or to search_summary if web search results need processing.
+                Route after tool execution - check if agent needs to synthesize results or is done.
                 """
                 # Check if web search was performed and needs summarization
                 if state.web_search_results:
                     return "search_summary"
                 
-                # Check if we need to continue the agent loop or proceed with workflow
-                # Look at the last AI message to see if it made tool calls
                 if not state.messages:
                     return "memory_creation"
                 
-                # Find the last AI message before tool execution
-                last_ai_message = None
-                for msg in reversed(state.messages):
-                    if hasattr(msg, "type") and msg.type == "ai":
-                        last_ai_message = msg
-                        break
+                # Look at the most recent messages to understand the conversation flow
+                recent_messages = state.messages[-5:] if len(state.messages) >= 5 else state.messages
                 
-                # If the last AI message had tool calls, we should return to chat_agent
-                # for potential additional tool calls or final response synthesis
-                if (last_ai_message and 
-                    hasattr(last_ai_message, "tool_calls") and 
-                    last_ai_message.tool_calls):
-                    
-                    # Count recent tool executions to prevent infinite loops
-                    recent_tool_count = sum(1 for msg in state.messages[-10:] 
-                                          if hasattr(msg, "type") and msg.type == "tool")
-                    
-                    # If we've had too many tool executions, proceed to memory creation
-                    if recent_tool_count >= 6:  # Allow up to 6 tool calls per conversation
-                        return "memory_creation"
-                    
-                    return "chat_agent"
+                # Count recent AI messages and tool messages to understand the pattern
+                ai_messages = [msg for msg in recent_messages if hasattr(msg, "type") and msg.type == "ai"]
+                tool_messages = [msg for msg in recent_messages if hasattr(msg, "type") and msg.type == "tool"]
                 
-                # If no tool calls were made, proceed to memory creation
+                # If we have tool results but no recent AI synthesis response, allow one synthesis
+                if tool_messages and ai_messages:
+                    last_ai_msg = ai_messages[-1]
+                    
+                    # If the last AI message made tool calls, allow ONE synthesis pass
+                    if (hasattr(last_ai_msg, "tool_calls") and last_ai_msg.tool_calls):
+                        # Check if we already have a synthesis attempt after these tool calls
+                        # by looking for an AI message without tool calls after the tool results
+                        messages_after_tools = []
+                        found_tool_results = False
+                        
+                        for msg in reversed(state.messages):
+                            if hasattr(msg, "type") and msg.type == "tool":
+                                found_tool_results = True
+                                break
+                            elif hasattr(msg, "type") and msg.type == "ai" and found_tool_results:
+                                # Found AI message after tool results
+                                if not (hasattr(msg, "tool_calls") and msg.tool_calls):
+                                    # This AI message has no tool calls - it's a synthesis
+                                    return "memory_creation"
+                        
+                        # No synthesis found after tool execution - allow one synthesis pass
+                        return "chat_agent"
+                
+                # Default: proceed to memory creation
                 return "memory_creation"
 
             workflow.add_conditional_edges(
