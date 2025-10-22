@@ -226,6 +226,8 @@ class BaseAgent(ABC, Generic[T]):
 
         raise NodeExecutionError(error_msg) from error
 
+
+
     async def stream(
         self,
         messages: MessageInput,
@@ -312,21 +314,43 @@ class BaseAgent(ABC, Generic[T]):
 
                     if isinstance(chunk, tuple) and len(chunk) >= 2:
                         msg_chunk, metadata = chunk
-                        if isinstance(msg_chunk, AIMessageChunk) and msg_chunk.content:
+                        if isinstance(msg_chunk, AIMessageChunk):
+                            # Extract text content
                             text_content = (
                                 str(msg_chunk.content) if msg_chunk.content else ""
                             )
-                            if text_content:  # Only yield chunks with content
+                            
+                            # Extract tool calls from LangChain chunk 
+                            tool_calls = None
+                            
+                            # Get structured tool calls from LangChain AIMessageChunk
+                            if hasattr(msg_chunk, 'tool_calls') and msg_chunk.tool_calls:
+                                tool_calls = []
+                                for tc in msg_chunk.tool_calls:
+                                    # ToolCall objects are TypedDict, use dictionary access
+                                    tool_calls.append({
+                                        "name": tc["name"],
+                                        "args": tc["args"],
+                                        "id": tc.get("id", f"call_{len(tool_calls)}_{tc['name']}"),
+                                        "type": "tool_call"
+                                    })
+                            
+                            # Only yield chunks with content or tool calls
+                            if text_content or tool_calls:
+                                # Prepare content array
+                                content = []
+                                if text_content:
+                                    content.append(MessageContent(
+                                        type=MessageContentType.TEXT,
+                                        text=text_content,
+                                    ))
+                                
                                 chat_chunk = ChatResponse(
                                     done=False,
                                     message=Message(
                                         role=MessageRole.ASSISTANT,
-                                        content=[
-                                            MessageContent(
-                                                type=MessageContentType.TEXT,
-                                                text=text_content,
-                                            )
-                                        ],
+                                        content=content,
+                                        tool_calls=tool_calls,
                                     ),
                                     channels={
                                         "node_metadata": self._node_metadata.model_dump(),

@@ -63,14 +63,16 @@ async def memory_retrieval(
         # Access state and tool_call_id through runtime
         state = tool_runtime.state
         tool_call_id = tool_runtime.tool_call_id
-        
+
         # Get user_config from tool runtime state
         if state.get("user_config") and hasattr(state["user_config"], "memory"):
             memory_config = state["user_config"].memory
             logger.debug("Using memory config from tool runtime state")
         else:
             memory_config = DEFAULT_MEMORY_CONFIG
-            logger.debug("Using default memory config - no user_config in tool runtime state")
+            logger.debug(
+                "Using default memory config - no user_config in tool runtime state"
+            )
 
         # Ensure we have required state
         if not state.get("user_id"):
@@ -137,7 +139,9 @@ async def memory_retrieval(
         # Configure user and conversation filtering based on memory config
         user_filter = None if memory_config.enable_cross_user else state["user_id"]
         conversation_filter = (
-            None if memory_config.enable_cross_conversation else state["conversation_id"]
+            None
+            if memory_config.enable_cross_conversation
+            else state["conversation_id"]
         )
 
         memories = await memory_service.search_similarity(
