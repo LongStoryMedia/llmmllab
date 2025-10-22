@@ -23,14 +23,13 @@ Usage in LangGraph workflows:
 """
 
 import json
-from typing import Annotated
 
-from langchain_core.tools import tool, InjectedToolCallId
+from langchain_core.tools import tool
+from langchain.tools import ToolRuntime
 from langchain_core.messages import ToolMessage
-from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
 
-from composer.graph.state import WorkflowState
+from composer.graph.state import ToolsState
 from runner import pipeline_factory
 from db import storage
 from models import ModelProfileType
@@ -43,8 +42,7 @@ from utils.logging import llmmllogger
 @tool
 async def memory_retrieval(
     query: str,
-    tool_call_id: Annotated[str, InjectedToolCallId],
-    state: Annotated[WorkflowState, InjectedState],
+    tool_runtime: ToolRuntime[ToolsState],
 ) -> Command:
     """
     Retrieve relevant memories based on text query and automatically add results to workflow state.
@@ -62,16 +60,20 @@ async def memory_retrieval(
     logger = llmmllogger.logger.bind(component="MemoryRetrieval")
 
     try:
-        # Get user_config directly from injected state (much more efficient!)
-        if state.user_config and hasattr(state.user_config, "memory"):
-            memory_config = state.user_config.memory
-            logger.debug("Using memory config from injected state")
+        # Access state and tool_call_id through runtime
+        state = tool_runtime.state
+        tool_call_id = tool_runtime.tool_call_id
+        
+        # Get user_config from tool runtime state
+        if state.get("user_config") and hasattr(state["user_config"], "memory"):
+            memory_config = state["user_config"].memory
+            logger.debug("Using memory config from tool runtime state")
         else:
             memory_config = DEFAULT_MEMORY_CONFIG
-            logger.debug("Using default memory config - no user_config in state")
+            logger.debug("Using default memory config - no user_config in tool runtime state")
 
         # Ensure we have required state
-        if not state.user_id:
+        if not state.get("user_id"):
             error_message = json.dumps(
                 {
                     "status": "error",
@@ -107,7 +109,7 @@ async def memory_retrieval(
 
         # Try to get embedding model profile and generate embeddings
         embedding_profile = await get_model_profile(
-            user_id=state.user_id, task=ModelProfileType.Embedding
+            user_id=state["user_id"], task=ModelProfileType.Embedding
         )
 
         # Get embedding pipeline from factory
@@ -133,9 +135,9 @@ async def memory_retrieval(
         memory_service = storage.get_service(storage.memory)
 
         # Configure user and conversation filtering based on memory config
-        user_filter = None if memory_config.enable_cross_user else state.user_id
+        user_filter = None if memory_config.enable_cross_user else state["user_id"]
         conversation_filter = (
-            None if memory_config.enable_cross_conversation else state.conversation_id
+            None if memory_config.enable_cross_conversation else state["conversation_id"]
         )
 
         memories = await memory_service.search_similarity(

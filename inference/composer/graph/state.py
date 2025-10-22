@@ -5,7 +5,11 @@ This is the centralized state schema that acts as the common interface
 
 import operator
 from typing import List, Dict, Any, Optional, Annotated, Set, Union
+from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
+
+from langchain_core.messages import BaseMessage
+from langgraph.graph.message import add_messages
 
 from models import (
     LangChainMessage,
@@ -20,6 +24,31 @@ from models import (
     Message,
     NodeMetadata,
 )
+
+
+class ToolsState(TypedDict):
+    """
+    Minimal state for agent subgraph with chat_agent + tool_node workflow.
+
+    Contains only essential data for the agent to operate efficiently while
+    minimizing context window usage. The agent cycles between chat_agent and
+    tool_node until completion, then returns results via Command.
+    """
+
+    # Message thread for agent conversation (using LangChain core messages for proper serialization)
+    messages: Annotated[List[BaseMessage], add_messages]
+
+    # Essential context for tool operations
+    user_id: str
+    conversation_id: int
+
+    # User configuration (full object for tool access)
+    user_config: Optional[Any]  # UserConfig object, avoiding circular import
+    system_config: Optional[Dict[str, Any]]
+
+    # Current operation tracking
+    current_date: str
+    tool_call_count: int
 
 
 class WorkflowState(BaseModel):

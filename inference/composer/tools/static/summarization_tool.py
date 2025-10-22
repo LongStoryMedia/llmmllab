@@ -17,15 +17,15 @@ Usage in LangGraph workflows:
 """
 
 import json
-from typing import Annotated, cast
+from typing import cast
 
-from langchain_core.tools import tool, InjectedToolCallId
+from langchain_core.tools import tool
+from langchain.tools import ToolRuntime
 from langchain_core.messages import ToolMessage
 from langchain.chat_models import BaseChatModel
-from langchain.tools.tool_node import InjectedState
 from langgraph.types import Command
 
-from composer.graph.state import WorkflowState
+from composer.graph.state import ToolsState
 from composer.utils.extraction import extract_content_from_base_langchain_message
 from runner import pipeline_factory
 from models import ModelProfileType, PipelinePriority
@@ -37,8 +37,7 @@ from utils.logging import llmmllogger
 @tool
 async def summarization(
     content: str,
-    tool_call_id: Annotated[str, InjectedToolCallId],
-    state: Annotated[WorkflowState, InjectedState],
+    tool_runtime: ToolRuntime[ToolsState],
 ) -> Command:
     """
     Summarize content using LLM and automatically add results to workflow state.
@@ -56,6 +55,10 @@ async def summarization(
     logger = llmmllogger.logger.bind(component="Summarization")
 
     try:
+        # Access state and tool_call_id through runtime
+        state = tool_runtime.state
+        tool_call_id = tool_runtime.tool_call_id
+        
         # Validate input content
         if not content.strip():
             error_message = json.dumps(
@@ -73,7 +76,7 @@ async def summarization(
             )
 
         # Ensure we have required state
-        user_id = state.user_id
+        user_id = state.get("user_id")
         if not user_id:
             error_message = json.dumps(
                 {
