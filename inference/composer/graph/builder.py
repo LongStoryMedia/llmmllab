@@ -31,7 +31,6 @@ from composer.nodes.routing.router import WorkflowRouter
 from composer.nodes.tools import (
     ToolCollectionNode,
     ToolComposerNode,
-    ToolExecutorNode,
     StaticToolLoadingNode,
 )
 from composer.nodes.memory import (
@@ -283,7 +282,7 @@ class GraphBuilder:
                 engineering_agent,
             )
             tool_composer_node = ToolComposerNode()
-            tool_executor_node = ToolExecutorNode(tool_registry)
+
             # ConsolidationNode needs both primary (for conversation summaries) and master (for consolidation)
             chat_summary_node = ConsolidationNode(
                 primary_summary_agent, master_summary_agent
@@ -322,13 +321,24 @@ class GraphBuilder:
             # Tool collection node with injected dependencies
             workflow.add_node("tool_collection", tool_collection_node)
             workflow.add_node("tool_composer", tool_composer_node)
-            workflow.add_node("tool_executor", tool_executor_node)
+
 
             workflow.add_node("chat_summary", chat_summary_node)
             workflow.add_node("search_summary", search_summary_node)
 
-            # Primary chat agent with streaming enabled
-            workflow.add_node("chat_agent", chat_node)
+            # Import and add the tools agent subgraph as a node
+            from composer.graph.subgraphs.tools_agent import tools_agent_subgraph
+            
+            # Create wrapper for subgraph execution
+            async def tools_agent_node(state: WorkflowState) -> WorkflowState:
+                """Execute the tools agent subgraph and return updated state."""
+                command = await tools_agent_subgraph.execute(state)
+                if command and command.update:
+                    for key, value in command.update.items():
+                        setattr(state, key, value)
+                return state
+            
+            workflow.add_node("tools_agent", tools_agent_node)
 
             # Build a logical workflow graph structure:
             # 1. Start -> Static tool loading (loads static tools + previous dynamic tools)
@@ -342,9 +352,8 @@ class GraphBuilder:
             workflow.add_edge("intent_analysis", "tool_collection")
             workflow.add_edge("tool_collection", "tool_composer")
 
-            # 3. Memory search -> Router for workflow selection
+            # 4. Tool composer -> Router for workflow selection
             workflow.add_edge("tool_composer", "workflow_router")
-            # workflow.add_edge("memory_search", "workflow_router")
 
             # 5. Conditional routing: router decides next step based on complexity
             def route_post_router(state: WorkflowState):
@@ -352,145 +361,44 @@ class GraphBuilder:
                 # add more workflows here as needed
                 if WorkflowType.ENGINEERING in state.selected_workflows:
                     return "engineering_agent"
-                # Otherwise go straight to primary chat agent
-                return "chat_agent"
+                # Otherwise go straight to tools agent subgraph (chat + tools)
+                return "tools_agent"
 
             workflow.add_conditional_edges(
                 "workflow_router",
                 route_post_router,
                 {
                     "engineering_agent": "engineering_agent",
-                    "chat_agent": "chat_agent",
+                    "tools_agent": "tools_agent",
                 },
             )
 
-            # 6. Engineering agent -> Chat agent (for final response)
-            workflow.add_edge("engineering_agent", "chat_agent")
+            # 6. Engineering agent -> Tools agent (for final response with tools)
+            workflow.add_edge("engineering_agent", "tools_agent")
 
-            # 7. Conditional routing from chat agent based on tool calls
-            def should_execute_tools(state: WorkflowState):
-                if not state.messages:
-                    return "memory_creation"
-
-                # Debug logging to understand routing decisions
-                self.logger.info(
-                    f"🔀 should_execute_tools: Checking {len(state.messages)} messages"
-                )
-                for i, msg in enumerate(
-                    state.messages[-5:], start=max(0, len(state.messages) - 5)
-                ):
-                    msg_type = type(msg).__name__
-                    msg_role = getattr(msg, "role", "unknown")
-                    has_tool_calls = getattr(msg, "tool_calls", None) is not None
-                    self.logger.info(
-                        f"  📝 Message {i}: {msg_type}, role={msg_role}, has_tool_calls={has_tool_calls}, type={getattr(msg, 'type', 'none')}"
-                    )
-
-                                # Check if we have any tool results in recent messages
-                # If we do, we've already completed tool execution and should not cycle back
-                has_recent_tool_results = False
-                tool_execution_count = 0
-                ai_with_tools_count = 0
+            # 7. Simplified routing: tools_agent -> search_summary (if web search) or chat_summary  
+            def route_after_tools_agent(state: WorkflowState):
+                """Route after tools agent completes."""
+                # Check if web search was performed and needs summarization
+                if state.web_search_results:
+                    self.logger.info("🔀 Tools agent completed with web search results - routing to search_summary")
+                    return "search_summary"
                 
-                for msg in state.messages[-15:]:  # Check last 15 messages for comprehensive analysis
-                    # Count AI messages with tool calls to detect cycles
-                    if (hasattr(msg, "type") and msg.type == "ai" 
-                        and hasattr(msg, "tool_calls") and msg.tool_calls):
-                        ai_with_tools_count += 1
-                        
-                    # Check for tool results/responses
-                    if isinstance(msg, ToolMessage):
-                        has_recent_tool_results = True
-                        tool_execution_count += 1
-                        self.logger.info(
-                            f"🔀 should_execute_tools: Found ToolMessage instance #{tool_execution_count}"
-                        )
-                    elif hasattr(msg, "type") and msg.type == "tool":
-                        has_recent_tool_results = True
-                        tool_execution_count += 1
-                        self.logger.info(
-                            f"🔀 should_execute_tools: Found LangChainMessage with type='tool' #{tool_execution_count}"
-                        )
-
-                self.logger.info(
-                    f"🔀 should_execute_tools: Analysis - AI with tools: {ai_with_tools_count}, Tool results: {tool_execution_count}"
-                )
-
-                # If we have multiple AI messages with tool calls, we're in a cycle - break it
-                if ai_with_tools_count > 1:
-                    self.logger.info(
-                        f"🔀 should_execute_tools: Detected cycle - {ai_with_tools_count} AI messages with tool calls - routing to memory_creation"
-                    )
-                    return "memory_creation"
-
-                # If we have tool results, we've completed tool execution - proceed to memory creation
-                if has_recent_tool_results:
-                    self.logger.info(
-                        f"🔀 should_execute_tools: Found {tool_execution_count} tool results - routing to memory_creation"
-                    )
-                    return "memory_creation"
-
-                last_message = state.messages[-1]
-                self.logger.info(
-                    f"🔀 should_execute_tools: Last message type={getattr(last_message, 'type', 'none')}, has_tool_calls={hasattr(last_message, 'tool_calls') and bool(getattr(last_message, 'tool_calls', None))}"
-                )
-
-                # If last message is from assistant and has tool calls, execute tools (first time only)
-                if (
-                    hasattr(last_message, "type")
-                    and last_message.type == "ai"
-                    and hasattr(last_message, "tool_calls")
-                    and last_message.tool_calls
-                ):
-                    self.logger.info(
-                        "🔀 should_execute_tools: Found AI message with tool calls - routing to tool_executor"
-                    )
-                    return "tool_executor"
-
-                # Otherwise, proceed to chat summary (initial flow)
-                self.logger.info(
-                    "🔀 should_execute_tools: No tool calls found - routing to chat_summary"
-                )
+                # Otherwise proceed to chat summary for consolidation
+                self.logger.info("🔀 Tools agent completed - routing to chat_summary")
                 return "chat_summary"
 
             workflow.add_conditional_edges(
-                "chat_agent",
-                should_execute_tools,
+                "tools_agent",
+                route_after_tools_agent,
                 {
-                    "tool_executor": "tool_executor",
-                    "memory_creation": "memory_creation",
+                    "search_summary": "search_summary",
                     "chat_summary": "chat_summary",
                 },
             )
 
-            # 8. Agent pattern: tool_executor routes back to chat_agent or search processing
-            def should_continue_agent_loop(state: WorkflowState):
-                """
-                Route after tool execution.
-
-                After tools are executed, the workflow should proceed to memory creation
-                since the agent has completed its task. The only exception is if web
-                search results need special summarization processing.
-                """
-                # Check if web search was performed and needs summarization
-                if state.web_search_results:
-                    return "search_summary"
-
-                # After tool execution, proceed directly to memory creation
-                # The agent should have already synthesized results during tool execution
-                return "memory_creation"
-
-            workflow.add_conditional_edges(
-                "tool_executor",
-                should_continue_agent_loop,
-                {
-                    "search_summary": "search_summary",  # Process web search results
-                    "memory_creation": "memory_creation",  # Skip to memory if done with tools
-                },
-            )
-
-            # 8b. Search summary -> Memory creation (skip second chat_agent call)
-            workflow.add_edge("search_summary", "memory_creation")
+            # 8. Linear flow after agent completion
+            workflow.add_edge("search_summary", "chat_summary")
 
             workflow.add_edge("chat_summary", "title_generation")
 
