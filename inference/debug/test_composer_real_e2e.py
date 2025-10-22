@@ -809,18 +809,6 @@ Please search for the most recent information and provide a comprehensive summar
                         tool_calls_detected = True
                         logger.info("   🛠️  Tool execution node detected")
 
-                # Check for tool execution by looking for node names or metadata
-                if "metadata" in event_dict and isinstance(
-                    event_dict.get("metadata"), dict
-                ):
-                    metadata = event_dict["metadata"]
-                    if (
-                        metadata.get("langgraph_node") == "tool_executor"
-                        or "tool" in str(metadata).lower()
-                    ):
-                        tool_calls_detected = True
-                        logger.info("   🛠️  Tool executor node detected in metadata")
-
                 # Capture significant events for detailed logging
                 if "event" in event_dict:
                     event_type = event_dict["event"]

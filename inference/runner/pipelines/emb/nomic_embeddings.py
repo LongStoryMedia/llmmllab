@@ -70,7 +70,7 @@ class NomicEmbeddings(Embeddings):
                 n_gpu_layers=-1,  # Offload all layers to GPU
                 n_threads=self._get_optimal_threads(),
                 embedding=True,  # Enable embedding mode
-                verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "debug",
+                verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
                 n_batch=512,
                 use_mlock=False,
                 f16_kv=True,

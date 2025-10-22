@@ -108,16 +108,40 @@ class ToolsAgentSubgraph:
                 logger.warning("No tools available for execution")
                 return state
 
+            # Debug: Log current state and tools
+            messages = state.get("messages", [])
+            logger.info(f"🛠️ Tool executor: processing {len(messages)} messages with {len(tools_list)} tools")
+            
+            # Find the last AI message with tool calls
+            last_ai_msg = None
+            for msg in reversed(messages):
+                if isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls:
+                    last_ai_msg = msg
+                    break
+            
+            if last_ai_msg:
+                logger.info(f"🛠️ Found AI message with {len(last_ai_msg.tool_calls)} tool calls")
+                for i, tc in enumerate(last_ai_msg.tool_calls):
+                    logger.info(f"🛠️ Tool call {i}: name={tc.get('name', 'unknown')}, id={tc.get('id', 'unknown')}")
+            else:
+                logger.warning("🛠️ No AI message with tool calls found in state")
+
             # Create ToolNode with available tools
             tool_node = ToolNode(tools_list)
 
             # Execute tools using ToolNode
             result = await tool_node.ainvoke(state)
+            
+            # Debug: Log result
+            result_messages = result.get("messages", [])
+            logger.info(f"🛠️ Tool execution completed: {len(result_messages)} messages in result")
 
             return result
 
         except Exception as e:
             logger.error(f"Tool executor wrapper failed: {e}")
+            import traceback
+            traceback.print_exc()
             # Return current state on error
             return state
 
@@ -133,11 +157,47 @@ class ToolsAgentSubgraph:
             # Add tool executor node - using wrapper for ToolNode
             builder.add_node("tool_executor", self._tool_executor_wrapper)
 
-            # Add conditional routing using LangGraph's built-in tools_condition
+            # Add conditional routing with iteration limiting
+            def should_continue_with_tools(state: ToolsState):
+                """Decide whether to continue with tools or finish."""
+                messages = state.get("messages", [])
+                tool_executions = 0
+                recent_tool_calls = set()
+                
+                # Count tool executions and track recent calls
+                for msg in messages[-10:]:  # Check last 10 messages
+                    if isinstance(msg, ToolMessage):
+                        tool_executions += 1
+                    elif isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls:
+                        for tc in msg.tool_calls:
+                            query = tc.get("args", {}).get("query", "")
+                            if query:
+                                recent_tool_calls.add(query.lower())
+                
+                # Check for excessive iterations
+                if tool_executions >= 3:  # Limit to 3 tool executions maximum
+                    logger.info(f"🛑 Stopping agent loop: reached {tool_executions} tool executions")
+                    return "__end__"
+                
+                # Check for repeated tool calls (same query)
+                if len(recent_tool_calls) == 1 and tool_executions >= 2:
+                    logger.info(f"🛑 Stopping agent loop: detected repeated tool calls")
+                    return "__end__"
+                
+                # Check last message for tool calls manually (since tools_condition expects different format)
+                if messages:
+                    last_msg = messages[-1]
+                    if isinstance(last_msg, AIMessage) and hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
+                        logger.info(f"🔀 Found tool calls in last message, routing to tools")
+                        return "tools"
+                
+                logger.info(f"🔀 No tool calls found, finishing agent loop")
+                return "__end__"
+
             builder.add_conditional_edges(
                 "chat_agent",
-                tools_condition,
-                # tools_condition returns "tools" for tool calls, "__end__" to finish
+                should_continue_with_tools,
+                # Returns "tools" for tool calls, "__end__" to finish
                 {"tools": "tool_executor", "__end__": END},
             )
 
@@ -168,26 +228,50 @@ class ToolsAgentSubgraph:
             # Create ChatAgent with runtime context
             chat_agent = self._create_chat_agent(user_id, conversation_id)
 
-            # Use messages directly - ChatAgent should handle LangChain core messages
+            # Convert LangChain core messages to our LangChainMessage format
             messages = state["messages"]
-
-            # For now, we need to convert to our format but this should be simplified
             from models import LangChainMessage
 
             langchain_messages = []
-
             for msg in messages:
-                if isinstance(msg, (HumanMessage, AIMessage, ToolMessage)):
-                    # Convert to LangChainMessage format
-                    langchain_msg = LangChainMessage(
+                if isinstance(msg, HumanMessage):
+                    langchain_messages.append(LangChainMessage(
                         content=msg.content,
-                        type=msg.type,
+                        type="human",
                         additional_kwargs=getattr(msg, "additional_kwargs", {}),
-                        response_metadata=getattr(msg, "response_metadata", {}),
-                    )
-                    langchain_messages.append(langchain_msg)
+                        response_metadata=getattr(msg, "response_metadata", {})
+                    ))
+                elif isinstance(msg, AIMessage):
+                    # Handle tool calls properly
+                    tool_calls = None
+                    if hasattr(msg, "tool_calls") and msg.tool_calls:
+                        tool_calls = [
+                            {
+                                "name": tc.get("name", ""),
+                                "args": tc.get("args", {}),
+                                "id": tc.get("id", ""),
+                                "type": "tool_call"
+                            }
+                            for tc in msg.tool_calls
+                        ]
+                    
+                    langchain_messages.append(LangChainMessage(
+                        content=msg.content,
+                        type="ai",
+                        tool_calls=tool_calls,
+                        additional_kwargs=getattr(msg, "additional_kwargs", {}),
+                        response_metadata=getattr(msg, "response_metadata", {})
+                    ))
+                elif isinstance(msg, ToolMessage):
+                    langchain_messages.append(LangChainMessage(
+                        content=msg.content,
+                        type="tool",
+                        id=msg.tool_call_id,
+                        additional_kwargs=getattr(msg, "additional_kwargs", {}),
+                        response_metadata=getattr(msg, "response_metadata", {})
+                    ))
                 else:
-                    # Already in correct format or compatible
+                    # Already in LangChainMessage format
                     langchain_messages.append(msg)
 
             # Get tools from registry for the agent
@@ -199,28 +283,24 @@ class ToolsAgentSubgraph:
                 messages=langchain_messages, tools=tools_list
             )
 
-            # Convert response back to LangChain core message format for ToolsState
-            # AIMessage already imported at module level
-
-            # Extract tool calls if present
+            # Convert response back to LangChain core AIMessage format for LangGraph
             tool_calls = []
             if hasattr(response_msg, "tool_calls") and response_msg.tool_calls:
                 for tc in response_msg.tool_calls:
-                    tool_calls.append(
-                        {
-                            "name": tc.get("name", ""),
-                            "args": tc.get("args", {}),
-                            "id": tc.get("id", ""),
-                            "type": "tool_call",
-                        }
-                    )
+                    # Use LangGraph's expected tool call format
+                    tool_calls.append({
+                        "name": tc.get("name", ""),
+                        "args": tc.get("args", {}),
+                        "id": tc.get("id", f"call_{len(tool_calls)}"),
+                        "type": "tool_call"
+                    })
 
-            # Create AIMessage compatible with LangGraph
+            # Create AIMessage compatible with LangGraph ToolNode
             ai_message = AIMessage(
-                content=response_msg.content,
-                tool_calls=tool_calls if tool_calls else [],
+                content=response_msg.content or "",
+                tool_calls=tool_calls,
                 additional_kwargs=getattr(response_msg, "additional_kwargs", {}),
-                response_metadata=getattr(response_msg, "response_metadata", {}),
+                response_metadata=getattr(response_msg, "response_metadata", {})
             )
 
             # Return new message in state update format
@@ -228,6 +308,8 @@ class ToolsAgentSubgraph:
 
         except Exception as e:
             logger.error(f"Chat agent wrapper failed: {e}")
+            import traceback
+            traceback.print_exc()
             # Return error message
             error_msg = AIMessage(content=f"Agent error: {str(e)}")
             return {"messages": [error_msg]}
@@ -246,13 +328,29 @@ class ToolsAgentSubgraph:
                 if msg.type == "human":
                     langchain_messages.append(HumanMessage(content=msg.content))
                 elif msg.type == "ai":
-                    # Check if this AI message has tool calls
+                    # Check if this AI message has tool calls and convert properly
+                    tool_calls = []
                     if hasattr(msg, "tool_calls") and msg.tool_calls:
-                        langchain_messages.append(
-                            AIMessage(content=msg.content, tool_calls=msg.tool_calls)
-                        )
-                    else:
-                        langchain_messages.append(AIMessage(content=msg.content))
+                        for tc in msg.tool_calls:
+                            if isinstance(tc, dict):
+                                tool_calls.append({
+                                    "name": tc.get("name", ""),
+                                    "args": tc.get("args", {}),
+                                    "id": tc.get("id", "unknown"),
+                                    "type": "tool_call"
+                                })
+                            else:
+                                # Handle other tool call formats
+                                tool_calls.append({
+                                    "name": getattr(tc, "name", ""),
+                                    "args": getattr(tc, "args", {}),
+                                    "id": getattr(tc, "id", "unknown"),
+                                    "type": "tool_call"
+                                })
+                    
+                    langchain_messages.append(
+                        AIMessage(content=msg.content, tool_calls=tool_calls if tool_calls else [])
+                    )
                 elif msg.type == "tool":
                     langchain_messages.append(
                         ToolMessage(
