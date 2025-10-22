@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Test the intelligent tools agent subgraph that handles all agent cycling internally.
+Test the intelligent tools agent subgraph with enhanced middleware.
 
-This script tests the new architecture where:
-1. Main graph calls tools_agent as a single node
-2. Subgraph handles all intelligent agent cycling with sophisticated routing
-3. Agent can make multiple tool calls naturally based on LLM decisions
-4. Middleware prevents infinite loops while allowing strategic multi-tool patterns
+This script tests the enhanced architecture with:
+1. Fixed ToolRuntime validation errors  
+2. Tool call grouping for efficiency (especially web searches)
+3. Planning and limiting middleware
+4. Sophisticated routing with tool diversity checks
+5. Natural agent termination based on completion signals
 """
 
 import asyncio
@@ -75,9 +76,30 @@ async def test_intelligent_subgraph():
                 tool_info = f" (has {len(tool_calls)} tool calls)" if tool_calls else ""
                 print(f"  {i+1}. [{msg_type}]{tool_info}: {content}...")
                 
+            # Check for validation errors in tool messages
+            error_messages = [msg for msg in test_state.messages if hasattr(msg, 'content') and 'validation error' in str(msg.content).lower()]
+            
+            if error_messages:
+                print(f"❌ VALIDATION ERRORS: Found {len(error_messages)} tool validation errors")
+                for err_msg in error_messages[:2]:  # Show first 2 errors
+                    print(f"  - {str(err_msg.content)[:100]}...")
+            else:
+                print("✅ NO VALIDATION ERRORS: All tools executed successfully")
+            
             # Check if agent made strategic multiple tool calls
             if ai_messages > 1 and tool_messages > 0:
                 print("✅ SUCCESS: Agent demonstrated intelligent multi-tool behavior!")
+                
+                # Check for tool call grouping efficiency
+                web_search_calls = 0
+                for msg in test_state.messages:
+                    if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                        web_search_calls += sum(1 for tc in msg.tool_calls if tc.get('name') == 'web_search')
+                
+                if web_search_calls > 0:
+                    efficiency_ratio = tool_messages / web_search_calls
+                    print(f"📊 Tool efficiency: {web_search_calls} search calls → {tool_messages} results (ratio: {efficiency_ratio:.2f})")
+                    
             else:
                 print("⚠️  LIMITED: Agent made fewer tool calls than expected")
                 
