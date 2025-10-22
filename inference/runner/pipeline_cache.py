@@ -278,8 +278,8 @@ class LocalPipelineCacheManager:
                     if removed and removed.pipeline:
                         self._cleanup_pipeline(removed.pipeline)
 
-                # Nuclear memory clear after eviction
-                hardware_manager.clear_memory(aggressive=True, nuclear=True)
+                # Aggressive memory clear after eviction (no nuclear unless necessary)
+                hardware_manager.clear_memory(aggressive=True, nuclear=False)
                 self.logger.info(
                     "🧹 Completed proactive cache clearing for large model"
                 )

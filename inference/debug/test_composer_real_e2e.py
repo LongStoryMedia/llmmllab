@@ -819,12 +819,19 @@ Please search for the most recent information and provide a comprehensive summar
                 # Capture significant events for detailed logging
                 if "event" in event_dict:
                     event_type = event_dict["event"]
-                    # Capture explicit error events (LangGraph may surface as on_chain_error / on_tool_error etc.)
-                    if (
-                        event_type.lower().endswith("error")
-                        or "error" in event_type.lower()
-                    ):
-                        error_events.append(event_dict)
+                    # Capture only actual error events that indicate workflow failures
+                    # Note: on_tool_error is not necessarily a failure - tools can handle errors gracefully
+                    if event_type in [
+                        "on_chain_error", 
+                        "on_chat_model_error", 
+                        "on_llm_error",
+                        "on_retriever_error",
+                    ]:
+                        # Check if this is actually an unrecoverable error
+                        error_data = event_dict.get("data", {})
+                        if isinstance(error_data, dict) and "error" in error_data:
+                            # Only count as error if there's actual error data
+                            error_events.append(event_dict)
 
                     # Log significant events to output file
                     if event_type in [

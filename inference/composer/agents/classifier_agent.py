@@ -237,7 +237,9 @@ Title:"""
                     system_prompt=system_prompt,
                 )
 
-                normalized_messages = convert_messages_to_langchain(
+                # Convert to native LangChain BaseMessage objects instead of our LangChainMessage
+                from composer.utils.conversion import convert_messages_to_base_langchain
+                normalized_messages = convert_messages_to_base_langchain(
                     normalize_message_input(title_prompt)
                 )
 

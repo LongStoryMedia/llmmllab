@@ -371,7 +371,8 @@ class EnhancedHardwareManager:
                                         f"CUDA reset returned error code {result} for device {i}"
                                     )
                             except Exception as cuda_e:
-                                self.logger.warning(
+                                # Only log as debug since missing libcudart.dylib is expected on some systems
+                                self.logger.debug(
                                     f"Could not perform true CUDA context reset for device {i}: {cuda_e}"
                                 )
                                 # Final fallback: reinitialize PyTorch context
@@ -379,7 +380,7 @@ class EnhancedHardwareManager:
                                     temp = torch.ones(1, device=f"cuda:{i}")
                                     del temp
                                     torch.cuda.synchronize(i)
-                                self.logger.info(
+                                self.logger.debug(
                                     f"Performed PyTorch context refresh for device {i}"
                                 )
 
