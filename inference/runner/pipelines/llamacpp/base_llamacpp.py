@@ -423,16 +423,31 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     # Add a simple parameters schema (filtered to exclude injected params)
                     if hasattr(tool, "args_schema") and tool.args_schema:
                         try:
+                            # Try to get schema, handling ToolRuntime CallableSchema issues
                             if hasattr(tool.args_schema, "model_json_schema"):
-                                schema = tool.args_schema.model_json_schema()
+                                try:
+                                    schema = tool.args_schema.model_json_schema()
+                                except Exception as schema_error:
+                                    if "CallableSchema" in str(schema_error):
+                                        # ToolRuntime has CallableSchema that can't serialize
+                                        # Provide minimal schema for tools with ToolRuntime
+                                        schema = {
+                                            "type": "object", 
+                                            "properties": {
+                                                "query": {"type": "string", "description": "Search query or input text"}
+                                            },
+                                            "required": ["query"]
+                                        }
+                                    else:
+                                        raise schema_error
                             else:
                                 schema = {"type": "object", "properties": {}}
 
-                            # Filter out injected LangGraph parameters
+                            # Filter out injected LangGraph parameters and ToolRuntime
                             if 'properties' in schema:
                                 filtered_props = {
                                     k: v for k, v in schema['properties'].items() 
-                                    if k not in ['state', 'tool_call_id']
+                                    if k not in ['state', 'tool_call_id', 'tool_runtime']
                                 }
                                 
                                 tool_dict["function"]["parameters"] = {
@@ -440,7 +455,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
                                     "properties": filtered_props,
                                     "required": [
                                         req for req in schema.get('required', []) 
-                                        if req not in ['state', 'tool_call_id']
+                                        if req not in ['state', 'tool_call_id', 'tool_runtime']
                                     ]
                                 }
                             else:
