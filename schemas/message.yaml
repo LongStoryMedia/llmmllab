@@ -11,14 +11,6 @@ properties:
     items:
       $ref: message_content.yaml
     description: Content of the message
-  tool_calls:
-    type: array
-    items:
-      type: object
-    description: Optional tool calls associated with the message
-  thinking:
-    type: string
-    description: Optional thinking process of the model, if applicable
   id:
     type: integer
     description: Unique identifier for the message

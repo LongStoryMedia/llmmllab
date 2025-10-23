@@ -132,14 +132,14 @@ sys.path.append('/Users/lons7862/workspace/llmmllab/inference')
 
 **Avoid nested commands like:**
 ```bash
-POD_NAME=$(kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}') && kubectl exec -it -n ollama $POD_NAME -- /app/v.sh server python test.py
+POD_NAME=$(kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}') && kubectl exec -it -n ollama $POD_NAME -- /app/v.sh python test.py
 ```
 
 **Use simple commands instead:**
 ```bash
 kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}'
 # Remember the pod name, then:
-kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh server python -m debug.test
+kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.test
 ```
 
 ## Python Module Execution Rules
@@ -147,10 +147,10 @@ kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh server python -m debug.test
 **ALWAYS run Python files as modules using -m flag:**
 ```bash
 # ✅ CORRECT - Run as module with proper import resolution
-kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh runner python -m debug.test_qwen3_pipeline_creation
+kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.test_qwen3_pipeline_creation
 
 # ❌ WRONG - Direct file execution causes import issues
-kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh runner python debug/test_qwen3_pipeline_creation.py
+kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python debug/test_qwen3_pipeline_creation.py
 ```
 
 **Module execution benefits:**

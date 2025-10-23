@@ -6,8 +6,9 @@ properties:
   done:
     type: boolean
     description: Indicates whether the generation is complete
+    default: true
   message:
-    $ref: "#/definitions/Message"
+    $ref: message.yaml
     description: The message content and metadata returned by the model
   created_at:
     type: string
@@ -50,8 +51,16 @@ properties:
     type: number
     description: Time taken for token evaluation in milliseconds
   thinking:
-    type: string
+    $ref: thought.yaml
     description: The thinking/reasoning process from the assistant before the response
+  tool_calls:
+    type: array
+    items:
+      $ref: tool_execution_result.yaml
+    description: Optional tool calls associated with the message
+  processing:
+    type: string
+    description: Optional responses generated during message processing
   channels:
     type: object
     description: Additional structured channels extracted from the response (tool calls, status, etc.)
@@ -61,8 +70,8 @@ properties:
     description: OBSERVER role messages that should be displayed as temporary floating notifications
     items:
       type: string
-required:
-  - done
-definitions:
-  Message:
-    $ref: message.yaml
+  analyses:
+    type: array
+    description: Analytical insights or summaries related to the chat response
+    items:
+      $ref: intent_analysis.yaml

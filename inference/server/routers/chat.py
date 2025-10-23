@@ -34,6 +34,27 @@ import composer
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
+def extract_thinking_from_content(content: str) -> tuple[str, str]:
+    """
+    Extract <think>...</think> blocks from content and return cleaned content and thinking.
+    """
+    if not content or not isinstance(content, str):
+        return content, ""
+    
+    # Extract think content
+    think_pattern = r'<think>(.*?)</think>'
+    think_matches = re.findall(think_pattern, content, re.DOTALL)
+    thinking = "\n\n".join(think_matches).strip() if think_matches else ""
+    
+    # Remove think tags from content
+    cleaned_content = re.sub(think_pattern, '', content, flags=re.DOTALL)
+    
+    # Clean up extra whitespace
+    cleaned_content = re.sub(r'\n\s*\n', '\n\n', cleaned_content).strip()
+    
+    return cleaned_content, thinking
+
+
 def parse_tool_calls_from_content(content: str) -> tuple[str, list]:
     """
     Parse tool calls from content and return cleaned content and tool calls.
@@ -53,12 +74,14 @@ def parse_tool_calls_from_content(content: str) -> tuple[str, list]:
             json_str = match.group(1)
             tool_call_data = json.loads(json_str)
             
-            # Convert to LangChain tool call format
+            # Convert to structured tool execution result format
             tool_call = {
-                "id": f"call_{i}",
-                "name": tool_call_data.get("name", ""),
+                "tool_name": tool_call_data.get("name", ""),
+                "execution_id": f"call_{i}",
+                "success": True,  # Will be updated based on actual execution
                 "args": tool_call_data.get("args", tool_call_data.get("arguments", {})),
-                "type": "tool_call"
+                "result_data": {},  # Will be populated from tool execution events
+                "execution_time_ms": 0,  # Will be populated from tool execution events
             }
             tool_calls.append(tool_call)
             
@@ -69,13 +92,92 @@ def parse_tool_calls_from_content(content: str) -> tuple[str, list]:
     # Remove tool call tags from content
     cleaned_content = re.sub(pattern, '', content, flags=re.DOTALL)
     
-    # Also remove <think> tags and their contents
-    cleaned_content = re.sub(r'<think>.*?</think>', '', cleaned_content, flags=re.DOTALL)
-    
     # Clean up extra whitespace
     cleaned_content = re.sub(r'\n\s*\n', '\n\n', cleaned_content).strip()
     
     return cleaned_content, tool_calls
+
+
+def extract_structured_data_from_events(events: list) -> dict:
+    """
+    Extract structured data from LangGraph workflow events.
+    Returns thinking, tool_calls, analyses, and observer_messages.
+    """
+    thinking_parts = []
+    tool_calls = []
+    intent_analyses = []
+    observer_messages = []
+    tool_execution_results = {}  # Map execution_id to result data
+    
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+            
+        event_type = event.get("event", "")
+        event_data = event.get("data", {})
+        
+        # Extract thinking from chat model events
+        if event_type == "on_chat_model_stream":
+            chunk = event_data.get("chunk", {})
+            if isinstance(chunk, dict):
+                content = chunk.get("content", "")
+                if content and "<think>" in content:
+                    # Extract thinking from this chunk
+                    _, think_content = extract_thinking_from_content(content)
+                    if think_content:
+                        thinking_parts.append(think_content)
+        
+        # Extract tool execution data
+        elif event_type == "on_tool_start":
+            tool_name = event_data.get("name", "")
+            tool_input = event_data.get("input", {})
+            execution_id = f"tool_{len(tool_calls)}"
+            
+            tool_call = {
+                "tool_name": tool_name,
+                "execution_id": execution_id,
+                "success": True,
+                "args": tool_input,
+                "result_data": {},
+                "execution_time_ms": 0,
+            }
+            tool_calls.append(tool_call)
+            tool_execution_results[execution_id] = len(tool_calls) - 1  # Store index
+            
+        elif event_type == "on_tool_end":
+            tool_name = event_data.get("name", "")
+            tool_output = event_data.get("output", "")
+            
+            # Find corresponding tool call and update with result
+            for i, tool_call in enumerate(tool_calls):
+                if tool_call["tool_name"] == tool_name and not tool_call["result_data"]:
+                    tool_call["result_data"] = {"output": tool_output}
+                    break
+        
+        # Extract intent analyses from workflow state
+        elif event_type == "on_chain_end":
+            output = event_data.get("output", {})
+            if isinstance(output, dict):
+                # Check for intent classification in final state
+                intent_classification = output.get("intent_classification", [])
+                if intent_classification and isinstance(intent_classification, list):
+                    intent_analyses.extend(intent_classification)
+        
+        # Extract observer messages
+        elif event_type == "on_chat_model_stream":
+            chunk = event_data.get("chunk", {})
+            if isinstance(chunk, dict):
+                # Check if this is an observer message
+                observer_msgs = chunk.get("observer_messages", [])
+                if observer_msgs:
+                    observer_messages.extend(observer_msgs)
+    
+    return {
+        "thinking": "\n\n".join(thinking_parts).strip() if thinking_parts else "",
+        "tool_calls": tool_calls,
+        "analyses": intent_analyses,
+        "observer_messages": observer_messages,
+    }
 
 
 @router.post("/completions", response_model=ChatResponse)
@@ -122,19 +224,22 @@ async def chat_completion(
                     user_id, conversation_id
                 )
 
-                # Track accumulated content for final response
+                # Track all events for structured data extraction
+                all_events = []
                 accumulated_content = ""
                 final_state = None
+                current_thinking = ""
 
                 # Execute workflow and stream events
                 async for event in composer.execute_workflow(
                     workflow, initial_state, stream=True
                 ):
                     if isinstance(event, dict):
+                        all_events.append(event)  # Store all events for final processing
                         event_type = event.get("event", "")
                         event_data = event.get("data", {})
 
-                        # Only stream from chat model events to avoid duplication
+                        # Stream chat model content with proper parsing
                         if event_type == "on_chat_model_stream":
                             chunk = event_data.get("chunk", {})
                             content = ""
@@ -145,22 +250,36 @@ async def chat_completion(
                                 content = str(chunk.content)
 
                             if content:
-                                accumulated_content += content
+                                # Extract thinking and clean content for streaming
+                                clean_content, thinking = extract_thinking_from_content(content)
                                 
-                                # Stream raw content chunks (tool calls will be parsed at the end)
-                                chat_response = {
-                                    "message": {
-                                        "role": "assistant",
-                                        "content": [{"type": "text", "text": content}],
-                                    },
-                                    "done": False,
-                                }
-                                yield f"{safe_json_serialize(chat_response)}\n"
+                                if thinking:
+                                    current_thinking += thinking + "\n"
+                                
+                                if clean_content:
+                                    accumulated_content += clean_content
+                                    
+                                    # Stream clean content (without tool calls or thinking)
+                                    clean_content, _ = parse_tool_calls_from_content(clean_content)
+                                    
+                                    if clean_content.strip():
+                                        chat_response = {
+                                            "message": {
+                                                "role": "assistant",
+                                                "content": [{"type": "text", "text": clean_content}],
+                                            },
+                                            "thinking": current_thinking.strip() if current_thinking.strip() else None,
+                                            "done": False,
+                                        }
+                                        yield f"{safe_json_serialize(chat_response)}\n"
 
                         elif event_type == "on_chain_end":
                             # Capture final state for response extraction
                             final_state = event_data.get("output", {})
 
+                # Extract structured data from all collected events
+                structured_data = extract_structured_data_from_events(all_events)
+                
                 # Extract final response from workflow state or accumulated content
                 final_content = ""
                 
@@ -194,21 +313,36 @@ async def chat_completion(
                     final_content = accumulated_content
 
                 if final_content:
-                    # Parse tool calls from the final content
-                    cleaned_content, tool_calls = parse_tool_calls_from_content(final_content)
+                    # Clean final content of thinking and tool calls for storage
+                    clean_content, final_thinking = extract_thinking_from_content(final_content)
+                    clean_content, _ = parse_tool_calls_from_content(clean_content)
                     
-                    # Create final response with parsed tool calls
+                    # Combine thinking from streaming and final content
+                    combined_thinking = current_thinking.strip()
+                    if final_thinking and final_thinking not in combined_thinking:
+                        combined_thinking += "\n\n" + final_thinking if combined_thinking else final_thinking
+                    
+                    # Create final response with structured data
                     final_response = {
                         "message": {
                             "role": "assistant",
-                            "content": [{"type": "text", "text": cleaned_content}],
+                            "content": [{"type": "text", "text": clean_content}],
                         },
                         "done": True,
                     }
                     
-                    # Add tool calls if any were found
-                    if tool_calls:
-                        final_response["message"]["tool_calls"] = tool_calls
+                    # Add structured data fields
+                    if combined_thinking.strip():
+                        final_response["thinking"] = combined_thinking.strip()
+                    
+                    if structured_data["tool_calls"]:
+                        final_response["tool_calls"] = structured_data["tool_calls"]
+                    
+                    if structured_data["analyses"]:
+                        final_response["analyses"] = structured_data["analyses"]
+                    
+                    if structured_data["observer_messages"]:
+                        final_response["observer_messages"] = structured_data["observer_messages"]
                     
                     # Save assistant response to database
                     if storage.message:
@@ -219,7 +353,7 @@ async def chat_completion(
                                 content=[
                                     MessageContent(
                                         type=MessageContentType.TEXT,
-                                        text=cleaned_content,
+                                        text=clean_content,
                                     )
                                 ],
                             )

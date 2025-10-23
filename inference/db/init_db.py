@@ -92,20 +92,26 @@ async def initialize_database(connection_pool: Any) -> bool:
                     "Creating message tables",
                     [
                         ("message.create_messages_table", []),
-                        ("message.create_message_content_table", []),
-                        ("message.create_message_contents_hypertable", ["timescaledb"]),
+                    ],
+                ),
+                # Step 5: Create message content tables
+                (
+                    "Creating message content tables",
+                    [
+                        ("message_content.create_message_content_table", []),
+                        ("message_content.create_message_contents_hypertable", ["timescaledb"]),
                         (
-                            "message.message_contents_compression_policy",
+                            "message_content.message_contents_compression_policy",
                             ["timescaledb"],
                         ),
-                        ("message.message_contents_retention_policy", ["timescaledb"]),
+                        ("message_content.message_contents_retention_policy", ["timescaledb"]),
                         (
-                            "message.enable_message_contents_compression",
+                            "message_content.enable_message_contents_compression",
                             ["timescaledb"],
                         ),
                     ],
                 ),
-                # Step 5: Create summary tables
+                # Step 6: Create summary tables
                 (
                     "Creating summary tables",
                     [
@@ -115,7 +121,7 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("summary.enable_summaries_compression", ["timescaledb"]),
                     ],
                 ),
-                # Step 6: Create search tables
+                # Step 7: Create search tables
                 (
                     "Creating search tables",
                     [
@@ -126,7 +132,7 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ),
                     ],
                 ),
-                # Step 7: Create memory tables (requires vector extension)
+                # Step 8: Create memory tables (requires vector extension)
                 (
                     "Creating memory tables",
                     [
@@ -147,9 +153,9 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("memory.memories_retention_policy", ["timescaledb"]),
                     ],
                 ),
-                # Step 8: Create image tables
+                # Step 9: Create image tables
                 ("Creating image tables", [("images.create_images_schema", [])]),
-                # Step 9: Create dynamic tools tables
+                # Step 10: Create dynamic tools tables
                 (
                     "Creating dynamic tools tables",
                     [
@@ -158,12 +164,21 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("tool.create_embedding_index", ["vector"]),
                     ],
                 ),
-                # Step 10: Create research tables
+                # Step 11: Create research tables
                 (
                     "Creating research tables",
                     [
                         ("research.create_research_tasks_table", []),
                         ("research.create_research_subtasks_table", []),
+                    ],
+                ),
+                # Step 12: Create structured response tables (thoughts, analyses, tool_calls)
+                (
+                    "Creating structured response tables",
+                    [
+                        ("thought.create_table", []),
+                        ("analysis.create_table", []),
+                        ("tool_call.create_table", []),
                     ],
                 ),
             ]

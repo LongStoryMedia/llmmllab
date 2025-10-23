@@ -12,6 +12,10 @@ properties:
   success:
     type: boolean
     description: "Whether execution was successful"
+  args:
+    type: object
+    description: "Arguments passed to the tool"
+    additionalProperties: true
   result_data:
     type: object
     description: "Result data from the tool"
@@ -25,5 +29,5 @@ properties:
     description: "Execution time in milliseconds"
   resource_usage:
     $ref: "resource_usage.yaml"
-required: ["tool_name", "execution_id", "success"]
+required: ["tool_name", "success"]
 additionalProperties: false
