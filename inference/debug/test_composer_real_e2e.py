@@ -233,6 +233,8 @@ SEARCH RESULT UTILIZATION:
 - Extract key details from article titles, content snippets, and relevance scores
 - Synthesize information from multiple search results into comprehensive answers
 - When you have search results, provide a complete answer based on the available content
+- IMPORTANT: If you already have search results in the conversation history, DO NOT search again for the same information
+- Only perform additional searches if you need different types of information or more specific details
 
 You provide direct, informative responses while showing your reasoning process.
 Always use tools when you need current or specific information that might not be in your training data.
@@ -267,13 +269,18 @@ For comprehensive responses, you can make MULTIPLE tool calls:
 </tool_call>
 
 For ANY request about recent developments, current events, or 2024+ information, you MUST use the web_search tool.
-If a query has multiple aspects (like the example above), use MULTIPLE SEARCHES to be comprehensive.
+However, if you have already performed searches and received results, do NOT repeat the same searches.
 
-EXAMPLE: For the user's query about AI developments in 2024, you should use multiple searches:
-1. Search for major AI model releases
-2. Search for AI safety developments  
-3. Search for recent research breakthroughs
-4. Optionally summarize the combined results
+SEARCH STRATEGY:
+1. First, check if you have already searched for this information in the conversation
+2. If you have search results already, use them to provide a comprehensive answer
+3. Only search again if you need different/additional types of information
+4. For multi-aspect queries, you may use MULTIPLE TARGETED SEARCHES, but avoid repetition
+
+EXAMPLE: For a user query about "AI developments in 2024":
+- First search: "Latest AI developments 2024 major model releases research breakthroughs"
+- If the results cover the topic comprehensively, provide your answer based on those results
+- Only search again if you need more specific details on a particular aspect not covered
 """
             )
 

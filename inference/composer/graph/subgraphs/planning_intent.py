@@ -326,7 +326,6 @@ def get_planning_intent_subgraph():
                 user_id="system",
                 conversation_id=0,
             ),
-            priority=PipelinePriority.MEDIUM,
         )
         
         planning_intent_subgraph = PlanningIntentSubgraph(classifier_agent, pipeline_factory)

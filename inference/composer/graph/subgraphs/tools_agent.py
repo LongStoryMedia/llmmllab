@@ -213,8 +213,23 @@ class ToolsAgentSubgraph:
                         logger.info(f"🔀 Subgraph: Tool limit reached - too many recent tool calls ({recent_tool_calls})")
                         return "__end__"
                     
-                    # Rule 4: Planning middleware - allow more calls of same type (natural for web search)
-                    if len(tool_call_types) == 1 and total_tool_calls >= 8:
+                    # Rule 4: Web search result availability check
+                    if "web_search" in tool_call_types:
+                        # Check if we already have successful web search results
+                        web_search_results_count = 0
+                        for msg in messages:
+                            if isinstance(msg, ToolMessage) and "Web search completed successfully" in str(msg.content):
+                                web_search_results_count += 1
+                        
+                        # If we have multiple successful searches and agent wants to search again, check for redundancy
+                        if web_search_results_count >= 2 and ai_with_tools_count >= 3:
+                            logger.info(f"🔀 Subgraph: Web search results already available ({web_search_results_count} successful searches), encouraging synthesis instead of more searches")
+                            # Don't immediately end, but make this the final tool iteration
+                            if ai_with_tools_count >= 4:
+                                return "__end__"
+                    
+                    # Rule 5: Planning middleware - allow more calls of same type but with limits
+                    if len(tool_call_types) == 1 and total_tool_calls >= 10:
                         logger.info(f"🔀 Subgraph: Planning limit - too many calls of same tool type ({list(tool_call_types)})")
                         return "__end__"
                     
