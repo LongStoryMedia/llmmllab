@@ -34,7 +34,7 @@ from utils.model_profile import get_model_profile
 from utils.logging import llmmllogger
 
 
-# Single memory retrieval tool using Command pattern with strong typing
+# Single memory retrieval tool using ToolRuntime pattern with strong typing
 @tool
 async def memory_retrieval(
     query: str,

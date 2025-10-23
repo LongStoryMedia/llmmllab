@@ -23,6 +23,7 @@ Architecture:
 
 from typing import Dict, List, Any, Optional, Literal
 from typing_extensions import TypedDict, Annotated
+from dataclasses import dataclass
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
 from langchain_core.tools import BaseTool
@@ -46,6 +47,16 @@ from runner import PipelineFactory
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="ToolsAgentSubgraph")
+
+
+@dataclass
+class ToolsContext:
+    """Context schema for tools runtime - provides state access for ToolRuntime injection."""
+    state: ToolsState
+
+    def __getitem__(self, key: str) -> Any:
+        """Allow dict-like access to state for compatibility."""
+        return getattr(self.state, key, None)
 
 
 class ToolsAgentSubgraph:
@@ -129,7 +140,8 @@ class ToolsAgentSubgraph:
         """Build the complete agent subgraph using proper dependency injection."""
         try:
             # Build graph with StateGraph pattern like main builder
-            builder = StateGraph(ToolsState)
+            # Add context_schema to enable ToolRuntime context propagation to subgraphs
+            builder = StateGraph(ToolsState, context_schema=ToolsContext)
 
             # Add chat agent node - will be created at runtime with proper context
             builder.add_node("chat_agent", self._chat_agent_wrapper)

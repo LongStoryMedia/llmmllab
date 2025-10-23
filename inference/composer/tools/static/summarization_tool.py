@@ -29,7 +29,7 @@ from utils.model_profile import get_model_profile
 from utils.logging import llmmllogger
 
 
-# Single summarization tool using Command pattern with strong typing
+# Single summarization tool using ToolRuntime pattern with strong typing
 @tool
 async def summarization(
     content: str,

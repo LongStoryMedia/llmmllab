@@ -8,13 +8,8 @@ for proper LangGraph integration.
 from datetime import datetime
 
 from langchain_core.tools import tool
-from langchain.tools import ToolRuntime
-
-
 @tool
-async def get_current_date(
-    runtime: ToolRuntime,
-) -> str:
+async def get_current_date() -> str:
     """
     Get the current date in ISO format.
 

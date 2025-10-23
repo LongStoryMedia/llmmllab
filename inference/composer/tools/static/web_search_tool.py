@@ -173,7 +173,7 @@ async def web_search(
     logger = llmmllogger.logger.bind(component="WebSearch")
 
     try:
-        # Access state through runtime (tool_call_id will be handled by ToolNode)
+        # Access state through runtime (subgraph context propagation should work now)
         state = runtime.state
 
         # Get user_config from state - fallback to default if not available
