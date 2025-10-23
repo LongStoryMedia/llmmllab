@@ -20,6 +20,7 @@ from models import (
     MessageContentType,
     CircuitBreakerConfig,
     NodeMetadata,
+    ToolExecutionResult,
 )
 from utils.message import extract_message_text
 from composer.utils.conversion import (
@@ -125,9 +126,19 @@ class ChatAgent(BaseAgent[ChatResponse]):
                     if content_text:
                         final_content += content_text
 
-                # Collect tool calls
-                if chunk.message and hasattr(chunk.message, 'tool_calls') and chunk.message.tool_calls:
-                    tool_calls.extend(chunk.message.tool_calls)
+                # Collect tool calls from message content
+                if chunk.message and chunk.message.content:
+                    for content in chunk.message.content:
+                        if content.type == MessageContentType.TOOL_CALL:
+                            # Extract tool call data from content
+                            if hasattr(content, 'text') and content.text:
+                                try:
+                                    import json
+                                    tool_call_data = json.loads(content.text)
+                                    tool_calls.append(tool_call_data)
+                                except (json.JSONDecodeError, AttributeError):
+                                    # If not JSON, skip this content item
+                                    pass
 
             self.logger.info(
                 "Streaming completion with metadata finished",
@@ -137,21 +148,48 @@ class ChatAgent(BaseAgent[ChatResponse]):
             )
 
             # Create final response from accumulated content
+            content_items = []
+            if final_content:
+                content_items.append(MessageContent(type=MessageContentType.TEXT, text=final_content))
+            
+            # Add tool calls as content items if present
+            for tool_call in tool_calls:
+                try:
+                    import json
+                    tool_call_text = json.dumps(tool_call)
+                    content_items.append(MessageContent(type=MessageContentType.TOOL_CALL, text=tool_call_text))
+                except (TypeError, ValueError):
+                    # Skip invalid tool calls
+                    pass
+                    
             final_message = Message(
                 role=MessageRole.ASSISTANT,
-                content=(
-                    [MessageContent(type=MessageContentType.TEXT, text=final_content)]
-                    if final_content
-                    else []
-                ),
-                tool_calls=tool_calls if tool_calls else None,
+                content=content_items,
             )
 
+            # Convert tool calls to ToolExecutionResult objects if present
+            tool_execution_results = []
+            for tool_call in tool_calls:
+                try:
+                    # Convert tool call dict to ToolExecutionResult
+                    if isinstance(tool_call, dict):
+                        tool_result = ToolExecutionResult(
+                            tool_name=tool_call.get('name', 'unknown'),
+                            success=True,  # Assume success if we got this far
+                            args=tool_call.get('args', {}),
+                            result_data=tool_call.get('result', {}),
+                            execution_id=tool_call.get('id', None)
+                        )
+                        tool_execution_results.append(tool_result)
+                except Exception as e:
+                    self.logger.warning(f"Failed to convert tool call to ToolExecutionResult: {e}")
+                    
             return ChatResponse(
                 done=True,
                 message=final_message,
                 finish_reason="stop",
                 created_at=datetime.now(timezone.utc),
+                tool_calls=tool_execution_results if tool_execution_results else None,
             )
 
         except Exception as e:
