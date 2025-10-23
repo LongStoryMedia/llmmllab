@@ -53,11 +53,12 @@ class ToolExecutorNode:
                 )
                 return state
 
+            tool_calls = getattr(last_message, "tool_calls", [])
             self.logger.info(
                 "Delegating tool execution to subgraph",
                 user_id=getattr(state, "user_id", "unknown"),
-                tool_count=len(last_message.tool_calls),
-                tools=[call.get("name", "unknown") for call in last_message.tool_calls],
+                tool_count=len(tool_calls),
+                tools=[call.get("name", "unknown") for call in tool_calls],
             )
 
             # Execute tools via subgraph

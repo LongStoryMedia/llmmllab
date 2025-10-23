@@ -126,7 +126,7 @@ class ChatAgent(BaseAgent[ChatResponse]):
                         final_content += content_text
 
                 # Collect tool calls
-                if chunk.message and chunk.message.tool_calls:
+                if chunk.message and hasattr(chunk.message, 'tool_calls') and chunk.message.tool_calls:
                     tool_calls.extend(chunk.message.tool_calls)
 
             self.logger.info(
