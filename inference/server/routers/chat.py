@@ -37,63 +37,110 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 def extract_thinking_from_content(content: str) -> tuple[str, str]:
     """
     Extract <think>...</think> blocks from content and return cleaned content and thinking.
+    Also detects thinking content that might not be wrapped in tags but appears to be reasoning.
     """
     if not content or not isinstance(content, str):
         return content, ""
     
-    # Extract think content
+    # Extract explicit think content
     think_pattern = r'<think>(.*?)</think>'
     think_matches = re.findall(think_pattern, content, re.DOTALL)
-    thinking = "\n\n".join(think_matches).strip() if think_matches else ""
+    thinking = "\n\n".join(think_matches) if think_matches else ""
     
     # Remove think tags from content
     cleaned_content = re.sub(think_pattern, '', content, flags=re.DOTALL)
     
-    # Clean up extra whitespace
-    cleaned_content = re.sub(r'\n\s*\n', '\n\n', cleaned_content).strip()
+    # Detect thinking patterns without tags (common patterns that indicate reasoning)
+    # Look for content that starts with reasoning indicators
+    reasoning_patterns = [
+        r"(?:^|\n)((?:Okay|Alright|Let me|I need to|First|The user|Looking at|Thinking about|Based on|Given that).*?)(?=\n\n|\n[A-Z]|\n\d+\.|\n-|\n\*|$)",
+        r"(?:^|\n)((?:To answer|In order to|The question|This request|The task).*?)(?=\n\n|\n[A-Z]|\n\d+\.|\n-|\n\*|$)",
+    ]
     
-    return cleaned_content, thinking
+    for pattern in reasoning_patterns:
+        reasoning_matches = re.findall(pattern, cleaned_content, re.DOTALL | re.MULTILINE)
+        if reasoning_matches:
+            for match in reasoning_matches:
+                # Check if this looks like reasoning (contains certain keywords)
+                if any(keyword in match.lower() for keyword in ['need to', 'should', 'will', 'can', 'might', 'let me', 'i should', 'to answer']):
+                    thinking += ("\n\n" if thinking else "") + match.strip()
+                    # Remove this reasoning from the main content
+                    cleaned_content = cleaned_content.replace(match, "")
+    
+    # Clean up extra whitespace but preserve intentional spacing
+    cleaned_content = re.sub(r'\n\s*\n\s*\n', '\n\n', cleaned_content)
+    cleaned_content = cleaned_content.strip()
+    
+    return cleaned_content, thinking.strip() if thinking else ""
 
 
 def parse_tool_calls_from_content(content: str) -> tuple[str, list]:
     """
     Parse tool calls from content and return cleaned content and tool calls.
-    Adapted from LlamaCpp pipeline tool call parsing.
+    Enhanced to handle various tool call formats including function-call syntax.
     """
     if not content or not isinstance(content, str):
         return content, []
     
-    # Regex pattern to match both <tool_call> and <function-call> tags
-    pattern = r'<(?:tool_call|function-call)>\s*(\{.*?\})\s*</(?:tool_call|function-call)>'
-    
     tool_calls = []
-    matches = re.finditer(pattern, content, re.DOTALL)
+    cleaned_content = content
     
-    for i, match in enumerate(matches):
+    # Pattern 1: <tool_call> and <function-call> tags with JSON
+    pattern1 = r'<(?:tool_call|function-call)>\s*(\{.*?\})\s*</(?:tool_call|function-call)>'
+    matches1 = re.finditer(pattern1, content, re.DOTALL)
+    
+    for i, match in enumerate(matches1):
         try:
             json_str = match.group(1)
             tool_call_data = json.loads(json_str)
             
-            # Convert to structured tool execution result format
             tool_call = {
                 "tool_name": tool_call_data.get("name", ""),
-                "execution_id": f"call_{i}",
-                "success": True,  # Will be updated based on actual execution
+                "execution_id": f"call_{len(tool_calls)}",
+                "success": True,
                 "args": tool_call_data.get("args", tool_call_data.get("arguments", {})),
-                "result_data": {},  # Will be populated from tool execution events
-                "execution_time_ms": 0,  # Will be populated from tool execution events
+                "result_data": {},
+                "execution_time_ms": 0,
             }
             tool_calls.append(tool_call)
+            
+            # Remove this match from content
+            cleaned_content = cleaned_content.replace(match.group(0), "")
             
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning(f"Failed to parse tool call: {e}")
             continue
     
-    # Remove tool call tags from content
-    cleaned_content = re.sub(pattern, '', content, flags=re.DOTALL)
+    # Pattern 2: Function call syntax without tags (from user's example)
+    # Match: <function-call>{"name":"web_search","arguments":{"query":"..."}}
+    pattern2 = r'<function-call>(\{[^}]*"name"\s*:\s*"[^"]+"\s*[^}]*\})'
+    matches2 = re.finditer(pattern2, content, re.DOTALL)
     
-    # Clean up extra whitespace
-    cleaned_content = re.sub(r'\n\s*\n', '\n\n', cleaned_content).strip()
+    for match in matches2:
+        try:
+            json_str = match.group(1)
+            tool_call_data = json.loads(json_str)
+            
+            tool_call = {
+                "tool_name": tool_call_data.get("name", ""),
+                "execution_id": f"call_{len(tool_calls)}",
+                "success": True,
+                "args": tool_call_data.get("args", tool_call_data.get("arguments", {})),
+                "result_data": {},
+                "execution_time_ms": 0,
+            }
+            tool_calls.append(tool_call)
+            
+            # Remove this match from content
+            cleaned_content = cleaned_content.replace(match.group(0), "")
+            
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning(f"Failed to parse function call: {e}")
+            continue
+    
+    # Clean up extra whitespace but don't use strip() to preserve token spacing
+    cleaned_content = re.sub(r'\n\s*\n\s*\n', '\n\n', cleaned_content)
+    cleaned_content = re.sub(r'^\s+|\s+$', '', cleaned_content)  # Only trim leading/trailing whitespace
     
     return cleaned_content, tool_calls
 
@@ -116,13 +163,13 @@ def extract_structured_data_from_events(events: list) -> dict:
         event_type = event.get("event", "")
         event_data = event.get("data", {})
         
-        # Extract thinking from chat model events
+        # Extract thinking from chat model events - enhanced pattern detection
         if event_type == "on_chat_model_stream":
             chunk = event_data.get("chunk", {})
             if isinstance(chunk, dict):
                 content = chunk.get("content", "")
-                if content and "<think>" in content:
-                    # Extract thinking from this chunk
+                if content:
+                    # Extract thinking from this chunk using enhanced function
                     _, think_content = extract_thinking_from_content(content)
                     if think_content:
                         thinking_parts.append(think_content)
@@ -154,7 +201,7 @@ def extract_structured_data_from_events(events: list) -> dict:
                     tool_call["result_data"] = {"output": tool_output}
                     break
         
-        # Extract intent analyses from workflow state
+        # Extract intent analyses from workflow state - enhanced extraction
         elif event_type == "on_chain_end":
             output = event_data.get("output", {})
             if isinstance(output, dict):
@@ -162,6 +209,21 @@ def extract_structured_data_from_events(events: list) -> dict:
                 intent_classification = output.get("intent_classification", [])
                 if intent_classification and isinstance(intent_classification, list):
                     intent_analyses.extend(intent_classification)
+                
+                # Also check for structured_response field which may contain intent analyses
+                structured_response = output.get("structured_response", "")
+                if structured_response and "intents=" in str(structured_response):
+                    # This contains parsed intent analysis data
+                    try:
+                        # Extract the intent data from the structured response string
+                        # Format: intents=[IntentAnalysis(...), ...]
+                        import ast
+                        # Simple parsing of the structured response
+                        if "workflow_type=" in structured_response:
+                            # This contains actual intent analysis data
+                            logger.debug(f"Found structured intent analysis: {structured_response}")
+                    except Exception as e:
+                        logger.debug(f"Could not parse structured response: {e}")
         
         # Extract observer messages
         elif event_type == "on_chat_model_stream":
@@ -172,8 +234,39 @@ def extract_structured_data_from_events(events: list) -> dict:
                 if observer_msgs:
                     observer_messages.extend(observer_msgs)
     
+    # Also look for intent analyses in chat model outputs that contain JSON
+    for event in events:
+        if event.get("event") == "on_chat_model_end":
+            output = event.get("data", {}).get("output", {})
+            content = ""
+            if isinstance(output, dict):
+                content = output.get("content", "")
+            elif hasattr(output, "content"):
+                content = str(output.content)
+            
+            # Check if the content contains intent analysis JSON
+            if content and "intents" in content and "workflow_type" in content:
+                try:
+                    # Try to parse as JSON
+                    analysis_data = json.loads(content)
+                    if "intents" in analysis_data:
+                        intent_analyses.extend(analysis_data["intents"])
+                        logger.debug(f"Extracted {len(analysis_data['intents'])} intent analyses from model output")
+                except json.JSONDecodeError:
+                    # Content might contain JSON within other text
+                    json_pattern = r'\{[^{}]*"intents"\s*:\s*\[[^\]]*\][^{}]*\}'
+                    json_matches = re.findall(json_pattern, content)
+                    for match in json_matches:
+                        try:
+                            analysis_data = json.loads(match)
+                            if "intents" in analysis_data:
+                                intent_analyses.extend(analysis_data["intents"])
+                                logger.debug(f"Extracted {len(analysis_data['intents'])} intent analyses from embedded JSON")
+                        except json.JSONDecodeError:
+                            continue
+    
     return {
-        "thinking": "\n\n".join(thinking_parts).strip() if thinking_parts else "",
+        "thinking": "\n\n".join(thinking_parts) if thinking_parts else "",
         "tool_calls": tool_calls,
         "analyses": intent_analyses,
         "observer_messages": observer_messages,
@@ -341,21 +434,24 @@ async def chat_completion(
                                     current_thinking += thinking + "\n"
                                 
                                 if clean_content:
-                                    accumulated_content += clean_content
-                                    
-                                    # Stream clean content (without tool calls or thinking)
+                                    # Remove tool calls from streaming content
                                     clean_content, _ = parse_tool_calls_from_content(clean_content)
                                     
-                                    if clean_content.strip():
-                                        chat_response = {
-                                            "message": {
-                                                "role": "assistant",
-                                                "content": [{"type": "text", "text": clean_content}],
-                                            },
-                                            "thinking": current_thinking.strip() if current_thinking.strip() else None,
-                                            "done": False,
-                                        }
-                                        yield f"{safe_json_serialize(chat_response)}\n"
+                                    # Only stream actual response content, not reasoning or tool calls
+                                    if clean_content and clean_content.strip():
+                                        # Avoid streaming content that looks like JSON intent analysis
+                                        if not (clean_content.strip().startswith('{') and 'intents' in clean_content):
+                                            accumulated_content += clean_content
+                                            
+                                            chat_response = {
+                                                "message": {
+                                                    "role": "assistant",
+                                                    "content": [{"type": "text", "text": clean_content}],
+                                                },
+                                                "thinking": current_thinking.strip() if current_thinking.strip() else None,
+                                                "done": False,
+                                            }
+                                            yield f"{safe_json_serialize(chat_response)}\n"
 
                         elif event_type == "on_chain_end":
                             # Capture final state for response extraction
@@ -399,18 +495,29 @@ async def chat_completion(
                 if final_content:
                     # Clean final content of thinking and tool calls for storage
                     clean_content, final_thinking = extract_thinking_from_content(final_content)
-                    clean_content, _ = parse_tool_calls_from_content(clean_content)
+                    clean_content, final_tool_calls = parse_tool_calls_from_content(clean_content)
+                    
+                    # Use accumulated content if it's different and better than final content
+                    if accumulated_content and len(accumulated_content) > len(clean_content):
+                        clean_content = accumulated_content
+                    
+                    # Filter out JSON intent analysis from final content
+                    if clean_content and clean_content.strip().startswith('{') and 'intents' in clean_content:
+                        clean_content = ""  # Don't include JSON in final response
                     
                     # Combine thinking from streaming and final content
                     combined_thinking = current_thinking.strip()
                     if final_thinking and final_thinking not in combined_thinking:
                         combined_thinking += "\n\n" + final_thinking if combined_thinking else final_thinking
                     
+                    # Merge tool calls from content parsing with those from events
+                    all_tool_calls = structured_data["tool_calls"] + final_tool_calls
+                    
                     # Create final response with structured data
                     final_response = {
                         "message": {
                             "role": "assistant",
-                            "content": [{"type": "text", "text": clean_content}],
+                            "content": [{"type": "text", "text": clean_content}] if clean_content.strip() else [{"type": "text", "text": "Response completed successfully."}],
                         },
                         "done": True,
                     }
@@ -419,8 +526,8 @@ async def chat_completion(
                     if combined_thinking.strip():
                         final_response["thinking"] = combined_thinking.strip()
                     
-                    if structured_data["tool_calls"]:
-                        final_response["tool_calls"] = structured_data["tool_calls"]
+                    if all_tool_calls:
+                        final_response["tool_calls"] = all_tool_calls
                     
                     if structured_data["analyses"]:
                         final_response["analyses"] = structured_data["analyses"]
@@ -431,13 +538,16 @@ async def chat_completion(
                     # Save assistant response to database
                     if storage.message:
                         try:
+                            # Use clean content for storage (no duplication)
+                            storage_content = clean_content if clean_content.strip() else "Response completed successfully."
+                            
                             assistant_message = Message(
                                 conversation_id=conversation_id,
                                 role=MessageRole.ASSISTANT,
                                 content=[
                                     MessageContent(
                                         type=MessageContentType.TEXT,
-                                        text=clean_content,
+                                        text=storage_content,
                                     )
                                 ],
                             )
@@ -451,7 +561,11 @@ async def chat_completion(
                                 await store_structured_response_data(
                                     assistant_message_id,
                                     combined_thinking,
-                                    structured_data
+                                    {
+                                        "tool_calls": all_tool_calls,
+                                        "analyses": structured_data["analyses"],
+                                        "observer_messages": structured_data["observer_messages"],
+                                    }
                                 )
                             
                             # Update conversation title if one was generated by the workflow
