@@ -44,20 +44,22 @@ class AnalysisStorage:
             
         try:
             async with self.typed_pool.acquire() as conn:
-                row = await conn.fetchrow(
-                    self.get_query("analysis.add_analysis"),
-                    message_id,
-                    analysis_data,
-                    created_at
-                )
-                
-                if row:
-                    analysis_id = row["id"]
-                    self.logger.info(f"Added analysis {analysis_id} for message {message_id}")
-                    return analysis_id
-                else:
-                    self.logger.error(f"Failed to add analysis for message {message_id}")
-                    return None
+                    import json
+                    analysis_json = json.dumps(analysis_data) if isinstance(analysis_data, dict) else analysis_data
+                    row = await conn.fetchrow(
+                        self.get_query("analysis.add_analysis"),
+                        message_id,
+                        analysis_json,
+                        created_at
+                    )
+                    
+                    if row:
+                        analysis_id = row["id"]
+                        self.logger.info(f"Added analysis {analysis_id} for message {message_id}")
+                        return analysis_id
+                    else:
+                        self.logger.error(f"Failed to add analysis for message {message_id}")
+                        return None
                     
         except Exception as e:
             self.logger.error(f"Error adding analysis for message {message_id}: {e}")

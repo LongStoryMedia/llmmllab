@@ -44,10 +44,12 @@ class ToolCallStorage:
             
         try:
             async with self.typed_pool.acquire() as conn:
+                import json
+                tool_json = json.dumps(tool_data) if isinstance(tool_data, dict) else tool_data
                 row = await conn.fetchrow(
                     self.get_query("tool_call.add_tool_call"),
                     message_id,
-                    tool_data,
+                    tool_json,
                     created_at
                 )
                 

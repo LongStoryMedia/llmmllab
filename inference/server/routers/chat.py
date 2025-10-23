@@ -180,6 +180,90 @@ def extract_structured_data_from_events(events: list) -> dict:
     }
 
 
+async def store_structured_response_data(
+    message_id: int,
+    thinking_content: str,
+    structured_data: dict
+) -> None:
+    """
+    Store structured response data (thoughts, analyses, tool_calls) in the database.
+    
+    Args:
+        message_id: The ID of the assistant message
+        thinking_content: The combined thinking/reasoning content
+        structured_data: Dictionary containing tool_calls and analyses
+    """
+    try:
+        # Store thinking content if present
+        if thinking_content and thinking_content.strip():
+            try:
+                thought_service = getattr(storage, 'thought', None)
+                if thought_service:
+                    thought_id = await thought_service.add_thought(
+                        message_id=message_id,
+                        text=thinking_content.strip()
+                    )
+                    if thought_id:
+                        logger.debug(f"Stored thought {thought_id} for message {message_id}")
+                    else:
+                        logger.warning(f"Failed to store thought for message {message_id}")
+            except Exception as e:
+                logger.error(f"Error storing thought for message {message_id}: {e}")
+        
+        # Store intent analyses if present
+        analyses = structured_data.get("analyses", [])
+        if analyses:
+            try:
+                analysis_service = getattr(storage, 'analysis', None)
+                if analysis_service:
+                    for analysis in analyses:
+                        try:
+                            # Convert analysis to JSON format for storage
+                            analysis_data = analysis if isinstance(analysis, dict) else {"analysis": str(analysis)}
+                            
+                            analysis_id = await analysis_service.add_analysis(
+                                message_id=message_id,
+                                analysis_data=analysis_data
+                            )
+                            if analysis_id:
+                                logger.debug(f"Stored analysis {analysis_id} for message {message_id}")
+                            else:
+                                logger.warning(f"Failed to store analysis for message {message_id}")
+                        except Exception as e:
+                            logger.error(f"Error storing analysis for message {message_id}: {e}")
+            except Exception as e:
+                logger.error(f"Error accessing analysis service: {e}")
+        
+        # Store tool calls if present
+        tool_calls = structured_data.get("tool_calls", [])
+        if tool_calls:
+            try:
+                tool_call_service = getattr(storage, 'tool_call', None)
+                if tool_call_service:
+                    for tool_call in tool_calls:
+                        try:
+                            # Ensure tool_call is in proper format for storage
+                            tool_data = tool_call if isinstance(tool_call, dict) else {"tool_call": str(tool_call)}
+                            
+                            tool_call_id = await tool_call_service.add_tool_call(
+                                message_id=message_id,
+                                tool_data=tool_data
+                            )
+                            if tool_call_id:
+                                logger.debug(f"Stored tool call {tool_call_id} for message {message_id}")
+                            else:
+                                logger.warning(f"Failed to store tool call for message {message_id}")
+                        except Exception as e:
+                            logger.error(f"Error storing tool call for message {message_id}: {e}")
+            except Exception as e:
+                logger.error(f"Error accessing tool call service: {e}")
+                    
+        logger.info(f"Structured response data stored for message {message_id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to store structured response data for message {message_id}: {e}")
+
+
 @router.post("/completions", response_model=ChatResponse)
 async def chat_completion(
     msg: Message,
@@ -357,10 +441,19 @@ async def chat_completion(
                                     )
                                 ],
                             )
-                            await storage.message.add_message(assistant_message)
+                            assistant_message_id = await storage.message.add_message(assistant_message)
                             logger.debug(
                                 f"Assistant response stored for conversation {conversation_id}"
                             )
+                            
+                            # Store structured data in separate tables if message was saved successfully
+                            if assistant_message_id:
+                                await store_structured_response_data(
+                                    assistant_message_id,
+                                    combined_thinking,
+                                    structured_data
+                                )
+                            
                         except Exception as storage_error:
                             logger.warning(
                                 f"Failed to store assistant response: {storage_error}"

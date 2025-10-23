@@ -1,6 +1,5 @@
 -- Get tool calls by message ID
-SELECT id, message_id, tool_name, execution_id, success, args, result_data,
-       error_message, execution_time_ms, resource_usage, created_at
+SELECT id, message_id, tool_data, created_at
 FROM tool_calls
 WHERE message_id = $1
 ORDER BY created_at ASC;

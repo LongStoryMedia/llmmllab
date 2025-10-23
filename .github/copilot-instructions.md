@@ -7,6 +7,7 @@ ALWAYS sync code after making changes.
 NEVER leave the kubernetes pod in a crash loop or bad state.
 NEVER use complex nested commands; use simple commands or scripts instead.
 NEVER leave code that didn't help solve the problem, or create the feature. (cleanup)
+AVOID using things like `getattr` or `hasattr` in favor of strong typing and explicit code.
 
 ## Architecture Overview
 
@@ -181,3 +182,4 @@ ALWAYS sync code after making changes.
 NEVER leave the kubernetes pod in a crash loop or bad state.
 NEVER use complex nested commands; use simple commands or scripts instead.
 NEVER leave code that didn't help solve the problem, or create the feature. (cleanup)
+AVOID using things like `getattr` or `hasattr` in favor of strong typing and explicit code.

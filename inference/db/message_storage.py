@@ -35,7 +35,7 @@ class MessageStorage:
 
             for c in message.content:
                 await conn.execute(
-                    self.get_query("message.add_content"),
+                    self.get_query("message_content.add_content"),
                     message_id,
                     c.type,
                     c.text,
@@ -198,7 +198,7 @@ class MessageStorage:
             async with conn.transaction():
                 # Delete message contents first (child table)
                 await conn.execute(
-                    self.get_query("message.delete_message_contents"), message_id
+                    self.get_query("message_content.delete_message_contents"), message_id
                 )
                 # Then delete the message (parent table)
                 await conn.execute(
