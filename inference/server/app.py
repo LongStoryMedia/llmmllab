@@ -54,6 +54,7 @@ from server.routers import (
     static,
     websockets,
     users,
+    todos,
 )
 from server.middleware.auth import AuthMiddleware
 from server.config import API_VERSION
@@ -414,6 +415,7 @@ app.include_router(config.router)
 app.include_router(static.router)
 app.include_router(websockets.router)
 app.include_router(users.router)
+app.include_router(todos.router)
 
 # Import and include the internal router
 from server.routers import internal
@@ -432,6 +434,7 @@ app.include_router(config.router, prefix=f"/{version}")
 app.include_router(static.router, prefix=f"/{version}")
 app.include_router(websockets.router, prefix=f"/{version}")
 app.include_router(users.router, prefix=f"/{version}")
+app.include_router(todos.router, prefix=f"/{version}")
 # Internal router is intentionally not versioned to maintain isolation
 # app.include_router(internal.router, prefix=f"/{version}")
 

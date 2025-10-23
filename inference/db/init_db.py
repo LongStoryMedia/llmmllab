@@ -181,6 +181,13 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("tool_call.create_table", []),
                     ],
                 ),
+                # Step 13: Create todo tables
+                (
+                    "Creating todo tables",
+                    [
+                        ("todo.create_table", []),
+                    ],
+                ),
             ]
 
             # Execute all initialization steps

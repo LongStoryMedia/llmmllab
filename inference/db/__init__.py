@@ -22,6 +22,7 @@ from .dynamic_tool_storage import DynamicToolStorage
 from .thought_storage import ThoughtStorage
 from .analysis_storage import AnalysisStorage
 from .tool_call_storage import ToolCallStorage
+from .todo_storage import TodoStorage
 from .queries import get_query
 from typing import Optional, Protocol, Any, Callable, cast
 
@@ -53,6 +54,7 @@ class Storage:
         self.thought = None
         self.analysis = None
         self.tool_call = None
+        self.todo = None
         self.get_query = get_query
         self.initialized = False
 
@@ -90,6 +92,7 @@ class Storage:
             self.thought = ThoughtStorage(self.pool, get_query)
             self.analysis = AnalysisStorage(self.pool, get_query)
             self.tool_call = ToolCallStorage(self.pool, get_query)
+            self.todo = TodoStorage(self.pool, get_query)
 
             self.initialized = True
             logger.info("Storage components initialized successfully")
@@ -108,6 +111,7 @@ class Storage:
             self.thought = None
             self.analysis = None
             self.tool_call = None
+            self.todo = None
             self.initialized = False
 
             logger.error(f"Failed to initialize database: {e}")

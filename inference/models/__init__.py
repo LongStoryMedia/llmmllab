@@ -96,6 +96,7 @@ try:
     from . import summary_type
     from . import technical_domain
     from . import thought
+    from . import todo_item
     from . import tool
     from . import tool_analysis_request
     from . import tool_config
@@ -207,6 +208,7 @@ __all__ = [
     'summary_type',
     'technical_domain',
     'thought',
+    'todo_item',
     'tool',
     'tool_analysis_request',
     'tool_config',
@@ -320,6 +322,7 @@ __all__ = [
     'SummaryType',
     'TechnicalDomain',
     'Thought',
+    'TodoItem',
     'Tool',
     'ToolAnalysisRequest',
     'ToolConfig',
@@ -617,6 +620,9 @@ from .technical_domain import (
 )
 from .thought import (
     Thought,
+)
+from .todo_item import (
+    TodoItem,
 )
 from .tool import (
     Tool,
