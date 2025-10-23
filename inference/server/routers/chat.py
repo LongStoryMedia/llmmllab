@@ -406,6 +406,12 @@ async def chat_completion(
                 accumulated_content = ""
                 final_state = None
                 current_thinking = ""
+                
+                # State tracking for streaming
+                streaming_state = "content"  # "content", "thinking", "tool_call", "json_metadata"
+                current_tool_call = None
+                thinking_buffer = ""
+                tool_call_buffer = ""
 
                 # Execute workflow and stream events
                 async for event in composer.execute_workflow(
@@ -427,31 +433,161 @@ async def chat_completion(
                                 content = str(chunk.content)
 
                             if content:
-                                # Extract thinking and clean content for streaming
-                                clean_content, thinking = extract_thinking_from_content(content)
+                                # Accumulate all content for final processing
+                                accumulated_content += content
                                 
-                                if thinking:
-                                    current_thinking += thinking + "\n"
+                                # Process content chunk by chunk with state tracking
+                                content_to_process = content
                                 
-                                if clean_content:
-                                    # Remove tool calls from streaming content
-                                    clean_content, _ = parse_tool_calls_from_content(clean_content)
-                                    
-                                    # Only stream actual response content, not reasoning or tool calls
-                                    if clean_content and clean_content.strip():
-                                        # Avoid streaming content that looks like JSON intent analysis
-                                        if not (clean_content.strip().startswith('{') and 'intents' in clean_content):
-                                            accumulated_content += clean_content
+                                while content_to_process:
+                                    # Check for state transitions
+                                    if streaming_state == "content":
+                                        # Check for JSON metadata start
+                                        if content_to_process.strip().startswith('{') and '"intents"' in content_to_process:
+                                            streaming_state = "json_metadata"
+                                            continue
+                                        
+                                        # Check for thinking start
+                                        think_start = content_to_process.find('<think>')
+                                        if think_start >= 0:
+                                            # Stream any content before thinking
+                                            if think_start > 0:
+                                                before_think = content_to_process[:think_start]
+                                                if before_think.strip():
+                                                    chat_response = {
+                                                        "message": {
+                                                            "role": "assistant",
+                                                            "content": [{"type": "text", "text": before_think}],
+                                                        },
+                                                        "thinking": None,
+                                                        "done": False,
+                                                    }
+                                                    yield f"{safe_json_serialize(chat_response)}\n"
                                             
+                                            # Switch to thinking state
+                                            streaming_state = "thinking"
+                                            thinking_buffer = ""
+                                            content_to_process = content_to_process[think_start + 7:]  # Skip '<think>'
+                                            continue
+                                        
+                                        # Check for tool call start
+                                        tool_match = re.search(r'<(tool|function)[-_]?call>', content_to_process)
+                                        if tool_match:
+                                            # Stream any content before tool call
+                                            before_tool = content_to_process[:tool_match.start()]
+                                            if before_tool.strip():
+                                                chat_response = {
+                                                    "message": {
+                                                        "role": "assistant",
+                                                        "content": [{"type": "text", "text": before_tool}],
+                                                    },
+                                                    "thinking": None,
+                                                    "done": False,
+                                                }
+                                                yield f"{safe_json_serialize(chat_response)}\n"
+                                            
+                                            # Switch to tool call state
+                                            streaming_state = "tool_call"
+                                            tool_call_buffer = ""
+                                            current_tool_call = {"args": "", "processing": ""}
+                                            content_to_process = content_to_process[tool_match.end():]
+                                            continue
+                                        
+                                        # Regular content - stream it
+                                        if content_to_process.strip():
                                             chat_response = {
                                                 "message": {
                                                     "role": "assistant",
-                                                    "content": [{"type": "text", "text": clean_content}],
+                                                    "content": [{"type": "text", "text": content_to_process}],
                                                 },
-                                                "thinking": current_thinking.strip() if current_thinking.strip() else None,
+                                                "thinking": None,
                                                 "done": False,
                                             }
                                             yield f"{safe_json_serialize(chat_response)}\n"
+                                        break
+                                    
+                                    elif streaming_state == "thinking":
+                                        # Look for thinking end
+                                        think_end = content_to_process.find('</think>')
+                                        if think_end >= 0:
+                                            # Add content to thinking buffer
+                                            thinking_buffer += content_to_process[:think_end]
+                                            
+                                            # Stream thinking content
+                                            if thinking_buffer.strip():
+                                                thinking_response = {
+                                                    "message": {"role": "assistant", "content": []},
+                                                    "thinking": thinking_buffer.strip(),
+                                                    "done": False,
+                                                }
+                                                yield f"{safe_json_serialize(thinking_response)}\n"
+                                            
+                                            # Switch back to content state
+                                            streaming_state = "content"
+                                            content_to_process = content_to_process[think_end + 8:]  # Skip '</think>'
+                                            continue
+                                        else:
+                                            # Still in thinking, accumulate
+                                            thinking_buffer += content_to_process
+                                            break
+                                    
+                                    elif streaming_state == "tool_call":
+                                        # Look for tool call end
+                                        tool_end_match = re.search(r'</(tool|function)[-_]?call>', content_to_process)
+                                        if tool_end_match:
+                                            # Add to tool call buffer
+                                            tool_call_buffer += content_to_process[:tool_end_match.start()]
+                                            
+                                            # Parse tool call arguments
+                                            try:
+                                                tool_args = json.loads(tool_call_buffer.strip())
+                                                current_tool_call["args"] = tool_args
+                                                
+                                                # Stream tool call
+                                                tool_response = {
+                                                    "message": {"role": "assistant", "content": []},
+                                                    "thinking": None,
+                                                    "tool_calls": [{
+                                                        "tool_name": tool_args.get("name", "unknown"),
+                                                        "args": tool_args.get("args", tool_args.get("arguments", {})),
+                                                        "execution_id": f"call_{len(current_tool_call.get('calls', []))}"
+                                                    }],
+                                                    "done": False,
+                                                }
+                                                yield f"{safe_json_serialize(tool_response)}\n"
+                                            except json.JSONDecodeError:
+                                                logger.warning(f"Failed to parse tool call JSON: {tool_call_buffer}")
+                                            
+                                            # Switch back to content state (tool processing follows)
+                                            streaming_state = "content"
+                                            content_to_process = content_to_process[tool_end_match.end():]
+                                            continue
+                                        else:
+                                            # Still in tool call, accumulate
+                                            tool_call_buffer += content_to_process
+                                            break
+                                    
+                                    elif streaming_state == "json_metadata":
+                                        # Look for end of JSON block
+                                        brace_count = 0
+                                        json_end = -1
+                                        for i, char in enumerate(content_to_process):
+                                            if char == '{':
+                                                brace_count += 1
+                                            elif char == '}':
+                                                brace_count -= 1
+                                                if brace_count == 0:
+                                                    json_end = i + 1
+                                                    break
+                                        
+                                        if json_end > 0:
+                                            # Skip the JSON metadata
+                                            streaming_state = "content"
+                                            content_to_process = content_to_process[json_end:]
+                                            continue
+                                        else:
+                                            # Still in JSON, skip this chunk
+                                            break
 
                         elif event_type == "on_chain_end":
                             # Capture final state for response extraction
@@ -460,71 +596,68 @@ async def chat_completion(
                 # Extract structured data from all collected events
                 structured_data = extract_structured_data_from_events(all_events)
                 
-                # Extract final response from workflow state or accumulated content
-                final_content = ""
+                # Process the accumulated content to extract clean response
+                final_content = accumulated_content if accumulated_content else ""
                 
-                if final_state and isinstance(final_state, dict):
-                    messages = final_state.get("messages", [])
-                    if messages and isinstance(messages, list) and len(messages) > 0:
-                        # Get the last assistant message
-                        last_message = None
-                        for msg in reversed(messages):
-                            if isinstance(msg, dict):
-                                role = msg.get("type", "").lower()  # LangChain message type
-                                if role == "ai" or role == "assistant":
-                                    last_message = msg
-                                    break
-                            elif hasattr(msg, "type") and str(msg.type).lower() in [
-                                "ai",
-                                "aimessage",
-                            ]:
-                                last_message = msg
-                                break
-
-                        if last_message:
-                            # Extract content from LangChain message
-                            if isinstance(last_message, dict):
-                                final_content = last_message.get("content", "")
-                            elif hasattr(last_message, "content"):
-                                final_content = str(last_message.content)
-                
-                # Use accumulated content if no final state content
-                if not final_content and accumulated_content:
-                    final_content = accumulated_content
-
                 if final_content:
                     # Clean final content of thinking and tool calls for storage
                     clean_content, final_thinking = extract_thinking_from_content(final_content)
                     clean_content, final_tool_calls = parse_tool_calls_from_content(clean_content)
                     
-                    # Use accumulated content if it's different and better than final content
-                    if accumulated_content and len(accumulated_content) > len(clean_content):
-                        clean_content = accumulated_content
+                    # Remove JSON intent analysis from the beginning
+                    if clean_content.strip().startswith('{') and 'intents' in clean_content:
+                        # Find the end of the JSON block more carefully
+                        try:
+                            # Find the end of the JSON by matching braces
+                            brace_count = 0
+                            json_end = -1
+                            for i, char in enumerate(clean_content):
+                                if char == '{':
+                                    brace_count += 1
+                                elif char == '}':
+                                    brace_count -= 1
+                                    if brace_count == 0:
+                                        json_end = i + 1
+                                        break
+                            if json_end > 0:
+                                clean_content = clean_content[json_end:].strip()
+                        except:
+                            # If JSON parsing fails, try a simple regex
+                            clean_content = re.sub(r'^\s*\{.*?"intents".*?\].*?\}\s*', '', clean_content, flags=re.DOTALL)
                     
-                    # Filter out JSON intent analysis from final content
-                    if clean_content and clean_content.strip().startswith('{') and 'intents' in clean_content:
-                        clean_content = ""  # Don't include JSON in final response
+                    # Combine thinking from streaming state and final extraction
+                    combined_thinking = ""
+                    if thinking_buffer.strip():
+                        combined_thinking = thinking_buffer.strip()
+                    if final_thinking and final_thinking.strip():
+                        if combined_thinking:
+                            combined_thinking += "\n\n" + final_thinking
+                        else:
+                            combined_thinking = final_thinking
                     
-                    # Combine thinking from streaming and final content
+                    current_thinking = combined_thinking
+                    
+                    # Combine all thinking content
                     combined_thinking = current_thinking.strip()
-                    if final_thinking and final_thinking not in combined_thinking:
-                        combined_thinking += "\n\n" + final_thinking if combined_thinking else final_thinking
                     
                     # Merge tool calls from content parsing with those from events
                     all_tool_calls = structured_data["tool_calls"] + final_tool_calls
+                    
+                    # Ensure we have meaningful content for the final response
+                    final_text = clean_content.strip() if clean_content and clean_content.strip() else "Response completed successfully."
                     
                     # Create final response with structured data
                     final_response = {
                         "message": {
                             "role": "assistant",
-                            "content": [{"type": "text", "text": clean_content}] if clean_content.strip() else [{"type": "text", "text": "Response completed successfully."}],
+                            "content": [{"type": "text", "text": final_text}],
                         },
                         "done": True,
                     }
                     
-                    # Add structured data fields
-                    if combined_thinking.strip():
-                        final_response["thinking"] = combined_thinking.strip()
+                    # Add structured data fields only if they have content
+                    if combined_thinking:
+                        final_response["thinking"] = combined_thinking
                     
                     if all_tool_calls:
                         final_response["tool_calls"] = all_tool_calls
