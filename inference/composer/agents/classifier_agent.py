@@ -279,11 +279,14 @@ Title:"""
                     )
 
                 response.channels = self._node_metadata.model_dump()
-                return (
+                raw_title = (
                     extract_message_text(response.message)
                     if response and response.message
                     else ""
                 )
+                
+                # Extract clean title from the response, handling structured output
+                return self._extract_clean_title(raw_title)
 
         except Exception as e:
             self.logger.error(
@@ -291,3 +294,49 @@ Title:"""
             )
             # Provide fallback title instead of raising error
             return "Conversation"
+
+    def _extract_clean_title(self, raw_response: str) -> str:
+        """
+        Extract clean title from model response, handling structured output.
+        
+        Args:
+            raw_response: Raw model response that may contain thinking tags, markdown, etc.
+            
+        Returns:
+            str: Clean title string (2-6 words)
+        """
+        if not raw_response:
+            return "Conversation"
+            
+        # Remove thinking tags and their content
+        import re
+        cleaned = re.sub(r'<think>.*?</think>', '', raw_response, flags=re.DOTALL)
+        
+        # Remove markdown formatting
+        cleaned = re.sub(r'\*\*([^*]+)\*\*', r'\1', cleaned)  # Bold
+        cleaned = re.sub(r'\*([^*]+)\*', r'\1', cleaned)      # Italic
+        cleaned = re.sub(r'`([^`]+)`', r'\1', cleaned)        # Code
+        
+        # Remove common prefixes
+        cleaned = re.sub(r'^(Title:|Subject:|Topic:)\s*', '', cleaned, flags=re.IGNORECASE)
+        
+        # Clean up whitespace and line breaks
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        
+        # Remove quotes
+        cleaned = cleaned.strip('"\'')
+        
+        # Split into words and take reasonable length
+        words = cleaned.split()
+        if not words:
+            return "Conversation"
+            
+        # Take first 6 words maximum for title
+        title_words = words[:6]
+        title = ' '.join(title_words)
+        
+        # Fallback if empty or too short
+        if not title or title.isspace():
+            return "Conversation"
+            
+        return title

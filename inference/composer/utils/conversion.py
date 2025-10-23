@@ -65,7 +65,7 @@ def message_to_langchain_message(msg: Message) -> LangChainMessage:
     langchain_msg = LangChainMessage(
         content=content_text,
         type=message_type,
-        tool_calls=msg.tool_calls,
+        tool_calls=getattr(msg, "tool_calls", None),
     )
 
     logger.info(
