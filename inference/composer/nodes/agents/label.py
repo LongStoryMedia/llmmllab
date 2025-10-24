@@ -49,19 +49,43 @@ class TitleGenerationNode:
             Updated workflow state with title
         """
         try:
-            # Skip if title already exists (check progress_updates for title info)
-            title_exists = any(
-                "title" in str(update).lower()
-                for update in getattr(state, "progress_updates", [])
+            self.logger.info(
+                "TitleGenerationNode called",
+                extra={
+                    "user_id": getattr(state, "user_id", "unknown"),
+                    "existing_title": getattr(state, "title", None),
+                    "conversation_id": getattr(state, "conversation_id", None),
+                }
             )
-            if title_exists:
+            
+            # Primary check: Skip if title already exists in state
+            if hasattr(state, "title") and state.title and state.title.strip():
+                self.logger.info(
+                    "Title already exists, skipping generation",
+                    extra={"existing_title": state.title}
+                )
                 return state
 
+            # Secondary check: Look for any existing title in conversation context
+            # This prevents generating titles for conversations that already have them
+            if hasattr(state, "conversation_id") and state.conversation_id:
+                # For now, we'll rely on the primary check, but this could be extended
+                # to check the database for existing conversation titles
+                pass
+
+            self.logger.info("Generating new title - no existing title found")
             title = await self.classifier_agent.generate_title(
                 convert_langchain_messages_to_messages(state.messages)
             )
 
-            state.title = title
+            if title and title.strip():
+                self.logger.info(
+                    "Title generated successfully",
+                    extra={"title": title}
+                )
+                state.title = title
+            else:
+                self.logger.warning("Title generation returned empty result")
 
             return state
 

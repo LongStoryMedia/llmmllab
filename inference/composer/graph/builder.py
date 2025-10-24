@@ -397,9 +397,26 @@ class GraphBuilder:
                 },
             )
 
-            # 9. Linear flow after agent completion
+            # 9. Linear flow after agent completion with conditional title generation
+            def route_after_chat_summary(state: WorkflowState):
+                """Route after chat summary - conditionally generate title."""
+                # Check if title already exists
+                if hasattr(state, 'title') and state.title and state.title.strip():
+                    self.logger.info("🔀 Title already exists - skipping title generation")
+                    return "memory_creation"
+                else:
+                    self.logger.info("🔀 No title exists - routing to title generation")
+                    return "title_generation"
+            
             workflow.add_edge("search_summary", "chat_summary")
-            workflow.add_edge("chat_summary", "title_generation")
+            workflow.add_conditional_edges(
+                "chat_summary",
+                route_after_chat_summary,
+                {
+                    "title_generation": "title_generation", 
+                    "memory_creation": "memory_creation",
+                },
+            )
             workflow.add_edge("title_generation", "memory_creation")
 
             # 10. Memory storage -> End (both from dual-loop exit and normal flow)
