@@ -167,48 +167,48 @@ async def chat_completion(
                     logger.debug(f"Processing event: {event_type}, event_data: {event_data}")
 
                     # Process streaming events for immediate response
-                if event_type == "on_chat_model_stream":
-                    # Handle streaming tokens
-                    chunk = event.get("data", {}).get("chunk")
-                    if chunk:
-                        # Extract content from chunk  
-                        if hasattr(chunk, "content"):
-                            content = chunk.content
-                        elif isinstance(chunk, dict):
-                            content = chunk.get("content", "")
-                        else:
-                            content = str(chunk) if chunk else ""
-                        
-                        logger.debug(f"Stream content: '{content}'")
-                        
-                        if content:
-                            # Use streaming state manager to process chunk
-                            chat_response = streaming_state.process_chunk(content)
+                    if event_type == "on_chat_model_stream":
+                        # Handle streaming tokens
+                        chunk = event.get("data", {}).get("chunk")
+                        if chunk:
+                            # Extract content from chunk  
+                            if hasattr(chunk, "content"):
+                                content = chunk.content
+                            elif isinstance(chunk, dict):
+                                content = chunk.get("content", "")
+                            else:
+                                content = str(chunk) if chunk else ""
                             
-                            # Only yield if there's actual content to send
-                            if (chat_response.message and chat_response.message.content) or chat_response.thinking or chat_response.tool_calls:
-                                response_json = safe_json_serialize(chat_response.dict(exclude_none=True))
-                                yield f"{response_json}\n"
+                            logger.debug(f"Stream content: '{content}'")
                             
-                            # Let streaming state manage content accumulation
-                            # Don't duplicate accumulation here
+                            if content:
+                                # Use streaming state manager to process chunk
+                                chat_response = streaming_state.process_chunk(content)
+                                
+                                # Only yield if there's actual content to send
+                                if (chat_response.message and chat_response.message.content) or chat_response.thinking or chat_response.tool_calls:
+                                    response_json = safe_json_serialize(chat_response.dict(exclude_none=True))
+                                    yield f"{response_json}\n"
+                                
+                                # Let streaming state manage content accumulation
+                                # Don't duplicate accumulation here
 
-                elif event_type == "on_chat_model_end":
-                    # Skip this event to prevent duplicate processing
-                    # Content is already handled in streaming events
-                    logger.debug(f"Model end - skipping to prevent duplication")
-                    pass
-                    
-                elif event_type == "on_chain_end":
-                    # Capture final workflow data
-                    if isinstance(event_data, dict):
-                        output = event_data.get("output", {})
-                    else:
-                        output = getattr(event_data, "output", {})
+                    elif event_type == "on_chat_model_end":
+                        # Skip this event to prevent duplicate processing
+                        # Content is already handled in streaming events
+                        logger.debug(f"Model end - skipping to prevent duplication")
+                        pass
                         
-                    logger.debug(f"Chain end output: {output}")
-                    if output:
-                        final_response_data = output
+                    elif event_type == "on_chain_end":
+                        # Capture final workflow data
+                        if isinstance(event_data, dict):
+                            output = event_data.get("output", {})
+                        else:
+                            output = getattr(event_data, "output", {})
+                            
+                        logger.debug(f"Chain end output: {output}")
+                        if output:
+                            final_response_data = output
 
                 # Get final consolidated response from streaming state
                 final_response = streaming_state.get_final_response()
