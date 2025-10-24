@@ -24,6 +24,7 @@ from models import (
     MessageContentType,
     ChatResponse,
     Message,
+    ToolExecutionResult,
 )
 
 # Import composer interface and streaming state management
@@ -58,43 +59,22 @@ async def store_structured_response_data(
         if analyses:
             for analysis in analyses:
                 if isinstance(analysis, dict) and analysis:
-                    await storage.get_service(storage.intent_analysis).add_analysis(
-                        message_id=message_id,
-                        workflow_type=analysis.get("workflow_type", "general"),
-                        complexity_level=analysis.get("complexity_level", "SIMPLE"),
-                        required_capabilities=analysis.get("required_capabilities", []),
-                        domain_specificity=analysis.get("domain_specificity", 0.0),
-                        reusability_potential=analysis.get(
-                            "reusability_potential", 0.0
-                        ),
-                        confidence=analysis.get("confidence", 0.0),
-                        technical_domain=analysis.get("technical_domain"),
-                        response_format=analysis.get("response_format"),
-                        tool_complexity_score=analysis.get(
-                            "tool_complexity_score", 0.0
-                        ),
-                        computational_requirements=analysis.get(
-                            "computational_requirements", "LOW"
-                        ),
+                    await storage.get_service(storage.analysis).add_analysis(
+                        message_id=message_id, analysis_data=analysis
                     )
             logger.info(
                 f"Stored {len(analyses)} intent analyses for message {message_id}"
             )
-
         # Store tool calls if present
         tool_calls = structured_data.get("tool_calls", [])
         if tool_calls:
             for tool_call in tool_calls:
                 if isinstance(tool_call, dict) and tool_call.get("tool_name"):
+                    # Convert dict to ToolExecutionResult object
+                    tool_execution_result = ToolExecutionResult(**tool_call)
                     await storage.get_service(storage.tool_call).add_tool_call(
-                        message_id=message_id,
-                        tool_name=tool_call["tool_name"],
-                        execution_id=tool_call.get("execution_id", ""),
-                        success=tool_call.get("success", False),
-                        args=tool_call.get("args", {}),
-                        result_data=tool_call.get("result_data", {}),
-                        error_message=tool_call.get("error_message"),
-                        execution_time_ms=tool_call.get("execution_time_ms", 0.0),
+                        message_id=message_id, tool_execution_result=tool_execution_result
+                    )
                     )
             logger.info(
                 f"Stored {len(tool_calls)} tool execution results for message {message_id}"

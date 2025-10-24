@@ -99,12 +99,18 @@ async def initialize_database(connection_pool: Any) -> bool:
                     "Creating message content tables",
                     [
                         ("message_content.create_message_content_table", []),
-                        ("message_content.create_message_contents_hypertable", ["timescaledb"]),
+                        (
+                            "message_content.create_message_contents_hypertable",
+                            ["timescaledb"],
+                        ),
                         (
                             "message_content.message_contents_compression_policy",
                             ["timescaledb"],
                         ),
-                        ("message_content.message_contents_retention_policy", ["timescaledb"]),
+                        (
+                            "message_content.message_contents_retention_policy",
+                            ["timescaledb"],
+                        ),
                         (
                             "message_content.enable_message_contents_compression",
                             ["timescaledb"],

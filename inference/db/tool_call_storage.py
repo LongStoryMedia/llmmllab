@@ -47,22 +47,34 @@ class ToolCallStorage:
                 import json
 
                 # Convert optional dict fields to JSON strings
-                args_json = json.dumps(tool_execution_result.args) if tool_execution_result.args else None
-                result_data_json = json.dumps(tool_execution_result.result_data) if tool_execution_result.result_data else None
-                resource_usage_json = json.dumps(tool_execution_result.resource_usage.dict()) if tool_execution_result.resource_usage else None
+                args_json = (
+                    json.dumps(tool_execution_result.args)
+                    if tool_execution_result.args
+                    else None
+                )
+                result_data_json = (
+                    json.dumps(tool_execution_result.result_data)
+                    if tool_execution_result.result_data
+                    else None
+                )
+                resource_usage_json = (
+                    json.dumps(tool_execution_result.resource_usage.dict())
+                    if tool_execution_result.resource_usage
+                    else None
+                )
 
                 row = await conn.fetchrow(
                     self.get_query("tool_call.add_tool_call"),
-                    message_id,                                    # $1
-                    tool_execution_result.tool_name,              # $2
-                    tool_execution_result.execution_id,           # $3
-                    tool_execution_result.success,                # $4
-                    args_json,                                     # $5
-                    result_data_json,                             # $6
-                    tool_execution_result.error_message,          # $7
-                    tool_execution_result.execution_time_ms,      # $8
-                    resource_usage_json,                          # $9
-                    created_at,                                   # $10
+                    message_id,  # $1
+                    tool_execution_result.tool_name,  # $2
+                    tool_execution_result.execution_id,  # $3
+                    tool_execution_result.success,  # $4
+                    args_json,  # $5
+                    result_data_json,  # $6
+                    tool_execution_result.error_message,  # $7
+                    tool_execution_result.execution_time_ms,  # $8
+                    resource_usage_json,  # $9
+                    created_at,  # $10
                 )
 
                 if row:
@@ -102,23 +114,29 @@ class ToolCallStorage:
         try:
             # Convert legacy format to ToolExecutionResult
             tool_execution_result = ToolExecutionResult(
-                tool_name=tool_data.get('tool_name', 'unknown'),
-                execution_id=tool_data.get('execution_id'),
-                success=tool_data.get('success', False),
-                args=tool_data.get('args'),
-                result_data=tool_data.get('result_data'),
-                error_message=tool_data.get('error_message'),
-                execution_time_ms=tool_data.get('execution_time_ms'),
-                resource_usage=tool_data.get('resource_usage')
+                tool_name=tool_data.get("tool_name", "unknown"),
+                execution_id=tool_data.get("execution_id"),
+                success=tool_data.get("success", False),
+                args=tool_data.get("args"),
+                result_data=tool_data.get("result_data"),
+                error_message=tool_data.get("error_message"),
+                execution_time_ms=tool_data.get("execution_time_ms"),
+                resource_usage=tool_data.get("resource_usage"),
             )
-            
-            return await self.add_tool_call(message_id, tool_execution_result, created_at)
-            
+
+            return await self.add_tool_call(
+                message_id, tool_execution_result, created_at
+            )
+
         except Exception as e:
-            self.logger.error(f"Error converting legacy tool call for message {message_id}: {e}")
+            self.logger.error(
+                f"Error converting legacy tool call for message {message_id}: {e}"
+            )
             return None
 
-    async def get_tool_calls_by_message(self, message_id: int) -> List[ToolExecutionResult]:
+    async def get_tool_calls_by_message(
+        self, message_id: int
+    ) -> List[ToolExecutionResult]:
         """
         Retrieve all tool calls associated with a message.
 
@@ -139,8 +157,10 @@ class ToolCallStorage:
                     # Parse JSON fields back to dict/objects
                     args = row["args"] if row["args"] else None
                     result_data = row["result_data"] if row["result_data"] else None
-                    resource_usage = row["resource_usage"] if row["resource_usage"] else None
-                    
+                    resource_usage = (
+                        row["resource_usage"] if row["resource_usage"] else None
+                    )
+
                     tool_execution_result = ToolExecutionResult(
                         tool_name=row["tool_name"],
                         execution_id=row["execution_id"],
@@ -148,8 +168,12 @@ class ToolCallStorage:
                         args=args,
                         result_data=result_data,
                         error_message=row["error_message"],
-                        execution_time_ms=float(row["execution_time_ms"]) if row["execution_time_ms"] else None,
-                        resource_usage=resource_usage
+                        execution_time_ms=(
+                            float(row["execution_time_ms"])
+                            if row["execution_time_ms"]
+                            else None
+                        ),
+                        resource_usage=resource_usage,
                     )
                     tool_calls.append(tool_execution_result)
 
@@ -167,7 +191,7 @@ class ToolCallStorage:
     async def get_tool_calls_by_message_legacy(self, message_id: int) -> List[dict]:
         """
         Retrieve all tool calls associated with a message in legacy dict format.
-        
+
         Args:
             message_id: ID of the message
 
@@ -176,7 +200,7 @@ class ToolCallStorage:
         """
         try:
             tool_execution_results = await self.get_tool_calls_by_message(message_id)
-            
+
             # Convert ToolExecutionResult objects back to legacy dict format
             tool_calls = []
             for ter in tool_execution_results:
@@ -188,7 +212,9 @@ class ToolCallStorage:
                     "result_data": ter.result_data,
                     "error_message": ter.error_message,
                     "execution_time_ms": ter.execution_time_ms,
-                    "resource_usage": ter.resource_usage.dict() if ter.resource_usage else None
+                    "resource_usage": (
+                        ter.resource_usage.dict() if ter.resource_usage else None
+                    ),
                 }
                 tool_calls.append(tool_call)
 

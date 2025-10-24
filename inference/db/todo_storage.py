@@ -87,9 +87,7 @@ class TodoStorage:
         """
         try:
             async with self.typed_pool.acquire() as conn:
-                rows = await conn.fetch(
-                    self.get_query("todo.get_by_user"), user_id
-                )
+                rows = await conn.fetch(self.get_query("todo.get_by_user"), user_id)
 
                 return [
                     TodoItem(
@@ -110,9 +108,7 @@ class TodoStorage:
             self.logger.error(f"Failed to get todos for user {user_id}: {e}")
             return []
 
-    async def get_todo_by_id(
-        self, todo_id: int, user_id: str
-    ) -> Optional[TodoItem]:
+    async def get_todo_by_id(self, todo_id: int, user_id: str) -> Optional[TodoItem]:
         """
         Get a specific todo by ID and user_id.
 
@@ -225,9 +221,7 @@ class TodoStorage:
             self.logger.error(f"Failed to delete todo {todo_id}: {e}")
             return False
 
-    async def get_todos_by_status(
-        self, user_id: str, status: str
-    ) -> List[TodoItem]:
+    async def get_todos_by_status(self, user_id: str, status: str) -> List[TodoItem]:
         """
         Get todos filtered by status for a specific user.
 
