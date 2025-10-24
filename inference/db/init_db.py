@@ -181,7 +181,14 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("tool_call.create_table", []),
                     ],
                 ),
-                # Step 13: Create todo tables
+                # Step 13: Create message cascade delete triggers
+                (
+                    "Creating message cascade delete triggers",
+                    [
+                        ("message.create_message_cascade_delete_triggers", []),
+                    ],
+                ),
+                # Step 14: Create todo tables
                 (
                     "Creating todo tables",
                     [

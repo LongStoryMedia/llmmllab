@@ -220,6 +220,7 @@ class MessageStorage:
         """
         Delete all messages in a conversation created at or after the specified timestamp.
         This is more efficient than deleting messages one by one, especially with TimescaleDB.
+        Cascade delete triggers automatically handle related data (message_contents, thoughts, tool_calls, analyses).
         
         Args:
             conversation_id: The conversation ID
@@ -230,13 +231,8 @@ class MessageStorage:
         """
         async with self.typed_pool.acquire() as conn:
             async with conn.transaction():
-                # First delete message contents (child table)
-                content_result = await conn.execute(
-                    self.get_query("message_content.delete_contents_from_timestamp"), 
-                    conversation_id, from_timestamp
-                )
-                
-                # Then delete the messages (parent table)
+                # Delete messages - cascade triggers will automatically delete related data
+                # (message_contents, thoughts, tool_calls, analyses, etc.)
                 message_result = await conn.execute(
                     self.get_query("message.delete_messages_from_timestamp"), 
                     conversation_id, from_timestamp
@@ -245,7 +241,7 @@ class MessageStorage:
                 # Extract the number of deleted rows from the command result
                 deleted_count = int(message_result.split()[-1]) if message_result and message_result.split() else 0
                 
-                logger.info(f"Bulk deleted {deleted_count} messages from conversation {conversation_id} created >= {from_timestamp}")
+                logger.info(f"Bulk deleted {deleted_count} messages from conversation {conversation_id} created >= {from_timestamp} (cascade triggers handled related data)")
 
         # Invalidate conversation messages list cache
         cache_storage.invalidate_conversation_messages_cache(conversation_id)
