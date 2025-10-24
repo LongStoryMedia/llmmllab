@@ -179,6 +179,7 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("thought.create_table", []),
                         ("analysis.create_table", []),
                         ("tool_call.create_table", []),
+                        ("tool_call.migrate_to_tool_execution_result_schema", []),
                     ],
                 ),
                 # Step 13: Create message cascade delete triggers

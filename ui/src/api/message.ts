@@ -94,12 +94,23 @@ export const deleteMessage = async (accessToken: string, conversationId: number,
   });
 
 export const bulkDeleteMessagesFromTimestamp = async (
-  accessToken: string, 
-  conversationId: number, 
-  fromTimestamp: string
-) =>
-  req<{ status: string; message: string; deleted_count: number }>({
+  accessToken: string,
+  conversationId: number,
+  fromTimestamp?: Date | string
+) => {
+  // Handle both Date objects and ISO string timestamps
+  let timestampString = '';
+  if (fromTimestamp) {
+    if (fromTimestamp instanceof Date) {
+      timestampString = fromTimestamp.toISOString();
+    } else if (typeof fromTimestamp === 'string') {
+      timestampString = fromTimestamp;
+    }
+  }
+
+  return req<{ status: string; message: string; deleted_count: number }>({
     method: 'DELETE',
     headers: getHeaders(accessToken),
-    path: `chat/conversations/${conversationId}/messages/bulk/from-timestamp?from_timestamp=${encodeURIComponent(fromTimestamp)}`
+    path: `chat/conversations/${conversationId}/messages/bulk/from-timestamp?from_timestamp=${encodeURIComponent(timestampString)}`
   });
+};

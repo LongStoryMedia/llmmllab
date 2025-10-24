@@ -208,96 +208,7 @@ class ComposerRealEndToEndTester:
         except (json.JSONDecodeError, TypeError):
             return response_text
 
-    def _get_model_specific_system_prompt(self) -> str:
-        """Get model-specific system prompt with appropriate tool calling format."""
-        base_info = """You are a helpful AI assistant with access to web search tools.
-Knowledge cutoff: 2024-06
-Current date: 2025-10-07
-
-IMPORTANT: You have access to the following tools and MUST use them when needed:
-- web_search: Search for current information on the web
-- memory_retrieval: Retrieve relevant memories 
-- summarization: Summarize content
-
-CRITICAL: For ANY request about 2024 information, current events, or recent developments, you MUST use the web_search tool to get up-to-date information. Do not say you cannot access real-time data - you can and should use the tools provided.
-
-TOOL CALLING CAPABILITIES:
-- You can make MULTIPLE tool calls in a single response (call multiple tools simultaneously)
-- You can make SEQUENTIAL tool calls (call a tool, analyze results, then call more tools)
-- You should use tools iteratively to gather comprehensive information
-- For complex queries, break them into multiple searches and use multiple tools
-
-SEARCH RESULT UTILIZATION:
-- Search results include valuable content snippets - USE THEM FULLY
-- Don't claim search results are "limited" - the snippets contain substantial information
-- Extract key details from article titles, content snippets, and relevance scores
-- Synthesize information from multiple search results into comprehensive answers
-- When you have search results, provide a complete answer based on the available content
-- IMPORTANT: If you already have search results in the conversation history, DO NOT search again for the same information
-- Only perform additional searches if you need different types of information or more specific details
-
-You provide direct, informative responses while showing your reasoning process.
-Always use tools when you need current or specific information that might not be in your training data.
-"""
-
-        # For Qwen models: Use Qwen3 native XML tool calling format
-        if "qwen" in self.target_model.lower():
-            return (
-                base_info
-                + """
-
-## TOOL USAGE FORMAT:
-
-When you need current information, use this exact format:
-
-<tool_call>
-{"name": "web_search", "arguments": {"query": "your search query here"}}
-</tool_call>
-
-For comprehensive responses, you can make MULTIPLE tool calls:
-
-<tool_call>
-{"name": "web_search", "arguments": {"query": "major AI model releases 2024"}}
-</tool_call>
-
-<tool_call>
-{"name": "web_search", "arguments": {"query": "AI safety developments 2024"}}
-</tool_call>
-
-<tool_call>
-{"name": "web_search", "arguments": {"query": "AI research breakthroughs 2024"}}
-</tool_call>
-
-For ANY request about recent developments, current events, or 2024+ information, you MUST use the web_search tool.
-However, if you have already performed searches and received results, do NOT repeat the same searches.
-
-SEARCH STRATEGY:
-1. First, check if you have already searched for this information in the conversation
-2. If you have search results already, use them to provide a comprehensive answer
-3. Only search again if you need different/additional types of information
-4. For multi-aspect queries, you may use MULTIPLE TARGETED SEARCHES, but avoid repetition
-
-EXAMPLE: For a user query about "AI developments in 2024":
-- First search: "Latest AI developments 2024 major model releases research breakthroughs"
-- If the results cover the topic comprehensively, provide your answer based on those results
-- Only search again if you need more specific details on a particular aspect not covered
-"""
-            )
-
-        # For other models: Standard format
-        else:
-            return (
-                base_info
-                + """
-
-## TOOL USAGE:
-
-Use tools when you need current information or specific data not in your training.
-Always explain your reasoning and what information you're looking for.
-"""
-            )
-
-    async def run_full_test(self) -> Dict[str, Any]:
+    async def run_full_test(self, query: Optional[str] = "") -> Dict[str, Any]:
         """Run complete composer-based end-to-end pipeline test."""
         logger.info("🚀 Starting Composer Real End-to-End Pipeline Test")
         logger.info("=" * 80)
@@ -330,13 +241,6 @@ Always explain your reasoning and what information you're looking for.
             if composer_result["success"]:
                 test_results["components_passed"] += 1
 
-            # Phase 3: Real User & Model Profile Creation
-            logger.info("👤 Phase 3: Real User & Model Profile Creation")
-            user_profile_result = await self.create_real_user_and_profile()
-            test_results["results"]["user_profile_creation"] = user_profile_result
-            if user_profile_result["success"]:
-                test_results["components_passed"] += 1
-
             # Phase 4: Real Conversation Creation
             logger.info("💬 Phase 4: Real Conversation Creation")
             conversation_result = await self.create_real_conversation()
@@ -346,7 +250,7 @@ Always explain your reasoning and what information you're looking for.
 
             # Phase 5: Real Message with Tool Context
             logger.info("📝 Phase 5: Real Message with Tool Context")
-            message_result = await self.create_real_message_with_tools()
+            message_result = await self.create_real_message_with_tools(query=query)
             test_results["results"]["message_creation"] = message_result
             if message_result["success"]:
                 test_results["components_passed"] += 1
@@ -481,122 +385,6 @@ Always explain your reasoning and what information you're looking for.
             traceback.print_exc()
             return {"success": False, "error": str(e)}
 
-    async def create_real_user_and_profile(self) -> Dict[str, Any]:
-        """Create real user and model profile in database."""
-        logger.info("👤 Creating real user and model profile...")
-
-        try:
-            from db import storage
-            from models.model_profile import ModelProfile
-            from models.model_parameters import ModelParameters
-            from models.gpu_config import GPUConfig
-
-            # Ensure storage is available
-            if not storage or not storage.model_profile:
-                raise RuntimeError("Storage or model_profile service not available")
-
-            # Ensure user exists in database (will create if not exists)
-            logger.info(f"   ✅ Using user ID: {self.test_user_id}")
-
-            # Create real model profile with enhanced system prompt for tool usage
-            # Configure context size based on model
-            num_ctx = 100000 if "qwen3" in self.target_model else 40960
-            system_prompt = self._get_model_specific_system_prompt()
-
-            # Capture the system prompt to output file
-            self._write_detailed_data(
-                section="MODEL_PROFILE",
-                title="System Prompt",
-                data=system_prompt,
-                description=f"System prompt used for model {self.target_model}",
-            )
-
-            # Explicitly request maximal GPU layer placement (-1 = all) for test visibility
-            model_profile = ModelProfile(
-                id=self.test_model_profile_id,
-                user_id=self.test_user_id,
-                name=f"Composer Test {self.target_model.upper()} Profile",
-                description=f"Composer test profile for {self.target_model}",
-                model_name=self.target_model,
-                parameters=ModelParameters(
-                    temperature=0.7,
-                    top_p=0.9,
-                    max_tokens=4000,
-                    num_ctx=num_ctx,
-                    flash_attention=True,
-                ),
-                gpu_config=GPUConfig(gpu_layers=-1),
-                system_prompt=system_prompt,
-                type=0,  # ModelProfileType.Primary
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
-                model_version="1.0",
-            )
-
-            # Capture the complete model profile to output file
-            self._write_detailed_data(
-                section="MODEL_PROFILE",
-                title="Complete Model Profile",
-                data={
-                    "id": str(model_profile.id),
-                    "user_id": model_profile.user_id,
-                    "name": model_profile.name,
-                    "description": model_profile.description,
-                    "model_name": model_profile.model_name,
-                    "parameters": model_profile.parameters.__dict__,
-                    "system_prompt": model_profile.system_prompt,
-                    "type": model_profile.type,
-                    "model_version": model_profile.model_version,
-                },
-                description=f"Complete model profile configuration for {self.target_model}",
-            )
-
-            # Store model profile in database
-            created_profile = await storage.model_profile.create_model_profile(
-                model_profile
-            )
-
-            logger.info(f"   ✅ Created real model profile: {created_profile.name}")
-
-            # Update user config to use this profile as primary
-            if hasattr(storage, "user_config") and storage.user_config:
-                try:
-                    # Get existing user config (creates default if doesn't exist)
-                    user_config = await storage.user_config.get_user_config(
-                        self.test_user_id
-                    )
-
-                    # Update the primary profile ID to use our created profile
-                    user_config.model_profiles.primary_profile_id = (
-                        self.test_model_profile_id
-                    )
-
-                    # Save the updated config
-                    await storage.user_config.update_user_config(
-                        self.test_user_id, user_config
-                    )
-                    logger.info(
-                        f"   ✅ Updated user config with primary profile: {self.test_model_profile_id}"
-                    )
-                except Exception as e:
-                    logger.warning(f"   ⚠️ Could not update user config: {e}")
-                    # Continue without user config - test may still work with profile lookup
-                    pass
-
-            return {
-                "success": True,
-                "user_id": self.test_user_id,
-                "model_profile_id": str(self.test_model_profile_id),
-                "model_name": self.target_model,
-            }
-
-        except Exception as e:
-            logger.error(f"   ❌ User/profile creation failed: {str(e)}")
-            import traceback
-
-            traceback.print_exc()
-            return {"success": False, "error": str(e)}
-
     async def create_real_conversation(self) -> Dict[str, Any]:
         """Create real conversation in database."""
         logger.info("💬 Creating real conversation...")
@@ -638,7 +426,10 @@ Always explain your reasoning and what information you're looking for.
             traceback.print_exc()
             return {"success": False, "error": str(e)}
 
-    async def create_real_message_with_tools(self) -> Dict[str, Any]:
+    async def create_real_message_with_tools(
+        self,
+        query: Optional[str] = "",
+    ) -> Dict[str, Any]:
         """Create real user message with tool-calling context."""
         logger.info("📝 Creating real message with tool context...")
 
@@ -653,13 +444,16 @@ Always explain your reasoning and what information you're looking for.
                 raise RuntimeError("Storage message service not available")
 
             # Create a message that will benefit from tool usage
-            query_text = """I need current information about the latest developments in artificial intelligence in 2024. 
+            query_text = (
+                query
+                or """I need current information about the latest developments in artificial intelligence in 2024. 
 Specifically, I'm interested in:
 1. Major AI model releases in 2024
 2. Recent breakthroughs in AI research
 3. Current AI safety developments
 
 Please search for the most recent information and provide a comprehensive summary."""
+            )
 
             content_list = [
                 MessageContent(type=MessageContentType.TEXT, text=query_text)
@@ -726,15 +520,6 @@ Please search for the most recent information and provide a comprehensive summar
             # Capture conversation history
             messages_data = []
             for msg in messages:
-                msg_data = {
-                    "id": msg.id,
-                    "role": msg.role,
-                    "content": [
-                        {"type": content.type.value, "text": content.text}
-                        for content in msg.content
-                    ],
-                    "created_at": (msg.created_at if msg.created_at else None),
-                }
                 messages_data.append(msg.model_dump_json())
 
             # Step 1: Compose workflow for user
@@ -829,8 +614,8 @@ Please search for the most recent information and provide a comprehensive summar
                     # Capture only actual error events that indicate workflow failures
                     # Note: on_tool_error is not necessarily a failure - tools can handle errors gracefully
                     if event_type in [
-                        "on_chain_error", 
-                        "on_chat_model_error", 
+                        "on_chain_error",
+                        "on_chat_model_error",
                         "on_llm_error",
                         "on_retriever_error",
                     ]:
@@ -1847,6 +1632,7 @@ async def main():
     target_model = None
     capture_output = True
     print_output = False
+    query = ""
 
     # Parse command line arguments
     for i, arg in enumerate(sys.argv[1:], 1):
@@ -1857,6 +1643,8 @@ async def main():
                 print_output = True
             elif arg.startswith("--model="):
                 target_model = arg.split("=", 1)[1]
+            elif arg.startswith("--query="):
+                query = arg.split("=", 1)[1]
         elif not target_model and not arg.startswith("--"):
             target_model = arg
 
@@ -1879,7 +1667,7 @@ async def main():
 
         # Run the test
         try:
-            results = await tester.run_full_test()
+            results = await tester.run_full_test(query=query)
 
             if results["overall_success"]:
                 logger.info(f"🎉 Composer test with {model} PASSED!")

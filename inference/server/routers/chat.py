@@ -34,13 +34,11 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 async def store_structured_response_data(
-    message_id: int,
-    thinking_content: str,
-    structured_data: dict
+    message_id: int, thinking_content: str, structured_data: dict
 ) -> None:
     """
     Store structured response data (thoughts, analyses, tool_calls) in the database.
-    
+
     Args:
         message_id: The ID of the assistant message
         thinking_content: The combined thinking/reasoning content
@@ -54,7 +52,7 @@ async def store_structured_response_data(
                 text=thinking_content.strip(),
             )
             logger.info(f"Stored thinking content for message {message_id}")
-        
+
         # Store intent analyses if present
         analyses = structured_data.get("analyses", [])
         if analyses:
@@ -66,21 +64,29 @@ async def store_structured_response_data(
                         complexity_level=analysis.get("complexity_level", "SIMPLE"),
                         required_capabilities=analysis.get("required_capabilities", []),
                         domain_specificity=analysis.get("domain_specificity", 0.0),
-                        reusability_potential=analysis.get("reusability_potential", 0.0),
+                        reusability_potential=analysis.get(
+                            "reusability_potential", 0.0
+                        ),
                         confidence=analysis.get("confidence", 0.0),
                         technical_domain=analysis.get("technical_domain"),
                         response_format=analysis.get("response_format"),
-                        tool_complexity_score=analysis.get("tool_complexity_score", 0.0),
-                        computational_requirements=analysis.get("computational_requirements", "LOW"),
+                        tool_complexity_score=analysis.get(
+                            "tool_complexity_score", 0.0
+                        ),
+                        computational_requirements=analysis.get(
+                            "computational_requirements", "LOW"
+                        ),
                     )
-            logger.info(f"Stored {len(analyses)} intent analyses for message {message_id}")
-        
+            logger.info(
+                f"Stored {len(analyses)} intent analyses for message {message_id}"
+            )
+
         # Store tool calls if present
         tool_calls = structured_data.get("tool_calls", [])
         if tool_calls:
             for tool_call in tool_calls:
                 if isinstance(tool_call, dict) and tool_call.get("tool_name"):
-                    await storage.get_service(storage.tool_execution_result).add_tool_execution_result(
+                    await storage.get_service(storage.tool_call).add_tool_call(
                         message_id=message_id,
                         tool_name=tool_call["tool_name"],
                         execution_id=tool_call.get("execution_id", ""),
@@ -90,12 +96,16 @@ async def store_structured_response_data(
                         error_message=tool_call.get("error_message"),
                         execution_time_ms=tool_call.get("execution_time_ms", 0.0),
                     )
-            logger.info(f"Stored {len(tool_calls)} tool execution results for message {message_id}")
-                    
+            logger.info(
+                f"Stored {len(tool_calls)} tool execution results for message {message_id}"
+            )
+
         logger.info(f"Structured response data stored for message {message_id}")
-        
+
     except Exception as e:
-        logger.error(f"Failed to store structured response data for message {message_id}: {e}")
+        logger.error(
+            f"Failed to store structured response data for message {message_id}: {e}"
+        )
 
 
 @router.post("/completions", response_model=ChatResponse)
@@ -149,11 +159,9 @@ async def chat_completion(
                 events = []
                 final_response_data = {}
 
-                async for event in workflow.astream_events(
-                    initial_state, version="v2"
-                ):
+                async for event in workflow.astream_events(initial_state, version="v2"):
                     events.append(event)
-                    
+
                     # Handle both dict and object event formats
                     if isinstance(event, dict):
                         event_type = event.get("event", "")
@@ -164,32 +172,30 @@ async def chat_completion(
                         event_data = getattr(event, "data", {})
 
                     # Debug logging for events
-                    logger.debug(f"Processing event: {event_type}, event_data: {event_data}")
+                    logger.debug(
+                        f"Processing event: {event_type}, event_data: {event_data}"
+                    )
 
                     # Process streaming events for immediate response
                     if event_type == "on_chat_model_stream":
                         # Handle streaming tokens
                         chunk = event.get("data", {}).get("chunk")
                         if chunk:
-                            # Extract content from chunk  
+                            # Extract content from chunk
                             if hasattr(chunk, "content"):
                                 content = chunk.content
                             elif isinstance(chunk, dict):
                                 content = chunk.get("content", "")
                             else:
                                 content = str(chunk) if chunk else ""
-                            
+
                             logger.debug(f"Stream content: '{content}'")
-                            
+
                             if content:
                                 # Use streaming state manager to process chunk
                                 chat_response = streaming_state.process_chunk(content)
-                                
-                                # Only yield if there's actual content to send
-                                if (chat_response.message and chat_response.message.content) or chat_response.thinking or chat_response.tool_calls:
-                                    response_json = safe_json_serialize(chat_response.dict(exclude_none=True))
-                                    yield f"{response_json}\n"
-                                
+                                yield f"{chat_response.model_dump_json(exclude_none=True)}\n"
+
                                 # Let streaming state manage content accumulation
                                 # Don't duplicate accumulation here
 
@@ -198,14 +204,14 @@ async def chat_completion(
                         # Content is already handled in streaming events
                         logger.debug(f"Model end - skipping to prevent duplication")
                         pass
-                        
+
                     elif event_type == "on_chain_end":
                         # Capture final workflow data
                         if isinstance(event_data, dict):
                             output = event_data.get("output", {})
                         else:
                             output = getattr(event_data, "output", {})
-                            
+
                         logger.debug(f"Chain end output: {output}")
                         if output:
                             final_response_data = output
@@ -216,12 +222,19 @@ async def chat_completion(
                 # Store the assistant's response in database using streaming state's accumulated content
                 assistant_message = Message(
                     role=MessageRole.ASSISTANT,
-                    content=[MessageContent(type=MessageContentType.TEXT, text=streaming_state.response_buffer)],
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT,
+                            text=streaming_state.response_buffer,
+                        )
+                    ],
                     conversation_id=conversation_id,
                 )
 
                 try:
-                    message_result = await storage.get_service(storage.message).add_message(assistant_message)
+                    message_result = await storage.get_service(
+                        storage.message
+                    ).add_message(assistant_message)
                     # Handle case where add_message returns just the ID as an integer
                     if isinstance(message_result, int):
                         assistant_message_id = message_result
@@ -236,11 +249,11 @@ async def chat_completion(
                             "tool_calls": streaming_state.tool_calls,
                             "analyses": final_response_data.get("analyses", []),
                         }
-                        
+
                         await store_structured_response_data(
                             assistant_message_id,
                             streaming_state.accumulated_thinking,
-                            structured_data
+                            structured_data,
                         )
 
                 except Exception as storage_error:
@@ -252,20 +265,24 @@ async def chat_completion(
                 yield f"{final_json}\n"
 
             except Exception as workflow_error:
-                logger.error(f"Error in composer workflow: {workflow_error}", exc_info=True)
-                
+                logger.error(
+                    f"Error in composer workflow: {workflow_error}", exc_info=True
+                )
+
                 # Create error response
                 error_response = ChatResponse(
                     message=Message(
                         role=MessageRole.ASSISTANT,
-                        content=[MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=f"I encountered an error processing your request: {str(workflow_error)}"
-                        )]
+                        content=[
+                            MessageContent(
+                                type=MessageContentType.TEXT,
+                                text=f"I encountered an error processing your request: {str(workflow_error)}",
+                            )
+                        ],
                     ),
-                    done=True
+                    done=True,
                 )
-                
+
                 error_json = safe_json_serialize(error_response.dict(exclude_none=True))
                 yield f"{error_json}\n"
 

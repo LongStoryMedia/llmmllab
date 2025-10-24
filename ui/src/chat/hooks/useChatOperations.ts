@@ -247,12 +247,12 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
       if (!state.isPaused) { // Only clean up if not paused
         actions.setIsLoading(false);
         actions.setIsTyping(false);
-        
+
         // Clear streaming state to prevent duplicate messages
         actions.setResponse('');
         actions.setCurrentThinking(null);
         actions.setCurrentToolCalls(null);
-        
+
         // Refresh messages to show the stored assistant response
         if (state.currentConversation?.id) {
           await fetchMessages(state.currentConversation.id);
@@ -360,9 +360,9 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
 
       // Use bulk delete with timestamp - much more efficient than individual deletes
       const deleteResult = await bulkDeleteMessagesFromTimestamp(
-        getToken(auth.user), 
-        state.currentConversation.id, 
-        message.created_at.toISOString()
+        getToken(auth.user),
+        state.currentConversation.id,
+        message.created_at
       );
 
       console.log(`Bulk delete result: ${deleteResult.deleted_count} messages deleted`);
