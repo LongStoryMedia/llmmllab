@@ -25,6 +25,7 @@ class CreateTodoRequest(BaseModel):
     status: str = "not-started"
     priority: str = "medium"
     due_date: Optional[datetime] = None
+    conversation_id: Optional[int] = None
 
 
 class UpdateTodoRequest(BaseModel):
@@ -73,6 +74,7 @@ async def create_todo(request: Request, todo_request: CreateTodoRequest):
             status=todo_request.status,
             priority=todo_request.priority,
             due_date=todo_request.due_date,
+            conversation_id=todo_request.conversation_id,
         )
 
         if not todo:
@@ -217,3 +219,53 @@ async def delete_todo(request: Request, todo_id: int):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting todo: {str(e)}")
+
+
+@router.get("/conversation/{conversation_id}", response_model=List[TodoItem])
+async def get_todos_by_conversation(request: Request, conversation_id: int):
+    """Get all todos for a specific conversation"""
+    user_id = get_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    if not storage.initialized:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
+    if not storage.todo:
+        raise HTTPException(status_code=503, detail="Todo storage not initialized")
+
+    try:
+        todos = await storage.todo.get_todos_by_conversation(user_id, conversation_id)
+        return todos
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving todos: {str(e)}")
+
+
+@router.get("/status/{status}", response_model=List[TodoItem])
+async def get_todos_by_status(request: Request, status: str):
+    """Get all todos filtered by status for the authenticated user"""
+    user_id = get_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    if not storage.initialized:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
+    if not storage.todo:
+        raise HTTPException(status_code=503, detail="Todo storage not initialized")
+
+    # Validate status
+    valid_statuses = ["not-started", "in-progress", "completed", "cancelled"]
+    if status not in valid_statuses:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+        )
+
+    try:
+        todos = await storage.todo.get_todos_by_status(user_id, status)
+        return todos
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving todos: {str(e)}")

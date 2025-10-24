@@ -50,7 +50,7 @@ async def store_structured_response_data(
         if thinking_content and thinking_content.strip():
             await storage.get_service(storage.thought).add_thought(
                 message_id=message_id,
-                text=thinking_content.strip(),
+                text=thinking_content,
             )
             logger.info(f"Stored thinking content for message {message_id}")
 
@@ -60,7 +60,8 @@ async def store_structured_response_data(
             for analysis in analyses:
                 if isinstance(analysis, dict) and analysis:
                     await storage.get_service(storage.analysis).add_analysis(
-                        message_id=message_id, analysis_data=analysis
+                        message_id=message_id,
+                        intent_analysis=analysis,
                     )
             logger.info(
                 f"Stored {len(analyses)} intent analyses for message {message_id}"
@@ -73,8 +74,8 @@ async def store_structured_response_data(
                     # Convert dict to ToolExecutionResult object
                     tool_execution_result = ToolExecutionResult(**tool_call)
                     await storage.get_service(storage.tool_call).add_tool_call(
-                        message_id=message_id, tool_execution_result=tool_execution_result
-                    )
+                        message_id=message_id,
+                        tool_execution_result=tool_execution_result,
                     )
             logger.info(
                 f"Stored {len(tool_calls)} tool execution results for message {message_id}"

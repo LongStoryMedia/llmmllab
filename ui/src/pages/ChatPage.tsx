@@ -3,6 +3,7 @@ import { memo, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import ChatContainer from '../components/Chat/ChatContainer';
 import FloatingNotifications from '../components/Chat/FloatingNotifications';
+import ConversationTodos from '../components/Todo/ConversationTodos';
 import { useChat } from '../chat';
 import { Message } from '../types/Message';
 import ChatInput from '../components/Chat/ChatInput';
@@ -49,6 +50,11 @@ const ChatPage = memo(() => {
 
   return (
     <ChatPageContainer>
+      {/* Show conversation todos if we have a conversation ID */}
+      {conversationId && (
+        <ConversationTodos conversationId={parseInt(conversationId, 10)} />
+      )}
+      
       <ChatContainer
         messages={messages}
         streamingMessage={(isTyping || isLoading || response) ? currentMessage : undefined}

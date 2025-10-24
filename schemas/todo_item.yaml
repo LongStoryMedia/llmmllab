@@ -9,6 +9,9 @@ properties:
   user_id:
     type: string
     description: "Identifier of the user who owns this todo item"
+  conversation_id:
+    type: integer
+    description: "Optional conversation ID this todo is associated with"
   title:
     type: string
     description: "Brief title or summary of the todo item"

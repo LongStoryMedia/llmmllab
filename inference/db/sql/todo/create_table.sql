@@ -3,6 +3,7 @@
 CREATE TABLE IF NOT EXISTS todos(
     id serial,
     user_id text NOT NULL,
+    conversation_id integer,
     title text NOT NULL,
     description text,
     status text NOT NULL CHECK (status IN ('not-started', 'in-progress', 'completed', 'cancelled')),
@@ -19,6 +20,9 @@ SELECT
 
 -- Index for efficient user queries
 CREATE INDEX IF NOT EXISTS idx_todos_user_id ON todos(user_id, created_at DESC);
+
+-- Index for conversation-based queries
+CREATE INDEX IF NOT EXISTS idx_todos_conversation ON todos(conversation_id, created_at DESC) WHERE conversation_id IS NOT NULL;
 
 -- Index for status filtering
 CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(status, created_at DESC);

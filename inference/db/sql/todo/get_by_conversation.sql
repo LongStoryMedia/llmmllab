@@ -1,4 +1,4 @@
--- Get a specific todo by ID and user_id
+-- Get todos by conversation_id for a user
 SELECT
     id,
     user_id,
@@ -10,9 +10,6 @@ SELECT
     due_date,
     created_at,
     updated_at
-FROM
-    todos
-WHERE
-    id = $1
-    AND user_id = $2;
-
+FROM todos
+WHERE user_id = $1 AND conversation_id = $2
+ORDER BY created_at DESC;

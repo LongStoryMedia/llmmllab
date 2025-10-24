@@ -2,6 +2,7 @@
 SELECT
     id,
     user_id,
+    conversation_id,
     title,
     description,
     status,

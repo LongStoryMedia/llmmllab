@@ -30,6 +30,7 @@ class TodoStorage:
         status: str,
         priority: str,
         due_date: Optional[datetime] = None,
+        conversation_id: Optional[int] = None,
     ) -> Optional[TodoItem]:
         """
         Add a new todo item to the database.
@@ -41,6 +42,7 @@ class TodoStorage:
             status: Current status (not-started, in-progress, completed, cancelled)
             priority: Priority level (low, medium, high, urgent)
             due_date: Optional due date
+            conversation_id: Optional ID of the conversation this todo is associated with
 
         Returns:
             The created TodoItem, or None on failure
@@ -50,6 +52,7 @@ class TodoStorage:
                 row = await conn.fetchrow(
                     self.get_query("todo.add_todo"),
                     user_id,
+                    conversation_id,
                     title,
                     description,
                     status,
@@ -61,6 +64,7 @@ class TodoStorage:
                     return TodoItem(
                         id=row["id"],
                         user_id=user_id,
+                        conversation_id=conversation_id,
                         title=title,
                         description=description,
                         status=status,
@@ -93,6 +97,7 @@ class TodoStorage:
                     TodoItem(
                         id=row["id"],
                         user_id=row["user_id"],
+                        conversation_id=row["conversation_id"],
                         title=row["title"],
                         description=row["description"],
                         status=row["status"],
@@ -129,6 +134,7 @@ class TodoStorage:
                     return TodoItem(
                         id=row["id"],
                         user_id=row["user_id"],
+                        conversation_id=row["conversation_id"],
                         title=row["title"],
                         description=row["description"],
                         status=row["status"],
@@ -185,6 +191,7 @@ class TodoStorage:
                     return TodoItem(
                         id=row["id"],
                         user_id=row["user_id"],
+                        conversation_id=row["conversation_id"],
                         title=row["title"],
                         description=row["description"],
                         status=row["status"],
@@ -242,6 +249,7 @@ class TodoStorage:
                     TodoItem(
                         id=row["id"],
                         user_id=row["user_id"],
+                        conversation_id=row["conversation_id"],
                         title=row["title"],
                         description=row["description"],
                         status=row["status"],
@@ -256,5 +264,44 @@ class TodoStorage:
         except Exception as e:
             self.logger.error(
                 f"Failed to get todos with status {status} for user {user_id}: {e}"
+            )
+            return []
+
+    async def get_todos_by_conversation(self, user_id: str, conversation_id: int) -> List[TodoItem]:
+        """
+        Get todos for a specific conversation and user.
+
+        Args:
+            user_id: ID of the user
+            conversation_id: ID of the conversation
+
+        Returns:
+            List of TodoItem objects associated with the conversation
+        """
+        try:
+            async with self.typed_pool.acquire() as conn:
+                rows = await conn.fetch(
+                    self.get_query("todo.get_by_conversation"), user_id, conversation_id
+                )
+
+                return [
+                    TodoItem(
+                        id=row["id"],
+                        user_id=row["user_id"],
+                        conversation_id=row["conversation_id"],
+                        title=row["title"],
+                        description=row["description"],
+                        status=row["status"],
+                        priority=row["priority"],
+                        due_date=row["due_date"],
+                        created_at=row["created_at"],
+                        updated_at=row["updated_at"],
+                    )
+                    for row in rows
+                ]
+
+        except Exception as e:
+            self.logger.error(
+                f"Failed to get todos for conversation {conversation_id} and user {user_id}: {e}"
             )
             return []
