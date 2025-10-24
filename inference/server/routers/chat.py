@@ -146,7 +146,6 @@ async def chat_completion(
                 streaming_state = StreamingResponseState()
 
                 # Execute workflow with state
-                accumulated_content = ""
                 events = []
                 final_response_data = {}
 
@@ -168,14 +167,11 @@ async def chat_completion(
                     logger.debug(f"Processing event: {event_type}, event_data: {event_data}")
 
                     # Process streaming events for immediate response
-                    if event_type == "on_chat_model_stream":
-                        # Handle chunk data properly
-                        if isinstance(event_data, dict):
-                            chunk = event_data.get("chunk", {})
-                        else:
-                            chunk = getattr(event_data, "chunk", {})
-                            
-                        # Extract content from chunk
+                if event_type == "on_chat_model_stream":
+                    # Handle streaming tokens
+                    chunk = event.get("data", {}).get("chunk")
+                    if chunk:
+                        # Extract content from chunk  
                         if hasattr(chunk, "content"):
                             content = chunk.content
                         elif isinstance(chunk, dict):
@@ -189,50 +185,38 @@ async def chat_completion(
                             # Use streaming state manager to process chunk
                             chat_response = streaming_state.process_chunk(content)
                             
-                            # Serialize and yield the response
-                            response_json = safe_json_serialize(chat_response.dict(exclude_none=True))
-                            yield f"{response_json}\n"
+                            # Only yield if there's actual content to send
+                            if (chat_response.message and chat_response.message.content) or chat_response.thinking or chat_response.tool_calls:
+                                response_json = safe_json_serialize(chat_response.dict(exclude_none=True))
+                                yield f"{response_json}\n"
                             
-                            # Accumulate content for final storage
-                            accumulated_content += content
+                            # Let streaming state manage content accumulation
+                            # Don't duplicate accumulation here
 
-                    elif event_type == "on_chat_model_end":
-                        # Handle final model output
-                        if isinstance(event_data, dict):
-                            output = event_data.get("output", {})
-                        else:
-                            output = getattr(event_data, "output", {})
-                            
-                        logger.debug(f"Model end output: {output}")
+                elif event_type == "on_chat_model_end":
+                    # Skip this event to prevent duplicate processing
+                    # Content is already handled in streaming events
+                    logger.debug(f"Model end - skipping to prevent duplication")
+                    pass
+                    
+                elif event_type == "on_chain_end":
+                    # Capture final workflow data
+                    if isinstance(event_data, dict):
+                        output = event_data.get("output", {})
+                    else:
+                        output = getattr(event_data, "output", {})
                         
-                        # Extract content from output
-                        if hasattr(output, "content"):
-                            final_content = output.content
-                            if final_content:
-                                accumulated_content += final_content
-                        elif isinstance(output, dict) and "content" in output:
-                            final_content = output["content"]
-                            if final_content:
-                                accumulated_content += final_content
-
-                    elif event_type == "on_chain_end":
-                        # Capture final workflow data
-                        if isinstance(event_data, dict):
-                            output = event_data.get("output", {})
-                        else:
-                            output = getattr(event_data, "output", {})
-                            
-                        logger.debug(f"Chain end output: {output}")
-                        if output:
-                            final_response_data = output
+                    logger.debug(f"Chain end output: {output}")
+                    if output:
+                        final_response_data = output
 
                 # Get final consolidated response from streaming state
                 final_response = streaming_state.get_final_response()
 
-                # Store the assistant's response in database
+                # Store the assistant's response in database using streaming state's accumulated content
                 assistant_message = Message(
                     role=MessageRole.ASSISTANT,
-                    content=[MessageContent(type=MessageContentType.TEXT, text=accumulated_content)],
+                    content=[MessageContent(type=MessageContentType.TEXT, text=streaming_state.response_buffer)],
                     conversation_id=conversation_id,
                 )
 

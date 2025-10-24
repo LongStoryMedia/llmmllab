@@ -6,6 +6,7 @@ import { gen, getHeaders, req } from "./base";
 export interface ChatChunk {
   content: string;
   thinking?: string;
+  tool_calls?: any[]; // Add support for tool calls
   channels?: Record<string, unknown>;
   observer_messages?: string[];
   done: boolean;
@@ -61,7 +62,8 @@ export async function* chat(accessToken: string, message: Message, abortSignal?:
       // Yield structured chunk with all ChatResponse fields
       yield {
         content: textContent,
-        thinking: chatResponse.thinking,
+        thinking: chatResponse.thinking?.text, // Extract text from Thought object
+        tool_calls: chatResponse.tool_calls, // Pass through tool calls
         channels: chatResponse.channels,
         observer_messages: chatResponse.observer_messages,
         done: chatResponse.done || false

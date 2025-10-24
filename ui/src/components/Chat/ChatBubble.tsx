@@ -3,6 +3,7 @@ import { Box, Paper, Fade } from '@mui/material';
 import { useChat } from '../../chat';
 import MarkdownRenderer from '../Shared/MarkdownRenderer';
 import ThinkSection from './ThinkSection';
+import ToolCallsSection from './ToolCallsSection';
 import MessageActions from './MessageActions';
 import { sanitizeForLaTeX, parseResponse } from './utils';
 import { Message } from '../../types/Message';
@@ -13,7 +14,7 @@ interface ChatBubbleProps {
 }
 
 const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
-  const { isLoading, isTyping } = useChat();
+  const { isLoading, isTyping, currentThinking, currentToolCalls } = useChat();
   const inProgress = isLoading || isTyping;
   const content = typeof message.content === 'string' ? message.content : message?.content?.map(c => {
     if (c.type === MessageContentTypeValues.TEXT) {
@@ -31,7 +32,9 @@ const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
   }).join('\n\n') ?? '';
 
 
-  const { think, rest } = parseResponse(content, isTyping, message.thinking);
+  // Use currentThinking during streaming, fallback to stored message thinking
+  const thinkingText = (isTyping && currentThinking) ? currentThinking : undefined;
+  const { think, rest } = parseResponse(content, isTyping, thinkingText);
   const isUser = message.role === 'user';
 
   return (
@@ -72,6 +75,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
           </Box>
 
           {!isUser && (think || inProgress) && <ThinkSection think={think || ""} inProgress={inProgress} />}
+          {!isUser && currentToolCalls && <ToolCallsSection toolCalls={currentToolCalls as { tool_name?: string; name?: string; success?: boolean; execution_time_ms?: number; args?: Record<string, unknown>; result_data?: Record<string, unknown>; error_message?: string; }[]} isTyping={isTyping} />}
           <MarkdownRenderer sanitizeForLaTeX={sanitizeForLaTeX}>
             {rest}
           </MarkdownRenderer>

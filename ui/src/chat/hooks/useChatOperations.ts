@@ -91,7 +91,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     } finally {
       actions.setIsLoading(false);
     }
-  }, [actions, auth.user, state.conversations, fetchConversations]);
+  }, [actions, auth.user, state.conversations, fetchConversations, navigate]);
 
   // Start a new conversation
   const startNewConversation = useCallback(async () => {
@@ -117,7 +117,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     } finally {
       actions.setIsLoading(false);
     }
-  }, [state.selectedModel, actions, auth.user]);
+  }, [actions, auth.user]);
 
   // Reset response
   const resetResponse = useCallback(() => {
@@ -219,13 +219,20 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
             actions.setResponse(r => r + chatChunk.content);
           }
 
+          // Handle thinking - store for later use in message
+          if (chatChunk.thinking) {
+            actions.setCurrentThinking(chatChunk.thinking);
+          }
+
+          // Handle tool calls - store for later use in message
+          if (chatChunk.tool_calls && chatChunk.tool_calls.length > 0) {
+            actions.setCurrentToolCalls(chatChunk.tool_calls);
+          }
+
           // Handle observer messages - set them for floating notification display
           if (chatChunk.observer_messages && chatChunk.observer_messages.length > 0) {
             actions.setCurrentObserverMessages(chatChunk.observer_messages);
           }
-
-          // Note: thinking and channels are handled in the UI components
-          // via the parseResponse utility which checks the response object
         }
       }
 

@@ -18,6 +18,8 @@ export interface ChatContextType {
   models: Model[];
   isPaused: boolean;
   currentObserverMessages: string[];
+  currentThinking: string | null;
+  currentToolCalls: unknown[] | null;
 
   // Actions
   sendMessage: ReturnType<typeof useChatOperations>['sendMessage'];
@@ -76,6 +78,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(
     models: state.models,
     isPaused: state.isPaused,
     currentObserverMessages: state.currentObserverMessages,
+    currentThinking: state.currentThinking,
+    currentToolCalls: state.currentToolCalls,
 
     // Actions
     sendMessage: operations.sendMessage,
