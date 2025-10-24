@@ -247,6 +247,16 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
       if (!state.isPaused) { // Only clean up if not paused
         actions.setIsLoading(false);
         actions.setIsTyping(false);
+        
+        // Clear streaming state to prevent duplicate messages
+        actions.setResponse('');
+        actions.setCurrentThinking(null);
+        actions.setCurrentToolCalls(null);
+        
+        // Refresh messages to show the stored assistant response
+        if (state.currentConversation?.id) {
+          await fetchMessages(state.currentConversation.id);
+        }
       }
     }
   }, [
