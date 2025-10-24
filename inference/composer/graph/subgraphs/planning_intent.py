@@ -37,6 +37,7 @@ class PlanningIntentState(TypedDict):
     planning_steps: List[str]
     complexity_score: int
     intent_analyses: List[IntentAnalysis]
+    generated_todos: List[Dict[str, Any]]
 
 
 class PlanningIntentSubgraph:
@@ -209,13 +210,15 @@ class PlanningIntentSubgraph:
         }
 
     async def _intent_classification_step(self, state: PlanningIntentState) -> Dict[str, Any]:
-        """Final intent classification with planning context."""
+        """Final intent classification with planning context and todo generation."""
         logger.info("🔍 Planning: Intent classification step")
         
         messages = state.get("messages", [])
         static_tools = state.get("static_tools", [])
         complexity_score = state.get("complexity_score", 3)
         planning_steps = state.get("planning_steps", [])
+        user_id = state.get("user_id")
+        conversation_id = state.get("conversation_id")
         
         # Convert to LangChain messages for classifier
         langchain_messages = []
@@ -234,14 +237,316 @@ class PlanningIntentSubgraph:
             if hasattr(intent, 'complexity_estimate'):
                 intent.complexity_estimate = max(intent.complexity_estimate, complexity_score)
         
+        # Generate todos based on intent analysis
+        generated_todos = await self._generate_todos_from_intent(
+            intent_analyses, messages, user_id, conversation_id, complexity_score
+        )
+        
         planning_steps.append("intent_classification")
         
-        logger.info(f"🔍 Planning: Completed with {len(intent_analyses)} intent analyses")
+        logger.info(f"🔍 Planning: Completed with {len(intent_analyses)} intent analyses and {len(generated_todos)} todos")
         
         return {
             "planning_steps": planning_steps,
             "intent_analyses": intent_analyses,
+            "generated_todos": generated_todos,
         }
+
+    async def _generate_todos_from_intent(
+        self,
+        intent_analyses: List[IntentAnalysis],
+        messages: List[BaseMessage],
+        user_id: str,
+        conversation_id: int,
+        complexity_score: int,
+    ) -> List[Dict[str, Any]]:
+        """Generate todos automatically based on intent analysis."""
+        logger.info("📝 Planning: Generating todos from intent analysis")
+        
+        if not intent_analyses or not user_id:
+            return []
+        
+        generated_todos = []
+        
+        try:
+            # Import storage here to avoid circular imports
+            from db import storage
+            
+            if not storage.initialized or not storage.todo:
+                logger.warning("Storage not initialized, skipping todo generation")
+                return []
+            
+            # Get the latest user message for context
+            user_message = ""
+            if messages:
+                for msg in reversed(messages):
+                    if isinstance(msg, HumanMessage):
+                        user_message = getattr(msg, 'content', '')
+                        break
+            
+            # Generate todos based on different intent types
+            for intent in intent_analyses:
+                todos_for_intent = await self._create_todos_for_intent(
+                    intent, user_message, user_id, conversation_id, complexity_score
+                )
+                generated_todos.extend(todos_for_intent)
+            
+            logger.info(f"📝 Planning: Generated {len(generated_todos)} todos from intent analysis")
+            return generated_todos
+            
+        except Exception as e:
+            logger.error(f"Failed to generate todos from intent: {e}")
+            return []
+
+    async def _create_todos_for_intent(
+        self,
+        intent: IntentAnalysis,
+        user_message: str,
+        user_id: str,
+        conversation_id: int,
+        complexity_score: int,
+    ) -> List[Dict[str, Any]]:
+        """Create specific todos based on a single intent analysis."""
+        from db import storage
+        from models import WorkflowType, ComplexityLevel, RequiredCapability
+        
+        todos = []
+        
+        # Determine priority based on complexity and urgency indicators
+        priority = "medium"
+        if complexity_score >= 8 or intent.complexity_level == ComplexityLevel.VERY_HIGH:
+            priority = "high"
+        elif complexity_score >= 6 or intent.complexity_level == ComplexityLevel.HIGH:
+            priority = "medium"
+        elif any(word in user_message.lower() for word in ["urgent", "asap", "immediately", "quickly"]):
+            priority = "urgent"
+        elif complexity_score <= 3 or intent.complexity_level == ComplexityLevel.LOW:
+            priority = "low"
+        
+        # Generate todos based on workflow type
+        if intent.workflow_type == WorkflowType.RESEARCH:
+            todos.extend(await self._create_research_todos(intent, user_message, user_id, conversation_id, priority))
+        elif intent.workflow_type == WorkflowType.ANALYSIS:
+            todos.extend(await self._create_analysis_todos(intent, user_message, user_id, conversation_id, priority))
+        elif intent.workflow_type == WorkflowType.CREATIVE:
+            todos.extend(await self._create_creative_todos(intent, user_message, user_id, conversation_id, priority))
+        elif intent.workflow_type == WorkflowType.TASK_EXECUTION:
+            todos.extend(await self._create_task_todos(intent, user_message, user_id, conversation_id, priority))
+        elif intent.workflow_type == WorkflowType.PLANNING:
+            todos.extend(await self._create_planning_todos(intent, user_message, user_id, conversation_id, priority))
+        
+        # Generate capability-specific todos
+        if intent.requires_tools or intent.requires_custom_tools:
+            todos.extend(await self._create_tool_todos(intent, user_message, user_id, conversation_id, priority))
+        
+        return todos
+
+    async def _create_research_todos(self, intent, user_message, user_id, conversation_id, priority):
+        """Create todos for research workflows."""
+        from db import storage
+        
+        todos = []
+        
+        # Main research task
+        research_todo = await storage.todo.add_todo(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            title=f"Research: {self._extract_topic(user_message)}",
+            description=f"Conduct research based on: {user_message[:200]}...",
+            status="not-started",
+            priority=priority,
+        )
+        if research_todo:
+            todos.append(research_todo.__dict__)
+        
+        # Information gathering subtask
+        gather_todo = await storage.todo.add_todo(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            title="Gather relevant information and sources",
+            description="Collect and organize information from reliable sources",
+            status="not-started",
+            priority="medium",
+        )
+        if gather_todo:
+            todos.append(gather_todo.__dict__)
+        
+        # Analysis subtask for complex research
+        if intent.complexity_level.value in ["high", "very_high"]:
+            analysis_todo = await storage.todo.add_todo(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                title="Analyze and synthesize findings",
+                description="Review collected information and identify key insights",
+                status="not-started",
+                priority="medium",
+            )
+            if analysis_todo:
+                todos.append(analysis_todo.__dict__)
+        
+        return todos
+
+    async def _create_analysis_todos(self, intent, user_message, user_id, conversation_id, priority):
+        """Create todos for analysis workflows."""
+        from db import storage
+        
+        todos = []
+        
+        # Main analysis task
+        analysis_todo = await storage.todo.add_todo(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            title=f"Analyze: {self._extract_topic(user_message)}",
+            description=f"Perform detailed analysis of: {user_message[:200]}...",
+            status="not-started",
+            priority=priority,
+        )
+        if analysis_todo:
+            todos.append(analysis_todo.__dict__)
+        
+        # Data review subtask
+        if any(cap.value in ["data_processing", "statistical_analysis"] for cap in intent.required_capabilities):
+            data_todo = await storage.todo.add_todo(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                title="Review and validate data sources",
+                description="Ensure data quality and relevance for analysis",
+                status="not-started",
+                priority="medium",
+            )
+            if data_todo:
+                todos.append(data_todo.__dict__)
+        
+        return todos
+
+    async def _create_creative_todos(self, intent, user_message, user_id, conversation_id, priority):
+        """Create todos for creative workflows."""
+        from db import storage
+        
+        todos = []
+        
+        # Main creative task
+        creative_todo = await storage.todo.add_todo(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            title=f"Create: {self._extract_topic(user_message)}",
+            description=f"Creative work based on: {user_message[:200]}...",
+            status="not-started",
+            priority=priority,
+        )
+        if creative_todo:
+            todos.append(creative_todo.__dict__)
+        
+        # Planning phase for complex creative work
+        if intent.complexity_level.value in ["high", "very_high"]:
+            planning_todo = await storage.todo.add_todo(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                title="Plan creative approach and structure",
+                description="Outline the creative process and key elements",
+                status="not-started",
+                priority="medium",
+            )
+            if planning_todo:
+                todos.append(planning_todo.__dict__)
+        
+        return todos
+
+    async def _create_task_todos(self, intent, user_message, user_id, conversation_id, priority):
+        """Create todos for task execution workflows."""
+        from db import storage
+        
+        todos = []
+        
+        # Main task
+        task_todo = await storage.todo.add_todo(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            title=f"Execute: {self._extract_topic(user_message)}",
+            description=f"Complete task: {user_message[:200]}...",
+            status="not-started",
+            priority=priority,
+        )
+        if task_todo:
+            todos.append(task_todo.__dict__)
+        
+        return todos
+
+    async def _create_planning_todos(self, intent, user_message, user_id, conversation_id, priority):
+        """Create todos for planning workflows."""
+        from db import storage
+        
+        todos = []
+        
+        # Main planning task
+        planning_todo = await storage.todo.add_todo(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            title=f"Plan: {self._extract_topic(user_message)}",
+            description=f"Develop comprehensive plan for: {user_message[:200]}...",
+            status="not-started",
+            priority=priority,
+        )
+        if planning_todo:
+            todos.append(planning_todo.__dict__)
+        
+        # Implementation roadmap for complex plans
+        if intent.complexity_level.value in ["high", "very_high"]:
+            roadmap_todo = await storage.todo.add_todo(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                title="Create implementation roadmap",
+                description="Break down plan into actionable steps with timeline",
+                status="not-started",
+                priority="medium",
+            )
+            if roadmap_todo:
+                todos.append(roadmap_todo.__dict__)
+        
+        return todos
+
+    async def _create_tool_todos(self, intent, user_message, user_id, conversation_id, priority):
+        """Create todos for tool-related tasks."""
+        from db import storage
+        
+        todos = []
+        
+        if intent.requires_custom_tools:
+            tool_todo = await storage.todo.add_todo(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                title="Develop custom tools for task",
+                description="Create or configure specialized tools needed for this request",
+                status="not-started",
+                priority="high",
+            )
+            if tool_todo:
+                todos.append(tool_todo.__dict__)
+        
+        return todos
+
+    def _extract_topic(self, message: str) -> str:
+        """Extract a concise topic from the user message for todo titles."""
+        # Simple topic extraction - take first meaningful part of message
+        words = message.split()
+        if len(words) <= 5:
+            return message
+        
+        # Look for key topic indicators
+        topic_words = []
+        skip_words = {"please", "can", "you", "help", "me", "with", "i", "need", "want", "would", "like"}
+        
+        for word in words[:10]:  # Look at first 10 words
+            clean_word = word.lower().strip(".,!?")
+            if clean_word not in skip_words and len(clean_word) > 2:
+                topic_words.append(word)
+                if len(topic_words) >= 3:
+                    break
+        
+        if topic_words:
+            return " ".join(topic_words)
+        else:
+            return " ".join(words[:3])
 
     def transform_to_planning_state(self, main_state: WorkflowState) -> PlanningIntentState:
         """Transform main WorkflowState to PlanningIntentState."""
@@ -264,6 +569,7 @@ class PlanningIntentSubgraph:
             "planning_steps": [],
             "complexity_score": 3,
             "intent_analyses": [],
+            "generated_todos": [],
         }
 
     def transform_to_main_state(self, planning_result: Dict[str, Any], main_state: WorkflowState) -> Dict[str, Any]:
@@ -274,6 +580,10 @@ class PlanningIntentSubgraph:
             # Extend the intent classification list
             current_analyses = getattr(main_state, "intent_classification", [])
             updates["intent_classification"] = current_analyses + planning_result["intent_analyses"]
+        
+        # Include generated todos in the main state
+        if planning_result.get("generated_todos"):
+            updates["generated_todos"] = planning_result["generated_todos"]
             
         return updates
 

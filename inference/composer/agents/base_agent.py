@@ -358,8 +358,8 @@ class BaseAgent(ABC, Generic[T]):
                                     message=Message(
                                         role=MessageRole.ASSISTANT,
                                         content=content,
-                                        tool_calls=tool_calls,
                                     ),
+                                    tool_calls=tool_calls,
                                     channels={
                                         "node_metadata": self._node_metadata.model_dump(),
                                         "chunk_metadata": metadata,

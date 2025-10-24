@@ -231,6 +231,21 @@ async def chat_completion(
                             "analyses": final_response_data.get("analyses", []),
                         }
 
+                        # Check for generated todos from planning middleware
+                        generated_todos = final_response_data.get("generated_todos", [])
+                        if generated_todos:
+                            logger.info(f"Intent analysis generated {len(generated_todos)} todos")
+                            
+                            # Add todo notification to response
+                            todo_count = len(generated_todos)
+                            todo_message = f"✅ Generated {todo_count} todo{'s' if todo_count != 1 else ''} based on your request."
+                            
+                            # Update the streaming state response buffer to include todo notification
+                            if streaming_state.response_buffer:
+                                streaming_state.response_buffer += f"\n\n{todo_message}"
+                            else:
+                                streaming_state.response_buffer = todo_message
+
                         await store_structured_response_data(
                             assistant_message_id,
                             streaming_state.accumulated_thinking,
@@ -239,6 +254,11 @@ async def chat_completion(
 
                 except Exception as storage_error:
                     logger.error(f"Failed to store assistant message: {storage_error}")
+
+                # Update final response with any todo notifications
+                if final_response.message and final_response.message.content:
+                    # Update the message content to reflect the updated streaming state buffer
+                    final_response.message.content[0].text = streaming_state.response_buffer
 
                 # Yield final response with done=True
                 final_response.done = True
