@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { ChatState, ChatActions } from './useChatState';
 import { useAuth } from '../../auth';
-import { chat, getManyConversations, getMessages, removeConversation, startConversation, getModels, getToken, getUserConversations, getLllabUsers, pause, cancel, resume, ChatChunk, deleteMessage } from '../../api';
+import { chat, getManyConversations, getMessages, removeConversation, startConversation, getModels, getToken, getUserConversations, getLllabUsers, pause, cancel, resume, ChatChunk, deleteMessage, bulkDeleteMessagesFromTimestamp } from '../../api';
 import { Conversation } from '../../types/Conversation';
 import { useNavigate } from 'react-router-dom';
 import { Message } from '../../types/Message';
@@ -346,23 +346,29 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     actions.setError(null);
 
     try {
-      // Find all messages that come after this message (by ID)
-      const messagesToDelete = state.messages
-        .filter(msg => msg.id && msg.id >= message.id!)
-        .sort((a, b) => (b.id || 0) - (a.id || 0)); // Sort by ID descending (newest first)
-
-      console.log(`Replaying message ${message.id}: deleting ${messagesToDelete.length} messages`);
-
-      // Delete messages in reverse order (newest first) to avoid referential issues
-      for (const msgToDelete of messagesToDelete) {
-        if (msgToDelete.id) {
-          await deleteMessage(getToken(auth.user), state.currentConversation.id, msgToDelete.id);
-          console.log(`Deleted message ${msgToDelete.id} for replay`);
-        }
+      // Get the timestamp of the message to replay - we'll delete all messages >= this timestamp
+      if (!message.created_at) {
+        console.error("Cannot replay message without created_at timestamp");
+        return;
       }
 
-      // Remove all the deleted messages from local state
-      actions.setMessages(prev => prev.filter(msg => !msg.id || msg.id < message.id!));
+      // Count messages to be deleted for logging
+      const messagesToDeleteCount = state.messages
+        .filter(msg => msg.created_at && msg.created_at >= message.created_at!).length;
+
+      console.log(`Replaying message ${message.id}: bulk deleting ${messagesToDeleteCount} messages created >= ${message.created_at}`);
+
+      // Use bulk delete with timestamp - much more efficient than individual deletes
+      const deleteResult = await bulkDeleteMessagesFromTimestamp(
+        getToken(auth.user), 
+        state.currentConversation.id, 
+        message.created_at.toISOString()
+      );
+
+      console.log(`Bulk delete result: ${deleteResult.deleted_count} messages deleted`);
+
+      // Remove all the deleted messages from local state based on timestamp
+      actions.setMessages(prev => prev.filter(msg => !msg.created_at || msg.created_at < message.created_at!));
 
       // Re-post the original message (without the old ID so the server assigns a new one)
       console.log(`Re-posting message for replay: ${message.id}`);

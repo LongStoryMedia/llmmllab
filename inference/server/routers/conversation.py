@@ -223,6 +223,70 @@ async def delete_message(conversation_id: int, message_id: int, request: Request
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}") from e
 
 
+@router.delete("/conversations/{conversation_id}/messages/bulk/from-timestamp")
+async def bulk_delete_messages_from_timestamp(
+    conversation_id: int, 
+    from_timestamp: str,  # ISO 8601 timestamp string
+    request: Request
+):
+    """
+    Bulk delete all messages in a conversation created at or after the specified timestamp.
+    This is more efficient than deleting messages one by one, especially with TimescaleDB.
+    
+    Args:
+        conversation_id: The conversation ID
+        from_timestamp: ISO 8601 timestamp string - delete messages created >= this time
+    """
+    user_id = get_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Check if database is initialized
+    if not storage.initialized or not storage.conversation or not storage.message:
+        logger.warning("Database not initialized, cannot bulk delete messages")
+        raise HTTPException(status_code=503, detail="Database service unavailable")
+
+    try:
+        # Parse the timestamp
+        try:
+            parsed_timestamp = dt.fromisoformat(from_timestamp.replace('Z', '+00:00'))
+        except ValueError:
+            raise HTTPException(
+                status_code=400, 
+                detail="Invalid timestamp format. Use ISO 8601 format (e.g., '2023-10-24T14:30:00Z')"
+            )
+
+        # First check if conversation exists and user has access
+        conversation = await storage.conversation.get_conversation(conversation_id)
+
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        # Check if user has access to this conversation
+        if conversation.user_id != user_id and not is_admin(request):
+            raise HTTPException(
+                status_code=403, detail="Access denied to this conversation"
+            )
+
+        # Perform bulk delete
+        deleted_count = await storage.message.bulk_delete_messages_from_timestamp(
+            conversation_id, parsed_timestamp
+        )
+
+        return {
+            "status": "success",
+            "message": f"Bulk deleted {deleted_count} messages from conversation {conversation_id} created >= {from_timestamp}",
+            "deleted_count": deleted_count
+        }
+    except HTTPException as e:
+        raise e
+    except Exception as e:  # noqa: BLE001, justified for DB errors
+        logger.error(
+            f"Error bulk deleting messages from conversation {conversation_id} >= {from_timestamp}: {e}"
+        )
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}") from e
+
+
 @router.post("/conversations", response_model=Conversation)
 async def create_conversation(request: Request):
     """

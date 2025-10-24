@@ -3,6 +3,7 @@ Direct port of Maistro's message.go storage logic to Python with cache integrati
 """
 
 import asyncpg
+from datetime import datetime
 from typing import List, Optional
 from models.message import Message
 from models.message_content import MessageContent
@@ -214,6 +215,42 @@ class MessageStorage:
             cache_storage.invalidate_conversation_messages_cache(
                 message.conversation_id
             )
+
+    async def bulk_delete_messages_from_timestamp(self, conversation_id: int, from_timestamp: datetime) -> int:
+        """
+        Delete all messages in a conversation created at or after the specified timestamp.
+        This is more efficient than deleting messages one by one, especially with TimescaleDB.
+        
+        Args:
+            conversation_id: The conversation ID
+            from_timestamp: Delete messages created at or after this timestamp
+            
+        Returns:
+            Number of messages deleted
+        """
+        async with self.typed_pool.acquire() as conn:
+            async with conn.transaction():
+                # First delete message contents (child table)
+                content_result = await conn.execute(
+                    self.get_query("message_content.delete_contents_from_timestamp"), 
+                    conversation_id, from_timestamp
+                )
+                
+                # Then delete the messages (parent table)
+                message_result = await conn.execute(
+                    self.get_query("message.delete_messages_from_timestamp"), 
+                    conversation_id, from_timestamp
+                )
+                
+                # Extract the number of deleted rows from the command result
+                deleted_count = int(message_result.split()[-1]) if message_result and message_result.split() else 0
+                
+                logger.info(f"Bulk deleted {deleted_count} messages from conversation {conversation_id} created >= {from_timestamp}")
+
+        # Invalidate conversation messages list cache
+        cache_storage.invalidate_conversation_messages_cache(conversation_id)
+        
+        return deleted_count
 
     async def _build_messages(
         self, conversation_id: int, message_dicts: List[dict], conn: TypedConnection
