@@ -20,7 +20,7 @@ from models import (
     MessageContentType,
     CircuitBreakerConfig,
     NodeMetadata,
-    ToolExecutionResult,
+    ToolCall,
 )
 from utils.message import extract_message_text
 from composer.utils.conversion import (
@@ -178,13 +178,13 @@ class ChatAgent(BaseAgent[ChatResponse]):
                 content=content_items,
             )
 
-            # Convert tool calls to ToolExecutionResult objects if present
+            # Convert tool calls to ToolCall objects if present
             tool_execution_results = []
             for tool_call in tool_calls:
                 try:
-                    # Convert tool call dict to ToolExecutionResult
+                    # Convert tool call dict to ToolCall
                     if isinstance(tool_call, dict):
-                        tool_result = ToolExecutionResult(
+                        tool_result = ToolCall(
                             tool_name=tool_call.get("name", "unknown"),
                             success=True,  # Assume success if we got this far
                             args=tool_call.get("args", {}),
@@ -194,15 +194,18 @@ class ChatAgent(BaseAgent[ChatResponse]):
                         tool_execution_results.append(tool_result)
                 except Exception as e:
                     self.logger.warning(
-                        f"Failed to convert tool call to ToolExecutionResult: {e}"
+                        f"Failed to convert tool call to ToolCall: {e}"
                     )
 
+            # Update final_message with tool_calls if present
+            if tool_execution_results:
+                final_message.tool_calls = tool_execution_results
+                
             return ChatResponse(
                 done=True,
                 message=final_message,
                 finish_reason="stop",
                 created_at=datetime.now(timezone.utc),
-                tool_calls=tool_execution_results if tool_execution_results else None,
             )
 
         except Exception as e:

@@ -62,7 +62,7 @@ class ToolRegistry:
                 "summarization": summarization,
                 "get_current_date": get_current_date,
             }
-            
+
             self.executable_tools.update(tools_to_add)
 
             self.logger.info(

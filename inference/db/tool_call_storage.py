@@ -6,7 +6,7 @@ Tool calls represent execution results from tools associated with messages.
 import asyncpg
 from typing import List, Optional
 from datetime import datetime, timezone
-from models.tool_execution_result import ToolExecutionResult
+from models.tool_call import ToolCall
 from db.db_utils import TypedConnection, typed_pool
 from utils.logging import llmmllogger
 
@@ -25,7 +25,7 @@ class ToolCallStorage:
     async def add_tool_call(
         self,
         message_id: int,
-        tool_execution_result: ToolExecutionResult,
+        tool_execution_result: ToolCall,
         created_at: Optional[datetime] = None,
     ) -> Optional[int]:
         """
@@ -101,7 +101,7 @@ class ToolCallStorage:
     ) -> Optional[int]:
         """
         Add a new tool call to the database using legacy tool_data format.
-        This method converts the legacy format to ToolExecutionResult.
+        This method converts the legacy format to ToolCall.
 
         Args:
             message_id: ID of the associated message
@@ -112,8 +112,8 @@ class ToolCallStorage:
             The ID of the created tool call, or None on failure
         """
         try:
-            # Convert legacy format to ToolExecutionResult
-            tool_execution_result = ToolExecutionResult(
+            # Convert legacy format to ToolCall
+            tool_execution_result = ToolCall(
                 tool_name=tool_data.get("tool_name", "unknown"),
                 execution_id=tool_data.get("execution_id"),
                 success=tool_data.get("success", False),
@@ -136,7 +136,7 @@ class ToolCallStorage:
 
     async def get_tool_calls_by_message(
         self, message_id: int
-    ) -> List[ToolExecutionResult]:
+    ) -> List[ToolCall]:
         """
         Retrieve all tool calls associated with a message.
 
@@ -144,7 +144,7 @@ class ToolCallStorage:
             message_id: ID of the message
 
         Returns:
-            List of ToolExecutionResult objects
+            List of ToolCall objects
         """
         try:
             async with self.typed_pool.acquire() as conn:
@@ -161,7 +161,7 @@ class ToolCallStorage:
                         row["resource_usage"] if row["resource_usage"] else None
                     )
 
-                    tool_execution_result = ToolExecutionResult(
+                    tool_execution_result = ToolCall(
                         tool_name=row["tool_name"],
                         execution_id=row["execution_id"],
                         success=row["success"],
@@ -201,7 +201,7 @@ class ToolCallStorage:
         try:
             tool_execution_results = await self.get_tool_calls_by_message(message_id)
 
-            # Convert ToolExecutionResult objects back to legacy dict format
+            # Convert ToolCall objects back to legacy dict format
             tool_calls = []
             for ter in tool_execution_results:
                 tool_call = {

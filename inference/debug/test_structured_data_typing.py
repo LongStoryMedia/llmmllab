@@ -12,7 +12,7 @@ import os
 sys.path.insert(0, '/app')
 
 from server.routers.chat import StructuredResponseData, store_structured_response_data
-from models import Thought, ToolExecutionResult, IntentAnalysis, WorkflowType, ComplexityLevel, RequiredCapability, ComputationalRequirement
+from models import Thought, ToolCall, IntentAnalysis, WorkflowType, ComplexityLevel, RequiredCapability, ComputationalRequirement
 from db import storage
 from utils.logging import llmmllogger
 
@@ -33,7 +33,7 @@ async def test_structured_response_data_typing():
         ]
         
         test_tool_calls = [
-            ToolExecutionResult(
+            ToolCall(
                 tool_name="test_tool",
                 execution_id="call_1",
                 success=True,
@@ -41,7 +41,7 @@ async def test_structured_response_data_typing():
                 result_data={"result": "test result"},
                 execution_time_ms=150
             ),
-            ToolExecutionResult(
+            ToolCall(
                 tool_name="search_tool", 
                 execution_id="call_2",
                 success=True,
@@ -83,7 +83,7 @@ async def test_structured_response_data_typing():
             assert isinstance(thought, Thought), f"Expected Thought, got {type(thought)}"
             
         for tool_call in structured_data["tool_calls"]:
-            assert isinstance(tool_call, ToolExecutionResult), f"Expected ToolExecutionResult, got {type(tool_call)}"
+            assert isinstance(tool_call, ToolCall), f"Expected ToolCall, got {type(tool_call)}"
             
         for analysis in structured_data["analyses"]:
             assert isinstance(analysis, IntentAnalysis), f"Expected IntentAnalysis, got {type(analysis)}"
@@ -107,7 +107,7 @@ async def test_invalid_types():
         # This should fail type checking if used with a proper type checker
         invalid_structured_data = {
             "thoughts": ["string instead of Thought object"],  # Wrong type
-            "tool_calls": [{"tool_name": "dict instead of ToolExecutionResult"}],  # Wrong type
+            "tool_calls": [{"tool_name": "dict instead of ToolCall"}],  # Wrong type
             "analyses": [{"workflow": "dict instead of IntentAnalysis"}]  # Wrong type
         }
         

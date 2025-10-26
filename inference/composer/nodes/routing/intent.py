@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from composer.graph.state import WorkflowState
 from composer.graph.subgraphs.planning_intent import get_planning_intent_subgraph
+from composer.utils.state import assemble_context_messages
 from utils.logging import llmmllogger
 
 if TYPE_CHECKING:
@@ -29,7 +30,7 @@ class IntentClassifierNode:
             classifier_agent: Required ClassifierAgent instance (passed to planning subgraph)
         """
         self.agent = classifier_agent
-        self.logger = llmmllogger.logger.bind(component="IntentClassifierNode") 
+        self.logger = llmmllogger.logger.bind(component="IntentClassifierNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
@@ -59,6 +60,7 @@ class IntentClassifierNode:
 
             # Apply updates from planning middleware
             if command and command.update:
+                self.logger.debug(f"Updating state with command: {command}")
                 for key, value in command.update.items():
                     if hasattr(state, key):
                         if isinstance(getattr(state, key), list):
@@ -82,7 +84,6 @@ class IntentClassifierNode:
             # Fallback to direct agent call
             self.logger.warning("Falling back to direct classifier agent call")
             try:
-                from composer.utils.state import assemble_context_messages
                 intent_analyses = await self.agent.analyze(
                     messages=assemble_context_messages(state),
                     available_static_tools=state.static_tools,

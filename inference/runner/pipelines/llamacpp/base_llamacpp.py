@@ -29,7 +29,7 @@ from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResu
 from models import Model, ModelProfile
 from models.default_configs import DEFAULT_GPU_CONFIG
 from utils.logging import llmmllogger
-from runner.utils.hardware_manager import EnhancedHardwareManager
+from runner.utils.hardware_manager import hardware_manager
 
 
 class BaseLlamaCppPipeline(BaseChatModel):
@@ -62,13 +62,13 @@ class BaseLlamaCppPipeline(BaseChatModel):
         **kwargs,
     ):
         # Pass the required fields to the parent constructor for Pydantic validation
-        super().__init__(model=model, profile=profile, grammar=grammar, **kwargs) # type: ignore
+        super().__init__(model=model, profile=profile, grammar=grammar, **kwargs)  # type: ignore
         self._logger = llmmllogger.bind(
             component=self.__class__.__name__, model=model.name
         )
         self.grammar = grammar
         self._bound_tools = kwargs.get("_bound_tools", [])
-        self.hardware_manager = EnhancedHardwareManager()
+        self.hardware_manager = hardware_manager
         self.llama_instance = self._initialize_llama_with_oom_retry(
             self._get_gguf_path()
         )
@@ -102,26 +102,8 @@ class BaseLlamaCppPipeline(BaseChatModel):
         Returns:
             A new instance of the model with tools bound
         """
-        # For large models, reuse the existing instance instead of creating a new one
-        # to avoid OOM when both instances exist simultaneously
-        model_size_gb = self.model.size / (1024**3) if self.model.size else 0
-        
-        if model_size_gb > 10:  # Large models (>10GB)
-            self._logger.info(f"🔄 Reusing existing instance for large model {self.model.name} ({model_size_gb:.1f}GB)")
-            # Update bound tools on the existing instance
-            self._bound_tools = tools
-            return self
-        else:
-            # For smaller models, create a new instance as before
-            self._logger.debug(f"🆕 Creating new instance for small model {self.model.name} ({model_size_gb:.1f}GB)")
-            new_instance = self.__class__(
-                model=self.model,
-                profile=self.profile,
-                grammar=self.grammar,
-                _bound_tools=tools,
-                **kwargs,
-            )
-            return new_instance
+        self._bound_tools = tools
+        return self
 
     def _get_gguf_path(self) -> str:
         """Get the GGUF file path from model definition."""
@@ -299,11 +281,6 @@ class BaseLlamaCppPipeline(BaseChatModel):
                                 pass
                             del llama_instance
 
-                        # Force aggressive cleanup
-                        import gc
-
-                        gc.collect()
-
                         # Nuclear memory clear to remove any GPU allocations
                         self.hardware_manager.clear_memory(
                             aggressive=True, nuclear=True
@@ -372,20 +349,28 @@ class BaseLlamaCppPipeline(BaseChatModel):
             f"Failed to initialize {self.model.name} after all OOM recovery attempts"
         )
 
-    def _format_messages_for_llama(self, messages: List[BaseMessage]) -> List[Dict[str, str]]:
+    def _format_messages_for_llama(
+        self, messages: List[BaseMessage]
+    ) -> List[Dict[str, str]]:
         """Convert LangChain messages to simple dict format for llama-cpp-python."""
         llama_messages = []
 
         for message in messages:
             if isinstance(message, SystemMessage):
-                llama_messages.append({"role": "system", "content": str(message.content)})
+                llama_messages.append(
+                    {"role": "system", "content": str(message.content)}
+                )
             elif isinstance(message, HumanMessage):
                 llama_messages.append({"role": "user", "content": str(message.content)})
             elif isinstance(message, AIMessage):
-                llama_messages.append({"role": "assistant", "content": str(message.content)})
+                llama_messages.append(
+                    {"role": "assistant", "content": str(message.content)}
+                )
             elif isinstance(message, ToolMessage):
                 # Format tool results as user messages for now
-                llama_messages.append({"role": "user", "content": f"Tool result: {message.content}"})
+                llama_messages.append(
+                    {"role": "user", "content": f"Tool result: {message.content}"}
+                )
             else:
                 # Fallback: treat as user message
                 llama_messages.append({"role": "user", "content": str(message.content)})
@@ -417,7 +402,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
                         "function": {
                             "name": tool.name,
                             "description": tool.description or "",
-                        }
+                        },
                     }
 
                     # Add a simple parameters schema (filtered to exclude injected params)
@@ -432,11 +417,14 @@ class BaseLlamaCppPipeline(BaseChatModel):
                                         # ToolRuntime has CallableSchema that can't serialize
                                         # Provide minimal schema for tools with ToolRuntime
                                         schema = {
-                                            "type": "object", 
+                                            "type": "object",
                                             "properties": {
-                                                "query": {"type": "string", "description": "Search query or input text"}
+                                                "query": {
+                                                    "type": "string",
+                                                    "description": "Search query or input text",
+                                                }
                                             },
-                                            "required": ["query"]
+                                            "required": ["query"],
                                         }
                                     else:
                                         raise schema_error
@@ -444,30 +432,42 @@ class BaseLlamaCppPipeline(BaseChatModel):
                                 schema = {"type": "object", "properties": {}}
 
                             # Filter out injected LangGraph parameters and ToolRuntime
-                            if 'properties' in schema:
+                            if "properties" in schema:
                                 filtered_props = {
-                                    k: v for k, v in schema['properties'].items() 
-                                    if k not in ['state', 'tool_call_id', 'tool_runtime']
+                                    k: v
+                                    for k, v in schema["properties"].items()
+                                    if k
+                                    not in ["state", "tool_call_id", "tool_runtime"]
                                 }
-                                
+
                                 tool_dict["function"]["parameters"] = {
                                     "type": "object",
                                     "properties": filtered_props,
                                     "required": [
-                                        req for req in schema.get('required', []) 
-                                        if req not in ['state', 'tool_call_id', 'tool_runtime']
-                                    ]
+                                        req
+                                        for req in schema.get("required", [])
+                                        if req
+                                        not in ["state", "tool_call_id", "tool_runtime"]
+                                    ],
                                 }
                             else:
                                 tool_dict["function"]["parameters"] = {
-                                    "type": "object", 
-                                    "properties": {}
+                                    "type": "object",
+                                    "properties": {},
                                 }
                         except Exception as e:
-                            self._logger.warning(f"Could not extract schema for tool {tool.name}: {e}")
-                            tool_dict["function"]["parameters"] = {"type": "object", "properties": {}}
+                            self._logger.warning(
+                                f"Could not extract schema for tool {tool.name}: {e}"
+                            )
+                            tool_dict["function"]["parameters"] = {
+                                "type": "object",
+                                "properties": {},
+                            }
                     else:
-                        tool_dict["function"]["parameters"] = {"type": "object", "properties": {}}
+                        tool_dict["function"]["parameters"] = {
+                            "type": "object",
+                            "properties": {},
+                        }
 
                     converted_tools.append(tool_dict)
 
@@ -477,49 +477,55 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
         return converted_tools if converted_tools else None
 
-    def _parse_tool_calls_from_content(self, content: str) -> Tuple[str, List[Dict[str, Any]]]:
+    def _parse_tool_calls_from_content(
+        self, content: str
+    ) -> Tuple[str, List[Dict[str, Any]]]:
         """
         Parse tool calls from LlamaCpp text output and clean content.
-        
+
         Returns:
             Tuple of (cleaned_content, tool_calls_list)
         """
         import re
-        
+
         tool_calls = []
         cleaned_content = content
-        
+
         # Pattern to match both <tool_call> and <function-call> blocks
-        tool_call_pattern = r'<(?:tool_call|function-call)>\s*(\{.*?\})\s*</(?:tool_call|function-call)>'
-        
+        tool_call_pattern = r"<(?:tool_call|function-call)>\s*(\{.*?\})\s*</(?:tool_call|function-call)>"
+
         matches = re.finditer(tool_call_pattern, content, re.DOTALL)
-        
+
         for match in matches:
             try:
                 # Parse the JSON inside the tool_call tags
                 json_str = match.group(1).strip()
                 tool_data = json.loads(json_str)
-                
+
                 # Convert to LangChain flat format
                 tool_call = {
                     "id": f"call_{len(tool_calls)}",  # Generate ID
                     "name": tool_data.get("name", ""),
                     "args": tool_data.get("arguments", {}),
-                    "type": "tool_call"
+                    "type": "tool_call",
                 }
                 tool_calls.append(tool_call)
-                
+
                 # Remove this tool call from content
                 cleaned_content = cleaned_content.replace(match.group(0), "").strip()
-                
+
             except (json.JSONDecodeError, KeyError) as e:
-                self._logger.warning(f"Failed to parse tool call: {e}, content: {match.group(1)}")
+                self._logger.warning(
+                    f"Failed to parse tool call: {e}, content: {match.group(1)}"
+                )
                 continue
-        
+
         # Also clean up <think> tags if present
-        think_pattern = r'<think>.*?</think>'
-        cleaned_content = re.sub(think_pattern, '', cleaned_content, flags=re.DOTALL).strip()
-        
+        think_pattern = r"<think>.*?</think>"
+        cleaned_content = re.sub(
+            think_pattern, "", cleaned_content, flags=re.DOTALL
+        ).strip()
+
         return cleaned_content, tool_calls
 
     def _get_res(
@@ -600,7 +606,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 usage = response.get("usage", {})
 
                 # Parse tool calls from content if present
-                cleaned_content, tool_calls = self._parse_tool_calls_from_content(content or "")
+                cleaned_content, tool_calls = self._parse_tool_calls_from_content(
+                    content or ""
+                )
 
                 # Create usage metadata
                 usage_metadata = self._calculate_usage_metadata(
@@ -675,8 +683,10 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
                     # For final chunk, parse tool calls and clean content
                     if finish_reason == "stop":
-                        cleaned_content, tool_calls = self._parse_tool_calls_from_content(accumulated_content)
-                        
+                        cleaned_content, tool_calls = (
+                            self._parse_tool_calls_from_content(accumulated_content)
+                        )
+
                         # Send final chunk with tool calls if any were found
                         if tool_calls:
                             final_chunk_message = AIMessageChunk(
@@ -689,10 +699,14 @@ class BaseLlamaCppPipeline(BaseChatModel):
                                 },
                                 chunk_position="last",
                             )
-                            
-                            final_generation_chunk = ChatGenerationChunk(message=final_chunk_message)
+
+                            final_generation_chunk = ChatGenerationChunk(
+                                message=final_chunk_message
+                            )
                             if run_manager:
-                                run_manager.on_llm_new_token("", chunk=final_generation_chunk)
+                                run_manager.on_llm_new_token(
+                                    "", chunk=final_generation_chunk
+                                )
                             yield final_generation_chunk
                             continue
 

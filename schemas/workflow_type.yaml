@@ -8,5 +8,8 @@ enum:
   - creative
   - image_generation
   - image_refinement
+  - analysis
+  - planning
+  - focused
 description: |
   Supported workflow types for composer orchestration.

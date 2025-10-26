@@ -20,6 +20,7 @@ router = APIRouter(prefix="/todos", tags=["todos"])
 
 class CreateTodoRequest(BaseModel):
     """Request model for creating a new todo item"""
+
     title: str
     description: Optional[str] = None
     status: str = "not-started"
@@ -30,6 +31,7 @@ class CreateTodoRequest(BaseModel):
 
 class UpdateTodoRequest(BaseModel):
     """Request model for updating a todo item"""
+
     title: str
     description: Optional[str] = None
     status: str
@@ -56,14 +58,14 @@ async def create_todo(request: Request, todo_request: CreateTodoRequest):
 
     if todo_request.status not in valid_statuses:
         raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+            status_code=400,
+            detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}",
         )
 
     if todo_request.priority not in valid_priorities:
         raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid priority. Must be one of: {', '.join(valid_priorities)}"
+            status_code=400,
+            detail=f"Invalid priority. Must be one of: {', '.join(valid_priorities)}",
         )
 
     try:
@@ -104,8 +106,8 @@ async def get_todos(request: Request, status: Optional[str] = None):
         valid_statuses = ["not-started", "in-progress", "completed", "cancelled"]
         if status not in valid_statuses:
             raise HTTPException(
-                status_code=400, 
-                detail=f"Invalid status filter. Must be one of: {', '.join(valid_statuses)}"
+                status_code=400,
+                detail=f"Invalid status filter. Must be one of: {', '.join(valid_statuses)}",
             )
 
     try:
@@ -166,14 +168,14 @@ async def update_todo(request: Request, todo_id: int, todo_request: UpdateTodoRe
 
     if todo_request.status not in valid_statuses:
         raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+            status_code=400,
+            detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}",
         )
 
     if todo_request.priority not in valid_priorities:
         raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid priority. Must be one of: {', '.join(valid_priorities)}"
+            status_code=400,
+            detail=f"Invalid priority. Must be one of: {', '.join(valid_priorities)}",
         )
 
     try:
@@ -259,8 +261,8 @@ async def get_todos_by_status(request: Request, status: str):
     valid_statuses = ["not-started", "in-progress", "completed", "cancelled"]
     if status not in valid_statuses:
         raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+            status_code=400,
+            detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}",
         )
 
     try:

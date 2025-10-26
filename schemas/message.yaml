@@ -21,6 +21,16 @@ properties:
   conversation_id:
     type: integer
     description: Unique identifier for the conversation
+  thoughts:
+    type: array
+    items:
+      $ref: thought.yaml
+    description: Array of thoughts or reasoning processes from the assistant
+  tool_calls:
+    type: array
+    items:
+      $ref: tool_call.yaml
+    description: Array of tool calls associated with the message
 required:
   - role
   - content

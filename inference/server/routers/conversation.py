@@ -225,14 +225,14 @@ async def delete_message(conversation_id: int, message_id: int, request: Request
 
 @router.delete("/conversations/{conversation_id}/messages/bulk/from-timestamp")
 async def bulk_delete_messages_from_timestamp(
-    conversation_id: int, 
+    conversation_id: int,
     from_timestamp: str,  # ISO 8601 timestamp string
-    request: Request
+    request: Request,
 ):
     """
     Bulk delete all messages in a conversation created at or after the specified timestamp.
     This is more efficient than deleting messages one by one, especially with TimescaleDB.
-    
+
     Args:
         conversation_id: The conversation ID
         from_timestamp: ISO 8601 timestamp string - delete messages created >= this time
@@ -249,11 +249,11 @@ async def bulk_delete_messages_from_timestamp(
     try:
         # Parse the timestamp
         try:
-            parsed_timestamp = dt.fromisoformat(from_timestamp.replace('Z', '+00:00'))
+            parsed_timestamp = dt.fromisoformat(from_timestamp.replace("Z", "+00:00"))
         except ValueError:
             raise HTTPException(
-                status_code=400, 
-                detail="Invalid timestamp format. Use ISO 8601 format (e.g., '2023-10-24T14:30:00Z')"
+                status_code=400,
+                detail="Invalid timestamp format. Use ISO 8601 format (e.g., '2023-10-24T14:30:00Z')",
             )
 
         # First check if conversation exists and user has access
@@ -276,7 +276,7 @@ async def bulk_delete_messages_from_timestamp(
         return {
             "status": "success",
             "message": f"Bulk deleted {deleted_count} messages from conversation {conversation_id} created >= {from_timestamp}",
-            "deleted_count": deleted_count
+            "deleted_count": deleted_count,
         }
     except HTTPException as e:
         raise e

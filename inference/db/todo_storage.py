@@ -267,7 +267,9 @@ class TodoStorage:
             )
             return []
 
-    async def get_todos_by_conversation(self, user_id: str, conversation_id: int) -> List[TodoItem]:
+    async def get_todos_by_conversation(
+        self, user_id: str, conversation_id: int
+    ) -> List[TodoItem]:
         """
         Get todos for a specific conversation and user.
 

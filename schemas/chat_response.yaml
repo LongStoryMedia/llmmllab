@@ -50,14 +50,6 @@ properties:
   eval_duration:
     type: number
     description: Time taken for token evaluation in milliseconds
-  thinking:
-    $ref: thought.yaml
-    description: The thinking/reasoning process from the assistant before the response
-  tool_calls:
-    type: array
-    items:
-      $ref: tool_execution_result.yaml
-    description: Optional tool calls associated with the message
   processing:
     type: string
     description: Optional responses generated during message processing

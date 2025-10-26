@@ -14,7 +14,7 @@ from models import (
     MessageContent,
     MessageContentType,
     MessageRole,
-    ToolExecutionResult,
+    ToolCall,
     Thought,
 )
 
@@ -44,7 +44,7 @@ class StreamingResponseState:
         self.tool_call_buffer = ""
         self.response_buffer = ""
         self.current_tool_call: Optional[Dict[str, Any]] = None
-        self.tool_calls: List[ToolExecutionResult] = []
+        self.tool_calls: List[ToolCall] = []
         self.accumulated_thinking = ""
         self.response_completed = False  # Track if response is finished
         self.json_buffer = ""  # Buffer for detecting JSON metadata
@@ -144,15 +144,15 @@ class StreamingResponseState:
                         "args", tool_data.get("arguments", {})
                     )
 
-                    # Create ToolExecutionResult
-                    tool_result = ToolExecutionResult(**self.current_tool_call)
+                    # Create ToolCall
+                    tool_result = ToolCall(**self.current_tool_call)
                     self.tool_calls.append(tool_result)
 
                 except (json.JSONDecodeError, Exception):
                     # If parsing fails, create a basic tool call entry
-                    tool_result = ToolExecutionResult(
+                    tool_result = ToolCall(
                         tool_name="unknown",
-                        execution_id=self.current_tool_call["execution_id"],
+                        execution_id=self.current_tool_call.get("execution_id"),
                         success=False,
                         error_message="Failed to parse tool call arguments",
                         execution_time_ms=0,
@@ -176,10 +176,14 @@ class StreamingResponseState:
             self.accumulated_thinking += clean_chunk
 
         # Return ChatResponse with thinking content
-        thinking = Thought(text=clean_chunk) if clean_chunk else None
+        thoughts = [Thought(text=clean_chunk)] if clean_chunk else None
+        message = Message(
+            role=MessageRole.ASSISTANT, 
+            content=[],
+            thoughts=thoughts
+        )
         return ChatResponse(
-            message=Message(role=MessageRole.ASSISTANT, content=[]),
-            thinking=thinking,
+            message=message,
             done=False,
         )
 
@@ -191,10 +195,14 @@ class StreamingResponseState:
             self.thinking_buffer += clean_chunk
             self.accumulated_thinking += clean_chunk
 
-        thinking = Thought(text=clean_chunk) if clean_chunk else None
+        thoughts = [Thought(text=clean_chunk)] if clean_chunk else None
+        message = Message(
+            role=MessageRole.ASSISTANT, 
+            content=[],
+            thoughts=thoughts
+        )
         return ChatResponse(
-            message=Message(role=MessageRole.ASSISTANT, content=[]),
-            thinking=thinking,
+            message=message,
             done=False,
         )
 
@@ -209,9 +217,14 @@ class StreamingResponseState:
             self._try_parse_function_call()
 
         # Return ChatResponse with current tool calls
+        tool_calls = self.tool_calls.copy() if self.tool_calls else None
+        message = Message(
+            role=MessageRole.ASSISTANT, 
+            content=[],
+            tool_calls=tool_calls
+        )
         return ChatResponse(
-            message=Message(role=MessageRole.ASSISTANT, content=[]),
-            tool_calls=self.tool_calls.copy() if self.tool_calls else None,
+            message=message,
             done=False,
         )
 
@@ -366,7 +379,7 @@ class StreamingResponseState:
                     self.current_tool_call["args"] = function_data.get("args", function_data.get("arguments", function_data.get("parameters", {})))
                     
                     # Create and add tool execution result
-                    tool_result = ToolExecutionResult(**self.current_tool_call)
+                    tool_result = ToolCall(**self.current_tool_call)
                     self.tool_calls.append(tool_result)
                     
                     # Clear the parsed portion from buffer
@@ -428,13 +441,16 @@ class StreamingResponseState:
             else None
         )
 
+        thoughts = [thinking] if thinking else None
+        tool_calls = self.tool_calls if self.tool_calls else None
+        
         return ChatResponse(
             message=Message(
                 role=MessageRole.ASSISTANT,
                 content=[],  # Empty since content was already streamed
+                thoughts=thoughts,
+                tool_calls=tool_calls
             ),
-            thinking=thinking,
-            tool_calls=self.tool_calls if self.tool_calls else None,
             done=True,
         )
 

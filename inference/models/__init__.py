@@ -99,8 +99,8 @@ try:
     from . import todo_item
     from . import tool
     from . import tool_analysis_request
+    from . import tool_call
     from . import tool_config
-    from . import tool_execution_result
     from . import tool_needs
     from . import user
     from . import user_config
@@ -211,8 +211,8 @@ __all__ = [
     'todo_item',
     'tool',
     'tool_analysis_request',
+    'tool_call',
     'tool_config',
-    'tool_execution_result',
     'tool_needs',
     'user',
     'user_config',
@@ -325,8 +325,8 @@ __all__ = [
     'TodoItem',
     'Tool',
     'ToolAnalysisRequest',
+    'ToolCall',
     'ToolConfig',
-    'ToolExecutionResult',
     'ToolNeeds',
     'User',
     'UserConfig',
@@ -630,11 +630,11 @@ from .tool import (
 from .tool_analysis_request import (
     ToolAnalysisRequest,
 )
+from .tool_call import (
+    ToolCall,
+)
 from .tool_config import (
     ToolConfig,
-)
-from .tool_execution_result import (
-    ToolExecutionResult,
 )
 from .tool_needs import (
     ToolNeeds,

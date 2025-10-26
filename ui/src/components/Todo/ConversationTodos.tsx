@@ -33,7 +33,7 @@ import {
   PlayArrow,
   Cancel
 } from '@mui/icons-material';
-import { useAuth } from '../../auth/AuthProvider';
+import { useAuth } from '../../auth/useAuth';
 import { TodoItem } from '../../types/TodoItem';
 
 interface ConversationTodosProps {
@@ -47,7 +47,7 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
   const [loading, setLoading] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingTodo, setEditingTodo] = useState<TodoItem | null>(null);
-  
+
   // Form state
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -63,7 +63,7 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
 
   const fetchTodos = async () => {
     if (!conversationId) return;
-    
+
     setLoading(true);
     try {
       const token = await getToken();
@@ -72,7 +72,7 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
           'Authorization': `Bearer ${token}`
         }
       });
-      
+
       if (response.ok) {
         const todoData = await response.json();
         setTodos(todoData);
@@ -92,7 +92,7 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
 
   const createTodo = async () => {
     if (!title.trim()) return;
-    
+
     try {
       const token = await getToken();
       const response = await fetch('/api/todos/', {
@@ -109,7 +109,7 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
           conversation_id: conversationId
         })
       });
-      
+
       if (response.ok) {
         const newTodo = await response.json();
         setTodos(prev => [newTodo, ...prev]);
@@ -137,7 +137,7 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
           priority: todo.priority
         })
       });
-      
+
       if (response.ok) {
         const updatedTodo = await response.json();
         setTodos(prev => prev.map(t => t.id === todo.id ? updatedTodo : t));
@@ -156,7 +156,7 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
           'Authorization': `Bearer ${token}`
         }
       });
-      
+
       if (response.ok) {
         setTodos(prev => prev.filter(t => t.id !== todoId));
       }
@@ -209,7 +209,7 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
 
   const handleSave = async () => {
     if (!title.trim()) return;
-    
+
     if (editingTodo) {
       // Update existing todo
       await updateTodo({
@@ -224,7 +224,7 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
       // Create new todo
       await createTodo();
     }
-    
+
     setCreateDialogOpen(false);
     resetForm();
   };
@@ -310,7 +310,7 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
                   >
                     {getStatusIcon(todo.status)}
                   </IconButton>
-                  
+
                   <ListItemText
                     primary={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -333,7 +333,7 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
                     }
                     secondary={todo.description}
                   />
-                  
+
                   <ListItemSecondaryAction>
                     <IconButton
                       size="small"

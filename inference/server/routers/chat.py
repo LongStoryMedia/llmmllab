@@ -25,7 +25,7 @@ from models import (
     MessageContentType,
     ChatResponse,
     Message,
-    ToolExecutionResult,
+    ToolCall,
     Thought,
     IntentAnalysis,
 )
@@ -40,7 +40,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 class StructuredResponseData(TypedDict):
     """Strongly typed structure for response data storage."""
     thoughts: List[Thought]
-    tool_calls: List[ToolExecutionResult] 
+    tool_calls: List[ToolCall] 
     analyses: List[IntentAnalysis]
 
 
@@ -83,7 +83,7 @@ async def store_structured_response_data(
         tool_calls = structured_data.get("tool_calls", [])
         if tool_calls:
             for tool_call in tool_calls:
-                if isinstance(tool_call, ToolExecutionResult):
+                if isinstance(tool_call, ToolCall):
                     await storage.get_service(storage.tool_call).add_tool_call(
                         message_id=message_id,
                         tool_execution_result=tool_call,
