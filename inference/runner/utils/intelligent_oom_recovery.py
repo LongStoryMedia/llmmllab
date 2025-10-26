@@ -21,6 +21,7 @@ from sklearn.metrics import mean_squared_error
 
 from utils.logging import llmmllogger
 from models.model_profile import ModelProfile
+from .hardware_manager import EnhancedHardwareManager
 
 
 class GPUInfo(TypedDict):
@@ -169,18 +170,18 @@ class IntelligentOOMRecovery:
         if not os.path.exists(model_path):
             # File doesn't exist, use intelligent estimation based on model name patterns
             return self._estimate_model_size_from_name(model_path)
-            
+
         try:
             size_bytes = os.path.getsize(model_path)
             return size_bytes / (1024 * 1024)
         except Exception as e:
             self.logger.warning(f"Error getting model size for {model_path}: {e}")
             return self._estimate_model_size_from_name(model_path)
-            
+
     def _estimate_model_size_from_name(self, model_path: str) -> float:
         """Estimate model size based on filename patterns."""
         model_name = model_path.lower()
-        
+
         # Pattern matching for common model sizes
         if "3b" in model_name or "3.2b" in model_name:
             return 2000.0  # ~2GB for 3B models
@@ -322,7 +323,7 @@ class IntelligentOOMRecovery:
 
         # Apply learned constraints based on historical success data
         learned_limits = self._get_learned_limits()
-        
+
         optimized_config: OptimalParameters = {
             "n_ctx": min(base_n_ctx, learned_limits["max_context"]),
             "n_batch": min(base_batch_size, learned_limits["max_batch"]),
@@ -343,31 +344,41 @@ class IntelligentOOMRecovery:
         if len(self.configurations) < 5:
             # Insufficient data, use conservative initial minimums
             return OptimalParameters(
-                n_ctx=1024,      # Conservative minimum context
-                n_batch=16,      # Conservative minimum batch  
-                n_ubatch=16,     # Conservative minimum ubatch
+                n_ctx=1024,  # Conservative minimum context
+                n_batch=16,  # Conservative minimum batch
+                n_ubatch=16,  # Conservative minimum ubatch
                 n_gpu_layers=0,  # Minimum GPU layers (CPU fallback)
             )
-        
+
         # Extract minimums from successful configurations
-        contexts = [config["n_ctx"] for config in self.configurations if config["success"]]
-        batches = [config["n_batch"] for config in self.configurations if config["success"]]
-        ubatches = [config["n_ubatch"] for config in self.configurations if config["success"]]
-        gpu_layers = [config["n_gpu_layers"] for config in self.configurations if config["success"]]
-        
+        contexts = [
+            config["n_ctx"] for config in self.configurations if config["success"]
+        ]
+        batches = [
+            config["n_batch"] for config in self.configurations if config["success"]
+        ]
+        ubatches = [
+            config["n_ubatch"] for config in self.configurations if config["success"]
+        ]
+        gpu_layers = [
+            config["n_gpu_layers"]
+            for config in self.configurations
+            if config["success"]
+        ]
+
         # Use 10th percentile as safe minimum (tested values that worked)
         contexts_sorted = sorted(contexts)
         batches_sorted = sorted(batches)
         ubatches_sorted = sorted(ubatches)
         gpu_layers_sorted = sorted(gpu_layers)
-        
+
         p10_idx = max(0, int(len(contexts) * 0.1))
-        
+
         return OptimalParameters(
-            n_ctx=max(contexts_sorted[p10_idx], 512),        # Never go below 512 context
-            n_batch=max(batches_sorted[p10_idx], 8),         # Never go below 8 batch
-            n_ubatch=max(ubatches_sorted[p10_idx], 8),       # Never go below 8 ubatch  
-            n_gpu_layers=gpu_layers_sorted[p10_idx],         # Can be 0 for CPU-only
+            n_ctx=max(contexts_sorted[p10_idx], 512),  # Never go below 512 context
+            n_batch=max(batches_sorted[p10_idx], 8),  # Never go below 8 batch
+            n_ubatch=max(ubatches_sorted[p10_idx], 8),  # Never go below 8 ubatch
+            n_gpu_layers=gpu_layers_sorted[p10_idx],  # Can be 0 for CPU-only
         )
 
     def _get_learned_limits(self) -> LearnedLimits:
@@ -376,33 +387,33 @@ class IntelligentOOMRecovery:
             # Insufficient data for learning, use conservative initial estimates
             return LearnedLimits(
                 max_context=16384,  # Conservative initial estimate
-                max_batch=256,      # Conservative initial estimate  
+                max_batch=256,  # Conservative initial estimate
                 max_gpu_layers=64,  # Conservative initial estimate
                 context_95th_percentile=8192,
                 batch_95th_percentile=128,
                 gpu_layers_95th_percentile=32,
             )
-        
+
         # Extract parameters from successful configurations
         contexts = [config["n_ctx"] for config in self.configurations]
         batches = [config["n_batch"] for config in self.configurations]
         gpu_layers = [config["n_gpu_layers"] for config in self.configurations]
-        
+
         # Calculate statistics
         max_context = max(contexts)
         max_batch = max(batches)
         max_gpu_layers_val = max(gpu_layers)
-        
+
         # Calculate 95th percentiles for safer limits
         contexts_sorted = sorted(contexts)
         batches_sorted = sorted(batches)
         gpu_layers_sorted = sorted(gpu_layers)
-        
+
         p95_idx = int(len(contexts) * 0.95)
         context_95th = contexts_sorted[min(p95_idx, len(contexts) - 1)]
         batch_95th = batches_sorted[min(p95_idx, len(batches) - 1)]
         gpu_layers_95th = gpu_layers_sorted[min(p95_idx, len(gpu_layers) - 1)]
-        
+
         return LearnedLimits(
             max_context=max_context,
             max_batch=max_batch,
@@ -418,15 +429,20 @@ class IntelligentOOMRecovery:
             return 0  # CPU-only
 
         learned_limits = self._get_learned_limits()
-        
+
         # Use learned data if available, otherwise conservative estimate
         if len(self.configurations) >= 5:
             # Use 95th percentile as safe upper bound
-            return min(learned_limits["gpu_layers_95th_percentile"], learned_limits["max_gpu_layers"])
+            return min(
+                learned_limits["gpu_layers_95th_percentile"],
+                learned_limits["max_gpu_layers"],
+            )
         else:
             # Initial conservative estimate based on total memory
             total_memory_gb = gpu_stats["total_memory"] / 1024
-            estimated_layers = int(total_memory_gb * 4)  # ~4 layers per GB as initial estimate
+            estimated_layers = int(
+                total_memory_gb * 4
+            )  # ~4 layers per GB as initial estimate
             return max(0, min(estimated_layers, 64))
 
     def _extract_features(
@@ -544,7 +560,7 @@ class IntelligentOOMRecovery:
         attempt: int,
         original_params: OptimalParameters,
         current_params: OptimalParameters,
-        hardware_manager,  # noqa: ARG002  # Reserved for future memory clearing
+        hardware_manager: EnhancedHardwareManager,  # noqa: ARG002  # Reserved for future memory clearing
     ) -> RecoveryStrategy:
         """
         Execute OOM recovery strategy based on attempt number.
@@ -566,6 +582,12 @@ class IntelligentOOMRecovery:
                 "clear_memory", "reduce_batch", "move_to_cpu", "reduce_context"
             ] = "clear_memory"
             # Parameters stay the same, just clear memory via hardware manager
+            if attempt == 0:
+                hardware_manager.clear_memory()
+            elif attempt == 1:
+                hardware_manager.clear_memory(aggressive=True)
+            else:
+                hardware_manager.clear_memory(aggressive=True, nuclear=True)
 
         elif attempt <= 4:
             # Level 2: Reduce batch/ubatch progressively
@@ -595,20 +617,30 @@ class IntelligentOOMRecovery:
             else:
                 # If already CPU-only, reduce batch further
                 learned_mins = self._get_learned_minimums()
-                new_params["n_batch"] = max(current_params["n_batch"] // 2, learned_mins["n_batch"])
-                new_params["n_ubatch"] = max(current_params["n_ubatch"] // 2, learned_mins["n_ubatch"])
+                new_params["n_batch"] = max(
+                    current_params["n_batch"] // 2, learned_mins["n_batch"]
+                )
+                new_params["n_ubatch"] = max(
+                    current_params["n_ubatch"] // 2, learned_mins["n_ubatch"]
+                )
 
         else:
             # Level 4: Reduce context size (last resort as specified)
             strategy_name = "reduce_context"
             learned_mins = self._get_learned_minimums()
             reduction_factor = 2 ** (attempt - 6)  # Progressive context reduction
-            new_params["n_ctx"] = max(current_params["n_ctx"] // reduction_factor, learned_mins["n_ctx"])
+            new_params["n_ctx"] = max(
+                current_params["n_ctx"] // reduction_factor, learned_mins["n_ctx"]
+            )
 
             # Also reduce batch sizes if context is very small
             if new_params["n_ctx"] <= learned_mins["n_ctx"] * 2:
-                new_params["n_batch"] = max(current_params["n_batch"] // 2, learned_mins["n_batch"])
-                new_params["n_ubatch"] = max(current_params["n_ubatch"] // 2, learned_mins["n_ubatch"])
+                new_params["n_batch"] = max(
+                    current_params["n_batch"] // 2, learned_mins["n_batch"]
+                )
+                new_params["n_ubatch"] = max(
+                    current_params["n_ubatch"] // 2, learned_mins["n_ubatch"]
+                )
 
         result: RecoveryStrategy = {
             "parameters": new_params,

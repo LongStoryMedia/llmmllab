@@ -151,8 +151,6 @@ class BaseLlamaCppPipeline(BaseChatModel):
             self._logger.warning(f"Error clearing GPU memory: {e}")
 
         # Give GPU a moment to clean up
-        import time
-
         time.sleep(1)
 
     def _initialize_llama_with_intelligent_oom_recovery(self, gguf_path: str) -> llama_cpp.Llama:
@@ -179,17 +177,16 @@ class BaseLlamaCppPipeline(BaseChatModel):
             requested_gpu_layers = self.profile.gpu_config.gpu_layers
         
         # Use ML to predict optimal starting parameters
-        predicted_params = self.oom_recovery.predict_optimal_parameters(
+        predicted_params = self.oom_recovery.predict_optimal_parameters_from_profile(
+            model_profile=self.profile,
             model_path=gguf_path,
-            target_n_ctx=target_n_ctx,
-            target_batch=target_n_batch,
-            target_ubatch=target_n_ubatch,
-            requested_gpu_layers=requested_gpu_layers,
             hardware_manager=self.hardware_manager
         )
         
         # Keep track of original parameters for recovery calculations
-        original_params = {
+        from runner.utils.intelligent_oom_recovery import OptimalParameters
+        
+        original_params: OptimalParameters = {
             'n_ctx': target_n_ctx,
             'n_batch': target_n_batch,
             'n_ubatch': target_n_ubatch,
@@ -283,7 +280,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
                         primary_gpu_stats = None
                         
                         # First, look for GPU with id=0 (cuda:0 equivalent)
-                        for key, stats in memory_stats.items():
+                        for stats in memory_stats.values():
                             if (hasattr(stats, 'id') and stats.id == 0 and
                                 hasattr(stats, 'mem_used') and hasattr(stats, 'name') and
                                 'nvidia' in stats.name.lower()):
@@ -292,7 +289,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
                         
                         # If no GPU with id=0 found, use the first NVIDIA GPU
                         if primary_gpu_stats is None:
-                            for key, stats in memory_stats.items():
+                            for stats in memory_stats.values():
                                 if (hasattr(stats, 'mem_used') and hasattr(stats, 'name') and
                                     'nvidia' in stats.name.lower()):
                                     primary_gpu_stats = stats
@@ -354,12 +351,14 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     self._logger.warning(f"Error during failed instance cleanup: {cleanup_e}")
                 
                 # Execute intelligent recovery strategy
-                new_params, strategy = self.oom_recovery.execute_recovery_strategy(
+                recovery_result = self.oom_recovery.execute_recovery_strategy(
                     attempt=attempt,
                     original_params=original_params,
                     current_params=current_params,
                     hardware_manager=self.hardware_manager
                 )
+                new_params = recovery_result["parameters"]
+                strategy = recovery_result["strategy_name"]
                 
                 # Record the failed attempt for ML training
                 self.oom_recovery.record_failure(
@@ -390,7 +389,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     raise RuntimeError(
                         f"Failed to initialize {self.model.name} after {max_attempts} intelligent recovery attempts. "
                         f"Last strategy: {strategy}, Final params: {new_params}"
-                    )
+                    ) from e
                 
                 # Update parameters for next attempt
                 current_params = new_params
@@ -613,20 +612,28 @@ class BaseLlamaCppPipeline(BaseChatModel):
             )
 
         # Simple call to llama-cpp-python - let it handle the complexity
-        return self.llama_instance.create_chat_completion(
-            messages=llama_messages,
-            tools=converted_tools,
-            tool_choice="auto" if converted_tools else None,
-            temperature=self.profile.parameters.temperature or 0.7,
-            top_p=self.profile.parameters.top_p or 0.95,
-            top_k=self.profile.parameters.top_k or 40,
-            stream=stream,
-            stop=self.profile.parameters.stop or stop or [],
-            max_tokens=self.profile.parameters.max_tokens or 4096,
-            repeat_penalty=self.profile.parameters.repeat_penalty or 1.05,
-            response_format=response_format,
-            grammar=grammar,
-        )
+        kwargs = {
+            "messages": llama_messages,  # type: ignore
+            "temperature": self.profile.parameters.temperature or 0.7,
+            "top_p": self.profile.parameters.top_p or 0.95,
+            "top_k": self.profile.parameters.top_k or 40,
+            "stream": stream,
+            "stop": self.profile.parameters.stop or stop or [],
+            "max_tokens": self.profile.parameters.max_tokens or 4096,
+            "repeat_penalty": self.profile.parameters.repeat_penalty or 1.05,
+        }
+        
+        if converted_tools:
+            kwargs["tools"] = converted_tools  # type: ignore
+            kwargs["tool_choice"] = "auto"
+            
+        if response_format:
+            kwargs["response_format"] = response_format  # type: ignore
+            
+        if grammar:
+            kwargs["grammar"] = grammar
+            
+        return self.llama_instance.create_chat_completion(**kwargs)
 
     def _generate(
         self,
@@ -740,7 +747,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
                         if tool_calls:
                             final_chunk_message = AIMessageChunk(
                                 content=cleaned_content,
-                                tool_calls=tool_calls,
+                                tool_calls=tool_calls,  # type: ignore
                                 usage_metadata=usage_metadata,
                                 response_metadata={
                                     "model_name": self.model.name,

@@ -325,7 +325,7 @@ class EnhancedHardwareManager:
 
                     # Second: ACTUAL CUDA context reset using cupy if available
                     try:
-                        import cupy
+                        import cupy  # type: ignore
 
                         with cupy.cuda.Device(i):
                             # This actually destroys and recreates the CUDA context
@@ -336,7 +336,7 @@ class EnhancedHardwareManager:
                     except ImportError:
                         # Fallback: Try using pynvml to reset the GPU
                         try:
-                            import pynvml
+                            import pynvml  # type: ignore
 
                             pynvml.nvmlInit()
                             handle = pynvml.nvmlDeviceGetHandleByIndex(i)
@@ -345,7 +345,7 @@ class EnhancedHardwareManager:
                             self.logger.info(
                                 f"Reset CUDA context for device {i} using pynvml"
                             )
-                        except (ImportError, Exception) as pynvml_e:
+                        except (ImportError, Exception):
                             # Ultimate fallback: Try ctypes direct CUDA call
                             try:
                                 import ctypes
