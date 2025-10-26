@@ -279,12 +279,28 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 try:
                     memory_stats = self.hardware_manager.update_all_memory_stats()
                     if memory_stats:
-                        # Find primary GPU stats
+                        # Find primary GPU stats - look for GPU with id=0 first
+                        primary_gpu_stats = None
+                        
+                        # First, look for GPU with id=0 (cuda:0 equivalent)
                         for key, stats in memory_stats.items():
-                            if 'cuda:0' in key or 'gpu' in key.lower():
-                                if hasattr(stats, 'memory_used'):
-                                    gpu_memory_used_mb = stats.memory_used
+                            if (hasattr(stats, 'id') and stats.id == 0 and
+                                hasattr(stats, 'mem_used') and hasattr(stats, 'name') and
+                                'nvidia' in stats.name.lower()):
+                                primary_gpu_stats = stats
                                 break
+                        
+                        # If no GPU with id=0 found, use the first NVIDIA GPU
+                        if primary_gpu_stats is None:
+                            for key, stats in memory_stats.items():
+                                if (hasattr(stats, 'mem_used') and hasattr(stats, 'name') and
+                                    'nvidia' in stats.name.lower()):
+                                    primary_gpu_stats = stats
+                                    break
+                        
+                        # Extract memory usage from primary GPU
+                        if primary_gpu_stats and hasattr(primary_gpu_stats, 'mem_used'):
+                            gpu_memory_used_mb = primary_gpu_stats.mem_used
                 except Exception:
                     pass
                 
