@@ -10,10 +10,8 @@ model profile integration.
 
 import os
 import json
-import hashlib
 import numpy as np
-from typing import Optional, Tuple, List, TypedDict, Literal, Union
-from dataclasses import dataclass, asdict
+from typing import Optional, List, TypedDict, Literal
 from pathlib import Path
 
 # sklearn is required - no fallbacks
@@ -23,8 +21,6 @@ from sklearn.metrics import mean_squared_error
 
 from utils.logging import llmmllogger
 from models.model_profile import ModelProfile
-from models.model_parameters import ModelParameters
-from models.gpu_config import GPUConfig
 
 
 class GPUInfo(TypedDict):
@@ -44,8 +40,7 @@ class SystemGPUStats(TypedDict):
 
     total_gpus: int
     total_memory: float
-    available_memory: float
-    primary_gpu_id: int
+    total_available_memory: float
     gpus: List[GPUInfo]
 
 
@@ -78,18 +73,23 @@ class OOMRecoveryAttemptData(TypedDict):
 
 
 class PredictionFeatures(TypedDict):
-    """Features used for ML prediction."""
+    """Features used for parameter prediction."""
 
     model_size_mb: float
-    target_n_ctx: int
-    primary_gpu_memory_mb: float
     total_gpu_memory_mb: float
-    gpu_count: int
-    requested_gpu_layers: int
-    memory_pressure_ratio: float
-    system_memory_pressure: float
-    primary_gpu_fraction: float
-    log_model_size: float
+    total_available_memory_mb: float
+    total_gpus: int
+
+
+class LearnedLimits(TypedDict):
+    """Learned maximum limits from successful configurations."""
+
+    max_context: int
+    max_batch: int
+    max_gpu_layers: int
+    context_95th_percentile: int
+    batch_95th_percentile: int
+    gpu_layers_95th_percentile: int
 
 
 class OptimalParameters(TypedDict):
@@ -212,8 +212,7 @@ class IntelligentOOMRecovery:
                 return SystemGPUStats(
                     total_gpus=0,
                     total_memory=0.0,
-                    available_memory=0.0,
-                    primary_gpu_id=-1,
+                    total_available_memory=0.0,
                     gpus=[],
                 )
 
@@ -252,8 +251,7 @@ class IntelligentOOMRecovery:
                 return SystemGPUStats(
                     total_gpus=0,
                     total_memory=0.0,
-                    available_memory=0.0,
-                    primary_gpu_id=-1,
+                    total_available_memory=0.0,
                     gpus=[],
                 )
 
@@ -264,21 +262,10 @@ class IntelligentOOMRecovery:
             total_memory = sum(gpu["total_memory"] for gpu in gpus)
             total_available_memory = sum(gpu["available_memory"] for gpu in gpus)
 
-            # Select primary GPU using intelligent strategy
-            primary_gpu_id = self._select_primary_gpu(gpus)
-
-            # Get primary GPU available memory
-            primary_gpu_memory = 0.0
-            for gpu in gpus:
-                if gpu["id"] == primary_gpu_id:
-                    primary_gpu_memory = gpu["available_memory"]
-                    break
-
             system_stats: SystemGPUStats = {
                 "total_gpus": len(gpus),
                 "total_memory": total_memory,
-                "available_memory": primary_gpu_memory,  # Primary GPU memory for compatibility
-                "primary_gpu_id": primary_gpu_id,
+                "total_available_memory": total_available_memory,
                 "gpus": gpus,
             }
 
@@ -292,7 +279,7 @@ class IntelligentOOMRecovery:
 
             self.logger.info(
                 f"Multi-GPU System: {len(gpus)} GPUs, Total: {total_memory:.0f}MB, "
-                f"Primary GPU{primary_gpu_id}: {primary_gpu_memory:.0f}MB, GPUs: [{gpu_list}]"
+                f"Total Available: {total_available_memory:.0f}MB, GPUs: [{gpu_list}]"
             )
 
             return system_stats
@@ -302,68 +289,9 @@ class IntelligentOOMRecovery:
             return SystemGPUStats(
                 total_gpus=0,
                 total_memory=0.0,
-                available_memory=0.0,
-                primary_gpu_id=-1,
+                total_available_memory=0.0,
                 gpus=[],
             )
-
-    def _select_primary_gpu(self, gpus: List[GPUInfo]) -> int:
-        """
-        Intelligently select primary GPU from available GPUs.
-
-        Selection priority:
-        1. GPU 0 if it has sufficient memory (≥8GB)
-        2. GPU with most available memory if GPU 0 is insufficient
-        3. GPU 0 for consistency even if not optimal
-        4. First GPU if GPU 0 doesn't exist
-        """
-        if not gpus:
-            return -1
-
-        # Find GPU 0
-        gpu_0: Optional[GPUInfo] = None
-        for gpu in gpus:
-            if gpu["id"] == 0:
-                gpu_0 = gpu
-                break
-
-        # Single GPU case
-        if len(gpus) == 1:
-            return gpus[0]["id"]
-
-        # Multi-GPU selection logic
-        if gpu_0 is not None:
-            if gpu_0["available_memory"] < 8000:  # GPU 0 has insufficient memory
-                # Select GPU with most available memory
-                best_gpu = max(gpus, key=lambda x: x["available_memory"])
-                self.logger.info(
-                    f"GPU 0 insufficient ({gpu_0['available_memory']:.0f}MB < 8GB), "
-                    f"selecting GPU {best_gpu['id']} with {best_gpu['available_memory']:.0f}MB"
-                )
-                return best_gpu["id"]
-            else:
-                # GPU 0 has sufficient memory, check if another GPU is significantly better
-                best_gpu = max(gpus, key=lambda x: x["available_memory"])
-
-                if (
-                    best_gpu["id"] != gpu_0["id"]
-                    and best_gpu["available_memory"] > gpu_0["available_memory"] * 2.0
-                ):
-                    self.logger.info(
-                        f"Switching from GPU 0 to GPU {best_gpu['id']} due to significantly more memory "
-                        f"({best_gpu['available_memory']:.0f} vs {gpu_0['available_memory']:.0f}MB)"
-                    )
-                    return best_gpu["id"]
-                else:
-                    self.logger.info(f"Using GPU 0 for consistency")
-                    return gpu_0["id"]
-        else:
-            # No GPU 0, select GPU with most memory
-            best_gpu = max(gpus, key=lambda x: x["available_memory"])
-            self.logger.info(
-                f"No GPU 0 found, selecting GPU {best_gpu['id']} with most memory"
-            )
-            return best_gpu["id"]
 
     def create_configuration_from_model_profile(
         self, model_profile: ModelProfile, gpu_stats: SystemGPUStats
@@ -392,14 +320,14 @@ class IntelligentOOMRecovery:
             # Default: estimate based on available memory
             base_n_gpu_layers = self._estimate_gpu_layers_from_system(gpu_stats)
 
-        # Apply system constraints and optimizations
+        # Apply learned constraints based on historical success data
+        learned_limits = self._get_learned_limits()
+        
         optimized_config: OptimalParameters = {
-            "n_ctx": min(base_n_ctx, self._max_context_for_memory(gpu_stats)),
-            "n_batch": min(base_batch_size, self._max_batch_for_memory(gpu_stats)),
+            "n_ctx": min(base_n_ctx, learned_limits["max_context"]),
+            "n_batch": min(base_batch_size, learned_limits["max_batch"]),
             "n_ubatch": min(base_n_ubatch, base_batch_size),
-            "n_gpu_layers": min(
-                base_n_gpu_layers, self._max_gpu_layers_for_memory(gpu_stats)
-            ),
+            "n_gpu_layers": min(base_n_gpu_layers, learned_limits["max_gpu_layers"]),
         }
 
         self.logger.info(
@@ -410,99 +338,116 @@ class IntelligentOOMRecovery:
 
         return optimized_config
 
+    def _get_learned_minimums(self) -> OptimalParameters:
+        """Get learned minimum values from successful configurations."""
+        if len(self.configurations) < 5:
+            # Insufficient data, use conservative initial minimums
+            return OptimalParameters(
+                n_ctx=1024,      # Conservative minimum context
+                n_batch=16,      # Conservative minimum batch  
+                n_ubatch=16,     # Conservative minimum ubatch
+                n_gpu_layers=0,  # Minimum GPU layers (CPU fallback)
+            )
+        
+        # Extract minimums from successful configurations
+        contexts = [config["n_ctx"] for config in self.configurations if config["success"]]
+        batches = [config["n_batch"] for config in self.configurations if config["success"]]
+        ubatches = [config["n_ubatch"] for config in self.configurations if config["success"]]
+        gpu_layers = [config["n_gpu_layers"] for config in self.configurations if config["success"]]
+        
+        # Use 10th percentile as safe minimum (tested values that worked)
+        contexts_sorted = sorted(contexts)
+        batches_sorted = sorted(batches)
+        ubatches_sorted = sorted(ubatches)
+        gpu_layers_sorted = sorted(gpu_layers)
+        
+        p10_idx = max(0, int(len(contexts) * 0.1))
+        
+        return OptimalParameters(
+            n_ctx=max(contexts_sorted[p10_idx], 512),        # Never go below 512 context
+            n_batch=max(batches_sorted[p10_idx], 8),         # Never go below 8 batch
+            n_ubatch=max(ubatches_sorted[p10_idx], 8),       # Never go below 8 ubatch  
+            n_gpu_layers=gpu_layers_sorted[p10_idx],         # Can be 0 for CPU-only
+        )
+
+    def _get_learned_limits(self) -> LearnedLimits:
+        """Get learned maximum limits from successful configurations."""
+        if len(self.configurations) < 5:
+            # Insufficient data for learning, use conservative initial estimates
+            return LearnedLimits(
+                max_context=16384,  # Conservative initial estimate
+                max_batch=256,      # Conservative initial estimate  
+                max_gpu_layers=64,  # Conservative initial estimate
+                context_95th_percentile=8192,
+                batch_95th_percentile=128,
+                gpu_layers_95th_percentile=32,
+            )
+        
+        # Extract parameters from successful configurations
+        contexts = [config["n_ctx"] for config in self.configurations]
+        batches = [config["n_batch"] for config in self.configurations]
+        gpu_layers = [config["n_gpu_layers"] for config in self.configurations]
+        
+        # Calculate statistics
+        max_context = max(contexts)
+        max_batch = max(batches)
+        max_gpu_layers_val = max(gpu_layers)
+        
+        # Calculate 95th percentiles for safer limits
+        contexts_sorted = sorted(contexts)
+        batches_sorted = sorted(batches)
+        gpu_layers_sorted = sorted(gpu_layers)
+        
+        p95_idx = int(len(contexts) * 0.95)
+        context_95th = contexts_sorted[min(p95_idx, len(contexts) - 1)]
+        batch_95th = batches_sorted[min(p95_idx, len(batches) - 1)]
+        gpu_layers_95th = gpu_layers_sorted[min(p95_idx, len(gpu_layers) - 1)]
+        
+        return LearnedLimits(
+            max_context=max_context,
+            max_batch=max_batch,
+            max_gpu_layers=max_gpu_layers_val,
+            context_95th_percentile=context_95th,
+            batch_95th_percentile=batch_95th,
+            gpu_layers_95th_percentile=gpu_layers_95th,
+        )
+
     def _estimate_gpu_layers_from_system(self, gpu_stats: SystemGPUStats) -> int:
-        """Estimate optimal GPU layers based on system capabilities."""
+        """Estimate optimal GPU layers based on system capabilities and learned data."""
         if gpu_stats["total_gpus"] == 0:
             return 0  # CPU-only
 
-        # Conservative estimate: use layers proportional to available memory
-        # Assume ~100MB per layer as rough estimate
-        available_memory = gpu_stats["available_memory"]
-        estimated_layers = int(available_memory / 100)
-
-        # Reasonable bounds
-        return max(0, min(estimated_layers, 128))  # Most models have <128 layers
-
-    def _max_context_for_memory(self, gpu_stats: SystemGPUStats) -> int:
-        """Calculate maximum context size for available GPU memory."""
-        if gpu_stats["total_gpus"] == 0:
-            return 8192  # Conservative for CPU
-
-        # Rough estimate: context uses ~4 bytes per token in KV cache
-        available_memory_bytes = gpu_stats["available_memory"] * 1024 * 1024
-        # Reserve 50% for model weights, use 50% for context
-        context_memory = available_memory_bytes * 0.5
-        max_tokens = int(context_memory / 4)
-
-        # Reasonable bounds
-        return max(1024, min(max_tokens, 131072))  # 1K to 128K tokens
-
-    def _max_batch_for_memory(self, gpu_stats: SystemGPUStats) -> int:
-        """Calculate maximum batch size for available GPU memory."""
-        if gpu_stats["total_gpus"] == 0:
-            return 64  # Conservative for CPU
-
-        # Conservative batch sizing based on available memory
-        available_gb = gpu_stats["available_memory"] / 1024
-        if available_gb > 20:
-            return 1024
-        elif available_gb > 16:
-            return 512
-        elif available_gb > 12:
-            return 256
-        elif available_gb > 8:
-            return 128
+        learned_limits = self._get_learned_limits()
+        
+        # Use learned data if available, otherwise conservative estimate
+        if len(self.configurations) >= 5:
+            # Use 95th percentile as safe upper bound
+            return min(learned_limits["gpu_layers_95th_percentile"], learned_limits["max_gpu_layers"])
         else:
-            return 64
-
-    def _max_gpu_layers_for_memory(self, gpu_stats: SystemGPUStats) -> int:
-        """Calculate maximum GPU layers for available memory."""
-        return self._estimate_gpu_layers_from_system(gpu_stats)
+            # Initial conservative estimate based on total memory
+            total_memory_gb = gpu_stats["total_memory"] / 1024
+            estimated_layers = int(total_memory_gb * 4)  # ~4 layers per GB as initial estimate
+            return max(0, min(estimated_layers, 64))
 
     def _extract_features(
         self,
         model_size_mb: float,
         gpu_stats: SystemGPUStats,
-        target_n_ctx: int,
-        requested_gpu_layers: int,
     ) -> PredictionFeatures:
         """
         Extract features for ML prediction with comprehensive multi-GPU awareness.
 
         Returns structured features optimized for Ridge regression models.
         """
-        primary_gpu_memory = gpu_stats["available_memory"]
+        total_available_memory = gpu_stats["total_available_memory"]
         total_gpu_memory = gpu_stats["total_memory"]
         gpu_count = gpu_stats["total_gpus"]
 
-        # Calculate derived features
-        memory_pressure_ratio = (
-            model_size_mb / primary_gpu_memory
-            if primary_gpu_memory > 0
-            else float("inf")
-        )
-
-        system_memory_pressure = (
-            model_size_mb / total_gpu_memory if total_gpu_memory > 0 else float("inf")
-        )
-
-        primary_gpu_fraction = (
-            primary_gpu_memory / total_gpu_memory if total_gpu_memory > 0 else 0.0
-        )
-
         features: PredictionFeatures = {
             "model_size_mb": model_size_mb,
-            "target_n_ctx": target_n_ctx,
-            "primary_gpu_memory_mb": primary_gpu_memory,
             "total_gpu_memory_mb": total_gpu_memory,
-            "gpu_count": gpu_count,
-            "requested_gpu_layers": requested_gpu_layers,
-            "memory_pressure_ratio": min(
-                memory_pressure_ratio, 10.0
-            ),  # Cap for numerical stability
-            "system_memory_pressure": min(system_memory_pressure, 10.0),
-            "primary_gpu_fraction": primary_gpu_fraction,
-            "log_model_size": np.log(model_size_mb + 1),
+            "total_available_memory_mb": total_available_memory,
+            "total_gpus": gpu_count,
         }
 
         return features
@@ -512,15 +457,9 @@ class IntelligentOOMRecovery:
         return np.array(
             [
                 features["model_size_mb"],
-                features["target_n_ctx"],
-                features["primary_gpu_memory_mb"],
                 features["total_gpu_memory_mb"],
-                features["gpu_count"],
-                features["requested_gpu_layers"],
-                features["memory_pressure_ratio"],
-                features["system_memory_pressure"],
-                features["primary_gpu_fraction"],
-                features["log_model_size"],
+                features["total_available_memory_mb"],
+                features["total_gpus"],
             ]
         )
 
@@ -551,8 +490,6 @@ class IntelligentOOMRecovery:
         features = self._extract_features(
             model_size_mb,
             gpu_stats,
-            base_config["n_ctx"],
-            base_config["n_gpu_layers"],
         )
 
         # Apply ML optimization if models are trained
@@ -607,7 +544,7 @@ class IntelligentOOMRecovery:
         attempt: int,
         original_params: OptimalParameters,
         current_params: OptimalParameters,
-        hardware_manager,
+        hardware_manager,  # noqa: ARG002  # Reserved for future memory clearing
     ) -> RecoveryStrategy:
         """
         Execute OOM recovery strategy based on attempt number.
@@ -657,19 +594,21 @@ class IntelligentOOMRecovery:
                 )
             else:
                 # If already CPU-only, reduce batch further
-                new_params["n_batch"] = max(current_params["n_batch"] // 2, 16)
-                new_params["n_ubatch"] = max(current_params["n_ubatch"] // 2, 16)
+                learned_mins = self._get_learned_minimums()
+                new_params["n_batch"] = max(current_params["n_batch"] // 2, learned_mins["n_batch"])
+                new_params["n_ubatch"] = max(current_params["n_ubatch"] // 2, learned_mins["n_ubatch"])
 
         else:
             # Level 4: Reduce context size (last resort as specified)
             strategy_name = "reduce_context"
+            learned_mins = self._get_learned_minimums()
             reduction_factor = 2 ** (attempt - 6)  # Progressive context reduction
-            new_params["n_ctx"] = max(current_params["n_ctx"] // reduction_factor, 1024)
+            new_params["n_ctx"] = max(current_params["n_ctx"] // reduction_factor, learned_mins["n_ctx"])
 
             # Also reduce batch sizes if context is very small
-            if new_params["n_ctx"] <= 2048:
-                new_params["n_batch"] = max(current_params["n_batch"] // 2, 16)
-                new_params["n_ubatch"] = max(current_params["n_ubatch"] // 2, 16)
+            if new_params["n_ctx"] <= learned_mins["n_ctx"] * 2:
+                new_params["n_batch"] = max(current_params["n_batch"] // 2, learned_mins["n_batch"])
+                new_params["n_ubatch"] = max(current_params["n_ubatch"] // 2, learned_mins["n_ubatch"])
 
         result: RecoveryStrategy = {
             "parameters": new_params,
@@ -699,7 +638,7 @@ class IntelligentOOMRecovery:
             "n_ubatch": params["n_ubatch"],
             "n_gpu_layers": params["n_gpu_layers"],
             "model_size_mb": model_size_mb,
-            "available_gpu_memory_mb": gpu_stats["available_memory"],
+            "available_gpu_memory_mb": gpu_stats["total_available_memory"],
             "total_gpu_memory_mb": gpu_stats["total_memory"],
             "success": True,
             "gpu_memory_used_mb": (
@@ -760,8 +699,7 @@ class IntelligentOOMRecovery:
                     gpu_stats: SystemGPUStats = {
                         "total_gpus": 1,  # Stored data may not have complete GPU info
                         "total_memory": config["total_gpu_memory_mb"],
-                        "available_memory": config["available_gpu_memory_mb"],
-                        "primary_gpu_id": 0,
+                        "total_available_memory": config["available_gpu_memory_mb"],
                         "gpus": [],
                     }
 
@@ -769,8 +707,6 @@ class IntelligentOOMRecovery:
                     features = self._extract_features(
                         config["model_size_mb"],
                         gpu_stats,
-                        config["n_ctx"],
-                        config["n_gpu_layers"],
                     )
                     feature_array = self._features_to_array(features)
                     feature_arrays.append(feature_array)
@@ -830,7 +766,7 @@ class IntelligentOOMRecovery:
         try:
             config_file = self.data_dir / "configurations.json"
             if config_file.exists():
-                with open(config_file, "r") as f:
+                with open(config_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     # Convert JSON data to properly typed configurations
                     typed_configs: List[ModelConfigurationData] = []
@@ -857,7 +793,7 @@ class IntelligentOOMRecovery:
 
             attempts_file = self.data_dir / "recovery_attempts.json"
             if attempts_file.exists():
-                with open(attempts_file, "r") as f:
+                with open(attempts_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     # TypedDict creation from JSON data
                     self.recovery_attempts = data
@@ -873,11 +809,11 @@ class IntelligentOOMRecovery:
         """Save training data to persistent storage."""
         try:
             config_file = self.data_dir / "configurations.json"
-            with open(config_file, "w") as f:
+            with open(config_file, "w", encoding="utf-8") as f:
                 json.dump(self.configurations, f, indent=2)
 
             attempts_file = self.data_dir / "recovery_attempts.json"
-            with open(attempts_file, "w") as f:
+            with open(attempts_file, "w", encoding="utf-8") as f:
                 json.dump(self.recovery_attempts, f, indent=2)
 
         except Exception as e:
@@ -923,16 +859,13 @@ class IntelligentOOMRecovery:
                             "total_memory": config.get(
                                 "total_gpu_memory_mb", config["available_gpu_memory_mb"]
                             ),
-                            "available_memory": config["available_gpu_memory_mb"],
-                            "primary_gpu_id": 0,
+                            "total_available_memory": config["available_gpu_memory_mb"],
                             "gpus": [],
                         }
 
                         features = self._extract_features(
                             config["model_size_mb"],
                             gpu_stats,
-                            config["n_ctx"],
-                            config["n_gpu_layers"],
                         )
                         feature_arrays.append(self._features_to_array(features))
 
