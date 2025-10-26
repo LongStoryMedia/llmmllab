@@ -8,7 +8,8 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 """
 
 import json
-from typing import AsyncGenerator, Any, Dict
+from typing import AsyncGenerator, Any, Dict, List
+from typing_extensions import TypedDict
 
 from langchain_core.runnables.schema import StandardStreamEvent, CustomStreamEvent
 
@@ -25,6 +26,8 @@ from models import (
     ChatResponse,
     Message,
     ToolExecutionResult,
+    Thought,
+    IntentAnalysis,
 )
 
 # Import composer interface and streaming state management
@@ -34,31 +37,40 @@ from server.streaming_response_state import StreamingResponseState
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
+class StructuredResponseData(TypedDict):
+    """Strongly typed structure for response data storage."""
+    thoughts: List[Thought]
+    tool_calls: List[ToolExecutionResult] 
+    analyses: List[IntentAnalysis]
+
+
 async def store_structured_response_data(
-    message_id: int, thinking_content: str, structured_data: dict
+    message_id: int, structured_data: StructuredResponseData
 ) -> None:
     """
     Store structured response data (thoughts, analyses, tool_calls) in the database.
 
     Args:
         message_id: The ID of the assistant message
-        thinking_content: The combined thinking/reasoning content
-        structured_data: Dictionary containing tool_calls and analyses
+        structured_data: Strongly typed dictionary containing thoughts, tool_calls and analyses
     """
     try:
-        # Store thinking content if present
-        if thinking_content and thinking_content.strip():
-            await storage.get_service(storage.thought).add_thought(
-                message_id=message_id,
-                text=thinking_content,
-            )
-            logger.info(f"Stored thinking content for message {message_id}")
+        # Store thoughts if present
+        thoughts = structured_data.get("thoughts", [])
+        if thoughts:
+            for thought in thoughts:
+                if isinstance(thought, Thought):
+                    await storage.get_service(storage.thought).add_thought(
+                        message_id=message_id,
+                        text=thought.text,
+                    )
+            logger.info(f"Stored {len(thoughts)} thoughts for message {message_id}")
 
         # Store intent analyses if present
         analyses = structured_data.get("analyses", [])
         if analyses:
             for analysis in analyses:
-                if isinstance(analysis, dict) and analysis:
+                if isinstance(analysis, IntentAnalysis):
                     await storage.get_service(storage.analysis).add_analysis(
                         message_id=message_id,
                         intent_analysis=analysis,
@@ -66,16 +78,15 @@ async def store_structured_response_data(
             logger.info(
                 f"Stored {len(analyses)} intent analyses for message {message_id}"
             )
+
         # Store tool calls if present
         tool_calls = structured_data.get("tool_calls", [])
         if tool_calls:
             for tool_call in tool_calls:
-                if isinstance(tool_call, dict) and tool_call.get("tool_name"):
-                    # Convert dict to ToolExecutionResult object
-                    tool_execution_result = ToolExecutionResult(**tool_call)
+                if isinstance(tool_call, ToolExecutionResult):
                     await storage.get_service(storage.tool_call).add_tool_call(
                         message_id=message_id,
-                        tool_execution_result=tool_execution_result,
+                        tool_execution_result=tool_call,
                     )
             logger.info(
                 f"Stored {len(tool_calls)} tool execution results for message {message_id}"
@@ -225,12 +236,6 @@ async def chat_completion(
                         assistant_message_id = None
 
                     if assistant_message_id:
-                        # Store structured data (thinking, tool calls, analyses)
-                        structured_data = {
-                            "tool_calls": streaming_state.tool_calls,
-                            "analyses": final_response_data.get("analyses", []),
-                        }
-
                         # Check for generated todos from planning middleware
                         generated_todos = final_response_data.get("generated_todos", [])
                         if generated_todos:
@@ -246,9 +251,31 @@ async def chat_completion(
                             else:
                                 streaming_state.response_buffer = todo_message
 
+                        # Create strongly typed structured data
+                        thoughts = []
+                        if streaming_state.accumulated_thinking and streaming_state.accumulated_thinking.strip():
+                            thoughts.append(Thought(text=streaming_state.accumulated_thinking))
+
+                        # Convert analyses from dicts to IntentAnalysis objects if needed
+                        analyses = []
+                        raw_analyses = final_response_data.get("analyses", [])
+                        for analysis in raw_analyses:
+                            if isinstance(analysis, IntentAnalysis):
+                                analyses.append(analysis)
+                            elif isinstance(analysis, dict):
+                                try:
+                                    analyses.append(IntentAnalysis(**analysis))
+                                except Exception as e:
+                                    logger.warning(f"Failed to convert analysis dict to IntentAnalysis: {e}")
+
+                        structured_data: StructuredResponseData = {
+                            "thoughts": thoughts,
+                            "tool_calls": streaming_state.tool_calls,
+                            "analyses": analyses,
+                        }
+
                         await store_structured_response_data(
                             assistant_message_id,
-                            streaming_state.accumulated_thinking,
                             structured_data,
                         )
 
