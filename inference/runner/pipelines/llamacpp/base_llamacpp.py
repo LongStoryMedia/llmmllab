@@ -277,10 +277,14 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 # Get GPU memory usage if available
                 gpu_memory_used_mb = 0
                 try:
-                    memory_info = self.hardware_manager.get_memory_info()
-                    if memory_info and len(memory_info) > 0:
-                        gpu_info = memory_info[0]
-                        gpu_memory_used_mb = gpu_info.get('used', 0)
+                    memory_stats = self.hardware_manager.update_all_memory_stats()
+                    if memory_stats:
+                        # Find primary GPU stats
+                        for key, stats in memory_stats.items():
+                            if 'cuda:0' in key or 'gpu' in key.lower():
+                                if hasattr(stats, 'memory_used'):
+                                    gpu_memory_used_mb = stats.memory_used
+                                break
                 except Exception:
                     pass
                 

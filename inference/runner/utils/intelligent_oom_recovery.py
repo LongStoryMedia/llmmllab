@@ -119,14 +119,29 @@ class IntelligentOOMRecovery:
     def get_available_gpu_memory_mb(self, hardware_manager) -> float:
         """Get available GPU memory in MB."""
         try:
-            memory_info = hardware_manager.get_memory_info()
-            if memory_info and len(memory_info) > 0:
-                # Use the primary GPU (index 0)
-                gpu_info = memory_info[0]
-                available_mb = (gpu_info.get('free', 0) + gpu_info.get('cached', 0))
-                return available_mb
-            else:
-                return 8000  # Fallback estimate (8GB)
+            memory_stats = hardware_manager.update_all_memory_stats()
+            if memory_stats:
+                # Use the primary GPU (cuda:0 or first available)
+                primary_gpu_key = None
+                for key in memory_stats.keys():
+                    if 'cuda:0' in key or 'gpu' in key.lower():
+                        primary_gpu_key = key
+                        break
+                
+                if primary_gpu_key is None and memory_stats:
+                    # Fallback to first GPU in the dict
+                    primary_gpu_key = list(memory_stats.keys())[0]
+                
+                if primary_gpu_key:
+                    gpu_stats = memory_stats[primary_gpu_key]
+                    # DevStats should have memory info - check total and used
+                    if hasattr(gpu_stats, 'memory_total') and hasattr(gpu_stats, 'memory_used'):
+                        available_mb = gpu_stats.memory_total - gpu_stats.memory_used
+                        return max(available_mb, 1000)  # At least 1GB minimum
+                    elif hasattr(gpu_stats, 'free_memory'):
+                        return max(gpu_stats.free_memory, 1000)
+                    
+            return 8000  # Fallback estimate (8GB)
         except Exception as e:
             self.logger.warning(f"Error getting GPU memory: {e}")
             return 8000  # Fallback estimate
