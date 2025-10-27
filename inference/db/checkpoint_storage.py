@@ -284,11 +284,25 @@ class CheckpointStorage:
                 "has_active_workflows": False,
             }
 
-    def create_saver_for_workflow(self):
-        """Create a new LangGraph AsyncPostgresSaver context manager for workflow integration."""
+    async def create_saver_for_workflow(self):
+        """Create a new LangGraph AsyncPostgresSaver instance for workflow integration."""
         if not self._saver_ready or not self._connection_string:
             raise RuntimeError("CheckpointStorage not initialized")
 
-        # Return the context manager that LangGraph can manage
-        # LangGraph workflows handle the context manager lifecycle
-        return AsyncPostgresSaver.from_conn_string(self._connection_string)
+        # LangGraph expects a persistent saver instance. We need to create one using
+        # a dedicated connection that will live for the workflow duration.
+        # This requires using the connection pool to get a persistent connection.
+        
+        # Get a persistent connection from the pool for the checkpointer
+        conn = await self.pool.acquire()
+        
+        try:
+            # Create the saver with the persistent connection
+            # Note: This connection will be managed by the saver lifecycle
+            saver = AsyncPostgresSaver(conn=conn)
+            await saver.setup()  # Ensure tables are ready
+            return saver
+        except Exception:
+            # If saver creation fails, release the connection
+            await self.pool.release(conn)
+            raise
