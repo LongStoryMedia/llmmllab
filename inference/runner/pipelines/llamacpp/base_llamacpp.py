@@ -28,7 +28,7 @@ from langchain_core.messages import (
 from langchain_core.messages.ai import UsageMetadata
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 
-from models import Model, ModelProfile, OptimalParameters, RecoveryStrategy
+from models import Model, ModelProfile, OptimalParameters
 from models.default_configs import DEFAULT_GPU_CONFIG
 from utils.logging import llmmllogger
 from runner.utils.hardware_manager import hardware_manager
@@ -72,10 +72,10 @@ class BaseLlamaCppPipeline(BaseChatModel):
         self.grammar = grammar
         self._bound_tools = kwargs.get("_bound_tools", [])
         self.hardware_manager = hardware_manager
-        
+
         # Initialize intelligent OOM recovery system
         self.oom_recovery = IntelligentOOMRecovery()
-        
+
         self.llama_instance = self._initialize_llama_with_intelligent_oom_recovery(
             self._get_gguf_path()
         )
@@ -154,10 +154,12 @@ class BaseLlamaCppPipeline(BaseChatModel):
         # Give GPU a moment to clean up
         time.sleep(1)
 
-    def _initialize_llama_with_intelligent_oom_recovery(self, gguf_path: str) -> llama_cpp.Llama:
+    def _initialize_llama_with_intelligent_oom_recovery(
+        self, gguf_path: str
+    ) -> llama_cpp.Llama:
         """
         Initialize Llama instance using intelligent ML-based OOM recovery.
-        
+
         Strategy:
         1. Use ML to predict optimal starting parameters based on model size and system resources
         2. On OOM, follow structured recovery: clear memory -> reduce batch -> move to CPU -> reduce context
@@ -170,40 +172,46 @@ class BaseLlamaCppPipeline(BaseChatModel):
         target_n_ctx = self.profile.parameters.num_ctx or 32768
         target_n_batch = self.profile.parameters.batch_size or 512
         target_n_ubatch = 512
-        
+
         # GPU layers - default to full offload
         requested_gpu_layers = -1
-        if (self.profile.gpu_config is not None and 
-            self.profile.gpu_config.gpu_layers is not None):
+        if (
+            self.profile.gpu_config is not None
+            and self.profile.gpu_config.gpu_layers is not None
+        ):
             requested_gpu_layers = self.profile.gpu_config.gpu_layers
-        
+
         # Use ML to predict optimal starting parameters
         predicted_params = self.oom_recovery.predict_optimal_parameters_from_profile(
             model_profile=self.profile,
             model_path=gguf_path,
-            hardware_manager=self.hardware_manager
+            hardware_manager=self.hardware_manager,
         )
+
+        # Convert -1 (full offload) to a reasonable default for validation
+        # We'll convert it back to -1 when actually initializing llama.cpp
+        validated_gpu_layers = requested_gpu_layers if requested_gpu_layers >= 0 else 99
         
         # Keep track of original parameters for recovery calculations
         original_params = OptimalParameters(
             n_ctx=target_n_ctx,
             n_batch=target_n_batch,
             n_ubatch=target_n_ubatch,
-            n_gpu_layers=requested_gpu_layers
+            n_gpu_layers=validated_gpu_layers,
         )
-        
+
         # Start with ML-predicted parameters
-        current_params = predicted_params.copy()
-        
+        current_params = predicted_params.model_copy()
+
         # Other configuration
         perplexity_enabled = bool(
             getattr(self.profile.parameters, "enable_perplexity_guard", False)
         )
         gcfg = self.profile.gpu_config or DEFAULT_GPU_CONFIG
-        
+
         # OOM recovery loop with intelligent strategy
         max_attempts = 10
-        
+
         for attempt in range(1, max_attempts + 1):
             try:
                 self._logger.info(
@@ -211,12 +219,18 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     f"n_ctx={current_params.n_ctx:,}, n_batch={current_params.n_batch}, "
                     f"n_ubatch={current_params.n_ubatch}, gpu_layers={current_params.n_gpu_layers}"
                 )
-                
+
                 start_time = time.time()
+
+                # Convert back to -1 for full offload if originally requested
+                actual_gpu_layers = (
+                    requested_gpu_layers if requested_gpu_layers == -1 
+                    else current_params.n_gpu_layers
+                )
                 
                 llama_instance = llama_cpp.Llama(
                     model_path=gguf_path,
-                    n_gpu_layers=current_params.n_gpu_layers,
+                    n_gpu_layers=actual_gpu_layers,
                     split_mode=llama_cpp.LLAMA_SPLIT_MODE_ROW,
                     tensor_split=gcfg.tensor_split,
                     vocab_only=False,
@@ -235,7 +249,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     repeat_penalty=self.profile.parameters.repeat_penalty or 1.05,
                     f16_kv=True,
                     verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
-                    flash_attn=getattr(self.profile.parameters, "flash_attention", True),
+                    flash_attn=getattr(
+                        self.profile.parameters, "flash_attention", True
+                    ),
                     logits_all=perplexity_enabled,
                     logprobs=1 if perplexity_enabled else 0,
                     embedding=False,
@@ -266,10 +282,10 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     type_v=None,
                     smp_infill=False,
                 )
-                
+
                 # Success! Record the configuration for ML training
                 initialization_time_ms = (time.time() - start_time) * 1000
-                
+
                 # Get GPU memory usage if available
                 gpu_memory_used_mb = 0
                 try:
@@ -277,66 +293,83 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     if memory_stats:
                         # Find primary GPU stats - look for GPU with id=0 first
                         primary_gpu_stats = None
-                        
+
                         # First, look for GPU with id=0 (cuda:0 equivalent)
                         for stats in memory_stats.values():
-                            if (hasattr(stats, 'id') and stats.id == 0 and
-                                hasattr(stats, 'mem_used') and hasattr(stats, 'name') and
-                                'nvidia' in stats.name.lower()):
+                            if (
+                                hasattr(stats, "id")
+                                and stats.id == 0
+                                and hasattr(stats, "mem_used")
+                                and hasattr(stats, "name")
+                                and "nvidia" in stats.name.lower()
+                            ):
                                 primary_gpu_stats = stats
                                 break
-                        
+
                         # If no GPU with id=0 found, use the first NVIDIA GPU
                         if primary_gpu_stats is None:
                             for stats in memory_stats.values():
-                                if (hasattr(stats, 'mem_used') and hasattr(stats, 'name') and
-                                    'nvidia' in stats.name.lower()):
+                                if (
+                                    hasattr(stats, "mem_used")
+                                    and hasattr(stats, "name")
+                                    and "nvidia" in stats.name.lower()
+                                ):
                                     primary_gpu_stats = stats
                                     break
-                        
+
                         # Extract memory usage from primary GPU
-                        if primary_gpu_stats and hasattr(primary_gpu_stats, 'mem_used'):
+                        if primary_gpu_stats and hasattr(primary_gpu_stats, "mem_used"):
                             gpu_memory_used_mb = primary_gpu_stats.mem_used
                 except Exception:
                     pass
-                
+
                 self.oom_recovery.record_success(
                     model_path=gguf_path,
                     params=current_params,
                     hardware_manager=self.hardware_manager,
                     initialization_time_ms=initialization_time_ms,
-                    gpu_memory_used_mb=gpu_memory_used_mb
+                    gpu_memory_used_mb=gpu_memory_used_mb,
                 )
-                
+
                 self._logger.info(
                     f"✅ Successfully initialized {self.model.name} (attempt {attempt}): "
                     f"n_ctx={current_params.n_ctx:,}, n_batch={current_params.n_batch}, "
                     f"n_ubatch={current_params.n_ubatch}, gpu_layers={current_params.n_gpu_layers} "
                     f"in {initialization_time_ms:.1f}ms"
                 )
-                
+
                 return llama_instance
-                
+
             except Exception as e:
                 error_str = str(e).lower()
                 is_oom = any(
                     oom_indicator in error_str
                     for oom_indicator in [
-                        "out of memory", "oom", "cuda error", "memory allocation failed",
-                        "insufficient memory", "cudamalloc failed", "failed to create llama_context",
-                        "context creation failed", "failed to allocate", "allocation failed",
-                        "ggml_cuda_alloc_buffer", "ggml_backend_alloc_ctx_tensors_from_buft"
+                        "out of memory",
+                        "oom",
+                        "cuda error",
+                        "memory allocation failed",
+                        "insufficient memory",
+                        "cudamalloc failed",
+                        "failed to create llama_context",
+                        "context creation failed",
+                        "failed to allocate",
+                        "allocation failed",
+                        "ggml_cuda_alloc_buffer",
+                        "ggml_backend_alloc_ctx_tensors_from_buft",
                     ]
                 )
-                
+
                 if not is_oom:
                     # Not an OOM error, re-raise immediately
                     self._logger.error(f"❌ Non-OOM error during initialization: {e}")
                     raise e
-                
+
                 # Handle OOM with intelligent recovery
-                self._logger.warning(f"🔥 OOM detected (attempt {attempt}): {error_str}")
-                
+                self._logger.warning(
+                    f"🔥 OOM detected (attempt {attempt}): {error_str}"
+                )
+
                 # CRITICAL: Clean up any failed instance
                 try:
                     if "llama_instance" in locals():
@@ -347,52 +380,60 @@ class BaseLlamaCppPipeline(BaseChatModel):
                             pass
                         del llama_instance
                 except Exception as cleanup_e:
-                    self._logger.warning(f"Error during failed instance cleanup: {cleanup_e}")
-                
+                    self._logger.warning(
+                        f"Error during failed instance cleanup: {cleanup_e}"
+                    )
+
                 # Execute intelligent recovery strategy
                 recovery_result = self.oom_recovery.execute_recovery_strategy(
                     attempt=attempt,
                     original_params=original_params,
                     current_params=current_params,
-                    hardware_manager=self.hardware_manager
+                    hardware_manager=self.hardware_manager,
                 )
                 new_params = recovery_result.parameters
                 strategy = recovery_result.strategy_name
-                
+
                 # Record the failed attempt for ML training
                 self.oom_recovery.record_failure(
                     attempt=attempt,
                     strategy=strategy,
                     params=current_params,
-                    error_message=error_str
+                    error_message=error_str,
                 )
-                
+
                 # Clear memory according to strategy
                 if strategy == "clear_memory" or attempt > 1:
-                    self._logger.info(f"🧹 Executing memory cleanup (strategy: {strategy})")
+                    self._logger.info(
+                        f"🧹 Executing memory cleanup (strategy: {strategy})"
+                    )
                     try:
                         self._clear_pipeline_and_memory()
                         # Give extra time for memory cleanup on higher attempts
                         time.sleep(min(attempt * 0.5, 3.0))
                     except Exception as cleanup_e:
-                        self._logger.warning(f"Error during memory cleanup: {cleanup_e}")
-                
+                        self._logger.warning(
+                            f"Error during memory cleanup: {cleanup_e}"
+                        )
+
                 # Check if we've reached max attempts
                 if attempt >= max_attempts:
-                    self._logger.error(f"❌ Failed to initialize after {max_attempts} intelligent recovery attempts")
-                    
+                    self._logger.error(
+                        f"❌ Failed to initialize after {max_attempts} intelligent recovery attempts"
+                    )
+
                     # Log recovery statistics for debugging
                     stats = self.oom_recovery.get_statistics()
                     self._logger.info(f"OOM Recovery Statistics: {stats}")
-                    
+
                     raise RuntimeError(
                         f"Failed to initialize {self.model.name} after {max_attempts} intelligent recovery attempts. "
                         f"Last strategy: {strategy}, Final params: {new_params}"
                     ) from e
-                
+
                 # Update parameters for next attempt
                 current_params = new_params
-                
+
         # Should never reach here due to the attempt >= max_attempts check above
         raise RuntimeError(f"Unexpected end of recovery loop for {self.model.name}")
 
@@ -538,9 +579,11 @@ class BaseLlamaCppPipeline(BaseChatModel):
         cleaned_content = content
 
         # Pattern to match both <tool_call> and <function-call> blocks
-        tool_call_pattern = r"<(?:tool_call|function-call)>\s*(\{.*?\})\s*</(?:tool_call|function-call)>"
+        tool_call_pattern = (
+            r"<(?:(tool|function)[-_]call)>\s*(\{.*?\})\s*</(?:tool|function)[-_]call)>"
+        )
 
-        matches = re.finditer(tool_call_pattern, content, re.DOTALL)
+        matches = re.finditer(tool_call_pattern, content, re.DOTALL | re.IGNORECASE)
 
         for match in matches:
             try:
@@ -567,10 +610,10 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 continue
 
         # Also clean up <think> tags if present
-        think_pattern = r"<think>.*?</think>"
-        cleaned_content = re.sub(
-            think_pattern, "", cleaned_content, flags=re.DOTALL
-        ).strip()
+        # think_pattern = r"<think>.*?</think>"
+        # cleaned_content = re.sub(
+        #     think_pattern, "", cleaned_content, flags=re.DOTALL | re.IGNORECASE
+        # ).strip()
 
         return cleaned_content, tool_calls
 
@@ -620,17 +663,17 @@ class BaseLlamaCppPipeline(BaseChatModel):
             "max_tokens": self.profile.parameters.max_tokens or 4096,
             "repeat_penalty": self.profile.parameters.repeat_penalty or 1.05,
         }
-        
+
         if converted_tools:
             kwargs["tools"] = converted_tools  # type: ignore
             kwargs["tool_choice"] = "auto"
-            
+
         if response_format:
             kwargs["response_format"] = response_format  # type: ignore
-            
+
         if grammar:
             kwargs["grammar"] = grammar
-            
+
         return self.llama_instance.create_chat_completion(**kwargs)
 
     def _generate(
@@ -793,7 +836,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
     def close(self):
         """Clean up resources."""
-        if self.llama_instance:
+        if hasattr(self, 'llama_instance') and self.llama_instance:
             try:
                 self.llama_instance.close()
             except Exception:
