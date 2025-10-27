@@ -289,5 +289,6 @@ class CheckpointStorage:
         if not self._saver_ready or not self._connection_string:
             raise RuntimeError("CheckpointStorage not initialized")
 
-        # Return a context manager that creates the saver
+        # Return the context manager that LangGraph can manage
+        # LangGraph workflows handle the context manager lifecycle
         return AsyncPostgresSaver.from_conn_string(self._connection_string)

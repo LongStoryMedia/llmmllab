@@ -43,8 +43,7 @@ from composer.tools.registry import ToolRegistry
 
 from composer.graph.state import WorkflowState
 
-# Import checkpoint integration
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+# Checkpoint integration handled through CheckpointStorage service
 
 if TYPE_CHECKING:
     from db import Storage
@@ -56,6 +55,7 @@ if TYPE_CHECKING:
     from db.summary_storage import SummaryStorage
     from db.search_storage import SearchStorage
     from db.dynamic_tool_storage import DynamicToolStorage
+    from db.checkpoint_storage import CheckpointStorage
 
 
 class GraphBuilder:
@@ -110,6 +110,9 @@ class GraphBuilder:
         self.search_storage: "SearchStorage" = storage.get_service(storage.search)
         self.dynamic_tool_storage: "DynamicToolStorage" = storage.get_service(
             storage.dynamic_tool
+        )
+        self.checkpoint_storage: "CheckpointStorage" = storage.get_service(
+            storage.checkpoint
         )
 
     async def build_workflow(
@@ -447,23 +450,17 @@ class GraphBuilder:
             workflow.add_edge("memory_creation", "memory_storage")
             workflow.add_edge("memory_storage", END)
 
-            # Configure checkpointer for persistent state management
-            # Get database connection pool from storage services
-            db_pool = self.conversation_storage.pool
-            checkpointer = AsyncPostgresSaver(
-                pool=db_pool,
-            )
-            
-            # Setup checkpointer tables if not already done
+            # Configure checkpointer for persistent state management using CheckpointStorage service
             try:
-                await checkpointer.setup()
-                self.logger.info("✅ Checkpointer initialized successfully")
+                # The CheckpointStorage service already has tables set up during Storage.initialize()
+                # Create a persistent saver using the existing database pool
+                checkpointer = self.checkpoint_storage.create_saver_for_workflow()
+                self.logger.info("✅ Checkpointer configured from CheckpointStorage service")
+                return workflow.compile(checkpointer=checkpointer)
             except Exception as e:
                 self.logger.warning(f"Checkpointer setup warning: {e}")
                 # Continue without checkpointing if setup fails
                 return workflow.compile()
-
-            return workflow.compile(checkpointer=checkpointer)
         except Exception as e:
             self.logger.error(
                 "Failed to build workflow",
