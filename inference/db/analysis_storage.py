@@ -4,11 +4,11 @@ Analyses represent intent analyses associated with messages.
 """
 
 import asyncpg
-from typing import List, Optional
+from typing import List, Optional, Any
 from datetime import datetime
 from models.intent_analysis import IntentAnalysis
 from models.computational_requirement import ComputationalRequirement
-from db.db_utils import typed_pool
+from db.db_utils import typed_pool, TypedConnection
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="analysis_storage")
@@ -28,6 +28,7 @@ class AnalysisStorage:
         message_id: int,
         intent_analysis: IntentAnalysis,
         created_at: Optional[datetime] = None,
+        conn: Optional[TypedConnection] = None,
     ) -> Optional[int]:
         """
         Add a new analysis to the database.
@@ -44,81 +45,97 @@ class AnalysisStorage:
             created_at = datetime.utcnow()
 
         try:
-            async with self.typed_pool.acquire() as conn:
-                import json
-
-                # Convert list and object fields to JSON strings
-                required_capabilities_json = json.dumps(
-                    [
-                        cap.value if hasattr(cap, "value") else str(cap)
-                        for cap in intent_analysis.required_capabilities
-                    ]
-                )
-                # ComputationalRequirement is an enum, so we use .value to get the string
-                computational_requirements_json = json.dumps(
-                    intent_analysis.computational_requirements.value
-                    if hasattr(intent_analysis.computational_requirements, "value")
-                    else str(intent_analysis.computational_requirements)
-                )
-
-                row = await conn.fetchrow(
-                    self.get_query("analysis.add_analysis"),
-                    message_id,  # $1
-                    (
-                        intent_analysis.workflow_type.value
-                        if hasattr(intent_analysis.workflow_type, "value")
-                        else str(intent_analysis.workflow_type)
-                    ),  # $2
-                    (
-                        intent_analysis.complexity_level.value
-                        if hasattr(intent_analysis.complexity_level, "value")
-                        else str(intent_analysis.complexity_level)
-                    ),  # $3
-                    required_capabilities_json,  # $4
-                    intent_analysis.domain_specificity,  # $5
-                    intent_analysis.reusability_potential,  # $6
-                    intent_analysis.confidence,  # $7
-                    (
-                        intent_analysis.response_format.value
-                        if intent_analysis.response_format
-                        and hasattr(intent_analysis.response_format, "value")
-                        else (
-                            str(intent_analysis.response_format)
-                            if intent_analysis.response_format
-                            else None
-                        )
-                    ),  # $8
-                    (
-                        intent_analysis.technical_domain.value
-                        if intent_analysis.technical_domain
-                        and hasattr(intent_analysis.technical_domain, "value")
-                        else (
-                            str(intent_analysis.technical_domain)
-                            if intent_analysis.technical_domain
-                            else None
-                        )
-                    ),  # $9
-                    intent_analysis.requires_tools,  # $10
-                    intent_analysis.requires_custom_tools,  # $11
-                    intent_analysis.tool_complexity_score,  # $12
-                    computational_requirements_json,  # $13
-                    created_at,  # $14
-                )
-
-                if row:
-                    analysis_id = row["id"]
-                    self.logger.info(
-                        f"Added analysis {analysis_id} ({intent_analysis.workflow_type}) for message {message_id}"
+            # Use provided connection or acquire a new one
+            if conn is None:
+                async with self.typed_pool.acquire() as connection:
+                    return await self._add_analysis_with_connection(
+                        message_id, intent_analysis, created_at, connection
                     )
-                    return analysis_id
-                else:
-                    self.logger.error(
-                        f"Failed to add analysis for message {message_id}"
-                    )
-                    return None
+            else:
+                return await self._add_analysis_with_connection(
+                    message_id, intent_analysis, created_at, conn
+                )
 
         except Exception as e:
             self.logger.error(f"Error adding analysis for message {message_id}: {e}")
+            return None
+
+    async def _add_analysis_with_connection(
+        self, message_id: int, intent_analysis: IntentAnalysis, created_at: datetime, conn: TypedConnection
+    ) -> Optional[int]:
+        """
+        Internal method to add analysis using a specific connection.
+        """
+        import json
+
+        # Convert list and object fields to JSON strings
+        required_capabilities_json = json.dumps(
+            [
+                cap.value if hasattr(cap, "value") else str(cap)
+                for cap in intent_analysis.required_capabilities
+            ]
+        )
+        # ComputationalRequirement is an enum, so we use .value to get the string
+        computational_requirements_json = json.dumps(
+            intent_analysis.computational_requirements.value
+            if hasattr(intent_analysis.computational_requirements, "value")
+            else str(intent_analysis.computational_requirements)
+        )
+
+        row = await conn.fetchrow(
+            self.get_query("analysis.add_analysis"),
+            message_id,  # $1
+            (
+                intent_analysis.workflow_type.value
+                if hasattr(intent_analysis.workflow_type, "value")
+                else str(intent_analysis.workflow_type)
+            ),  # $2
+            (
+                intent_analysis.complexity_level.value
+                if hasattr(intent_analysis.complexity_level, "value")
+                else str(intent_analysis.complexity_level)
+            ),  # $3
+            required_capabilities_json,  # $4
+            intent_analysis.domain_specificity,  # $5
+            intent_analysis.reusability_potential,  # $6
+            intent_analysis.confidence,  # $7
+            (
+                intent_analysis.response_format.value
+                if intent_analysis.response_format
+                and hasattr(intent_analysis.response_format, "value")
+                else (
+                    str(intent_analysis.response_format)
+                    if intent_analysis.response_format
+                    else None
+                )
+            ),  # $8
+            (
+                intent_analysis.technical_domain.value
+                if intent_analysis.technical_domain
+                and hasattr(intent_analysis.technical_domain, "value")
+                else (
+                    str(intent_analysis.technical_domain)
+                    if intent_analysis.technical_domain
+                    else None
+                )
+            ),  # $9
+            intent_analysis.requires_tools,  # $10
+            intent_analysis.requires_custom_tools,  # $11
+            intent_analysis.tool_complexity_score,  # $12
+            computational_requirements_json,  # $13
+            created_at,  # $14
+        )
+
+        if row:
+            analysis_id = row["id"]
+            self.logger.info(
+                f"Added analysis {analysis_id} ({intent_analysis.workflow_type}) for message {message_id}"
+            )
+            return analysis_id
+        else:
+            self.logger.error(
+                f"Failed to add analysis for message {message_id}"
+            )
             return None
 
     async def add_analysis_legacy(

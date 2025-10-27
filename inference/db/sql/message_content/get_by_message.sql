@@ -1,0 +1,14 @@
+-- Get message contents by message ID
+SELECT
+    mc.id,
+    mc.message_id,
+    mc.type,
+    mc.text_content,
+    mc.url,
+    mc.created_at
+FROM 
+    message_contents mc
+WHERE 
+    mc.message_id = $1
+ORDER BY 
+    mc.id

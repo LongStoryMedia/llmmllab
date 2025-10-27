@@ -3,6 +3,12 @@ type: object
 title: IntentAnalysis
 description: "Detailed analysis of user intent for smart tool generation"
 properties:
+  id:
+    type: integer
+    description: "Unique identifier for the analysis record"
+  message_id:
+    type: integer
+    description: "ID of the associated message this analysis belongs to"
   workflow_type:
     $ref: "workflow_type.yaml"
     description: "Primary intent category identified from the user message"
@@ -51,6 +57,10 @@ properties:
   computational_requirements:
     $ref: "computational_requirement.yaml"
     description: "Computational requirements assessment for the request"
+  created_at:
+    type: string
+    format: date-time
+    description: "Timestamp when the analysis was created"
 required:
   - workflow_type
   - complexity_level

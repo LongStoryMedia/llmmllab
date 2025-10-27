@@ -14,6 +14,12 @@ from models.tool_call import ToolCall
 from models.thought import Thought
 from models.resource_usage import ResourceUsage
 from models.intent_analysis import IntentAnalysis
+from models.workflow_type import WorkflowType
+from models.complexity_level import ComplexityLevel
+from models.required_capability import RequiredCapability
+from models.response_format import ResponseFormat
+from models.technical_domain import TechnicalDomain
+from models.computational_requirement import ComputationalRequirement
 from db.cache_storage import cache_storage
 from db.db_utils import TypedConnection, typed_pool
 from utils.logging import llmmllogger
@@ -28,154 +34,333 @@ class MessageStorage:
         self.get_query = get_query
         self.logger = llmmllogger.bind(component="message_storage_instance")
 
-    async def add_message(self, message: Message) -> Optional[int]:
+    async def add_message(self, message: Message, conn: Optional[TypedConnection] = None) -> Optional[int]:
         """
         Add a message with all its related content, tool_calls, and thoughts.
         Uses proper transaction handling for data consistency.
+        
+        Args:
+            message: The message to add
+            conn: Optional existing connection for transaction support
         """
         if not message.conversation_id:
             raise ValueError("Message must have a conversation_id")
 
-        async with self.typed_pool.acquire() as conn:
-            async with conn.transaction():
-                # Insert the main message record
-                row = await conn.fetchrow(
-                    self.get_query("message.add_message"),
-                    message.conversation_id,
-                    message.role,
+        # Acquire connection if not provided
+        if conn is None:
+            async with self.typed_pool.acquire() as connection:
+                async with connection.transaction():
+                    return await self._add_message_with_connection(message, connection)
+        else:
+            # Use existing connection (transaction managed externally)
+            return await self._add_message_with_connection(message, conn)
+
+    async def _add_message_with_connection(self, message: Message, conn: TypedConnection) -> Optional[int]:
+        """
+        Internal method to add message using a specific connection.
+        """
+        # Insert the main message record
+        row = await conn.fetchrow(
+            self.get_query("message.add_message"),
+            message.conversation_id,
+            message.role,
+        )
+        message_id = row["id"] if row and "id" in row else None
+
+        if not message_id:
+            self.logger.error("Failed to get message_id after insert")
+            return None
+
+        # Insert message contents
+        if message.content:
+            await self._insert_message_contents(
+                conn, message_id, message.content
+            )
+
+        # Insert tool_calls if present
+        if message.tool_calls:
+            await self._insert_tool_calls(conn, message_id, message.tool_calls)
+
+        # Insert thoughts if present
+        if message.thoughts:
+            await self._insert_thoughts(conn, message_id, message.thoughts)
+
+        # Set the message_id on the message object
+        message.id = message_id
+
+        # Cache and invalidate appropriately (only if not in transaction)
+        if message.conversation_id is not None:
+            try:
+                cache_storage.cache_message(message)
+                cache_storage.invalidate_conversation_messages_cache(
+                    message.conversation_id
                 )
-                message_id = row["id"] if row and "id" in row else None
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to update cache for message {message_id}: {e}"
+                )
 
-                if not message_id:
-                    self.logger.error("Failed to get message_id after insert")
-                    return None
+        return message_id
 
-                # Insert message contents
-                if message.content:
-                    await self._insert_message_contents(
-                        conn, message_id, message.content
-                    )
-
-                # Insert tool_calls if present
-                if message.tool_calls:
-                    await self._insert_tool_calls(conn, message_id, message.tool_calls)
-
-                # Insert thoughts if present
-                if message.thoughts:
-                    await self._insert_thoughts(conn, message_id, message.thoughts)
-
-                # Set the message_id on the message object
-                message.id = message_id
-
-                # Cache and invalidate appropriately
-                try:
-                    cache_storage.cache_message(message)
-                    cache_storage.invalidate_conversation_messages_cache(
-                        message.conversation_id
-                    )
-                except Exception as e:
-                    self.logger.warning(
-                        f"Failed to update cache for message {message_id}: {e}"
-                    )
-
-                return message_id
-
-    async def get_message(self, message_id: int) -> Optional[Message]:
+    async def get_message(self, message_id: int, conn: Optional[TypedConnection] = None) -> Optional[Message]:
         """
-        Get a message by ID with all related content, tool_calls, and thoughts.
+        Get a message by ID with all related content, tool_calls, and thoughts using multiple queries.
+        
+        Args:
+            message_id: The message ID to retrieve
+            conn: Optional existing connection for transaction support
         """
-        # First try to get from cache
-        cached_message = cache_storage.get_message_from_cache(message_id)
-        if cached_message:
-            return cached_message
+        # First try to get from cache (only if not in a transaction)
+        if conn is None:
+            cached_message = cache_storage.get_message_from_cache(message_id)
+            if cached_message:
+                return cached_message
 
-        # If not in cache, get from database
-        async with self.typed_pool.acquire() as conn:
-            row = await conn.fetchrow(self.get_query("message.get_message"), message_id)
-            if not row:
-                return None
+        # Acquire connection if not provided
+        if conn is None:
+            async with self.typed_pool.acquire() as connection:
+                return await self._get_message_with_connection(message_id, connection)
+        else:
+            return await self._get_message_with_connection(message_id, conn)
 
-            # Parse all related data from the row
-            message_data = self._parse_message_row(dict(row))
+    async def _get_message_with_connection(self, message_id: int, conn: TypedConnection) -> Optional[Message]:
+        """
+        Internal method to get message using a specific connection.
+        """
+        # Get the base message
+        row = await conn.fetchrow(self.get_query("message.get_message"), message_id)
+        if not row:
+            return None
 
-            message = Message(**message_data)
+        message_data = dict(row)
 
-            # Cache the result for future use
+        # Get message contents using separate query
+        contents_rows = await conn.fetch(self.get_query("message_content.get_by_message"), message_id)
+        message_data['contents'] = [
+            MessageContent(**dict(content_row)) for content_row in contents_rows
+        ]
+
+        # Get tool calls using separate query  
+        tool_calls_rows = await conn.fetch(self.get_query("tool_call.get_by_message"), message_id)
+        message_data['tool_calls'] = [
+            ToolCall(**dict(tool_row)) for tool_row in tool_calls_rows
+        ]
+
+        # Get thoughts using separate query
+        thoughts_rows = await conn.fetch(self.get_query("thought.get_by_message"), message_id)
+        message_data['thoughts'] = [
+            Thought(**dict(thought_row)) for thought_row in thoughts_rows
+        ]
+
+        # Get analyses using separate query
+        analyses_rows = await conn.fetch(self.get_query("analysis.get_by_message"), message_id)
+        message_data['analyses'] = [
+            self._parse_analysis_row(dict(analysis_row)) for analysis_row in analyses_rows
+        ]
+
+        message = Message(**message_data)
+
+        # Cache the result for future use (only if not in transaction)
+        if conn is None:
             try:
                 cache_storage.cache_message(message)
             except Exception as e:
                 self.logger.warning(f"Failed to cache message {message_id}: {e}")
 
-            return message
+        return message
 
-    async def get_conversation_history(self, conversation_id: int) -> List[Message]:
+    def _parse_analysis_row(self, row: Dict[str, Any]) -> IntentAnalysis:
+        """
+        Parse an individual analysis row from database into IntentAnalysis object.
+        
+        Args:
+            row: Database row containing analysis data
+            
+        Returns:
+            IntentAnalysis object
+        """
+        # Parse required_capabilities from JSONB to List[RequiredCapability]
+        required_capabilities_data = row.get('required_capabilities', [])
+        if isinstance(required_capabilities_data, str):
+            required_capabilities_data = json.loads(required_capabilities_data)
+        
+        required_capabilities = []
+        for cap in required_capabilities_data:
+            if isinstance(cap, str):
+                try:
+                    required_capabilities.append(RequiredCapability(cap))
+                except ValueError:
+                    self.logger.warning(f"Unknown required capability: {cap}")
+            elif hasattr(cap, 'value'):  # Enum object
+                required_capabilities.append(cap)
+
+        # Parse computational_requirements from JSONB
+        comp_req_data = row.get('computational_requirements', {})
+        if isinstance(comp_req_data, str):
+            comp_req_data = json.loads(comp_req_data)
+        
+        computational_requirements = ComputationalRequirement(**comp_req_data)
+
+        # Parse enum fields with fallback
+        workflow_type = row.get('workflow_type')
+        if isinstance(workflow_type, str):
+            try:
+                workflow_type = WorkflowType(workflow_type)
+            except ValueError:
+                workflow_type = WorkflowType.GENERAL  # Fallback
+
+        complexity_level = row.get('complexity_level')
+        if isinstance(complexity_level, str):
+            try:
+                complexity_level = ComplexityLevel(complexity_level)
+            except ValueError:
+                complexity_level = ComplexityLevel.SIMPLE  # Fallback
+
+        # Parse optional enum fields
+        response_format = row.get('response_format')
+        if response_format and isinstance(response_format, str):
+            try:
+                response_format = ResponseFormat(response_format)
+            except ValueError:
+                response_format = None
+
+        technical_domain = row.get('technical_domain')
+        if technical_domain and isinstance(technical_domain, str):
+            try:
+                technical_domain = TechnicalDomain(technical_domain)
+            except ValueError:
+                technical_domain = None
+
+        # Ensure required fields are not None
+        if workflow_type is None:
+            workflow_type = WorkflowType.GENERAL
+        if complexity_level is None:
+            complexity_level = ComplexityLevel.SIMPLE
+
+        return IntentAnalysis(
+            id=row.get('id'),
+            message_id=row.get('message_id'),
+            workflow_type=workflow_type,
+            complexity_level=complexity_level,
+            required_capabilities=required_capabilities,
+            domain_specificity=row.get('domain_specificity', 0.0),
+            reusability_potential=row.get('reusability_potential', 0.0),
+            confidence=row.get('confidence', 0.0),
+            response_format=response_format,
+            technical_domain=technical_domain,
+            requires_tools=row.get('requires_tools', False),
+            requires_custom_tools=row.get('requires_custom_tools', False),
+            tool_complexity_score=row.get('tool_complexity_score', 0.0),
+            computational_requirements=computational_requirements,
+            created_at=row.get('created_at')
+        )
+
+    async def get_conversation_history(self, conversation_id: int, conn: Optional[TypedConnection] = None) -> List[Message]:
         """
         Gets messages for a conversation, ordered and without messages that have been summarized already.
+        
+        Args:
+            conversation_id: The conversation ID to get messages for
+            conn: Optional existing connection for transaction support
         """
-        # First try to get from cache
-        cached_messages = cache_storage.get_conversation_messages(conversation_id)
-        if cached_messages:
-            return self._validate_cached_messages(cached_messages)
+        # First try to get from cache (only if not in a transaction)
+        if conn is None:
+            cached_messages = cache_storage.get_conversation_messages(conversation_id)
+            if cached_messages:
+                return self._validate_cached_messages(cached_messages)
 
-        # If not in cache, get from database
-        async with self.typed_pool.acquire() as conn:
-            rows = await conn.fetch(
-                self.get_query("message.get_conversation_history"),
-                conversation_id,
-            )
-            message_dicts = [dict(row) for row in rows]
+        # Acquire connection if not provided
+        if conn is None:
+            async with self.typed_pool.acquire() as connection:
+                return await self._get_conversation_history_with_connection(conversation_id, connection)
+        else:
+            return await self._get_conversation_history_with_connection(conversation_id, conn)
 
-            messages = (
-                await self._build_messages(conversation_id, message_dicts, conn)
-                if message_dicts
-                else []
-            )
+    async def _get_conversation_history_with_connection(self, conversation_id: int, conn: TypedConnection) -> List[Message]:
+        """
+        Internal method to get conversation history using a specific connection with transaction support.
+        """
+        # Get all messages for the conversation
+        rows = await conn.fetch(
+            self.get_query("message.get_conversation_history"),
+            conversation_id,
+        )
 
-            if messages:
-                try:
-                    cache_storage.cache_conversation_messages(conversation_id, messages)
-                except Exception as e:
-                    self.logger.warning(f"Failed to cache conversation messages: {e}")
+        messages = []
+        for row in rows:
+            message_id = row['id']
+            # Get the full message with all related data
+            message = await self._get_message_with_connection(message_id, conn)
+            if message:
+                messages.append(message)
 
-            return messages
+        # Cache the results (only if not in transaction)
+        if len(messages) > 0:
+            try:
+                cache_storage.cache_conversation_messages(conversation_id, messages)
+            except Exception as e:
+                self.logger.warning(f"Failed to cache conversation messages: {e}")
+
+        return messages
 
     async def get_messages_by_conversation_id(
-        self, conversation_id: int, limit: int, offset: int
+        self, conversation_id: int, limit: int, offset: int, conn: Optional[TypedConnection] = None
     ) -> List[Message]:
         """
         Gets messages for a conversation by conversation_id with pagination.
+        
+        Args:
+            conversation_id: The conversation ID to get messages for
+            limit: Maximum number of messages to return
+            offset: Number of messages to skip
+            conn: Optional existing connection for transaction support
         """
-        # Check cache first
-        cached_messages = cache_storage.get_messages_by_conversation_id_from_cache(
-            conversation_id
+        # Check cache first (only if not in transaction)
+        if conn is None:
+            cached_messages = cache_storage.get_messages_by_conversation_id_from_cache(
+                conversation_id
+            )
+            if cached_messages:
+                return cached_messages
+
+        # Acquire connection if not provided
+        if conn is None:
+            async with self.typed_pool.acquire() as connection:
+                return await self._get_messages_by_conversation_id_with_connection(conversation_id, limit, offset, connection)
+        else:
+            return await self._get_messages_by_conversation_id_with_connection(conversation_id, limit, offset, conn)
+
+    async def _get_messages_by_conversation_id_with_connection(
+        self, conversation_id: int, limit: int, offset: int, conn: TypedConnection
+    ) -> List[Message]:
+        """
+        Internal method to get paginated messages using a specific connection.
+        """
+        rows = await conn.fetch(
+            self.get_query("message.get_by_conversation_id"),
+            conversation_id,
+            limit,
+            offset,
         )
-        if cached_messages:
-            return cached_messages
 
-        # If not in cache, get from database
-        async with self.typed_pool.acquire() as conn:
-            rows = await conn.fetch(
-                self.get_query("message.get_by_conversation_id"),
-                conversation_id,
-                limit,
-                offset,
-            )
-            message_dicts = [dict(row) for row in rows]
-            messages = (
-                await self._build_messages(conversation_id, message_dicts, conn)
-                if message_dicts
-                else []
-            )
+        messages = []
+        for row in rows:
+            message_id = row['id']
+            # Get the full message with all related data
+            message = await self._get_message_with_connection(message_id, conn)
+            if message:
+                messages.append(message)
 
-            if messages:
-                try:
-                    cache_storage.cache_messages_by_conversation_id(
-                        conversation_id, messages
-                    )
-                except Exception as e:
-                    self.logger.warning(f"Failed to cache paginated messages: {e}")
+        # Cache results (only if not in transaction)
+        if messages:
+            try:
+                cache_storage.cache_messages_by_conversation_id(
+                    conversation_id, messages
+                )
+            except Exception as e:
+                self.logger.warning(f"Failed to cache paginated messages: {e}")
 
-            return messages
+        return messages
 
     async def delete_message(self, message_id: int) -> None:
         """
