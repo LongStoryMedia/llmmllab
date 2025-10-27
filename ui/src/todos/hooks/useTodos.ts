@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { TodoItem } from '../../types/TodoItem';
-import { 
-  getTodos, 
-  getTodo, 
-  createTodo, 
-  updateTodo, 
+import {
+  getTodos,
+  getTodo,
+  createTodo,
+  updateTodo,
   deleteTodo,
   CreateTodoRequest,
-  UpdateTodoRequest 
+  UpdateTodoRequest
 } from '../../api/todos';
 import { useAuth } from '../../auth/useAuth';
 
@@ -41,10 +41,10 @@ export function useTodos(): UseTodosResult {
     if (!auth.user) {
       return;
     }
-    
+
     setLoading(true);
     setError(null);
-    
+
     try {
       const accessToken = getAccessToken();
       const todosData = await getTodos(accessToken, statusFilter);
@@ -67,7 +67,7 @@ export function useTodos(): UseTodosResult {
         status: todoRequest.status || 'not-started',
         priority: todoRequest.priority || 'medium'
       });
-      
+
       // Add to local state
       setTodos(prev => [newTodo, ...prev]);
       return newTodo;
@@ -84,9 +84,9 @@ export function useTodos(): UseTodosResult {
       setError(null);
       const accessToken = getAccessToken();
       const updatedTodo = await updateTodo(accessToken, id, todoRequest);
-      
+
       // Update local state
-      setTodos(prev => prev.map(todo => 
+      setTodos(prev => prev.map(todo =>
         todo.id === id ? updatedTodo : todo
       ));
       return updatedTodo;
@@ -103,7 +103,7 @@ export function useTodos(): UseTodosResult {
       setError(null);
       const accessToken = getAccessToken();
       await deleteTodo(accessToken, id);
-      
+
       // Remove from local state
       setTodos(prev => prev.filter(todo => todo.id !== id));
       return true;
