@@ -33,6 +33,7 @@ from models import LangChainMessage, NodeMetadata, PipelinePriority
 from composer.graph.state import WorkflowState, ToolsState
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
+from openai import chat
 from runner import PipelineFactory
 from utils.logging import llmmllogger
 
@@ -60,12 +61,10 @@ class ToolsAgentSubgraph:
 
     def __init__(
         self,
-        pipeline_factory: PipelineFactory,
         tool_registry: ToolRegistry,
         chat_agent: ChatAgent,
     ):
         """Initialize subgraph with dependency injection."""
-        self.pipeline_factory = pipeline_factory
         self.tool_registry = tool_registry
         self.chat_agent = chat_agent
         self.graph = None
@@ -648,32 +647,3 @@ class ToolsAgentSubgraph:
         except Exception as e:
             logger.error(f"Agent subgraph execution failed: {e}", exc_info=True)
             return Command(update={})
-
-
-class _LazyToolsAgentSubgraph:
-    """Lazy initializer for tools agent subgraph with dependency injection."""
-
-    def __init__(self):
-        self._subgraph = None
-
-    def _ensure_initialized(self):
-        """Initialize the subgraph if not already done."""
-        if self._subgraph is None:
-            # Import here to avoid circular imports
-            from runner.pipeline_factory import pipeline_factory
-            from composer.tools.registry import ToolRegistry
-
-            # Create registry - this should be improved to use proper DI in the future
-            tool_registry = ToolRegistry(pipeline_factory)
-
-            self._subgraph = ToolsAgentSubgraph(pipeline_factory, tool_registry)
-        return self._subgraph
-
-    async def execute(self, main_state: WorkflowState):
-        """Execute the subgraph (lazy initialization)."""
-        subgraph = self._ensure_initialized()
-        return await subgraph.execute(main_state)
-
-
-# Global instance for backward compatibility
-tools_agent_subgraph = _LazyToolsAgentSubgraph()

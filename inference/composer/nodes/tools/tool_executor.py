@@ -6,7 +6,7 @@ Uses the ToolsAgentSubgraph for efficient tool execution with minimal state over
 from models import LangChainMessage
 from composer.graph.state import WorkflowState
 from composer.tools.registry import ToolRegistry
-from composer.graph.subgraphs import tools_agent_subgraph
+from composer.graph.subgraphs import ToolsAgentSubgraph
 from utils.logging import llmmllogger
 
 
@@ -18,15 +18,23 @@ class ToolExecutorNode:
     tools with minimal state overhead to prevent context window bloat.
     """
 
-    def __init__(self, tool_registry: "ToolRegistry"):
+    def __init__(self, tool_registry: "ToolRegistry", chat_agent):
         """
         Initialize tool executor node.
 
         Args:
             tool_registry: Registry containing executable tool instances
+            chat_agent: Chat agent for LLM operations in the subgraph
         """
         self.tool_registry = tool_registry
+        self.chat_agent = chat_agent
         self.logger = llmmllogger.logger.bind(component="ToolExecutorNode")
+        
+        # Create the subgraph instance
+        self.tools_agent_subgraph = ToolsAgentSubgraph(
+            tool_registry=tool_registry,
+            chat_agent=chat_agent,
+        )
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
@@ -65,7 +73,7 @@ class ToolExecutorNode:
             self.logger.info(
                 f"🔄 ToolExecutorNode: Calling tools_agent_subgraph.execute"
             )
-            command = await tools_agent_subgraph.execute(state)
+            command = await self.tools_agent_subgraph.execute(state)
 
             # Apply the command updates to the state
             if command and command.update:

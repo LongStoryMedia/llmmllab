@@ -7,9 +7,16 @@ All agents, storage services, and model profiles are instantiated upfront and in
 from typing import TYPE_CHECKING
 import uuid
 
+from composer.agents.chat_agent import ChatAgent
 from langgraph.graph.state import CompiledStateGraph, StateGraph, END, START
 
-from models import ModelProfileType, UserConfig, WorkflowType, NodeMetadata
+from models import (
+    ModelProfileType,
+    PipelinePriority,
+    UserConfig,
+    WorkflowType,
+    NodeMetadata,
+)
 from runner import PipelineFactory
 
 from utils.model_profile import get_model_profile_for_task
@@ -42,6 +49,7 @@ from composer.nodes.summary import ConsolidationNode, SearchSummaryNode
 from composer.tools.registry import ToolRegistry
 
 from composer.graph.state import WorkflowState
+from composer.graph.subgraphs import ToolsAgentSubgraph
 
 # Checkpoint integration handled through CheckpointStorage service
 
@@ -134,6 +142,11 @@ class GraphBuilder:
             Compiled workflow ready for execution
         """
         try:
+            primary_profile = await get_model_profile_for_task(
+                self.user_config.model_profiles,
+                ModelProfileType.PrimarySummary,
+                self.user_config.user_id,
+            )
             analysis_profile = await get_model_profile_for_task(
                 self.user_config.model_profiles,
                 ModelProfileType.Analysis,
@@ -161,6 +174,19 @@ class GraphBuilder:
             )
 
             # Node metadata for logging and tracing
+            primary_node_metadata = NodeMetadata(
+                node_name="PrimaryChatAgent",
+                node_id=uuid.uuid4().hex,
+                node_type="ChatNode",
+                execution_time=None,
+                user_id=user_id,
+                conversation_id=None,
+                profile_type=None,
+                streaming=None,
+                is_cached=None,
+                cache_key=None,
+                tool_count=None,
+            )
             classifier_node_metadata = NodeMetadata(
                 node_name="IntentClassifier",
                 node_id=uuid.uuid4().hex,
@@ -241,6 +267,12 @@ class GraphBuilder:
             )
 
             # Create agents with injected dependencies
+            primary_agent = ChatAgent(
+                pipeline_factory=self.pipeline_factory,
+                profile=primary_profile,
+                node_metadata=primary_node_metadata,
+                priority=PipelinePriority.HIGH,
+            )
             classifier_agent = ClassifierAgent(
                 self.pipeline_factory,
                 analysis_profile,
@@ -349,8 +381,10 @@ class GraphBuilder:
             workflow.add_node("chat_summary", chat_summary_node)
             workflow.add_node("search_summary", search_summary_node)
 
-            # Import and add the intelligent tools agent subgraph as a single node
-            from composer.graph.subgraphs.tools_agent import tools_agent_subgraph
+            tools_agent_subgraph = ToolsAgentSubgraph(
+                tool_registry=tool_registry,
+                chat_agent=primary_agent,
+            )
 
             # Create wrapper for subgraph execution
             async def tools_agent_node(state: WorkflowState) -> WorkflowState:
@@ -450,22 +484,29 @@ class GraphBuilder:
             workflow.add_edge("memory_creation", "memory_storage")
             workflow.add_edge("memory_storage", END)
 
-            # For now, compile without checkpointer to avoid lifecycle complexity
-            # TODO: Implement proper checkpointer integration at execution time
-            # Following LangGraph docs, checkpointers are typically used during graph.invoke()
+            # Configure checkpointer at compilation time for parent graph
+            # Per LangGraph docs: "you only need to provide the checkpointer when compiling 
+            # the parent graph. LangGraph will automatically propagate the checkpointer to child subgraphs"
             try:
                 if self.checkpoint_storage.is_initialized():
-                    self.logger.info("✅ Checkpoint storage available - persistence will be enabled during execution")
+                    # Use LangGraph's standard production pattern
+                    async with self.checkpoint_storage.create_checkpointer() as checkpointer:
+                        self.logger.info(
+                            "✅ Compiling workflow with checkpointer - will auto-propagate to subgraphs"
+                        )
+                        # Compile with checkpointer - automatically propagates to all subgraphs
+                        compiled_workflow = workflow.compile(checkpointer=checkpointer)
+                        return compiled_workflow
                 else:
-                    self.logger.info("ℹ️  Checkpoint storage not initialized - running without persistence")
-                
-                # Compile without checkpointer for now
-                # Checkpointing will be handled at the execution/invocation level
-                return workflow.compile()
-                
+                    self.logger.info(
+                        "ℹ️  Checkpoint storage not initialized - compiling without persistence"
+                    )
+                    return workflow.compile()
+
             except Exception as e:
-                self.logger.warning(f"⚠️  Workflow compilation failed: {e}")
-                raise
+                self.logger.warning(f"⚠️  Checkpointer setup failed, compiling without persistence: {e}")
+                # Fallback to compilation without checkpointer
+                return workflow.compile()
         except Exception as e:
             self.logger.error(
                 "Failed to build workflow",

@@ -26,7 +26,7 @@ from models import (
 from composer.core.errors import IntentAnalysisError
 from composer.utils.conversion import (
     normalize_message_input,
-    convert_messages_to_langchain,
+    convert_messages_to_base_langchain,
 )
 from utils.message import extract_message_text
 from utils.grammar_generator import parse_structured_output
@@ -238,7 +238,7 @@ Title:"""
                 )
 
                 # Convert to native LangChain BaseMessage objects instead of our LangChainMessage
-                from composer.utils.conversion import convert_messages_to_base_langchain
+
                 normalized_messages = convert_messages_to_base_langchain(
                     normalize_message_input(title_prompt)
                 )
@@ -284,7 +284,7 @@ Title:"""
                     if response and response.message
                     else ""
                 )
-                
+
                 # Extract clean title from the response, handling structured output
                 return self._extract_clean_title(raw_title)
 
@@ -298,45 +298,48 @@ Title:"""
     def _extract_clean_title(self, raw_response: str) -> str:
         """
         Extract clean title from model response, handling structured output.
-        
+
         Args:
             raw_response: Raw model response that may contain thinking tags, markdown, etc.
-            
+
         Returns:
             str: Clean title string (2-6 words)
         """
         if not raw_response:
             return "Conversation"
-            
+
         # Remove thinking tags and their content
         import re
-        cleaned = re.sub(r'<think>.*?</think>', '', raw_response, flags=re.DOTALL)
-        
+
+        cleaned = re.sub(r"<think>.*?</think>", "", raw_response, flags=re.DOTALL)
+
         # Remove markdown formatting
-        cleaned = re.sub(r'\*\*([^*]+)\*\*', r'\1', cleaned)  # Bold
-        cleaned = re.sub(r'\*([^*]+)\*', r'\1', cleaned)      # Italic
-        cleaned = re.sub(r'`([^`]+)`', r'\1', cleaned)        # Code
-        
+        cleaned = re.sub(r"\*\*([^*]+)\*\*", r"\1", cleaned)  # Bold
+        cleaned = re.sub(r"\*([^*]+)\*", r"\1", cleaned)  # Italic
+        cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)  # Code
+
         # Remove common prefixes
-        cleaned = re.sub(r'^(Title:|Subject:|Topic:)\s*', '', cleaned, flags=re.IGNORECASE)
-        
+        cleaned = re.sub(
+            r"^(Title:|Subject:|Topic:)\s*", "", cleaned, flags=re.IGNORECASE
+        )
+
         # Clean up whitespace and line breaks
-        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-        
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
         # Remove quotes
-        cleaned = cleaned.strip('"\'')
-        
+        cleaned = cleaned.strip("\"'")
+
         # Split into words and take reasonable length
         words = cleaned.split()
         if not words:
             return "Conversation"
-            
+
         # Take first 6 words maximum for title
         title_words = words[:6]
-        title = ' '.join(title_words)
-        
+        title = " ".join(title_words)
+
         # Fallback if empty or too short
         if not title or title.isspace():
             return "Conversation"
-            
+
         return title
