@@ -40,17 +40,6 @@ from utils.logging import llmmllogger
 logger = llmmllogger.bind(component="ToolsAgentSubgraph")
 
 
-@dataclass
-class ToolsContext:
-    """Context schema for tools runtime - provides state access for ToolRuntime injection."""
-
-    state: ToolsState
-
-    def __getitem__(self, key: str) -> Any:
-        """Allow dict-like access to state for compatibility."""
-        return getattr(self.state, key, None)
-
-
 class ToolsAgentSubgraph:
     """
     Complete agent subgraph with chat_agent + tool_node cycling workflow.
@@ -114,8 +103,8 @@ class ToolsAgentSubgraph:
         """Build the complete agent subgraph using proper dependency injection."""
         try:
             # Build graph with StateGraph pattern like main builder
-            # Add context_schema to enable ToolRuntime context propagation to subgraphs
-            builder = StateGraph(ToolsState, context_schema=ToolsContext)
+            # ToolRuntime automatically gets state access - no context_schema needed
+            builder = StateGraph(ToolsState)
 
             # Add chat agent node - will be created at runtime with proper context
             builder.add_node("chat_agent", self._chat_agent_wrapper)
