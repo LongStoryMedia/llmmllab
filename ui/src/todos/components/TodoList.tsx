@@ -1,4 +1,25 @@
 import React, { useState } from 'react';
+import {
+  Box,
+  Card,
+  Typography,
+  Button,
+  TextField,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  CardContent,
+  Chip,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert,
+  styled
+} from '@mui/material';
+import { Edit, Delete, Add } from '@mui/icons-material';
 import { TodoItem } from '../../types/TodoItem';
 import { useTodos } from '../hooks/useTodos';
 import { CreateTodoRequest, UpdateTodoRequest } from '../../api/todos';
@@ -6,6 +27,70 @@ import { CreateTodoRequest, UpdateTodoRequest } from '../../api/todos';
 interface TodoListProps {
   className?: string;
 }
+
+// Styled components
+const TodoContainer = styled(Box)(({ theme }) => ({
+  maxWidth: '1200px',
+  margin: '0 auto',
+  padding: theme.spacing(3)
+}));
+
+const HeaderSection = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: theme.spacing(3),
+  [theme.breakpoints.down('sm')]: {
+    flexDirection: 'column',
+    gap: theme.spacing(2),
+    alignItems: 'stretch'
+  }
+}));
+
+const FilterSection = styled(Box)(({ theme }) => ({
+  marginBottom: theme.spacing(3)
+}));
+
+const EmptyState = styled(Box)(({ theme }) => ({
+  textAlign: 'center',
+  padding: theme.spacing(8)
+}));
+
+const TodoCard = styled(Card)<{ priority: string }>(({ theme, priority }) => {
+  const borderColor = {
+    low: theme.palette.grey[400],
+    medium: theme.palette.warning.main,
+    high: theme.palette.error.light,
+    urgent: theme.palette.error.main
+  }[priority] || theme.palette.grey[400];
+
+  return {
+    marginBottom: theme.spacing(2),
+    borderLeft: `4px solid ${borderColor}`,
+    '&:hover': {
+      elevation: 2
+    }
+  };
+});
+
+const TodoHeader = styled(Box)({
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  marginBottom: 8
+});
+
+const TodoMetadata = styled(Box)({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  flexWrap: 'wrap'
+});
+
+const TodoActions = styled(Box)({
+  display: 'flex',
+  gap: 4
+});
 
 const statusOptions = [
   { value: '', label: 'All' },
@@ -22,19 +107,7 @@ const priorityOptions = [
   { value: 'urgent', label: 'Urgent' }
 ];
 
-const statusColors = {
-  'not-started': 'bg-gray-100 text-gray-800',
-  'in-progress': 'bg-blue-100 text-blue-800',
-  'completed': 'bg-green-100 text-green-800',
-  'cancelled': 'bg-red-100 text-red-800'
-};
 
-const priorityColors = {
-  'low': 'border-l-gray-400',
-  'medium': 'border-l-yellow-400',
-  'high': 'border-l-orange-400',
-  'urgent': 'border-l-red-400'
-};
 
 export function TodoList({ className = '' }: TodoListProps) {
   const { 
@@ -139,273 +212,265 @@ export function TodoList({ className = '' }: TodoListProps) {
   }
 
   return (
-    <div className={`max-w-4xl mx-auto p-6 ${className}`}>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Todo List</h1>
-        <button
+    <TodoContainer className={className}>
+      <HeaderSection>
+        <Typography variant="h4" component="h1" color="primary">
+          Todo List
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<Add />}
           onClick={() => setShowCreateForm(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
         >
           Add Todo
-        </button>
-      </div>
+        </Button>
+      </HeaderSection>
 
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+        <Alert severity="error" sx={{ mb: 2 }}>
           {error}
-        </div>
+        </Alert>
       )}
 
       {/* Status Filter */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Filter by Status:
-        </label>
-        <select
-          value={statusFilter}
-          onChange={(e) => handleStatusFilterChange(e.target.value)}
-          className="border border-gray-300 rounded-md px-3 py-2 bg-white"
-        >
-          {statusOptions.map(option => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </div>
+      <FilterSection>
+        <FormControl sx={{ minWidth: 200 }}>
+          <InputLabel>Filter by Status</InputLabel>
+          <Select
+            value={statusFilter}
+            onChange={(e) => handleStatusFilterChange(e.target.value)}
+            label="Filter by Status"
+          >
+            {statusOptions.map(option => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </FilterSection>
 
       {/* Create Form Modal */}
-      {showCreateForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-            <h2 className="text-xl font-bold mb-4">Create New Todo</h2>
-            <form onSubmit={handleCreateSubmit}>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Title *
-                </label>
-                <input
-                  type="text"
-                  value={createForm.title}
-                  onChange={(e) => setCreateForm({ ...createForm, title: e.target.value })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
-                  required
-                />
-              </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Description
-                </label>
-                <textarea
-                  value={createForm.description}
-                  onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 h-20"
-                />
-              </div>
-              <div className="mb-4 flex gap-4">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Status
-                  </label>
-                  <select
-                    value={createForm.status}
-                    onChange={(e) => setCreateForm({ ...createForm, status: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2"
-                  >
-                    {statusOptions.slice(1).map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Priority
-                  </label>
-                  <select
-                    value={createForm.priority}
-                    onChange={(e) => setCreateForm({ ...createForm, priority: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2"
-                  >
-                    {priorityOptions.map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateForm(false)}
-                  className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+      <Dialog 
+        open={showCreateForm} 
+        onClose={() => setShowCreateForm(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Create New Todo</DialogTitle>
+        <form onSubmit={handleCreateSubmit}>
+          <DialogContent>
+            <TextField
+              label="Title"
+              value={createForm.title}
+              onChange={(e) => setCreateForm({ ...createForm, title: e.target.value })}
+              fullWidth
+              required
+              margin="normal"
+            />
+            <TextField
+              label="Description"
+              value={createForm.description}
+              onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
+              fullWidth
+              multiline
+              rows={3}
+              margin="normal"
+            />
+            <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+              <FormControl fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={createForm.status}
+                  onChange={(e) => setCreateForm({ ...createForm, status: e.target.value })}
+                  label="Status"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  {statusOptions.slice(1).map(option => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl fullWidth>
+                <InputLabel>Priority</InputLabel>
+                <Select
+                  value={createForm.priority}
+                  onChange={(e) => setCreateForm({ ...createForm, priority: e.target.value })}
+                  label="Priority"
                 >
-                  Create Todo
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+                  {priorityOptions.map(option => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowCreateForm(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="contained">
+              Create Todo
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
 
       {/* Edit Form Modal */}
-      {editingTodo && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-            <h2 className="text-xl font-bold mb-4">Edit Todo</h2>
-            <form onSubmit={handleEditSubmit}>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Title *
-                </label>
-                <input
-                  type="text"
-                  value={editForm.title}
-                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
-                  required
-                />
-              </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Description
-                </label>
-                <textarea
-                  value={editForm.description}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 h-20"
-                />
-              </div>
-              <div className="mb-4 flex gap-4">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Status
-                  </label>
-                  <select
-                    value={editForm.status}
-                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2"
-                  >
-                    {statusOptions.slice(1).map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Priority
-                  </label>
-                  <select
-                    value={editForm.priority}
-                    onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2"
-                  >
-                    {priorityOptions.map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setEditingTodo(null)}
-                  className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+      <Dialog 
+        open={!!editingTodo} 
+        onClose={() => setEditingTodo(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Edit Todo</DialogTitle>
+        <form onSubmit={handleEditSubmit}>
+          <DialogContent>
+            <TextField
+              label="Title"
+              value={editForm.title}
+              onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+              fullWidth
+              required
+              margin="normal"
+            />
+            <TextField
+              label="Description"
+              value={editForm.description}
+              onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+              fullWidth
+              multiline
+              rows={3}
+              margin="normal"
+            />
+            <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+              <FormControl fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={editForm.status}
+                  onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                  label="Status"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  {statusOptions.slice(1).map(option => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl fullWidth>
+                <InputLabel>Priority</InputLabel>
+                <Select
+                  value={editForm.priority}
+                  onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}
+                  label="Priority"
                 >
-                  Update Todo
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+                  {priorityOptions.map(option => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditingTodo(null)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="contained">
+              Update Todo
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
 
       {/* Todo List */}
       {todos.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="text-gray-500 text-lg">No todos found</div>
-          <button
+        <EmptyState>
+          <Typography variant="h6" color="text.secondary" gutterBottom>
+            No todos found
+          </Typography>
+          <Button 
+            variant="text" 
+            color="primary"
             onClick={() => setShowCreateForm(true)}
-            className="mt-4 text-blue-600 hover:text-blue-800"
           >
             Create your first todo
-          </button>
-        </div>
+          </Button>
+        </EmptyState>
       ) : (
-        <div className="space-y-3">
+        <Box>
           {todos.map((todo) => (
-            <div
-              key={todo.id}
-              className={`bg-white border-l-4 rounded-lg shadow-sm p-4 ${
-                priorityColors[todo.priority as keyof typeof priorityColors]
-              }`}
+            <TodoCard 
+              key={todo.id} 
+              priority={todo.priority}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="font-semibold text-lg text-gray-900">
-                      {todo.title}
-                    </h3>
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        statusColors[todo.status as keyof typeof statusColors]
-                      }`}
+              <CardContent>
+                <TodoHeader>
+                  <Box sx={{ flex: 1 }}>
+                    <TodoMetadata>
+                      <Typography variant="h6" component="h3">
+                        {todo.title}
+                      </Typography>
+                      <Chip 
+                        label={statusOptions.find(s => s.value === todo.status)?.label}
+                        size="small"
+                        color={
+                          todo.status === 'completed' ? 'success' :
+                            todo.status === 'in-progress' ? 'primary' :
+                              todo.status === 'cancelled' ? 'error' : 'default'
+                        }
+                      />
+                      <Chip 
+                        label={`${todo.priority} priority`}
+                        size="small"
+                        variant="outlined"
+                      />
+                    </TodoMetadata>
+                    {todo.description && (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                        {todo.description}
+                      </Typography>
+                    )}
+                    <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+                      {todo.due_date && (
+                        <Typography variant="caption" color="text.secondary">
+                          Due: {formatDate(todo.due_date)}
+                        </Typography>
+                      )}
+                      {todo.created_at && (
+                        <Typography variant="caption" color="text.secondary">
+                          Created: {formatDate(todo.created_at)}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                  <TodoActions>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleEdit(todo)}
+                      color="primary"
                     >
-                      {statusOptions.find(s => s.value === todo.status)?.label}
-                    </span>
-                    <span className="text-xs text-gray-500 capitalize">
-                      {todo.priority} priority
-                    </span>
-                  </div>
-                  {todo.description && (
-                    <p className="text-gray-600 mb-2">{todo.description}</p>
-                  )}
-                  <div className="flex items-center gap-4 text-sm text-gray-500">
-                    {todo.due_date && (
-                      <span>Due: {formatDate(todo.due_date)}</span>
-                    )}
-                    {todo.created_at && (
-                      <span>Created: {formatDate(todo.created_at)}</span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 ml-4">
-                  <button
-                    onClick={() => handleEdit(todo)}
-                    className="text-blue-600 hover:text-blue-800 text-sm"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => todo.id && handleDelete(todo.id)}
-                    className="text-red-600 hover:text-red-800 text-sm"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            </div>
+                      <Edit />
+                    </IconButton>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => todo.id && handleDelete(todo.id)}
+                      color="error"
+                    >
+                      <Delete />
+                    </IconButton>
+                  </TodoActions>
+                </TodoHeader>
+              </CardContent>
+            </TodoCard>
           ))}
-        </div>
+        </Box>
       )}
-    </div>
+    </TodoContainer>
   );
 }
