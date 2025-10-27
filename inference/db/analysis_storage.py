@@ -7,13 +7,8 @@ import asyncpg
 from typing import List, Optional
 from datetime import datetime
 from models.intent_analysis import IntentAnalysis
-from models.workflow_type import WorkflowType
-from models.complexity_level import ComplexityLevel
-from models.required_capability import RequiredCapability
-from models.response_format import ResponseFormat
-from models.technical_domain import TechnicalDomain
 from models.computational_requirement import ComputationalRequirement
-from db.db_utils import TypedConnection, typed_pool
+from db.db_utils import typed_pool
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="analysis_storage")
@@ -59,8 +54,11 @@ class AnalysisStorage:
                         for cap in intent_analysis.required_capabilities
                     ]
                 )
+                # ComputationalRequirement is an enum, so we use .value to get the string
                 computational_requirements_json = json.dumps(
-                    intent_analysis.computational_requirements.dict()
+                    intent_analysis.computational_requirements.value
+                    if hasattr(intent_analysis.computational_requirements, "value")
+                    else str(intent_analysis.computational_requirements)
                 )
 
                 row = await conn.fetchrow(
@@ -186,17 +184,21 @@ class AnalysisStorage:
 
                 analyses = []
                 for row in rows:
+                    import json
+                    
                     # Parse JSON fields back to objects
                     required_capabilities = (
-                        row["required_capabilities"]
+                        json.loads(row["required_capabilities"])
                         if row["required_capabilities"]
                         else []
                     )
-                    computational_requirements = (
-                        row["computational_requirements"]
+                    # ComputationalRequirement is stored as string value, convert back to enum
+                    computational_req_str = (
+                        json.loads(row["computational_requirements"])
                         if row["computational_requirements"]
-                        else {}
+                        else "MINIMAL"
                     )
+                    computational_requirements = ComputationalRequirement(computational_req_str)
 
                     intent_analysis = IntentAnalysis(
                         workflow_type=row["workflow_type"],
@@ -273,9 +275,9 @@ class AnalysisStorage:
                     "requires_custom_tools": ia.requires_custom_tools,
                     "tool_complexity_score": ia.tool_complexity_score,
                     "computational_requirements": (
-                        ia.computational_requirements.dict()
-                        if hasattr(ia.computational_requirements, "dict")
-                        else ia.computational_requirements
+                        ia.computational_requirements.value
+                        if hasattr(ia.computational_requirements, "value")
+                        else str(ia.computational_requirements)
                     ),
                 }
                 analyses.append(analysis)
@@ -300,7 +302,7 @@ class AnalysisStorage:
         """
         try:
             async with self.typed_pool.acquire() as conn:
-                result = await conn.execute(
+                await conn.execute(
                     self.get_query("analysis.delete_by_message"), message_id
                 )
 
