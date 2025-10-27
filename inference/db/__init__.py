@@ -22,6 +22,7 @@ from .dynamic_tool_storage import DynamicToolStorage
 from .thought_storage import ThoughtStorage
 from .analysis_storage import AnalysisStorage
 from .tool_call_storage import ToolCallStorage
+from .message_content_storage import MessageContentStorage
 from .todo_storage import TodoStorage
 from .checkpoint_storage import CheckpointStorage
 from .queries import get_query
@@ -55,6 +56,7 @@ class Storage:
         self.thought = None
         self.analysis = None
         self.tool_call = None
+        self.message_content = None
         self.todo = None
         self.checkpoint = None
         self.get_query = get_query
@@ -94,11 +96,20 @@ class Storage:
             self.thought = ThoughtStorage(self.pool, get_query)
             self.analysis = AnalysisStorage(self.pool, get_query)
             self.tool_call = ToolCallStorage(self.pool, get_query)
+            self.message_content = MessageContentStorage(self.pool, get_query)
             self.todo = TodoStorage(self.pool, get_query)
             self.checkpoint = CheckpointStorage(self.pool, get_query)
             
             # Initialize checkpoint storage
             await self.checkpoint.initialize(connection_string)
+
+            # Set storage dependencies for MessageStorage
+            self.message.set_storage_dependencies(
+                self.thought,
+                self.tool_call,
+                self.message_content,
+                self.analysis
+            )
 
             self.initialized = True
             logger.info("Storage components initialized successfully")
@@ -117,6 +128,7 @@ class Storage:
             self.thought = None
             self.analysis = None
             self.tool_call = None
+            self.message_content = None
             self.todo = None
             self.initialized = False
 

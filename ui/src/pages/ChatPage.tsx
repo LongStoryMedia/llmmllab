@@ -54,7 +54,7 @@ const ChatPage = memo(() => {
       {conversationId && (
         <ConversationTodos conversationId={parseInt(conversationId, 10)} />
       )}
-      
+
       <ChatContainer
         messages={messages}
         streamingMessage={(isTyping || isLoading || response) ? currentMessage : undefined}

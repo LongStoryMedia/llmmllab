@@ -1,7 +1,8 @@
 {
     "include": [
         "inference/server",
-        "inference/composer"
+        "inference/composer",
+        "inference/runner",
     ],
     "exclude": [
         "**/node_modules",
@@ -13,9 +14,5 @@
     "reportMissingImports": true,
     "reportMissingTypeStubs": false,
     "pythonVersion": "3.12",
-    "extraPaths": [
-        "inference",
-        "inference/runner",
-        "inference/runner/typings"
-    ]
+    "extraPaths": []
 }

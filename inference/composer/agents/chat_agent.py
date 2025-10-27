@@ -193,14 +193,12 @@ class ChatAgent(BaseAgent[ChatResponse]):
                         )
                         tool_execution_results.append(tool_result)
                 except Exception as e:
-                    self.logger.warning(
-                        f"Failed to convert tool call to ToolCall: {e}"
-                    )
+                    self.logger.warning(f"Failed to convert tool call to ToolCall: {e}")
 
             # Update final_message with tool_calls if present
             if tool_execution_results:
                 final_message.tool_calls = tool_execution_results
-                
+
             return ChatResponse(
                 done=True,
                 message=final_message,

@@ -44,54 +44,64 @@ class ToolCallStorage:
             created_at = datetime.now(timezone.utc)
 
         try:
-            async with self.typed_pool.acquire() as conn:
-                import json
-
-                # Convert optional dict fields to JSON strings
-                args_json = (
-                    json.dumps(tool_execution_result.args)
-                    if tool_execution_result.args
-                    else None
-                )
-                result_data_json = (
-                    json.dumps(tool_execution_result.result_data)
-                    if tool_execution_result.result_data
-                    else None
-                )
-                resource_usage_json = (
-                    json.dumps(tool_execution_result.resource_usage.dict())
-                    if tool_execution_result.resource_usage
-                    else None
-                )
-
-                row = await conn.fetchrow(
-                    self.get_query("tool_call.add_tool_call"),
-                    message_id,  # $1
-                    tool_execution_result.tool_name,  # $2
-                    tool_execution_result.execution_id,  # $3
-                    tool_execution_result.success,  # $4
-                    args_json,  # $5
-                    result_data_json,  # $6
-                    tool_execution_result.error_message,  # $7
-                    tool_execution_result.execution_time_ms,  # $8
-                    resource_usage_json,  # $9
-                    created_at,  # $10
-                )
-
-                if row:
-                    tool_call_id = row["id"]
-                    self.logger.info(
-                        f"Added tool call {tool_call_id} ({tool_execution_result.tool_name}) for message {message_id}"
-                    )
-                    return tool_call_id
-                else:
-                    self.logger.error(
-                        f"Failed to add tool call for message {message_id}"
-                    )
-                    return None
+            # Use provided connection or acquire a new one
+            if conn is None:
+                async with self.typed_pool.acquire() as connection:
+                    return await self._add_tool_call_with_connection(message_id, tool_execution_result, created_at, connection)
+            else:
+                return await self._add_tool_call_with_connection(message_id, tool_execution_result, created_at, conn)
 
         except Exception as e:
             self.logger.error(f"Error adding tool call for message {message_id}: {e}")
+            return None
+
+    async def _add_tool_call_with_connection(
+        self, message_id: int, tool_execution_result: ToolCall, created_at: datetime, conn: TypedConnection
+    ) -> Optional[int]:
+        """Internal method to add tool call using a specific connection."""
+        import json
+
+        # Convert optional dict fields to JSON strings
+        args_json = (
+            json.dumps(tool_execution_result.args)
+            if tool_execution_result.args
+            else None
+        )
+        result_data_json = (
+            json.dumps(tool_execution_result.result_data)
+            if tool_execution_result.result_data
+            else None
+        )
+        resource_usage_json = (
+            json.dumps(tool_execution_result.resource_usage.dict())
+            if tool_execution_result.resource_usage
+            else None
+        )
+
+        row = await conn.fetchrow(
+            self.get_query("tool_call.add_tool_call"),
+            message_id,  # $1
+            tool_execution_result.tool_name,  # $2
+            tool_execution_result.execution_id,  # $3
+            tool_execution_result.success,  # $4
+            args_json,  # $5
+            result_data_json,  # $6
+            tool_execution_result.error_message,  # $7
+            tool_execution_result.execution_time_ms,  # $8
+            resource_usage_json,  # $9
+            created_at,  # $10
+        )
+
+        if row:
+            tool_call_id = row["id"]
+            self.logger.info(
+                f"Added tool call {tool_call_id} ({tool_execution_result.tool_name}) for message {message_id}"
+            )
+            return tool_call_id
+        else:
+            self.logger.error(
+                f"Failed to add tool call for message {message_id}"
+            )
             return None
 
     async def add_tool_call_legacy(

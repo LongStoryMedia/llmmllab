@@ -745,7 +745,9 @@ class IntelligentOOMRecovery:
             attempts_file = self.data_dir / "recovery_attempts.json"
             with open(attempts_file, "w", encoding="utf-8") as f:
                 # Convert Pydantic models to dicts for JSON serialization
-                attempt_dicts = [attempt.model_dump() for attempt in self.recovery_attempts]
+                attempt_dicts = [
+                    attempt.model_dump() for attempt in self.recovery_attempts
+                ]
                 json.dump(attempt_dicts, f, indent=2)
 
         except Exception as e:
