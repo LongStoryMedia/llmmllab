@@ -580,7 +580,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
         # Pattern to match both <tool_call> and <function-call> blocks
         tool_call_pattern = (
-            r"<(?:(tool|function)[-_]call)>\s*(\{.*?\})\s*</(?:tool|function)[-_]call)>"
+            r"<(?:tool|function)[-_]call>\s*(\{.*?\})\s*</(?:tool|function)[-_]call>"
         )
 
         matches = re.finditer(tool_call_pattern, content, re.DOTALL | re.IGNORECASE)
