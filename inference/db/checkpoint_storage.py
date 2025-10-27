@@ -64,7 +64,11 @@ class CheckpointStorage:
         async with AsyncPostgresSaver.from_conn_string(
             self._connection_string
         ) as saver:
-            yield saver
+            try:
+                yield saver
+            except Exception as e:
+                self.logger.error(f"Error using LangGraph saver: {e}")
+                raise
 
     async def save_workflow_state_with_todos(
         self, conversation_id: int, todos: List[Dict[str, Any]]
