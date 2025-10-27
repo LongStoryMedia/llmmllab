@@ -39,8 +39,9 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 class StructuredResponseData(TypedDict):
     """Strongly typed structure for response data storage."""
+
     thoughts: List[Thought]
-    tool_calls: List[ToolCall] 
+    tool_calls: List[ToolCall]
     analyses: List[IntentAnalysis]
 
 
@@ -147,11 +148,19 @@ async def chat_completion(
                 # Initialize streaming response state manager
                 streaming_state = StreamingResponseState()
 
-                # Execute workflow with state
+                # Execute workflow with state and checkpointing
                 events = []
                 final_response_data = {}
+                
+                # Configure threading for persistent state management
+                config = {
+                    "configurable": {
+                        "thread_id": str(conversation_id),  # Use conversation_id as thread for checkpointing
+                        "checkpoint_ns": "",
+                    }
+                }
 
-                async for event in workflow.astream_events(initial_state, version="v2"):
+                async for event in workflow.astream_events(initial_state, config=config, version="v2"):
                     events.append(event)
 
                     # Handle both dict and object event formats
@@ -239,12 +248,14 @@ async def chat_completion(
                         # Check for generated todos from planning middleware
                         generated_todos = final_response_data.get("generated_todos", [])
                         if generated_todos:
-                            logger.info(f"Intent analysis generated {len(generated_todos)} todos")
-                            
+                            logger.info(
+                                f"Intent analysis generated {len(generated_todos)} todos"
+                            )
+
                             # Add todo notification to response
                             todo_count = len(generated_todos)
                             todo_message = f"✅ Generated {todo_count} todo{'s' if todo_count != 1 else ''} based on your request."
-                            
+
                             # Update the streaming state response buffer to include todo notification
                             if streaming_state.response_buffer:
                                 streaming_state.response_buffer += f"\n\n{todo_message}"
@@ -253,8 +264,13 @@ async def chat_completion(
 
                         # Create strongly typed structured data
                         thoughts = []
-                        if streaming_state.accumulated_thinking and streaming_state.accumulated_thinking.strip():
-                            thoughts.append(Thought(text=streaming_state.accumulated_thinking))
+                        if (
+                            streaming_state.accumulated_thinking
+                            and streaming_state.accumulated_thinking.strip()
+                        ):
+                            thoughts.append(
+                                Thought(text=streaming_state.accumulated_thinking)
+                            )
 
                         # Convert analyses from dicts to IntentAnalysis objects if needed
                         analyses = []
@@ -266,7 +282,9 @@ async def chat_completion(
                                 try:
                                     analyses.append(IntentAnalysis(**analysis))
                                 except Exception as e:
-                                    logger.warning(f"Failed to convert analysis dict to IntentAnalysis: {e}")
+                                    logger.warning(
+                                        f"Failed to convert analysis dict to IntentAnalysis: {e}"
+                                    )
 
                         structured_data: StructuredResponseData = {
                             "thoughts": thoughts,
@@ -285,7 +303,9 @@ async def chat_completion(
                 # Update final response with any todo notifications
                 if final_response.message and final_response.message.content:
                     # Update the message content to reflect the updated streaming state buffer
-                    final_response.message.content[0].text = streaming_state.response_buffer
+                    final_response.message.content[0].text = (
+                        streaming_state.response_buffer
+                    )
 
                 # Yield final response with done=True
                 final_response.done = True

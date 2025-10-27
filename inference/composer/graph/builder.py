@@ -41,7 +41,10 @@ from composer.nodes.agents.engineering import EngineeringAgentNode
 from composer.nodes.summary import ConsolidationNode, SearchSummaryNode
 from composer.tools.registry import ToolRegistry
 
-from .state import WorkflowState
+from composer.graph.state import WorkflowState
+
+# Import checkpoint integration
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 if TYPE_CHECKING:
     from db import Storage
@@ -340,14 +343,13 @@ class GraphBuilder:
             workflow.add_node("tool_collection", tool_collection_node)
             workflow.add_node("tool_composer", tool_composer_node)
 
-
             workflow.add_node("chat_summary", chat_summary_node)
             workflow.add_node("search_summary", search_summary_node)
 
             # Import and add the intelligent tools agent subgraph as a single node
             from composer.graph.subgraphs.tools_agent import tools_agent_subgraph
-            
-            # Create wrapper for subgraph execution  
+
+            # Create wrapper for subgraph execution
             async def tools_agent_node(state: WorkflowState) -> WorkflowState:
                 """Execute the intelligent tools agent subgraph and return updated state."""
                 command = await tools_agent_subgraph.execute(state)
@@ -355,7 +357,7 @@ class GraphBuilder:
                     for key, value in command.update.items():
                         setattr(state, key, value)
                 return state
-            
+
             workflow.add_node("tools_agent", tools_agent_node)
 
             # Build a logical workflow graph structure:
@@ -394,14 +396,16 @@ class GraphBuilder:
             # 6. Engineering agent -> Tools agent (subgraph handles intelligent agent cycling)
             workflow.add_edge("engineering_agent", "tools_agent")
 
-            # 7. Simple routing: tools_agent -> search_summary (if web search) or chat_summary  
+            # 7. Simple routing: tools_agent -> search_summary (if web search) or chat_summary
             def route_after_tools_agent(state: WorkflowState):
                 """Route after intelligent tools agent completes."""
                 # Check if web search was performed and needs summarization
-                if hasattr(state, 'web_search_results') and state.web_search_results:
-                    self.logger.info("🔀 Tools agent completed with web search results - routing to search_summary")
+                if hasattr(state, "web_search_results") and state.web_search_results:
+                    self.logger.info(
+                        "🔀 Tools agent completed with web search results - routing to search_summary"
+                    )
                     return "search_summary"
-                
+
                 # Otherwise proceed to chat summary for consolidation
                 self.logger.info("🔀 Tools agent completed - routing to chat_summary")
                 return "chat_summary"
@@ -419,19 +423,21 @@ class GraphBuilder:
             def route_after_chat_summary(state: WorkflowState):
                 """Route after chat summary - conditionally generate title."""
                 # Check if title already exists
-                if hasattr(state, 'title') and state.title and state.title.strip():
-                    self.logger.info("🔀 Title already exists - skipping title generation")
+                if hasattr(state, "title") and state.title and state.title.strip():
+                    self.logger.info(
+                        "🔀 Title already exists - skipping title generation"
+                    )
                     return "memory_creation"
                 else:
                     self.logger.info("🔀 No title exists - routing to title generation")
                     return "title_generation"
-            
+
             workflow.add_edge("search_summary", "chat_summary")
             workflow.add_conditional_edges(
                 "chat_summary",
                 route_after_chat_summary,
                 {
-                    "title_generation": "title_generation", 
+                    "title_generation": "title_generation",
                     "memory_creation": "memory_creation",
                 },
             )
@@ -441,7 +447,23 @@ class GraphBuilder:
             workflow.add_edge("memory_creation", "memory_storage")
             workflow.add_edge("memory_storage", END)
 
-            return workflow.compile()
+            # Configure checkpointer for persistent state management
+            # Get database connection pool from storage services
+            db_pool = self.conversation_storage.pool
+            checkpointer = AsyncPostgresSaver(
+                pool=db_pool,
+            )
+            
+            # Setup checkpointer tables if not already done
+            try:
+                await checkpointer.setup()
+                self.logger.info("✅ Checkpointer initialized successfully")
+            except Exception as e:
+                self.logger.warning(f"Checkpointer setup warning: {e}")
+                # Continue without checkpointing if setup fails
+                return workflow.compile()
+
+            return workflow.compile(checkpointer=checkpointer)
         except Exception as e:
             self.logger.error(
                 "Failed to build workflow",

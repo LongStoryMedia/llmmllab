@@ -23,6 +23,7 @@ from .thought_storage import ThoughtStorage
 from .analysis_storage import AnalysisStorage
 from .tool_call_storage import ToolCallStorage
 from .todo_storage import TodoStorage
+from .checkpoint_storage import CheckpointStorage
 from .queries import get_query
 from typing import Optional, Protocol, Any, Callable, cast
 
@@ -55,6 +56,7 @@ class Storage:
         self.analysis = None
         self.tool_call = None
         self.todo = None
+        self.checkpoint = None
         self.get_query = get_query
         self.initialized = False
 
@@ -93,6 +95,10 @@ class Storage:
             self.analysis = AnalysisStorage(self.pool, get_query)
             self.tool_call = ToolCallStorage(self.pool, get_query)
             self.todo = TodoStorage(self.pool, get_query)
+            self.checkpoint = CheckpointStorage(self.pool, get_query)
+            
+            # Initialize checkpoint storage
+            await self.checkpoint.initialize()
 
             self.initialized = True
             logger.info("Storage components initialized successfully")

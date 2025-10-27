@@ -203,6 +203,13 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("todo.create_table", []),
                     ],
                 ),
+                # Step 15: Create LangGraph checkpoint tables
+                (
+                    "Creating LangGraph checkpoint tables",
+                    [
+                        ("checkpoint.create_langgraph_checkpoint_tables", []),
+                    ],
+                ),
             ]
 
             # Execute all initialization steps

@@ -189,7 +189,25 @@ class ComposerService:
             )
         )
 
-        # Create the state with centralized user configuration
+        # Load active todos for continuation context
+        active_todos = await storage.get_service(storage.todo).get_todos_by_conversation(
+            user_id, conversation_id
+        )
+        
+        # Convert TodoItem objects to dicts for state consistency
+        active_todos_dicts = [
+            {
+                "id": todo.id,
+                "title": todo.title,
+                "description": todo.description,
+                "status": todo.status,
+                "priority": todo.priority,
+                "created_at": todo.created_at.isoformat() if todo.created_at else None,
+            }
+            for todo in active_todos
+        ]
+
+        # Create the state with centralized user configuration and todo context
         state = WorkflowState(
             messages=langchain_messages,
             summaries=summaries,
@@ -197,6 +215,12 @@ class ComposerService:
             user_id=user_id,
             user_config=user_config,
             conversation_id=conversation_id,
+            active_todos=active_todos_dicts,  # Include active todos for context continuity
+            checkpoint_metadata={
+                "conversation_id": conversation_id,
+                "user_id": user_id,
+                "turn_timestamp": datetime.now(timezone.utc).isoformat(),
+            },
         )
 
         return state

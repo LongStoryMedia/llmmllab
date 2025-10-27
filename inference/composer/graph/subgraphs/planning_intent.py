@@ -130,15 +130,17 @@ class PlanningIntentSubgraph:
     async def _context_analysis_step(
         self, state: PlanningIntentState
     ) -> Dict[str, Any]:
-        """Initial context analysis planning step."""
+        """Initial context analysis planning step with todo context."""
         logger.info("🔍 Planning: Context analysis step")
 
         messages = state.get("messages", [])
         planning_steps = state.get("planning_steps", [])
+        existing_todos = state.get("generated_todos", [])
 
         # Analyze message context
         message_count = len(messages)
         has_recent_context = message_count > 1
+        has_existing_todos = len(existing_todos) > 0
 
         # Initial complexity estimation
         complexity_score = 3  # Base complexity
@@ -146,6 +148,9 @@ class PlanningIntentSubgraph:
             complexity_score += 2
         if has_recent_context:
             complexity_score += 1
+        if has_existing_todos:
+            complexity_score += 1  # Existing todos indicate ongoing complex work
+            logger.info(f"🔍 Planning: Found {len(existing_todos)} existing todos for context")
 
         planning_steps.append("context_analysis")
 
@@ -673,10 +678,10 @@ class PlanningIntentSubgraph:
             "user_id": getattr(main_state, "user_id", ""),
             "conversation_id": getattr(main_state, "conversation_id", 0),
             "static_tools": getattr(main_state, "static_tools", []),
-            "planning_steps": [],
-            "complexity_score": 3,
+            "planning_steps": getattr(main_state, "planning_steps", []),
+            "complexity_score": getattr(main_state, "complexity_score", 3),
             "intent_analyses": [],
-            "generated_todos": [],
+            "generated_todos": getattr(main_state, "active_todos", []),  # Include previous todos for context
         }
 
     def transform_to_main_state(
