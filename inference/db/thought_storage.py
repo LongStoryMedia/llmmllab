@@ -37,33 +37,33 @@ class ThoughtStorage:
         Returns:
             The ID of the created thought, or None on failure
         """
-        created_at = thought.created_at or datetime.utcnow()
-
         try:
             # Use provided connection or acquire a new one
             if conn is None:
                 async with self.typed_pool.acquire() as connection:
-                    return await self._add_thought_with_connection(thought.message_id, thought.text, created_at, connection)
+                    return await self._add_thought(
+                        thought.message_id, thought.text, connection
+                    )
             else:
-                return await self._add_thought_with_connection(thought.message_id, thought.text, created_at, conn)
+                return await self._add_thought(thought.message_id, thought.text, conn)
 
         except Exception as e:
-            self.logger.error(f"Error adding thought for message {message_id}: {e}")
+            self.logger.error(
+                f"Error adding thought for message {thought.message_id}: {e}"
+            )
             return None
 
-    async def _add_thought_with_connection(
-        self, message_id: int, text: str, created_at: datetime, conn: TypedConnection
+    async def _add_thought(
+        self, message_id: int, text: str, conn: TypedConnection
     ) -> Optional[int]:
         """Internal method to add thought using a specific connection."""
         row = await conn.fetchrow(
-            self.get_query("thought.add_thought"), message_id, text, created_at
+            self.get_query("thought.add_thought"), message_id, text
         )
 
         if row:
             thought_id = row["id"]
-            self.logger.info(
-                f"Added thought {thought_id} for message {message_id}"
-            )
+            self.logger.info(f"Added thought {thought_id} for message {message_id}")
             return thought_id
         else:
             self.logger.error(f"Failed to add thought for message {message_id}")

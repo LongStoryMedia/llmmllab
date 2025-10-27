@@ -23,25 +23,31 @@ from models.computational_requirement import ComputationalRequirement
 from db.cache_storage import cache_storage
 from db.db_utils import TypedConnection, typed_pool
 from utils.logging import llmmllogger
+from db.thought_storage import ThoughtStorage
+from db.tool_call_storage import ToolCallStorage
+from db.message_content_storage import MessageContentStorage
+from db.analysis_storage import AnalysisStorage
 
 logger = llmmllogger.bind(component="message_storage")
 
 
 class MessageStorage:
-    def __init__(self, pool: asyncpg.Pool, get_query, thought_storage=None, tool_call_storage=None, message_content_storage=None, analysis_storage=None):
+
+    def __init__(
+        self,
+        pool: asyncpg.Pool,
+        get_query,
+        thought_storage: ThoughtStorage,
+        tool_call_storage: ToolCallStorage,
+        message_content_storage: MessageContentStorage,
+        analysis_storage: AnalysisStorage,
+    ):
         self.pool = pool
         self.typed_pool = typed_pool(pool)
         self.get_query = get_query
         self.logger = llmmllogger.bind(component="message_storage_instance")
-        
-        # Storage service dependencies (will be set after initialization)
-        self.thought_storage = thought_storage
-        self.tool_call_storage = tool_call_storage
-        self.message_content_storage = message_content_storage
-        self.analysis_storage = analysis_storage
 
-    def set_storage_dependencies(self, thought_storage, tool_call_storage, message_content_storage, analysis_storage):
-        """Set the storage service dependencies after all services are initialized."""
+        # Storage service dependencies (will be set after initialization)
         self.thought_storage = thought_storage
         self.tool_call_storage = tool_call_storage
         self.message_content_storage = message_content_storage
@@ -139,19 +145,16 @@ class MessageStorage:
             return cached_message
 
         # Acquire connection if not provided
-        use_external_conn = conn is not None
         if conn is None:
             async with self.typed_pool.acquire() as connection:
-                return await self._get_message_with_connection(
+                return await self._get_message(
                     message_id, connection, cache_result=True
                 )
         else:
             # When using external connection, we still cache but let caller control transaction
-            return await self._get_message_with_connection(
-                message_id, conn, cache_result=True
-            )
+            return await self._get_message(message_id, conn, cache_result=True)
 
-    async def _get_message_with_connection(
+    async def _get_message(
         self, message_id: int, conn: TypedConnection, cache_result: bool = True
     ) -> Optional[Message]:
         """
@@ -317,15 +320,11 @@ class MessageStorage:
         # Acquire connection if not provided
         if conn is None:
             async with self.typed_pool.acquire() as connection:
-                return await self._get_conversation_history_with_connection(
-                    conversation_id, connection
-                )
+                return await self._get_conversation_history(conversation_id, connection)
         else:
-            return await self._get_conversation_history_with_connection(
-                conversation_id, conn
-            )
+            return await self._get_conversation_history(conversation_id, conn)
 
-    async def _get_conversation_history_with_connection(
+    async def _get_conversation_history(
         self, conversation_id: int, conn: TypedConnection
     ) -> List[Message]:
         """
@@ -341,9 +340,7 @@ class MessageStorage:
         for row in rows:
             message_id = row["id"]
             # Get the full message with all related data
-            message = await self._get_message_with_connection(
-                message_id, conn, cache_result=True
-            )
+            message = await self._get_message(message_id, conn, cache_result=True)
             if message:
                 messages.append(message)
 
@@ -382,15 +379,15 @@ class MessageStorage:
         # Acquire connection if not provided
         if conn is None:
             async with self.typed_pool.acquire() as connection:
-                return await self._get_messages_by_conversation_id_with_connection(
+                return await self._get_messages_by_conversation_id(
                     conversation_id, limit, offset, connection
                 )
         else:
-            return await self._get_messages_by_conversation_id_with_connection(
+            return await self._get_messages_by_conversation_id(
                 conversation_id, limit, offset, conn
             )
 
-    async def _get_messages_by_conversation_id_with_connection(
+    async def _get_messages_by_conversation_id(
         self, conversation_id: int, limit: int, offset: int, conn: TypedConnection
     ) -> List[Message]:
         """
@@ -407,9 +404,7 @@ class MessageStorage:
         for row in rows:
             message_id = row["id"]
             # Get the full message with all related data
-            message = await self._get_message_with_connection(
-                message_id, conn, cache_result=True
-            )
+            message = await self._get_message(message_id, conn, cache_result=True)
             if message:
                 messages.append(message)
 
@@ -532,77 +527,22 @@ class MessageStorage:
         self, conn: TypedConnection, message_id: int, contents: List[MessageContent]
     ) -> None:
         """Helper method to insert message contents using MessageContentStorage."""
-        if not self.message_content_storage:
-            self.logger.warning("MessageContentStorage not available, falling back to direct SQL")
-            # Fallback to direct SQL if storage service not available
-            for content in contents:
-                await conn.execute(
-                    self.get_query("message_content.add_content"),
-                    message_id,
-                    content.type,
-                    content.text,
-                    content.url,
-                )
-            return
 
         for content in contents:
-            await self.message_content_storage.add_content(
-                message_id=message_id,
-                content=content,
-                conn=conn
-            )
+            await self.message_content_storage.add_content(content=content, conn=conn)
 
     async def _insert_tool_calls(
         self, conn: TypedConnection, message_id: int, tool_calls: List[ToolCall]
     ) -> None:
         """Helper method to insert tool calls using ToolCallStorage."""
-        if not self.tool_call_storage:
-            self.logger.warning("ToolCallStorage not available, falling back to direct SQL")
-            # Fallback to direct SQL if storage service not available
-            for tool_call in tool_calls:
-                # Convert resource_usage to dict if it's a ResourceUsage object
-                resource_usage_dict = None
-                if tool_call.resource_usage:
-                    if hasattr(tool_call.resource_usage, "dict"):
-                        resource_usage_dict = tool_call.resource_usage.dict()
-                    else:
-                        resource_usage_dict = tool_call.resource_usage
-
-                await conn.execute(
-                    self.get_query("tool_call.add_tool_call"),
-                    message_id,
-                    tool_call.tool_name,
-                    tool_call.execution_id,
-                    tool_call.success,
-                    json.dumps(tool_call.args) if tool_call.args else None,
-                    json.dumps(tool_call.result_data) if tool_call.result_data else None,
-                    tool_call.error_message,
-                    tool_call.execution_time_ms,
-                    json.dumps(resource_usage_dict) if resource_usage_dict else None,
-                )
-            return
 
         for tool_call in tool_calls:
-            await self.tool_call_storage.add_tool_call(
-                message_id=message_id,
-                tool_call=tool_call,
-                conn=conn
-            )
+            await self.tool_call_storage.add_tool_call(tool_call=tool_call, conn=conn)
 
     async def _insert_thoughts(
         self, conn: TypedConnection, message_id: int, thoughts: List[Thought]
     ) -> None:
         """Helper method to insert thoughts using ThoughtStorage."""
-        if not self.thought_storage:
-            self.logger.warning("ThoughtStorage not available, falling back to direct SQL")
-            # Fallback to direct SQL if storage service not available
-            for thought in thoughts:
-                await conn.execute(
-                    self.get_query("thought.add_thought"),
-                    message_id,
-                    thought.text,
-                )
-            return
 
         for thought in thoughts:
             thought_obj = Thought(
@@ -738,11 +678,6 @@ class MessageStorage:
 
         for analysis_data in parsed_data:
             try:
-                # Convert JSON fields back to proper types
-                from models.workflow_type import WorkflowType
-                from models.complexity_level import ComplexityLevel
-                from models.required_capability import RequiredCapability
-                from models.computational_requirement import ComputationalRequirement
 
                 # Parse enums and JSON fields
                 workflow_type = WorkflowType(

@@ -55,10 +55,12 @@ class StreamingResponseState:
         self.think_end_pattern = re.compile(r"</think>")
         self.tool_call_start_pattern = re.compile(r"<(?:tool|function)[-_]call>")
         self.tool_call_end_pattern = re.compile(r"</(?:tool|function)[-_]call>")
-        
+
         # JSON metadata detection patterns
         self.json_start_pattern = re.compile(r'^\s*\{\s*"')
-        self.json_block_pattern = re.compile(r'^\s*\{\s*"[^"]+"\s*:\s*\[?\{')  # Detect structured JSON blocks
+        self.json_block_pattern = re.compile(
+            r'^\s*\{\s*"[^"]+"\s*:\s*\[?\{'
+        )  # Detect structured JSON blocks
 
     def process_chunk(self, chunk: str) -> ChatResponse:
         """
@@ -156,6 +158,7 @@ class StreamingResponseState:
                         success=False,
                         error_message="Failed to parse tool call arguments",
                         execution_time_ms=0,
+                        message_id=0,
                     )
                     self.tool_calls.append(tool_result)
 
@@ -177,11 +180,7 @@ class StreamingResponseState:
 
         # Return ChatResponse with thinking content
         thoughts = [Thought(text=clean_chunk)] if clean_chunk else None
-        message = Message(
-            role=MessageRole.ASSISTANT, 
-            content=[],
-            thoughts=thoughts
-        )
+        message = Message(role=MessageRole.ASSISTANT, content=[], thoughts=thoughts)
         return ChatResponse(
             message=message,
             done=False,
@@ -196,11 +195,7 @@ class StreamingResponseState:
             self.accumulated_thinking += clean_chunk
 
         thoughts = [Thought(text=clean_chunk)] if clean_chunk else None
-        message = Message(
-            role=MessageRole.ASSISTANT, 
-            content=[],
-            thoughts=thoughts
-        )
+        message = Message(role=MessageRole.ASSISTANT, content=[], thoughts=thoughts)
         return ChatResponse(
             message=message,
             done=False,
@@ -212,17 +207,13 @@ class StreamingResponseState:
         clean_chunk = self._clean_xml_tags(chunk)
         if clean_chunk:
             self.tool_call_buffer += clean_chunk
-            
+
             # Try to detect and parse JSON function calls in the buffer
             self._try_parse_function_call()
 
         # Return ChatResponse with current tool calls
         tool_calls = self.tool_calls.copy() if self.tool_calls else None
-        message = Message(
-            role=MessageRole.ASSISTANT, 
-            content=[],
-            tool_calls=tool_calls
-        )
+        message = Message(role=MessageRole.ASSISTANT, content=[], tool_calls=tool_calls)
         return ChatResponse(
             message=message,
             done=False,
@@ -232,18 +223,21 @@ class StreamingResponseState:
         """Handle content when in RESPONDING state (default)."""
         # Clean chunk and add to response buffer
         clean_chunk = self._clean_xml_tags(chunk)
-        
+
         # Filter out JSON metadata blocks
         if clean_chunk:
             filtered_chunk = self._detect_json_block_boundaries(clean_chunk)
             # Only process non-JSON content
             if filtered_chunk and not self._is_json_metadata(filtered_chunk):
                 self.response_buffer += filtered_chunk
-                
+
                 # Return ChatResponse with main message content
-                content = [MessageContent(type=MessageContentType.TEXT, text=filtered_chunk)]
+                content = [
+                    MessageContent(type=MessageContentType.TEXT, text=filtered_chunk)
+                ]
                 return ChatResponse(
-                    message=Message(role=MessageRole.ASSISTANT, content=content), done=False
+                    message=Message(role=MessageRole.ASSISTANT, content=content),
+                    done=False,
                 )
 
         # Return empty response if content was filtered out
@@ -275,54 +269,64 @@ class StreamingResponseState:
         stripped = content.strip()
         if not stripped:
             return False
-            
+
         # Check for JSON object patterns
-        if stripped.startswith('{') and '"' in stripped:
+        if stripped.startswith("{") and '"' in stripped:
             # Look for common metadata patterns
             metadata_indicators = [
-                '"intent":', '"analysis":', '"category":', '"classification":',
-                '"reasoning":', '"metadata":', '"type":', '"complexity":',
-                '"user_intent":', '"system_type":', '"session_context":'
+                '"intent":',
+                '"analysis":',
+                '"category":',
+                '"classification":',
+                '"reasoning":',
+                '"metadata":',
+                '"type":',
+                '"complexity":',
+                '"user_intent":',
+                '"system_type":',
+                '"session_context":',
             ]
             return any(indicator in stripped for indicator in metadata_indicators)
-        
+
         return False
 
     def _detect_json_block_boundaries(self, content: str) -> str:
         """Detect and filter out JSON metadata blocks from streaming content."""
         if not content:
             return content
-            
+
         # Add content to JSON buffer for analysis
         self.json_buffer += content
-        
-        lines = self.json_buffer.split('\n')
+
+        lines = self.json_buffer.split("\n")
         filtered_lines = []
-        
+
         for line in lines:
             stripped_line = line.strip()
-            
+
             # Detect start of JSON block
             if not self.in_json_block and self.json_block_pattern.match(stripped_line):
                 self.in_json_block = True
                 continue
-                
+
             # Skip content while in JSON block
             if self.in_json_block:
                 # Check for end of JSON block (closing brace at start of line)
-                if stripped_line == '}' or (stripped_line.endswith('}') and not stripped_line.endswith('"}}')):
+                if stripped_line == "}" or (
+                    stripped_line.endswith("}") and not stripped_line.endswith('"}}')
+                ):
                     self.in_json_block = False
                     continue
                 else:
                     continue
-                    
+
             # Keep non-JSON content
             if not self.in_json_block:
                 filtered_lines.append(line)
-        
+
         # Update buffer with remaining content
         if filtered_lines:
-            result = '\n'.join(filtered_lines)
+            result = "\n".join(filtered_lines)
             self.json_buffer = ""  # Clear buffer after processing
             return result
         else:
@@ -333,34 +337,34 @@ class StreamingResponseState:
         """Try to parse function calls from the tool call buffer."""
         if not self.tool_call_buffer.strip():
             return
-            
+
         # Look for JSON function call patterns in the buffer
         buffer = self.tool_call_buffer.strip()
-        
+
         # Try to find complete JSON objects that look like function calls
-        json_start = buffer.find('{')
+        json_start = buffer.find("{")
         if json_start == -1:
             return
-            
+
         # Find the matching closing brace
         brace_count = 0
         json_end = -1
-        
+
         for i in range(json_start, len(buffer)):
-            if buffer[i] == '{':
+            if buffer[i] == "{":
                 brace_count += 1
-            elif buffer[i] == '}':
+            elif buffer[i] == "}":
                 brace_count -= 1
                 if brace_count == 0:
                     json_end = i
                     break
-                    
+
         if json_end != -1:
             # Extract and try to parse the JSON
-            json_str = buffer[json_start:json_end + 1]
+            json_str = buffer[json_start : json_end + 1]
             try:
                 function_data = json.loads(json_str)
-                
+
                 # Check if this looks like a function call
                 if self._is_function_call_json(function_data):
                     # Create tool execution result
@@ -373,19 +377,26 @@ class StreamingResponseState:
                             "result_data": {},
                             "execution_time_ms": 0,
                         }
-                    
+
                     # Extract function call details
-                    self.current_tool_call["tool_name"] = function_data.get("name", function_data.get("function", ""))
-                    self.current_tool_call["args"] = function_data.get("args", function_data.get("arguments", function_data.get("parameters", {})))
-                    
+                    self.current_tool_call["tool_name"] = function_data.get(
+                        "name", function_data.get("function", "")
+                    )
+                    self.current_tool_call["args"] = function_data.get(
+                        "args",
+                        function_data.get(
+                            "arguments", function_data.get("parameters", {})
+                        ),
+                    )
+
                     # Create and add tool execution result
                     tool_result = ToolCall(**self.current_tool_call)
                     self.tool_calls.append(tool_result)
-                    
+
                     # Clear the parsed portion from buffer
-                    self.tool_call_buffer = buffer[json_end + 1:]
+                    self.tool_call_buffer = buffer[json_end + 1 :]
                     self.current_tool_call = None
-                    
+
             except (json.JSONDecodeError, Exception) as e:
                 # If parsing fails, keep accumulating content
                 pass
@@ -394,22 +405,22 @@ class StreamingResponseState:
         """Check if JSON data looks like a function call."""
         if not isinstance(data, dict):
             return False
-            
+
         # Look for common function call indicators
         function_indicators = ["name", "function", "tool_name"]
         args_indicators = ["args", "arguments", "parameters"]
-        
+
         has_function = any(key in data for key in function_indicators)
         has_args = any(key in data for key in args_indicators)
-        
+
         return has_function and (has_args or len(data) >= 1)
 
     def _detect_function_call_start(self, chunk: str) -> bool:
         """Detect if chunk contains the start of a function call without XML wrappers."""
         stripped = chunk.strip()
-        
+
         # Look for JSON patterns that might be function calls
-        if '{' in stripped and '"' in stripped:
+        if "{" in stripped and '"' in stripped:
             # Check for common function call patterns
             function_patterns = [
                 r'\{\s*"name"\s*:\s*"',
@@ -417,11 +428,11 @@ class StreamingResponseState:
                 r'\{\s*"tool_name"\s*:\s*"',
                 r'\{\s*"action"\s*:\s*"',
             ]
-            
+
             for pattern in function_patterns:
                 if re.search(pattern, stripped):
                     return True
-                    
+
         return False
 
     def get_final_response(self) -> ChatResponse:
@@ -443,13 +454,13 @@ class StreamingResponseState:
 
         thoughts = [thinking] if thinking else None
         tool_calls = self.tool_calls if self.tool_calls else None
-        
+
         return ChatResponse(
             message=Message(
                 role=MessageRole.ASSISTANT,
                 content=[],  # Empty since content was already streamed
                 thoughts=thoughts,
-                tool_calls=tool_calls
+                tool_calls=tool_calls,
             ),
             done=True,
         )

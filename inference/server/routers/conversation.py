@@ -303,7 +303,7 @@ async def create_conversation(request: Request):
             user_id=user_id,
             title=f"New conversation ({dt.now().strftime('%Y-%m-%d %H:%M')})",
             created_at=dt.now(),
-            updated_at=dt.now()
+            updated_at=dt.now(),
         )
         conversation_id = await convo.create_conversation(conversation)
 

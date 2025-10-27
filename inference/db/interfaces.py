@@ -23,7 +23,9 @@ class MessageStore(ABC):
 
 class ConversationStore(ABC):
     @abstractmethod
-    async def create_conversation(self, conversation: "Conversation") -> Optional[int]: ...
+    async def create_conversation(
+        self, conversation: "Conversation"
+    ) -> Optional[int]: ...
     @abstractmethod
     async def get_user_conversations(self, user_id: str) -> List[dict]: ...
     @abstractmethod

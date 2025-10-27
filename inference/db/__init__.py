@@ -85,7 +85,6 @@ class Storage:
             # Initialize all storage components
             self.user_config = UserConfigStorage(self.pool, get_query)
             self.conversation = ConversationStorage(self.pool, get_query)
-            self.message = MessageStorage(self.pool, get_query)
             self.image = ImageStorage(self.pool, get_query)
             self.model_profile = ModelProfileStorage(self.pool, get_query)
             self.model = ModelStorage(self.pool, get_query)
@@ -99,17 +98,17 @@ class Storage:
             self.message_content = MessageContentStorage(self.pool, get_query)
             self.todo = TodoStorage(self.pool, get_query)
             self.checkpoint = CheckpointStorage(self.pool, get_query)
-            
-            # Initialize checkpoint storage
-            await self.checkpoint.initialize(connection_string)
-
-            # Set storage dependencies for MessageStorage
-            self.message.set_storage_dependencies(
+            self.message = MessageStorage(
+                self.pool,
+                get_query,
                 self.thought,
                 self.tool_call,
                 self.message_content,
-                self.analysis
+                self.analysis,
             )
+
+            # Initialize checkpoint storage
+            await self.checkpoint.initialize(connection_string)
 
             self.initialized = True
             logger.info("Storage components initialized successfully")

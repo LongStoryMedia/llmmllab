@@ -6,9 +6,9 @@ SELECT
     mc.text_content,
     mc.url,
     mc.created_at
-FROM 
+FROM
     message_contents mc
-WHERE 
+WHERE
     mc.message_id = $1
-ORDER BY 
+ORDER BY
     mc.id

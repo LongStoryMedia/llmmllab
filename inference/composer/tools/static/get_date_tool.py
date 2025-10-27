@@ -8,6 +8,8 @@ for proper LangGraph integration.
 from datetime import datetime
 
 from langchain_core.tools import tool
+
+
 @tool
 async def get_current_date() -> str:
     """
@@ -20,6 +22,6 @@ async def get_current_date() -> str:
         Command with current date information
     """
     current_date = datetime.now().isoformat()
-    
-    # Return date information - ToolNode will automatically create ToolMessage  
+
+    # Return date information - ToolNode will automatically create ToolMessage
     return f"📅 **Current Date and Time**: {current_date}"

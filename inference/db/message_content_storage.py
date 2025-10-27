@@ -5,7 +5,6 @@ Message contents represent the actual content parts of messages (text, URLs, etc
 
 import asyncpg
 from typing import List, Optional
-from datetime import datetime
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
 from db.db_utils import TypedConnection, typed_pool
@@ -25,9 +24,7 @@ class MessageContentStorage:
 
     async def add_content(
         self,
-        message_id: int,
         content: MessageContent,
-        created_at: Optional[datetime] = None,
         conn: Optional[TypedConnection] = None,
     ) -> Optional[int]:
         """
@@ -42,42 +39,40 @@ class MessageContentStorage:
         Returns:
             The ID of the created message content, or None on failure
         """
-        if created_at is None:
-            created_at = datetime.utcnow()
-
         try:
             # Use provided connection or acquire a new one
             if conn is None:
                 async with self.typed_pool.acquire() as connection:
-                    return await self._add_content_with_connection(message_id, content, created_at, connection)
+                    return await self._add_content(content, connection)
             else:
-                return await self._add_content_with_connection(message_id, content, created_at, conn)
+                return await self._add_content(content, conn)
 
         except Exception as e:
-            self.logger.error(f"Error adding content for message {message_id}: {e}")
+            self.logger.error(
+                f"Error adding content for message {content.message_id}: {e}"
+            )
             return None
 
-    async def _add_content_with_connection(
-        self, message_id: int, content: MessageContent, created_at: datetime, conn: TypedConnection
+    async def _add_content(
+        self, content: MessageContent, conn: TypedConnection
     ) -> Optional[int]:
         """Internal method to add message content using a specific connection."""
         row = await conn.fetchrow(
             self.get_query("message_content.add_content"),
-            message_id,
-            content.type.value if hasattr(content.type, 'value') else str(content.type),
+            content.message_id,
+            content.type.value if hasattr(content.type, "value") else str(content.type),
             content.text,
             content.url,
-            created_at,
         )
 
         if row:
             content_id = row["id"]
             self.logger.info(
-                f"Added message content {content_id} for message {message_id}"
+                f"Added message content {content_id} for message {content.message_id}"
             )
             return content_id
         else:
-            self.logger.error(f"Failed to add content for message {message_id}")
+            self.logger.error(f"Failed to add content for message {content.message_id}")
             return None
 
     async def get_contents_by_message(self, message_id: int) -> List[MessageContent]:
@@ -98,14 +93,8 @@ class MessageContentStorage:
 
                 contents = []
                 for row in rows:
-                    content = MessageContent(
-                        id=row.get("id"),
-                        message_id=row["message_id"],
-                        type=MessageContentType(row["type"]),
-                        text=row["text_content"],
-                        url=row["url"],
-                        created_at=row.get("created_at"),
-                    )
+                    row_dict = dict(row)
+                    content = MessageContent(**row_dict)
                     contents.append(content)
 
                 self.logger.debug(
@@ -132,7 +121,8 @@ class MessageContentStorage:
         try:
             async with self.typed_pool.acquire() as conn:
                 await conn.execute(
-                    self.get_query("message_content.delete_message_contents"), message_id
+                    self.get_query("message_content.delete_message_contents"),
+                    message_id,
                 )
 
                 self.logger.info(f"Deleted contents for message {message_id}")

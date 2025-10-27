@@ -14,7 +14,7 @@ logger = llmmllogger.bind(component="checkpoint_storage")
 class CheckpointStorage:
     """
     Simplified checkpoint storage following LangGraph best practices.
-    
+
     Provides factory methods for creating AsyncPostgresSaver instances
     without over-engineering the abstraction layer.
     """
@@ -22,7 +22,7 @@ class CheckpointStorage:
     def __init__(self, pool=None, get_query=None):
         """
         Initialize checkpoint storage.
-        
+
         Note: pool and get_query parameters maintained for compatibility
         but not used since AsyncPostgresSaver manages its own connections.
         """
@@ -33,20 +33,22 @@ class CheckpointStorage:
     async def initialize(self, connection_string: str) -> None:
         """
         Initialize checkpoint storage by setting up tables.
-        
+
         Args:
             connection_string: PostgreSQL connection string
         """
         try:
             self._connection_string = connection_string
-            
+
             # Setup tables using LangGraph's standard approach
             # This creates the checkpoints and checkpoint_writes tables automatically
             async with AsyncPostgresSaver.from_conn_string(connection_string) as saver:
                 await saver.setup()
-            
+
             self._initialized = True
-            self.logger.info("✅ Checkpoint storage initialized using LangGraph's standard tables")
+            self.logger.info(
+                "✅ Checkpoint storage initialized using LangGraph's standard tables"
+            )
 
         except Exception as e:
             self.logger.error(f"❌ Failed to initialize checkpoint storage: {e}")
@@ -56,32 +58,38 @@ class CheckpointStorage:
     async def create_checkpointer(self):
         """
         Create a new AsyncPostgresSaver instance for workflow compilation.
-        
+
         This follows LangGraph's standard pattern for production usage.
         Use this method when compiling graphs that need persistence.
-        
+
         Usage:
             async with checkpoint_storage.create_checkpointer() as checkpointer:
                 graph = builder.compile(checkpointer=checkpointer)
         """
         if not self._initialized or not self._connection_string:
-            raise RuntimeError("CheckpointStorage not initialized - call initialize() first")
+            raise RuntimeError(
+                "CheckpointStorage not initialized - call initialize() first"
+            )
 
-        async with AsyncPostgresSaver.from_conn_string(self._connection_string) as saver:
+        async with AsyncPostgresSaver.from_conn_string(
+            self._connection_string
+        ) as saver:
             yield saver
 
     def create_saver_for_workflow(self):
         """
         Create an AsyncPostgresSaver for workflow compilation.
-        
+
         Returns the context manager which can be used with async context.
         This follows LangGraph's recommended production pattern.
-        
+
         Returns:
             AsyncPostgresSaver context manager
         """
         if not self._initialized or not self._connection_string:
-            raise RuntimeError("CheckpointStorage not initialized - call initialize() first")
+            raise RuntimeError(
+                "CheckpointStorage not initialized - call initialize() first"
+            )
 
         # Return the context manager - this is the standard LangGraph pattern
         return AsyncPostgresSaver.from_conn_string(self._connection_string)

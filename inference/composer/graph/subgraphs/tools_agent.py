@@ -22,7 +22,6 @@ Architecture:
 """
 
 from typing import Dict, Any
-from dataclasses import dataclass
 
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langchain.tools import BaseTool
@@ -34,8 +33,6 @@ from models import LangChainMessage, NodeMetadata
 from composer.graph.state import WorkflowState, ToolsState
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
-from openai import chat
-from runner import PipelineFactory
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="ToolsAgentSubgraph")

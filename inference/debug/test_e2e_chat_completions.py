@@ -70,9 +70,11 @@ class E2ETestRunner:
                 user_id=self.test_user_id,
                 title="E2E Test Conversation",
                 created_at=datetime.now(),
-                updated_at=datetime.now()
+                updated_at=datetime.now(),
             )
-            self.test_conversation_id = await storage.conversation.create_conversation(conversation)
+            self.test_conversation_id = await storage.conversation.create_conversation(
+                conversation
+            )
             print(f"   ✅ Created test conversation: {self.test_conversation_id}")
 
             self.setup_complete = True

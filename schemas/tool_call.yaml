@@ -3,6 +3,9 @@ type: object
 title: ToolCall
 description: "Result from executing a tool"
 properties:
+  message_id:
+    type: integer
+    description: "Foreign key reference to the associated message"
   tool_name:
     type: string
     description: "Name of the executed tool"
@@ -29,5 +32,7 @@ properties:
     description: "Execution time in milliseconds"
   resource_usage:
     $ref: "resource_usage.yaml"
-required: ["tool_name", "success"]
+required:
+  - tool_name
+  - success
 additionalProperties: false

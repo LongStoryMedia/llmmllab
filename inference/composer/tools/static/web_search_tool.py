@@ -147,7 +147,7 @@ class SearxNG:
             )
 
 
-# Single web search tool using ToolRuntime pattern for LangGraph ToolNode compatibility  
+# Single web search tool using ToolRuntime pattern for LangGraph ToolNode compatibility
 @tool
 async def web_search(
     query: str,

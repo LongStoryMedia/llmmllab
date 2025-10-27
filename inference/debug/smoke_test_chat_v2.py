@@ -73,21 +73,14 @@ class DirectChatSmokeTest:
         
         try:
             from db import storage
-            from models.conversation import Conversation
-            from datetime import datetime
             
             # Test user creation/ensure
             print("👤 Testing user creation...")
             if storage.conversation:
                 # This will auto-create the user via ensure_user
-                conversation = Conversation(
-                    id=0,  # Will be set by database
-                    user_id=self.test_user_id,
-                    title="Smoke Test Conversation",
-                    created_at=datetime.now(),
-                    updated_at=datetime.now()
+                self.conversation_id = await storage.conversation.create_conversation(
+                    self.test_user_id, "Smoke Test Conversation"
                 )
-                self.conversation_id = await storage.conversation.create_conversation(conversation)
                 
                 if self.conversation_id:
                     print(f"✅ Created conversation with ID: {self.conversation_id}")

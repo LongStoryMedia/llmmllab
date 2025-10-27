@@ -10,6 +10,11 @@ SELECT
     due_date,
     created_at,
     updated_at
-FROM todos
-WHERE user_id = $1 AND conversation_id = $2
-ORDER BY created_at DESC;
+FROM
+    todos
+WHERE
+    user_id = $1
+    AND conversation_id = $2
+ORDER BY
+    created_at DESC;
+

@@ -54,7 +54,7 @@ async def summarization(
         # Access state and tool_call_id through runtime
         state = runtime.state
         tool_call_id = runtime.tool_call_id
-        
+
         # Validate input content
         if not content.strip():
             return "❌ Summarization failed: No content provided"

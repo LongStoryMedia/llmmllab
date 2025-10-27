@@ -9,7 +9,7 @@ Validates that the foundation architecture is complete and functional:
 
 - **test_composer_interface_imports**: Validates all main composer interface functions are importable
 - **test_core_service_imports**: Validates core service components (ComposerService, CompiledStateGraph) 
-- **test_node_architecture_imports**: Validates node architecture (PipelineNode, MemoryNode, etc.)
+- **test_node_architecture_imports**: Validates node architecture (PipelineNode, ToolExecutorNode, etc.)
 - **test_graph_builder_imports**: Validates GraphBuilder functionality
 - **test_models_integration**: Validates schema-generated models work correctly
 - **test_environment_setup**: Validates Python environment requirements

@@ -110,14 +110,14 @@ const priorityOptions = [
 
 
 export function TodoList({ className = '' }: TodoListProps) {
-  const { 
-    todos, 
-    loading, 
-    error, 
-    createTodoItem, 
-    updateTodoItem, 
-    deleteTodoItem, 
-    filterByStatus 
+  const {
+    todos,
+    loading,
+    error,
+    createTodoItem,
+    updateTodoItem,
+    deleteTodoItem,
+    filterByStatus
   } = useTodos();
 
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -251,8 +251,8 @@ export function TodoList({ className = '' }: TodoListProps) {
       </FilterSection>
 
       {/* Create Form Modal */}
-      <Dialog 
-        open={showCreateForm} 
+      <Dialog
+        open={showCreateForm}
         onClose={() => setShowCreateForm(false)}
         maxWidth="md"
         fullWidth
@@ -320,8 +320,8 @@ export function TodoList({ className = '' }: TodoListProps) {
       </Dialog>
 
       {/* Edit Form Modal */}
-      <Dialog 
-        open={!!editingTodo} 
+      <Dialog
+        open={!!editingTodo}
         onClose={() => setEditingTodo(null)}
         maxWidth="md"
         fullWidth
@@ -394,8 +394,8 @@ export function TodoList({ className = '' }: TodoListProps) {
           <Typography variant="h6" color="text.secondary" gutterBottom>
             No todos found
           </Typography>
-          <Button 
-            variant="text" 
+          <Button
+            variant="text"
             color="primary"
             onClick={() => setShowCreateForm(true)}
           >
@@ -405,8 +405,8 @@ export function TodoList({ className = '' }: TodoListProps) {
       ) : (
         <Box>
           {todos.map((todo) => (
-            <TodoCard 
-              key={todo.id} 
+            <TodoCard
+              key={todo.id}
               priority={todo.priority}
             >
               <CardContent>
@@ -416,7 +416,7 @@ export function TodoList({ className = '' }: TodoListProps) {
                       <Typography variant="h6" component="h3">
                         {todo.title}
                       </Typography>
-                      <Chip 
+                      <Chip
                         label={statusOptions.find(s => s.value === todo.status)?.label}
                         size="small"
                         color={
@@ -425,7 +425,7 @@ export function TodoList({ className = '' }: TodoListProps) {
                               todo.status === 'cancelled' ? 'error' : 'default'
                         }
                       />
-                      <Chip 
+                      <Chip
                         label={`${todo.priority} priority`}
                         size="small"
                         variant="outlined"
@@ -450,15 +450,15 @@ export function TodoList({ className = '' }: TodoListProps) {
                     </Box>
                   </Box>
                   <TodoActions>
-                    <IconButton 
-                      size="small" 
+                    <IconButton
+                      size="small"
                       onClick={() => handleEdit(todo)}
                       color="primary"
                     >
                       <Edit />
                     </IconButton>
-                    <IconButton 
-                      size="small" 
+                    <IconButton
+                      size="small"
                       onClick={() => todo.id && handleDelete(todo.id)}
                       color="error"
                     >

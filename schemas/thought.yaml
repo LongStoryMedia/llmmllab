@@ -16,5 +16,6 @@ properties:
     type: string
     format: date-time
     description: "Timestamp when the thought was created"
-required: ["text"]
+required:
+  - text
 additionalProperties: false

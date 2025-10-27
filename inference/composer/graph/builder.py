@@ -485,12 +485,14 @@ class GraphBuilder:
             workflow.add_edge("memory_storage", END)
 
             # Configure checkpointer at compilation time for parent graph
-            # Per LangGraph docs: "you only need to provide the checkpointer when compiling 
+            # Per LangGraph docs: "you only need to provide the checkpointer when compiling
             # the parent graph. LangGraph will automatically propagate the checkpointer to child subgraphs"
             try:
                 if self.checkpoint_storage.is_initialized():
                     # Use LangGraph's standard production pattern
-                    async with self.checkpoint_storage.create_checkpointer() as checkpointer:
+                    async with (
+                        self.checkpoint_storage.create_checkpointer() as checkpointer
+                    ):
                         self.logger.info(
                             "✅ Compiling workflow with checkpointer - will auto-propagate to subgraphs"
                         )
@@ -504,7 +506,9 @@ class GraphBuilder:
                     return workflow.compile()
 
             except Exception as e:
-                self.logger.warning(f"⚠️  Checkpointer setup failed, compiling without persistence: {e}")
+                self.logger.warning(
+                    f"⚠️  Checkpointer setup failed, compiling without persistence: {e}"
+                )
                 # Fallback to compilation without checkpointer
                 return workflow.compile()
         except Exception as e:

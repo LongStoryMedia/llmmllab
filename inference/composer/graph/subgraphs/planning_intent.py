@@ -21,7 +21,6 @@ from typing import Dict, List, Any, Optional
 from typing_extensions import TypedDict, Annotated
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
-from langchain.tools import BaseTool
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
@@ -33,6 +32,7 @@ from models import (
     NodeMetadata,
     ComplexityLevel,
     TodoItem,
+    Tool
 )
 from composer.graph.state import WorkflowState
 from composer.agents.classifier_agent import ClassifierAgent
@@ -47,7 +47,7 @@ class PlanningIntentState(TypedDict):
     messages: Annotated[List[BaseMessage], add_messages]
     user_id: str
     conversation_id: int
-    static_tools: List[BaseTool]
+    static_tools: List[Tool]
     intent_analyses: List[IntentAnalysis]
     generated_todos: List[TodoItem]
     complexity_score: int
@@ -286,7 +286,7 @@ class PlanningIntentSubgraph:
             )
 
             # Store in database and return the saved item
-            saved_todo = await storage.todo.add_todo(todo_item)
+            saved_todo = await storage.get_service(storage.todo).add_todo(todo_item)
             return saved_todo
 
         except Exception as e:
@@ -345,7 +345,7 @@ class PlanningIntentSubgraph:
                     langchain_messages.append(AIMessage(content=msg.content))
 
         # Get static tools with proper typing
-        static_tools: List[BaseTool] = getattr(main_state, "static_tools", [])
+        static_tools: List[Tool] = getattr(main_state, "static_tools", [])
         
         # Get existing todos with proper typing
         existing_todos: List[TodoItem] = getattr(main_state, "generated_todos", [])

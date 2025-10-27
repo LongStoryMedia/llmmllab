@@ -25,25 +25,20 @@ class ConversationStorage:
             await conn.execute(self.get_query("user.ensure_user"), conversation.user_id)
 
             row = await conn.fetchrow(
-                self.get_query("conversation.create_conversation"), 
-                conversation.user_id, 
-                conversation.title
+                self.get_query("conversation.create_conversation"),
+                conversation.user_id,
+                conversation.title,
             )
             conversation_id = row["id"] if row and "id" in row else None
 
             # Cache the new conversation if successful
             if conversation_id:
-                conversation = Conversation(
-                    id=conversation_id,
-                    user_id=user_id,
-                    title=title,
-                    created_at=datetime.now(),
-                    updated_at=datetime.now(),
-                )
+                row_dict = dict(row)
+                conversation = Conversation(**row_dict)
                 cache_storage.cache_conversation(conversation)
 
                 # Also invalidate the user's conversations list cache to force a refresh next time
-                cache_storage.invalidate_user_conversations_cache(user_id)
+                cache_storage.invalidate_user_conversations_cache(conversation.user_id)
 
             return conversation_id
 
@@ -89,9 +84,9 @@ class ConversationStorage:
     async def update_conversation(self, conversation: Conversation) -> None:
         async with self.typed_pool.acquire() as conn:
             await conn.execute(
-                self.get_query("conversation.update_title"), 
-                conversation.title, 
-                conversation.id
+                self.get_query("conversation.update_title"),
+                conversation.title,
+                conversation.id,
             )
 
         # Update the cache - first get the cached conversation to update

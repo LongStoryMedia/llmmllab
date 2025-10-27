@@ -4,10 +4,10 @@ Analyses represent intent analyses associated with messages.
 """
 
 import asyncpg
-from typing import List, Optional, Any
+import json
+from typing import List, Optional
 from datetime import datetime
 from models.intent_analysis import IntentAnalysis
-from models.computational_requirement import ComputationalRequirement
 from db.db_utils import typed_pool, TypedConnection
 from utils.logging import llmmllogger
 
@@ -48,25 +48,20 @@ class AnalysisStorage:
             # Use provided connection or acquire a new one
             if conn is None:
                 async with self.typed_pool.acquire() as connection:
-                    return await self._add_analysis_with_connection(
-                        message_id, intent_analysis, created_at, connection
-                    )
+                    return await self._add_analysis(intent_analysis, connection)
             else:
-                return await self._add_analysis_with_connection(
-                    message_id, intent_analysis, created_at, conn
-                )
+                return await self._add_analysis(intent_analysis, conn)
 
         except Exception as e:
             self.logger.error(f"Error adding analysis for message {message_id}: {e}")
             return None
 
-    async def _add_analysis_with_connection(
-        self, message_id: int, intent_analysis: IntentAnalysis, created_at: datetime, conn: TypedConnection
+    async def _add_analysis(
+        self, intent_analysis: IntentAnalysis, conn: TypedConnection
     ) -> Optional[int]:
         """
         Internal method to add analysis using a specific connection.
         """
-        import json
 
         # Convert list and object fields to JSON strings
         required_capabilities_json = json.dumps(
@@ -84,7 +79,7 @@ class AnalysisStorage:
 
         row = await conn.fetchrow(
             self.get_query("analysis.add_analysis"),
-            message_id,  # $1
+            intent_analysis.message_id,  # $1
             (
                 intent_analysis.workflow_type.value
                 if hasattr(intent_analysis.workflow_type, "value")
@@ -123,63 +118,17 @@ class AnalysisStorage:
             intent_analysis.requires_custom_tools,  # $11
             intent_analysis.tool_complexity_score,  # $12
             computational_requirements_json,  # $13
-            created_at,  # $14
         )
 
         if row:
             analysis_id = row["id"]
             self.logger.info(
-                f"Added analysis {analysis_id} ({intent_analysis.workflow_type}) for message {message_id}"
+                f"Added analysis {analysis_id} ({intent_analysis.workflow_type}) for message {intent_analysis.message_id}"
             )
             return analysis_id
         else:
             self.logger.error(
-                f"Failed to add analysis for message {message_id}"
-            )
-            return None
-
-    async def add_analysis_legacy(
-        self,
-        message_id: int,
-        analysis_data: dict,
-        created_at: Optional[datetime] = None,
-    ) -> Optional[int]:
-        """
-        Add a new analysis to the database using legacy analysis_data format.
-        This method converts the legacy format to IntentAnalysis.
-
-        Args:
-            message_id: ID of the associated message
-            analysis_data: The analysis data as dict (legacy format)
-            created_at: Optional timestamp (defaults to NOW())
-
-        Returns:
-            The ID of the created analysis, or None on failure
-        """
-        try:
-            # Convert legacy format to IntentAnalysis
-            intent_analysis = IntentAnalysis(
-                workflow_type=analysis_data.get("workflow_type", "unknown"),
-                complexity_level=analysis_data.get("complexity_level", "unknown"),
-                required_capabilities=analysis_data.get("required_capabilities", []),
-                domain_specificity=analysis_data.get("domain_specificity", 0.0),
-                reusability_potential=analysis_data.get("reusability_potential", 0.0),
-                confidence=analysis_data.get("confidence", 0.0),
-                response_format=analysis_data.get("response_format"),
-                technical_domain=analysis_data.get("technical_domain"),
-                requires_tools=analysis_data.get("requires_tools", False),
-                requires_custom_tools=analysis_data.get("requires_custom_tools", False),
-                tool_complexity_score=analysis_data.get("tool_complexity_score", 0.0),
-                computational_requirements=analysis_data.get(
-                    "computational_requirements", {}
-                ),
-            )
-
-            return await self.add_analysis(message_id, intent_analysis, created_at)
-
-        except Exception as e:
-            self.logger.error(
-                f"Error converting legacy analysis for message {message_id}: {e}"
+                f"Failed to add analysis for message {intent_analysis.message_id}"
             )
             return None
 
@@ -201,36 +150,9 @@ class AnalysisStorage:
 
                 analyses = []
                 for row in rows:
-                    import json
-                    
-                    # Parse JSON fields back to objects
-                    required_capabilities = (
-                        json.loads(row["required_capabilities"])
-                        if row["required_capabilities"]
-                        else []
-                    )
-                    # ComputationalRequirement is stored as string value, convert back to enum
-                    computational_req_str = (
-                        json.loads(row["computational_requirements"])
-                        if row["computational_requirements"]
-                        else "MINIMAL"
-                    )
-                    computational_requirements = ComputationalRequirement(computational_req_str)
+                    ia_dict = dict(row)
 
-                    intent_analysis = IntentAnalysis(
-                        workflow_type=row["workflow_type"],
-                        complexity_level=row["complexity_level"],
-                        required_capabilities=required_capabilities,
-                        domain_specificity=float(row["domain_specificity"]),
-                        reusability_potential=float(row["reusability_potential"]),
-                        confidence=float(row["confidence"]),
-                        response_format=row["response_format"],
-                        technical_domain=row["technical_domain"],
-                        requires_tools=row["requires_tools"],
-                        requires_custom_tools=row["requires_custom_tools"],
-                        tool_complexity_score=float(row["tool_complexity_score"]),
-                        computational_requirements=computational_requirements,
-                    )
+                    intent_analysis = IntentAnalysis(**ia_dict)
                     analyses.append(intent_analysis)
 
                 self.logger.debug(

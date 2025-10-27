@@ -20,11 +20,19 @@ properties:
     description: "Detailed description of the todo task"
   status:
     type: string
-    enum: ["not-started", "in-progress", "completed", "cancelled"]
+    enum:
+      - "not-started"
+      - "in-progress"
+      - "completed"
+      - "cancelled"
     description: "Current status of the todo item"
   priority:
     type: string
-    enum: ["low", "medium", "high", "urgent"]
+    enum:
+      - "low"
+      - "medium"
+      - "high"
+      - "urgent"
     description: "Priority level of the todo item"
   due_date:
     type: string

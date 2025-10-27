@@ -174,7 +174,7 @@ class TodoStorage:
                 return None
 
         except Exception as e:
-            self.logger.error(f"Failed to update todo {todo_id}: {e}")
+            self.logger.error(f"Failed to update todo {todo_item.id}: {e}")
             return None
 
     async def delete_todo(self, todo_id: int, user_id: str) -> bool:
