@@ -2,7 +2,7 @@
 Tools Agent Subgraph - Clean LangGraph agent with built-in routing.
 
 This subgraph implements proper LangGraph agent patterns using LangChain's built-in
-tools_condition for routing instead of manual planning logic. Planning decisions 
+tools_condition for routing instead of manual planning logic. Planning decisions
 are delegated to the PlanningIntentSubgraph, and rate limiting uses LangGraph's
 built-in recursion limits.
 
@@ -14,7 +14,7 @@ Key Benefits:
 5. Clean architecture - focused only on tool execution, not planning decisions
 
 Architecture:
-- ToolsState: Minimal state optimized for agent operations  
+- ToolsState: Minimal state optimized for agent operations
 - chat_agent: LLM node that can make tool calls using available tools
 - tool_executor: ToolNode that executes tools with ToolRuntime[ToolsState] access
 - tools_condition: Built-in LangChain routing for proper agent termination
@@ -46,7 +46,7 @@ class ToolsAgentSubgraph:
     Complete agent subgraph with chat_agent + tool_node cycling workflow.
 
     Uses proper dependency injection pattern like the main graph builder,
-    importing ChatAgent and ToolExecutorNode with their required dependencies.
+    with ChatAgent and ToolRegistry dependencies.
     """
 
     def __init__(
@@ -134,14 +134,14 @@ class ToolsAgentSubgraph:
                     # Tools just executed, continue with agent to process results
                     logger.info("🔀 Subgraph: Tools executed, continuing to agent")
                     return "chat_agent"
-                
+
                 # Default to ending if we're in an unexpected state
                 logger.info("🔀 Subgraph: Unexpected state after tools, finishing")
                 return END
 
             # Use LangChain's built-in tools_condition for proper routing
             builder.add_conditional_edges(
-                "chat_agent", 
+                "chat_agent",
                 tools_condition,  # Built-in LangChain routing logic
                 {
                     "tools": "tool_executor",
@@ -166,7 +166,7 @@ class ToolsAgentSubgraph:
             # Note: LangChain's middleware is for create_agent API, not StateGraph
             # We'll implement basic rate limiting in the routing functions instead
             self.graph = builder.compile()
-            
+
             logger.info(
                 "Tools agent subgraph built with LangChain's tools_condition routing"
             )
@@ -401,9 +401,7 @@ class ToolsAgentSubgraph:
             # LangChain's tools_condition handles the intelligent routing
             result = await self.graph.ainvoke(
                 tools_state,
-                config={
-                    "recursion_limit": 15  # Reasonable limit for tool iterations
-                },
+                config={"recursion_limit": 15},  # Reasonable limit for tool iterations
             )
 
             # Transform results back to main state updates

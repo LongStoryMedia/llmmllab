@@ -30,13 +30,11 @@ from models import (
     IntentAnalysis,
     WorkflowType,
     NodeMetadata,
-    PipelinePriority,
     ComplexityLevel,
     TodoItem,
 )
 from composer.graph.state import WorkflowState
 from composer.agents.classifier_agent import ClassifierAgent
-from composer.utils.state import assemble_context_messages
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="PlanningIntentSubgraph")
@@ -70,8 +68,10 @@ class PlanningIntentSubgraph:
         """Initialize planning intent subgraph."""
         self.classifier_agent = classifier_agent
         self.pipeline_factory = pipeline_factory
-        self.graph: CompiledStateGraph[
-            PlanningIntentState, None, PlanningIntentState, PlanningIntentState
+        self.graph: Optional[
+            CompiledStateGraph[
+                PlanningIntentState, None, PlanningIntentState, PlanningIntentState
+            ]
         ] = None
         self._build_graph()
 
@@ -157,7 +157,9 @@ class PlanningIntentSubgraph:
             complexity_score += 1
         if has_existing_todos:
             complexity_score += 1  # Existing todos indicate ongoing complex work
-            logger.info(f"🔍 Planning: Found {len(existing_todos)} existing todos for context")
+            logger.info(
+                f"🔍 Planning: Found {len(existing_todos)} existing todos for context"
+            )
 
         planning_steps.append("context_analysis")
 
@@ -699,7 +701,9 @@ class PlanningIntentSubgraph:
             "planning_steps": getattr(main_state, "planning_steps", []),
             "complexity_score": getattr(main_state, "complexity_score", 3),
             "intent_analyses": [],
-            "generated_todos": getattr(main_state, "active_todos", []),  # Include previous todos for context
+            "generated_todos": getattr(
+                main_state, "active_todos", []
+            ),  # Include previous todos for context
         }
 
     def transform_to_main_state(

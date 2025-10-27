@@ -18,7 +18,6 @@ from .routing import IntentClassifierNode, WorkflowRouter
 from .agents import EngineeringAgentNode
 
 from .tools import (
-    ToolExecutorNode,
     ToolComposerNode,
     ToolCollectionNode,
     StaticToolLoadingNode,
@@ -30,7 +29,6 @@ __all__ = [
     # Infrastructure
     "CircuitProtectedNode",
     # Tools
-    "ToolExecutorNode",
     "ToolComposerNode",
     "ToolCollectionNode",
     "StaticToolLoadingNode",

@@ -23,7 +23,6 @@ from composer import (
 from composer.core.service import ComposerService, CompiledStateGraph
 from composer.nodes import (
     PipelineNode,
-    ToolExecutorNode,
     MemoryNode,
     IntentClassifierNode,
 )
@@ -54,13 +53,11 @@ class TestComposerFoundationSetup:
         """Test that the node architecture is properly importable."""
         # Test that all core nodes are available
         assert PipelineNode is not None
-        assert ToolExecutorNode is not None
         assert MemoryNode is not None
         assert IntentClassifierNode is not None
 
         # Verify these are callable (classes or functions)
         assert callable(PipelineNode)
-        assert callable(ToolExecutorNode)
         assert callable(MemoryNode)
         assert callable(IntentClassifierNode)
 

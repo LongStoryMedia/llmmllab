@@ -54,6 +54,12 @@ inference/sync-code.sh
 2. **Use schema2code**: Generate single model with `schema2code --language python --output inference/models/[model_name].py schemas/[model_name].yaml`
 3. **NOT regenerate_models.sh**: The `regenerate_models.sh` script only processes existing schemas, use `schema2code` for new models
 
+### UI Development
+1. **Lint & Typecheck**: `cd ui && npm run lint && npm run typecheck`
+2. **eslint**: Follows standard eslint rules with custom overrides in `ui/.eslintrc.json`
+3. **Typescript Types**: Auto-generated in `ui/src/types/` from YAML schemas
+4. **MUI**: Use Material-UI components for consistent styling
+
 ## Critical Rules
 
 ### Documentation Guidelines

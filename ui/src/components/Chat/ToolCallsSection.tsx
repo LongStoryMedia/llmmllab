@@ -61,7 +61,7 @@ const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({ toolCalls, isTyping
       <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
         Tool Calls {isTyping && '(executing...)'}
       </Typography>
-      
+
       {toolCalls.map((toolCall: ToolCall, index: number) => (
         <ToolCallContainer key={index} elevation={0}>
           <Accordion>
@@ -70,13 +70,13 @@ const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({ toolCalls, isTyping
                 <ToolNameChip variant="body2">
                   {toolCall.tool_name || toolCall.name || 'Unknown Tool'}
                 </ToolNameChip>
-                
+
                 {toolCall.success !== undefined && (
                   <StatusChip success={Boolean(toolCall.success)} variant="body2">
                     {toolCall.success ? 'Success' : 'Failed'}
                   </StatusChip>
                 )}
-                
+
                 {toolCall.execution_time_ms && (
                   <Typography variant="caption" color="text.secondary">
                     {toolCall.execution_time_ms}ms
@@ -84,7 +84,7 @@ const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({ toolCalls, isTyping
                 )}
               </ToolCallHeader>
             </AccordionSummary>
-            
+
             <AccordionDetails>
               {/* Arguments */}
               {toolCall.args && Object.keys(toolCall.args).length > 0 && (
@@ -92,8 +92,8 @@ const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({ toolCalls, isTyping
                   <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                     Arguments:
                   </Typography>
-                  <Box component="pre" sx={{ 
-                    fontSize: '0.75rem', 
+                  <Box component="pre" sx={{
+                    fontSize: '0.75rem',
                     backgroundColor: 'background.default',
                     padding: 1,
                     borderRadius: 1,
@@ -104,15 +104,15 @@ const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({ toolCalls, isTyping
                   </Box>
                 </Box>
               )}
-              
+
               {/* Results */}
               {toolCall.result_data && Object.keys(toolCall.result_data).length > 0 && (
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                     Results:
                   </Typography>
-                  <Box component="pre" sx={{ 
-                    fontSize: '0.75rem', 
+                  <Box component="pre" sx={{
+                    fontSize: '0.75rem',
                     backgroundColor: 'background.default',
                     padding: 1,
                     borderRadius: 1,
@@ -123,7 +123,7 @@ const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({ toolCalls, isTyping
                   </Box>
                 </Box>
               )}
-              
+
               {/* Error message if failed */}
               {!toolCall.success && toolCall.error_message && (
                 <Box>

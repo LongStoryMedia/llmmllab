@@ -29,10 +29,8 @@ MessageInput = Union[str, Message, List[Union[str, Message]], List[str], List[Me
 def message_to_langchain_message(msg: Message) -> LangChainMessage:
     """Convert a Message object to a LangChainMessage object.
 
-    IMPORTANT: Preserve tool_calls so downstream ToolExecutorNode
-    can detect and execute them. Previous implementation dropped
-    tool_calls resulting in zero execution even when the model
-    emitted <tool_call> markup.
+    IMPORTANT: Preserve tool_calls so downstream tool processing
+    can handle them correctly.
     """
     content_text = extract_content_from_message(msg)
 
