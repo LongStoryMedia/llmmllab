@@ -9,6 +9,12 @@ Key Features:
 2. Context-aware decision making
 3. Tool selection planning
 4. Complexity estimation with planning middleware
+
+Memory & Persistence:
+- Automatic checkpoint inheritance from parent graph (per LangGraph docs)
+- Planning steps, complexity scores, and todos persist across turns
+- No manual checkpoint setup required - LangGraph handles propagation
+- State restoration automatic when parent workflow resumes
 """
 
 from typing import Dict, List, Any, Optional

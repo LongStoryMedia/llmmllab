@@ -63,7 +63,7 @@ class ChatAgent(BaseAgent[ChatResponse]):
         self,
         messages: List[LangChainMessage],
         tools: Optional[List[BaseTool]] = None,
-        stream: Optional[bool] = None,
+        stream: bool = True,
     ) -> ChatResponse:
         """
         Execute chat completion with optional streaming and tool support.
@@ -78,10 +78,8 @@ class ChatAgent(BaseAgent[ChatResponse]):
         Returns:
             ChatResponse with the completion result
         """
-        # Use provided stream setting or default
-        should_stream = stream if stream is not None else self.stream
 
-        if should_stream:
+        if stream:
             # For streaming, we need to accumulate the response
             return await self._execute_streaming_completion_with_metadata(
                 convert_langchain_messages_to_messages(messages),
@@ -245,7 +243,7 @@ class ChatAgent(BaseAgent[ChatResponse]):
         self,
         messages: List[LangChainMessage],
         tools: Optional[List[BaseTool]] = None,
-        stream: Optional[bool] = None,
+        stream: bool = True,
     ) -> LangChainMessage:
         """
         Execute chat completion and convert response to LangChainMessage.

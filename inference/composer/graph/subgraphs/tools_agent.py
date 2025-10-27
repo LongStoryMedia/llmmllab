@@ -29,7 +29,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from langgraph.types import Command
 
-from models import NodeMetadata, PipelinePriority
+from models import LangChainMessage, NodeMetadata, PipelinePriority
 from composer.graph.state import WorkflowState, ToolsState
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
@@ -62,10 +62,12 @@ class ToolsAgentSubgraph:
         self,
         pipeline_factory: PipelineFactory,
         tool_registry: ToolRegistry,
+        chat_agent: ChatAgent,
     ):
         """Initialize subgraph with dependency injection."""
         self.pipeline_factory = pipeline_factory
         self.tool_registry = tool_registry
+        self.chat_agent = chat_agent
         self.graph = None
 
         # Create node metadata for the subgraph agents
@@ -78,26 +80,6 @@ class ToolsAgentSubgraph:
         )
 
         self._build_graph()
-
-    def _create_chat_agent(self, user_id: str, conversation_id: int) -> ChatAgent:
-        """Create ChatAgent instance with proper dependency injection."""
-        from models.default_model_profiles import DEFAULT_PRIMARY_PROFILE
-
-        # Update metadata with runtime context
-        runtime_metadata = NodeMetadata(
-            node_name="subgraph_chat_agent",
-            node_id="subgraph_chat_agent",
-            node_type="agent",
-            user_id=user_id,
-            conversation_id=conversation_id,
-        )
-
-        return ChatAgent(
-            pipeline_factory=self.pipeline_factory,
-            profile=DEFAULT_PRIMARY_PROFILE,
-            node_metadata=runtime_metadata,
-            priority=PipelinePriority.MEDIUM,
-        )
 
     def _create_tool_node(self) -> ToolNode:
         """
@@ -421,16 +403,8 @@ class ToolsAgentSubgraph:
     async def _chat_agent_wrapper(self, state: ToolsState) -> Dict[str, Any]:
         """Wrapper that creates ChatAgent at runtime and executes it."""
         try:
-            # Extract user context from state
-            user_id = state.get("user_id", "system")
-            conversation_id = state.get("conversation_id", 0)
-
-            # Create ChatAgent with runtime context
-            chat_agent = self._create_chat_agent(user_id, conversation_id)
-
             # Convert LangChain core messages to our LangChainMessage format
             messages = state["messages"]
-            from models import LangChainMessage
 
             langchain_messages = []
             for msg in messages:
@@ -485,8 +459,9 @@ class ToolsAgentSubgraph:
             tools_list = list(executable_tools.values()) if executable_tools else None
 
             # Execute chat completion with tools
-            response_msg = await chat_agent.chat_completion_with_conversion(
-                messages=langchain_messages, tools=tools_list
+            response_msg = await self.chat_agent.chat_completion_with_conversion(
+                messages=langchain_messages,
+                tools=tools_list,
             )
 
             # Convert response back to LangChain core AIMessage format for LangGraph
