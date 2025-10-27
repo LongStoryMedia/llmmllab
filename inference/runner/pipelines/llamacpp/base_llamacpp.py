@@ -191,7 +191,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
         # Convert -1 (full offload) to a reasonable default for validation
         # We'll convert it back to -1 when actually initializing llama.cpp
         validated_gpu_layers = requested_gpu_layers if requested_gpu_layers >= 0 else 99
-        
+
         # Keep track of original parameters for recovery calculations
         original_params = OptimalParameters(
             n_ctx=target_n_ctx,
@@ -224,10 +224,11 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
                 # Convert back to -1 for full offload if originally requested
                 actual_gpu_layers = (
-                    requested_gpu_layers if requested_gpu_layers == -1 
+                    requested_gpu_layers
+                    if requested_gpu_layers == -1
                     else current_params.n_gpu_layers
                 )
-                
+
                 llama_instance = llama_cpp.Llama(
                     model_path=gguf_path,
                     n_gpu_layers=actual_gpu_layers,
@@ -836,7 +837,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
     def close(self):
         """Clean up resources."""
-        if hasattr(self, 'llama_instance') and self.llama_instance:
+        if hasattr(self, "llama_instance") and self.llama_instance:
             try:
                 self.llama_instance.close()
             except Exception:

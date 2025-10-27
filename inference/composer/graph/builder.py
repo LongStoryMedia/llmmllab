@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 import uuid
 
 from langgraph.graph.state import CompiledStateGraph, StateGraph, END, START
-from langchain_core.messages import ToolMessage
 
 from models import ModelProfileType, UserConfig, WorkflowType, NodeMetadata
 from runner import PipelineFactory
@@ -17,7 +16,6 @@ from utils.model_profile import get_model_profile_for_task
 from utils.logging import llmmllogger
 
 # Import all agents
-from composer.agents.chat_agent import ChatAgent
 from composer.agents.classifier_agent import ClassifierAgent
 from composer.agents.engineering_agent import EngineeringAgent
 from composer.agents.memory_agent import MemoryAgent
@@ -38,7 +36,6 @@ from composer.nodes.memory import (
     MemoryCreationNode,
     MemoryStorageNode,
 )
-from composer.nodes.agents.chat_node import ChatNode
 from composer.nodes.agents import TitleGenerationNode
 from composer.nodes.agents.engineering import EngineeringAgentNode
 from composer.nodes.summary import ConsolidationNode, SearchSummaryNode
@@ -131,11 +128,6 @@ class GraphBuilder:
             Compiled workflow ready for execution
         """
         try:
-            primary_profile = await get_model_profile_for_task(
-                self.user_config.model_profiles,
-                ModelProfileType.Primary,
-                self.user_config.user_id,
-            )
             analysis_profile = await get_model_profile_for_task(
                 self.user_config.model_profiles,
                 ModelProfileType.Analysis,
@@ -163,12 +155,6 @@ class GraphBuilder:
             )
 
             # Node metadata for logging and tracing
-            chat_node_metadata = NodeMetadata(
-                node_name="PrimaryChatAgent",
-                node_id=uuid.uuid4().hex,
-                node_type="ChatNode",
-                user_id=user_id,
-            )
             classifier_node_metadata = NodeMetadata(
                 node_name="IntentClassifier",
                 node_id=uuid.uuid4().hex,
@@ -207,11 +193,6 @@ class GraphBuilder:
             )
 
             # Create agents with injected dependencies
-            chat_agent = ChatAgent(
-                self.pipeline_factory,
-                profile=primary_profile,
-                node_metadata=chat_node_metadata,
-            )
             classifier_agent = ClassifierAgent(
                 self.pipeline_factory,
                 analysis_profile,
@@ -255,11 +236,6 @@ class GraphBuilder:
             tool_registry = ToolRegistry(self.pipeline_factory)
 
             # Create nodes with injected agents and storage
-            chat_node = ChatNode(
-                self.pipeline_factory,
-                chat_agent,
-                tool_registry,
-            )
             classifier_node = IntentClassifierNode(classifier_agent)
             engineering_node = EngineeringAgentNode(engineering_agent)
             memory_creation_node = MemoryCreationNode(embedding_agent)
