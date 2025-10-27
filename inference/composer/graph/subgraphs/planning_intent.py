@@ -32,6 +32,7 @@ from models import (
     NodeMetadata,
     PipelinePriority,
     ComplexityLevel,
+    TodoItem,
 )
 from composer.graph.state import WorkflowState
 from composer.agents.classifier_agent import ClassifierAgent
@@ -439,7 +440,7 @@ class PlanningIntentSubgraph:
         todos = []
 
         # Main research task
-        research_todo = await storage.todo.add_todo(
+        research_todo_item = TodoItem(
             user_id=user_id,
             conversation_id=conversation_id,
             title=f"Research: {self._extract_topic(user_message)}",
@@ -447,11 +448,12 @@ class PlanningIntentSubgraph:
             status="not-started",
             priority=priority,
         )
+        research_todo = await storage.todo.add_todo(research_todo_item)
         if research_todo:
             todos.append(research_todo.__dict__)
 
         # Information gathering subtask
-        gather_todo = await storage.todo.add_todo(
+        gather_todo_item = TodoItem(
             user_id=user_id,
             conversation_id=conversation_id,
             title="Gather relevant information and sources",
@@ -459,12 +461,13 @@ class PlanningIntentSubgraph:
             status="not-started",
             priority="medium",
         )
+        gather_todo = await storage.todo.add_todo(gather_todo_item)
         if gather_todo:
             todos.append(gather_todo.__dict__)
 
         # Analysis subtask for complex research
         if intent.complexity_level.value in ["high", "very_high"]:
-            analysis_todo = await storage.todo.add_todo(
+            analysis_todo_item = TodoItem(
                 user_id=user_id,
                 conversation_id=conversation_id,
                 title="Analyze and synthesize findings",
@@ -472,6 +475,7 @@ class PlanningIntentSubgraph:
                 status="not-started",
                 priority="medium",
             )
+            analysis_todo = await storage.todo.add_todo(analysis_todo_item)
             if analysis_todo:
                 todos.append(analysis_todo.__dict__)
 
@@ -486,7 +490,7 @@ class PlanningIntentSubgraph:
         todos = []
 
         # Main analysis task
-        analysis_todo = await storage.todo.add_todo(
+        analysis_todo_item = TodoItem(
             user_id=user_id,
             conversation_id=conversation_id,
             title=f"Analyze: {self._extract_topic(user_message)}",
@@ -494,6 +498,7 @@ class PlanningIntentSubgraph:
             status="not-started",
             priority=priority,
         )
+        analysis_todo = await storage.todo.add_todo(analysis_todo_item)
         if analysis_todo:
             todos.append(analysis_todo.__dict__)
 
@@ -502,7 +507,7 @@ class PlanningIntentSubgraph:
             cap.value in ["data_processing", "statistical_analysis"]
             for cap in intent.required_capabilities
         ):
-            data_todo = await storage.todo.add_todo(
+            data_todo_item = TodoItem(
                 user_id=user_id,
                 conversation_id=conversation_id,
                 title="Review and validate data sources",
@@ -510,6 +515,7 @@ class PlanningIntentSubgraph:
                 status="not-started",
                 priority="medium",
             )
+            data_todo = await storage.todo.add_todo(data_todo_item)
             if data_todo:
                 todos.append(data_todo.__dict__)
 
@@ -524,7 +530,7 @@ class PlanningIntentSubgraph:
         todos = []
 
         # Main creative task
-        creative_todo = await storage.todo.add_todo(
+        creative_todo_item = TodoItem(
             user_id=user_id,
             conversation_id=conversation_id,
             title=f"Create: {self._extract_topic(user_message)}",
@@ -532,12 +538,13 @@ class PlanningIntentSubgraph:
             status="not-started",
             priority=priority,
         )
+        creative_todo = await storage.todo.add_todo(creative_todo_item)
         if creative_todo:
             todos.append(creative_todo.__dict__)
 
         # Planning phase for complex creative work
         if intent.complexity_level.value in ["high", "very_high"]:
-            planning_todo = await storage.todo.add_todo(
+            planning_todo_item = TodoItem(
                 user_id=user_id,
                 conversation_id=conversation_id,
                 title="Plan creative approach and structure",
@@ -545,6 +552,7 @@ class PlanningIntentSubgraph:
                 status="not-started",
                 priority="medium",
             )
+            planning_todo = await storage.todo.add_todo(planning_todo_item)
             if planning_todo:
                 todos.append(planning_todo.__dict__)
 
@@ -559,7 +567,7 @@ class PlanningIntentSubgraph:
         todos = []
 
         # Main task
-        task_todo = await storage.todo.add_todo(
+        task_todo_item = TodoItem(
             user_id=user_id,
             conversation_id=conversation_id,
             title=f"Execute: {self._extract_topic(user_message)}",
@@ -567,6 +575,7 @@ class PlanningIntentSubgraph:
             status="not-started",
             priority=priority,
         )
+        task_todo = await storage.todo.add_todo(task_todo_item)
         if task_todo:
             todos.append(task_todo.__dict__)
 
@@ -581,7 +590,7 @@ class PlanningIntentSubgraph:
         todos = []
 
         # Main planning task
-        planning_todo = await storage.todo.add_todo(
+        planning_todo_item = TodoItem(
             user_id=user_id,
             conversation_id=conversation_id,
             title=f"Plan: {self._extract_topic(user_message)}",
@@ -589,12 +598,13 @@ class PlanningIntentSubgraph:
             status="not-started",
             priority=priority,
         )
+        planning_todo = await storage.todo.add_todo(planning_todo_item)
         if planning_todo:
             todos.append(planning_todo.__dict__)
 
         # Implementation roadmap for complex plans
         if intent.complexity_level.value in ["high", "very_high"]:
-            roadmap_todo = await storage.todo.add_todo(
+            roadmap_todo_item = TodoItem(
                 user_id=user_id,
                 conversation_id=conversation_id,
                 title="Create implementation roadmap",
@@ -602,6 +612,7 @@ class PlanningIntentSubgraph:
                 status="not-started",
                 priority="medium",
             )
+            roadmap_todo = await storage.todo.add_todo(roadmap_todo_item)
             if roadmap_todo:
                 todos.append(roadmap_todo.__dict__)
 
@@ -616,7 +627,7 @@ class PlanningIntentSubgraph:
         todos = []
 
         if intent.requires_custom_tools:
-            tool_todo = await storage.todo.add_todo(
+            tool_todo_item = TodoItem(
                 user_id=user_id,
                 conversation_id=conversation_id,
                 title="Develop custom tools for task",
@@ -624,6 +635,7 @@ class PlanningIntentSubgraph:
                 status="not-started",
                 priority="high",
             )
+            tool_todo = await storage.todo.add_todo(tool_todo_item)
             if tool_todo:
                 todos.append(tool_todo.__dict__)
 

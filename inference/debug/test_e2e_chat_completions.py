@@ -22,7 +22,8 @@ from unittest.mock import Mock, AsyncMock, patch
 # Import all necessary components
 from server.app import app
 from server.routers.chat import chat_completion
-from models import Message, MessageRole, MessageContentType
+from models import Message, MessageRole, MessageContentType, Conversation
+from datetime import datetime
 from db import storage
 import composer
 
@@ -64,9 +65,14 @@ class E2ETestRunner:
 
             # Create test conversation
             print("   💬 Creating test conversation...")
-            self.test_conversation_id = await storage.conversation.create_conversation(
-                self.test_user_id, "E2E Test Conversation"
+            conversation = Conversation(
+                id=0,  # Will be set by database
+                user_id=self.test_user_id,
+                title="E2E Test Conversation",
+                created_at=datetime.now(),
+                updated_at=datetime.now()
             )
+            self.test_conversation_id = await storage.conversation.create_conversation(conversation)
             print(f"   ✅ Created test conversation: {self.test_conversation_id}")
 
             self.setup_complete = True

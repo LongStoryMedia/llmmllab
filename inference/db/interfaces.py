@@ -1,7 +1,13 @@
 # Python interface equivalents for Maistro storage interfaces
 from abc import ABC, abstractmethod
-from typing import List, Optional, Any
+from typing import List, Optional, Any, TYPE_CHECKING
 from datetime import datetime
+
+if TYPE_CHECKING:
+    from models.conversation import Conversation
+    from models.todo_item import TodoItem
+    from models.thought import Thought
+    from models.image_metadata import ImageMetadata
 
 
 class MessageStore(ABC):
@@ -17,15 +23,13 @@ class MessageStore(ABC):
 
 class ConversationStore(ABC):
     @abstractmethod
-    async def create_conversation(self, user_id: str, title: str) -> int: ...
+    async def create_conversation(self, conversation: "Conversation") -> Optional[int]: ...
     @abstractmethod
     async def get_user_conversations(self, user_id: str) -> List[dict]: ...
     @abstractmethod
     async def get_conversation(self, conversation_id: int) -> Optional[dict]: ...
     @abstractmethod
-    async def update_conversation_title(
-        self, conversation_id: int, title: str
-    ) -> None: ...
+    async def update_conversation(self, conversation: "Conversation") -> None: ...
     @abstractmethod
     async def delete_conversation(self, conversation_id: int) -> None: ...
 
@@ -148,7 +152,7 @@ class UserConfigStore(ABC):
 
 class ImageStore(ABC):
     @abstractmethod
-    async def store_image(self, user_id: str, image: dict) -> int: ...
+    async def store_image(self, image_metadata: "ImageMetadata") -> int: ...
     @abstractmethod
     async def list_images(
         self,

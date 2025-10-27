@@ -24,6 +24,8 @@ from models import (
     MessageContentType,
     ChatResponse,
     Message,
+    Conversation,
+    Thought,
 )
 
 # Import composer interface and streaming state management
@@ -291,10 +293,11 @@ async def store_structured_response_data(
             try:
                 thought_service = getattr(storage, 'thought', None)
                 if thought_service:
-                    thought_id = await thought_service.add_thought(
+                    thought_obj = Thought(
                         message_id=message_id,
                         text=thinking_content.strip()
                     )
+                    thought_id = await thought_service.add_thought(thought_obj)
                     if thought_id:
                         logger.debug(f"Stored thought {thought_id} for message {message_id}")
                     else:
@@ -705,12 +708,20 @@ async def chat_completion(
                                 generated_title = final_state.get("title")
                                 if generated_title and storage.conversation:
                                     try:
-                                        await storage.conversation.update_conversation_title(
-                                            conversation_id, generated_title
-                                        )
-                                        logger.debug(
-                                            f"Updated conversation {conversation_id} title to: {generated_title}"
-                                        )
+                                        # Get the current conversation and update it
+                                        current_conversation = await storage.conversation.get_conversation(conversation_id)
+                                        if current_conversation:
+                                            conversation_obj = Conversation(
+                                                id=current_conversation['id'],
+                                                user_id=current_conversation['user_id'],
+                                                title=generated_title,
+                                                created_at=current_conversation['created_at'],
+                                                updated_at=current_conversation['updated_at']
+                                            )
+                                            await storage.conversation.update_conversation(conversation_obj)
+                                            logger.debug(
+                                                f"Updated conversation {conversation_id} title to: {generated_title}"
+                                            )
                                     except Exception as title_error:
                                         logger.warning(
                                             f"Failed to update conversation title: {title_error}"

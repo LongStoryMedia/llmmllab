@@ -605,11 +605,11 @@ class MessageStorage:
             return
 
         for thought in thoughts:
-            await self.thought_storage.add_thought(
+            thought_obj = Thought(
                 message_id=message_id,
-                thought=thought,
-                conn=conn
+                text=thought if isinstance(thought, str) else str(thought),
             )
+            await self.thought_storage.add_thought(thought_obj, conn=conn)
 
     def _parse_message_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
         """

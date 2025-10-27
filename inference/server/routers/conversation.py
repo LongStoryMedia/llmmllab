@@ -298,9 +298,14 @@ async def create_conversation(request: Request):
         assert user_id, "User ID not found"
         convo = storage.get_service(storage.conversation)
         # Create the conversation in the database
-        conversation_id = await convo.create_conversation(
-            user_id, f"New conversation ({dt.now().strftime('%Y-%m-%d %H:%M')})"
+        conversation = Conversation(
+            id=0,  # Will be set by database
+            user_id=user_id,
+            title=f"New conversation ({dt.now().strftime('%Y-%m-%d %H:%M')})",
+            created_at=dt.now(),
+            updated_at=dt.now()
         )
+        conversation_id = await convo.create_conversation(conversation)
 
         if not conversation_id:
             raise HTTPException(status_code=500, detail="Failed to create conversation")

@@ -61,10 +61,11 @@ async def store_structured_response_data(
         if thoughts:
             for thought in thoughts:
                 if isinstance(thought, Thought):
-                    await storage.get_service(storage.thought).add_thought(
+                    thought_obj = Thought(
                         message_id=message_id,
                         text=thought.text,
                     )
+                    await storage.get_service(storage.thought).add_thought(thought_obj)
             logger.info(f"Stored {len(thoughts)} thoughts for message {message_id}")
 
         # Store intent analyses if present

@@ -19,6 +19,8 @@ async def test_routing_fix():
         from models.message import Message
         from models.message_role import MessageRole
         from models.message_content import MessageContent, MessageContentType
+        from models.conversation import Conversation
+        from datetime import datetime
         from datetime import datetime, timezone
 
         # Build connection string from environment variables
@@ -54,10 +56,14 @@ async def test_routing_fix():
             )
         
         # Create conversation
-        conversation_id = await storage.conversation.create_conversation(
+        conversation = Conversation(
+            id=0,  # Will be set by database
             user_id=test_user_id,
             title="Routing Fix Test Conversation",
+            created_at=datetime.now(),
+            updated_at=datetime.now()
         )
+        conversation_id = await storage.conversation.create_conversation(conversation)
         
         # Create initial user message
         query_text = "What are 3 major AI developments in 2024?"

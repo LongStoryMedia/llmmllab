@@ -69,7 +69,7 @@ async def create_todo(request: Request, todo_request: CreateTodoRequest):
         )
 
     try:
-        todo = await storage.todo.add_todo(
+        todo_item = TodoItem(
             user_id=user_id,
             title=todo_request.title,
             description=todo_request.description,
@@ -78,6 +78,7 @@ async def create_todo(request: Request, todo_request: CreateTodoRequest):
             due_date=todo_request.due_date,
             conversation_id=todo_request.conversation_id,
         )
+        todo = await storage.todo.add_todo(todo_item)
 
         if not todo:
             raise HTTPException(status_code=500, detail="Failed to create todo item")
@@ -179,8 +180,8 @@ async def update_todo(request: Request, todo_id: int, todo_request: UpdateTodoRe
         )
 
     try:
-        todo = await storage.todo.update_todo(
-            todo_id=todo_id,
+        todo_item = TodoItem(
+            id=todo_id,
             user_id=user_id,
             title=todo_request.title,
             description=todo_request.description,
@@ -188,6 +189,7 @@ async def update_todo(request: Request, todo_id: int, todo_request: UpdateTodoRe
             priority=todo_request.priority,
             due_date=todo_request.due_date,
         )
+        todo = await storage.todo.update_todo(todo_item)
 
         if not todo:
             raise HTTPException(status_code=404, detail="Todo item not found")
