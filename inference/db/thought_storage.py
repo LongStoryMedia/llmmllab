@@ -27,6 +27,7 @@ class ThoughtStorage:
         message_id: int,
         text: str,
         created_at: Optional[datetime] = None,
+        conn: Optional[TypedConnection] = None,
     ) -> Optional[int]:
         """
         Add a new thought to the database.

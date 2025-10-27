@@ -27,6 +27,7 @@ class ToolCallStorage:
         message_id: int,
         tool_execution_result: ToolCall,
         created_at: Optional[datetime] = None,
+        conn: Optional[TypedConnection] = None,
     ) -> Optional[int]:
         """
         Add a new tool call to the database.
