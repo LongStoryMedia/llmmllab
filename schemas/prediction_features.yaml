@@ -1,0 +1,27 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: PredictionFeatures
+description: "Features used for ML parameter prediction"
+properties:
+  model_size_mb:
+    type: number
+    minimum: 0
+    description: "Model size in megabytes"
+  total_gpu_memory_mb:
+    type: number
+    minimum: 0
+    description: "Total GPU memory across all devices in MB"
+  total_available_memory_mb:
+    type: number
+    minimum: 0
+    description: "Total available GPU memory across all devices in MB"
+  total_gpus:
+    type: integer
+    minimum: 0
+    description: "Total number of GPU devices"
+required:
+  - model_size_mb
+  - total_gpu_memory_mb
+  - total_available_memory_mb
+  - total_gpus
+additionalProperties: false

@@ -1,0 +1,36 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: MLModelPerformance
+description: "ML model performance metrics for OOM recovery predictions"
+properties:
+  n_ctx_mse:
+    type: number
+    minimum: 0
+    description: "Mean squared error for context window predictions"
+  n_batch_mse:
+    type: number
+    minimum: 0
+    description: "Mean squared error for batch size predictions"
+  n_ubatch_mse:
+    type: number
+    minimum: 0
+    description: "Mean squared error for micro-batch size predictions"
+  n_gpu_layers_mse:
+    type: number
+    minimum: 0
+    description: "Mean squared error for GPU layer predictions"
+  total_configurations:
+    type: integer
+    minimum: 0
+    description: "Total number of configurations used for training"
+  models_trained:
+    type: boolean
+    description: "Whether ML models have been successfully trained"
+required:
+  - n_ctx_mse
+  - n_batch_mse
+  - n_ubatch_mse
+  - n_gpu_layers_mse
+  - total_configurations
+  - models_trained
+additionalProperties: false

@@ -40,6 +40,7 @@ try:
     from . import lang_chain_message
     from . import lang_graph_node_state
     from . import lang_graph_state
+    from . import learned_limits
     from . import lora_weight
     from . import memory
     from . import memory_config
@@ -50,7 +51,9 @@ try:
     from . import message_content_type
     from . import message_role
     from . import message_type
+    from . import ml_model_performance
     from . import model
+    from . import model_configuration_data
     from . import model_details
     from . import model_parameters
     from . import model_profile
@@ -60,14 +63,18 @@ try:
     from . import model_provider
     from . import model_task
     from . import node_metadata
+    from . import oom_recovery_attempt_data
+    from . import optimal_parameters
     from . import pagination
     from . import pipeline_execution_context
     from . import pipeline_execution_state
     from . import pipeline_metrics
     from . import pipeline_priority
     from . import pipeline_state
+    from . import prediction_features
     from . import preferences_config
     from . import rabbitmq_config
+    from . import recovery_strategy
     from . import redis_config
     from . import refinement_config
     from . import requests
@@ -94,6 +101,7 @@ try:
     from . import summary
     from . import summary_style
     from . import summary_type
+    from . import system_gpu_stats
     from . import technical_domain
     from . import thought
     from . import todo_item
@@ -152,6 +160,7 @@ __all__ = [
     'lang_chain_message',
     'lang_graph_node_state',
     'lang_graph_state',
+    'learned_limits',
     'lora_weight',
     'memory',
     'memory_config',
@@ -162,7 +171,9 @@ __all__ = [
     'message_content_type',
     'message_role',
     'message_type',
+    'ml_model_performance',
     'model',
+    'model_configuration_data',
     'model_details',
     'model_parameters',
     'model_profile',
@@ -172,14 +183,18 @@ __all__ = [
     'model_provider',
     'model_task',
     'node_metadata',
+    'oom_recovery_attempt_data',
+    'optimal_parameters',
     'pagination',
     'pipeline_execution_context',
     'pipeline_execution_state',
     'pipeline_metrics',
     'pipeline_priority',
     'pipeline_state',
+    'prediction_features',
     'preferences_config',
     'rabbitmq_config',
+    'recovery_strategy',
     'redis_config',
     'refinement_config',
     'requests',
@@ -206,6 +221,7 @@ __all__ = [
     'summary',
     'summary_style',
     'summary_type',
+    'system_gpu_stats',
     'technical_domain',
     'thought',
     'todo_item',
@@ -259,6 +275,7 @@ __all__ = [
     'LangChainMessage',
     'LangGraphNodeState',
     'LangGraphState',
+    'LearnedLimits',
     'LoraWeight',
     'Memory',
     'MemoryConfig',
@@ -269,7 +286,9 @@ __all__ = [
     'MessageContentType',
     'MessageRole',
     'MessageType',
+    'MLModelPerformance',
     'Model',
+    'ModelConfigurationData',
     'ModelDetails',
     'ModelParameters',
     'ModelProfile',
@@ -279,14 +298,18 @@ __all__ = [
     'ModelProvider',
     'ModelTask',
     'NodeMetadata',
+    'OOMRecoveryAttemptData',
+    'OptimalParameters',
     'PaginationSchema',
     'PipelineExecutionContext',
     'PipelineExecutionState',
     'PipelineMetrics',
     'PipelinePriority',
     'PipelineState',
+    'PredictionFeatures',
     'PreferencesConfig',
     'RabbitmqConfig',
+    'RecoveryStrategy',
     'RedisConfig',
     'RefinementConfig',
     'LoraListResponse',
@@ -320,6 +343,7 @@ __all__ = [
     'Summary',
     'SummaryStyle',
     'SummaryType',
+    'SystemGPUStats',
     'TechnicalDomain',
     'Thought',
     'TodoItem',
@@ -446,6 +470,9 @@ from .lang_graph_node_state import (
 from .lang_graph_state import (
     LangGraphState,
 )
+from .learned_limits import (
+    LearnedLimits,
+)
 from .lora_weight import (
     LoraWeight,
 )
@@ -476,8 +503,14 @@ from .message_role import (
 from .message_type import (
     MessageType,
 )
+from .ml_model_performance import (
+    MLModelPerformance,
+)
 from .model import (
     Model,
+)
+from .model_configuration_data import (
+    ModelConfigurationData,
 )
 from .model_details import (
     ModelDetails,
@@ -506,6 +539,12 @@ from .model_task import (
 from .node_metadata import (
     NodeMetadata,
 )
+from .oom_recovery_attempt_data import (
+    OOMRecoveryAttemptData,
+)
+from .optimal_parameters import (
+    OptimalParameters,
+)
 from .pagination import (
     PaginationSchema,
 )
@@ -524,11 +563,17 @@ from .pipeline_priority import (
 from .pipeline_state import (
     PipelineState,
 )
+from .prediction_features import (
+    PredictionFeatures,
+)
 from .preferences_config import (
     PreferencesConfig,
 )
 from .rabbitmq_config import (
     RabbitmqConfig,
+)
+from .recovery_strategy import (
+    RecoveryStrategy,
 )
 from .redis_config import (
     RedisConfig,
@@ -614,6 +659,9 @@ from .summary_style import (
 )
 from .summary_type import (
     SummaryType,
+)
+from .system_gpu_stats import (
+    SystemGPUStats,
 )
 from .technical_domain import (
     TechnicalDomain,
