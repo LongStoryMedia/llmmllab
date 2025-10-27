@@ -4,7 +4,7 @@ Intelligent OOM Recovery System for LLM Pipeline Initialization.
 Uses machine learning to predict optimal parameters and implements a structured
 retry strategy for handling out-of-memory errors during model initialization.
 
-Features strong typing with Pydantic models, dynamic multi-GPU support, 
+Features strong typing with Pydantic models, dynamic multi-GPU support,
 sklearn requirement, and model profile integration.
 """
 
@@ -246,19 +246,11 @@ class IntelligentOOMRecovery:
             )
 
         # Extract successful configurations for safe parameter estimation
-        contexts = [
-            config.n_ctx for config in self.configurations if config.success
-        ]
-        batches = [
-            config.n_batch for config in self.configurations if config.success
-        ]
-        ubatches = [
-            config.n_ubatch for config in self.configurations if config.success
-        ]
+        contexts = [config.n_ctx for config in self.configurations if config.success]
+        batches = [config.n_batch for config in self.configurations if config.success]
+        ubatches = [config.n_ubatch for config in self.configurations if config.success]
         gpu_layers = [
-            config.n_gpu_layers
-            for config in self.configurations
-            if config.success
+            config.n_gpu_layers for config in self.configurations if config.success
         ]
 
         # Use 10th percentile as safe minimum (tested values that worked)
@@ -437,14 +429,17 @@ class IntelligentOOMRecovery:
         # Combine ML predictions with profile constraints
         optimized = OptimalParameters(
             n_ctx=min(
-                ml_predictions["n_ctx"], base_config.n_ctx
+                ml_predictions["n_ctx"],
+                base_config.n_ctx,
             ),  # Don't exceed profile limit
             n_batch=min(ml_predictions["n_batch"], 2048),  # Reasonable upper bound
             n_ubatch=min(
-                ml_predictions["n_ubatch"], ml_predictions["n_batch"]
+                ml_predictions["n_ubatch"],
+                ml_predictions["n_batch"],
             ),  # n_ubatch ≤ n_batch
             n_gpu_layers=min(
-                ml_predictions["n_gpu_layers"], base_config.n_gpu_layers
+                ml_predictions["n_gpu_layers"],
+                base_config.n_gpu_layers,
             ),  # Don't exceed estimate
         )
 
@@ -487,10 +482,12 @@ class IntelligentOOMRecovery:
             # Level 2: Reduce batch/ubatch progressively
             strategy_name = "reduce_batch"
             reduction_factor = 2 ** (attempt - 2)  # 2x, 4x reduction
-            new_params = current_params.model_copy(update={
-                "n_batch": max(current_params.n_batch // reduction_factor, 32),
-                "n_ubatch": max(current_params.n_ubatch // reduction_factor, 32),
-            })
+            new_params = current_params.model_copy(
+                update={
+                    "n_batch": max(current_params.n_batch // reduction_factor, 32),
+                    "n_ubatch": max(current_params.n_ubatch // reduction_factor, 32),
+                }
+            )
 
         elif attempt <= 6:
             # Level 3: Move layers to CPU (max 1/3 of total layers as specified)
@@ -503,16 +500,24 @@ class IntelligentOOMRecovery:
                 layers_to_move = min(
                     max_cpu_layers, (attempt - 4) * 5
                 )  # Progressive movement
-                new_params = current_params.model_copy(update={
-                    "n_gpu_layers": max(original_gpu_layers - layers_to_move, 0)
-                })
+                new_params = current_params.model_copy(
+                    update={
+                        "n_gpu_layers": max(original_gpu_layers - layers_to_move, 0)
+                    }
+                )
             else:
                 # If already CPU-only, reduce batch further
                 learned_mins = self._get_learned_minimums()
-                new_params = current_params.model_copy(update={
-                    "n_batch": max(current_params.n_batch // 2, learned_mins.n_batch),
-                    "n_ubatch": max(current_params.n_ubatch // 2, learned_mins.n_ubatch),
-                })
+                new_params = current_params.model_copy(
+                    update={
+                        "n_batch": max(
+                            current_params.n_batch // 2, learned_mins.n_batch
+                        ),
+                        "n_ubatch": max(
+                            current_params.n_ubatch // 2, learned_mins.n_ubatch
+                        ),
+                    }
+                )
 
         else:
             # Level 4: Reduce context size (last resort as specified)
@@ -520,15 +525,21 @@ class IntelligentOOMRecovery:
             learned_mins = self._get_learned_minimums()
             reduction_factor = 2 ** (attempt - 6)  # Progressive context reduction
             new_ctx = max(current_params.n_ctx // reduction_factor, learned_mins.n_ctx)
-            
+
             updates = {"n_ctx": new_ctx}
             # Also reduce batch sizes if context is very small
             if new_ctx <= learned_mins.n_ctx * 2:
-                updates.update({
-                    "n_batch": max(current_params.n_batch // 2, learned_mins.n_batch),
-                    "n_ubatch": max(current_params.n_ubatch // 2, learned_mins.n_ubatch),
-                })
-            
+                updates.update(
+                    {
+                        "n_batch": max(
+                            current_params.n_batch // 2, learned_mins.n_batch
+                        ),
+                        "n_ubatch": max(
+                            current_params.n_ubatch // 2, learned_mins.n_ubatch
+                        ),
+                    }
+                )
+
             new_params = current_params.model_copy(update=updates)
 
         result = RecoveryStrategy(
@@ -562,9 +573,7 @@ class IntelligentOOMRecovery:
             available_gpu_memory_mb=gpu_stats.total_available_memory,
             total_gpu_memory_mb=gpu_stats.total_memory,
             success=True,
-            gpu_memory_used_mb=(
-                gpu_memory_used_mb if gpu_memory_used_mb > 0 else None
-            ),
+            gpu_memory_used_mb=(gpu_memory_used_mb if gpu_memory_used_mb > 0 else None),
             initialization_time_ms=(
                 initialization_time_ms if initialization_time_ms > 0 else None
             ),
@@ -705,9 +714,7 @@ class IntelligentOOMRecovery:
                             ),
                             success=item["success"],
                             gpu_memory_used_mb=item.get("gpu_memory_used_mb"),
-                            initialization_time_ms=item.get(
-                                "initialization_time_ms"
-                            ),
+                            initialization_time_ms=item.get("initialization_time_ms"),
                         )
                         typed_configs.append(config)
                     self.configurations = typed_configs
@@ -731,11 +738,15 @@ class IntelligentOOMRecovery:
         try:
             config_file = self.data_dir / "configurations.json"
             with open(config_file, "w", encoding="utf-8") as f:
-                json.dump(self.configurations, f, indent=2)
+                # Convert Pydantic models to dicts for JSON serialization
+                config_dicts = [config.model_dump() for config in self.configurations]
+                json.dump(config_dicts, f, indent=2)
 
             attempts_file = self.data_dir / "recovery_attempts.json"
             with open(attempts_file, "w", encoding="utf-8") as f:
-                json.dump(self.recovery_attempts, f, indent=2)
+                # Convert Pydantic models to dicts for JSON serialization
+                attempt_dicts = [attempt.model_dump() for attempt in self.recovery_attempts]
+                json.dump(attempt_dicts, f, indent=2)
 
         except Exception as e:
             self.logger.warning(f"Error saving training data: {e}")
@@ -777,7 +788,11 @@ class IntelligentOOMRecovery:
                     if config.success:
                         gpu_stats = SystemGPUStats(
                             total_gpus=1,
-                            total_memory=getattr(config, 'total_gpu_memory_mb', config.available_gpu_memory_mb),
+                            total_memory=getattr(
+                                config,
+                                "total_gpu_memory_mb",
+                                config.available_gpu_memory_mb,
+                            ),
                             total_available_memory=config.available_gpu_memory_mb,
                             gpus=[],
                         )
@@ -805,7 +820,7 @@ class IntelligentOOMRecovery:
                         "n_ubatch_mse": 0.0,
                         "n_gpu_layers_mse": 0.0,
                     }
-                    
+
                     for param_name in ["n_ctx", "n_batch", "n_ubatch", "n_gpu_layers"]:
                         model = self.models[param_name]
                         if model is not None:
@@ -818,7 +833,7 @@ class IntelligentOOMRecovery:
                             pred_scaled = model.predict(features_scaled)
                             mse = mean_squared_error(target_scaled, pred_scaled)
                             mse_values[f"{param_name}_mse"] = mse
-                    
+
                     performance = performance.model_copy(update=mse_values)
 
             except Exception as e:
