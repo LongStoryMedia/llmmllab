@@ -18,26 +18,17 @@ class ImageStorage:
         self.typed_pool = typed_pool(pool)
         self.get_query = get_query
 
-    async def store_image(
-        self,
-        filename: str,
-        thumbnail: str,
-        image_format: str,
-        width: int,
-        height: int,
-        conversation_id: int,
-        user_id: str,
-    ) -> int:
+    async def store_image(self, image_metadata: ImageMetadata) -> int:
         async with self.typed_pool.acquire() as conn:
             row = await conn.fetchrow(
                 self.get_query("images.add_image"),
-                filename,
-                thumbnail,
-                image_format,
-                width,
-                height,
-                conversation_id,
-                user_id,
+                image_metadata.filename,
+                image_metadata.thumbnail,
+                image_metadata.format,
+                image_metadata.width,
+                image_metadata.height,
+                image_metadata.conversation_id,
+                image_metadata.user_id,
             )
             return row.get("id", -1) if row else -1
 

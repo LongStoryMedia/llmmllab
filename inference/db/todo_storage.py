@@ -22,54 +22,40 @@ class TodoStorage:
         self.get_query = get_query
         self.logger = llmmllogger.bind(component="todo_storage_instance")
 
-    async def add_todo(
-        self,
-        user_id: str,
-        title: str,
-        description: Optional[str],
-        status: str,
-        priority: str,
-        due_date: Optional[datetime] = None,
-        conversation_id: Optional[int] = None,
-    ) -> Optional[TodoItem]:
+    async def add_todo(self, todo_item: TodoItem) -> Optional[TodoItem]:
         """
         Add a new todo item to the database.
 
         Args:
-            user_id: ID of the user who owns the todo
-            title: Brief title or summary of the todo item
-            description: Optional detailed description
-            status: Current status (not-started, in-progress, completed, cancelled)
-            priority: Priority level (low, medium, high, urgent)
-            due_date: Optional due date
-            conversation_id: Optional ID of the conversation this todo is associated with
+            todo_item: The TodoItem object to add to the database
 
         Returns:
-            The created TodoItem, or None on failure
+            The created TodoItem with database-generated fields, or None on failure
         """
         try:
             async with self.typed_pool.acquire() as conn:
                 row = await conn.fetchrow(
                     self.get_query("todo.add_todo"),
-                    user_id,
-                    conversation_id,
-                    title,
-                    description,
-                    status,
-                    priority,
-                    due_date,
+                    todo_item.user_id,
+                    todo_item.conversation_id,
+                    todo_item.title,
+                    todo_item.description,
+                    todo_item.status,
+                    todo_item.priority,
+                    todo_item.due_date,
                 )
 
                 if row:
+                    # Return a new TodoItem with the database-generated fields
                     return TodoItem(
                         id=row["id"],
-                        user_id=user_id,
-                        conversation_id=conversation_id,
-                        title=title,
-                        description=description,
-                        status=status,
-                        priority=priority,
-                        due_date=due_date,
+                        user_id=todo_item.user_id,
+                        conversation_id=todo_item.conversation_id,
+                        title=todo_item.title,
+                        description=todo_item.description,
+                        status=todo_item.status,
+                        priority=todo_item.priority,
+                        due_date=todo_item.due_date,
                         created_at=row["created_at"],
                         updated_at=row["updated_at"],
                     )
@@ -149,27 +135,12 @@ class TodoStorage:
             self.logger.error(f"Failed to get todo {todo_id}: {e}")
             return None
 
-    async def update_todo(
-        self,
-        todo_id: int,
-        user_id: str,
-        title: str,
-        description: Optional[str],
-        status: str,
-        priority: str,
-        due_date: Optional[datetime] = None,
-    ) -> Optional[TodoItem]:
+    async def update_todo(self, todo_item: TodoItem) -> Optional[TodoItem]:
         """
         Update an existing todo item.
 
         Args:
-            todo_id: ID of the todo to update
-            user_id: ID of the user (for ownership verification)
-            title: Updated title
-            description: Updated description
-            status: Updated status
-            priority: Updated priority
-            due_date: Updated due date
+            todo_item: The TodoItem object with updated values (must have id set)
 
         Returns:
             Updated TodoItem if successful, None otherwise
@@ -178,13 +149,13 @@ class TodoStorage:
             async with self.typed_pool.acquire() as conn:
                 row = await conn.fetchrow(
                     self.get_query("todo.update_todo"),
-                    todo_id,
-                    user_id,
-                    title,
-                    description,
-                    status,
-                    priority,
-                    due_date,
+                    todo_item.id,
+                    todo_item.user_id,
+                    todo_item.title,
+                    todo_item.description,
+                    todo_item.status,
+                    todo_item.priority,
+                    todo_item.due_date,
                 )
 
                 if row:

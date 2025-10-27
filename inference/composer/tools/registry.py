@@ -37,7 +37,7 @@ class ToolRegistry:
         # Dynamic tool instances for reuse (tool_id -> Tool)
         self.dynamic_tools: Dict[str, Tool] = {}
         # Executable tool instances (tool_name -> BaseTool instance)
-        self.executable_tools: Dict[str, Any] = {}
+        self.executable_tools: Dict[str, BaseTool] = {}
 
         self.pipeline_factory = pipeline_factory
         self._lock = asyncio.Lock()
@@ -211,7 +211,7 @@ class ToolRegistry:
         """Get the actual BaseTool instance for execution by tool name."""
         return self.executable_tools.get(tool_name)
 
-    def get_all_executable_tools(self) -> Dict[str, Any]:
+    def get_all_executable_tools(self) -> Dict[str, BaseTool]:
         """Get all executable BaseTool instances mapped by name."""
         return self.executable_tools.copy()
 

@@ -24,32 +24,28 @@ class ThoughtStorage:
 
     async def add_thought(
         self,
-        message_id: int,
-        text: str,
-        created_at: Optional[datetime] = None,
+        thought: Thought,
         conn: Optional[TypedConnection] = None,
     ) -> Optional[int]:
         """
         Add a new thought to the database.
 
         Args:
-            message_id: ID of the associated message
-            text: The thinking/reasoning content
-            created_at: Optional timestamp (defaults to NOW())
+            thought: The Thought object to add to the database
+            conn: Optional existing connection for transaction support
 
         Returns:
             The ID of the created thought, or None on failure
         """
-        if created_at is None:
-            created_at = datetime.utcnow()
+        created_at = thought.created_at or datetime.utcnow()
 
         try:
             # Use provided connection or acquire a new one
             if conn is None:
                 async with self.typed_pool.acquire() as connection:
-                    return await self._add_thought_with_connection(message_id, text, created_at, connection)
+                    return await self._add_thought_with_connection(thought.message_id, thought.text, created_at, connection)
             else:
-                return await self._add_thought_with_connection(message_id, text, created_at, conn)
+                return await self._add_thought_with_connection(thought.message_id, thought.text, created_at, conn)
 
         except Exception as e:
             self.logger.error(f"Error adding thought for message {message_id}: {e}")

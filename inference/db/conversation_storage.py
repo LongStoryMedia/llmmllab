@@ -19,15 +19,15 @@ class ConversationStorage:
         self.typed_pool = typed_pool(pool)
         self.get_query = get_query
 
-    async def create_conversation(
-        self, user_id: str, title: str = "New conversation"
-    ) -> Optional[int]:
+    async def create_conversation(self, conversation: Conversation) -> Optional[int]:
         async with self.typed_pool.acquire() as conn:
             # Ensure the user exists before creating the conversation
-            await conn.execute(self.get_query("user.ensure_user"), user_id)
+            await conn.execute(self.get_query("user.ensure_user"), conversation.user_id)
 
             row = await conn.fetchrow(
-                self.get_query("conversation.create_conversation"), user_id, title
+                self.get_query("conversation.create_conversation"), 
+                conversation.user_id, 
+                conversation.title
             )
             conversation_id = row["id"] if row and "id" in row else None
 
@@ -86,22 +86,24 @@ class ConversationStorage:
 
             return conversation
 
-    async def update_conversation_title(self, conversation_id: int, title: str) -> None:
+    async def update_conversation(self, conversation: Conversation) -> None:
         async with self.typed_pool.acquire() as conn:
             await conn.execute(
-                self.get_query("conversation.update_title"), title, conversation_id
+                self.get_query("conversation.update_title"), 
+                conversation.title, 
+                conversation.id
             )
 
-        # Update the cache - first get the conversation to update
-        conversation = cache_storage.get_conversation_from_cache(conversation_id)
-        if conversation:
-            # Update the conversation and re-cache it
-            conversation.title = title
-            conversation.updated_at = datetime.now()
-            cache_storage.cache_conversation(conversation)
+        # Update the cache - first get the cached conversation to update
+        cached_conversation = cache_storage.get_conversation_from_cache(conversation.id)
+        if cached_conversation:
+            # Update the cached conversation and re-cache it
+            cached_conversation.title = conversation.title
+            cached_conversation.updated_at = datetime.now()
+            cache_storage.cache_conversation(cached_conversation)
         else:
-            # If not in cache, invalidate to ensure next get will fetch from DB
-            cache_storage.invalidate_conversation_cache(conversation_id)
+            # If not in cache, just invalidate cache to force refresh next time
+            cache_storage.invalidate_conversation_cache(conversation.id)
 
         # Also invalidate the user's conversations list cache
         if conversation and conversation.user_id:

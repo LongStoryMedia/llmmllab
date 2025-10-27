@@ -25,11 +25,12 @@ from typing import Dict, Any
 from dataclasses import dataclass
 
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from langchain.tools import BaseTool
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from langgraph.types import Command
 
-from models import LangChainMessage, NodeMetadata, PipelinePriority
+from models import LangChainMessage, NodeMetadata
 from composer.graph.state import WorkflowState, ToolsState
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
@@ -79,7 +80,9 @@ class ToolsAgentSubgraph:
         try:
             # Get executable tools from registry
             executable_tools = self.tool_registry.get_all_executable_tools()
-            tools_dict: dict[str, Any] = executable_tools if executable_tools else {}
+            tools_dict: dict[str, BaseTool] = (
+                executable_tools if executable_tools else {}
+            )
 
             if not tools_dict:
                 logger.warning("No tools available for ToolNode creation")
