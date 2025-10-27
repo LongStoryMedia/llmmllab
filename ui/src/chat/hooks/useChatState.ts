@@ -60,7 +60,7 @@ export const useChatState = (): [ChatState, ChatActions] => {
   const { user } = useAuth(); // Assuming useAuth is a custom hook to get user info
   const currentUserId = useMemo(() => user?.profile?.preferred_username ?? '', [user]);
   const [isPaused, setIsPaused] = useState<boolean>(false);
-  const {controlState} = useBackgroundContext();
+  const { controlState } = useBackgroundContext();
 
   useEffect(() => {
     console.log("Control state changed:", controlState);

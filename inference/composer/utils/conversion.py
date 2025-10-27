@@ -15,6 +15,7 @@ from models import (
     MessageRole,
     MessageContent,
     MessageContentType,
+    ToolCall,
 )
 from .extraction import (
     extract_content_from_message,
@@ -112,7 +113,9 @@ def langchain_message_to_message(
         content=_text_to_message_content_list(content_text),
         role=role,
         conversation_id=conversation_id,
-        tool_calls=lc_msg.tool_calls,
+        tool_calls=(
+            [ToolCall(**tc) for tc in lc_msg.tool_calls] if lc_msg.tool_calls else None
+        ),
     )
 
 
