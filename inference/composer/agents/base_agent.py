@@ -341,33 +341,31 @@ class BaseAgent(ABC, Generic[T]):
                                         }
                                     )
 
-                            # Only yield chunks with content or tool calls
-                            if text_content or tool_calls:
-                                # Prepare content array
-                                content = []
-                                if text_content:
-                                    content.append(
-                                        MessageContent(
-                                            type=MessageContentType.TEXT,
-                                            text=text_content,
-                                        )
+                            # Prepare content array
+                            content = []
+                            if text_content:
+                                content.append(
+                                    MessageContent(
+                                        type=MessageContentType.TEXT,
+                                        text=text_content,
                                     )
-
-                                chat_chunk = ChatResponse(
-                                    done=False,
-                                    message=Message(
-                                        role=MessageRole.ASSISTANT,
-                                        content=content,
-                                    ),
-                                    tool_calls=tool_calls,
-                                    channels={
-                                        "node_metadata": self._node_metadata.model_dump(),
-                                        "chunk_metadata": metadata,
-                                    },
                                 )
-                                chat_chunk.channels = self._node_metadata.model_dump()
-                                chunk_count += 1
-                                yield chat_chunk
+
+                            chat_chunk = ChatResponse(
+                                done=False,
+                                message=Message(
+                                    role=MessageRole.ASSISTANT,
+                                    content=content,
+                                    tool_calls=tool_calls,
+                                ),
+                                channels={
+                                    "node_metadata": self._node_metadata.model_dump(),
+                                    "chunk_metadata": metadata,
+                                },
+                            )
+                            chat_chunk.channels = self._node_metadata.model_dump()
+                            chunk_count += 1
+                            yield chat_chunk
 
                 # Yield end chunk with node metadata
                 yield create_streaming_chunk(
