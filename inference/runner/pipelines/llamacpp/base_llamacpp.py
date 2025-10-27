@@ -4,8 +4,9 @@ Uses llama-cpp-python directly instead of LangChain's ChatLlamaCpp wrapper.
 """
 
 import json
-import os
 import multiprocessing
+import os
+import re
 import time
 
 from typing import Optional, List, Any, Dict, Iterator, Type, Tuple
@@ -27,7 +28,7 @@ from langchain_core.messages import (
 from langchain_core.messages.ai import UsageMetadata
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 
-from models import Model, ModelProfile
+from models import Model, ModelProfile, OptimalParameters, RecoveryStrategy
 from models.default_configs import DEFAULT_GPU_CONFIG
 from utils.logging import llmmllogger
 from runner.utils.hardware_manager import hardware_manager
@@ -184,14 +185,12 @@ class BaseLlamaCppPipeline(BaseChatModel):
         )
         
         # Keep track of original parameters for recovery calculations
-        from runner.utils.intelligent_oom_recovery import OptimalParameters
-        
-        original_params: OptimalParameters = {
-            'n_ctx': target_n_ctx,
-            'n_batch': target_n_batch,
-            'n_ubatch': target_n_ubatch,
-            'n_gpu_layers': requested_gpu_layers
-        }
+        original_params = OptimalParameters(
+            n_ctx=target_n_ctx,
+            n_batch=target_n_batch,
+            n_ubatch=target_n_ubatch,
+            n_gpu_layers=requested_gpu_layers
+        )
         
         # Start with ML-predicted parameters
         current_params = predicted_params.copy()
@@ -209,15 +208,15 @@ class BaseLlamaCppPipeline(BaseChatModel):
             try:
                 self._logger.info(
                     f"🚀 Initializing {self.model.name} (attempt {attempt}): "
-                    f"n_ctx={current_params['n_ctx']:,}, n_batch={current_params['n_batch']}, "
-                    f"n_ubatch={current_params['n_ubatch']}, gpu_layers={current_params['n_gpu_layers']}"
+                    f"n_ctx={current_params.n_ctx:,}, n_batch={current_params.n_batch}, "
+                    f"n_ubatch={current_params.n_ubatch}, gpu_layers={current_params.n_gpu_layers}"
                 )
                 
                 start_time = time.time()
                 
                 llama_instance = llama_cpp.Llama(
                     model_path=gguf_path,
-                    n_gpu_layers=current_params['n_gpu_layers'],
+                    n_gpu_layers=current_params.n_gpu_layers,
                     split_mode=llama_cpp.LLAMA_SPLIT_MODE_ROW,
                     tensor_split=gcfg.tensor_split,
                     vocab_only=False,
@@ -226,9 +225,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     kv_overrides=None,
                     # Context Params
                     seed=self.profile.parameters.seed or llama_cpp.LLAMA_DEFAULT_SEED,
-                    n_ctx=current_params['n_ctx'],
-                    n_batch=current_params['n_batch'],
-                    n_ubatch=current_params['n_ubatch'],
+                    n_ctx=current_params.n_ctx,
+                    n_batch=current_params.n_batch,
+                    n_ubatch=current_params.n_ubatch,
                     n_threads=self._get_optimal_threads(),
                     temperature=self.profile.parameters.temperature or 0.7,
                     top_p=self.profile.parameters.top_p or 0.8,
@@ -311,8 +310,8 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 
                 self._logger.info(
                     f"✅ Successfully initialized {self.model.name} (attempt {attempt}): "
-                    f"n_ctx={current_params['n_ctx']:,}, n_batch={current_params['n_batch']}, "
-                    f"n_ubatch={current_params['n_ubatch']}, gpu_layers={current_params['n_gpu_layers']} "
+                    f"n_ctx={current_params.n_ctx:,}, n_batch={current_params.n_batch}, "
+                    f"n_ubatch={current_params.n_ubatch}, gpu_layers={current_params.n_gpu_layers} "
                     f"in {initialization_time_ms:.1f}ms"
                 )
                 
@@ -357,8 +356,8 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     current_params=current_params,
                     hardware_manager=self.hardware_manager
                 )
-                new_params = recovery_result["parameters"]
-                strategy = recovery_result["strategy_name"]
+                new_params = recovery_result.parameters
+                strategy = recovery_result.strategy_name
                 
                 # Record the failed attempt for ML training
                 self.oom_recovery.record_failure(
@@ -534,7 +533,6 @@ class BaseLlamaCppPipeline(BaseChatModel):
         Returns:
             Tuple of (cleaned_content, tool_calls_list)
         """
-        import re
 
         tool_calls = []
         cleaned_content = content
