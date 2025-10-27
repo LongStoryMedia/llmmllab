@@ -17,5 +17,5 @@ WHERE
         WHERE
             conversation_id = $1
             AND level = 1)
-    ORDER BY
-        m.created_at ASC
+ORDER BY
+    m.created_at ASC

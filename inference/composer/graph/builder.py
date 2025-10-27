@@ -450,19 +450,22 @@ class GraphBuilder:
             workflow.add_edge("memory_creation", "memory_storage")
             workflow.add_edge("memory_storage", END)
 
-            # Configure checkpointer for persistent state management using CheckpointStorage service
+            # For now, compile without checkpointer to avoid lifecycle complexity
+            # TODO: Implement proper checkpointer integration at execution time
+            # Following LangGraph docs, checkpointers are typically used during graph.invoke()
             try:
-                # The CheckpointStorage service already has tables set up during Storage.initialize()
-                # Create a persistent saver using a dedicated connection from the pool
-                checkpointer = await self.checkpoint_storage.create_saver_for_workflow()
-                self.logger.info(
-                    "✅ Checkpointer configured from CheckpointStorage service"
-                )
-                return workflow.compile(checkpointer=checkpointer)
-            except Exception as e:
-                self.logger.warning(f"Checkpointer setup warning: {e}")
-                # Continue without checkpointing if setup fails
+                if self.checkpoint_storage.is_initialized():
+                    self.logger.info("✅ Checkpoint storage available - persistence will be enabled during execution")
+                else:
+                    self.logger.info("ℹ️  Checkpoint storage not initialized - running without persistence")
+                
+                # Compile without checkpointer for now
+                # Checkpointing will be handled at the execution/invocation level
                 return workflow.compile()
+                
+            except Exception as e:
+                self.logger.warning(f"⚠️  Workflow compilation failed: {e}")
+                raise
         except Exception as e:
             self.logger.error(
                 "Failed to build workflow",

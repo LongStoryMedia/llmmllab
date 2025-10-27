@@ -21,25 +21,15 @@ Architecture:
 - Middleware boundaries: controlled data flow to/from main workflow
 """
 
-from typing import Dict, List, Any, Optional, Literal
-from typing_extensions import TypedDict, Annotated
+from typing import Dict, Any
 from dataclasses import dataclass
 
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
-from langchain_core.tools import BaseTool
-from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolNode, create_react_agent, tools_condition
+from langgraph.prebuilt import ToolNode
 from langgraph.types import Command
-from langgraph.graph.message import add_messages
 
-from models import (
-    MessageRole,
-    MessageContent,
-    MessageContentType,
-    NodeMetadata,
-    PipelinePriority,
-)
+from models import NodeMetadata, PipelinePriority
 from composer.graph.state import WorkflowState, ToolsState
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
@@ -52,6 +42,7 @@ logger = llmmllogger.bind(component="ToolsAgentSubgraph")
 @dataclass
 class ToolsContext:
     """Context schema for tools runtime - provides state access for ToolRuntime injection."""
+
     state: ToolsState
 
     def __getitem__(self, key: str) -> Any:
@@ -111,12 +102,12 @@ class ToolsAgentSubgraph:
     def _create_tool_node(self) -> ToolNode:
         """
         Create LangGraph ToolNode with proper tools list and ToolRuntime injection.
-        
+
         LangChain will automatically inject ToolRuntime for tools with `runtime: ToolRuntime` parameter.
         This is the correct pattern - no manual ToolRuntime creation needed.
         """
         try:
-            # Get executable tools from registry  
+            # Get executable tools from registry
             executable_tools = self.tool_registry.get_all_executable_tools()
             tools_dict: dict[str, Any] = executable_tools if executable_tools else {}
 
@@ -126,12 +117,14 @@ class ToolsAgentSubgraph:
 
             # Convert to list of tool functions for ToolNode
             tools_list = list(tools_dict.values())
-            
-            logger.info(f"🛠️ Creating ToolNode with {len(tools_list)} tools: {list(tools_dict.keys())}")
-            
+
+            logger.info(
+                f"🛠️ Creating ToolNode with {len(tools_list)} tools: {list(tools_dict.keys())}"
+            )
+
             # Create ToolNode - LangChain will handle ToolRuntime injection automatically
             return ToolNode(tools_list)
-            
+
         except Exception as e:
             logger.error(f"Failed to create ToolNode: {e}")
             return ToolNode([])  # Return empty tool node on error
@@ -154,7 +147,7 @@ class ToolsAgentSubgraph:
             def should_execute_tools(state: ToolsState):
                 """
                 Intelligent tool execution router with limiting middleware.
-                
+
                 Implements tool call limiting and planning middleware patterns:
                 - Limits total tool calls per session
                 - Prevents rapid-fire identical calls
@@ -164,14 +157,16 @@ class ToolsAgentSubgraph:
                 if not messages:
                     logger.info("🔀 Subgraph: No messages, finishing")
                     return "__end__"
-                
+
                 last_message = messages[-1]
-                
+
                 # Check if last message has tool calls
-                if (isinstance(last_message, AIMessage) and 
-                    hasattr(last_message, "tool_calls") and 
-                    last_message.tool_calls):
-                    
+                if (
+                    isinstance(last_message, AIMessage)
+                    and hasattr(last_message, "tool_calls")
+                    and last_message.tool_calls
+                ):
+
                     # Log tool call grouping information
                     tool_calls = last_message.tool_calls
                     grouped_calls = {}
@@ -180,82 +175,107 @@ class ToolsAgentSubgraph:
                         if tool_name not in grouped_calls:
                             grouped_calls[tool_name] = []
                         grouped_calls[tool_name].append(tc)
-                    
+
                     # Log grouping details
                     for tool_name, calls in grouped_calls.items():
                         if len(calls) > 1:
-                            logger.info(f"🛠️ Agent routing: Detected {len(calls)} grouped {tool_name} calls")
+                            logger.info(
+                                f"🛠️ Agent routing: Detected {len(calls)} grouped {tool_name} calls"
+                            )
                             if tool_name == "web_search":
-                                queries = [tc.get("args", {}).get("query", "")[:30] for tc in calls]
+                                queries = [
+                                    tc.get("args", {}).get("query", "")[:30]
+                                    for tc in calls
+                                ]
                                 logger.info(f"🛠️ Web search topics: {queries}")
-                    
+
                     # Tool call limiting middleware - count various metrics
                     ai_with_tools_count = 0
                     total_tool_calls = 0
                     recent_tool_calls = 0
                     tool_call_types = set()
-                    
+
                     for i, msg in enumerate(messages):
-                        if isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls:
+                        if (
+                            isinstance(msg, AIMessage)
+                            and hasattr(msg, "tool_calls")
+                            and msg.tool_calls
+                        ):
                             ai_with_tools_count += 1
                             total_tool_calls += len(msg.tool_calls)
-                            
+
                             # Count recent calls (last 5 messages)
                             if i >= len(messages) - 5:
                                 recent_tool_calls += len(msg.tool_calls)
-                                
+
                             # Track tool types
                             for tc in msg.tool_calls:
                                 tool_call_types.add(tc.get("name", "unknown"))
-                    
+
                     # Apply limiting middleware rules (relaxed to allow natural multiple tool calls)
-                    
+
                     # Rule 1: Total AI messages with tools limit (increased)
                     if ai_with_tools_count >= 8:
-                        logger.info(f"🔀 Subgraph: Tool limit reached - too many AI messages with tools ({ai_with_tools_count})")
+                        logger.info(
+                            f"🔀 Subgraph: Tool limit reached - too many AI messages with tools ({ai_with_tools_count})"
+                        )
                         return "__end__"
-                    
-                    # Rule 2: Total tool calls limit (increased) 
+
+                    # Rule 2: Total tool calls limit (increased)
                     if total_tool_calls >= 25:
-                        logger.info(f"🔀 Subgraph: Tool limit reached - too many total tool calls ({total_tool_calls})")
+                        logger.info(
+                            f"🔀 Subgraph: Tool limit reached - too many total tool calls ({total_tool_calls})"
+                        )
                         return "__end__"
-                    
+
                     # Rule 3: Recent tool calls limit - only prevent extreme rapid-fire
                     if recent_tool_calls >= 12:
-                        logger.info(f"🔀 Subgraph: Tool limit reached - too many recent tool calls ({recent_tool_calls})")
+                        logger.info(
+                            f"🔀 Subgraph: Tool limit reached - too many recent tool calls ({recent_tool_calls})"
+                        )
                         return "__end__"
-                    
+
                     # Rule 4: Web search result availability check
                     if "web_search" in tool_call_types:
                         # Check if we already have successful web search results
                         web_search_results_count = 0
                         for msg in messages:
-                            if isinstance(msg, ToolMessage) and "Web search completed successfully" in str(msg.content):
+                            if isinstance(
+                                msg, ToolMessage
+                            ) and "Web search completed successfully" in str(
+                                msg.content
+                            ):
                                 web_search_results_count += 1
-                        
+
                         # If we have multiple successful searches and agent wants to search again, check for redundancy
                         if web_search_results_count >= 2 and ai_with_tools_count >= 3:
-                            logger.info(f"🔀 Subgraph: Web search results already available ({web_search_results_count} successful searches), encouraging synthesis instead of more searches")
+                            logger.info(
+                                f"🔀 Subgraph: Web search results already available ({web_search_results_count} successful searches), encouraging synthesis instead of more searches"
+                            )
                             # Don't immediately end, but make this the final tool iteration
                             if ai_with_tools_count >= 4:
                                 return "__end__"
-                    
+
                     # Rule 5: Planning middleware - allow more calls of same type but with limits
                     if len(tool_call_types) == 1 and total_tool_calls >= 10:
-                        logger.info(f"🔀 Subgraph: Planning limit - too many calls of same tool type ({list(tool_call_types)})")
+                        logger.info(
+                            f"🔀 Subgraph: Planning limit - too many calls of same tool type ({list(tool_call_types)})"
+                        )
                         return "__end__"
-                    
-                    logger.info(f"🔀 Subgraph: Tool execution approved - AI msgs: {ai_with_tools_count}, total calls: {total_tool_calls}, recent: {recent_tool_calls}, types: {len(tool_call_types)}")
+
+                    logger.info(
+                        f"🔀 Subgraph: Tool execution approved - AI msgs: {ai_with_tools_count}, total calls: {total_tool_calls}, recent: {recent_tool_calls}, types: {len(tool_call_types)}"
+                    )
                     return "tools"
-                
+
                 # No tool calls, finish
-                logger.info("🔀 Subgraph: No tool calls found, finishing") 
+                logger.info("🔀 Subgraph: No tool calls found, finishing")
                 return "__end__"
-            
+
             def should_continue_agent_loop(state: ToolsState):
                 """
                 Intelligent agent loop continuation with planning middleware.
-                
+
                 Implements sophisticated planning patterns:
                 - Analyzes conversation flow and completion signals
                 - Prevents endless loops while allowing natural reasoning
@@ -265,79 +285,102 @@ class ToolsAgentSubgraph:
                 if not messages:
                     logger.info("🔀 Subgraph: No messages after tools, finishing")
                     return "__end__"
-                
+
                 # Analyze recent conversation pattern
                 recent_messages = messages[-8:]  # Analyze last 8 messages
-                tool_message_count = sum(1 for msg in recent_messages if isinstance(msg, ToolMessage))
-                ai_message_count = sum(1 for msg in recent_messages if isinstance(msg, AIMessage))
-                
+                tool_message_count = sum(
+                    1 for msg in recent_messages if isinstance(msg, ToolMessage)
+                )
+                ai_message_count = sum(
+                    1 for msg in recent_messages if isinstance(msg, AIMessage)
+                )
+
                 # Planning middleware: Analyze conversation completion signals
-                
+
                 # Signal 1: Tool results are available for processing
                 if tool_message_count > 0:
                     # Check conversation length for natural stopping points
                     total_messages = len(messages)
-                    
+
                     # Signal 2: Prevent excessive cycling (length-based)
                     if total_messages >= 20:
-                        logger.info(f"🔀 Subgraph: Conversation too long ({total_messages} messages), finishing")
+                        logger.info(
+                            f"🔀 Subgraph: Conversation too long ({total_messages} messages), finishing"
+                        )
                         return "__end__"
-                    
+
                     # Signal 3: Too many AI responses in recent context
                     if ai_message_count >= 4:
-                        logger.info(f"🔀 Subgraph: Too many recent AI messages ({ai_message_count}), finishing")
+                        logger.info(
+                            f"🔀 Subgraph: Too many recent AI messages ({ai_message_count}), finishing"
+                        )
                         return "__end__"
-                    
+
                     # Signal 4: Check if agent shows completion intent
                     last_ai_msg = None
                     for msg in reversed(messages):
                         if isinstance(msg, AIMessage):
                             last_ai_msg = msg
                             break
-                    
+
                     # If last AI message has no tool calls, agent likely completed its task
-                    if last_ai_msg and (not hasattr(last_ai_msg, "tool_calls") or not last_ai_msg.tool_calls):
+                    if last_ai_msg and (
+                        not hasattr(last_ai_msg, "tool_calls")
+                        or not last_ai_msg.tool_calls
+                    ):
                         # Additional check: look for completion phrases in content
-                        content = getattr(last_ai_msg, 'content', '').lower()
+                        content = getattr(last_ai_msg, "content", "").lower()
                         completion_signals = [
-                            'based on the search results',
-                            'in summary',
-                            'in conclusion', 
-                            'to summarize',
-                            'here\'s what i found',
-                            'the research shows',
-                            'summary of',
-                            'developments in',
-                            'latest developments',
-                            'can\'t provide more details',
-                            'limited to the titles and snippets',
-                            'for detailed insights',
-                            'further targeted investigation'
+                            "based on the search results",
+                            "in summary",
+                            "in conclusion",
+                            "to summarize",
+                            "here's what i found",
+                            "the research shows",
+                            "summary of",
+                            "developments in",
+                            "latest developments",
+                            "can't provide more details",
+                            "limited to the titles and snippets",
+                            "for detailed insights",
+                            "further targeted investigation",
                         ]
-                        
+
                         if any(signal in content for signal in completion_signals):
-                            logger.info("🔀 Subgraph: Agent shows completion intent, finishing")
+                            logger.info(
+                                "🔀 Subgraph: Agent shows completion intent, finishing"
+                            )
                             return "__end__"
-                        
+
                         # If content is substantial (agent provided comprehensive response)
                         if len(content) > 300:
-                            logger.info("🔀 Subgraph: Agent provided comprehensive response, finishing")
+                            logger.info(
+                                "🔀 Subgraph: Agent provided comprehensive response, finishing"
+                            )
                             return "__end__"
-                    
+
                     # Signal 5: Tool diversity check - if recent tools are repetitive, consider stopping
                     recent_tool_names = []
                     for msg in reversed(messages[-6:]):
-                        if isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls:
+                        if (
+                            isinstance(msg, AIMessage)
+                            and hasattr(msg, "tool_calls")
+                            and msg.tool_calls
+                        ):
                             for tc in msg.tool_calls:
                                 recent_tool_names.append(tc.get("name", "unknown"))
-                    
+
                     if len(recent_tool_names) >= 3 and len(set(recent_tool_names)) == 1:
-                        logger.info(f"🔀 Subgraph: Repetitive tool usage detected ({recent_tool_names[0]}), finishing")
+                        logger.info(
+                            f"🔀 Subgraph: Repetitive tool usage detected ({recent_tool_names[0]}), finishing"
+                        )
                         return "__end__"
-                    
-                    logger.info(f"🔀 Subgraph: Continuing agent loop - messages: {total_messages}, recent AI: {ai_message_count}, tool diversity: {len(set(recent_tool_names))}")
+
+                    logger.info(
+                        f"🔀 Subgraph: Continuing agent loop - messages: {total_messages}, recent AI: {ai_message_count}, tool diversity: {len(set(recent_tool_names))}"
+                    )
                     return "chat_agent"
-                
+
                 # Default to finishing if no clear continuation signal
                 logger.info("🔀 Subgraph: No continuation signals, finishing")
                 return "__end__"
@@ -354,7 +397,7 @@ class ToolsAgentSubgraph:
 
             # Tool executor uses intelligent routing to decide next step
             builder.add_conditional_edges(
-                "tool_executor", 
+                "tool_executor",
                 should_continue_agent_loop,
                 {
                     "chat_agent": "chat_agent",  # Continue agent loop
@@ -392,12 +435,14 @@ class ToolsAgentSubgraph:
             langchain_messages = []
             for msg in messages:
                 if isinstance(msg, HumanMessage):
-                    langchain_messages.append(LangChainMessage(
-                        content=msg.content,
-                        type="human",
-                        additional_kwargs=getattr(msg, "additional_kwargs", {}),
-                        response_metadata=getattr(msg, "response_metadata", {})
-                    ))
+                    langchain_messages.append(
+                        LangChainMessage(
+                            content=msg.content,
+                            type="human",
+                            additional_kwargs=getattr(msg, "additional_kwargs", {}),
+                            response_metadata=getattr(msg, "response_metadata", {}),
+                        )
+                    )
                 elif isinstance(msg, AIMessage):
                     # Handle tool calls properly
                     tool_calls = None
@@ -407,26 +452,30 @@ class ToolsAgentSubgraph:
                                 "name": tc.get("name", ""),
                                 "args": tc.get("args", {}),
                                 "id": tc.get("id", ""),
-                                "type": "tool_call"
+                                "type": "tool_call",
                             }
                             for tc in msg.tool_calls
                         ]
-                    
-                    langchain_messages.append(LangChainMessage(
-                        content=msg.content,
-                        type="ai",
-                        tool_calls=tool_calls,
-                        additional_kwargs=getattr(msg, "additional_kwargs", {}),
-                        response_metadata=getattr(msg, "response_metadata", {})
-                    ))
+
+                    langchain_messages.append(
+                        LangChainMessage(
+                            content=msg.content,
+                            type="ai",
+                            tool_calls=tool_calls,
+                            additional_kwargs=getattr(msg, "additional_kwargs", {}),
+                            response_metadata=getattr(msg, "response_metadata", {}),
+                        )
+                    )
                 elif isinstance(msg, ToolMessage):
-                    langchain_messages.append(LangChainMessage(
-                        content=msg.content,
-                        type="tool",
-                        id=msg.tool_call_id,
-                        additional_kwargs=getattr(msg, "additional_kwargs", {}),
-                        response_metadata=getattr(msg, "response_metadata", {})
-                    ))
+                    langchain_messages.append(
+                        LangChainMessage(
+                            content=msg.content,
+                            type="tool",
+                            id=msg.tool_call_id,
+                            additional_kwargs=getattr(msg, "additional_kwargs", {}),
+                            response_metadata=getattr(msg, "response_metadata", {}),
+                        )
+                    )
                 else:
                     # Already in LangChainMessage format
                     langchain_messages.append(msg)
@@ -445,19 +494,21 @@ class ToolsAgentSubgraph:
             if hasattr(response_msg, "tool_calls") and response_msg.tool_calls:
                 for tc in response_msg.tool_calls:
                     # Use LangGraph's expected tool call format
-                    tool_calls.append({
-                        "name": tc.get("name", ""),
-                        "args": tc.get("args", {}),
-                        "id": tc.get("id", f"call_{len(tool_calls)}"),
-                        "type": "tool_call"
-                    })
+                    tool_calls.append(
+                        {
+                            "name": tc.get("name", ""),
+                            "args": tc.get("args", {}),
+                            "id": tc.get("id", f"call_{len(tool_calls)}"),
+                            "type": "tool_call",
+                        }
+                    )
 
             # Create AIMessage compatible with LangGraph ToolNode
             ai_message = AIMessage(
                 content=response_msg.content or "",
                 tool_calls=tool_calls,
                 additional_kwargs=getattr(response_msg, "additional_kwargs", {}),
-                response_metadata=getattr(response_msg, "response_metadata", {})
+                response_metadata=getattr(response_msg, "response_metadata", {}),
             )
 
             # Return new message in state update format
@@ -466,6 +517,7 @@ class ToolsAgentSubgraph:
         except Exception as e:
             logger.error(f"Chat agent wrapper failed: {e}")
             import traceback
+
             traceback.print_exc()
             # Return error message
             error_msg = AIMessage(content=f"Agent error: {str(e)}")
@@ -490,23 +542,30 @@ class ToolsAgentSubgraph:
                     if hasattr(msg, "tool_calls") and msg.tool_calls:
                         for tc in msg.tool_calls:
                             if isinstance(tc, dict):
-                                tool_calls.append({
-                                    "name": tc.get("name", ""),
-                                    "args": tc.get("args", {}),
-                                    "id": tc.get("id", "unknown"),
-                                    "type": "tool_call"
-                                })
+                                tool_calls.append(
+                                    {
+                                        "name": tc.get("name", ""),
+                                        "args": tc.get("args", {}),
+                                        "id": tc.get("id", "unknown"),
+                                        "type": "tool_call",
+                                    }
+                                )
                             else:
                                 # Handle other tool call formats
-                                tool_calls.append({
-                                    "name": getattr(tc, "name", ""),
-                                    "args": getattr(tc, "args", {}),
-                                    "id": getattr(tc, "id", "unknown"),
-                                    "type": "tool_call"
-                                })
-                    
+                                tool_calls.append(
+                                    {
+                                        "name": getattr(tc, "name", ""),
+                                        "args": getattr(tc, "args", {}),
+                                        "id": getattr(tc, "id", "unknown"),
+                                        "type": "tool_call",
+                                    }
+                                )
+
                     langchain_messages.append(
-                        AIMessage(content=msg.content, tool_calls=tool_calls if tool_calls else [])
+                        AIMessage(
+                            content=msg.content,
+                            tool_calls=tool_calls if tool_calls else [],
+                        )
                     )
                 elif msg.type == "tool":
                     langchain_messages.append(
@@ -591,7 +650,9 @@ class ToolsAgentSubgraph:
             # Execute the agent subgraph with higher recursion limit for intelligent cycling
             result = await self.graph.ainvoke(
                 tools_state,
-                config={"recursion_limit": 20},  # Allow intelligent agent cycling with tools
+                config={
+                    "recursion_limit": 20
+                },  # Allow intelligent agent cycling with tools
             )
 
             # Transform results back to main state updates
