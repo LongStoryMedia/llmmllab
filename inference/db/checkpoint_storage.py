@@ -10,7 +10,6 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langchain_core.runnables import RunnableConfig
 from db.db_utils import typed_pool
 from utils.logging import llmmllogger
-from models.database_config import DatabaseConfig
 
 logger = llmmllogger.bind(component="checkpoint_storage")
 
@@ -33,22 +32,19 @@ class CheckpointStorage:
         self._saver_ready = False
         self._connection_string: Optional[str] = None
 
-    async def initialize(self, db_config: DatabaseConfig) -> None:
+    async def initialize(self, connection_string: str) -> None:
         """Initialize checkpoint tables and LangGraph saver."""
         try:
             # Create checkpoint tables if they don't exist
             async with self.typed_pool.acquire() as conn:
                 await conn.execute(self.get_query("checkpoint.create_langgraph_checkpoint_tables"))
             
-            # Initialize LangGraph saver using connection string
-            conn_string = f"postgresql://{db_config.user}:{db_config.password}@{db_config.host}:{db_config.port}/{db_config.dbname}"
-            
             # Create AsyncPostgresSaver using from_conn_string
-            async with AsyncPostgresSaver.from_conn_string(conn_string) as saver:
+            async with AsyncPostgresSaver.from_conn_string(connection_string) as saver:
                 await saver.setup()
                 # Store the saver for later use - note this is a temporary connection
                 # We'll create new connections as needed
-                self._connection_string = conn_string
+                self._connection_string = connection_string
                 self._saver_ready = True
             
             self.logger.info("Checkpoint storage initialized successfully")

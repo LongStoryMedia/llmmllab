@@ -98,7 +98,7 @@ class Storage:
             self.checkpoint = CheckpointStorage(self.pool, get_query)
             
             # Initialize checkpoint storage
-            await self.checkpoint.initialize()
+            await self.checkpoint.initialize(connection_string)
 
             self.initialized = True
             logger.info("Storage components initialized successfully")
