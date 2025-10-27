@@ -26,7 +26,14 @@ SELECT
             ORDER BY th.created_at)
         FROM thoughts th
         WHERE
-            th.message_id = m.id), '[]'::json) AS thoughts
+            th.message_id = m.id), '[]'::json) AS thoughts,
+    COALESCE((
+        SELECT
+            JSON_AGG(JSON_BUILD_OBJECT('id', a.id, 'message_id', a.message_id, 'workflow_type', a.workflow_type, 'complexity_level', a.complexity_level, 'required_capabilities', a.required_capabilities, 'domain_specificity', a.domain_specificity, 'reusability_potential', a.reusability_potential, 'confidence', a.confidence, 'response_format', a.response_format, 'technical_domain', a.technical_domain, 'requires_tools', a.requires_tools, 'requires_custom_tools', a.requires_custom_tools, 'tool_complexity_score', a.tool_complexity_score, 'computational_requirements', a.computational_requirements, 'created_at', a.created_at)
+            ORDER BY a.created_at)
+        FROM analyses a
+        WHERE
+            a.message_id = m.id), '[]'::json) AS analyses
 FROM
     messages m
 WHERE

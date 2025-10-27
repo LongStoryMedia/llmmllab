@@ -11,7 +11,7 @@ import json
 from typing import AsyncGenerator, Any, Dict, List
 from typing_extensions import TypedDict
 
-from langchain_core.runnables.schema import StandardStreamEvent, CustomStreamEvent
+from langchain_core.runnables import RunnableConfig
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -151,16 +151,22 @@ async def chat_completion(
                 # Execute workflow with state and checkpointing
                 events = []
                 final_response_data = {}
-                
+
                 # Configure threading for persistent state management
-                config = {
-                    "configurable": {
-                        "thread_id": str(conversation_id),  # Use conversation_id as thread for checkpointing
+                config = RunnableConfig(
+                    configurable={
+                        "thread_id": str(
+                            conversation_id
+                        ),  # Use conversation_id as thread for checkpointing
                         "checkpoint_ns": "",
                     }
-                }
+                )
 
-                async for event in workflow.astream_events(initial_state, config=config, version="v2"):
+                async for event in workflow.astream_events(
+                    initial_state,
+                    config=config,
+                    version="v2",
+                ):
                     events.append(event)
 
                     # Handle both dict and object event formats

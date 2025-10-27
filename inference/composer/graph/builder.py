@@ -455,7 +455,9 @@ class GraphBuilder:
                 # The CheckpointStorage service already has tables set up during Storage.initialize()
                 # Create a persistent saver using a dedicated connection from the pool
                 checkpointer = await self.checkpoint_storage.create_saver_for_workflow()
-                self.logger.info("✅ Checkpointer configured from CheckpointStorage service")
+                self.logger.info(
+                    "✅ Checkpointer configured from CheckpointStorage service"
+                )
                 return workflow.compile(checkpointer=checkpointer)
             except Exception as e:
                 self.logger.warning(f"Checkpointer setup warning: {e}")

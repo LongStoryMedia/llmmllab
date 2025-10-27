@@ -13,6 +13,7 @@ from models.message_content_type import MessageContentType
 from models.tool_call import ToolCall
 from models.thought import Thought
 from models.resource_usage import ResourceUsage
+from models.intent_analysis import IntentAnalysis
 from db.cache_storage import cache_storage
 from db.db_utils import TypedConnection, typed_pool
 from utils.logging import llmmllogger
@@ -44,14 +45,16 @@ class MessageStorage:
                     message.role,
                 )
                 message_id = row["id"] if row and "id" in row else None
-                
+
                 if not message_id:
                     self.logger.error("Failed to get message_id after insert")
                     return None
 
                 # Insert message contents
                 if message.content:
-                    await self._insert_message_contents(conn, message_id, message.content)
+                    await self._insert_message_contents(
+                        conn, message_id, message.content
+                    )
 
                 # Insert tool_calls if present
                 if message.tool_calls:
@@ -67,9 +70,13 @@ class MessageStorage:
                 # Cache and invalidate appropriately
                 try:
                     cache_storage.cache_message(message)
-                    cache_storage.invalidate_conversation_messages_cache(message.conversation_id)
+                    cache_storage.invalidate_conversation_messages_cache(
+                        message.conversation_id
+                    )
                 except Exception as e:
-                    self.logger.warning(f"Failed to update cache for message {message_id}: {e}")
+                    self.logger.warning(
+                        f"Failed to update cache for message {message_id}: {e}"
+                    )
 
                 return message_id
 
@@ -90,7 +97,7 @@ class MessageStorage:
 
             # Parse all related data from the row
             message_data = self._parse_message_row(dict(row))
-            
+
             message = Message(**message_data)
 
             # Cache the result for future use
@@ -118,8 +125,12 @@ class MessageStorage:
             )
             message_dicts = [dict(row) for row in rows]
 
-            messages = await self._build_messages(conversation_id, message_dicts, conn) if message_dicts else []
-            
+            messages = (
+                await self._build_messages(conversation_id, message_dicts, conn)
+                if message_dicts
+                else []
+            )
+
             if messages:
                 try:
                     cache_storage.cache_conversation_messages(conversation_id, messages)
@@ -135,7 +146,9 @@ class MessageStorage:
         Gets messages for a conversation by conversation_id with pagination.
         """
         # Check cache first
-        cached_messages = cache_storage.get_messages_by_conversation_id_from_cache(conversation_id)
+        cached_messages = cache_storage.get_messages_by_conversation_id_from_cache(
+            conversation_id
+        )
         if cached_messages:
             return cached_messages
 
@@ -148,11 +161,17 @@ class MessageStorage:
                 offset,
             )
             message_dicts = [dict(row) for row in rows]
-            messages = await self._build_messages(conversation_id, message_dicts, conn) if message_dicts else []
-            
+            messages = (
+                await self._build_messages(conversation_id, message_dicts, conn)
+                if message_dicts
+                else []
+            )
+
             if messages:
                 try:
-                    cache_storage.cache_messages_by_conversation_id(conversation_id, messages)
+                    cache_storage.cache_messages_by_conversation_id(
+                        conversation_id, messages
+                    )
                 except Exception as e:
                     self.logger.warning(f"Failed to cache paginated messages: {e}")
 
@@ -166,7 +185,9 @@ class MessageStorage:
         # Get the message to find its conversation_id before deletion
         message = await self.get_message(message_id)
         if not message:
-            self.logger.warning(f"Message {message_id} not found and could not be deleted")
+            self.logger.warning(
+                f"Message {message_id} not found and could not be deleted"
+            )
             return
 
         async with self.typed_pool.acquire() as conn:
@@ -176,26 +197,34 @@ class MessageStorage:
                 await conn.execute(
                     self.get_query("message.delete_message_record"), message_id
                 )
-                self.logger.info(f"Deleted message {message_id} and related data from database")
+                self.logger.info(
+                    f"Deleted message {message_id} and related data from database"
+                )
 
         # Invalidate caches
         try:
             cache_storage.invalidate_message_cache(message_id)
             if message.conversation_id:
-                cache_storage.invalidate_conversation_messages_cache(message.conversation_id)
+                cache_storage.invalidate_conversation_messages_cache(
+                    message.conversation_id
+                )
         except Exception as e:
-            self.logger.warning(f"Failed to invalidate cache for deleted message {message_id}: {e}")
+            self.logger.warning(
+                f"Failed to invalidate cache for deleted message {message_id}: {e}"
+            )
 
-    async def bulk_delete_messages_from_timestamp(self, conversation_id: int, from_timestamp: datetime) -> int:
+    async def bulk_delete_messages_from_timestamp(
+        self, conversation_id: int, from_timestamp: datetime
+    ) -> int:
         """
         Delete all messages in a conversation created at or after the specified timestamp.
         This is more efficient than deleting messages one by one, especially with TimescaleDB.
         Cascade delete triggers automatically handle related data (message_contents, thoughts, tool_calls, analyses).
-        
+
         Args:
             conversation_id: The conversation ID
             from_timestamp: Delete messages created at or after this timestamp
-            
+
         Returns:
             Number of messages deleted
         """
@@ -204,18 +233,25 @@ class MessageStorage:
                 # Delete messages - cascade triggers will automatically delete related data
                 # (message_contents, thoughts, tool_calls, analyses, etc.)
                 message_result = await conn.execute(
-                    self.get_query("message.delete_messages_from_timestamp"), 
-                    conversation_id, from_timestamp
+                    self.get_query("message.delete_messages_from_timestamp"),
+                    conversation_id,
+                    from_timestamp,
                 )
-                
+
                 # Extract the number of deleted rows from the command result
-                deleted_count = int(message_result.split()[-1]) if message_result and message_result.split() else 0
-                
-                logger.info(f"Bulk deleted {deleted_count} messages from conversation {conversation_id} created >= {from_timestamp} (cascade triggers handled related data)")
+                deleted_count = (
+                    int(message_result.split()[-1])
+                    if message_result and message_result.split()
+                    else 0
+                )
+
+                logger.info(
+                    f"Bulk deleted {deleted_count} messages from conversation {conversation_id} created >= {from_timestamp} (cascade triggers handled related data)"
+                )
 
         # Invalidate conversation messages list cache
         cache_storage.invalidate_conversation_messages_cache(conversation_id)
-        
+
         return deleted_count
 
     async def _build_messages(
@@ -226,12 +262,15 @@ class MessageStorage:
         for msg_dict in message_dicts:
             try:
                 # Ensure conversation_id is set
-                if "conversation_id" not in msg_dict or msg_dict["conversation_id"] is None:
+                if (
+                    "conversation_id" not in msg_dict
+                    or msg_dict["conversation_id"] is None
+                ):
                     msg_dict["conversation_id"] = conversation_id
 
                 # Parse all message data using the unified parser
                 message_data = self._parse_message_row(msg_dict)
-                
+
                 # Create the Message object
                 message_obj = Message(**message_data)
                 messages.append(message_obj)
@@ -242,7 +281,9 @@ class MessageStorage:
 
         return messages
 
-    async def _insert_message_contents(self, conn: TypedConnection, message_id: int, contents: List[MessageContent]) -> None:
+    async def _insert_message_contents(
+        self, conn: TypedConnection, message_id: int, contents: List[MessageContent]
+    ) -> None:
         """Helper method to insert message contents."""
         for content in contents:
             await conn.execute(
@@ -253,13 +294,15 @@ class MessageStorage:
                 content.url,
             )
 
-    async def _insert_tool_calls(self, conn: TypedConnection, message_id: int, tool_calls: List[ToolCall]) -> None:
+    async def _insert_tool_calls(
+        self, conn: TypedConnection, message_id: int, tool_calls: List[ToolCall]
+    ) -> None:
         """Helper method to insert tool calls."""
         for tool_call in tool_calls:
             # Convert resource_usage to dict if it's a ResourceUsage object
             resource_usage_dict = None
             if tool_call.resource_usage:
-                if hasattr(tool_call.resource_usage, 'dict'):
+                if hasattr(tool_call.resource_usage, "dict"):
                     resource_usage_dict = tool_call.resource_usage.dict()
                 else:
                     resource_usage_dict = tool_call.resource_usage
@@ -277,7 +320,9 @@ class MessageStorage:
                 json.dumps(resource_usage_dict) if resource_usage_dict else None,
             )
 
-    async def _insert_thoughts(self, conn: TypedConnection, message_id: int, thoughts: List[Thought]) -> None:
+    async def _insert_thoughts(
+        self, conn: TypedConnection, message_id: int, thoughts: List[Thought]
+    ) -> None:
         """Helper method to insert thoughts."""
         for thought in thoughts:
             await conn.execute(
@@ -289,16 +334,19 @@ class MessageStorage:
     def _parse_message_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
         """
         Parse a database row containing message data with aggregated JSON fields.
-        Handles contents, tool_calls, and thoughts aggregation.
+        Handles contents, tool_calls, thoughts, and analyses aggregation.
         """
         # Parse message contents from JSON array
         contents = self._parse_contents(row.get("contents"))
-        
-        # Parse tool_calls from JSON array  
+
+        # Parse tool_calls from JSON array
         tool_calls = self._parse_tool_calls(row.get("tool_calls"))
-        
+
         # Parse thoughts from JSON array
         thoughts = self._parse_thoughts(row.get("thoughts"))
+
+        # Parse analyses from JSON array
+        analyses = self._parse_analyses(row.get("analyses"))
 
         return {
             "id": row["id"],
@@ -308,6 +356,7 @@ class MessageStorage:
             "content": contents,
             "tool_calls": tool_calls if tool_calls else None,
             "thoughts": thoughts if thoughts else None,
+            "analyses": analyses if analyses else None,
         }
 
     def _parse_contents(self, contents_data: Any) -> List[MessageContent]:
@@ -325,12 +374,14 @@ class MessageStorage:
         for content_data in parsed_data:
             contents.append(
                 MessageContent(
-                    type=MessageContentType(content_data.get("type", MessageContentType.TEXT)),
+                    type=MessageContentType(
+                        content_data.get("type", MessageContentType.TEXT)
+                    ),
                     text=content_data.get("text_content", ""),
                     url=content_data.get("url"),
                 )
             )
-        
+
         return contents
 
     def _parse_tool_calls(self, tool_calls_data: Any) -> Optional[List[ToolCall]]:
@@ -375,7 +426,7 @@ class MessageStorage:
             return None
 
         thoughts = []
-        # Parse JSON data (could be string or already parsed) 
+        # Parse JSON data (could be string or already parsed)
         if isinstance(thoughts_data, str):
             parsed_data = json.loads(thoughts_data)
         else:
@@ -393,10 +444,67 @@ class MessageStorage:
 
         return thoughts if thoughts else None
 
+    def _parse_analyses(self, analyses_data: Any) -> Optional[List[IntentAnalysis]]:
+        """Parse analyses from JSON data."""
+        if not analyses_data:
+            return None
+
+        analyses = []
+        # Parse JSON data (could be string or already parsed)
+        if isinstance(analyses_data, str):
+            parsed_data = json.loads(analyses_data)
+        else:
+            parsed_data = analyses_data
+
+        for analysis_data in parsed_data:
+            try:
+                # Convert JSON fields back to proper types
+                from models.workflow_type import WorkflowType
+                from models.complexity_level import ComplexityLevel
+                from models.required_capability import RequiredCapability
+                from models.computational_requirement import ComputationalRequirement
+
+                # Parse enums and JSON fields
+                workflow_type = WorkflowType(analysis_data.get("workflow_type", "UNKNOWN"))
+                complexity_level = ComplexityLevel(analysis_data.get("complexity_level", "LOW"))
+                
+                required_capabilities = []
+                if analysis_data.get("required_capabilities"):
+                    for cap in analysis_data["required_capabilities"]:
+                        try:
+                            required_capabilities.append(RequiredCapability(cap))
+                        except (ValueError, TypeError):
+                            pass  # Skip invalid capabilities
+                
+                computational_requirements = ComputationalRequirement(
+                    analysis_data.get("computational_requirements", "MINIMAL")
+                )
+
+                analysis = IntentAnalysis(
+                    workflow_type=workflow_type,
+                    complexity_level=complexity_level,
+                    required_capabilities=required_capabilities,
+                    domain_specificity=float(analysis_data.get("domain_specificity", 0.0)),
+                    reusability_potential=float(analysis_data.get("reusability_potential", 0.0)),
+                    confidence=float(analysis_data.get("confidence", 0.0)),
+                    response_format=analysis_data.get("response_format"),
+                    technical_domain=analysis_data.get("technical_domain"),
+                    requires_tools=bool(analysis_data.get("requires_tools", False)),
+                    requires_custom_tools=bool(analysis_data.get("requires_custom_tools", False)),
+                    tool_complexity_score=float(analysis_data.get("tool_complexity_score", 0.0)),
+                    computational_requirements=computational_requirements,
+                )
+                analyses.append(analysis)
+            except Exception as e:
+                self.logger.warning(f"Failed to parse analysis data: {e}")
+                continue
+
+        return analyses if analyses else None
+
     def _validate_cached_messages(self, cached_messages: Any) -> List[Message]:
         """Validate and clean cached messages data."""
         validated_messages = []
-        
+
         # Ensure cached_messages is iterable
         if not isinstance(cached_messages, list):
             cached_messages = [cached_messages]
@@ -406,7 +514,9 @@ class MessageStorage:
             if not msg.content:
                 msg.content = [MessageContent(type=MessageContentType.TEXT, text="")]
             elif not isinstance(msg.content, list):
-                msg.content = [MessageContent(type=MessageContentType.TEXT, text=str(msg.content))]
+                msg.content = [
+                    MessageContent(type=MessageContentType.TEXT, text=str(msg.content))
+                ]
 
             validated_messages.append(msg)
 

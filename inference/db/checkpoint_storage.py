@@ -292,10 +292,10 @@ class CheckpointStorage:
         # LangGraph expects a persistent saver instance. We need to create one using
         # a dedicated connection that will live for the workflow duration.
         # This requires using the connection pool to get a persistent connection.
-        
+
         # Get a persistent connection from the pool for the checkpointer
         conn = await self.pool.acquire()
-        
+
         try:
             # Create the saver with the persistent connection
             # Note: This connection will be managed by the saver lifecycle
