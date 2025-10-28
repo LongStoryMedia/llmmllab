@@ -2,4 +2,4 @@
 INSERT INTO conversations(user_id, title)
   VALUES ($1, $2)
 RETURNING
-  id
+  id, user_id, title, created_at, updated_at

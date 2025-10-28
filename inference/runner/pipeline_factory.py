@@ -136,6 +136,26 @@ class PipelineFactory:
 
         details_dict = data.get("details", {}) or {}
         try:
+            # Map specialization values to valid schema enum values
+            specialization = details_dict.get("specialization")
+            if specialization:
+                # Map invalid specialization values to valid ones
+                specialization_map = {
+                    "ImageTextToText": "Text",
+                    "TextGeneration": "Text", 
+                    "TextSummarization": "Text",
+                    "TextToText": "Text",
+                    "TextToEmbeddings": "Embedding",
+                    # Valid values remain unchanged
+                    "Text": "Text",
+                    "LoRA": "LoRA", 
+                    "Embedding": "Embedding",
+                    "TextToImage": "TextToImage",
+                    "ImageToImage": "ImageToImage",
+                    "Audio": "Audio"
+                }
+                specialization = specialization_map.get(specialization, "Text")  # Default to "Text"
+                
             details = ModelDetails(
                 parent_model=details_dict.get("parent_model"),
                 format=str(details_dict.get("format", "")),
@@ -143,7 +163,7 @@ class PipelineFactory:
                 families=list(details_dict.get("families", [])),
                 parameter_size=str(details_dict.get("parameter_size", "")),
                 quantization_level=details_dict.get("quantization_level"),
-                specialization=details_dict.get("specialization"),
+                specialization=specialization,
                 dtype=str(details_dict.get("dtype", "bf16")),
                 precision=str(details_dict.get("precision", "fp16")),
                 weight=float(details_dict.get("weight", 1.0)),

@@ -405,10 +405,17 @@ class ComposerRealEndToEndTester:
             logger.info(f"   ✅ Ensured user exists: {self.test_user_id}")
 
             # Create real conversation
-            conversation_id = await storage.conversation.create_conversation(
+            from models.conversation import Conversation
+            from datetime import datetime
+            
+            test_conversation = Conversation(
+                id=0,  # Will be set by database
                 user_id=self.test_user_id,
                 title="Composer Real End-to-End Test Conversation",
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
             )
+            conversation_id = await storage.conversation.create_conversation(test_conversation)
 
             if not conversation_id:
                 raise RuntimeError("Failed to create conversation")
