@@ -287,16 +287,7 @@ class BaseAgent(ABC, Generic[T]):
                     else:
                         convo.append(msg)
 
-                # Count existing tool calls in conversation to modify system prompt
-                tool_call_count = sum(1 for msg in convo if msg.role == MessageRole.TOOL)
-                
-                # Ultra aggressive system prompt modification to prevent infinite tool calling
-                if tool_call_count >= 2:
-                    system_prompt += "\n\nCRITICAL INSTRUCTION: You have already used tools extensively in this conversation. DO NOT USE ANY MORE TOOLS. DO NOT MAKE ANY FUNCTION CALLS. Provide your final comprehensive response NOW using only the information you already have. This is mandatory - no exceptions."
-                elif tool_call_count >= 1:
-                    system_prompt += "\n\nIMPORTANT: You have already used tools in this conversation. Use tools very sparingly and only if absolutely critical. Prefer providing a response with available information."
-                
-                self.logger.info(f"🔀 Agent: Tool call count = {tool_call_count}, modified system prompt accordingly")
+                # No system prompt modifications - let LangChain handle routing
 
                 # ToolRuntime handles parameter injection automatically - use tools directly  
                 agent = create_agent(
@@ -317,7 +308,7 @@ class BaseAgent(ABC, Generic[T]):
                 async for chunk in agent.astream(
                     npt,  # type: ignore
                     stream_mode="messages",
-                    config={"recursion_limit": 5}  # Allow: query -> tool -> result -> response -> end
+                    # Use LangChain defaults - no custom recursion limits
                 ):
                     # stream_mode "messages" returns AIMessageChunk objects with metadata
                     from langchain_core.messages import AIMessageChunk
@@ -457,16 +448,7 @@ class BaseAgent(ABC, Generic[T]):
                     else:
                         convo.append(msg)
                 
-                # Count existing tool calls in conversation to modify system prompt
-                tool_call_count = sum(1 for msg in convo if msg.role == MessageRole.TOOL)
-                
-                # Ultra aggressive system prompt modification to prevent infinite tool calling
-                if tool_call_count >= 2:
-                    system_prompt += "\n\nCRITICAL INSTRUCTION: You have already used tools extensively in this conversation. DO NOT USE ANY MORE TOOLS. DO NOT MAKE ANY FUNCTION CALLS. Provide your final comprehensive response NOW using only the information you already have. This is mandatory - no exceptions."
-                elif tool_call_count >= 1:
-                    system_prompt += "\n\nIMPORTANT: You have already used tools in this conversation. Use tools very sparingly and only if absolutely critical. Prefer providing a response with available information."
-                
-                self.logger.info(f"🔀 Agent: Tool call count = {tool_call_count}, modified system prompt accordingly")
+                # No system prompt modifications - let LangChain handle routing
 
                 # Create LangChain agent using create_agent()
                 agent = create_agent(
@@ -482,7 +464,7 @@ class BaseAgent(ABC, Generic[T]):
                 # Execute agent with controlled recursion limit
                 result = await agent.ainvoke(
                     {"messages": normalized_messages},  # type: ignore
-                    config={"recursion_limit": 5},  # Allow: query -> tool -> result -> response -> end
+                    # Use LangChain defaults - no custom recursion limits
                     grammar=grammar,
                     tools=tools,
                 )

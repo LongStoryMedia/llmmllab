@@ -14,15 +14,20 @@ logger = llmmllogger.bind(component="conversation_storage")
 
 
 class ConversationStorage:
-    def __init__(self, pool: asyncpg.Pool, get_query):
+    def __init__(self, pool: asyncpg.Pool, get_query, user_storage=None):
         self.pool = pool
         self.typed_pool = typed_pool(pool)
         self.get_query = get_query
+        self.user_storage = user_storage  # Will be set by Storage class
 
     async def create_conversation(self, conversation: Conversation) -> Optional[int]:
         async with self.typed_pool.acquire() as conn:
-            # Ensure the user exists before creating the conversation
-            await conn.execute(self.get_query("user.ensure_user"), conversation.user_id)
+            # Ensure the user exists with proper default config before creating the conversation
+            if self.user_storage:
+                await self.user_storage.ensure_user_exists(conversation.user_id)
+            else:
+                # Fallback to old method if UserStorage not available
+                await conn.execute(self.get_query("user.ensure_user"), conversation.user_id)
 
             row = await conn.fetchrow(
                 self.get_query("conversation.create_conversation"),

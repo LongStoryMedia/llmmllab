@@ -1,24 +1,14 @@
 """
-Tools Agent Subgraph - Clean LangGraph agent with built-in routing.
+Tools Agent Subgraph - Simple LangChain Agent Pattern
 
-This subgraph implements proper LangGraph agent patterns using LangChain's built-in
-tools_condition for routing instead of manual planning logic. Planning decisions
-are delegated to the PlanningIntentSubgraph, and rate limiting uses LangGraph's
-built-in recursion limits.
+Following the exact pattern from LangChain documentation:
+https://docs.langchain.com/oss/python/langgraph/workflows-agents#agents
 
-Key Benefits:
-1. Built-in routing - uses LangGraph's tools_condition for proper agent cycling
-2. Separation of concerns - planning handled by PlanningIntentSubgraph
-3. Minimal state - ToolsState with only essential fields for tool execution
-4. ToolRuntime pattern - all tools use modern ToolRuntime[ToolsState] injection
-5. Clean architecture - focused only on tool execution, not planning decisions
-
-Architecture:
-- ToolsState: Minimal state optimized for agent operations
-- chat_agent: LLM node that can make tool calls using available tools
-- tool_executor: ToolNode that executes tools with ToolRuntime[ToolsState] access
-- tools_condition: Built-in LangChain routing for proper agent termination
-- Rate limiting: Uses LangGraph's recursion_limit instead of manual middleware
+Simple architecture:
+1. chat_agent: LLM node that can call tools
+2. tool_executor: ToolNode that executes tools
+3. Built-in tools_condition for routing
+4. No custom logic - let LangChain handle everything
 """
 
 from typing import Dict, Any
@@ -33,6 +23,10 @@ from models import LangChainMessage, NodeMetadata
 from composer.graph.state import WorkflowState, ToolsState
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
+from composer.utils.conversion import (
+    convert_base_langchain_to_messages,
+    convert_messages_to_langchain,
+)
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="ToolsAgentSubgraph")
@@ -40,10 +34,7 @@ logger = llmmllogger.bind(component="ToolsAgentSubgraph")
 
 class ToolsAgentSubgraph:
     """
-    Complete agent subgraph with chat_agent + tool_node cycling workflow.
-
-    Uses proper dependency injection pattern like the main graph builder,
-    with ChatAgent and ToolRegistry dependencies.
+    Simple agent subgraph following LangChain quickstart pattern.
     """
 
     def __init__(
@@ -55,16 +46,6 @@ class ToolsAgentSubgraph:
         self.tool_registry = tool_registry
         self.chat_agent = chat_agent
         self.graph = None
-
-        # Create node metadata for the subgraph agents
-        self.subgraph_metadata = NodeMetadata(
-            node_name="tools_agent_subgraph",
-            node_id="tools_agent_subgraph",
-            node_type="subgraph",
-            user_id="system",  # Will be updated at runtime
-            conversation_id=0,  # Will be updated at runtime
-        )
-
         self._build_graph()
 
     def _create_tool_node(self) -> ToolNode:
@@ -100,282 +81,47 @@ class ToolsAgentSubgraph:
             return ToolNode([])  # Return empty tool node on error
 
     def _build_graph(self) -> None:
-        """Build the complete agent subgraph using proper dependency injection."""
+        """Build simple agent following LangChain quickstart pattern."""
         try:
-            # Build graph with StateGraph pattern like main builder
-            # ToolRuntime automatically gets state access - no context_schema needed
+            # Simple StateGraph following LangChain docs exactly
             builder = StateGraph(ToolsState)
 
-            # Add chat agent node - will be created at runtime with proper context
+            # Add chat agent node
             builder.add_node("chat_agent", self._chat_agent_wrapper)
 
-            # Add tool executor node - using LangGraph's ToolNode with automatic ToolRuntime injection
+            # Add tool executor node
             tool_node = self._create_tool_node()
             builder.add_node("tool_executor", tool_node)
 
-            # Use LangChain's built-in tools_condition for routing
-            # This handles all the complex logic of determining whether tools should execute
-            # Rate limiting and planning logic is handled by middleware
-
-            # Enhanced logic to prevent infinite tool calling loops
-            def should_continue_after_tools(state: ToolsState):
-                """
-                Determine whether to continue agent loop or end subgraph after tools execute.
-                
-                Logic:
-                1. Count tool execution cycles - limit to prevent infinite loops
-                2. If we have tool results, allow ONE response generation then END
-                3. If agent keeps generating tool calls instead of responses, force END
-                """
-                messages = state.get("messages", [])
-                logger.info(f"🔀 should_continue_after_tools: ENTRY - Processing {len(messages)} messages")
-                
-                if not messages:
-                    logger.info("🔀 Subgraph: No messages after tools, finishing")
-                    return END
-
-                # Count tool execution cycles by counting ToolMessage instances
-                tool_execution_count = sum(1 for msg in messages if isinstance(msg, ToolMessage))
-                logger.info(f"🔀 should_continue_after_tools: Found {tool_execution_count} tool executions")
-                
-                # ULTRA AGGRESSIVE: Force END after just 2 tool executions
-                if tool_execution_count >= 2:
-                    logger.info(f"🔀 should_continue_after_tools: ULTRA AGGRESSIVE - Tool execution limit reached ({tool_execution_count} executions), FORCING END")
-                    return END
-
-                # Count recent AI messages to detect response patterns
-                recent_ai_count = 0
-                recent_tool_count = 0
-                
-                # Look at last 10 messages to understand the pattern
-                for msg in messages[-10:]:
-                    if isinstance(msg, ToolMessage):
-                        recent_tool_count += 1
-                    elif isinstance(msg, AIMessage):
-                        recent_ai_count += 1
-
-                # If we have tool results but multiple AI messages without ending, force END
-                if recent_tool_count > 0 and recent_ai_count >= 3:
-                    logger.info(f"🔀 Subgraph: Multiple AI responses ({recent_ai_count}) after tools ({recent_tool_count}), finishing to prevent loop")
-                    return END
-
-                # Check if we have recent tool execution
-                has_recent_tool = any(isinstance(msg, ToolMessage) for msg in messages[-3:])
-                
-                if has_recent_tool:
-                    # Check if there's already an AI response after the most recent tool message
-                    last_tool_index = -1
-                    for i in reversed(range(len(messages))):
-                        if isinstance(messages[i], ToolMessage):
-                            last_tool_index = i
-                            break
-                    
-                    if last_tool_index >= 0:
-                        # Check if there's an AI message after the last tool message
-                        has_ai_after_tool = False
-                        for i in range(last_tool_index + 1, len(messages)):
-                            if isinstance(messages[i], AIMessage):
-                                has_ai_after_tool = True
-                                break
-                        
-                        if has_ai_after_tool:
-                            logger.info("🔀 Subgraph: AI already responded to tools, finishing")
-                            return END
-                        else:
-                            # ULTRA AGGRESSIVE: After 2+ tool executions, force END immediately
-                            if tool_execution_count >= 2:
-                                logger.info(f"🔀 Subgraph: ULTRA AGGRESSIVE - {tool_execution_count} tool executions complete, FORCING END to prevent infinite loop")
-                                return END
-                            logger.info(f"🔀 Subgraph: Tools executed (cycle {tool_execution_count}), allowing ONE final response")
-                            return "chat_agent"
-
-                # Default to ending - be more conservative about continuation
-                logger.info("🔀 Subgraph: Default case, finishing subgraph")
-                return END
-
-            # Custom routing function that enforces tool execution limits
-            def enhanced_tools_condition(state: ToolsState):
-                """
-                Enhanced routing logic that combines tools_condition with execution limits.
-                
-                Prevents infinite tool calling by enforcing hard limits at the routing level.
-                """
-                messages = state.get("messages", [])
-                logger.info(f"🔀 Enhanced routing: ENTRY - Processing {len(messages)} messages")
-                
-                if not messages:
-                    logger.info("🔀 Enhanced routing: No messages, ending")
-                    return END
-
-                # Count total tool executions to enforce hard limit
-                tool_execution_count = sum(1 for msg in messages if isinstance(msg, ToolMessage))
-                logger.info(f"🔀 Enhanced routing: Found {tool_execution_count} tool executions in messages")
-                
-                # DEBUG: Log all message types
-                for i, msg in enumerate(messages):
-                    msg_type = type(msg).__name__
-                    logger.info(f"🔀 Enhanced routing: Message {i}: {msg_type}")
-                
-                # HARD STOP: If we've hit our tool execution limit, force END regardless of LLM output
-                if tool_execution_count >= 3:  # Even more aggressive limit: max 3 tool executions
-                    logger.info(f"🔀 Enhanced routing: HARD STOP - Tool execution limit reached ({tool_execution_count} executions), forcing END")
-                    return END
-
-                # Get the last message to check for tool calls
-                last_message = messages[-1]
-                logger.info(f"🔀 Enhanced routing: Last message type: {type(last_message).__name__}")
-                
-                # If last message is not an AI message, end
-                if not isinstance(last_message, AIMessage):
-                    logger.info("🔀 Enhanced routing: Last message not from AI, ending")
-                    return END
-                
-                # Check if AI message has tool calls
-                has_tool_calls = (
-                    hasattr(last_message, 'tool_calls') and 
-                    last_message.tool_calls and 
-                    len(last_message.tool_calls) > 0
-                )
-                
-                logger.info(f"🔀 Enhanced routing: Has tool calls: {has_tool_calls}")
-                if has_tool_calls:
-                    logger.info(f"🔀 Enhanced routing: Tool calls detected: {len(last_message.tool_calls)}")
-                
-                if has_tool_calls:
-                    # Additional check: if we already have tool results, be very restrictive about more tools
-                    if tool_execution_count >= 2:
-                        logger.info(f"🔀 Enhanced routing: OVERRIDE - Blocking additional tool calls after {tool_execution_count} executions")
-                        return END
-                    
-                    logger.info(f"🔀 Enhanced routing: Tool calls detected (execution #{tool_execution_count + 1}), routing to tools")
-                    return "tool_executor"
-                else:
-                    logger.info("🔀 Enhanced routing: No tool calls, ending subgraph")
-                    return END
-
-            # Use enhanced routing that enforces limits at the routing level
+            # EXACTLY like the LangChain quickstart - use built-in tools_condition
             builder.add_conditional_edges(
                 "chat_agent",
-                enhanced_tools_condition,  # Custom routing with hard limits
-                {
-                    "tool_executor": "tool_executor",
-                    "__end__": END,
-                },
+                tools_condition,  # Use built-in routing - no custom logic
             )
 
-            # Simple continuation after tools - middleware handles complexity
-            builder.add_conditional_edges(
-                "tool_executor",
-                should_continue_after_tools,
-                {
-                    "chat_agent": "chat_agent",  # Continue agent loop
-                    "__end__": END,  # Finish subgraph
-                },
-            )
+            # Simple continuation after tools
+            builder.add_edge("tool_executor", "chat_agent")
 
             # Start with chat agent
             builder.add_edge(START, "chat_agent")
 
-            # Compile the graph with basic recursion limits
-            # Note: LangChain's middleware is for create_agent API, not StateGraph
-            # We'll implement basic rate limiting in the routing functions instead
+            # Compile with reasonable recursion limit
             self.graph = builder.compile()
 
-            logger.info(
-                "Tools agent subgraph built with LangChain's tools_condition routing"
-            )
+            logger.info("Simple tools agent subgraph built following LangChain pattern")
 
         except Exception as e:
             logger.error(f"Failed to build agent subgraph: {e}")
             raise
 
     async def _chat_agent_wrapper(self, state: ToolsState) -> Dict[str, Any]:
-        """Wrapper that creates ChatAgent at runtime and executes it."""
+        """Simple chat agent wrapper - no custom logic."""
         try:
-            # Convert LangChain core messages to our LangChainMessage format
+            # Convert messages to our format
             messages = state["messages"]
-
-            # Check if we have recent tool results that need synthesis
-            has_recent_tool_results = False
-            tool_result_count = 0
-            for msg in messages:  # Check ALL messages for total count
-                if isinstance(msg, ToolMessage):
-                    has_recent_tool_results = True
-                    tool_result_count += 1
-
-            langchain_messages = []
-            
-            # Add VERY aggressive system message if we have tool results
-            if has_recent_tool_results:
-                from langchain_core.messages import SystemMessage
-                
-                if tool_result_count >= 2:  # Be aggressive: force synthesis after just 2 tool executions
-                    synthesis_prompt = SystemMessage(
-                        content="""CRITICAL INSTRUCTION: You have already executed web searches and have sufficient information. You MUST now provide a comprehensive final response that synthesizes the search results. 
-
-DO NOT USE ANY TOOLS. DO NOT MAKE ANY FUNCTION CALLS. DO NOT REQUEST MORE SEARCHES.
-
-Your response must be a detailed, well-structured summary of AI developments in 2024 based on the search results you have already received. Structure your response with clear sections covering:
-
-1. Major AI model releases in 2024
-2. Recent breakthroughs in AI research  
-3. Current AI safety developments
-
-Synthesize ALL the information from your previous searches into one comprehensive response NOW."""
-                    )
-                    langchain_messages.append(synthesis_prompt)
-                elif tool_result_count >= 1:  # Even after 1 tool execution, start encouraging synthesis
-                    synthesis_prompt = SystemMessage(
-                        content="You have search results available. Consider whether you have sufficient information to provide a final response about AI developments in 2024. Focus on synthesizing the information you have rather than requesting more searches."
-                    )
-                    langchain_messages.append(synthesis_prompt)
-            
-            for msg in messages:
-                if isinstance(msg, HumanMessage):
-                    langchain_messages.append(
-                        LangChainMessage(
-                            content=msg.content,
-                            type="human",
-                            additional_kwargs=getattr(msg, "additional_kwargs", {}),
-                            response_metadata=getattr(msg, "response_metadata", {}),
-                        )
-                    )
-                elif isinstance(msg, AIMessage):
-                    # Handle tool calls properly
-                    tool_calls = None
-                    if hasattr(msg, "tool_calls") and msg.tool_calls:
-                        tool_calls = [
-                            {
-                                "name": tc.get("name", ""),
-                                "args": tc.get("args", {}),
-                                "id": tc.get("id", ""),
-                                "type": "tool_call",
-                            }
-                            for tc in msg.tool_calls
-                        ]
-
-                    langchain_messages.append(
-                        LangChainMessage(
-                            content=msg.content,
-                            type="ai",
-                            tool_calls=tool_calls,
-                            additional_kwargs=getattr(msg, "additional_kwargs", {}),
-                            response_metadata=getattr(msg, "response_metadata", {}),
-                        )
-                    )
-                elif isinstance(msg, ToolMessage):
-                    langchain_messages.append(
-                        LangChainMessage(
-                            content=msg.content,
-                            type="tool",
-                            id=msg.tool_call_id,
-                            additional_kwargs=getattr(msg, "additional_kwargs", {}),
-                            response_metadata=getattr(msg, "response_metadata", {}),
-                        )
-                    )
-                else:
-                    # Already in LangChainMessage format
-                    langchain_messages.append(msg)
+            langchain_messages = convert_messages_to_langchain(
+                convert_base_langchain_to_messages(messages)
+            )
 
             # Get tools from registry for the agent
             executable_tools = self.tool_registry.get_all_executable_tools()
@@ -496,8 +242,6 @@ Synthesize ALL the information from your previous searches into one comprehensiv
         self, agent_result: Dict[str, Any], main_state: WorkflowState
     ) -> Dict[str, Any]:
         """Transform agent subgraph results back to main WorkflowState updates."""
-        from models import LangChainMessage
-
         updates = {}
 
         # Add new messages from agent execution
@@ -545,12 +289,8 @@ Synthesize ALL the information from your previous searches into one comprehensiv
             # Transform to agent state
             tools_state = self.transform_to_tools_state(main_state)
 
-            # Execute the agent subgraph with reasonable recursion limit
-            # LangChain's tools_condition handles the intelligent routing
-            result = await self.graph.ainvoke(
-                tools_state,
-                config={"recursion_limit": 15},  # Reasonable limit for tool iterations
-            )
+            # Execute the agent subgraph with LangChain defaults
+            result = await self.graph.ainvoke(tools_state)
 
             # Transform results back to main state updates
             logger.info(

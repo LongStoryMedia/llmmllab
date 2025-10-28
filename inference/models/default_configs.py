@@ -121,6 +121,7 @@ DEFAULT_CIRCUIT_BREAKER_CONFIG = CircuitBreakerConfig(
 # Default GPU configuration
 DEFAULT_GPU_CONFIG = GPUConfig(
     no_kv_offload=False,
+    gpu_layers=-1,  # Use all GPU layers by default
     main_gpu=-1,
     main_gpu_device_id=None,
     tensor_split=[0.15, 0.60, 0.25],

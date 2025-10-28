@@ -9,6 +9,7 @@ from utils.logging import llmmllogger
 from asyncpg import Pool
 
 from .cache_storage import cache_storage
+from .user_storage import UserStorage
 from .userconfig_storage import UserConfigStorage
 from .conversation_storage import ConversationStorage
 from .message_storage import MessageStorage
@@ -43,6 +44,7 @@ class StorageInterface(Protocol):
 class Storage:
     def __init__(self):
         self.pool = None
+        self.user = None
         self.user_config = None
         self.conversation = None
         self.message = None
@@ -83,8 +85,9 @@ class Storage:
             )
 
             # Initialize all storage components
-            self.user_config = UserConfigStorage(self.pool, get_query)
-            self.conversation = ConversationStorage(self.pool, get_query)
+            self.user = UserStorage(self.pool, get_query)
+            self.user_config = UserConfigStorage(self.pool, get_query, self.user)
+            self.conversation = ConversationStorage(self.pool, get_query, self.user)
             self.image = ImageStorage(self.pool, get_query)
             self.model_profile = ModelProfileStorage(self.pool, get_query)
             self.model = ModelStorage(self.pool, get_query)
@@ -115,6 +118,7 @@ class Storage:
         except Exception as e:
             # Reset all components to None to ensure they're not partially initialized
             self.pool = None
+            self.user = None
             self.user_config = None
             self.conversation = None
             self.message = None

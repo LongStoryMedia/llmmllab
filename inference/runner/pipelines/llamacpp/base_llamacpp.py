@@ -459,7 +459,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
         params = self.profile.parameters
         n_ctx = params.num_ctx or 8192  # Conservative default
         n_batch = params.batch_size or 64  # Conservative default
-        n_gpu_layers = -1 if self.profile.gpu_config else 0  # Use GPU if available
+        # Use GPU configuration from profile or default to full GPU usage
+        gpu_config = self.profile.gpu_config or DEFAULT_GPU_CONFIG
+        n_gpu_layers = gpu_config.gpu_layers if gpu_config.gpu_layers is not None else -1
 
         self._logger.info(
             f"🚀 Simple initialization {self.model.name}: "

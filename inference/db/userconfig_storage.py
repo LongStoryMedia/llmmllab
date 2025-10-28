@@ -35,10 +35,11 @@ logger = logging.getLogger(__name__)
 
 
 class UserConfigStorage:
-    def __init__(self, pool: asyncpg.Pool, get_query):
+    def __init__(self, pool: asyncpg.Pool, get_query, user_storage=None):
         self.pool = pool
         self.typed_pool = typed_pool(pool)
         self.get_query = get_query
+        self.user_storage = user_storage  # Will be set by Storage class
 
         # Multi-tier cache will be initialized lazily to avoid circular dependency
         self.multi_tier_cache = None
@@ -188,6 +189,22 @@ class UserConfigStorage:
 
     async def _get_user_config_from_database(self, user_id: str) -> UserConfig:
         """Direct database access for user config (used by multi-tier cache and as fallback)."""
+        # First, ensure user exists with proper default configuration
+        if self.user_storage:
+            # Use UserStorage to ensure user exists with default config
+            try:
+                config = await self.user_storage.get_user_config_from_users_table(user_id)
+                if config:
+                    return config
+                    
+                # User doesn't exist or has no config, create with defaults
+                logger.info(f"User {user_id} not found or has no config, creating with defaults")
+                return await self.user_storage.ensure_user_exists(user_id)
+                
+            except Exception as e:
+                logger.error(f"Error in UserStorage for {user_id}, falling back to legacy method: {e}")
+        
+        # Fallback to legacy method if UserStorage not available
         async with self.typed_pool.acquire() as conn:
             row = await conn.fetchrow(self.get_query("user.get_config"), user_id)
             if not row:

@@ -40,11 +40,8 @@ async def get_user_config(request: Request) -> UserConfig:
         )
 
     try:
+        # This will now automatically create the user with default config if they don't exist
         config = await storage.user_config.get_user_config(user_id)
-        if not config:
-            # Create new config with sensible defaults
-            config = create_default_config(user_id)
-            await storage.user_config.update_user_config(user_id, config)
         return config
     except Exception as e:
         logger.error(f"Error getting user config: {e}")
