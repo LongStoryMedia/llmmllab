@@ -19,10 +19,12 @@ from typing import (
 from abc import ABC
 from pydantic import BaseModel
 from langchain.agents.structured_output import ProviderStrategy
-from langchain.agents import create_agent
+from langchain.agents import create_agent, AgentState
 from langchain.chat_models import BaseChatModel
 from langchain.embeddings.base import Embeddings
 from langchain_core.tools import BaseTool
+from langchain_core.messages import AIMessageChunk
+from langgraph.graph.state import CompiledStateGraph
 
 from models import (
     MessageContent,
@@ -115,6 +117,9 @@ class BaseAgent(ABC, Generic[T]):
         # Additional metadata for debugging and tracking
         self._execution_context: Dict[str, Any] = {}
 
+        # Persistent LangChain agent - initialized once and reused for all operations
+        self._agent: CompiledStateGraph
+
         self.logger.debug(
             f"Initialized {component}",
             node_name=node_metadata.node_name,
@@ -137,6 +142,44 @@ class BaseAgent(ABC, Generic[T]):
                 self.logger.warning(
                     f"Attempted to update unknown metadata field: {key}"
                 )
+
+    def _get_or_create_agent(
+        self,
+        system_prompt,
+        tools: Optional[List[BaseTool]] = None,
+        priority: PipelinePriority = PipelinePriority.MEDIUM,
+        grammar: Optional[type[BaseModel]] = None,
+    ) -> CompiledStateGraph[AgentState, Any, Any]:
+        """
+        Get the persistent agent or create it if it doesn't exist.
+
+        Args:
+            llm: The language model to use
+            tools: List of tools to bind to the agent
+            system_prompt: System prompt for the agent
+            grammar: Grammar constraints for structured output
+
+        Returns:
+            The persistent LangChain agent
+        """
+        if self._agent is None:
+            self.logger.debug("Creating persistent LangChain agent")
+            # Get the model configuration from pipeline factory
+            with self.pipeline_factory.pipeline(
+                self.profile, priority, grammar
+            ) as chat_model:
+                if not chat_model:
+                    raise NodeExecutionError("Failed to create chat model")
+
+                llm = cast(BaseChatModel, chat_model)
+                self._agent = create_agent(
+                    model=llm,
+                    tools=tools or [],
+                    system_prompt=system_prompt,
+                    response_format=ProviderStrategy(grammar) if grammar else None,
+                    name=self._node_metadata.node_name,
+                )
+        return self._agent
 
     def _log_operation_start(self, operation: str, **kwargs) -> None:
         """
@@ -226,6 +269,33 @@ class BaseAgent(ABC, Generic[T]):
 
         raise NodeExecutionError(error_msg) from error
 
+    def _separate_system_prompt(
+        self, messages: MessageInput
+    ) -> tuple[str, List[Message]]:
+        """
+        Extract system prompt from messages if present.
+
+        Args:
+            messages: Input messages for the agent
+
+        returns:
+            str: Extracted system prompt
+        """
+        system_prompt = ""
+        msgs = normalize_message_input(messages)
+        convo = []
+
+        if self.profile.system_prompt:
+            system_prompt = self.profile.system_prompt
+
+        for msg in msgs:
+            if msg.role == MessageRole.SYSTEM:
+                system_prompt += f"\n\n{extract_message_text(msg)}"
+            else:
+                convo.append(msg)
+
+        return system_prompt, convo
+
     async def stream(
         self,
         messages: MessageInput,
@@ -264,124 +334,91 @@ class BaseAgent(ABC, Generic[T]):
                 done=False,
             ).model_copy(update={"channels": self._node_metadata.model_dump()})
 
-            # Get the model configuration from pipeline factory
-            with self.pipeline_factory.pipeline(
-                self.profile, priority, grammar
-            ) as chat_model:
-                if not chat_model:
-                    raise NodeExecutionError("Failed to create chat model")
+            system_prompt, convo = self._separate_system_prompt(messages)
 
-                llm = cast(BaseChatModel, chat_model)
+            # Use persistent agent - creates once and reuses for state continuity
+            agent = self._get_or_create_agent(system_prompt, tools, priority, grammar)
 
-                msgs = normalize_message_input(messages)
-                convo: List[Message] = []
+            # Convert messages to LangChain format
+            normalized_messages = convert_messages_to_base_langchain(convo)
+            npt = {"messages": normalized_messages}
 
-                # Convert messages to LangChain format
-                system_prompt = ""
-                if self.profile.system_prompt:
-                    system_prompt = self.profile.system_prompt
+            # Stream agent execution
+            chunk_count = 0
+            async for chunk in agent.astream(
+                npt,  # type: ignore
+                stream_mode="messages",
+            ):
+                # stream_mode "messages" returns AIMessageChunk objects with metadata
+                if isinstance(chunk, tuple) and len(chunk) >= 2:
+                    msg_chunk, metadata = chunk
+                    if isinstance(msg_chunk, AIMessageChunk):
+                        # Extract text content
+                        text_content = (
+                            str(msg_chunk.content) if msg_chunk.content else ""
+                        )
 
-                for msg in msgs:
-                    if msg.role == MessageRole.SYSTEM:
-                        system_prompt += f"\n\n{extract_message_text(msg)}"
-                    else:
-                        convo.append(msg)
+                        # Extract tool calls from LangChain chunk
+                        tool_calls = None
 
-                # No system prompt modifications - let LangChain handle routing
-
-                # ToolRuntime handles parameter injection automatically - use tools directly  
-                agent = create_agent(
-                    model=llm,
-                    tools=tools or [],
-                    system_prompt=system_prompt,
-                    response_format=ProviderStrategy(grammar) if grammar else None,
-                    name=self._node_metadata.node_name,
-                )
-                agent.bind(system_prompt=system_prompt)
-
-                # Convert messages to LangChain format
-                normalized_messages = convert_messages_to_base_langchain(convo)
-                npt = {"messages": normalized_messages}
-
-                # Stream agent execution 
-                chunk_count = 0
-                async for chunk in agent.astream(
-                    npt,  # type: ignore
-                    stream_mode="messages",
-                ):
-                    # stream_mode "messages" returns AIMessageChunk objects with metadata
-                    from langchain_core.messages import AIMessageChunk
-
-                    if isinstance(chunk, tuple) and len(chunk) >= 2:
-                        msg_chunk, metadata = chunk
-                        if isinstance(msg_chunk, AIMessageChunk):
-                            # Extract text content
-                            text_content = (
-                                str(msg_chunk.content) if msg_chunk.content else ""
-                            )
-
-                            # Extract tool calls from LangChain chunk
-                            tool_calls = None
-
-                            # Get structured tool calls from LangChain AIMessageChunk
-                            if (
-                                hasattr(msg_chunk, "tool_calls")
-                                and msg_chunk.tool_calls
-                            ):
-                                tool_calls = []
-                                for tc in msg_chunk.tool_calls:
-                                    # ToolCall objects are TypedDict, use dictionary access
-                                    # Map to ToolCall model fields: tool_name and success are required
-                                    tool_calls.append(
-                                        {
-                                            "tool_name": tc["name"],  # Required field for ToolCall model
-                                            "args": tc["args"],
-                                            "success": True,  # Required field - assume success during streaming
-                                            "execution_id": tc.get(
-                                                "id",
-                                                f"call_{len(tool_calls)}_{tc['name']}",
-                                            ),
-                                        }
-                                    )
-
-                            # Prepare content array
-                            content = []
-                            if text_content:
-                                content.append(
-                                    MessageContent(
-                                        type=MessageContentType.TEXT,
-                                        text=text_content,
-                                    )
+                        # Get structured tool calls from LangChain AIMessageChunk
+                        if hasattr(msg_chunk, "tool_calls") and msg_chunk.tool_calls:
+                            tool_calls = []
+                            for tc in msg_chunk.tool_calls:
+                                # ToolCall objects are TypedDict, use dictionary access
+                                # Map to ToolCall model fields: tool_name and success are required
+                                tool_calls.append(
+                                    {
+                                        "tool_name": tc[
+                                            "name"
+                                        ],  # Required field for ToolCall model
+                                        "args": tc["args"],
+                                        "success": True,  # Required field - assume success during streaming
+                                        "execution_id": tc.get(
+                                            "id",
+                                            f"call_{len(tool_calls)}_{tc['name']}",
+                                        ),
+                                    }
                                 )
 
-                            chat_chunk = ChatResponse(
-                                done=False,
-                                message=Message(
-                                    role=MessageRole.ASSISTANT,
-                                    content=content,
-                                    tool_calls=tool_calls,
-                                ),
-                                channels={
-                                    "node_metadata": self._node_metadata.model_dump(),
-                                    "chunk_metadata": metadata,
-                                },
+                        # Prepare content array
+                        content = []
+                        if text_content:
+                            content.append(
+                                MessageContent(
+                                    type=MessageContentType.TEXT,
+                                    text=text_content,
+                                )
                             )
-                            chat_chunk.channels = self._node_metadata.model_dump()
-                            chunk_count += 1
-                            yield chat_chunk
 
-                # Yield end chunk with node metadata
-                yield create_streaming_chunk(
-                    text="",
-                    role=MessageRole.ASSISTANT,
-                    done=True,
-                ).model_copy(update={"channels": self._node_metadata.model_dump()})
+                        chat_chunk = ChatResponse(
+                            done=False,
+                            message=Message(
+                                role=MessageRole.ASSISTANT,
+                                content=content,
+                                tool_calls=tool_calls,
+                            ),
+                            channels={
+                                "node_metadata": self._node_metadata.model_dump(),
+                                "chunk_metadata": metadata,
+                            },
+                        )
+                        chat_chunk.channels = self._node_metadata.model_dump()
+                        chunk_count += 1
+                        yield chat_chunk
 
-                self._log_operation_success(
-                    "create_agent_stream",
-                    chunk_count=chunk_count,
-                    node_name=self._node_metadata.node_name,
-                )
+            # Yield end chunk with node metadata
+            yield create_streaming_chunk(
+                text="",
+                role=MessageRole.ASSISTANT,
+                done=True,
+            ).model_copy(update={"channels": self._node_metadata.model_dump()})
+
+            self._log_operation_success(
+                "create_agent_stream",
+                chunk_count=chunk_count,
+                node_name=self._node_metadata.node_name,
+            )
 
         except Exception as e:
             yield create_error_response(str(e))
@@ -424,70 +461,41 @@ class BaseAgent(ABC, Generic[T]):
                 node_name=self._node_metadata.node_name,
                 node_type=self._node_metadata.node_type,
             )
+            system_prompt, convo = self._separate_system_prompt(messages)
 
-            # Get the model configuration from pipeline factory
-            with self.pipeline_factory.pipeline(
-                self.profile, priority, grammar
-            ) as chat_model:
-                if not chat_model:
-                    raise NodeExecutionError("Failed to create chat model")
-                llm = cast(BaseChatModel, chat_model)
+            # Use persistent agent - creates once and reuses for state continuity
+            agent = self._get_or_create_agent(system_prompt, tools, priority, grammar)
 
-                msgs = normalize_message_input(messages)
-                convo = []
+            # Convert messages to LangChain format
+            normalized_messages = convert_messages_to_base_langchain(convo)
+            # Execute agent with normalized messages
+            result = await agent.ainvoke(
+                {"messages": normalized_messages},  # type: ignore
+                grammar=grammar,
+                tools=tools,
+            )
 
-                # Convert messages to LangChain format
-                system_prompt = ""
-                if self.profile.system_prompt:
-                    system_prompt = self.profile.system_prompt
+            # Convert agent result to ChatResponse
+            last_message = result["messages"][-1]
+            response = ChatResponse(
+                done=True,
+                message=Message(
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT,
+                            text=(
+                                str(last_message.content)
+                                if hasattr(last_message, "content")
+                                else ""
+                            ),
+                        )
+                    ],
+                    role=MessageRole.ASSISTANT,
+                ),
+            )
 
-                for msg in msgs:
-                    if msg.role == MessageRole.SYSTEM:
-                        system_prompt += f"\n\n{extract_message_text(msg)}"
-                    else:
-                        convo.append(msg)
-                
-                # No system prompt modifications - let LangChain handle routing
-
-                # Create LangChain agent using create_agent()
-                agent = create_agent(
-                    model=llm,
-                    tools=tools or [],
-                    system_prompt=system_prompt,
-                    response_format=ProviderStrategy(grammar) if grammar else None,
-                    name=self._node_metadata.node_name,
-                )
-
-                # Convert messages to LangChain format
-                normalized_messages = convert_messages_to_base_langchain(convo)
-                # Execute agent with normalized messages
-                result = await agent.ainvoke(
-                    {"messages": normalized_messages},  # type: ignore
-                    grammar=grammar,
-                    tools=tools,
-                )
-
-                # Convert agent result to ChatResponse
-                last_message = result["messages"][-1]
-                response = ChatResponse(
-                    done=True,
-                    message=Message(
-                        content=[
-                            MessageContent(
-                                type=MessageContentType.TEXT,
-                                text=(
-                                    str(last_message.content)
-                                    if hasattr(last_message, "content")
-                                    else ""
-                                ),
-                            )
-                        ],
-                        role=MessageRole.ASSISTANT,
-                    ),
-                )
-
-                response.channels = self._node_metadata.model_dump()
-                return response
+            response.channels = self._node_metadata.model_dump()
+            return response
 
         except Exception as e:
             self._handle_node_error(
