@@ -73,12 +73,19 @@ class BaseLlamaCppPipeline(BaseChatModel):
         self._bound_tools = kwargs.get("_bound_tools", [])
         self.hardware_manager = hardware_manager
 
-        # Initialize intelligent OOM recovery system
-        self.oom_recovery = IntelligentOOMRecovery()
-
-        self.llama_instance = self._initialize_llama_with_intelligent_oom_recovery(
-            self._get_gguf_path()
-        )
+        # Initialize intelligent OOM recovery system (can be disabled)
+        self.use_intelligent_oom = os.getenv("ENABLE_INTELLIGENT_OOM_RECOVERY", "false").lower() == "true"
+        if self.use_intelligent_oom:
+            self.oom_recovery = IntelligentOOMRecovery()
+            self.llama_instance = self._initialize_llama_with_intelligent_oom_recovery(
+                self._get_gguf_path()
+            )
+        else:
+            # Simple initialization - fail fast on errors
+            self.oom_recovery = None
+            self.llama_instance = self._initialize_llama_simple(
+                self._get_gguf_path()
+            )
 
     @property
     def _llm_type(self) -> str:
@@ -324,13 +331,15 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 except Exception:
                     pass
 
-                self.oom_recovery.record_success(
-                    model_path=gguf_path,
-                    params=current_params,
-                    hardware_manager=self.hardware_manager,
-                    initialization_time_ms=initialization_time_ms,
-                    gpu_memory_used_mb=gpu_memory_used_mb,
-                )
+                # Record success for ML learning (only if OOM recovery is enabled)
+                if self.oom_recovery is not None:
+                    self.oom_recovery.record_success(
+                        model_path=gguf_path,
+                        params=current_params,
+                        hardware_manager=self.hardware_manager,
+                        initialization_time_ms=initialization_time_ms,
+                        gpu_memory_used_mb=gpu_memory_used_mb,
+                    )
 
                 self._logger.info(
                     f"✅ Successfully initialized {self.model.name} (attempt {attempt}): "
@@ -437,6 +446,48 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
         # Should never reach here due to the attempt >= max_attempts check above
         raise RuntimeError(f"Unexpected end of recovery loop for {self.model.name}")
+
+    def _initialize_llama_simple(self, gguf_path: str) -> llama_cpp.Llama:
+        """
+        Simple Llama initialization without intelligent OOM recovery.
+        Fails fast on any errors instead of attempting recovery.
+        """
+        if llama_cpp.Llama is None:
+            raise ImportError("llama-cpp-python is required but not installed")
+
+        # Use profile parameters directly without ML optimization
+        params = self.profile.parameters
+        n_ctx = params.num_ctx or 8192  # Conservative default
+        n_batch = params.batch_size or 64  # Conservative default
+        n_gpu_layers = -1 if self.profile.gpu_config else 0  # Use GPU if available
+
+        self._logger.info(
+            f"🚀 Simple initialization {self.model.name}: "
+            f"n_ctx={n_ctx:,}, n_batch={n_batch}, gpu_layers={n_gpu_layers}"
+        )
+
+        try:
+            # Simple, direct initialization - no retries
+            llama_instance = llama_cpp.Llama(
+                model_path=gguf_path,
+                n_ctx=n_ctx,
+                n_batch=n_batch,
+                n_gpu_layers=n_gpu_layers,
+                verbose=False,
+                n_threads=multiprocessing.cpu_count() // 2,
+            )
+            
+            self._logger.info(f"✅ Simple initialization successful: {self.model.name}")
+            return llama_instance
+            
+        except Exception as e:
+            self._logger.error(
+                f"❌ Simple initialization failed for {self.model.name}: {e}"
+            )
+            raise RuntimeError(
+                f"Failed to initialize {self.model.name}: {e}. "
+                f"Enable ENABLE_INTELLIGENT_OOM_RECOVERY=true for advanced recovery."
+            ) from e
 
     def _format_messages_for_llama(
         self, messages: List[BaseMessage]
