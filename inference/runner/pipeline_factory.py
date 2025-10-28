@@ -142,20 +142,22 @@ class PipelineFactory:
                 # Map invalid specialization values to valid ones
                 specialization_map = {
                     "ImageTextToText": "Text",
-                    "TextGeneration": "Text", 
+                    "TextGeneration": "Text",
                     "TextSummarization": "Text",
                     "TextToText": "Text",
                     "TextToEmbeddings": "Embedding",
                     # Valid values remain unchanged
                     "Text": "Text",
-                    "LoRA": "LoRA", 
+                    "LoRA": "LoRA",
                     "Embedding": "Embedding",
                     "TextToImage": "TextToImage",
                     "ImageToImage": "ImageToImage",
-                    "Audio": "Audio"
+                    "Audio": "Audio",
                 }
-                specialization = specialization_map.get(specialization, "Text")  # Default to "Text"
-                
+                specialization = specialization_map.get(
+                    specialization, "Text"
+                )  # Default to "Text"
+
             details = ModelDetails(
                 parent_model=details_dict.get("parent_model"),
                 format=str(details_dict.get("format", "")),
@@ -163,9 +165,9 @@ class PipelineFactory:
                 families=list(details_dict.get("families", [])),
                 parameter_size=str(details_dict.get("parameter_size", "")),
                 quantization_level=details_dict.get("quantization_level"),
-                specialization=specialization,
+                specialization=specialization,  # type: ignore[arg-type]
                 dtype=str(details_dict.get("dtype", "bf16")),
-                precision=str(details_dict.get("precision", "fp16")),
+                precision=str(details_dict.get("precision", "fp16")),  # type: ignore[arg-type]
                 weight=float(details_dict.get("weight", 1.0)),
                 gguf_file=details_dict.get("gguf_file"),
                 description=details_dict.get("description"),

@@ -225,9 +225,16 @@ class ComposerService:
         Supports both streaming and batch execution modes.
         """
         try:
-            # Execute workflow without checkpointer (disabled for testing)
+            # Execute workflow with proper checkpointer configuration
+            # Create thread configuration for checkpointing
+            config: RunnableConfig = {
+                "configurable": {
+                    "thread_id": f"thread_{initial_state.user_id}_{initial_state.conversation_id}"
+                }
+            }
+
             async for event in workflow.astream_events(
-                initial_state.model_dump(), version="v2"
+                initial_state.model_dump(), config=config, version="v2"
             ):
                 try:
                     # Inject tool_calls and node metadata into event data if present in state but missing in event

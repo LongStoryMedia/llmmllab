@@ -571,6 +571,11 @@ class BaseLlamaCppPipeline(BaseChatModel):
     ) -> Tuple[str, List[Dict[str, Any]]]:
         """
         Parse tool calls from LlamaCpp text output and clean content.
+        
+        Handles both XML-wrapped format:
+            <tool_call>{"name": "func", "arguments": {...}}</tool_call>
+        And bare JSON format:
+            {"name": "func", "parameters": {...}}
 
         Returns:
             Tuple of (cleaned_content, tool_calls_list)
@@ -579,7 +584,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
         tool_calls = []
         cleaned_content = content
 
-        # Pattern to match both <tool_call> and <function-call> blocks
+        # First, try XML-wrapped format
         tool_call_pattern = (
             r"<(?:tool|function)[-_]call>\s*(\{.*?\})\s*</(?:tool|function)[-_]call>"
         )
@@ -606,9 +611,58 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
             except (json.JSONDecodeError, KeyError) as e:
                 self._logger.warning(
-                    f"Failed to parse tool call: {e}, content: {match.group(1)}"
+                    f"Failed to parse XML tool call: {e}, content: {match.group(1)}"
                 )
                 continue
+
+        # If no XML-wrapped tool calls found, try bare JSON format
+        if not tool_calls:
+            # Pattern to match bare JSON tool calls like {"name": "func", "parameters": {...}}
+            # Use a more flexible pattern that can handle nested JSON
+            bare_json_pattern = r'\{"name":\s*"([^"]+)"\s*,\s*"parameters":\s*\{.*?\}\s*\}'
+            
+            matches = re.finditer(bare_json_pattern, content, re.DOTALL)
+            
+            for match in matches:
+                try:
+                    # Parse the full JSON tool call
+                    json_str = match.group(0).strip()
+                    
+                    # Handle cases where there might be extra text after the closing brace
+                    # Find the balanced JSON object
+                    brace_count = 0
+                    end_pos = 0
+                    for i, char in enumerate(json_str):
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                end_pos = i + 1
+                                break
+                    
+                    if end_pos > 0:
+                        json_str = json_str[:end_pos]
+                    
+                    tool_data = json.loads(json_str)
+
+                    # Convert to LangChain flat format (parameters -> args)
+                    tool_call = {
+                        "id": f"call_{len(tool_calls)}",  # Generate ID
+                        "name": tool_data.get("name", ""),
+                        "args": tool_data.get("parameters", {}),  # Use parameters instead of arguments
+                        "type": "tool_call",
+                    }
+                    tool_calls.append(tool_call)
+
+                    # Remove this tool call from content
+                    cleaned_content = cleaned_content.replace(json_str, "").strip()
+
+                except (json.JSONDecodeError, KeyError) as e:
+                    self._logger.warning(
+                        f"Failed to parse bare JSON tool call: {e}, content: {match.group(0)}"
+                    )
+                    continue
 
         # Also clean up <think> tags if present
         # think_pattern = r"<think>.*?</think>"

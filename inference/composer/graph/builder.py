@@ -485,20 +485,13 @@ class GraphBuilder:
             workflow.add_edge("memory_creation", "memory_storage")
             workflow.add_edge("memory_storage", END)
 
-            # Temporarily disable checkpointer to fix connection issues during testing
-            # TODO: Properly implement persistent checkpointer for production
-            try:
-                self.logger.info(
-                    "ℹ️  Compiling workflow without checkpointer (disabled for testing)"
-                )
-                return workflow.compile()
-
-            except Exception as e:
-                self.logger.warning(
-                    f"⚠️  Workflow compilation failed: {e}"
-                )
-                # Fallback to compilation without checkpointer
-                return workflow.compile()
+            # TODO: Re-enable checkpointer after fixing async context manager issue
+            # The AsyncPostgresSaver.from_conn_string() returns an async context manager
+            # but workflow.compile() expects a BaseCheckpointSaver instance
+            self.logger.info(
+                "ℹ️  Checkpointer temporarily disabled - compiling without persistence"
+            )
+            return workflow.compile()
         except Exception as e:
             self.logger.error(
                 "Failed to build workflow",

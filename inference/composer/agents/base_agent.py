@@ -329,15 +329,16 @@ class BaseAgent(ABC, Generic[T]):
                                 tool_calls = []
                                 for tc in msg_chunk.tool_calls:
                                     # ToolCall objects are TypedDict, use dictionary access
+                                    # Map to ToolCall model fields: tool_name and success are required
                                     tool_calls.append(
                                         {
-                                            "name": tc["name"],
+                                            "tool_name": tc["name"],  # Required field for ToolCall model
                                             "args": tc["args"],
-                                            "id": tc.get(
+                                            "success": True,  # Required field - assume success during streaming
+                                            "execution_id": tc.get(
                                                 "id",
                                                 f"call_{len(tool_calls)}_{tc['name']}",
                                             ),
-                                            "type": "tool_call",
                                         }
                                     )
 
