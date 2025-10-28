@@ -11,7 +11,7 @@ Simple architecture:
 4. No custom logic - let LangChain handle everything
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langchain.tools import BaseTool
@@ -21,7 +21,6 @@ from langgraph.types import Command
 
 from models import LangChainMessage, NodeMetadata
 from composer.graph.state import WorkflowState, ToolsState
-from composer.agents.base_agent import BaseAgent
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
 from composer.utils.conversion import (
@@ -40,19 +39,9 @@ class ToolsAgentSubgraph:
 
     def __init__(
         self,
-        chat_agent: ChatAgent,
         tool_registry: ToolRegistry,
-        config: Any,
+        chat_agent: ChatAgent,
     ):
-        """Initialize with direct agent and tool registry."""
-        self.chat_agent = chat_agent
-        self.tool_registry = tool_registry
-        self.config = config
-
-        # Create persistent LangChain agent to maintain conversation state
-        self.langchain_agent = None
-        self.graph: Optional[Any] = None
-        self._build_graph()
         """Initialize subgraph with dependency injection."""
         self.tool_registry = tool_registry
         self.chat_agent = chat_agent
@@ -100,14 +89,14 @@ class ToolsAgentSubgraph:
             # Add chat agent node
             builder.add_node("chat_agent", self._chat_agent_wrapper)
 
-            # Add tool executor node (must be named 'tools' for tools_condition to work)
+            # Add tool executor node - must be named "tools" for tools_condition
             tool_node = self._create_tool_node()
             builder.add_node("tools", tool_node)
 
             # EXACTLY like the LangChain quickstart - use built-in tools_condition
             builder.add_conditional_edges(
                 "chat_agent",
-                tools_condition,  # Use built-in routing - no custom logic
+                tools_condition,  # Use built-in routing - expects "tools" node
             )
 
             # Simple continuation after tools
@@ -116,7 +105,7 @@ class ToolsAgentSubgraph:
             # Start with chat agent
             builder.add_edge(START, "chat_agent")
 
-            # Compile graph
+            # Compile with reasonable recursion limit
             self.graph = builder.compile()
 
             logger.info("Simple tools agent subgraph built following LangChain pattern")
@@ -126,8 +115,9 @@ class ToolsAgentSubgraph:
             raise
 
     async def _chat_agent_wrapper(self, state: ToolsState) -> Dict[str, Any]:
-        """Chat agent wrapper - now uses persistent LangChain agent via BaseAgent."""
+        """Simple chat agent wrapper - no custom logic."""
         try:
+            # Convert messages to our format
             messages = state["messages"]
             langchain_messages = convert_messages_to_langchain(
                 convert_base_langchain_to_messages(messages)
@@ -137,7 +127,7 @@ class ToolsAgentSubgraph:
             executable_tools = self.tool_registry.get_all_executable_tools()
             tools_list = list(executable_tools.values()) if executable_tools else None
 
-            # Execute chat completion with tools (now uses persistent agent in BaseAgent)
+            # Execute chat completion with tools
             response_msg = await self.chat_agent.chat_completion_with_conversion(
                 messages=langchain_messages,
                 tools=tools_list,

@@ -118,7 +118,7 @@ class BaseAgent(ABC, Generic[T]):
         self._execution_context: Dict[str, Any] = {}
 
         # Persistent LangChain agent - initialized once and reused for all operations
-        self._agent: CompiledStateGraph
+        self._agent: Optional[CompiledStateGraph] = None
 
         self.logger.debug(
             f"Initialized {component}",
@@ -471,8 +471,6 @@ class BaseAgent(ABC, Generic[T]):
             # Execute agent with normalized messages
             result = await agent.ainvoke(
                 {"messages": normalized_messages},  # type: ignore
-                grammar=grammar,
-                tools=tools,
             )
 
             # Convert agent result to ChatResponse

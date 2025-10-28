@@ -103,10 +103,19 @@ CRITICAL THINKING GUIDELINES:
 - Do not elaborate on the same concept repeatedly
 - Make your thinking efficient and direct
 
+TOOL USAGE GUIDELINES:
+- Use available tools when you need specific information to answer the user's question
+- Once you have sufficient information from tools, provide your answer immediately
+- DO NOT make the same tool call multiple times - use the results from previous calls
+- DO NOT search for more information if you already have enough to answer the question
+- Be confident in providing answers based on the information you've gathered
+- Avoid redundant searches for the same or similar information
+
 RESPONSE STRUCTURE:
 1. Brief analysis (if needed)
-2. Direct, clear answer
-3. Move on immediately
+2. Use tools only if specific information is needed
+3. Direct, clear answer based on available information
+4. Move on immediately
 
 Avoid circular reasoning, excessive elaboration, or repetitive explanations. Be decisive and concise.""",
     created_at=datetime.now(),
