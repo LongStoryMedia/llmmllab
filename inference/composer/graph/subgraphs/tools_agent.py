@@ -19,7 +19,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.types import Command
 
-from models import LangChainMessage, NodeMetadata, AgentConfig
+from models import LangChainMessage, NodeMetadata
 from composer.graph.state import WorkflowState, ToolsState
 from composer.agents.base_agent import BaseAgent
 from composer.agents.chat_agent import ChatAgent
@@ -40,15 +40,15 @@ class ToolsAgentSubgraph:
 
     def __init__(
         self,
-        chat_agent: BaseAgent,
+        chat_agent: ChatAgent,
         tool_registry: ToolRegistry,
-        config: AgentConfig,
+        config: Any,
     ):
         """Initialize with direct agent and tool registry."""
         self.chat_agent = chat_agent
         self.tool_registry = tool_registry
         self.config = config
-        
+
         # Create persistent LangChain agent to maintain conversation state
         self.langchain_agent = None
         self.graph: Optional[Any] = None
@@ -116,7 +116,7 @@ class ToolsAgentSubgraph:
             # Start with chat agent
             builder.add_edge(START, "chat_agent")
 
-            # Compile graph 
+            # Compile graph
             self.graph = builder.compile()
 
             logger.info("Simple tools agent subgraph built following LangChain pattern")
@@ -124,7 +124,6 @@ class ToolsAgentSubgraph:
         except Exception as e:
             logger.error(f"Failed to build agent subgraph: {e}")
             raise
-
 
     async def _chat_agent_wrapper(self, state: ToolsState) -> Dict[str, Any]:
         """Chat agent wrapper - now uses persistent LangChain agent via BaseAgent."""
