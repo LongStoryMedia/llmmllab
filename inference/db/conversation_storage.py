@@ -27,13 +27,16 @@ class ConversationStorage:
                 await self.user_config_storage.ensure_user_exists(conversation.user_id)
             else:
                 # Fallback to old method if UserConfigStorage not available
-                await conn.execute(self.get_query("user.ensure_user"), conversation.user_id)
+                await conn.execute(
+                    self.get_query("user.ensure_user"), conversation.user_id
+                )
 
             row = await conn.fetchrow(
                 self.get_query("conversation.create_conversation"),
                 conversation.user_id,
                 conversation.title,
             )
+            assert row
             conversation_id = row["id"] if row and "id" in row else None
 
             # Cache the new conversation if successful

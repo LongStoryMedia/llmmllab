@@ -343,7 +343,7 @@ class BaseAgent(ABC, Generic[T]):
             normalized_messages = convert_messages_to_base_langchain(convo)
             npt = {"messages": normalized_messages}
 
-            # Stream agent execution
+            # Stream agent execution with recursion limit
             chunk_count = 0
             async for chunk in agent.astream(
                 npt,  # type: ignore
@@ -471,6 +471,8 @@ class BaseAgent(ABC, Generic[T]):
             # Execute agent with normalized messages
             result = await agent.ainvoke(
                 {"messages": normalized_messages},  # type: ignore
+                grammar=grammar,
+                tools=tools,
             )
 
             # Convert agent result to ChatResponse

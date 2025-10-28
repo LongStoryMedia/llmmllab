@@ -119,16 +119,28 @@ class ChatAgent(BaseAgent[ChatResponse]):
                 chunk_count += 1
 
                 # Accumulate content and tool calls
-                if chunk.message:
-                    # Extract text content from message content
-                    if chunk.message.content:
-                        content_text = extract_message_text(chunk.message)
-                        final_content += content_text
 
-                    # Extract tool calls from message.tool_calls (not from content)
-                    if hasattr(chunk.message, 'tool_calls') and chunk.message.tool_calls:
-                        # Tool calls are already in the correct format from BaseAgent
-                        tool_calls.extend(chunk.message.tool_calls)
+                # Collect tool calls from message content
+                if chunk.message and chunk.message.content:
+                    content_text = extract_message_text(chunk.message)
+                    for content in chunk.message.content:
+                        if content.type == MessageContentType.TOOL_CALL:
+                            # Extract tool call data from content
+                            if hasattr(content, "text") and content.text:
+                                try:
+                                    import json
+
+                                    tool_call_data = json.loads(content.text)
+                                    tool_calls.append(tool_call_data)
+                                except (json.JSONDecodeError, AttributeError):
+                                    # If not JSON, skip this content item
+                                    pass
+                            elif (
+                                content.type == MessageContentType.THINKING
+                                or content.type == MessageContentType.TEXT
+                            ):
+                                if hasattr(content, "text") and content.text:
+                                    final_content += content.text
 
             self.logger.info(
                 "Streaming completion with metadata finished",

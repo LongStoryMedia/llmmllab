@@ -193,14 +193,18 @@ class UserConfigStorage:
             config = await self.get_user_config_from_users_table(user_id)
             if config:
                 return config
-                
+
             # User doesn't exist or has no config, create with defaults
-            logger.info(f"User {user_id} not found or has no config, creating with defaults")
+            logger.info(
+                f"User {user_id} not found or has no config, creating with defaults"
+            )
             return await self.ensure_user_exists(user_id)
-            
+
         except Exception as e:
-            logger.error(f"Error getting user config from users table for {user_id}, falling back to legacy method: {e}")
-        
+            logger.error(
+                f"Error getting user config from users table for {user_id}, falling back to legacy method: {e}"
+            )
+
         # Fallback to legacy method if users table method fails
         async with self.typed_pool.acquire() as conn:
             row = await conn.fetchrow(self.get_query("user.get_config"), user_id)
@@ -469,7 +473,7 @@ class UserConfigStorage:
     async def ensure_user_exists(self, user_id: str) -> UserConfig:
         """
         Ensure a user exists with proper default configuration.
-        
+
         If the user doesn't exist, creates them with default config.
         If the user exists but has no config, sets default config.
         Returns the user's configuration.
@@ -477,24 +481,24 @@ class UserConfigStorage:
         try:
             # Create default configuration for this user
             default_config = create_default_user_config(user_id)
-            config_json = serialize_to_json(default_config.dict())
+            config_json = serialize_to_json(default_config.model_dump())
 
             async with self.typed_pool.acquire() as conn:
                 # Create user with default config, or update config if user exists but has no config
                 await conn.execute(
-                    self.get_query("user.create_user_with_config"),
-                    user_id,
-                    config_json
+                    self.get_query("user.create_user_with_config"), user_id, config_json
                 )
-                
+
                 logger.info(f"Ensured user exists with default config: {user_id}")
                 return default_config
-                
+
         except Exception as e:
             logger.error(f"Failed to ensure user exists: {user_id}, error: {e}")
             raise
 
-    async def get_user_config_from_users_table(self, user_id: str) -> Optional[UserConfig]:
+    async def get_user_config_from_users_table(
+        self, user_id: str
+    ) -> Optional[UserConfig]:
         """
         Get user configuration directly from the users table.
         Returns None if user doesn't exist or has no config.
@@ -502,38 +506,43 @@ class UserConfigStorage:
         try:
             async with self.typed_pool.acquire() as conn:
                 row = await conn.fetchrow(
-                    self.get_query("user.get_user_config_from_users_table"),
-                    user_id
+                    self.get_query("user.get_user_config_from_users_table"), user_id
                 )
-                
-                if not row or not row['config']:
+
+                if not row or not row["config"]:
                     return None
-                    
-                config_data = dict(row['config'])
-                config_data['user_id'] = user_id  # Ensure user_id is set
-                
+
+                config_data = dict(row["config"])
+                config_data["user_id"] = user_id  # Ensure user_id is set
+
                 return UserConfig(**config_data)
-                
+
         except Exception as e:
-            logger.error(f"Failed to get user config from users table: {user_id}, error: {e}")
+            logger.error(
+                f"Failed to get user config from users table: {user_id}, error: {e}"
+            )
             return None
 
-    async def update_user_config_in_users_table(self, user_id: str, config: UserConfig) -> None:
+    async def update_user_config_in_users_table(
+        self, user_id: str, config: UserConfig
+    ) -> None:
         """
         Update user configuration in the users table.
         """
         try:
             config_json = serialize_to_json(config.dict())
-            
+
             async with self.typed_pool.acquire() as conn:
                 await conn.execute(
                     self.get_query("user.update_user_config_in_users_table"),
                     user_id,
-                    config_json
+                    config_json,
                 )
-                
+
                 logger.info(f"Updated user config in users table: {user_id}")
-                
+
         except Exception as e:
-            logger.error(f"Failed to update user config in users table: {user_id}, error: {e}")
+            logger.error(
+                f"Failed to update user config in users table: {user_id}, error: {e}"
+            )
             raise

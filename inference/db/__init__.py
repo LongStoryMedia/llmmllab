@@ -84,7 +84,9 @@ class Storage:
 
             # Initialize all storage components
             self.user_config = UserConfigStorage(self.pool, get_query)
-            self.conversation = ConversationStorage(self.pool, get_query, self.user_config)
+            self.conversation = ConversationStorage(
+                self.pool, get_query, self.user_config
+            )
             self.image = ImageStorage(self.pool, get_query)
             self.model_profile = ModelProfileStorage(self.pool, get_query)
             self.model = ModelStorage(self.pool, get_query)

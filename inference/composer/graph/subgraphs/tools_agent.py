@@ -114,11 +114,85 @@ class ToolsAgentSubgraph:
             logger.error(f"Failed to build agent subgraph: {e}")
             raise
 
+    def _extract_previous_tool_calls(self, messages) -> list:
+        """Extract all previous tool calls from conversation history."""
+        previous_calls = []
+        for msg in messages:
+            # Handle different message types and tool call formats
+            tool_calls = None
+            
+            # Check for tool_calls attribute (LangChain AIMessage)
+            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                tool_calls = msg.tool_calls
+            # Check for tool_calls in additional_kwargs (some formats)
+            elif hasattr(msg, "additional_kwargs") and isinstance(msg.additional_kwargs, dict):
+                tool_calls = msg.additional_kwargs.get("tool_calls")
+            
+            if tool_calls:
+                for tc in tool_calls:
+                    # Handle different tool call formats
+                    if isinstance(tc, dict):
+                        call_signature = {
+                            "name": tc.get("name", ""),
+                            "args": tc.get("args", {}),
+                        }
+                    else:
+                        # Handle tool call objects with attributes
+                        call_signature = {
+                            "name": getattr(tc, "name", tc.get("name", "")),
+                            "args": getattr(tc, "args", tc.get("args", {})),
+                        }
+                    previous_calls.append(call_signature)
+                    
+        logger.debug(f"Extracted {len(previous_calls)} previous tool calls: {[pc['name'] for pc in previous_calls]}")
+        return previous_calls
+
+    def _is_duplicate_tool_call(self, tool_call, previous_calls) -> bool:
+        """Check if this tool call is a duplicate of a previous one."""
+        current_sig = {
+            "name": tool_call.get("name", ""),
+            "args": tool_call.get("args", {}),
+        }
+
+        for prev_call in previous_calls:
+            if (
+                prev_call["name"] == current_sig["name"]
+                and prev_call["args"] == current_sig["args"]
+            ):
+                return True
+        return False
+
     async def _chat_agent_wrapper(self, state: ToolsState) -> Dict[str, Any]:
-        """Simple chat agent wrapper - no custom logic."""
+        """
+        Chat agent wrapper that properly manages conversation state.
+
+        CRITICAL: The agent must see the full conversation history including
+        tool results to make proper decisions about whether to continue with
+        more tools or provide a final answer.
+
+        ANTI-RECURSION: Prevents duplicate tool calls to avoid infinite loops.
+        """
         try:
-            # Convert messages to our format
+            # Get all messages from state - this includes conversation history + tool results
             messages = state["messages"]
+
+            # Log conversation state for debugging
+            logger.debug(f"Agent wrapper processing {len(messages)} messages")
+            for i, msg in enumerate(messages[-3:]):  # Log last 3 messages
+                msg_type = getattr(msg, "type", type(msg).__name__)
+                has_tool_calls = (hasattr(msg, "tool_calls") and bool(getattr(msg, "tool_calls", None))) or \
+                               (hasattr(msg, "additional_kwargs") and bool(getattr(msg, "additional_kwargs", {}).get("tool_calls")))
+                logger.debug(
+                    f"  Message {len(messages)-3+i}: {msg_type}, tool_calls={has_tool_calls}"
+                )
+
+            # Extract previous tool calls to prevent duplicates
+            previous_tool_calls = self._extract_previous_tool_calls(messages)
+            logger.debug(
+                f"Found {len(previous_tool_calls)} previous tool calls in conversation"
+            )
+
+            # Convert to our format while preserving ALL conversation history
             langchain_messages = convert_messages_to_langchain(
                 convert_base_langchain_to_messages(messages)
             )
@@ -127,35 +201,74 @@ class ToolsAgentSubgraph:
             executable_tools = self.tool_registry.get_all_executable_tools()
             tools_list = list(executable_tools.values()) if executable_tools else None
 
-            # Execute chat completion with tools
+            # Execute chat completion with full conversation history and tools
+            # The agent will see: [user_message, previous_ai_message, tool_results, ...]
             response_msg = await self.chat_agent.chat_completion_with_conversion(
-                messages=langchain_messages,
+                messages=langchain_messages,  # Full conversation including tool results
                 tools=tools_list,
             )
 
             # Convert response back to LangChain core AIMessage format for LangGraph
             tool_calls = []
+            filtered_tool_calls = []
+            duplicates_blocked = 0
+
             if hasattr(response_msg, "tool_calls") and response_msg.tool_calls:
                 for tc in response_msg.tool_calls:
+                    # Check if this is a duplicate tool call
+                    if self._is_duplicate_tool_call(tc, previous_tool_calls):
+                        logger.warning(
+                            f"🔄 BLOCKED duplicate tool call: {tc.get('name')} with args {tc.get('args')}"
+                        )
+                        duplicates_blocked += 1
+                        continue
+
                     # Use LangGraph's expected tool call format
-                    tool_calls.append(
-                        {
-                            "name": tc.get("name", ""),
-                            "args": tc.get("args", {}),
-                            "id": tc.get("id", f"call_{len(tool_calls)}"),
-                            "type": "tool_call",
-                        }
-                    )
+                    tool_call = {
+                        "name": tc.get("name", ""),
+                        "args": tc.get("args", {}),
+                        "id": tc.get("id", f"call_{len(tool_calls)}"),
+                        "type": "tool_call",
+                    }
+                    tool_calls.append(tool_call)
+                    filtered_tool_calls.append(tc)
 
-            # Create AIMessage compatible with LangGraph ToolNode
-            ai_message = AIMessage(
-                content=response_msg.content or "",
-                tool_calls=tool_calls,
-                additional_kwargs=getattr(response_msg, "additional_kwargs", {}),
-                response_metadata=getattr(response_msg, "response_metadata", {}),
-            )
+            # If we blocked duplicates, modify response to be a final answer
+            if duplicates_blocked > 0:
+                logger.info(
+                    f"🛡️ Blocked {duplicates_blocked} duplicate tool calls - forcing final answer"
+                )
+                final_content = (
+                    response_msg.content
+                    or "Based on the information I already gathered from previous searches, I can provide you with the answer."
+                )
+                # Create final answer message with no tool calls
+                ai_message = AIMessage(
+                    content=final_content,
+                    tool_calls=[],  # No tool calls - force final answer
+                    additional_kwargs=getattr(response_msg, "additional_kwargs", {}),
+                    response_metadata=getattr(response_msg, "response_metadata", {}),
+                )
+            else:
+                # Create AIMessage compatible with LangGraph ToolNode
+                ai_message = AIMessage(
+                    content=response_msg.content or "",
+                    tool_calls=tool_calls,
+                    additional_kwargs=getattr(response_msg, "additional_kwargs", {}),
+                    response_metadata=getattr(response_msg, "response_metadata", {}),
+                )
 
-            # Return new message in state update format
+            # Log what the agent decided to do
+            if tool_calls:
+                logger.info(
+                    f"Agent decided to make {len(tool_calls)} tool calls: {[tc['name'] for tc in tool_calls]}"
+                )
+            else:
+                logger.info(
+                    "Agent decided to provide final answer - no more tool calls"
+                )
+
+            # Return ONLY the new AI message - LangGraph will append it to conversation
             return {"messages": [ai_message]}
 
         except Exception as e:

@@ -105,11 +105,13 @@ CRITICAL THINKING GUIDELINES:
 
 TOOL USAGE GUIDELINES:
 - Use available tools when you need specific information to answer the user's question
-- Once you have sufficient information from tools, provide your answer immediately
-- DO NOT make the same tool call multiple times - use the results from previous calls
-- DO NOT search for more information if you already have enough to answer the question
-- Be confident in providing answers based on the information you've gathered
-- Avoid redundant searches for the same or similar information
+- ALWAYS check the conversation history for previous tool results before making new tool calls
+- If you see tool results in the conversation, USE THAT INFORMATION instead of calling tools again
+- DO NOT make the same tool call multiple times - previous results are in the conversation
+- DO NOT search for more information if you already have tool results to work with
+- When you have gathered sufficient information from tools, provide a comprehensive final answer
+- Be confident in providing answers based on tool results already present in the conversation
+- STOP calling tools once you have enough information to answer the user's question thoroughly
 
 RESPONSE STRUCTURE:
 1. Brief analysis (if needed)
