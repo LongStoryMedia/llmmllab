@@ -247,12 +247,12 @@ class ComposerRealEndToEndTester:
             test_results["results"]["conversation_creation"] = conversation_result
             if conversation_result["success"]:
                 test_results["components_passed"] += 1
-            
+
             # User profile creation is handled within conversation creation
             # (user creation and config retrieval are part of the conversation flow)
             user_profile_result = {
-                "success": conversation_result["success"], 
-                "model_name": "qwen3-30b-a3b-q4-k-m"  # Set the expected model name
+                "success": conversation_result["success"],
+                "model_name": "qwen3-30b-a3b-q4-k-m",  # Set the expected model name
             }
             test_results["results"]["user_profile_creation"] = user_profile_result
             if user_profile_result["success"]:
@@ -417,7 +417,7 @@ class ComposerRealEndToEndTester:
             # Create real conversation
             from models.conversation import Conversation
             from datetime import datetime
-            
+
             test_conversation = Conversation(
                 id=0,  # Will be set by database
                 user_id=self.test_user_id,
@@ -425,7 +425,9 @@ class ComposerRealEndToEndTester:
                 created_at=datetime.now(),
                 updated_at=datetime.now(),
             )
-            conversation_id = await storage.conversation.create_conversation(test_conversation)
+            conversation_id = await storage.conversation.create_conversation(
+                test_conversation
+            )
 
             if not conversation_id:
                 raise RuntimeError("Failed to create conversation")

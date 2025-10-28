@@ -493,7 +493,7 @@ class GraphBuilder:
                 "ℹ️  Checkpointer temporarily disabled - compiling without persistence"
             )
             return workflow.compile()
-            
+
             # # Configure checkpointer at compilation time for parent graph
             # # Per LangGraph docs: "you only need to provide the checkpointer when compiling
             # # the parent graph. LangGraph will automatically propagate the checkpointer to child subgraphs"
