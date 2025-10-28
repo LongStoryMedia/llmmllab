@@ -15,6 +15,7 @@ from typing import Dict, Optional, TYPE_CHECKING
 from datetime import datetime, timezone
 
 from langgraph.graph.state import CompiledStateGraph
+from langchain_core.runnables.config import RunnableConfig
 
 from models import (
     Message,
@@ -224,6 +225,7 @@ class ComposerService:
         Supports both streaming and batch execution modes.
         """
         try:
+            # Execute workflow without checkpointer (disabled for testing)
             async for event in workflow.astream_events(
                 initial_state.model_dump(), version="v2"
             ):
