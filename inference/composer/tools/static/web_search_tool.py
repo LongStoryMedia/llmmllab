@@ -40,9 +40,11 @@ from composer.graph.state import WorkflowState
 from utils.logging import llmmllogger
 from models import SearchResult, SearchResultContent, WebSearchConfig
 
-# Global cache to track recent searches and prevent duplicates
+# Global cache to track recent searches and prevent duplicates  
 _search_cache = {}
+_duplicate_counts = {}  # Track how many times each query was requested
 _max_cache_size = 100
+_max_duplicate_attempts = 3  # Hard stop after 3 duplicate attempts
 
 # Import from langchain_community (preferred) then fallback to langchain_classic
 try:  # pragma: no cover - import resolution
@@ -181,12 +183,28 @@ async def web_search(
     query_normalized = query.strip().lower()
     
     if query_normalized in _search_cache:
-        logger.warning(f"🔄 BLOCKED duplicate web search for: '{query}' - returning cached results")
+        # Track duplicate attempts
+        _duplicate_counts[query_normalized] = _duplicate_counts.get(query_normalized, 0) + 1
+        duplicate_count = _duplicate_counts[query_normalized]
+        
+        logger.warning(f"🔄 BLOCKED duplicate web search for: '{query}' (attempt #{duplicate_count}) - returning cached results")
+        
+        # Hard stop after too many duplicate attempts - force agent to use what it has
+        if duplicate_count >= _max_duplicate_attempts:
+            return (
+                "🛑 **SEARCH LIMIT REACHED** 🛑\n\n"
+                f"The query '{query}' has been searched multiple times already. "
+                "Please use the information from previous searches to provide your response. "
+                "No further searches for this query will be performed.\n\n"
+                "**Final Answer Required:** Based on the search results already provided, "
+                "please synthesize and present your findings to the user."
+            )
+        
         cached_result = _search_cache[query_normalized]
         
         # Add explicit duplicate notice to help agent understand it should stop
         duplicate_notice = (
-            "⚠️ **DUPLICATE SEARCH DETECTED** ⚠️\n\n"
+            f"⚠️ **DUPLICATE SEARCH DETECTED (#{duplicate_count})** ⚠️\n\n"
             f"This query '{query}' has already been searched in this conversation. "
             "Using previous results to avoid redundant searches.\n\n"
             "**Previous Search Results:**\n\n"
@@ -254,8 +272,9 @@ async def web_search(
                 result_count=len(formatted_results),
             )
 
-            # Cache the successful result
+            # Cache the successful result and initialize duplicate count
             _search_cache[query_normalized] = response_message
+            _duplicate_counts[query_normalized] = 0
             
             # Return string result - ToolNode will automatically create ToolMessage
             return response_message
@@ -271,6 +290,7 @@ async def web_search(
             
             # Cache the no-results response to prevent repeated failed searches
             _search_cache[query_normalized] = response_message
+            _duplicate_counts[query_normalized] = 0
             
             return response_message
 
@@ -280,5 +300,6 @@ async def web_search(
         
         # Cache the error response to prevent repeated failed searches
         _search_cache[query_normalized] = error_message
+        _duplicate_counts[query_normalized] = 0
         
         return error_message

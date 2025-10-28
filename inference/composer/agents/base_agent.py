@@ -165,20 +165,25 @@ class BaseAgent(ABC, Generic[T]):
         if self._agent is None:
             self.logger.debug("Creating persistent LangChain agent")
             # Get the model configuration from pipeline factory
-            with self.pipeline_factory.pipeline(
-                self.profile, priority, grammar
-            ) as chat_model:
-                if not chat_model:
-                    raise NodeExecutionError("Failed to create chat model")
 
-                llm = cast(BaseChatModel, chat_model)
-                self._agent = create_agent(
-                    model=llm,
-                    tools=tools or [],
-                    system_prompt=system_prompt,
-                    response_format=ProviderStrategy(grammar) if grammar else None,
-                    name=self._node_metadata.node_name,
-                )
+            # with self.pipeline_factory.pipeline(
+            #     self.profile, priority, grammar
+            # ) as chat_model:
+            #     if not chat_model:
+            #         raise NodeExecutionError("Failed to create chat model")
+            chat_model = self.pipeline_factory.get_pipeline(
+                self.profile, priority, grammar
+            )
+
+            llm = cast(BaseChatModel, chat_model)
+            self._agent = create_agent(
+                model=llm,
+                tools=tools or [],
+                system_prompt=system_prompt,
+                response_format=ProviderStrategy(grammar) if grammar else None,
+                name=self._node_metadata.node_name,
+            )
+
         return self._agent
 
     def _log_operation_start(self, operation: str, **kwargs) -> None:
