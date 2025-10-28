@@ -39,9 +39,21 @@ class ToolsAgentSubgraph:
 
     def __init__(
         self,
+        chat_agent: BaseAgent,
         tool_registry: ToolRegistry,
-        chat_agent: ChatAgent,
+        config: AgentConfig,
     ):
+        """Initialize with direct agent and tool registry."""
+        from langgraph.prebuilt import create_agent
+        
+        self.chat_agent = chat_agent
+        self.tool_registry = tool_registry
+        self.config = config
+        
+        # Create persistent LangChain agent to maintain conversation state
+        self.langchain_agent = None
+        self.graph: Optional[CompiledGraph] = None
+        self._build_graph()
         """Initialize subgraph with dependency injection."""
         self.tool_registry = tool_registry
         self.chat_agent = chat_agent
@@ -105,8 +117,11 @@ class ToolsAgentSubgraph:
             # Start with chat agent
             builder.add_edge(START, "chat_agent")
 
-            # Compile with reasonable recursion limit
+            # Compile graph - no recursion limit needed since we maintain state properly
             self.graph = builder.compile()
+            
+            # Initialize persistent LangChain agent after graph is compiled
+            self._initialize_persistent_agent()
 
             logger.info("Simple tools agent subgraph built following LangChain pattern")
 
@@ -114,10 +129,77 @@ class ToolsAgentSubgraph:
             logger.error(f"Failed to build agent subgraph: {e}")
             raise
 
-    async def _chat_agent_wrapper(self, state: ToolsState) -> Dict[str, Any]:
-        """Simple chat agent wrapper - no custom logic."""
+    def _initialize_persistent_agent(self) -> None:
+        """Initialize persistent LangChain agent to maintain conversation state."""
         try:
-            # Convert messages to our format
+            # Import at method level to avoid circular dependencies
+            from langchain_core.language_models.chat_models import BaseChatModel
+            from typing import cast
+            
+            # Get tools for the agent
+            executable_tools = self.tool_registry.get_all_executable_tools()
+            tools_list = list(executable_tools.values()) if executable_tools else []
+            
+            # Get model from chat agent's pipeline factory
+            with self.chat_agent.pipeline_factory.pipeline(
+                self.chat_agent.profile, 
+                self.chat_agent.priority
+            ) as chat_model:
+                if not chat_model:
+                    raise ValueError("Failed to create chat model for persistent agent")
+                    
+                llm = cast(BaseChatModel, chat_model)
+                
+                # Create persistent agent with system prompt
+                system_prompt = self.chat_agent.profile.system_prompt or ""
+                
+                # Create StateGraph-based agent directly (like our main pattern)
+                from langgraph.graph import StateGraph, START, END
+                from langchain_core.messages import AIMessage
+                
+                def llm_node(state):
+                    """LLM node that processes messages and decides on tool calls."""
+                    messages = state["messages"]
+                    
+                    # Add system message if needed
+                    if system_prompt and (not messages or messages[0].type != "system"):
+                        from langchain_core.messages import SystemMessage
+                        messages = [SystemMessage(content=system_prompt)] + messages
+                    
+                    # Bind tools and invoke
+                    model_with_tools = llm.bind_tools(tools_list)
+                    response = model_with_tools.invoke(messages)
+                    return {"messages": [response]}
+                
+                # Build the persistent agent graph
+                agent_builder = StateGraph(ToolsState)
+                agent_builder.add_node("llm", llm_node)
+                agent_builder.add_node("tools", ToolNode(tools_list))
+                
+                agent_builder.add_edge(START, "llm")
+                agent_builder.add_conditional_edges("llm", tools_condition)
+                agent_builder.add_edge("tools", "llm")
+                
+                self.langchain_agent = agent_builder.compile()
+                
+                logger.info(f"✅ Created persistent LangChain agent with {len(tools_list)} tools")
+                
+        except Exception as e:
+            logger.error(f"Failed to initialize persistent agent: {e}")
+            # Fallback to None - use original method
+            self.langchain_agent = None
+
+    async def _chat_agent_wrapper(self, state: ToolsState) -> Dict[str, Any]:
+        """Chat agent wrapper using persistent LangChain agent to maintain state."""
+        try:
+            # Use persistent agent if available (maintains conversation state)
+            if self.langchain_agent:
+                # Direct invocation of persistent agent with current state
+                result = await self.langchain_agent.ainvoke(state)
+                # The persistent agent returns the proper state format already
+                return result
+            
+            # Fallback to original method if persistent agent failed to initialize
             messages = state["messages"]
             langchain_messages = convert_messages_to_langchain(
                 convert_base_langchain_to_messages(messages)
@@ -127,7 +209,7 @@ class ToolsAgentSubgraph:
             executable_tools = self.tool_registry.get_all_executable_tools()
             tools_list = list(executable_tools.values()) if executable_tools else None
 
-            # Execute chat completion with tools
+            # Execute chat completion with tools (creates new agent each time - problematic)
             response_msg = await self.chat_agent.chat_completion_with_conversion(
                 messages=langchain_messages,
                 tools=tools_list,

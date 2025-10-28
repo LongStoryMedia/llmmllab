@@ -303,12 +303,11 @@ class BaseAgent(ABC, Generic[T]):
                 normalized_messages = convert_messages_to_base_langchain(convo)
                 npt = {"messages": normalized_messages}
 
-                # Stream agent execution with controlled recursion limit
+                # Stream agent execution 
                 chunk_count = 0
                 async for chunk in agent.astream(
                     npt,  # type: ignore
                     stream_mode="messages",
-                    config={"recursion_limit": 15}  # Allow tool calls + response, prevent infinite loops
                 ):
                     # stream_mode "messages" returns AIMessageChunk objects with metadata
                     from langchain_core.messages import AIMessageChunk
@@ -461,10 +460,9 @@ class BaseAgent(ABC, Generic[T]):
 
                 # Convert messages to LangChain format
                 normalized_messages = convert_messages_to_base_langchain(convo)
-                # Execute agent with controlled recursion limit
+                # Execute agent with normalized messages
                 result = await agent.ainvoke(
                     {"messages": normalized_messages},  # type: ignore
-                    config={"recursion_limit": 15},  # Prevent infinite tool calling
                     grammar=grammar,
                     tools=tools,
                 )
