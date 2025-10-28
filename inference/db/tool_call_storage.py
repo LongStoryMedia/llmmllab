@@ -74,7 +74,7 @@ class ToolCallStorage:
         row = await conn.fetchrow(
             self.get_query("tool_call.add_tool_call"),
             tool_call.message_id,  # $1
-            tool_call.tool_name,  # $2
+            tool_call.name,  # $2
             tool_call.execution_id,  # $3
             tool_call.success,  # $4
             args_json,  # $5
@@ -87,7 +87,7 @@ class ToolCallStorage:
         if row:
             tool_call_id = row["id"]
             self.logger.info(
-                f"Added tool call {tool_call_id} ({tool_call.tool_name}) for message {tool_call.message_id}"
+                f"Added tool call {tool_call_id} ({tool_call.name}) for message {tool_call.message_id}"
             )
             return tool_call_id
         else:
@@ -115,14 +115,14 @@ class ToolCallStorage:
                 tool_calls = []
                 for row in rows:
                     # Parse JSON fields back to dict/objects
-                    args = row["args"] if row["args"] else None
+                    args = row["args"] if row["args"] else {}
                     result_data = row["result_data"] if row["result_data"] else None
                     resource_usage = (
                         row["resource_usage"] if row["resource_usage"] else None
                     )
 
                     tool_execution_result = ToolCall(
-                        tool_name=row["tool_name"],
+                        name=row["name"],
                         execution_id=row["execution_id"],
                         success=row["success"],
                         args=args,

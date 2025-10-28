@@ -113,7 +113,7 @@ class StreamingResponseState:
         if self.tool_call_start_pattern.search(chunk):
             self.state = StreamingState.EXECUTING
             self.current_tool_call = {
-                "tool_name": "",
+                "name": "",
                 "execution_id": f"call_{len(self.tool_calls)}",
                 "success": True,
                 "args": {},
@@ -127,7 +127,7 @@ class StreamingResponseState:
         elif self._detect_function_call_start(chunk):
             self.state = StreamingState.EXECUTING
             self.current_tool_call = {
-                "tool_name": "",
+                "name": "",
                 "execution_id": f"call_{len(self.tool_calls)}",
                 "success": True,
                 "args": {},
@@ -141,7 +141,7 @@ class StreamingResponseState:
                 # Parse accumulated tool call buffer as JSON
                 try:
                     tool_data = json.loads(self.tool_call_buffer)
-                    self.current_tool_call["tool_name"] = tool_data.get("name", "")
+                    self.current_tool_call["name"] = tool_data.get("name", "")
                     self.current_tool_call["args"] = tool_data.get(
                         "args", tool_data.get("arguments", {})
                     )
@@ -153,12 +153,13 @@ class StreamingResponseState:
                 except (json.JSONDecodeError, Exception):
                     # If parsing fails, create a basic tool call entry
                     tool_result = ToolCall(
-                        tool_name="unknown",
+                        name="unknown",
                         execution_id=self.current_tool_call.get("execution_id"),
                         success=False,
                         error_message="Failed to parse tool call arguments",
                         execution_time_ms=0,
                         message_id=0,
+                        args={},
                     )
                     self.tool_calls.append(tool_result)
 

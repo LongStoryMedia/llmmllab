@@ -35,6 +35,7 @@ from models import (
     ChatResponse,
     PipelinePriority,
     Message,
+    ToolCall,
 )
 from runner import PipelineFactory
 from utils.logging import llmmllogger
@@ -372,19 +373,23 @@ class BaseAgent(ABC, Generic[T]):
                             for tc in msg_chunk.tool_calls:
                                 # ToolCall objects are TypedDict, use dictionary access
                                 # Map to ToolCall model fields: tool_name and success are required
-                                tool_calls.append(
-                                    {
-                                        "tool_name": tc[
-                                            "name"
-                                        ],  # Required field for ToolCall model
-                                        "args": tc["args"],
-                                        "success": True,  # Required field - assume success during streaming
-                                        "execution_id": tc.get(
-                                            "id",
-                                            f"call_{len(tool_calls)}_{tc['name']}",
-                                        ),
-                                    }
+                                call = ToolCall(**tc)
+                                call.success = True  # Assume success during streaming
+                                call.execution_id = tc.get(
+                                    "id",
+                                    f"call_{len(tool_calls)}_{tc['name']}",
                                 )
+                                tool_calls.append(call)
+
+                        # Prepare content array
+                        content = []
+                        if text_content:
+                            content.append(
+                                MessageContent(
+                                    type=MessageContentType.TEXT,
+                                    text=text_content,
+                                )
+                            )
 
                         # Prepare content array
                         content = []

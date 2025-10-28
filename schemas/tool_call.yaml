@@ -6,7 +6,7 @@ properties:
   message_id:
     type: integer
     description: "Foreign key reference to the associated message"
-  tool_name:
+  name:
     type: string
     description: "Name of the executed tool"
   execution_id:
@@ -33,6 +33,7 @@ properties:
   resource_usage:
     $ref: "resource_usage.yaml"
 required:
-  - tool_name
+  - name
   - success
+  - args
 additionalProperties: false

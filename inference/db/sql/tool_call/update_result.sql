@@ -12,7 +12,7 @@ WHERE
 RETURNING
     id,
     message_id,
-    tool_name,
+    tool_name AS name,
     execution_id,
     success,
     args,

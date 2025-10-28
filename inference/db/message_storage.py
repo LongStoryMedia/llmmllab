@@ -629,7 +629,7 @@ class MessageStorage:
 
             tool_calls.append(
                 ToolCall(
-                    tool_name=tc_data["tool_name"],
+                    name=tc_data["name"],
                     execution_id=tc_data.get("execution_id"),
                     success=tc_data["success"],
                     args=tc_data.get("args"),

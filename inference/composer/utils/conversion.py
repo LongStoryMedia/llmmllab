@@ -1,5 +1,5 @@
 """
-Bidirectional message conversion utilities.
+Bidirectional message conversion utilities with strong tool call typing.
 """
 
 from typing import List, Optional, Union
@@ -16,13 +16,19 @@ from models import (
     MessageRole,
     MessageContent,
     MessageContentType,
-    ToolCall,
+    ToolCall as ToolExecutionResult,  # Our execution result model
 )
 from utils.logging import llmmllogger
 from .extraction import (
     extract_content_from_message,
     extract_content_from_langchain_message,
     _text_to_message_content_list,
+)
+from .tool_call_types import (
+    LangChainToolCall,
+    extract_tool_call_requests,
+    has_tool_calls,
+    tool_call_request_to_execution_result,
 )
 
 MessageInput = Union[
@@ -144,34 +150,40 @@ def message_to_langchain_message(msg: Message) -> LangChainMessage:
                 "ai" if role_value.lower() in ("assistant", "ai") else "system"
             )
 
+    # Convert tool execution results to LangChain format (requests) if needed
+    # Note: Our Message.tool_calls are ToolExecutionResult objects (completed executions)
+    # LangChain expects tool_calls to be requests, but in practice this conversion
+    # is rarely needed since Messages typically don't contain outgoing tool calls
+    tool_calls_for_lc = None
+    if hasattr(msg, "tool_calls") and msg.tool_calls:
+        # This is unusual - typically only AI messages going TO LangChain would have tool_calls
+        logger.debug(f"Converting {len(msg.tool_calls)} tool execution results to LangChain format")
+        tool_calls_for_lc = []
+        for tool_result in msg.tool_calls:
+            if hasattr(tool_result, "name") and hasattr(tool_result, "args"):
+                tool_calls_for_lc.append({
+                    "name": tool_result.name,
+                    "args": tool_result.args,
+                    "id": getattr(tool_result, "execution_id", None)
+                })
+
     logger.info(
         "Converting Message to LangChainMessage",
-        has_tool_calls=hasattr(msg, "tool_calls") and msg.tool_calls is not None,
-        tool_calls_count=(
-            len(msg.tool_calls) if hasattr(msg, "tool_calls") and msg.tool_calls else 0
-        ),
-        tool_calls_preview=(
-            str(msg.tool_calls)[:200]
-            if hasattr(msg, "tool_calls") and msg.tool_calls
-            else "None"
-        ),
+        has_tool_calls=tool_calls_for_lc is not None,
+        tool_calls_count=len(tool_calls_for_lc) if tool_calls_for_lc else 0,
+        tool_calls_preview=str(tool_calls_for_lc)[:200] if tool_calls_for_lc else "None",
     )
 
     langchain_msg = LangChainMessage(
         content=content_text,
         type=message_type,
-        tool_calls=getattr(msg, "tool_calls", None),
+        tool_calls=tool_calls_for_lc,
     )
 
     logger.info(
         "Created LangChainMessage",
-        lc_has_tool_calls=hasattr(langchain_msg, "tool_calls")
-        and langchain_msg.tool_calls is not None,
-        lc_tool_calls_count=(
-            len(langchain_msg.tool_calls)
-            if hasattr(langchain_msg, "tool_calls") and langchain_msg.tool_calls
-            else 0
-        ),
+        lc_has_tool_calls=langchain_msg.tool_calls is not None,
+        lc_tool_calls_count=len(langchain_msg.tool_calls) if langchain_msg.tool_calls else 0,
     )
 
     return langchain_msg
@@ -203,13 +215,31 @@ def langchain_message_to_message(
         elif msg_type in ("user", "human"):
             role = MessageRole.USER
 
+    # Convert LangChain tool call requests to execution results if present
+    # Note: This is unusual since LangChain messages typically contain requests, not results
+    tool_execution_results = None
+    if hasattr(lc_msg, "tool_calls") and lc_msg.tool_calls:
+        logger.debug(f"Converting {len(lc_msg.tool_calls)} LangChain tool calls to execution results")
+        tool_execution_results = []
+        for tc in lc_msg.tool_calls:
+            if isinstance(tc, dict) and "name" in tc and "args" in tc:
+                # Convert tool call request to a successful execution result
+                result = tool_call_request_to_execution_result(
+                    request=LangChainToolCall(
+                        name=tc["name"],
+                        args=tc["args"],
+                        id=tc.get("id")
+                    ),
+                    success=True,  # Assume success since this is coming from LangChain
+                    result_data={"status": "completed"},
+                )
+                tool_execution_results.append(result)
+
     return Message(
         content=_text_to_message_content_list(content_text),
         role=role,
         conversation_id=conversation_id,
-        tool_calls=(
-            [ToolCall(**tc) for tc in lc_msg.tool_calls] if lc_msg.tool_calls else None
-        ),
+        tool_calls=tool_execution_results,
     )
 
 

@@ -183,7 +183,7 @@ class ChatAgent(BaseAgent[ChatResponse]):
                     # Convert tool call dict to ToolCall
                     if isinstance(tool_call, dict):
                         tool_result = ToolCall(
-                            tool_name=tool_call.get("name", "unknown"),
+                            name=tool_call.get("name", "unknown"),
                             success=True,  # Assume success if we got this far
                             args=tool_call.get("args", {}),
                             result_data=tool_call.get("result", {}),
@@ -289,47 +289,56 @@ class ChatAgent(BaseAgent[ChatResponse]):
                 content="Error during chat completion with conversion",
             )
 
-    def extract_tool_calls(
+    def extract_tool_call_requests(
         self, message: LangChainMessage
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> List[Dict[str, Any]]:
         """
-        Extract tool calls from a LangChain message.
+        Extract tool call requests from a LangChain message with strong typing.
 
         Args:
             message: LangChain message to extract tool calls from
 
         Returns:
-            List of tool call dictionaries or None if no tool calls
+            List of validated tool call request dictionaries
         """
         try:
             tool_calls = getattr(message, "tool_calls", None)
 
             if tool_calls:
-                self.logger.debug(
-                    "Extracted tool calls",
-                    tool_calls_count=len(tool_calls),
-                    tool_calls_preview=str(tool_calls)[:200],
-                )
-
-            return tool_calls
+                # Validate each tool call request
+                validated_requests = []
+                for tc in tool_calls:
+                    if isinstance(tc, dict) and "name" in tc and "args" in tc:
+                        validated_requests.append(tc)
+                
+                if validated_requests:
+                    self.logger.debug(
+                        "Extracted tool call requests",
+                        tool_calls_count=len(validated_requests),
+                        tool_calls_preview=str(validated_requests)[:200],
+                    )
+                
+                return validated_requests
+            
+            return []
 
         except Exception as e:
             self.logger.error(
-                "Failed to extract tool calls",
+                "Failed to extract tool call requests",
                 error=str(e),
                 message_type=getattr(message, "type", "unknown"),
             )
-            return None
+            return []
 
-    def has_tool_calls(self, message: LangChainMessage) -> bool:
+    def has_tool_call_requests(self, message: LangChainMessage) -> bool:
         """
-        Check if a LangChain message has tool calls.
+        Check if a LangChain message has tool call requests.
 
         Args:
             message: LangChain message to check
 
         Returns:
-            True if message has tool calls, False otherwise
+            True if message has tool call requests, False otherwise
         """
-        tool_calls = self.extract_tool_calls(message)
-        return bool(tool_calls)
+        requests = self.extract_tool_call_requests(message)
+        return len(requests) > 0
