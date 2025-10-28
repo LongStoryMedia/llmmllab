@@ -40,7 +40,7 @@ from composer.graph.state import WorkflowState
 from utils.logging import llmmllogger
 from models import SearchResult, SearchResultContent, WebSearchConfig
 
-# Global cache to track recent searches and prevent duplicates  
+# Global cache to track recent searches and prevent duplicates
 _search_cache = {}
 _duplicate_counts = {}  # Track how many times each query was requested
 _max_cache_size = 100
@@ -83,7 +83,7 @@ class SearxNG:
             k=web_config.max_results,
             params=params,
             headers=headers,
-            categories=web_config.categories,
+            categories=list[str](web_config.categories),
         )
         self.logger = llmmllogger.logger
 
@@ -181,14 +181,18 @@ async def web_search(
     # ANTI-RECURSION: Check for duplicate searches to prevent infinite loops
     global _search_cache
     query_normalized = query.strip().lower()
-    
+
     if query_normalized in _search_cache:
         # Track duplicate attempts
-        _duplicate_counts[query_normalized] = _duplicate_counts.get(query_normalized, 0) + 1
+        _duplicate_counts[query_normalized] = (
+            _duplicate_counts.get(query_normalized, 0) + 1
+        )
         duplicate_count = _duplicate_counts[query_normalized]
-        
-        logger.warning(f"🔄 BLOCKED duplicate web search for: '{query}' (attempt #{duplicate_count}) - returning cached results")
-        
+
+        logger.warning(
+            f"🔄 BLOCKED duplicate web search for: '{query}' (attempt #{duplicate_count}) - returning cached results"
+        )
+
         # Hard stop after too many duplicate attempts - force agent to use what it has
         if duplicate_count >= _max_duplicate_attempts:
             return (
@@ -199,9 +203,9 @@ async def web_search(
                 "**Final Answer Required:** Based on the search results already provided, "
                 "please synthesize and present your findings to the user."
             )
-        
+
         cached_result = _search_cache[query_normalized]
-        
+
         # Add explicit duplicate notice to help agent understand it should stop
         duplicate_notice = (
             f"⚠️ **DUPLICATE SEARCH DETECTED (#{duplicate_count})** ⚠️\n\n"
@@ -210,11 +214,11 @@ async def web_search(
             "**Previous Search Results:**\n\n"
         )
         return duplicate_notice + cached_result
-    
+
     # Clean cache if it gets too large
     if len(_search_cache) > _max_cache_size:
         # Remove oldest entries (simple FIFO)
-        keys_to_remove = list(_search_cache.keys())[:-(_max_cache_size // 2)]
+        keys_to_remove = list(_search_cache.keys())[: -(_max_cache_size // 2)]
         for key in keys_to_remove:
             del _search_cache[key]
         logger.debug(f"Cleaned search cache, removed {len(keys_to_remove)} old entries")
@@ -275,7 +279,7 @@ async def web_search(
             # Cache the successful result and initialize duplicate count
             _search_cache[query_normalized] = response_message
             _duplicate_counts[query_normalized] = 0
-            
+
             # Return string result - ToolNode will automatically create ToolMessage
             return response_message
 
@@ -287,19 +291,19 @@ async def web_search(
                 response_message = f"🔍 No results found for query: '{query}'"
 
             logger.warning(f"Web search returned no results", query=query)
-            
+
             # Cache the no-results response to prevent repeated failed searches
             _search_cache[query_normalized] = response_message
             _duplicate_counts[query_normalized] = 0
-            
+
             return response_message
 
     except Exception as e:
         error_message = f"❌ Web search failed: {str(e)}"
         logger.error(f"Web search error: {e}", query=query, error=str(e))
-        
+
         # Cache the error response to prevent repeated failed searches
         _search_cache[query_normalized] = error_message
         _duplicate_counts[query_normalized] = 0
-        
+
         return error_message

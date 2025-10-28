@@ -15,7 +15,7 @@ from typing import Dict, Any, List
 
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, BaseMessage
 from langchain.tools import BaseTool
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import StateGraph, START
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.types import Command
 
@@ -124,25 +124,25 @@ class ToolsAgentSubgraph:
     ) -> List[LangChainToolCall]:
         """
         Extract tool call requests from a message with strong typing.
-        
+
         Returns:
             List of LangChain tool call requests (what AI wants to call)
         """
         if isinstance(msg, BaseMessage):
             return extract_tool_call_requests(msg)
-        
+
         # Handle our LangChainMessage format
         if hasattr(msg, "tool_calls") and msg.tool_calls:
             validated_calls = []
             for tc in msg.tool_calls:
                 if isinstance(tc, dict) and "name" in tc and "args" in tc:
-                    validated_calls.append(LangChainToolCall(
-                        name=tc["name"],
-                        args=tc["args"],
-                        id=tc.get("id")
-                    ))
+                    validated_calls.append(
+                        LangChainToolCall(
+                            name=tc["name"], args=tc["args"], id=tc.get("id")
+                        )
+                    )
             return validated_calls
-        
+
         return []
 
     def _extract_previous_tool_call_requests(
@@ -160,7 +160,9 @@ class ToolsAgentSubgraph:
         return previous_requests
 
     def _is_duplicate_tool_call_request(
-        self, current_request: LangChainToolCall, previous_requests: List[LangChainToolCall]
+        self,
+        current_request: LangChainToolCall,
+        previous_requests: List[LangChainToolCall],
     ) -> bool:
         """Check if a tool call request is a duplicate of a previous one."""
         for prev_request in previous_requests:
@@ -189,7 +191,9 @@ class ToolsAgentSubgraph:
             logger.debug(f"Agent wrapper processing {len(messages)} messages")
             for i, msg in enumerate(messages[-3:]):  # Log last 3 messages
                 msg_type = getattr(msg, "type", type(msg).__name__)
-                msg_has_tool_calls = has_tool_calls(msg) if isinstance(msg, BaseMessage) else False
+                msg_has_tool_calls = (
+                    has_tool_calls(msg) if isinstance(msg, BaseMessage) else False
+                )
                 logger.debug(
                     f"  Message {len(messages)-3+i}: {msg_type}, tool_calls={msg_has_tool_calls}"
                 )
@@ -220,13 +224,17 @@ class ToolsAgentSubgraph:
             tool_call_requests = []
             filtered_requests = []
             duplicates_blocked = 0
-            response_tool_requests = self._extract_tool_call_requests_from_message(response_msg)
+            response_tool_requests = self._extract_tool_call_requests_from_message(
+                response_msg
+            )
             total_tool_requests = len(response_tool_requests)
 
             if response_tool_requests:
                 for request in response_tool_requests:
                     # Check if this is a duplicate tool call request
-                    if self._is_duplicate_tool_call_request(request, previous_tool_requests):
+                    if self._is_duplicate_tool_call_request(
+                        request, previous_tool_requests
+                    ):
                         logger.warning(
                             f"🔄 BLOCKED duplicate tool call request: {request['name']} with args {request['args']}"
                         )
@@ -253,7 +261,9 @@ class ToolsAgentSubgraph:
             if should_force_final_answer:
                 reason = []
                 if duplicates_blocked > 0:
-                    reason.append(f"blocked {duplicates_blocked} duplicate tool requests")
+                    reason.append(
+                        f"blocked {duplicates_blocked} duplicate tool requests"
+                    )
                 if excessive_tool_usage:
                     reason.append(
                         f"detected excessive tool usage ({len(previous_tool_requests)} previous requests)"

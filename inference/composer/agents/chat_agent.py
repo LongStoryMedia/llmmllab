@@ -3,7 +3,7 @@ Chat Agent for LLM chat model operations.
 Provides core business logic for chat completions, streaming, and tool integration.
 """
 
-from typing import List, cast, Optional, Dict, Any
+from typing import List, Optional
 from datetime import datetime, timezone
 
 from langchain.tools import BaseTool
@@ -18,7 +18,6 @@ from models import (
     MessageRole,
     MessageContent,
     MessageContentType,
-    CircuitBreakerConfig,
     NodeMetadata,
     ToolCall,
 )
@@ -289,9 +288,7 @@ class ChatAgent(BaseAgent[ChatResponse]):
                 content="Error during chat completion with conversion",
             )
 
-    def extract_tool_call_requests(
-        self, message: LangChainMessage
-    ) -> List[Dict[str, Any]]:
+    def extract_tool_call_requests(self, message: LangChainMessage) -> List[ToolCall]:
         """
         Extract tool call requests from a LangChain message with strong typing.
 
@@ -309,17 +306,17 @@ class ChatAgent(BaseAgent[ChatResponse]):
                 validated_requests = []
                 for tc in tool_calls:
                     if isinstance(tc, dict) and "name" in tc and "args" in tc:
-                        validated_requests.append(tc)
-                
+                        validated_requests.append(ToolCall(**tc))
+
                 if validated_requests:
                     self.logger.debug(
                         "Extracted tool call requests",
                         tool_calls_count=len(validated_requests),
                         tool_calls_preview=str(validated_requests)[:200],
                     )
-                
+
                 return validated_requests
-            
+
             return []
 
         except Exception as e:

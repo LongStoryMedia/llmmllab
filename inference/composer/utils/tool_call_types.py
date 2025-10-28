@@ -7,20 +7,13 @@ This module provides clear, typed interfaces to eliminate confusion between:
 """
 
 from typing import Dict, Any, Optional, List, Union, TypedDict, Protocol
-from langchain_core.messages import BaseMessage, AIMessage, ToolMessage
-from models import ToolCall as ToolExecutionResult  # Our Pydantic model
-
-
-class LangChainToolCall(TypedDict):
-    """
-    LangChain's tool call request format.
-
-    This represents what the AI model wants to call - it's a request, not a result.
-    """
-
-    name: str
-    args: Dict[str, Any]
-    id: Optional[str]
+from langchain_core.messages import (
+    BaseMessage,
+    AIMessage,
+    ToolMessage,
+    ToolCall as LangChainToolCall,
+)
+from models import ToolCall
 
 
 class ToolCallCapableMessage(Protocol):
@@ -92,13 +85,13 @@ def tool_call_request_to_execution_result(
     execution_time_ms: Optional[float] = None,
     message_id: Optional[int] = None,
     execution_id: Optional[str] = None,
-) -> ToolExecutionResult:
+) -> ToolCall:
     """
     Convert a tool call request to an execution result.
 
     This bridges the gap between what the AI requested and what actually happened.
     """
-    return ToolExecutionResult(
+    return ToolCall(
         message_id=message_id,
         name=request["name"],
         execution_id=execution_id or request.get("id"),
