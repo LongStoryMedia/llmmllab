@@ -89,9 +89,9 @@ class ToolsAgentSubgraph:
             # Add chat agent node
             builder.add_node("chat_agent", self._chat_agent_wrapper)
 
-            # Add tool executor node
+            # Add tool executor node (must be named 'tools' for tools_condition to work)
             tool_node = self._create_tool_node()
-            builder.add_node("tool_executor", tool_node)
+            builder.add_node("tools", tool_node)
 
             # EXACTLY like the LangChain quickstart - use built-in tools_condition
             builder.add_conditional_edges(
@@ -100,7 +100,7 @@ class ToolsAgentSubgraph:
             )
 
             # Simple continuation after tools
-            builder.add_edge("tool_executor", "chat_agent")
+            builder.add_edge("tools", "chat_agent")
 
             # Start with chat agent
             builder.add_edge(START, "chat_agent")
