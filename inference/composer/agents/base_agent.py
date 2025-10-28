@@ -308,7 +308,7 @@ class BaseAgent(ABC, Generic[T]):
                 async for chunk in agent.astream(
                     npt,  # type: ignore
                     stream_mode="messages",
-                    # Use LangChain defaults - no custom recursion limits
+                    config={"recursion_limit": 15}  # Allow tool calls + response, prevent infinite loops
                 ):
                     # stream_mode "messages" returns AIMessageChunk objects with metadata
                     from langchain_core.messages import AIMessageChunk
@@ -464,7 +464,7 @@ class BaseAgent(ABC, Generic[T]):
                 # Execute agent with controlled recursion limit
                 result = await agent.ainvoke(
                     {"messages": normalized_messages},  # type: ignore
-                    # Use LangChain defaults - no custom recursion limits
+                    config={"recursion_limit": 15},  # Prevent infinite tool calling
                     grammar=grammar,
                     tools=tools,
                 )

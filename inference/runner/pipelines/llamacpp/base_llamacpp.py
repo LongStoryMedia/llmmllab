@@ -74,7 +74,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
         self.hardware_manager = hardware_manager
 
         # Initialize intelligent OOM recovery system (can be disabled)
-        self.use_intelligent_oom = os.getenv("ENABLE_INTELLIGENT_OOM_RECOVERY", "false").lower() == "true"
+        self.use_intelligent_oom = (
+            os.getenv("ENABLE_INTELLIGENT_OOM_RECOVERY", "false").lower() == "true"
+        )
         if self.use_intelligent_oom:
             self.oom_recovery = IntelligentOOMRecovery()
             self.llama_instance = self._initialize_llama_with_intelligent_oom_recovery(
@@ -83,9 +85,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
         else:
             # Simple initialization - fail fast on errors
             self.oom_recovery = None
-            self.llama_instance = self._initialize_llama_simple(
-                self._get_gguf_path()
-            )
+            self.llama_instance = self._initialize_llama_simple(self._get_gguf_path())
 
     @property
     def _llm_type(self) -> str:
@@ -174,6 +174,8 @@ class BaseLlamaCppPipeline(BaseChatModel):
         """
         if llama_cpp.Llama is None:
             raise ImportError("llama-cpp-python is required but not installed")
+
+        assert self.oom_recovery
 
         # Get original target parameters
         target_n_ctx = self.profile.parameters.num_ctx or 32768
@@ -461,7 +463,10 @@ class BaseLlamaCppPipeline(BaseChatModel):
         n_batch = params.batch_size or 64  # Conservative default
         # Use GPU configuration from profile or default to full GPU usage
         gpu_config = self.profile.gpu_config or DEFAULT_GPU_CONFIG
-        n_gpu_layers = gpu_config.gpu_layers if gpu_config.gpu_layers is not None else -1
+        n_gpu_layers = (
+            gpu_config.gpu_layers if gpu_config.gpu_layers is not None else -1
+        )
+        gcfg = self.profile.gpu_config or DEFAULT_GPU_CONFIG
 
         self._logger.info(
             f"🚀 Simple initialization {self.model.name}: "
@@ -475,13 +480,54 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 n_ctx=n_ctx,
                 n_batch=n_batch,
                 n_gpu_layers=n_gpu_layers,
-                verbose=False,
-                n_threads=multiprocessing.cpu_count() // 2,
+                split_mode=llama_cpp.LLAMA_SPLIT_MODE_ROW,
+                tensor_split=gcfg.tensor_split,
+                vocab_only=False,
+                use_mmap=True,
+                use_mlock=False,
+                kv_overrides=None,
+                # Context Params
+                seed=self.profile.parameters.seed or llama_cpp.LLAMA_DEFAULT_SEED,
+                n_threads=self._get_optimal_threads(),
+                temperature=self.profile.parameters.temperature or 0.7,
+                top_p=self.profile.parameters.top_p or 0.8,
+                top_k=self.profile.parameters.top_k or 20,
+                repeat_penalty=self.profile.parameters.repeat_penalty or 1.05,
+                f16_kv=True,
+                verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
+                flash_attn=getattr(self.profile.parameters, "flash_attention", True),
+                embedding=False,
+                chat_format=None,
+                n_threads_batch=None,
+                rope_scaling_type=None,
+                pooling_type=llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
+                rope_freq_base=0.0,
+                rope_freq_scale=0.0,
+                yarn_ext_factor=-1.0,
+                yarn_attn_factor=1.0,
+                yarn_beta_fast=32.0,
+                yarn_beta_slow=1.0,
+                yarn_orig_ctx=0,
+                offload_kqv=False,
+                op_offload=None,
+                swa_full=None,
+                no_perf=False,
+                last_n_tokens_size=64,
+                lora_base=None,
+                lora_scale=1.0,
+                lora_path=None,
+                numa=False,
+                chat_handler=None,
+                draft_model=None,
+                tokenizer=None,
+                type_k=None,
+                type_v=None,
+                smp_infill=False,
             )
-            
+
             self._logger.info(f"✅ Simple initialization successful: {self.model.name}")
             return llama_instance
-            
+
         except Exception as e:
             self._logger.error(
                 f"❌ Simple initialization failed for {self.model.name}: {e}"
@@ -624,7 +670,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
     ) -> Tuple[str, List[Dict[str, Any]]]:
         """
         Parse tool calls from LlamaCpp text output and clean content.
-        
+
         Handles both XML-wrapped format:
             <tool_call>{"name": "func", "arguments": {...}}</tool_call>
         And bare JSON format:
@@ -672,38 +718,42 @@ class BaseLlamaCppPipeline(BaseChatModel):
         if not tool_calls:
             # Pattern to match bare JSON tool calls like {"name": "func", "parameters": {...}}
             # Use a more flexible pattern that can handle nested JSON
-            bare_json_pattern = r'\{"name":\s*"([^"]+)"\s*,\s*"parameters":\s*\{.*?\}\s*\}'
-            
+            bare_json_pattern = (
+                r'\{"name":\s*"([^"]+)"\s*,\s*"parameters":\s*\{.*?\}\s*\}'
+            )
+
             matches = re.finditer(bare_json_pattern, content, re.DOTALL)
-            
+
             for match in matches:
                 try:
                     # Parse the full JSON tool call
                     json_str = match.group(0).strip()
-                    
+
                     # Handle cases where there might be extra text after the closing brace
                     # Find the balanced JSON object
                     brace_count = 0
                     end_pos = 0
                     for i, char in enumerate(json_str):
-                        if char == '{':
+                        if char == "{":
                             brace_count += 1
-                        elif char == '}':
+                        elif char == "}":
                             brace_count -= 1
                             if brace_count == 0:
                                 end_pos = i + 1
                                 break
-                    
+
                     if end_pos > 0:
                         json_str = json_str[:end_pos]
-                    
+
                     tool_data = json.loads(json_str)
 
                     # Convert to LangChain flat format (parameters -> args)
                     tool_call = {
                         "id": f"call_{len(tool_calls)}",  # Generate ID
                         "name": tool_data.get("name", ""),
-                        "args": tool_data.get("parameters", {}),  # Use parameters instead of arguments
+                        "args": tool_data.get(
+                            "parameters", {}
+                        ),  # Use parameters instead of arguments
                         "type": "tool_call",
                     }
                     tool_calls.append(tool_call)
@@ -727,9 +777,13 @@ class BaseLlamaCppPipeline(BaseChatModel):
         # This prevents the infinite loop issue where models see "assistantassistant" in conversation history
         if tool_calls and cleaned_content:
             # Remove any trailing "assistant" tokens (case insensitive)
-            cleaned_content = re.sub(r'assistant+\s*$', '', cleaned_content, flags=re.IGNORECASE).strip()
+            cleaned_content = re.sub(
+                r"assistant+\s*$", "", cleaned_content, flags=re.IGNORECASE
+            ).strip()
             # Also remove any repeated assistant tokens in the middle
-            cleaned_content = re.sub(r'\s*assistant+\s*', ' ', cleaned_content, flags=re.IGNORECASE).strip()
+            cleaned_content = re.sub(
+                r"\s*assistant+\s*", " ", cleaned_content, flags=re.IGNORECASE
+            ).strip()
 
         return cleaned_content, tool_calls
 
@@ -770,12 +824,12 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
         # Enhanced stop sequences to prevent token loops in Llama models
         default_stop_sequences = [
-            "<|eot_id|>", 
-            "<|end_header_id|>", 
+            "<|eot_id|>",
+            "<|end_header_id|>",
             "<|start_header_id|>",
             # CRITICAL: Add stop sequences to prevent infinite "assistant" token generation
-            "assistant", 
-            "Assistant", 
+            "assistant",
+            "Assistant",
             "ASSISTANT",
             # Also stop on double occurrences
             "assistantassistant",
@@ -784,7 +838,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
         configured_stop = self.profile.parameters.stop or stop or []
         # Combine configured stop sequences with defaults, removing duplicates
         all_stop_sequences = list(set(configured_stop + default_stop_sequences))
-        
+
         # Simple call to llama-cpp-python - let it handle the complexity
         kwargs = {
             "messages": llama_messages,  # type: ignore
