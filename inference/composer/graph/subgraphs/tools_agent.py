@@ -119,21 +119,62 @@ class ToolsAgentSubgraph:
 
             # Simple continuation logic - let middleware handle the complex decisions
             def should_continue_after_tools(state: ToolsState):
-                """Simple continuation logic - middleware handles rate limiting."""
+                """
+                Determine whether to continue agent loop or end subgraph after tools execute.
+                
+                Logic:
+                1. If we have tool calls pending, continue to agent to process results (one iteration only)
+                2. If agent provided final response without new tool calls, end subgraph
+                3. Use iteration count to prevent infinite loops
+                """
                 messages = state.get("messages", [])
                 if not messages:
                     logger.info("🔀 Subgraph: No messages after tools, finishing")
                     return END
 
-                # Check if we have a recent AI message without tool calls (completion signal)
-                last_message = messages[-1]
-                if isinstance(last_message, ToolMessage):
-                    # Tools just executed, continue with agent to process results
-                    logger.info("🔀 Subgraph: Tools executed, continuing to agent")
-                    return "chat_agent"
+                # Count recent AI messages to detect loops
+                recent_ai_count = 0
+                tool_message_found = False
+                
+                # Look at last few messages to understand the pattern
+                for msg in messages[-5:]:  # Check last 5 messages
+                    if isinstance(msg, ToolMessage):
+                        tool_message_found = True
+                    elif isinstance(msg, AIMessage):
+                        recent_ai_count += 1
 
-                # Default to ending if we're in an unexpected state
-                logger.info("🔀 Subgraph: Unexpected state after tools, finishing")
+                # If we have multiple recent AI messages, we might be in a loop
+                if recent_ai_count >= 2:
+                    logger.info("🔀 Subgraph: Multiple AI messages detected, finishing to prevent loop")
+                    return END
+
+                # If tools just executed (ToolMessage exists), allow ONE continuation to agent
+                # But only if we don't already have an AI response after the tool message
+                if tool_message_found:
+                    # Check if there's already an AI message after the last tool message
+                    last_tool_index = -1
+                    for i in reversed(range(len(messages))):
+                        if isinstance(messages[i], ToolMessage):
+                            last_tool_index = i
+                            break
+                    
+                    if last_tool_index >= 0:
+                        # Check if there's an AI message after the last tool message
+                        has_ai_after_tool = False
+                        for i in range(last_tool_index + 1, len(messages)):
+                            if isinstance(messages[i], AIMessage):
+                                has_ai_after_tool = True
+                                break
+                        
+                        if has_ai_after_tool:
+                            logger.info("🔀 Subgraph: AI already responded to tools, finishing")
+                            return END
+                        else:
+                            logger.info("🔀 Subgraph: Tools executed, allowing one agent response")
+                            return "chat_agent"
+
+                # Default to ending
+                logger.info("🔀 Subgraph: Default case, finishing subgraph")
                 return END
 
             # Use LangChain's built-in tools_condition for proper routing

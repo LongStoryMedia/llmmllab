@@ -707,6 +707,12 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 json.dumps(self.grammar.model_json_schema())
             )
 
+        # Enhanced stop sequences to prevent token loops in Llama models
+        default_stop_sequences = ["<|eot_id|>", "<|end_header_id|>", "<|start_header_id|>"]
+        configured_stop = self.profile.parameters.stop or stop or []
+        # Combine configured stop sequences with defaults, removing duplicates
+        all_stop_sequences = list(set(configured_stop + default_stop_sequences))
+        
         # Simple call to llama-cpp-python - let it handle the complexity
         kwargs = {
             "messages": llama_messages,  # type: ignore
@@ -714,7 +720,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
             "top_p": self.profile.parameters.top_p or 0.95,
             "top_k": self.profile.parameters.top_k or 40,
             "stream": stream,
-            "stop": self.profile.parameters.stop or stop or [],
+            "stop": all_stop_sequences,
             "max_tokens": self.profile.parameters.max_tokens or 4096,
             "repeat_penalty": self.profile.parameters.repeat_penalty or 1.05,
         }
