@@ -371,13 +371,16 @@ class BaseAgent(ABC, Generic[T]):
                         if hasattr(msg_chunk, "tool_calls") and msg_chunk.tool_calls:
                             tool_calls = []
                             for tc in msg_chunk.tool_calls:
-                                # ToolCall objects are TypedDict, use dictionary access
-                                # Map to ToolCall model fields: tool_name and success are required
-                                call = ToolCall(**tc)
-                                call.success = True  # Assume success during streaming
-                                call.execution_id = tc.get(
-                                    "id",
-                                    f"call_{len(tool_calls)}_{tc['name']}",
+                                # Convert LangChain tool call request to our execution result format
+                                # During streaming, we mark as successful with no result data yet
+                                from composer.utils.tool_call_types import tool_call_request_to_execution_result
+                                
+                                execution_id = tc.get("id", f"call_{len(tool_calls)}_{tc['name']}")
+                                call = tool_call_request_to_execution_result(
+                                    request=tc,
+                                    success=True,  # Assume success during streaming
+                                    execution_id=execution_id,
+                                    result_data=None  # No result data yet during streaming
                                 )
                                 tool_calls.append(call)
 

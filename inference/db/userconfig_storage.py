@@ -512,7 +512,21 @@ class UserConfigStorage:
                 if not row or not row["config"]:
                     return None
 
-                config_data = dict(row["config"])
+                # Handle JSONB config data properly
+                config_raw = row["config"]
+                if isinstance(config_raw, dict):
+                    config_data = config_raw.copy()
+                elif isinstance(config_raw, str):
+                    import json
+                    config_data = json.loads(config_raw)
+                else:
+                    # Handle other formats - try converting to dict safely
+                    try:
+                        config_data = dict(config_raw) if config_raw else {}
+                    except (ValueError, TypeError) as conv_error:
+                        logger.error(f"Cannot convert config data to dict: {config_raw}, error: {conv_error}")
+                        config_data = {}
+                
                 config_data["user_id"] = user_id  # Ensure user_id is set
 
                 return UserConfig(**config_data)
