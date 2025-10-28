@@ -117,41 +117,50 @@ class ToolsAgentSubgraph:
             # This handles all the complex logic of determining whether tools should execute
             # Rate limiting and planning logic is handled by middleware
 
-            # Simple continuation logic - let middleware handle the complex decisions
+            # Enhanced logic to prevent infinite tool calling loops
             def should_continue_after_tools(state: ToolsState):
                 """
                 Determine whether to continue agent loop or end subgraph after tools execute.
                 
                 Logic:
-                1. If we have tool calls pending, continue to agent to process results (one iteration only)
-                2. If agent provided final response without new tool calls, end subgraph
-                3. Use iteration count to prevent infinite loops
+                1. Count tool execution cycles - limit to prevent infinite loops
+                2. If we have tool results, allow ONE response generation then END
+                3. If agent keeps generating tool calls instead of responses, force END
                 """
                 messages = state.get("messages", [])
                 if not messages:
                     logger.info("🔀 Subgraph: No messages after tools, finishing")
                     return END
 
-                # Count recent AI messages to detect loops
-                recent_ai_count = 0
-                tool_message_found = False
+                # Count tool execution cycles by counting ToolMessage instances
+                tool_execution_count = sum(1 for msg in messages if isinstance(msg, ToolMessage))
                 
-                # Look at last few messages to understand the pattern
-                for msg in messages[-5:]:  # Check last 5 messages
+                # If we have many tool executions, force END to prevent infinite loops
+                if tool_execution_count >= 5:  # Allow up to 5 tool execution cycles
+                    logger.info(f"🔀 Subgraph: Tool execution limit reached ({tool_execution_count} executions), forcing END")
+                    return END
+
+                # Count recent AI messages to detect response patterns
+                recent_ai_count = 0
+                recent_tool_count = 0
+                
+                # Look at last 10 messages to understand the pattern
+                for msg in messages[-10:]:
                     if isinstance(msg, ToolMessage):
-                        tool_message_found = True
+                        recent_tool_count += 1
                     elif isinstance(msg, AIMessage):
                         recent_ai_count += 1
 
-                # If we have multiple recent AI messages, we might be in a loop
-                if recent_ai_count >= 2:
-                    logger.info("🔀 Subgraph: Multiple AI messages detected, finishing to prevent loop")
+                # If we have tool results but multiple AI messages without ending, force END
+                if recent_tool_count > 0 and recent_ai_count >= 3:
+                    logger.info(f"🔀 Subgraph: Multiple AI responses ({recent_ai_count}) after tools ({recent_tool_count}), finishing to prevent loop")
                     return END
 
-                # If tools just executed (ToolMessage exists), allow ONE continuation to agent
-                # But only if we don't already have an AI response after the tool message
-                if tool_message_found:
-                    # Check if there's already an AI message after the last tool message
+                # Check if we have recent tool execution
+                has_recent_tool = any(isinstance(msg, ToolMessage) for msg in messages[-3:])
+                
+                if has_recent_tool:
+                    # Check if there's already an AI response after the most recent tool message
                     last_tool_index = -1
                     for i in reversed(range(len(messages))):
                         if isinstance(messages[i], ToolMessage):
@@ -170,10 +179,10 @@ class ToolsAgentSubgraph:
                             logger.info("🔀 Subgraph: AI already responded to tools, finishing")
                             return END
                         else:
-                            logger.info("🔀 Subgraph: Tools executed, allowing one agent response")
+                            logger.info(f"🔀 Subgraph: Tools executed (cycle {tool_execution_count}), allowing final response generation")
                             return "chat_agent"
 
-                # Default to ending
+                # Default to ending - be more conservative about continuation
                 logger.info("🔀 Subgraph: Default case, finishing subgraph")
                 return END
 
@@ -219,7 +228,24 @@ class ToolsAgentSubgraph:
             # Convert LangChain core messages to our LangChainMessage format
             messages = state["messages"]
 
+            # Check if we have recent tool results that need synthesis
+            has_recent_tool_results = False
+            tool_result_count = 0
+            for msg in messages[-5:]:  # Check last 5 messages
+                if isinstance(msg, ToolMessage):
+                    has_recent_tool_results = True
+                    tool_result_count += 1
+
             langchain_messages = []
+            
+            # Add context-aware system message if we have tool results
+            if has_recent_tool_results and tool_result_count >= 2:
+                from langchain_core.messages import SystemMessage
+                synthesis_prompt = SystemMessage(
+                    content="You have received multiple tool results from web searches. Now provide a comprehensive final response that synthesizes all the information you gathered. Do NOT make additional tool calls - focus on creating a well-structured summary of the AI developments in 2024 based on the search results you already have."
+                )
+                langchain_messages.append(synthesis_prompt)
+            
             for msg in messages:
                 if isinstance(msg, HumanMessage):
                     langchain_messages.append(

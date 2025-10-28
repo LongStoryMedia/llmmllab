@@ -718,8 +718,16 @@ class BaseLlamaCppPipeline(BaseChatModel):
         # Also clean up <think> tags if present
         # think_pattern = r"<think>.*?</think>"
         # cleaned_content = re.sub(
-        #     think_pattern, "", cleaned_content, flags=re.DOTALL | re.IGNORECASE
+        #     think_pattern, "", cleaned_content, flags=re.DOTALL
         # ).strip()
+
+        # CRITICAL FIX: Clean up repeated "assistant" tokens that appear after tool calls
+        # This prevents the infinite loop issue where models see "assistantassistant" in conversation history
+        if tool_calls and cleaned_content:
+            # Remove any trailing "assistant" tokens (case insensitive)
+            cleaned_content = re.sub(r'assistant+\s*$', '', cleaned_content, flags=re.IGNORECASE).strip()
+            # Also remove any repeated assistant tokens in the middle
+            cleaned_content = re.sub(r'\s*assistant+\s*', ' ', cleaned_content, flags=re.IGNORECASE).strip()
 
         return cleaned_content, tool_calls
 
@@ -759,7 +767,18 @@ class BaseLlamaCppPipeline(BaseChatModel):
             )
 
         # Enhanced stop sequences to prevent token loops in Llama models
-        default_stop_sequences = ["<|eot_id|>", "<|end_header_id|>", "<|start_header_id|>"]
+        default_stop_sequences = [
+            "<|eot_id|>", 
+            "<|end_header_id|>", 
+            "<|start_header_id|>",
+            # CRITICAL: Add stop sequences to prevent infinite "assistant" token generation
+            "assistant", 
+            "Assistant", 
+            "ASSISTANT",
+            # Also stop on double occurrences
+            "assistantassistant",
+            "AssistantAssistant",
+        ]
         configured_stop = self.profile.parameters.stop or stop or []
         # Combine configured stop sequences with defaults, removing duplicates
         all_stop_sequences = list(set(configured_stop + default_stop_sequences))
