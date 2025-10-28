@@ -176,7 +176,7 @@ class MessageStorage:
         contents_rows = await conn.fetch(
             self.get_query("message_content.get_by_message"), message_id
         )
-        message_data["contents"] = [
+        message_data["content"] = [
             MessageContent(**dict(content_row)) for content_row in contents_rows
         ]
 
@@ -529,6 +529,8 @@ class MessageStorage:
         """Helper method to insert message contents using MessageContentStorage."""
 
         for content in contents:
+            # Set the message_id on the content before inserting
+            content.message_id = message_id
             await self.message_content_storage.add_content(content=content, conn=conn)
 
     async def _insert_tool_calls(

@@ -3,7 +3,7 @@ SELECT
     mc.id,
     mc.message_id,
     mc.type,
-    mc.text_content,
+    mc.text_content AS text,
     mc.url,
     mc.created_at
 FROM
