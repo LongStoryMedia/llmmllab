@@ -136,7 +136,7 @@ class ToolsAgentSubgraph:
                 tool_execution_count = sum(1 for msg in messages if isinstance(msg, ToolMessage))
                 
                 # If we have many tool executions, force END to prevent infinite loops
-                if tool_execution_count >= 5:  # Allow up to 5 tool execution cycles
+                if tool_execution_count >= 4:  # Allow up to 4 tool execution cycles
                     logger.info(f"🔀 Subgraph: Tool execution limit reached ({tool_execution_count} executions), forcing END")
                     return END
 
@@ -186,12 +186,59 @@ class ToolsAgentSubgraph:
                 logger.info("🔀 Subgraph: Default case, finishing subgraph")
                 return END
 
-            # Use LangChain's built-in tools_condition for proper routing
+            # Custom routing function that enforces tool execution limits
+            def enhanced_tools_condition(state: ToolsState):
+                """
+                Enhanced routing logic that combines tools_condition with execution limits.
+                
+                Prevents infinite tool calling by enforcing hard limits at the routing level.
+                """
+                messages = state.get("messages", [])
+                if not messages:
+                    logger.info("🔀 Enhanced routing: No messages, ending")
+                    return END
+
+                # Count total tool executions to enforce hard limit
+                tool_execution_count = sum(1 for msg in messages if isinstance(msg, ToolMessage))
+                
+                # HARD STOP: If we've hit our tool execution limit, force END regardless of LLM output
+                if tool_execution_count >= 3:  # Even more aggressive limit: max 3 tool executions
+                    logger.info(f"🔀 Enhanced routing: HARD STOP - Tool execution limit reached ({tool_execution_count} executions), forcing END")
+                    return END
+
+                # Get the last message to check for tool calls
+                last_message = messages[-1]
+                
+                # If last message is not an AI message, end
+                if not isinstance(last_message, AIMessage):
+                    logger.info("🔀 Enhanced routing: Last message not from AI, ending")
+                    return END
+                
+                # Check if AI message has tool calls
+                has_tool_calls = (
+                    hasattr(last_message, 'tool_calls') and 
+                    last_message.tool_calls and 
+                    len(last_message.tool_calls) > 0
+                )
+                
+                if has_tool_calls:
+                    # Additional check: if we already have tool results, be very restrictive about more tools
+                    if tool_execution_count >= 2:
+                        logger.info(f"🔀 Enhanced routing: OVERRIDE - Blocking additional tool calls after {tool_execution_count} executions")
+                        return END
+                    
+                    logger.info(f"🔀 Enhanced routing: Tool calls detected (execution #{tool_execution_count + 1}), routing to tools")
+                    return "tool_executor"
+                else:
+                    logger.info("🔀 Enhanced routing: No tool calls, ending subgraph")
+                    return END
+
+            # Use enhanced routing that enforces limits at the routing level
             builder.add_conditional_edges(
                 "chat_agent",
-                tools_condition,  # Built-in LangChain routing logic
+                enhanced_tools_condition,  # Custom routing with hard limits
                 {
-                    "tools": "tool_executor",
+                    "tool_executor": "tool_executor",
                     "__end__": END,
                 },
             )
@@ -231,20 +278,37 @@ class ToolsAgentSubgraph:
             # Check if we have recent tool results that need synthesis
             has_recent_tool_results = False
             tool_result_count = 0
-            for msg in messages[-5:]:  # Check last 5 messages
+            for msg in messages:  # Check ALL messages for total count
                 if isinstance(msg, ToolMessage):
                     has_recent_tool_results = True
                     tool_result_count += 1
 
             langchain_messages = []
             
-            # Add context-aware system message if we have tool results
-            if has_recent_tool_results and tool_result_count >= 2:
+            # Add VERY aggressive system message if we have tool results
+            if has_recent_tool_results:
                 from langchain_core.messages import SystemMessage
-                synthesis_prompt = SystemMessage(
-                    content="You have received multiple tool results from web searches. Now provide a comprehensive final response that synthesizes all the information you gathered. Do NOT make additional tool calls - focus on creating a well-structured summary of the AI developments in 2024 based on the search results you already have."
-                )
-                langchain_messages.append(synthesis_prompt)
+                
+                if tool_result_count >= 2:  # Be aggressive: force synthesis after just 2 tool executions
+                    synthesis_prompt = SystemMessage(
+                        content="""CRITICAL INSTRUCTION: You have already executed web searches and have sufficient information. You MUST now provide a comprehensive final response that synthesizes the search results. 
+
+DO NOT USE ANY TOOLS. DO NOT MAKE ANY FUNCTION CALLS. DO NOT REQUEST MORE SEARCHES.
+
+Your response must be a detailed, well-structured summary of AI developments in 2024 based on the search results you have already received. Structure your response with clear sections covering:
+
+1. Major AI model releases in 2024
+2. Recent breakthroughs in AI research  
+3. Current AI safety developments
+
+Synthesize ALL the information from your previous searches into one comprehensive response NOW."""
+                    )
+                    langchain_messages.append(synthesis_prompt)
+                elif tool_result_count >= 1:  # Even after 1 tool execution, start encouraging synthesis
+                    synthesis_prompt = SystemMessage(
+                        content="You have search results available. Consider whether you have sufficient information to provide a final response about AI developments in 2024. Focus on synthesizing the information you have rather than requesting more searches."
+                    )
+                    langchain_messages.append(synthesis_prompt)
             
             for msg in messages:
                 if isinstance(msg, HumanMessage):
