@@ -287,7 +287,18 @@ class BaseAgent(ABC, Generic[T]):
                     else:
                         convo.append(msg)
 
-                # ToolRuntime handles parameter injection automatically - use tools directly
+                # Count existing tool calls in conversation to modify system prompt
+                tool_call_count = sum(1 for msg in convo if msg.role == MessageRole.TOOL)
+                
+                # Ultra aggressive system prompt modification to prevent infinite tool calling
+                if tool_call_count >= 2:
+                    system_prompt += "\n\nCRITICAL INSTRUCTION: You have already used tools extensively in this conversation. DO NOT USE ANY MORE TOOLS. DO NOT MAKE ANY FUNCTION CALLS. Provide your final comprehensive response NOW using only the information you already have. This is mandatory - no exceptions."
+                elif tool_call_count >= 1:
+                    system_prompt += "\n\nIMPORTANT: You have already used tools in this conversation. Use tools very sparingly and only if absolutely critical. Prefer providing a response with available information."
+                
+                self.logger.info(f"🔀 Agent: Tool call count = {tool_call_count}, modified system prompt accordingly")
+
+                # ToolRuntime handles parameter injection automatically - use tools directly  
                 agent = create_agent(
                     model=llm,
                     tools=tools or [],
@@ -301,11 +312,12 @@ class BaseAgent(ABC, Generic[T]):
                 normalized_messages = convert_messages_to_base_langchain(convo)
                 npt = {"messages": normalized_messages}
 
-                # Stream agent execution
+                # Stream agent execution with controlled recursion limit
                 chunk_count = 0
                 async for chunk in agent.astream(
                     npt,  # type: ignore
                     stream_mode="messages",
+                    config={"recursion_limit": 5}  # Allow: query -> tool -> result -> response -> end
                 ):
                     # stream_mode "messages" returns AIMessageChunk objects with metadata
                     from langchain_core.messages import AIMessageChunk
@@ -444,8 +456,19 @@ class BaseAgent(ABC, Generic[T]):
                         system_prompt += f"\n\n{extract_message_text(msg)}"
                     else:
                         convo.append(msg)
-                # Create LangChain agent using create_agent()
+                
+                # Count existing tool calls in conversation to modify system prompt
+                tool_call_count = sum(1 for msg in convo if msg.role == MessageRole.TOOL)
+                
+                # Ultra aggressive system prompt modification to prevent infinite tool calling
+                if tool_call_count >= 2:
+                    system_prompt += "\n\nCRITICAL INSTRUCTION: You have already used tools extensively in this conversation. DO NOT USE ANY MORE TOOLS. DO NOT MAKE ANY FUNCTION CALLS. Provide your final comprehensive response NOW using only the information you already have. This is mandatory - no exceptions."
+                elif tool_call_count >= 1:
+                    system_prompt += "\n\nIMPORTANT: You have already used tools in this conversation. Use tools very sparingly and only if absolutely critical. Prefer providing a response with available information."
+                
+                self.logger.info(f"🔀 Agent: Tool call count = {tool_call_count}, modified system prompt accordingly")
 
+                # Create LangChain agent using create_agent()
                 agent = create_agent(
                     model=llm,
                     tools=tools or [],
@@ -456,9 +479,10 @@ class BaseAgent(ABC, Generic[T]):
 
                 # Convert messages to LangChain format
                 normalized_messages = convert_messages_to_base_langchain(convo)
-                # Execute agent
+                # Execute agent with controlled recursion limit
                 result = await agent.ainvoke(
                     {"messages": normalized_messages},  # type: ignore
+                    config={"recursion_limit": 5},  # Allow: query -> tool -> result -> response -> end
                     grammar=grammar,
                     tools=tools,
                 )

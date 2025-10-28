@@ -128,16 +128,19 @@ class ToolsAgentSubgraph:
                 3. If agent keeps generating tool calls instead of responses, force END
                 """
                 messages = state.get("messages", [])
+                logger.info(f"🔀 should_continue_after_tools: ENTRY - Processing {len(messages)} messages")
+                
                 if not messages:
                     logger.info("🔀 Subgraph: No messages after tools, finishing")
                     return END
 
                 # Count tool execution cycles by counting ToolMessage instances
                 tool_execution_count = sum(1 for msg in messages if isinstance(msg, ToolMessage))
+                logger.info(f"🔀 should_continue_after_tools: Found {tool_execution_count} tool executions")
                 
-                # If we have many tool executions, force END to prevent infinite loops
-                if tool_execution_count >= 4:  # Allow up to 4 tool execution cycles
-                    logger.info(f"🔀 Subgraph: Tool execution limit reached ({tool_execution_count} executions), forcing END")
+                # ULTRA AGGRESSIVE: Force END after just 2 tool executions
+                if tool_execution_count >= 2:
+                    logger.info(f"🔀 should_continue_after_tools: ULTRA AGGRESSIVE - Tool execution limit reached ({tool_execution_count} executions), FORCING END")
                     return END
 
                 # Count recent AI messages to detect response patterns
@@ -179,7 +182,11 @@ class ToolsAgentSubgraph:
                             logger.info("🔀 Subgraph: AI already responded to tools, finishing")
                             return END
                         else:
-                            logger.info(f"🔀 Subgraph: Tools executed (cycle {tool_execution_count}), allowing final response generation")
+                            # ULTRA AGGRESSIVE: After 2+ tool executions, force END immediately
+                            if tool_execution_count >= 2:
+                                logger.info(f"🔀 Subgraph: ULTRA AGGRESSIVE - {tool_execution_count} tool executions complete, FORCING END to prevent infinite loop")
+                                return END
+                            logger.info(f"🔀 Subgraph: Tools executed (cycle {tool_execution_count}), allowing ONE final response")
                             return "chat_agent"
 
                 # Default to ending - be more conservative about continuation
@@ -194,12 +201,20 @@ class ToolsAgentSubgraph:
                 Prevents infinite tool calling by enforcing hard limits at the routing level.
                 """
                 messages = state.get("messages", [])
+                logger.info(f"🔀 Enhanced routing: ENTRY - Processing {len(messages)} messages")
+                
                 if not messages:
                     logger.info("🔀 Enhanced routing: No messages, ending")
                     return END
 
                 # Count total tool executions to enforce hard limit
                 tool_execution_count = sum(1 for msg in messages if isinstance(msg, ToolMessage))
+                logger.info(f"🔀 Enhanced routing: Found {tool_execution_count} tool executions in messages")
+                
+                # DEBUG: Log all message types
+                for i, msg in enumerate(messages):
+                    msg_type = type(msg).__name__
+                    logger.info(f"🔀 Enhanced routing: Message {i}: {msg_type}")
                 
                 # HARD STOP: If we've hit our tool execution limit, force END regardless of LLM output
                 if tool_execution_count >= 3:  # Even more aggressive limit: max 3 tool executions
@@ -208,6 +223,7 @@ class ToolsAgentSubgraph:
 
                 # Get the last message to check for tool calls
                 last_message = messages[-1]
+                logger.info(f"🔀 Enhanced routing: Last message type: {type(last_message).__name__}")
                 
                 # If last message is not an AI message, end
                 if not isinstance(last_message, AIMessage):
@@ -220,6 +236,10 @@ class ToolsAgentSubgraph:
                     last_message.tool_calls and 
                     len(last_message.tool_calls) > 0
                 )
+                
+                logger.info(f"🔀 Enhanced routing: Has tool calls: {has_tool_calls}")
+                if has_tool_calls:
+                    logger.info(f"🔀 Enhanced routing: Tool calls detected: {len(last_message.tool_calls)}")
                 
                 if has_tool_calls:
                     # Additional check: if we already have tool results, be very restrictive about more tools
