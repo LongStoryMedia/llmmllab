@@ -119,14 +119,35 @@ class ToolCallStorage:
                 tool_calls = []
                 for row in rows:
                     # Parse JSON fields back to dict/objects
-                    args = row["args"] if row["args"] else {}
-                    result_data = row["result_data"] if row["result_data"] else None
-                    resource_usage = (
-                        row["resource_usage"] if row["resource_usage"] else None
-                    )
+                    import json
+                    
+                    args = row["args"]
+                    if isinstance(args, str):
+                        args = json.loads(args) if args.strip() else {}
+                    elif args is None:
+                        args = {}
+                    
+                    result_data = row["result_data"] 
+                    if isinstance(result_data, str):
+                        result_data = json.loads(result_data) if result_data.strip() else {}
+                    elif result_data is None or result_data == {}:
+                        result_data = None
+                    
+                    resource_usage_data = row["resource_usage"]
+                    if isinstance(resource_usage_data, str):
+                        resource_usage_data = json.loads(resource_usage_data) if resource_usage_data.strip() else {}
+                    
+                    resource_usage = None
+                    if resource_usage_data and isinstance(resource_usage_data, dict):
+                        from models.resource_usage import ResourceUsage
+                        try:
+                            resource_usage = ResourceUsage(**resource_usage_data)
+                        except Exception as e:
+                            self.logger.warning(f"Failed to parse resource_usage: {e}")
+                            resource_usage = None
 
                     tool_execution_result = ToolCall(
-                        name=row["name"],
+                        name=row["tool_name"],  # Map tool_name from DB to name field in model
                         execution_id=row["execution_id"],
                         success=row["success"],
                         args=args,

@@ -253,7 +253,7 @@ class StreamingResponseState:
 
         # Return empty response - intent analysis should be filtered out from user view
         return ChatResponse(
-            message=Message(role=MessageRole.ASSISTANT, content=[]), 
+            message=Message(role=MessageRole.ASSISTANT, content=[]),
             done=False,
         )
 
@@ -271,13 +271,19 @@ class StreamingResponseState:
             elif clean_chunk and not filtered_chunk:
                 # Debug: Log when content is filtered out
                 from utils.logging import llmmllogger
+
                 logger = llmmllogger.logger.bind(component="StreamingResponseState")
-                logger.debug(f"🚫 Filtered out content: '{clean_chunk[:100]}{'...' if len(clean_chunk) > 100 else ''}'")
+                logger.debug(
+                    f"🚫 Filtered out content: '{clean_chunk[:100]}{'...' if len(clean_chunk) > 100 else ''}'"
+                )
             elif self._is_json_metadata(clean_chunk):
                 # Debug: Log when JSON metadata is detected
                 from utils.logging import llmmllogger
+
                 logger = llmmllogger.logger.bind(component="StreamingResponseState")
-                logger.debug(f"🔍 JSON metadata filtered: '{clean_chunk[:100]}{'...' if len(clean_chunk) > 100 else ''}')")
+                logger.debug(
+                    f"🔍 JSON metadata filtered: '{clean_chunk[:100]}{'...' if len(clean_chunk) > 100 else ''}')"
+                )
 
                 # Return ChatResponse with main message content
                 content = [
@@ -368,8 +374,8 @@ class StreamingResponseState:
 
             # Detect start of JSON block (general or specific intent analysis)
             if not self.in_json_block and (
-                self.json_block_pattern.match(stripped_line) or 
-                self.intent_analysis_pattern.match(stripped_line)
+                self.json_block_pattern.match(stripped_line)
+                or self.intent_analysis_pattern.match(stripped_line)
             ):
                 self.in_json_block = True
                 continue

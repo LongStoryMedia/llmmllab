@@ -281,14 +281,14 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
         // First, refresh messages to get the stored assistant response
         if (state.currentConversation?.id) {
           await fetchMessages(state.currentConversation.id, false);
-          
+
           // Check if we have any assistant messages - if so, it's safe to clear streaming state
           // This prevents text from disappearing if the message storage failed
-          const hasAssistantMessage = state.messages?.some(msg => 
-            msg.role === MessageRoleValues.ASSISTANT && 
+          const hasAssistantMessage = state.messages?.some(msg =>
+            msg.role === MessageRoleValues.ASSISTANT &&
             msg.content?.some(content => content.text?.trim())
           );
-          
+
           if (hasAssistantMessage || !state.response.trim()) {
             // Safe to clear streaming state - either we have stored messages or no streaming content
             actions.setResponse('');

@@ -19,9 +19,9 @@ def test_ui_chat_request():
 
     # Headers exactly as UI sends them - add auth header to bypass authentication
     headers = {
-        "Content-Type": "application/json", 
+        "Content-Type": "application/json",
         "X-User-ID": "CgNsc20SBGxkYXA",
-        "Authorization": "Bearer fake-token-for-testing"
+        "Authorization": "Bearer fake-token-for-testing",
     }
 
     # Request body exactly as UI sends it

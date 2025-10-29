@@ -3,6 +3,7 @@ Base Agent class providing common functionality for all workflow agents.
 Provides node metadata injection, logging setup, and common error handling patterns.
 """
 
+import datetime
 from pyexpat import model
 import sys
 from typing import (
@@ -290,7 +291,7 @@ class BaseAgent(ABC, Generic[T]):
         returns:
             str: Extracted system prompt
         """
-        system_prompt = ""
+        system_prompt = f"Current Date: {datetime.datetime.now().strftime('%Y-%m-%d')}"
         msgs = normalize_message_input(messages)
         convo = []
 

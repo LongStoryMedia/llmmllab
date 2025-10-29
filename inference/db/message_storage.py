@@ -185,7 +185,7 @@ class MessageStorage:
             self.get_query("tool_call.get_by_message"), message_id
         )
         message_data["tool_calls"] = [
-            ToolCall(**dict(tool_row)) for tool_row in tool_calls_rows
+            self._parse_tool_call_row(dict(tool_row)) for tool_row in tool_calls_rows
         ]
 
         # Get thoughts using separate query
@@ -215,6 +215,52 @@ class MessageStorage:
                 self.logger.warning(f"Failed to cache message {message_id}: {e}")
 
         return message
+
+    def _parse_tool_call_row(self, row: Dict[str, Any]) -> ToolCall:
+        """
+        Parse an individual tool call row from database into ToolCall object.
+
+        Args:
+            row: Database row containing tool call data
+
+        Returns:
+            ToolCall object with properly parsed JSON fields
+        """
+        # Parse JSON fields from strings to dicts
+        args = row.get("args", "{}")
+        if isinstance(args, str):
+            args = json.loads(args)
+
+        result_data = row.get("result_data", "{}")
+        if isinstance(result_data, str):
+            result_data = json.loads(result_data) if result_data.strip() else {}
+
+        resource_usage_data = row.get("resource_usage", "{}")
+        if isinstance(resource_usage_data, str):
+            resource_usage_data = (
+                json.loads(resource_usage_data) if resource_usage_data.strip() else {}
+            )
+
+        # Convert resource_usage dict to ResourceUsage object if not empty
+        resource_usage = None
+        if resource_usage_data:
+            try:
+                resource_usage = ResourceUsage(**resource_usage_data)
+            except Exception as e:
+                self.logger.warning(f"Failed to parse resource_usage: {e}")
+                resource_usage = None
+
+        return ToolCall(
+            message_id=row.get("message_id"),
+            name=row.get("tool_name"),  # Map tool_name from DB to name field in model
+            execution_id=row.get("execution_id"),
+            success=row.get("success", False),
+            args=args,
+            result_data=result_data if result_data else None,
+            error_message=row.get("error_message"),
+            execution_time_ms=row.get("execution_time_ms"),
+            resource_usage=resource_usage,
+        )
 
     def _parse_analysis_row(self, row: Dict[str, Any]) -> IntentAnalysis:
         """

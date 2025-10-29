@@ -196,9 +196,9 @@ async def chat_completion(
                             if content:
                                 # Use streaming state manager to process chunk
                                 chat_response = streaming_state.process_chunk(content)
-                                logger.debug(
-                                    f"Stream content: '{serialize_event_data(chat_response)}'"
-                                )
+                                # logger.debug(
+                                #     f"Stream content: '{serialize_event_data(chat_response)}'"
+                                # )
                                 yield f"{chat_response.model_dump_json(exclude_none=True)}\n"
 
                                 # Let streaming state manage content accumulation
@@ -237,9 +237,13 @@ async def chat_completion(
 
                 # Debug: Check if response_buffer is empty
                 if not streaming_state.response_buffer.strip():
-                    logger.warning(f"⚠️ Empty response_buffer detected! Accumulated thinking: {len(streaming_state.accumulated_thinking)} chars, Tool calls: {len(streaming_state.tool_calls)}")
+                    logger.warning(
+                        f"⚠️ Empty response_buffer detected! Accumulated thinking: {len(streaming_state.accumulated_thinking)} chars, Tool calls: {len(streaming_state.tool_calls)}"
+                    )
                 else:
-                    logger.info(f"✅ Response buffer has {len(streaming_state.response_buffer)} characters")
+                    logger.info(
+                        f"✅ Response buffer has {len(streaming_state.response_buffer)} characters"
+                    )
 
                 assistant_message = Message(
                     role=MessageRole.ASSISTANT,
