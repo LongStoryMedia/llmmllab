@@ -273,13 +273,15 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
       }
     } finally {
       if (!state.isPaused) { // Only clean up if not paused
-        actions.setIsLoading(false);
-        actions.setIsTyping(false);
-
-        // Clear streaming state to prevent duplicate messages
+        // Clear streaming state first to prevent duplication
         actions.setResponse('');
         actions.setCurrentThinking(null);
         actions.setCurrentToolCalls(null);
+        actions.setIsLoading(false);
+        actions.setIsTyping(false);
+
+        // Small delay to ensure React updates before fetching messages
+        await new Promise(resolve => setTimeout(resolve, 50));
 
         // Refresh messages to show the stored assistant response
         if (state.currentConversation?.id) {

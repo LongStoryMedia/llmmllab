@@ -55,11 +55,13 @@ export const parseResponse = (message: Message, currentThinking?: string | null,
     content = message.content;
   }
 
-  // Extract thinking - use current thinking if available (streaming), otherwise use stored thoughts
+  // Extract thinking - prioritize streaming state over stored thoughts to prevent duplication
   let thinking: string | null = null;
-  if (currentThinking) {
+  if (currentThinking && currentThinking.trim()) {
+    // Use streaming thinking (active during streaming)
     thinking = currentThinking;
   } else if (message.thoughts && message.thoughts.length > 0) {
+    // Use stored thoughts (from database after streaming completes)
     thinking = message.thoughts.map(t => t.text).join(' ');
   }
 

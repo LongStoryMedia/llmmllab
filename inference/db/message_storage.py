@@ -539,6 +539,9 @@ class MessageStorage:
         """Helper method to insert tool calls using ToolCallStorage."""
 
         for tool_call in tool_calls:
+            # Set message_id if not already set (for streaming tool_calls)
+            if not tool_call.message_id:
+                tool_call.message_id = message_id
             await self.tool_call_storage.add_tool_call(tool_call=tool_call, conn=conn)
 
     async def _insert_thoughts(

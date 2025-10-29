@@ -82,6 +82,7 @@ class ToolCallStorage:
             tool_call.error_message,  # $7
             tool_call.execution_time_ms,  # $8
             resource_usage_json,  # $9
+            tool_call.created_at,  # $10
         )
 
         if row:

@@ -279,17 +279,8 @@ async def chat_completion(
                             else:
                                 streaming_state.response_buffer = todo_message
 
-                        # Create strongly typed structured data
-                        thoughts = []
-                        if (
-                            streaming_state.accumulated_thinking
-                            and streaming_state.accumulated_thinking.strip()
-                        ):
-                            thoughts.append(
-                                Thought(text=streaming_state.accumulated_thinking)
-                            )
-
-                        # Convert analyses from dicts to IntentAnalysis objects if needed
+                        # Only store analyses separately as they're not handled by add_message
+                        # Thoughts and tool_calls are already stored via add_message
                         analyses = []
                         raw_analyses = final_response_data.get("analyses", [])
                         for analysis in raw_analyses:
@@ -303,16 +294,17 @@ async def chat_completion(
                                         f"Failed to convert analysis dict to IntentAnalysis: {e}"
                                     )
 
-                        structured_data: StructuredResponseData = {
-                            "thoughts": thoughts,
-                            "tool_calls": streaming_state.tool_calls,
-                            "analyses": analyses,
-                        }
-
-                        await store_structured_response_data(
-                            assistant_message_id,
-                            structured_data,
-                        )
+                        # Store only analyses separately - thoughts and tool_calls already stored
+                        if analyses:
+                            for analysis in analyses:
+                                if isinstance(analysis, IntentAnalysis):
+                                    await storage.get_service(storage.analysis).add_analysis(
+                                        message_id=assistant_message_id,
+                                        intent_analysis=analysis,
+                                    )
+                            logger.info(
+                                f"Stored {len(analyses)} intent analyses for message {assistant_message_id}"
+                            )
 
                 except Exception as storage_error:
                     logger.error(f"Failed to store assistant message: {storage_error}")
