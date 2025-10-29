@@ -3,11 +3,12 @@ Database initialization utilities.
 """
 
 from typing import Any, List, Tuple
+from venv import logger
 
+from utils.logging import llmmllogger
 from .queries import get_query
-import server.config
 
-logger = server.config.logger  # Use the logger from config
+logger = llmmllogger.bind(component="db_init")
 
 
 async def initialize_database(connection_pool: Any) -> bool:

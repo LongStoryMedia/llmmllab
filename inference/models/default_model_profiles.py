@@ -82,13 +82,9 @@ DEFAULT_PRIMARY_PROFILE = ModelProfile(
         top_k=20,
         top_p=0.95,
         min_p=0.01,
-        max_tokens=16384,  # Restore original working tokens
+        max_tokens=400000,  # Restore original working tokens
         n_parts=-1,
-        stop=[
-            "<|im_end|>",
-            "<|endoftext|>",
-            "<|end|>",
-        ],
+        stop=["<|im_end|>"],
         think=True,
     ),
     system_prompt="""You are a helpful AI assistant. When thinking through problems:

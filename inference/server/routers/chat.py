@@ -10,6 +10,7 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 import json
 from typing import AsyncGenerator, Any, Dict, List
 from typing_extensions import TypedDict
+from pydantic import BaseModel
 
 from langchain_core.runnables import RunnableConfig
 
@@ -18,6 +19,7 @@ from fastapi.responses import StreamingResponse
 
 from server.middleware.auth import get_request_id, get_user_id, is_admin
 from server.config import logger  # Import logger from config
+from server.streaming_response_state import StreamingResponseState
 from db import storage  # Import database storage
 from models import (
     MessageRole,
@@ -29,10 +31,10 @@ from models import (
     Thought,
     IntentAnalysis,
 )
+from utils.logging import serialize_event_data  # Import logging utility
 
 # Import composer interface and streaming state management
 import composer
-from server.streaming_response_state import StreamingResponseState
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -87,8 +89,7 @@ async def store_structured_response_data(
             for tool_call in tool_calls:
                 if isinstance(tool_call, ToolCall):
                     await storage.get_service(storage.tool_call).add_tool_call(
-                        message_id=message_id,
-                        tool_execution_result=tool_call,
+                        tool_call=tool_call,
                     )
             logger.info(
                 f"Stored {len(tool_calls)} tool execution results for message {message_id}"
@@ -181,7 +182,7 @@ async def chat_completion(
 
                     # Debug logging for events
                     logger.debug(
-                        f"Processing event: {event_type}, event_data: {event_data}"
+                        f"Processing event: {event_type}, event_data: {serialize_event_data(event_data)}"
                     )
 
                     # Process streaming events for immediate response
@@ -220,7 +221,9 @@ async def chat_completion(
                         else:
                             output = getattr(event_data, "output", {})
 
-                        logger.debug(f"Chain end output: {output}")
+                        logger.debug(
+                            f"Chain end output: {serialize_event_data(output)}"
+                        )
                         if output:
                             final_response_data = output
 

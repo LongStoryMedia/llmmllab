@@ -447,13 +447,20 @@ class GraphBuilder:
                     last_msg = state.messages[-1]
                     # Check both 'type' (LangChain core) and 'role' (custom) attributes for AI messages
                     is_ai_message = (
-                        (hasattr(last_msg, "type") and getattr(last_msg, "type", None) == "ai") or
-                        (hasattr(last_msg, "role") and getattr(last_msg, "role", None) == "assistant")
+                        hasattr(last_msg, "type")
+                        and getattr(last_msg, "type", None) == "ai"
+                    ) or (
+                        hasattr(last_msg, "role")
+                        and getattr(last_msg, "role", None) == "assistant"
                     )
-                    has_no_tool_calls = not hasattr(last_msg, "tool_calls") or not last_msg.tool_calls
-                    
+                    has_no_tool_calls = (
+                        not hasattr(last_msg, "tool_calls") or not last_msg.tool_calls
+                    )
+
                     if is_ai_message and has_no_tool_calls:
-                        self.logger.info("🔀 Tools agent produced final assistant message - routing to END")
+                        self.logger.info(
+                            "🔀 Tools agent produced final assistant message - routing to END"
+                        )
                         return END
                 # Otherwise, check if web search was performed and needs summarization
                 if hasattr(state, "web_search_results") and state.web_search_results:
@@ -468,11 +475,11 @@ class GraphBuilder:
             workflow.add_conditional_edges(
                 "tools_agent",
                 route_after_tools_agent,
-                    {
-                        "search_summary": "search_summary",
-                        "chat_summary": "chat_summary",
-                        END: END,
-                    },
+                {
+                    "search_summary": "search_summary",
+                    "chat_summary": "chat_summary",
+                    END: END,
+                },
             )
 
             # 9. Linear flow after agent completion with conditional title generation

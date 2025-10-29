@@ -47,6 +47,9 @@ from composer.utils.conversion import (
     convert_messages_to_base_langchain,
     MessageInput,
 )
+from composer.utils.tool_call_types import (
+    tool_call_request_to_execution_result,
+)
 
 
 T = TypeVar("T")
@@ -371,12 +374,6 @@ class BaseAgent(ABC, Generic[T]):
                         if hasattr(msg_chunk, "tool_calls") and msg_chunk.tool_calls:
                             tool_calls = []
                             for tc in msg_chunk.tool_calls:
-                                # Convert LangChain tool call request to our execution result format
-                                # During streaming, we mark as successful with no result data yet
-                                from composer.utils.tool_call_types import (
-                                    tool_call_request_to_execution_result,
-                                )
-
                                 execution_id = tc.get(
                                     "id", f"call_{len(tool_calls)}_{tc['name']}"
                                 )

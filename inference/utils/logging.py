@@ -8,10 +8,100 @@ from datetime import datetime
 import os
 import sys
 from typing import Dict, Any, Optional
+import json
+from pydantic import BaseModel
 import structlog
 import structlog.typing
 import structlog.stdlib
 import structlog.processors
+
+
+def serialize_event_data(
+    data: Any, max_depth: int = 10, current_depth: int = 0, indent: int = 2
+) -> str:
+    """
+    Recursively serialize event data for logging/debugging.
+    Handles nested BaseModel objects, dicts, lists, and other complex structures.
+
+    Args:
+        data: The data to serialize
+        max_depth: Maximum recursion depth to prevent infinite loops
+        current_depth: Current recursion depth
+        indent: Number of spaces to use for JSON indentation
+
+    Returns:
+        Formatted JSON string with proper indentation and multiple lines
+    """
+
+    def _serialize_recursive(obj: Any, depth: int = 0) -> Any:
+        """Internal recursive function that returns serializable data."""
+        if depth >= max_depth:
+            return f"<max_depth_reached:{type(obj).__name__}>"
+
+        if isinstance(obj, BaseModel):
+            try:
+                # For BaseModel objects, get the dict and recursively process it
+                model_dict = obj.model_dump(exclude_none=True)
+                return _serialize_recursive(model_dict, depth + 1)
+            except Exception as e:
+                return f"<BaseModel_error:{str(e)}>"
+
+        elif isinstance(obj, dict):
+            serialized_dict = {}
+            for k, v in obj.items():
+                try:
+                    serialized_dict[str(k)] = _serialize_recursive(v, depth + 1)
+                except Exception as e:
+                    serialized_dict[str(k)] = f"<dict_value_error:{str(e)}>"
+            return serialized_dict
+
+        elif isinstance(obj, (list, tuple, set)):
+            try:
+                return [_serialize_recursive(item, depth + 1) for item in obj]
+            except Exception as e:
+                return f"<list_error:{str(e)}>"
+
+        elif hasattr(obj, "__dict__"):
+            # Handle objects with __dict__ attribute
+            try:
+                obj_dict = {
+                    k: _serialize_recursive(v, depth + 1)
+                    for k, v in obj.__dict__.items()
+                    if not k.startswith("_")
+                }
+                return obj_dict
+            except Exception as e:
+                return f"<object_error:{str(e)}>"
+
+        elif callable(obj):
+            return (
+                f"<callable:{obj.__name__ if hasattr(obj, '__name__') else 'unknown'}>"
+            )
+
+        else:
+            # For primitive types and other objects, convert to string
+            try:
+                # Try to JSON serialize first to check if it's already serializable
+                json.dumps(obj)
+                return obj
+            except (TypeError, ValueError):
+                return str(obj)
+
+    # Serialize the data structure
+    serialized_data = _serialize_recursive(data, current_depth)
+
+    # Convert to formatted JSON string
+    try:
+        return json.dumps(
+            serialized_data,
+            indent=indent,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ": "),
+        )
+    except Exception as e:
+        # Fallback to string representation if JSON serialization fails
+        return f"<json_serialization_error: {str(e)}>\nFallback representation:\n{str(serialized_data)}"
 
 
 class LlmmlLogger:

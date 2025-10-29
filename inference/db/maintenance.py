@@ -3,14 +3,15 @@ Database maintenance utilities for periodic optimization tasks.
 """
 
 import asyncio
-import logging
-import asyncpg
-from typing import Optional
 import datetime
 import contextlib
 import os
 
-logger = logging.getLogger(__name__)
+from typing import Optional
+import asyncpg
+from utils.logging import llmmllogger
+
+logger = llmmllogger.bind(component="db.maintenance")
 
 
 class DatabaseMaintenanceService:

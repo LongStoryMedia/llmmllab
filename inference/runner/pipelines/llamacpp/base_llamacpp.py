@@ -9,11 +9,12 @@ import os
 import re
 import time
 
-from typing import Optional, List, Any, Dict, Iterator, Type, Tuple
+from typing import Optional, List, Any, Dict, Iterator, Type, Tuple, cast
 
 from pydantic import BaseModel
 import llama_cpp
-from llama_cpp import llama_grammar
+from llama_cpp import ChatCompletionResponseMessage, llama_grammar
+from llama_cpp.llama_types import CreateChatCompletionResponse
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.callbacks import CallbackManagerForLLMRun
@@ -24,9 +25,11 @@ from langchain_core.messages import (
     HumanMessage,
     SystemMessage,
     ToolMessage,
+    ToolCall as LangChainToolCall,
 )
 from langchain_core.messages.ai import UsageMetadata
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
+from langchain_core.tools.base import BaseTool
 
 from models import Model, ModelProfile, OptimalParameters
 from models.default_configs import DEFAULT_GPU_CONFIG
@@ -70,7 +73,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
             component=self.__class__.__name__, model=model.name
         )
         self.grammar = grammar
-        self._bound_tools = kwargs.get("_bound_tools", [])
+        self._bound_tools: List[BaseTool] = kwargs.get("_bound_tools", [])
         self.hardware_manager = hardware_manager
 
         # Initialize intelligent OOM recovery system (can be disabled)
@@ -102,7 +105,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
             "temperature": self.profile.parameters.temperature or 0.7,
         }
 
-    def bind_tools(self, tools: List[Any], **kwargs: Any) -> "BaseLlamaCppPipeline":
+    def bind_tools(
+        self, tools: List[BaseTool], **kwargs: Any
+    ) -> "BaseLlamaCppPipeline":
         """
         Bind tools to this model for tool calling support.
 
@@ -667,7 +672,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
     def _parse_tool_calls_from_content(
         self, content: str
-    ) -> Tuple[str, List[Dict[str, Any]]]:
+    ) -> Tuple[str, List[LangChainToolCall]]:
         """
         Parse tool calls from LlamaCpp text output and clean content.
 
@@ -680,7 +685,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
             Tuple of (cleaned_content, tool_calls_list)
         """
 
-        tool_calls = []
+        tool_calls: List[LangChainToolCall] = []
         cleaned_content = content
 
         # First, try XML-wrapped format with generic tags
@@ -697,12 +702,13 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 tool_data = json.loads(json_str)
 
                 # Convert to LangChain flat format
-                tool_call = {
-                    "id": f"call_{len(tool_calls)}",  # Generate ID
-                    "name": tool_data.get("name", ""),
-                    "args": tool_data.get("arguments", {}),
-                    "type": "tool_call",
-                }
+                tool_call = LangChainToolCall(
+                    id=f"call_{len(tool_calls)}",  # Generate ID
+                    name=tool_data.get("name", ""),
+                    args=tool_data.get("arguments", {}),
+                    type="tool_call",
+                )
+
                 tool_calls.append(tool_call)
 
                 # Remove this tool call from content
@@ -716,29 +722,39 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
         # Second, try XML-wrapped format with tool name as tag (e.g., <web_search>...</web_search>)
         if not tool_calls:
-            tool_name_pattern = (
-                r"<([a-zA-Z_][a-zA-Z0-9_]*?)>\s*(\{.*?\})\s*</\1>"
-            )
+            tool_name_pattern = r"<([a-zA-Z_][a-zA-Z0-9_]*?)>\s*(\{.*?\})\s*</\1>"
 
             matches = re.finditer(tool_name_pattern, content, re.DOTALL | re.IGNORECASE)
 
             for match in matches:
                 try:
                     tool_name_from_tag = match.group(1).strip()
+                    if tool_name_from_tag.lower() not in [
+                        t.name.lower() for t in self._bound_tools
+                    ]:
+                        self._logger.warning(
+                            f"Unrecognized tool name in tag: {tool_name_from_tag}, skipping."
+                        )
+                        continue
+
                     json_str = match.group(2).strip()
                     tool_data = json.loads(json_str)
 
                     # Convert to LangChain flat format
-                    tool_call = {
-                        "id": f"call_{len(tool_calls)}",  # Generate ID
-                        "name": tool_data.get("name", tool_name_from_tag),  # Prefer name from JSON, fallback to tag name
-                        "args": tool_data.get("arguments", {}),
-                        "type": "tool_call",
-                    }
+                    tool_call = LangChainToolCall(
+                        id=f"call_{len(tool_calls)}",  # Generate ID
+                        name=tool_data.get(
+                            "name", tool_name_from_tag
+                        ),  # Prefer name from JSON, fallback to tag name
+                        args=tool_data.get("arguments", {}),
+                        type="tool_call",
+                    )
                     tool_calls.append(tool_call)
 
                     # Remove this tool call from content
-                    cleaned_content = cleaned_content.replace(match.group(0), "").strip()
+                    cleaned_content = cleaned_content.replace(
+                        match.group(0), ""
+                    ).strip()
 
                 except (json.JSONDecodeError, KeyError) as e:
                     self._logger.warning(
@@ -780,14 +796,14 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     tool_data = json.loads(json_str)
 
                     # Convert to LangChain flat format (parameters -> args)
-                    tool_call = {
-                        "id": f"call_{len(tool_calls)}",  # Generate ID
-                        "name": tool_data.get("name", ""),
-                        "args": tool_data.get(
+                    tool_call = LangChainToolCall(
+                        id=f"call_{len(tool_calls)}",  # Generate ID
+                        name=tool_data.get("name", ""),
+                        args=tool_data.get(
                             "parameters", {}
                         ),  # Use parameters instead of arguments
-                        "type": "tool_call",
-                    }
+                        type="tool_call",
+                    )
                     tool_calls.append(tool_call)
 
                     # Remove this tool call from content
@@ -888,8 +904,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
         """Generate a chat response from messages."""
         # Combine bound tools with any tools passed in kwargs
         tools = kwargs.get("tools", [])
-        if hasattr(self, "_bound_tools") and self._bound_tools:
-            tools = list(self._bound_tools) + list(tools or [])
+        if tools:
+            self._bound_tools = list(set(list(self._bound_tools) + list(tools)))
+        tools = self._bound_tools
 
         try:
             response = self._get_res(
@@ -901,12 +918,14 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
             # For non-streaming, response should be a dict
             if isinstance(response, dict):
-                content = response["choices"][0]["message"]["content"]
-                usage = response.get("usage", {})
+                res = cast(CreateChatCompletionResponse, response)
+                message = res.get("choices", [])[0].get("message", {})
+                content = message.get("content", "") or ""
+                usage = res.get("usage", {})
 
                 # Parse tool calls from content if present
                 cleaned_content, tool_calls = self._parse_tool_calls_from_content(
-                    content or ""
+                    content
                 )
 
                 # Create usage metadata

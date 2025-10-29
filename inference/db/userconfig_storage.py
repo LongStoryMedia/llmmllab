@@ -29,9 +29,10 @@ from models.default_configs import (
 
 from db.cache_storage import cache_storage
 from db.db_utils import typed_pool
+from utils.logging import llmmllogger
 from .serialization import serialize_to_json
 
-logger = logging.getLogger(__name__)
+logger = llmmllogger.bind(component="userconfig_storage")
 
 
 class UserConfigStorage:
@@ -518,15 +519,18 @@ class UserConfigStorage:
                     config_data = config_raw.copy()
                 elif isinstance(config_raw, str):
                     import json
+
                     config_data = json.loads(config_raw)
                 else:
                     # Handle other formats - try converting to dict safely
                     try:
                         config_data = dict(config_raw) if config_raw else {}
                     except (ValueError, TypeError) as conv_error:
-                        logger.error(f"Cannot convert config data to dict: {config_raw}, error: {conv_error}")
+                        logger.error(
+                            f"Cannot convert config data to dict: {config_raw}, error: {conv_error}"
+                        )
                         config_data = {}
-                
+
                 config_data["user_id"] = user_id  # Ensure user_id is set
 
                 return UserConfig(**config_data)

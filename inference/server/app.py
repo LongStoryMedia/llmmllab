@@ -60,6 +60,9 @@ from server.middleware.auth import AuthMiddleware
 from server.config import API_VERSION
 from server.cleanup_service import cleanup_service
 from db.maintenance import maintenance_service
+from utils.logging import llmmllogger
+
+logger = llmmllogger.bind(component="app")
 
 # Enable auth bypass for testing
 os.environ["DISABLE_AUTH"] = "true"
@@ -73,34 +76,33 @@ os.makedirs(CONFIG_DIR, exist_ok=True)
 # Get Hugging Face token from environment variable
 hf_token = os.environ.get("HF_TOKEN")
 if hf_token:
-    print("Logging into Hugging Face with token from environment variable")
+    logger.info("Logging into Hugging Face with token from environment variable")
     login(token=hf_token)
 else:
-    print(
+    logger.info(
         "Warning: No HF_TOKEN environment variable found. Some features may not work properly."
     )
     # Try login without token, will use cached credentials if available
     try:
         login(token=None)
     except (ValueError, ConnectionError, TimeoutError) as e:
-        print(f"Failed to log in to Hugging Face: {e}")
-        print("Continuing without Hugging Face authentication")
+        logger.info(f"Failed to log in to Hugging Face: {e}")
+        logger.info("Continuing without Hugging Face authentication")
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     # Startup: initialize hardware monitoring and cleanup service
-    print("Initializing services...")
+    logger.info("Initializing services...")
     cleanup_service.start()
 
     # Auth middleware is already initialized and stored in app.state
-    print("Auth middleware already initialized and stored in app.state")
+    logger.info("Auth middleware already initialized and stored in app.state")
 
     # Initialize database connection
     from db import storage  # pylint: disable=import-outside-toplevel
     from server.config import (  # pylint: disable=import-outside-toplevel
         DB_CONNECTION_STRING,
-        logger,
     )
     from db.init_db import (  # pylint: disable=import-outside-toplevel
         initialize_database,
@@ -122,7 +124,7 @@ async def lifespan(_: FastAPI):
         logger.warning(
             "No database connection string provided, continuing without database access"
         )
-        print(
+        logger.info(
             "DB_CONNECTION_STRING not found, attempting to build from individual variables..."
         )
         db_host = os.environ.get("DB_HOST")
@@ -135,38 +137,42 @@ async def lifespan(_: FastAPI):
             connection_string = (
                 f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
             )
-            print(
+            logger.info(
                 f"Built connection string from environment variables: postgresql://{db_user}:***@{db_host}:{db_port}/{db_name}"
             )
         else:
-            print("Cannot build connection string, missing environment variables:")
-            print(f"  DB_HOST: {'✓' if db_host else '✗'}")
-            print(f"  DB_PORT: {'✓' if db_port else '✗'}")
-            print(f"  DB_NAME: {'✓' if db_name else '✗'}")
-            print(f"  DB_USER: {'✓' if db_user else '✗'}")
-            print(f"  DB_PASSWORD: {'✓' if db_password else '✗'}")
+            logger.info(
+                "Cannot build connection string, missing environment variables:"
+            )
+            logger.info(f"  DB_HOST: {'✓' if db_host else '✗'}")
+            logger.info(f"  DB_PORT: {'✓' if db_port else '✗'}")
+            logger.info(f"  DB_NAME: {'✓' if db_name else '✗'}")
+            logger.info(f"  DB_USER: {'✓' if db_user else '✗'}")
+            logger.info(f"  DB_PASSWORD: {'✓' if db_password else '✗'}")
 
     if connection_string:
-        print("Initializing database connection...")
+        logger.info("Initializing database connection...")
         try:
             # Initialize the connection pool
             await storage.initialize(connection_string)
-            print("Database connection initialized successfully")
+            logger.info("Database connection initialized successfully")
 
             # Initialize the database schema if needed
             if storage.pool:
-                print("Initializing database schema...")
+                logger.info("Initializing database schema...")
                 schema_initialized = await initialize_database(storage.pool)
                 if schema_initialized:
-                    print("Database schema initialized successfully")
+                    logger.info("Database schema initialized successfully")
 
                     # Align sequences at startup to avoid ID drift after restores/migrations
                     try:
                         await maintenance_service.initialize(storage.pool)
                         await maintenance_service.align_sequences()
-                        print("Database sequences aligned successfully at startup")
+                        logger.info(
+                            "Database sequences aligned successfully at startup"
+                        )
                     except Exception as e:
-                        print(
+                        logger.info(
                             f"Warning: failed to align database sequences at startup: {e}"
                         )
 
@@ -175,45 +181,51 @@ async def lifespan(_: FastAPI):
                     maintenance_interval = int(
                         os.environ.get("DB_MAINTENANCE_INTERVAL_HOURS", "24")
                     )
-                    print(
+                    logger.info(
                         f"Initializing database maintenance service with {maintenance_interval} hour interval"
                     )
                     await maintenance_service.initialize(
                         storage.pool, maintenance_interval
                     )
                     await maintenance_service.start_maintenance_schedule()
-                    print("Database maintenance service started")
+                    logger.info("Database maintenance service started")
 
-                    print("Creating/Updating default model profiles...")
+                    logger.info("Creating/Updating default model profiles...")
                     try:
                         await storage.get_service(
                             storage.model_profile
                         ).upsert_default_model_profiles()
-                        print("Default model profiles created/updated successfully.")
+                        logger.info(
+                            "Default model profiles created/updated successfully."
+                        )
                     except Exception as e:
-                        print(f"Error creating/updating default model profiles: {e}")
+                        logger.info(
+                            f"Error creating/updating default model profiles: {e}"
+                        )
                 else:
-                    print("Failed to initialize database schema")
+                    logger.info("Failed to initialize database schema")
                     # If schema initialization failed, don't consider the storage initialized
                     storage.initialized = False
         except Exception as e:
-            print(f"Error initializing database connection: {e}")
-            print("Some features that depend on the database may not work properly")
+            logger.info(f"Error initializing database connection: {e}")
+            logger.info(
+                "Some features that depend on the database may not work properly"
+            )
             # We don't raise the exception here to allow the server to start
             # even if the database is not available. Routes will check for
             # initialization before accessing database components.
     else:
-        print("\n" + "=" * 80)
-        print("WARNING: NO DATABASE CONNECTION STRING AVAILABLE!")
-        print("Database-dependent features will not work including:")
-        print("  - User configuration")
-        print("  - Conversation history")
-        print("  - Memory features")
-        print("  - Admin functions")
-        print("=" * 80 + "\n")
+        logger.info("\n" + "=" * 80)
+        logger.info("WARNING: NO DATABASE CONNECTION STRING AVAILABLE!")
+        logger.info("Database-dependent features will not work including:")
+        logger.info("  - User configuration")
+        logger.info("  - Conversation history")
+        logger.info("  - Memory features")
+        logger.info("  - Admin functions")
+        logger.info("=" * 80 + "\n")
 
         # Log critical information to help debug
-        print("Database-related environment variables:")
+        logger.info("Database-related environment variables:")
         db_vars = [
             "DB_HOST",
             "DB_PORT",
@@ -223,7 +235,7 @@ async def lifespan(_: FastAPI):
             "DB_CONNECTION_STRING",
         ]
         for var in db_vars:
-            print(f"  {var}: {'✓' if os.environ.get(var) else '✗'}")
+            logger.info(f"  {var}: {'✓' if os.environ.get(var) else '✗'}")
     # Initialize composer service
     try:
         from composer import initialize_composer
@@ -233,54 +245,54 @@ async def lifespan(_: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize composer service: {e}")
         # Don't fail the entire service if composer fails
-        print(f"Warning: Composer service initialization failed: {e}")
+        logger.info(f"Warning: Composer service initialization failed: {e}")
 
-    print("Services initialization completed successfully!")
+    logger.info("Services initialization completed successfully!")
     yield
     #     ]
     # )
-    # print(f"gRPC server started with PID {grpc_process.pid}")
+    # logger.info(f"gRPC server started with PID {grpc_process.pid}")
 
     # Log hardware information
     # Add this near the beginning of your test to check CUDA capability
     import torch
 
-    print(f"CUDA is available: {torch.cuda.is_available()}")
+    logger.info(f"CUDA is available: {torch.cuda.is_available()}")
     if torch.cuda.is_available():
-        print(f"CUDA Device Count: {torch.cuda.device_count()}")
+        logger.info(f"CUDA Device Count: {torch.cuda.device_count()}")
         for i in range(torch.cuda.device_count()):
-            print(f"CUDA Device {i}: {torch.cuda.get_device_name(i)}")
-            print(f"CUDA Capability: {torch.cuda.get_device_capability(i)}")
+            logger.info(f"CUDA Device {i}: {torch.cuda.get_device_name(i)}")
+            logger.info(f"CUDA Capability: {torch.cuda.get_device_capability(i)}")
 
     try:
         yield  # This is where FastAPI serves requests
     finally:
         # Shutdown: clean up resources
-        print("Shutting down services...")
+        logger.info("Shutting down services...")
 
         # Stop database maintenance service if running
         try:
-            print("Stopping database maintenance service...")
+            logger.info("Stopping database maintenance service...")
             await maintenance_service.stop_maintenance_schedule()
-            print("Database maintenance service stopped")
+            logger.info("Database maintenance service stopped")
         except Exception as e:
-            print(f"Error stopping database maintenance service: {e}")
+            logger.info(f"Error stopping database maintenance service: {e}")
 
         # Stop composer service
         try:
             from composer import shutdown_composer
 
             await shutdown_composer()
-            print("Composer service shutdown completed")
+            logger.info("Composer service shutdown completed")
         except Exception as e:
-            print(f"Error stopping composer service: {e}")
+            logger.info(f"Error stopping composer service: {e}")
 
         # Stop vLLM service
         try:
             # await cleanup_vllm_service()
-            print("vLLM service shutdown completed")
+            logger.info("vLLM service shutdown completed")
         except (RuntimeError, ValueError) as e:
-            print(f"Error stopping vLLM service: {e}")
+            logger.info(f"Error stopping vLLM service: {e}")
 
         cleanup_service.shutdown()
 
@@ -292,7 +304,7 @@ from utils.logging import llmmllogger
 # This ensures middleware is ready before any routes are registered
 from server.config import AUTH_JWKS_URI
 
-print(f"Pre-initializing auth middleware with JWKS URI: {AUTH_JWKS_URI}")
+logger.info(f"Pre-initializing auth middleware with JWKS URI: {AUTH_JWKS_URI}")
 global_auth_middleware = AuthMiddleware(AUTH_JWKS_URI)
 
 # Initialize the FastAPI application with the lifespan context manager
