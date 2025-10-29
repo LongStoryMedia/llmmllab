@@ -62,11 +62,13 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
   }, [actions, auth.user, currentUserId, auth.isAdmin]);
 
   // Fetch messages for a specific conversation
-  const fetchMessages = useCallback(async (conversationId: number) => {
+  const fetchMessages = useCallback(async (conversationId: number, clearResponse: boolean = true) => {
     actions.setIsLoading(true);
     actions.setError(null);
-    // Clear the response state to avoid showing stale data
-    actions.setResponse('');
+    // Only clear response state if explicitly requested (avoid clearing during streaming completion refresh)
+    if (clearResponse) {
+      actions.setResponse('');
+    }
 
     try {
       const fetchedMessages = await getMessages(getToken(auth.user), conversationId);
@@ -74,7 +76,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
       actions.setMessages(existingMessages => {
         const existingMap = new Map((existingMessages ?? []).map(msg => [msg.id, msg]));
         const fetchedMap = new Map((fetchedMessages ?? []).map(msg => [msg.id, msg]));
-        
+
         // Combine all unique messages, preferring server data when IDs match
         const allMessages = new Map([...existingMap, ...fetchedMap]);
         return Array.from(allMessages.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
@@ -273,19 +275,25 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
       }
     } finally {
       if (!state.isPaused) { // Only clean up if not paused
-        // Clear streaming state first to prevent duplication
-        actions.setResponse('');
-        actions.setCurrentThinking(null);
-        actions.setCurrentToolCalls(null);
         actions.setIsLoading(false);
         actions.setIsTyping(false);
 
-        // Small delay to ensure React updates before fetching messages
-        await new Promise(resolve => setTimeout(resolve, 50));
-
-        // Refresh messages to show the stored assistant response
+        // First, refresh messages to get the stored assistant response
         if (state.currentConversation?.id) {
-          await fetchMessages(state.currentConversation.id);
+          await fetchMessages(state.currentConversation.id, false);
+          
+          // Only clear streaming state after we've fetched the stored messages
+          // This prevents the text from disappearing before the stored message appears
+          setTimeout(() => {
+            actions.setResponse('');
+            actions.setCurrentThinking(null);
+            actions.setCurrentToolCalls(null);
+          }, 100); // Small delay to ensure stored message is rendered
+        } else {
+          // If no conversation, clear streaming state immediately
+          actions.setResponse('');
+          actions.setCurrentThinking(null);
+          actions.setCurrentToolCalls(null);
         }
       }
     }

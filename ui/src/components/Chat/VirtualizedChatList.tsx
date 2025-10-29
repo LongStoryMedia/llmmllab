@@ -96,7 +96,7 @@ const VirtualizedChatList: React.FC<VirtualizedChatListProps> = ({
         // Reset cache for this item in react-window
         if (listRef.current) {
           listRef.current.resetAfterIndex(index, false);
-          
+
           // If this is the last item (streaming message) and we should scroll to bottom, scroll again
           if (shouldScrollToBottom && index === totalItems - 1) {
             setTimeout(() => {
