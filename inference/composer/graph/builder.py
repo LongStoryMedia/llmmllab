@@ -145,7 +145,7 @@ class GraphBuilder:
         try:
             primary_profile = await get_model_profile_for_task(
                 self.user_config.model_profiles,
-                ModelProfileType.PrimarySummary,
+                ModelProfileType.Primary,
                 self.user_config.user_id,
             )
             analysis_profile = await get_model_profile_for_task(
