@@ -436,14 +436,31 @@ class GraphBuilder:
 
             # 7. Simple routing: tools_agent -> search_summary (if web search) or chat_summary
             def route_after_tools_agent(state: WorkflowState):
-                """Route after intelligent tools agent completes."""
-                # Check if web search was performed and needs summarization
+                """
+                Route after intelligent tools agent completes.
+                If the tools agent subgraph produced a final assistant message (no tool calls),
+                terminate the workflow and output that message as the final response.
+                Otherwise, continue to summary or title nodes as needed.
+                """
+                # Check for final assistant message (no tool calls)
+                if hasattr(state, "messages") and state.messages:
+                    last_msg = state.messages[-1]
+                    # Check both 'type' (LangChain core) and 'role' (custom) attributes for AI messages
+                    is_ai_message = (
+                        (hasattr(last_msg, "type") and getattr(last_msg, "type", None) == "ai") or
+                        (hasattr(last_msg, "role") and getattr(last_msg, "role", None) == "assistant")
+                    )
+                    has_no_tool_calls = not hasattr(last_msg, "tool_calls") or not last_msg.tool_calls
+                    
+                    if is_ai_message and has_no_tool_calls:
+                        self.logger.info("🔀 Tools agent produced final assistant message - routing to END")
+                        return END
+                # Otherwise, check if web search was performed and needs summarization
                 if hasattr(state, "web_search_results") and state.web_search_results:
                     self.logger.info(
                         "🔀 Tools agent completed with web search results - routing to search_summary"
                     )
                     return "search_summary"
-
                 # Otherwise proceed to chat summary for consolidation
                 self.logger.info("🔀 Tools agent completed - routing to chat_summary")
                 return "chat_summary"
@@ -451,10 +468,11 @@ class GraphBuilder:
             workflow.add_conditional_edges(
                 "tools_agent",
                 route_after_tools_agent,
-                {
-                    "search_summary": "search_summary",
-                    "chat_summary": "chat_summary",
-                },
+                    {
+                        "search_summary": "search_summary",
+                        "chat_summary": "chat_summary",
+                        END: END,
+                    },
             )
 
             # 9. Linear flow after agent completion with conditional title generation

@@ -15,7 +15,7 @@ from typing import Dict, Any, List
 
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, BaseMessage
 from langchain.tools import BaseTool
-from langgraph.graph import StateGraph, START
+from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.types import Command
 
@@ -102,6 +102,10 @@ class ToolsAgentSubgraph:
             builder.add_conditional_edges(
                 "chat_agent",
                 tools_condition,  # Use built-in routing - expects "tools" node
+                {
+                    "tools": "tools",
+                    "__end__": END,
+                },
             )
 
             # Simple continuation after tools
