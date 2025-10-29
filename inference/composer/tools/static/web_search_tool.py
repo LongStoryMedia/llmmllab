@@ -247,28 +247,44 @@ async def web_search(
         search_result = await provider.search(query, web_config.max_results)
 
         if search_result and search_result.contents:
-            # Format results for display
-            formatted_results = [
-                {
+            # Format results for display with more substantial content
+            formatted_results = []
+            for content in search_result.contents:
+                # Provide much more content (up to 1500 characters) instead of just 300
+                # This gives the AI enough context to work with while still being manageable
+                content_text = content.content
+                if len(content_text) > 1500:
+                    # Find a good breaking point (sentence end) near 1500 chars
+                    truncate_pos = 1500
+                    sentence_ends = ['. ', '! ', '? ', '. ']
+                    for end in sentence_ends:
+                        last_sentence = content_text.rfind(end, 1200, 1500)
+                        if last_sentence != -1:
+                            truncate_pos = last_sentence + len(end)
+                            break
+                    content_text = content_text[:truncate_pos].rstrip() + "..."
+                
+                formatted_results.append({
                     "title": content.title,
                     "url": content.url,
-                    "content": (
-                        content.content[:300] + "..."
-                        if len(content.content) > 300
-                        else content.content
-                    ),
+                    "content": content_text,
                     "relevance": content.relevance,
-                }
-                for content in search_result.contents
-            ]
+                })
 
-            # Create response message
+            # Create response message with improved formatting
             response_message = f"🔍 **Web Search Results for: '{query}'**\n\n"
+            response_message += f"Found {len(formatted_results)} relevant results:\n\n"
+            
             for i, result in enumerate(formatted_results, 1):
-                response_message += f"**{i}. {result['title']}**\n"
-                response_message += f"   URL: {result['url']}\n"
-                response_message += f"   Content: {result['content']}\n"
-                response_message += f"   Relevance: {result['relevance']:.2f}\n\n"
+                response_message += f"**Result {i}: {result['title']}**\n"
+                response_message += f"📍 URL: {result['url']}\n"
+                response_message += f"📄 Content: {result['content']}\n"
+                response_message += f"⭐ Relevance: {result['relevance']:.2f}\n"
+                response_message += "---\n\n"
+            
+            # Add helpful note about getting full content if needed
+            response_message += "💡 **Note**: If you need the complete content from any of these articles, "
+            response_message += "use the `read_web_content` tool with the specific URL."
 
             logger.info(
                 f"Web search completed successfully with {len(formatted_results)} results",
