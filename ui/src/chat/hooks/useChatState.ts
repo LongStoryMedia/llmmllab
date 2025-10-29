@@ -38,8 +38,8 @@ export interface ChatActions {
   setModels: (models: Model[]) => void;
   setIsPaused: (paused: boolean) => void;
   setCurrentObserverMessages: React.Dispatch<React.SetStateAction<string[]>>;
-  setCurrentThinking: (thinking: string | null) => void;
-  setCurrentToolCalls: (toolCalls: unknown[] | null) => void;
+  setCurrentThinking: React.Dispatch<React.SetStateAction<string | null>>;
+  setCurrentToolCalls: React.Dispatch<React.SetStateAction<unknown[] | null>>;
 }
 
 export const useChatState = (): [ChatState, ChatActions] => {

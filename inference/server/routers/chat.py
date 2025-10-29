@@ -181,7 +181,7 @@ async def chat_completion(
                         event_data = getattr(event, "data", {})
 
                     # Process streaming events for immediate response
-                    if event_type.endswith("_stream"):
+                    if event_type == "on_chat_model_stream":
                         # Handle streaming tokens
                         chunk = event.get("data", {}).get("chunk")
                         if chunk:

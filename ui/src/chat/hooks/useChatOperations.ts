@@ -202,8 +202,10 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
         role: 'user'
       });
 
-      // Clear any existing observer messages
+      // Clear any existing streaming state
       actions.setCurrentObserverMessages([]);
+      actions.setCurrentThinking(null);
+      actions.setCurrentToolCalls(null);
 
       // Fallback to HTTP API if WebSocket method fails
       abortController.current = new AbortController();
@@ -227,16 +229,23 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
             }
           }
 
-          // Handle thinking - extract from message thoughts
+          // Handle thinking - extract from message thoughts and accumulate like text content
           if (chatResponse.message?.thoughts && chatResponse.message.thoughts.length > 0) {
-            // Combine all thought text for current thinking display
+            // Combine all thought text for this chunk
             const thinkingText = chatResponse.message.thoughts.map(t => t.text).join(' ');
-            actions.setCurrentThinking(thinkingText);
+            if (thinkingText) {
+              // Accumulate thinking text like we do with response content
+              actions.setCurrentThinking(prev => (prev || '') + thinkingText);
+            }
           }
 
-          // Handle tool calls - store for later use in message
+          // Handle tool calls - accumulate tool calls like text content
           if (chatResponse.message?.tool_calls && chatResponse.message.tool_calls.length > 0) {
-            actions.setCurrentToolCalls(chatResponse.message.tool_calls);
+            // Accumulate tool calls by merging with existing ones
+            actions.setCurrentToolCalls(prev => {
+              const existing = prev || [];
+              return [...existing, ...chatResponse.message!.tool_calls!];
+            });
           }
 
           // Handle observer messages - set them for floating notification display

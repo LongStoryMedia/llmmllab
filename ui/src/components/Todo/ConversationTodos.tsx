@@ -125,6 +125,7 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
       setLoading(true);
       const token = getToken(auth.user);
       await deleteTodo(token, todoId);
+      setTodos(prev => prev.filter(t => t.id !== todoId));
     } catch (error) {
       console.error('Failed to delete todo:', error);
     } finally {
