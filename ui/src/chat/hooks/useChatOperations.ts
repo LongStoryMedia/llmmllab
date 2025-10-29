@@ -282,13 +282,27 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
         if (state.currentConversation?.id) {
           await fetchMessages(state.currentConversation.id, false);
           
-          // Only clear streaming state after we've fetched the stored messages
-          // This prevents the text from disappearing before the stored message appears
-          setTimeout(() => {
+          // Check if we have any assistant messages - if so, it's safe to clear streaming state
+          // This prevents text from disappearing if the message storage failed
+          const hasAssistantMessage = state.messages?.some(msg => 
+            msg.role === MessageRoleValues.ASSISTANT && 
+            msg.content?.some(content => content.text?.trim())
+          );
+          
+          if (hasAssistantMessage || !state.response.trim()) {
+            // Safe to clear streaming state - either we have stored messages or no streaming content
             actions.setResponse('');
             actions.setCurrentThinking(null);
             actions.setCurrentToolCalls(null);
-          }, 100); // Small delay to ensure stored message is rendered
+          } else {
+            // Keep streaming state briefly if no assistant message found but we have streaming content
+            // This handles cases where message storage might be delayed
+            setTimeout(() => {
+              actions.setResponse('');
+              actions.setCurrentThinking(null);
+              actions.setCurrentToolCalls(null);
+            }, 500); // Longer delay for storage to complete
+          }
         } else {
           // If no conversation, clear streaming state immediately
           actions.setResponse('');
@@ -301,6 +315,8 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     state.isTyping,
     state.currentConversation,
     state.isPaused,
+    state.messages,
+    state.response,
     fetchMessages,
     auth.user,
     startNewConversation,
