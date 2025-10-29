@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { Message } from '../../types/Message';
 import { ChatResponse } from '../../types/ChatResponse';
 import { MessageRoleValues } from '../../types/MessageRole';
+import { MessageContentTypeValues } from '../../types/MessageContentType';
 
 export const useChatOperations = (state: ChatState, actions: ChatActions) => {
   const auth = useAuth();
@@ -428,6 +429,72 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     }
   }, [actions, fetchMessages]);
 
+  // Start editing a message
+  const startEditMessage = useCallback((message: Message) => {
+    if (!message.id) {
+      console.error("Cannot edit message without ID");
+      return;
+    }
+
+    // Extract the current text content from the message
+    let currentText = '';
+    if (message.content && Array.isArray(message.content)) {
+      currentText = message.content
+        .filter(c => c.type === MessageContentTypeValues.TEXT)
+        .map(c => c.text)
+        .join('\n\n');
+    } else if (typeof message.content === 'string') {
+      currentText = message.content;
+    }
+
+    actions.setEditingMessageId(message.id);
+    actions.setEditingMessageContent(currentText);
+  }, [actions]);
+
+  // Cancel editing a message
+  const cancelEditMessage = useCallback(() => {
+    actions.setEditingMessageId(null);
+    actions.setEditingMessageContent('');
+  }, [actions]);
+
+  // Save edited message and replay it
+  const saveEditAndReplay = useCallback(async (messageId: number, newContent: string) => {
+    if (!state.currentConversation?.id) {
+      console.error("No current conversation to replay message in");
+      return;
+    }
+
+    if (!newContent.trim()) {
+      console.error("Cannot save empty message content");
+      return;
+    }
+
+    try {
+      // Find the original message
+      const originalMessage = state.messages.find(m => m.id === messageId);
+      if (!originalMessage) {
+        console.error("Original message not found");
+        return;
+      }
+
+      // Create a new message with the edited content
+      const editedMessage: Message = {
+        ...originalMessage,
+        content: [{ type: MessageContentTypeValues.TEXT, text: newContent.trim() }]
+      };
+
+      // Clear editing state
+      actions.setEditingMessageId(null);
+      actions.setEditingMessageContent('');
+
+      // Use the existing replay functionality with the edited message
+      await replayMessage(editedMessage);
+    } catch (error) {
+      console.error("Failed to save edit and replay:", error);
+      actions.setError((error as Error).message);
+    }
+  }, [state.currentConversation?.id, state.messages, actions, replayMessage]);
+
   return {
     fetchConversations,
     fetchMessages,
@@ -444,6 +511,11 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     pauseRequest,
     isPaused: state.isPaused,
     cancelRequest,
-    resumeRequest
+    resumeRequest,
+    startEditMessage,
+    cancelEditMessage,
+    saveEditAndReplay,
+    editingMessageId: state.editingMessageId,
+    editingMessageContent: state.editingMessageContent
   };
 };

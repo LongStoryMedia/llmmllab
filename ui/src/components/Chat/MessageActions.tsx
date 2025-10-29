@@ -11,7 +11,8 @@ import {
 import {
   MoreVert as MoreVertIcon,
   Delete as DeleteIcon,
-  Replay as ReplayIcon
+  Replay as ReplayIcon,
+  Edit as EditIcon
 } from '@mui/icons-material';
 import { useChat } from '../../chat';
 import { Message } from '../../types/Message';
@@ -23,7 +24,7 @@ interface MessageActionsProps {
 
 const MessageActions: React.FC<MessageActionsProps> = ({ message, isUser }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const { deleteMessage, replayMessage } = useChat();
+  const { deleteMessage, replayMessage, startEditMessage } = useChat();
   const open = Boolean(anchorEl);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -55,6 +56,11 @@ const MessageActions: React.FC<MessageActionsProps> = ({ message, isUser }) => {
       console.error('Failed to replay message:', error);
       // Error handling is managed by the chat context
     }
+  };
+
+  const handleEdit = () => {
+    startEditMessage(message);
+    handleClose();
   };
 
   return (
@@ -98,27 +104,49 @@ const MessageActions: React.FC<MessageActionsProps> = ({ message, isUser }) => {
           }
         }}
       >
-        {/* Only show replay for user messages */}
+        {/* Only show edit and replay for user messages */}
         {isUser && (
-          <MenuItem
-            onClick={handleReplay}
-            sx={{
-              color: 'primary.main',
-              '&:hover': {
-                backgroundColor: 'primary.light',
-                '& .MuiListItemIcon-root': {
-                  color: 'primary.dark'
-                }
-              },
-              borderRadius: '8px',
-              margin: '4px'
-            }}
-          >
-            <ListItemIcon>
-              <ReplayIcon fontSize="small" color="primary" />
-            </ListItemIcon>
-            <ListItemText primary="Replay" />
-          </MenuItem>
+          <>
+            <MenuItem
+              onClick={handleEdit}
+              sx={{
+                color: 'warning.main',
+                '&:hover': {
+                  backgroundColor: 'warning.light',
+                  '& .MuiListItemIcon-root': {
+                    color: 'warning.dark'
+                  }
+                },
+                borderRadius: '8px',
+                margin: '4px'
+              }}
+            >
+              <ListItemIcon>
+                <EditIcon fontSize="small" color="warning" />
+              </ListItemIcon>
+              <ListItemText primary="Edit & Replay" />
+            </MenuItem>
+            
+            <MenuItem
+              onClick={handleReplay}
+              sx={{
+                color: 'primary.main',
+                '&:hover': {
+                  backgroundColor: 'primary.light',
+                  '& .MuiListItemIcon-root': {
+                    color: 'primary.dark'
+                  }
+                },
+                borderRadius: '8px',
+                margin: '4px'
+              }}
+            >
+              <ListItemIcon>
+                <ReplayIcon fontSize="small" color="primary" />
+              </ListItemIcon>
+              <ListItemText primary="Replay" />
+            </MenuItem>
+          </>
         )}
         
         <MenuItem

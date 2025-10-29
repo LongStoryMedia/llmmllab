@@ -5,6 +5,7 @@ import MarkdownRenderer from '../Shared/MarkdownRenderer';
 import ThinkSection from './ThinkSection';
 import ToolCallsSection from './ToolCallsSection';
 import MessageActions from './MessageActions';
+import MessageEditor from './MessageEditor';
 import { sanitizeForLaTeX, parseResponse } from './utils';
 import { Message } from '../../types/Message';
 import { ToolCall } from '../../types/ToolCall';
@@ -14,17 +15,38 @@ interface ChatBubbleProps {
 }
 
 const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
-  const { isLoading, isTyping, currentThinking, currentToolCalls } = useChat();
+  const { isLoading, isTyping, currentThinking, currentToolCalls, editingMessageId, editingMessageContent } = useChat();
   const inProgress = isLoading || isTyping;
-  
+
   // Parse the message to get aggregated content, thinking, tool calls, and analyses
   const parsed = parseResponse(
-    message, 
-    (isTyping ? currentThinking : null), 
+    message,
+    (isTyping ? currentThinking : null),
     (isTyping && currentToolCalls ? currentToolCalls as ToolCall[] : null)
   );
-  
+
   const isUser = message.role === 'user';
+  const isEditing = editingMessageId === message.id;
+
+  // If this message is being edited, render the editor instead
+  if (isEditing && message.id) {
+    return (
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: isUser ? 'flex-end' : 'flex-start',
+          mb: 2
+        }}
+      >
+        <Box sx={{ width: { xs: '100%', sm: isUser ? '80%' : '90%' } }}>
+          <MessageEditor 
+            messageId={message.id} 
+            initialContent={editingMessageContent} 
+          />
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box

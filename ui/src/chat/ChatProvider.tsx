@@ -20,6 +20,8 @@ export interface ChatContextType {
   currentObserverMessages: string[];
   currentThinking: string | null;
   currentToolCalls: unknown[] | null;
+  editingMessageId: number | null;
+  editingMessageContent: string;
 
   // Actions
   sendMessage: ReturnType<typeof useChatOperations>['sendMessage'];
@@ -37,6 +39,9 @@ export interface ChatContextType {
   cancelRequest: ReturnType<typeof useChatOperations>['cancelRequest'];
   resumeRequest: ReturnType<typeof useChatOperations>['resumeRequest'];
   setCurrentObserverMessages: ReturnType<typeof useChatState>[1]['setCurrentObserverMessages'];
+  startEditMessage: ReturnType<typeof useChatOperations>['startEditMessage'];
+  cancelEditMessage: ReturnType<typeof useChatOperations>['cancelEditMessage'];
+  saveEditAndReplay: ReturnType<typeof useChatOperations>['saveEditAndReplay'];
 }
 
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(({ children }) => {
@@ -80,6 +85,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(
     currentObserverMessages: state.currentObserverMessages,
     currentThinking: state.currentThinking,
     currentToolCalls: state.currentToolCalls,
+    editingMessageId: state.editingMessageId,
+    editingMessageContent: state.editingMessageContent,
 
     // Actions
     sendMessage: operations.sendMessage,
@@ -96,7 +103,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(
     pauseRequest: operations.pauseRequest,
     cancelRequest: operations.cancelRequest,
     resumeRequest: operations.resumeRequest,
-    setCurrentObserverMessages: actions.setCurrentObserverMessages
+    setCurrentObserverMessages: actions.setCurrentObserverMessages,
+    startEditMessage: operations.startEditMessage,
+    cancelEditMessage: operations.cancelEditMessage,
+    saveEditAndReplay: operations.saveEditAndReplay
   };
 
   return <ChatContext.Provider value={contextValue}>{children}</ChatContext.Provider>;

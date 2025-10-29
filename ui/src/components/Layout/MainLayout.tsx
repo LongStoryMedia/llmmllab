@@ -1,37 +1,42 @@
 import React, { useState } from 'react';
 import { Box, useTheme, Drawer, Backdrop, styled } from '@mui/material';
+import { useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import GalleryFAB from '../Shared/GalleryFAB';
 import StageProgressBars from '../Shared/StageProgressBars';
 import { useBackgroundContext } from '../../context/BackgroundContext';
 
-const MainContainer = styled(Box)(({ theme }) => ({
+const MainContainer = styled(Box)<{ isChatPage: boolean }>(({ theme, isChatPage }) => ({
   display: 'flex',
   flexDirection: 'column',
   height: '100vh',
   backgroundColor: theme.palette.background.default,
   color: theme.palette.text.primary,
   position: 'relative',
-  overflow: 'hidden'
+  overflow: isChatPage ? 'hidden' : 'auto'
 }));
 
-const ContentContainer = styled(Box)({
+const ContentContainer = styled(Box)<{ isChatPage: boolean }>(({ isChatPage }) => ({
   flex: 1,
   display: 'flex',
   flexDirection: 'column',
-  overflow: 'hidden',
+  overflow: isChatPage ? 'hidden' : 'auto',
   paddingTop: '80px' // Account for TopBar height
-});
+}));
 
 const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const theme = useTheme();
+  const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { activeStages } = useBackgroundContext();
 
+  // Check if current route is a chat page
+  const isChatPage = location.pathname === '/' || location.pathname.startsWith('/chat/');
+
   const handleDrawerOpen = () => setDrawerOpen(true);
   const handleDrawerClose = () => setDrawerOpen(false); return (
-    <MainContainer>
+    <MainContainer isChatPage={isChatPage}>
       <TopBar onMenuClick={handleDrawerOpen} />
 
       {/* Sidebar as Drawer */}
@@ -49,7 +54,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <Backdrop open sx={{ zIndex: theme.zIndex.drawer - 1, position: 'fixed' }} />
       )}
 
-      <ContentContainer>
+      <ContentContainer isChatPage={isChatPage}>
         {children}
       </ContentContainer>
 
