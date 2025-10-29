@@ -683,7 +683,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
         tool_calls = []
         cleaned_content = content
 
-        # First, try XML-wrapped format
+        # First, try XML-wrapped format with generic tags
         tool_call_pattern = (
             r"<(?:tool|function)[-_]call>\s*(\{.*?\})\s*</(?:tool|function)[-_]call>"
         )
@@ -713,6 +713,38 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     f"Failed to parse XML tool call: {e}, content: {match.group(1)}"
                 )
                 continue
+
+        # Second, try XML-wrapped format with tool name as tag (e.g., <web_search>...</web_search>)
+        if not tool_calls:
+            tool_name_pattern = (
+                r"<([a-zA-Z_][a-zA-Z0-9_]*?)>\s*(\{.*?\})\s*</\1>"
+            )
+
+            matches = re.finditer(tool_name_pattern, content, re.DOTALL | re.IGNORECASE)
+
+            for match in matches:
+                try:
+                    tool_name_from_tag = match.group(1).strip()
+                    json_str = match.group(2).strip()
+                    tool_data = json.loads(json_str)
+
+                    # Convert to LangChain flat format
+                    tool_call = {
+                        "id": f"call_{len(tool_calls)}",  # Generate ID
+                        "name": tool_data.get("name", tool_name_from_tag),  # Prefer name from JSON, fallback to tag name
+                        "args": tool_data.get("arguments", {}),
+                        "type": "tool_call",
+                    }
+                    tool_calls.append(tool_call)
+
+                    # Remove this tool call from content
+                    cleaned_content = cleaned_content.replace(match.group(0), "").strip()
+
+                except (json.JSONDecodeError, KeyError) as e:
+                    self._logger.warning(
+                        f"Failed to parse tool name XML format: {e}, tool_name: {tool_name_from_tag}, content: {match.group(2)}"
+                    )
+                    continue
 
         # If no XML-wrapped tool calls found, try bare JSON format
         if not tool_calls:
