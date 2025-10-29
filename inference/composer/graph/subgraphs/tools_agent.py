@@ -168,14 +168,26 @@ class ToolsAgentSubgraph:
         current_request: LangChainToolCall,
         previous_requests: List[LangChainToolCall],
     ) -> bool:
-        """Check if a tool call request is a duplicate of a previous one."""
+        """
+        Check if a tool call request is a duplicate of a previous one.
+        
+        Only considers exact duplicates (same tool name AND same arguments).
+        Different arguments to the same tool are allowed for legitimate use cases like:
+        - Multiple web searches with different queries
+        - Reading multiple URLs with read_web_content
+        - Multiple API calls with different parameters
+        """
+        duplicate_count = 0
         for prev_request in previous_requests:
             if (
                 prev_request["name"] == current_request["name"]
                 and prev_request["args"] == current_request["args"]
             ):
-                return True
-        return False
+                duplicate_count += 1
+        
+        # Allow 1 duplicate (so 2 total calls with same args), block after that
+        # This handles cases where the AI might legitimately retry a failed call
+        return duplicate_count >= 2
 
     async def _chat_agent_wrapper(self, state: ToolsState) -> Dict[str, Any]:
         """
@@ -240,7 +252,7 @@ class ToolsAgentSubgraph:
                         request, previous_tool_requests
                     ):
                         logger.warning(
-                            f"🔄 BLOCKED duplicate tool call request: {request['name']} with args {request['args']}"
+                            f"🔄 BLOCKED duplicate tool call request: {request['name']} with args {request['args']} (seen 2+ times already)"
                         )
                         duplicates_blocked += 1
                         continue
@@ -252,8 +264,8 @@ class ToolsAgentSubgraph:
             # Critical fix: If we have many tool requests but blocked some duplicates OR
             # if we have excessive tool usage (indicating potential loop), force final answer
             excessive_tool_usage = (
-                len(previous_tool_requests) > 8
-            )  # More than 8 previous tool requests indicates a loop
+                len(previous_tool_requests) > 15
+            )  # More than 15 previous tool requests indicates a loop (increased from 8)
             should_force_final_answer = (
                 duplicates_blocked > 0
                 or excessive_tool_usage
