@@ -235,6 +235,12 @@ async def chat_completion(
                                 f"Failed to convert analysis dict to IntentAnalysis: {e}"
                             )
 
+                # Debug: Check if response_buffer is empty
+                if not streaming_state.response_buffer.strip():
+                    logger.warning(f"⚠️ Empty response_buffer detected! Accumulated thinking: {len(streaming_state.accumulated_thinking)} chars, Tool calls: {len(streaming_state.tool_calls)}")
+                else:
+                    logger.info(f"✅ Response buffer has {len(streaming_state.response_buffer)} characters")
+
                 assistant_message = Message(
                     role=MessageRole.ASSISTANT,
                     content=[
@@ -244,8 +250,17 @@ async def chat_completion(
                         )
                     ],
                     conversation_id=conversation_id,
-                    tool_calls=streaming_state.tool_calls if streaming_state.tool_calls else None,
-                    thoughts=[Thought(text=streaming_state.accumulated_thinking)] if streaming_state.accumulated_thinking and streaming_state.accumulated_thinking.strip() else None,
+                    tool_calls=(
+                        streaming_state.tool_calls
+                        if streaming_state.tool_calls
+                        else None
+                    ),
+                    thoughts=(
+                        [Thought(text=streaming_state.accumulated_thinking)]
+                        if streaming_state.accumulated_thinking
+                        and streaming_state.accumulated_thinking.strip()
+                        else None
+                    ),
                     analyses=analyses if analyses else None,
                 )
 
@@ -298,7 +313,9 @@ async def chat_completion(
                         if analyses:
                             for analysis in analyses:
                                 if isinstance(analysis, IntentAnalysis):
-                                    await storage.get_service(storage.analysis).add_analysis(
+                                    await storage.get_service(
+                                        storage.analysis
+                                    ).add_analysis(
                                         message_id=assistant_message_id,
                                         intent_analysis=analysis,
                                     )

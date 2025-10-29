@@ -268,6 +268,16 @@ class StreamingResponseState:
             # Only process non-JSON content
             if filtered_chunk and not self._is_json_metadata(filtered_chunk):
                 self.response_buffer += filtered_chunk
+            elif clean_chunk and not filtered_chunk:
+                # Debug: Log when content is filtered out
+                from utils.logging import llmmllogger
+                logger = llmmllogger.logger.bind(component="StreamingResponseState")
+                logger.debug(f"🚫 Filtered out content: '{clean_chunk[:100]}{'...' if len(clean_chunk) > 100 else ''}'")
+            elif self._is_json_metadata(clean_chunk):
+                # Debug: Log when JSON metadata is detected
+                from utils.logging import llmmllogger
+                logger = llmmllogger.logger.bind(component="StreamingResponseState")
+                logger.debug(f"🔍 JSON metadata filtered: '{clean_chunk[:100]}{'...' if len(clean_chunk) > 100 else ''}')")
 
                 # Return ChatResponse with main message content
                 content = [

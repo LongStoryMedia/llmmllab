@@ -5,7 +5,11 @@ Provides core business logic for technical analysis, code generation, and engine
 
 import re
 import json
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import List, Optional, Dict, Any, TYPE_CHECKING, Type
+
+from pydantic import BaseModel
+
+from langchain.tools import BaseTool
 
 from models import (
     IntentAnalysis,
@@ -15,6 +19,7 @@ from models import (
     ResponseFormat,
     NodeMetadata,
     DynamicTool,
+    TodoItem,
     Tool,
 )
 from composer.core.errors import NodeExecutionError
@@ -63,9 +68,9 @@ class EngineeringAgent(BaseAgent[str]):
         user_id: str,
         domain: TechnicalDomain = TechnicalDomain.GENERAL_ENGINEERING,
         response_format: ResponseFormat = ResponseFormat.DETAILED_ANALYSIS,
-        tools: Optional[List[Any]] = None,
-        grammar: Optional[Any] = None,
-        active_todos: Optional[List[Any]] = None,
+        tools: Optional[List[BaseTool]] = None,
+        grammar: Optional[Type[BaseModel]] = None,
+        active_todos: Optional[List[TodoItem]] = None,
     ) -> str:
         """
         Generate technical engineering response using configured engineering model.
@@ -95,7 +100,10 @@ class EngineeringAgent(BaseAgent[str]):
 
             # Create engineering prompt based on domain and format
             prompt = await self._create_engineering_prompt(
-                query=query, domain=domain, response_format=response_format, active_todos=active_todos
+                query=query,
+                domain=domain,
+                response_format=response_format,
+                active_todos=active_todos,
             )
 
             # Use BaseAgent's run method with proper parameters
@@ -272,7 +280,11 @@ class EngineeringAgent(BaseAgent[str]):
             raise NodeExecutionError(f"Code solution generation failed: {e}") from e
 
     async def _create_engineering_prompt(
-        self, query: str, domain: TechnicalDomain, response_format: ResponseFormat, active_todos: Optional[List[Any]] = None
+        self,
+        query: str,
+        domain: TechnicalDomain,
+        response_format: ResponseFormat,
+        active_todos: Optional[List[Any]] = None,
     ) -> str:
         """Create engineering prompt based on domain and format."""
 
@@ -306,11 +318,11 @@ class EngineeringAgent(BaseAgent[str]):
         if active_todos and len(active_todos) > 0:
             todo_list = []
             for todo in active_todos:
-                status = getattr(todo, 'status', 'unknown')
-                title = getattr(todo, 'title', 'Unknown task')
-                description = getattr(todo, 'description', '')
+                status = getattr(todo, "status", "unknown")
+                title = getattr(todo, "title", "Unknown task")
+                description = getattr(todo, "description", "")
                 todo_list.append(f"- [{status.upper()}] {title}: {description}")
-            
+
             if todo_list:
                 todo_context = f"""
 
@@ -545,6 +557,7 @@ Code Solution:"""
             args_schema={},
             return_direct=False,
             tags=[],
+            metadata={},
         )
 
         prompt = f"""As a Tool Engineering Specialist, analyze the user's request and determine if a dynamic tool is needed beyond the available static tools.
