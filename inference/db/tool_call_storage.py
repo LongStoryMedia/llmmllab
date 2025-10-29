@@ -61,14 +61,14 @@ class ToolCallStorage:
         import json
 
         # Convert optional dict fields to JSON strings
-        args_json = json.dumps(tool_call.args) if tool_call.args else None
+        args_json = json.dumps(tool_call.args) if tool_call.args else "{}"
         result_data_json = (
-            json.dumps(tool_call.result_data) if tool_call.result_data else None
+            json.dumps(tool_call.result_data) if tool_call.result_data else "{}"
         )
         resource_usage_json = (
             json.dumps(tool_call.resource_usage.dict())
             if tool_call.resource_usage
-            else None
+            else "{}"
         )
 
         # Handle created_at field - use None if not present (SQL will default to NOW())

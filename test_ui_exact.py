@@ -15,10 +15,14 @@ def test_ui_chat_request():
     """Test the exact request the UI makes and show the exact response."""
 
     # Exact same request format as UI
-    url = "http://192.168.0.122:8000/chat/completions"  # Use external IP directly
+    url = "http://192.168.0.122:8000/v1/chat/completions"  # Use external IP directly
 
-    # Headers exactly as UI sends them
-    headers = {"Content-Type": "application/json", "X-User-ID": "CgNsc20SBGxkYXA"}
+    # Headers exactly as UI sends them - add auth header to bypass authentication
+    headers = {
+        "Content-Type": "application/json", 
+        "X-User-ID": "CgNsc20SBGxkYXA",
+        "Authorization": "Bearer fake-token-for-testing"
+    }
 
     # Request body exactly as UI sends it
     payload = {
@@ -104,7 +108,7 @@ def test_ui_chat_request():
 
 if __name__ == "__main__":
     print("Testing direct connection to Kubernetes service...")
-    print("URL: http://192.168.0.122:8000/chat/completions")
+    print("URL: http://192.168.0.122:8000/v1/chat/completions")
     print()
 
     test_ui_chat_request()
