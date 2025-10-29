@@ -937,7 +937,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 # Create AI message with tool calls
                 message = AIMessage(
                     content=cleaned_content,
-                    tool_calls=tool_calls if tool_calls else None,
+                    tool_calls=tool_calls if tool_calls else [],
                     usage_metadata=usage_metadata,
                     response_metadata={
                         "model_name": self.model.name,

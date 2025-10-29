@@ -98,7 +98,20 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
             intents: List[IntentAnalysis]
 
         intnt_schema = _Intnts.model_json_schema()
-        user_query = messages[-1].content if messages else ""
+        
+        # Handle both our Message objects and LangChain messages
+        if messages:
+            last_message = messages[-1]
+            if hasattr(last_message, 'content') and isinstance(last_message.content, str):
+                # LangChain message with string content
+                user_query = last_message.content
+            elif hasattr(last_message, 'content') and isinstance(last_message.content, list):
+                # Our Message object with MessageContent list
+                user_query = extract_message_text(last_message)
+            else:
+                user_query = str(last_message)
+        else:
+            user_query = ""
 
         # Build available tools context
         available_tools_context = ""
@@ -163,27 +176,48 @@ IMPORTANT: Return JSON that is valid against this schema:
 
 If multiple intents are needed, include additional objects in the intents array.
 """
-        # Use direct execution (non-streaming) to avoid LangChain validation issues
-        msgs = []
-        msgs.extend(messages)
-        
-        # Get the existing agent with proper grammar constraints
-        agent = self._get_or_create_agent(
-            system_prompt=analysis_prompt,
-            tools=None,
-            priority=PipelinePriority.HIGH,
+        # Use direct LLM pipeline (non-streaming) to prevent output leakage
+        pipeline = self.pipeline_factory.get_pipeline(
+            self.profile,
+            PipelinePriority.HIGH,
             grammar=_Intnts
         )
         
-        # Convert messages to LangChain format
-        normalized_messages = convert_messages_to_base_langchain(msgs)
-        
-        # Execute agent directly (the XML wrapper happens at the planning subgraph level)
-        result = await agent.ainvoke({"messages": normalized_messages})
-        
-        # Extract content directly
-        last_message = result["messages"][-1]
-        txt = str(last_message.content) if hasattr(last_message, "content") else ""
+        # Ensure we have a chat model, not embeddings
+        if not hasattr(pipeline, 'ainvoke'):
+            # Fallback to using the agent approach but with sync invoke
+            agent = self._get_or_create_agent(
+                system_prompt=analysis_prompt,
+                tools=None,
+                priority=PipelinePriority.HIGH,
+                grammar=_Intnts
+            )
+            
+            # Convert messages to LangChain format  
+            normalized_messages = convert_messages_to_base_langchain(messages)
+            
+            # Use invoke instead of ainvoke to prevent streaming
+            result = agent.invoke({"messages": normalized_messages})
+            
+            # Extract content directly
+            last_message = result["messages"][-1]
+            txt = str(last_message.content) if hasattr(last_message, "content") else ""
+        else:
+            # Create system message with the analysis prompt
+            from langchain_core.messages import SystemMessage, HumanMessage, BaseMessage
+            from typing import List as ListType
+            
+            llm_messages: ListType[BaseMessage] = [SystemMessage(content=analysis_prompt)]
+            
+            # Add user query as human message
+            if user_query.strip():
+                llm_messages.append(HumanMessage(content=user_query))
+            
+            # Call LLM directly (no agent, no streaming)
+            result = await cast(BaseChatModel, pipeline).ainvoke(llm_messages)
+            
+            # Extract content from response
+            txt = str(result.content) if hasattr(result, "content") else str(result)
         
         if not txt.strip():
             raise IntentAnalysisError("Empty intent analysis response")

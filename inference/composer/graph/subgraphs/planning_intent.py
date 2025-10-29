@@ -103,33 +103,11 @@ class PlanningIntentSubgraph:
             if isinstance(msg, (HumanMessage, AIMessage)):
                 langchain_messages.append(msg)
 
-        # Use classifier agent to analyze intent with streaming XML wrapper
-        # Import for streaming support
-        import sys
-        import io
-        from contextlib import redirect_stdout
-        
-        # Capture any streaming output with XML wrapper for filtering
-        captured_output = io.StringIO()
-        
-        # Emit XML start tag to stdout (will be captured by streaming)
-        print("<intent-analysis>", flush=True)
-        
-        try:
-            # Execute intent analysis
-            intent_analyses = await self.classifier_agent.analyze(
-                messages=langchain_messages,
-                available_static_tools=static_tools,
-            )
-            
-            # Emit the JSON content for streaming (will be filtered out)
-            import json
-            analysis_json = json.dumps([analysis.model_dump() for analysis in intent_analyses], indent=2)
-            print(analysis_json, flush=True)
-            
-        finally:
-            # Always emit closing tag
-            print("</intent-analysis>", flush=True)
+        # Use classifier agent to analyze intent (no streaming output to prevent leakage)
+        intent_analyses = await self.classifier_agent.analyze(
+            messages=langchain_messages,
+            available_static_tools=static_tools,
+        )
         
         # Store intent analyses in database separately from message content
         await self._store_intent_analyses(intent_analyses, state)
