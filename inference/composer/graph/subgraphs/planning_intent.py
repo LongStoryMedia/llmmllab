@@ -103,11 +103,36 @@ class PlanningIntentSubgraph:
             if isinstance(msg, (HumanMessage, AIMessage)):
                 langchain_messages.append(msg)
 
-        # Use classifier agent to analyze intent
-        intent_analyses = await self.classifier_agent.analyze(
-            messages=langchain_messages,
-            available_static_tools=static_tools,
-        )
+        # Use classifier agent to analyze intent with streaming XML wrapper
+        # Import for streaming support
+        import sys
+        import io
+        from contextlib import redirect_stdout
+        
+        # Capture any streaming output with XML wrapper for filtering
+        captured_output = io.StringIO()
+        
+        # Emit XML start tag to stdout (will be captured by streaming)
+        print("<intent-analysis>", flush=True)
+        
+        try:
+            # Execute intent analysis
+            intent_analyses = await self.classifier_agent.analyze(
+                messages=langchain_messages,
+                available_static_tools=static_tools,
+            )
+            
+            # Emit the JSON content for streaming (will be filtered out)
+            import json
+            analysis_json = json.dumps([analysis.model_dump() for analysis in intent_analyses], indent=2)
+            print(analysis_json, flush=True)
+            
+        finally:
+            # Always emit closing tag
+            print("</intent-analysis>", flush=True)
+        
+        # Store intent analyses in database separately from message content
+        await self._store_intent_analyses(intent_analyses, state)
 
         # Calculate complexity score based on analysis results
         complexity_score = self._calculate_complexity_score(messages, intent_analyses)
@@ -189,6 +214,53 @@ class PlanningIntentSubgraph:
                 complexity_score += 2
 
         return min(complexity_score, 10)  # Cap at 10
+
+    async def _store_intent_analyses(
+        self, intent_analyses: List[IntentAnalysis], state: PlanningIntentState
+    ) -> None:
+        """Store intent analyses in the database separately from message content."""
+        try:
+            from db import storage
+            
+            if not storage.initialized or not storage.analysis:
+                logger.warning("Analysis storage not initialized, skipping intent analysis storage")
+                return
+            
+            messages = state.get("messages", [])
+            conversation_id = state.get("conversation_id")
+            
+            if not messages or not conversation_id:
+                logger.warning("Missing messages or conversation_id for intent analysis storage")
+                return
+                
+            # Find the latest user message to associate analyses with
+            user_message_id = None
+            for msg in reversed(messages):
+                if hasattr(msg, "role") and getattr(msg, "role", "") == "user":
+                    user_message_id = getattr(msg, "id", None)
+                    break
+                    
+            if not user_message_id:
+                logger.warning("No user message found to associate intent analysis with")
+                return
+            
+            # Store each intent analysis
+            for intent_analysis in intent_analyses:
+                try:
+                    analysis_id = await storage.analysis.add_analysis(
+                        message_id=user_message_id,
+                        intent_analysis=intent_analysis
+                    )
+                    if analysis_id:
+                        logger.debug(f"Stored intent analysis with ID: {analysis_id}")
+                    else:
+                        logger.warning("Failed to store intent analysis - no ID returned")
+                        
+                except Exception as e:
+                    logger.error(f"Failed to store individual intent analysis: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Failed to store intent analyses: {e}")
 
     async def _generate_todos_step(self, state: PlanningIntentState) -> Dict[str, Any]:
         """Generate todos based on intent analysis."""

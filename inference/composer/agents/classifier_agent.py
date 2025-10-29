@@ -5,11 +5,12 @@ Maps user requests to RequiredCapabilities and assesses computational complexity
 """
 
 import json
-from typing import List, TYPE_CHECKING, cast
+from typing import List, TYPE_CHECKING, cast, Optional, AsyncIterator
 
 from pydantic import BaseModel
 from langchain.agents import create_agent
 from langchain.chat_models import BaseChatModel
+from langchain_core.tools import BaseTool
 
 from models import (
     ChatResponse,
@@ -162,7 +163,7 @@ IMPORTANT: Return JSON that is valid against this schema:
 
 If multiple intents are needed, include additional objects in the intents array.
 """
-        # Use existing agent creation but extract result without ChatResponse storage
+        # Use direct execution (non-streaming) to avoid LangChain validation issues
         msgs = []
         msgs.extend(messages)
         
@@ -177,10 +178,10 @@ If multiple intents are needed, include additional objects in the intents array.
         # Convert messages to LangChain format
         normalized_messages = convert_messages_to_base_langchain(msgs)
         
-        # Execute agent directly and extract text without creating ChatResponse
+        # Execute agent directly (the XML wrapper happens at the planning subgraph level)
         result = await agent.ainvoke({"messages": normalized_messages})
         
-        # Extract content directly without ChatResponse wrapper
+        # Extract content directly
         last_message = result["messages"][-1]
         txt = str(last_message.content) if hasattr(last_message, "content") else ""
         
