@@ -19,12 +19,10 @@ const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
   const inProgress = isLoading || isTyping;
 
   // Parse the message to get aggregated content, thinking, tool calls, and analyses
-  // Only use streaming state (currentThinking/currentToolCalls) when actively typing
-  // This prevents duplication when streaming completes but state hasn't cleared yet
   const parsed = parseResponse(
     message,
-    (inProgress ? currentThinking : null),
-    (inProgress ? currentToolCalls as ToolCall[] : null)
+    (isTyping ? currentThinking : null),
+    (isTyping && currentToolCalls ? currentToolCalls as ToolCall[] : null)
   );
 
   const isUser = message.role === 'user';

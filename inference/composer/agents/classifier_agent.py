@@ -120,7 +120,12 @@ Consider these available tools when assessing:
 """
 
         analysis_prompt = f"""
-You are an expert intent classification system. Analyze the user request and output ONLY JSON.
+You are an expert intent classification system. Analyze the user request and output ONLY JSON wrapped in XML tags.
+
+IMPORTANT: Wrap your JSON response like this:
+<intent-analysis>
+{{your json here}}
+</intent-analysis>
 
 Valid enumerations ONLY:
 workflow_type (choose one per intent): [ {" | ".join(intnt_schema['$defs']['WorkflowType']['enum'])} ]
@@ -153,7 +158,7 @@ Instructions:
 3. Omit response_format / technical_domain unless clearly implied.
 4. All boolean fields (requires_tools, requires_custom_tools) must be explicitly set.
 5. All required numeric fields must be provided as numbers (not strings).
-6. Output strictly valid JSON. No prose, no markdown, no comments.
+6. Output strictly valid JSON wrapped in <intent-analysis> XML tags. No prose, no markdown, no comments outside the XML tags.
 
 User Request: {user_query}
 
@@ -176,7 +181,17 @@ If multiple intents are needed, include additional objects in the intents array.
         if not txt.strip():
             raise IntentAnalysisError("Empty intent analysis response")
 
-        intents = parse_structured_output(txt, _Intnts)
+        # Extract JSON from within XML tags if present
+        import re
+        xml_pattern = re.compile(r'<intent-analysis>\s*(.*?)\s*</intent-analysis>', re.DOTALL)
+        xml_match = xml_pattern.search(txt)
+        if xml_match:
+            json_text = xml_match.group(1).strip()
+        else:
+            # Fallback to original text if no XML tags found
+            json_text = txt.strip()
+
+        intents = parse_structured_output(json_text, _Intnts)
         return intents.intents
 
     async def generate_title(
