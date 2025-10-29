@@ -65,6 +65,7 @@ class EngineeringAgent(BaseAgent[str]):
         response_format: ResponseFormat = ResponseFormat.DETAILED_ANALYSIS,
         tools: Optional[List[Any]] = None,
         grammar: Optional[Any] = None,
+        active_todos: Optional[List[Any]] = None,
     ) -> str:
         """
         Generate technical engineering response using configured engineering model.
@@ -76,6 +77,7 @@ class EngineeringAgent(BaseAgent[str]):
             response_format: Desired response format and structure
             tools: Optional tools available to the agent for enhanced capabilities
             grammar: Optional grammar constraints for structured output
+            active_todos: Optional list of active todos to consider in the response
 
         Returns:
             Technical response content
@@ -93,7 +95,7 @@ class EngineeringAgent(BaseAgent[str]):
 
             # Create engineering prompt based on domain and format
             prompt = await self._create_engineering_prompt(
-                query=query, domain=domain, response_format=response_format
+                query=query, domain=domain, response_format=response_format, active_todos=active_todos
             )
 
             # Use BaseAgent's run method with proper parameters
@@ -270,7 +272,7 @@ class EngineeringAgent(BaseAgent[str]):
             raise NodeExecutionError(f"Code solution generation failed: {e}") from e
 
     async def _create_engineering_prompt(
-        self, query: str, domain: TechnicalDomain, response_format: ResponseFormat
+        self, query: str, domain: TechnicalDomain, response_format: ResponseFormat, active_todos: Optional[List[Any]] = None
     ) -> str:
         """Create engineering prompt based on domain and format."""
 
@@ -299,12 +301,30 @@ class EngineeringAgent(BaseAgent[str]):
             response_format, format_instructions[ResponseFormat.DETAILED_ANALYSIS]
         )
 
+        # Add todo context if available
+        todo_context = ""
+        if active_todos and len(active_todos) > 0:
+            todo_list = []
+            for todo in active_todos:
+                status = getattr(todo, 'status', 'unknown')
+                title = getattr(todo, 'title', 'Unknown task')
+                description = getattr(todo, 'description', '')
+                todo_list.append(f"- [{status.upper()}] {title}: {description}")
+            
+            if todo_list:
+                todo_context = f"""
+
+Active Todos for This Conversation:
+{chr(10).join(todo_list)}
+
+When responding, please consider these active todos and address any that are relevant to the current query. If you can help complete or make progress on any of these todos, mention that in your response."""
+
         prompt = f"""{domain_context}
 
 {format_instruction}
 
 Technical Query:
-{query}
+{query}{todo_context}
 
 Please provide a comprehensive technical response addressing the query above. Include relevant technical details, examples where appropriate, and practical guidance."""
 

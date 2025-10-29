@@ -62,8 +62,3 @@ properties:
     description: OBSERVER role messages that should be displayed as temporary floating notifications
     items:
       type: string
-  analyses:
-    type: array
-    description: Analytical insights or summaries related to the chat response
-    items:
-      $ref: intent_analysis.yaml

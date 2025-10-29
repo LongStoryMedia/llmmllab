@@ -84,8 +84,8 @@ export const parseResponse = (message: Message, currentThinking?: string | null,
   // Extract tool calls - use current tool calls if available (streaming), otherwise use stored tool calls
   const toolCalls = currentToolCalls || message.tool_calls || null;
 
-  // Extract analyses (not currently used in streaming but available in message)
-  const analyses = null; // message.analyses || null; // Uncomment when analyses are added to Message type
+  // Extract analyses from message (now available in Message type)
+  const analyses = message.analyses || null;
 
   return {
     content: content || '',

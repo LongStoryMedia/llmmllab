@@ -75,7 +75,7 @@ const MessageEditor: React.FC<MessageEditorProps> = ({ messageId, initialContent
             Editing message (Ctrl+Enter to save, Esc to cancel)
           </Typography>
         </Box>
-        
+
         <TextField
           multiline
           fullWidth
@@ -111,7 +111,7 @@ const MessageEditor: React.FC<MessageEditorProps> = ({ messageId, initialContent
           >
             <CloseIcon fontSize="small" />
           </IconButton>
-          
+
           <IconButton
             size="small"
             onClick={handleSave}

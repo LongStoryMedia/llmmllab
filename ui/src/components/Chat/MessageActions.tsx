@@ -126,7 +126,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({ message, isUser }) => {
               </ListItemIcon>
               <ListItemText primary="Edit & Replay" />
             </MenuItem>
-            
+
             <MenuItem
               onClick={handleReplay}
               sx={{
@@ -148,7 +148,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({ message, isUser }) => {
             </MenuItem>
           </>
         )}
-        
+
         <MenuItem
           onClick={handleDelete}
           sx={{

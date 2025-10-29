@@ -17,6 +17,7 @@ from composer.tools.static import (
     summarization,
     get_current_date,
     web_search,
+    read_web_content,
 )
 
 if TYPE_CHECKING:
@@ -59,6 +60,7 @@ class ToolRegistry:
             tools_to_add = {
                 "memory_retrieval": memory_retrieval,
                 "web_search": web_search,
+                "read_web_content": read_web_content,
                 "summarization": summarization,
                 "get_current_date": get_current_date,
             }

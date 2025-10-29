@@ -70,7 +70,15 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
 
     try {
       const fetchedMessages = await getMessages(getToken(auth.user), conversationId);
-      actions.setMessages(msgs => [...(msgs ?? []), ...(fetchedMessages ?? []).filter(m => !msgs.find(msg => msg.id === m.id))]);
+      // Properly merge messages without duplicates
+      actions.setMessages(existingMessages => {
+        const existingMap = new Map((existingMessages ?? []).map(msg => [msg.id, msg]));
+        const fetchedMap = new Map((fetchedMessages ?? []).map(msg => [msg.id, msg]));
+        
+        // Combine all unique messages, preferring server data when IDs match
+        const allMessages = new Map([...existingMap, ...fetchedMap]);
+        return Array.from(allMessages.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
+      });
       // Find and set the current conversation
       const conversation = Object.values(state.conversations).flat().find(c => c.id === conversationId);
       if (conversation) {

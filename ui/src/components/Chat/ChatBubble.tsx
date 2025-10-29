@@ -39,9 +39,9 @@ const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
         }}
       >
         <Box sx={{ width: { xs: '100%', sm: isUser ? '80%' : '90%' } }}>
-          <MessageEditor 
-            messageId={message.id} 
-            initialContent={editingMessageContent} 
+          <MessageEditor
+            messageId={message.id}
+            initialContent={editingMessageContent}
           />
         </Box>
       </Box>

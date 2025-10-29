@@ -96,11 +96,20 @@ const VirtualizedChatList: React.FC<VirtualizedChatListProps> = ({
         // Reset cache for this item in react-window
         if (listRef.current) {
           listRef.current.resetAfterIndex(index, false);
+          
+          // If this is the last item (streaming message) and we should scroll to bottom, scroll again
+          if (shouldScrollToBottom && index === totalItems - 1) {
+            setTimeout(() => {
+              if (listRef.current) {
+                listRef.current.scrollToItem(totalItems - 1, 'end');
+              }
+            }, 0);
+          }
         }
       }
       return newMap;
     });
-  }, []);
+  }, [shouldScrollToBottom, totalItems]);
 
   // Data to pass to each item
   const itemData = useMemo(() => ({
@@ -109,21 +118,22 @@ const VirtualizedChatList: React.FC<VirtualizedChatListProps> = ({
     onHeightChange: handleHeightChange
   }), [messages, streamingMessage, handleHeightChange]);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new messages arrive or streaming content updates
   useEffect(() => {
     if (shouldScrollToBottom && listRef.current && totalItems > 0) {
       listRef.current.scrollToItem(totalItems - 1, 'end');
     }
-  }, [totalItems, shouldScrollToBottom]);
+  }, [totalItems, shouldScrollToBottom, streamingMessage]);
 
   // Check if user is at bottom to determine auto-scroll behavior
   const handleScroll = useCallback(({ scrollOffset, scrollUpdateWasRequested }: { scrollOffset: number; scrollUpdateWasRequested: boolean }) => {
-    if (!scrollUpdateWasRequested) {
-      // Calculate if we're near the bottom - simplified approach
-      const isNearBottom = scrollOffset + containerHeight >= (totalItems * 150) - 100; // Rough estimate
+    if (!scrollUpdateWasRequested && listRef.current) {
+      // Use react-window's built-in scroll methods for better accuracy
+      const totalHeight = Array.from(itemHeights.values()).reduce((sum, height) => sum + height, 0) || totalItems * 100;
+      const isNearBottom = scrollOffset + containerHeight >= totalHeight - 50; // More accurate calculation with smaller threshold
       setShouldScrollToBottom(isNearBottom);
     }
-  }, [containerHeight, totalItems]);
+  }, [containerHeight, totalItems, itemHeights]);
 
   if (totalItems === 0) {
     return <ListContainer />;

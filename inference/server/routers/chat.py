@@ -221,6 +221,20 @@ async def chat_completion(
                 final_response = streaming_state.get_final_response()
 
                 # Store the assistant's response in database using streaming state's accumulated content
+                # Convert analyses from final response data to IntentAnalysis objects
+                analyses = []
+                raw_analyses = final_response_data.get("analyses", [])
+                for analysis in raw_analyses:
+                    if isinstance(analysis, IntentAnalysis):
+                        analyses.append(analysis)
+                    elif isinstance(analysis, dict):
+                        try:
+                            analyses.append(IntentAnalysis(**analysis))
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to convert analysis dict to IntentAnalysis: {e}"
+                            )
+
                 assistant_message = Message(
                     role=MessageRole.ASSISTANT,
                     content=[
@@ -230,6 +244,9 @@ async def chat_completion(
                         )
                     ],
                     conversation_id=conversation_id,
+                    tool_calls=streaming_state.tool_calls if streaming_state.tool_calls else None,
+                    thoughts=[Thought(text=streaming_state.accumulated_thinking)] if streaming_state.accumulated_thinking and streaming_state.accumulated_thinking.strip() else None,
+                    analyses=analyses if analyses else None,
                 )
 
                 try:
