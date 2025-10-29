@@ -162,17 +162,28 @@ IMPORTANT: Return JSON that is valid against this schema:
 
 If multiple intents are needed, include additional objects in the intents array.
 """
+        # Use existing agent creation but extract result without ChatResponse storage
         msgs = []
         msgs.extend(messages)
-        msgs.append(analysis_prompt)
-        result = await self.run(
-            messages=msgs,
+        
+        # Get the existing agent with proper grammar constraints
+        agent = self._get_or_create_agent(
+            system_prompt=analysis_prompt,
             tools=None,
             priority=PipelinePriority.HIGH,
-            grammar=_Intnts,
+            grammar=_Intnts
         )
-
-        txt = extract_message_text(result.message) if result and result.message else ""
+        
+        # Convert messages to LangChain format
+        normalized_messages = convert_messages_to_base_langchain(msgs)
+        
+        # Execute agent directly and extract text without creating ChatResponse
+        result = await agent.ainvoke({"messages": normalized_messages})
+        
+        # Extract content directly without ChatResponse wrapper
+        last_message = result["messages"][-1]
+        txt = str(last_message.content) if hasattr(last_message, "content") else ""
+        
         if not txt.strip():
             raise IntentAnalysisError("Empty intent analysis response")
 

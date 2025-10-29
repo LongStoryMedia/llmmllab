@@ -32,7 +32,7 @@ from models import (
     NodeMetadata,
     ComplexityLevel,
     TodoItem,
-    Tool
+    Tool,
 )
 from composer.graph.state import WorkflowState
 from composer.agents.classifier_agent import ClassifierAgent
@@ -56,7 +56,7 @@ class PlanningIntentState(TypedDict):
 class PlanningIntentSubgraph:
     """
     Simplified intent analysis subgraph using LangGraph best practices.
-    
+
     Direct approach:
     1. Analyze intent and complexity in one step
     2. Generate todos based on analysis results
@@ -90,9 +90,7 @@ class PlanningIntentSubgraph:
             logger.error(f"Failed to build intent analysis subgraph: {e}")
             raise
 
-    async def _analyze_intent_step(
-        self, state: PlanningIntentState
-    ) -> Dict[str, Any]:
+    async def _analyze_intent_step(self, state: PlanningIntentState) -> Dict[str, Any]:
         """Analyze intent and estimate complexity in one step."""
         logger.info("🔍 Intent: Analyzing messages for intent and complexity")
 
@@ -128,32 +126,54 @@ class PlanningIntentSubgraph:
     ) -> int:
         """Calculate complexity score based on messages and intent analysis."""
         complexity_score = 3  # Base complexity
-        
+
         # Message-based complexity
         complexity_score += min(len(messages), 5)  # More messages = more complexity
-        
+
         if messages:
             last_message = messages[-1]
             content = getattr(last_message, "content", "").lower()
-            
+
             # Keyword-based complexity indicators
-            technical_keywords = ["algorithm", "implementation", "code", "debug", "error", "api", "database"]
-            research_keywords = ["research", "analyze", "compare", "investigate", "study", "review"]
-            creative_keywords = ["create", "design", "generate", "write", "compose", "draft"]
-            
+            technical_keywords = [
+                "algorithm",
+                "implementation",
+                "code",
+                "debug",
+                "error",
+                "api",
+                "database",
+            ]
+            research_keywords = [
+                "research",
+                "analyze",
+                "compare",
+                "investigate",
+                "study",
+                "review",
+            ]
+            creative_keywords = [
+                "create",
+                "design",
+                "generate",
+                "write",
+                "compose",
+                "draft",
+            ]
+
             if any(kw in content for kw in technical_keywords):
                 complexity_score += 3
             elif any(kw in content for kw in research_keywords):
                 complexity_score += 2
             elif any(kw in content for kw in creative_keywords):
                 complexity_score += 1
-                
+
             # Length-based complexity
             if len(content) > 500:
                 complexity_score += 2
             elif len(content) > 200:
                 complexity_score += 1
-        
+
         # Intent analysis-based complexity
         for intent in intent_analyses:
             if hasattr(intent, "complexity_level"):
@@ -161,10 +181,13 @@ class PlanningIntentSubgraph:
                     complexity_score += 2
                 elif intent.complexity_level == ComplexityLevel.MODERATE:
                     complexity_score += 1
-            
-            if hasattr(intent, "requires_custom_tools") and intent.requires_custom_tools:
+
+            if (
+                hasattr(intent, "requires_custom_tools")
+                and intent.requires_custom_tools
+            ):
                 complexity_score += 2
-        
+
         return min(complexity_score, 10)  # Cap at 10
 
     async def _generate_todos_step(self, state: PlanningIntentState) -> Dict[str, Any]:
@@ -250,18 +273,27 @@ class PlanningIntentSubgraph:
 
             # Determine priority based on complexity and urgency indicators
             priority = "medium"  # default
-            
-            if complexity_score >= 8 or (hasattr(intent, 'complexity_level') and intent.complexity_level == ComplexityLevel.COMPLEX):
+
+            if complexity_score >= 8 or (
+                hasattr(intent, "complexity_level")
+                and intent.complexity_level == ComplexityLevel.COMPLEX
+            ):
                 priority = "high"
-            elif any(word in user_message.lower() for word in ["urgent", "asap", "immediately", "quickly"]):
+            elif any(
+                word in user_message.lower()
+                for word in ["urgent", "asap", "immediately", "quickly"]
+            ):
                 priority = "urgent"
-            elif complexity_score <= 3 or (hasattr(intent, 'complexity_level') and intent.complexity_level == ComplexityLevel.SIMPLE):
+            elif complexity_score <= 3 or (
+                hasattr(intent, "complexity_level")
+                and intent.complexity_level == ComplexityLevel.SIMPLE
+            ):
                 priority = "low"
 
             # Create title based on workflow type
             workflow_action = {
                 WorkflowType.RESEARCH: "Research",
-                WorkflowType.ANALYSIS: "Analyze", 
+                WorkflowType.ANALYSIS: "Analyze",
                 WorkflowType.CREATIVE: "Create",
                 WorkflowType.FOCUSED: "Execute",
                 WorkflowType.PLANNING: "Plan",
@@ -269,10 +301,15 @@ class PlanningIntentSubgraph:
 
             topic = self._extract_topic(user_message)
             title = f"{workflow_action}: {topic}"
-            
+
             # Create description
-            description = f"Complete {intent.workflow_type.value} task: {user_message[:200]}..."
-            if hasattr(intent, 'requires_custom_tools') and intent.requires_custom_tools:
+            description = (
+                f"Complete {intent.workflow_type.value} task: {user_message[:200]}..."
+            )
+            if (
+                hasattr(intent, "requires_custom_tools")
+                and intent.requires_custom_tools
+            ):
                 description += " (Requires custom tools)"
 
             # Create TodoItem
@@ -292,7 +329,6 @@ class PlanningIntentSubgraph:
         except Exception as e:
             logger.error(f"Failed to create todo for intent: {e}")
             return None
-
 
     def _extract_topic(self, message: str) -> str:
         """Extract a concise topic from the user message for todo titles."""
@@ -346,7 +382,7 @@ class PlanningIntentSubgraph:
 
         # Get static tools with proper typing
         static_tools: List[Tool] = getattr(main_state, "static_tools", [])
-        
+
         # Get existing todos with proper typing
         existing_todos: List[TodoItem] = getattr(main_state, "generated_todos", [])
 
@@ -368,14 +404,18 @@ class PlanningIntentSubgraph:
 
         if planning_result.get("intent_analyses"):
             # Extend the intent classification list
-            current_analyses: List[IntentAnalysis] = getattr(main_state, "intent_classification", [])
-            updates["intent_classification"] = current_analyses + planning_result["intent_analyses"]
+            current_analyses: List[IntentAnalysis] = getattr(
+                main_state, "intent_classification", []
+            )
+            updates["intent_classification"] = (
+                current_analyses + planning_result["intent_analyses"]
+            )
 
         # Include generated todos in the main state with proper typing
         if planning_result.get("generated_todos"):
             generated_todos: List[TodoItem] = planning_result["generated_todos"]
             updates["generated_todos"] = generated_todos
-            
+
         # Include complexity score
         if planning_result.get("complexity_score"):
             updates["complexity_score"] = planning_result["complexity_score"]
@@ -404,7 +444,9 @@ class PlanningIntentSubgraph:
             return Command(update=updates)
 
         except Exception as e:
-            logger.error(f"Intent analysis subgraph execution failed: {e}", exc_info=True)
+            logger.error(
+                f"Intent analysis subgraph execution failed: {e}", exc_info=True
+            )
             return Command(update={})
 
 
