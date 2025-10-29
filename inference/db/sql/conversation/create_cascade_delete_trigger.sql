@@ -10,6 +10,9 @@ BEGIN
   DELETE FROM search_topic_syntheses
   WHERE conversation_id = OLD.id;
   RETURN OLD;
+  DELETE FROM todos
+  WHERE conversation_id = OLD.id;
+  RETURN OLD;
 END;
 $$
 LANGUAGE plpgsql;

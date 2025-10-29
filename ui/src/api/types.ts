@@ -1,14 +1,6 @@
 import { UserConfig } from "../types/UserConfig";
 import { ChatWebSocketClient } from "./websocket";
 
-export type BodyDeserialized = {
-  model: string;
-  messages: Array<{
-    role: 'system' | 'user' | 'assistant' | 'tool';
-    content: string;
-  }>;
-};
-
 export type RequestOptions = {
   method?: 'POST' | 'GET' | 'PUT' | 'DELETE';
   headers?: HeadersInit;

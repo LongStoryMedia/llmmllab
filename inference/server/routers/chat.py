@@ -180,13 +180,8 @@ async def chat_completion(
                         event_type = getattr(event, "event", "")
                         event_data = getattr(event, "data", {})
 
-                    # Debug logging for events
-                    logger.debug(
-                        f"Processing event: {event_type}, event_data: {serialize_event_data(event_data)}"
-                    )
-
                     # Process streaming events for immediate response
-                    if event_type == "on_chat_model_stream":
+                    if event_type.endswith("_stream"):
                         # Handle streaming tokens
                         chunk = event.get("data", {}).get("chunk")
                         if chunk:
@@ -198,23 +193,18 @@ async def chat_completion(
                             else:
                                 content = str(chunk) if chunk else ""
 
-                            logger.debug(f"Stream content: '{content}'")
-
                             if content:
                                 # Use streaming state manager to process chunk
                                 chat_response = streaming_state.process_chunk(content)
+                                logger.debug(
+                                    f"Stream content: '{serialize_event_data(chat_response)}'"
+                                )
                                 yield f"{chat_response.model_dump_json(exclude_none=True)}\n"
 
                                 # Let streaming state manage content accumulation
                                 # Don't duplicate accumulation here
 
-                    elif event_type == "on_chat_model_end":
-                        # Skip this event to prevent duplicate processing
-                        # Content is already handled in streaming events
-                        logger.debug(f"Model end - skipping to prevent duplication")
-                        pass
-
-                    elif event_type == "on_chain_end":
+                    elif event_type.endswith("_end"):
                         # Capture final workflow data
                         if isinstance(event_data, dict):
                             output = event_data.get("output", {})

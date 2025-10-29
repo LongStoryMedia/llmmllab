@@ -33,6 +33,8 @@ import {
   PlayArrow,
   Cancel
 } from '@mui/icons-material';
+import { getToken, getTodos, createTodo, updateTodo, deleteTodo } from '../../api';
+
 import { useAuth } from '../../auth/useAuth';
 import { TodoItem } from '../../types/TodoItem';
 
@@ -41,7 +43,7 @@ interface ConversationTodosProps {
 }
 
 const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId }) => {
-  const { getToken } = useAuth();
+  const auth = useAuth();
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -61,113 +63,78 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
     setPriority('medium');
   };
 
-  const fetchTodos = async () => {
-    if (!conversationId) return;
-
-    setLoading(true);
-    try {
-      const token = await getToken();
-      const response = await fetch(`/api/todos/conversation/${conversationId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
+  useEffect(() => {
+    if (expanded && conversationId) {
+      (async () => {
+        setLoading(true);
+        try {
+          const token = await getToken(auth.user);
+          const todos = await getTodos(token);
+          setTodos(todos);
+        } catch (error) {
+          console.error('Failed to fetch todos:', error);
+        } finally {
+          setLoading(false);
         }
-      });
+      })();
+    }
+  }, [expanded, conversationId, auth.user]);
 
-      if (response.ok) {
-        const todoData = await response.json();
-        setTodos(todoData);
-      }
+  const newTodo = async () => {
+    if (!title.trim()) {
+      return;
+    }
+    setLoading(true);
+
+    try {
+      const token = getToken(auth.user);
+      const todo = await createTodo(token, {
+        title: title.trim(),
+        description: description.trim(),
+        status,
+        priority
+      });
+      setTodos(prev => [...prev, todo]);
     } catch (error) {
-      console.error('Failed to fetch conversation todos:', error);
+      console.error('Failed to create todo:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    if (expanded && conversationId) {
-      fetchTodos();
-    }
-  }, [expanded, conversationId]);
-
-  const createTodo = async () => {
-    if (!title.trim()) return;
-
+  const editTodo = async (todo: TodoItem) => {
     try {
-      const token = await getToken();
-      const response = await fetch('/api/todos/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          title: title.trim(),
-          description: description.trim() || null,
-          status,
-          priority,
-          conversation_id: conversationId
-        })
+      setLoading(true);
+      const token = getToken(auth.user);
+      const td = await updateTodo(token, todo.id || 0, {
+        title: todo.title,
+        description: todo.description || '',
+        status: todo.status,
+        priority: todo.priority
       });
-
-      if (response.ok) {
-        const newTodo = await response.json();
-        setTodos(prev => [newTodo, ...prev]);
-        setCreateDialogOpen(false);
-        resetForm();
-      }
-    } catch (error) {
-      console.error('Failed to create todo:', error);
-    }
-  };
-
-  const updateTodo = async (todo: TodoItem) => {
-    try {
-      const token = await getToken();
-      const response = await fetch(`/api/todos/${todo.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          title: todo.title,
-          description: todo.description,
-          status: todo.status,
-          priority: todo.priority
-        })
-      });
-
-      if (response.ok) {
-        const updatedTodo = await response.json();
-        setTodos(prev => prev.map(t => t.id === todo.id ? updatedTodo : t));
-      }
+      setTodos(prev => prev.map(t => t.id === td.id ? td : t));
     } catch (error) {
       console.error('Failed to update todo:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const deleteTodo = async (todoId: number) => {
+  const removeTodo = async (todoId: number) => {
     try {
-      const token = await getToken();
-      const response = await fetch(`/api/todos/${todoId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        setTodos(prev => prev.filter(t => t.id !== todoId));
-      }
+      setLoading(true);
+      const token = getToken(auth.user);
+      await deleteTodo(token, todoId);
     } catch (error) {
       console.error('Failed to delete todo:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
   const toggleTodoStatus = async (todo: TodoItem) => {
     const newStatus = todo.status === 'completed' ? 'not-started' : 'completed';
-    await updateTodo({ ...todo, status: newStatus });
+    await editTodo({ ...todo, status: newStatus });
   };
 
   const getStatusIcon = (status: string) => {
@@ -202,27 +169,29 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
     setEditingTodo(todo);
     setTitle(todo.title);
     setDescription(todo.description || '');
-    setStatus(todo.status as any);
-    setPriority(todo.priority as any);
+    setStatus(todo.status);
+    setPriority(todo.priority);
     setCreateDialogOpen(true);
   };
 
   const handleSave = async () => {
-    if (!title.trim()) return;
+    if (!title.trim()) {
+      return;
+    }
 
     if (editingTodo) {
       // Update existing todo
-      await updateTodo({
+      await editTodo({
         ...editingTodo,
         title: title.trim(),
-        description: description.trim() || null,
+        description: description.trim(),
         status,
         priority
       });
       setEditingTodo(null);
     } else {
       // Create new todo
-      await createTodo();
+      await newTodo();
     }
 
     setCreateDialogOpen(false);
@@ -235,7 +204,9 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
     resetForm();
   };
 
-  if (!conversationId) return null;
+  if (!conversationId) {
+    return null;
+  }
 
   return (
     <Paper elevation={1} sx={{ mb: 2, border: '1px solid #e0e0e0' }}>
@@ -326,7 +297,7 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
                         <Chip
                           size="small"
                           label={todo.priority}
-                          color={getPriorityColor(todo.priority) as any}
+                          color={getPriorityColor(todo.priority)}
                           variant="outlined"
                         />
                       </Box>
@@ -344,7 +315,7 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
                     </IconButton>
                     <IconButton
                       size="small"
-                      onClick={() => deleteTodo(todo.id)}
+                      onClick={() => removeTodo(todo.id || 0)}
                       color="error"
                     >
                       <Delete />
@@ -390,7 +361,7 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
               <Select
                 value={status}
                 label="Status"
-                onChange={(e) => setStatus(e.target.value as any)}
+                onChange={(e) => setStatus(e.target.value)}
               >
                 <MenuItem value="not-started">Not Started</MenuItem>
                 <MenuItem value="in-progress">In Progress</MenuItem>
@@ -403,7 +374,7 @@ const ConversationTodos: React.FC<ConversationTodosProps> = ({ conversationId })
               <Select
                 value={priority}
                 label="Priority"
-                onChange={(e) => setPriority(e.target.value as any)}
+                onChange={(e) => setPriority(e.target.value)}
               >
                 <MenuItem value="low">Low</MenuItem>
                 <MenuItem value="medium">Medium</MenuItem>

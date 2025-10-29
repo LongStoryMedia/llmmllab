@@ -20,37 +20,77 @@ export const sanitizeForLaTeX = (text: string): string => {
   );
 };
 
-export const parseResponse = (content: string, inProgress: boolean, thinking?: string) => {
-  // If we have extracted thinking content from the backend, use that
-  if (thinking) {
-    return {
-      think: thinking,
-      rest: content || ''
-    };
+import { Message } from '../../types/Message';
+import { MessageContentTypeValues } from '../../types/MessageContentType';
+import { ToolCall } from '../../types/ToolCall';
+import { IntentAnalysis } from '../../types/IntentAnalysis';
+
+export interface ParsedMessage {
+  content: string;
+  thinking: string | null;
+  toolCalls: ToolCall[] | null;
+  analyses: IntentAnalysis[] | null;
+}
+
+export const parseResponse = (message: Message, currentThinking?: string | null, currentToolCalls?: ToolCall[] | null): ParsedMessage => {
+  // Extract aggregated content from message
+  let content = '';
+  if (message.content && Array.isArray(message.content)) {
+    content = message.content.map(c => {
+      if (c.type === MessageContentTypeValues.TEXT) {
+        return c.text;
+      }
+      if (c.type === MessageContentTypeValues.IMAGE) {
+        return `![Image](${c.url})`;
+      }
+      if (c.type === MessageContentTypeValues.FILE) {
+        return `![File](${c.url})`;
+      }
+      if (c.type === MessageContentTypeValues.VIDEO) {
+        return `![Video](${c.url})`;
+      }
+      return '';
+    }).join('\n\n') ?? '';
+  } else if (typeof message.content === 'string') {
+    content = message.content;
   }
-  
-  // Fallback to legacy parsing for backwards compatibility
-  const startIdx = content.indexOf('<think>');
-  const endIdx = content.indexOf('</think>', startIdx);
-  if (startIdx === -1 || (endIdx === -1 && !inProgress)) {
-    // If <think> tag is not found or inProgress is false and </think> is not found
-    return { think: null, rest: content };
+
+  // Extract thinking - use current thinking if available (streaming), otherwise use stored thoughts
+  let thinking: string | null = null;
+  if (currentThinking) {
+    thinking = currentThinking;
+  } else if (message.thoughts && message.thoughts.length > 0) {
+    thinking = message.thoughts.map(t => t.text).join(' ');
   }
-  if (endIdx !== -1) {
-    const thinkContent = content.substring(startIdx + 7, endIdx).trim();
-    const beforeThink = content.substring(0, startIdx).trim();
-    const afterThink = content.substring(endIdx + 8).trim();
-    const restContent = [beforeThink, afterThink].filter(Boolean).join('\n\n');
-    return {
-      think: thinkContent,
-      rest: restContent || ''
-    };
-  } else {
-    const beforeThink = content.substring(0, startIdx).trim();
-    const thinkContent = content.substring(startIdx + 7).trim();
-    return {
-      think: thinkContent,
-      rest: beforeThink || ''
-    };
+
+  // Fallback to legacy <think> tag parsing for backwards compatibility
+  if (!thinking && content) {
+    const startIdx = content.indexOf('<think>');
+    const endIdx = content.indexOf('</think>', startIdx);
+    if (startIdx !== -1) {
+      if (endIdx !== -1) {
+        thinking = content.substring(startIdx + 7, endIdx).trim();
+        const beforeThink = content.substring(0, startIdx).trim();
+        const afterThink = content.substring(endIdx + 8).trim();
+        content = [beforeThink, afterThink].filter(Boolean).join('\n\n');
+      } else {
+        const beforeThink = content.substring(0, startIdx).trim();
+        thinking = content.substring(startIdx + 7).trim();
+        content = beforeThink || '';
+      }
+    }
   }
+
+  // Extract tool calls - use current tool calls if available (streaming), otherwise use stored tool calls
+  const toolCalls = currentToolCalls || message.tool_calls || null;
+
+  // Extract analyses (not currently used in streaming but available in message)
+  const analyses = null; // message.analyses || null; // Uncomment when analyses are added to Message type
+
+  return {
+    content: content || '',
+    thinking,
+    toolCalls,
+    analyses
+  };
 };

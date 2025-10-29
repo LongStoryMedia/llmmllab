@@ -1,10 +1,12 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { ChatState, ChatActions } from './useChatState';
 import { useAuth } from '../../auth';
-import { chat, getManyConversations, getMessages, removeConversation, startConversation, getModels, getToken, getUserConversations, getLllabUsers, pause, cancel, resume, ChatChunk, deleteMessage, bulkDeleteMessagesFromTimestamp } from '../../api';
+import { chat, getManyConversations, getMessages, removeConversation, startConversation, getModels, getToken, getUserConversations, getLllabUsers, pause, cancel, resume, deleteMessage, bulkDeleteMessagesFromTimestamp } from '../../api';
 import { Conversation } from '../../types/Conversation';
 import { useNavigate } from 'react-router-dom';
 import { Message } from '../../types/Message';
+import { ChatResponse } from '../../types/ChatResponse';
+import { MessageRoleValues } from '../../types/MessageRole';
 
 export const useChatOperations = (state: ChatState, actions: ChatActions) => {
   const auth = useAuth();
@@ -206,32 +208,40 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
       // Fallback to HTTP API if WebSocket method fails
       abortController.current = new AbortController();
       for await (const chunk of chat(getToken(auth.user), message, abortController.current.signal)) {
-        // Handle ChatChunk structure with content, thinking, channels, and observer_messages
+        // Handle ChatResponse structure directly
         if (typeof chunk === 'string') {
           // Legacy string response - just append to response
           actions.setResponse(r => r + chunk);
         } else {
-          // ChatChunk object with structured data
-          const chatChunk = chunk as ChatChunk;
+          // ChatResponse object with structured data
+          const chatResponse = chunk as ChatResponse;
 
-          // Append content to response
-          if (chatChunk.content) {
-            actions.setResponse(r => r + chatChunk.content);
+          // Extract and append text content from message
+          if (chatResponse.message?.content && Array.isArray(chatResponse.message.content) && chatResponse.message.content.length > 0) {
+            // Skip OBSERVER role messages from main content stream
+            if (chatResponse.message.role !== MessageRoleValues.OBSERVER) {
+              const textContent = chatResponse.message.content[0].text ?? '';
+              if (textContent) {
+                actions.setResponse(r => r + textContent);
+              }
+            }
           }
 
-          // Handle thinking - store for later use in message
-          if (chatChunk.thinking) {
-            actions.setCurrentThinking(chatChunk.thinking);
+          // Handle thinking - extract from message thoughts
+          if (chatResponse.message?.thoughts && chatResponse.message.thoughts.length > 0) {
+            // Combine all thought text for current thinking display
+            const thinkingText = chatResponse.message.thoughts.map(t => t.text).join(' ');
+            actions.setCurrentThinking(thinkingText);
           }
 
           // Handle tool calls - store for later use in message
-          if (chatChunk.tool_calls && chatChunk.tool_calls.length > 0) {
-            actions.setCurrentToolCalls(chatChunk.tool_calls);
+          if (chatResponse.message?.tool_calls && chatResponse.message.tool_calls.length > 0) {
+            actions.setCurrentToolCalls(chatResponse.message.tool_calls);
           }
 
           // Handle observer messages - set them for floating notification display
-          if (chatChunk.observer_messages && chatChunk.observer_messages.length > 0) {
-            actions.setCurrentObserverMessages(chatChunk.observer_messages);
+          if (chatResponse.observer_messages && chatResponse.observer_messages.length > 0) {
+            actions.setCurrentObserverMessages(chatResponse.observer_messages);
           }
         }
       }

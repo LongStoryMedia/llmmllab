@@ -7,7 +7,7 @@ import ToolCallsSection from './ToolCallsSection';
 import MessageActions from './MessageActions';
 import { sanitizeForLaTeX, parseResponse } from './utils';
 import { Message } from '../../types/Message';
-import { MessageContentTypeValues } from '../../types/MessageContentType';
+import { ToolCall } from '../../types/ToolCall';
 
 interface ChatBubbleProps {
   message: Message;
@@ -16,25 +16,14 @@ interface ChatBubbleProps {
 const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
   const { isLoading, isTyping, currentThinking, currentToolCalls } = useChat();
   const inProgress = isLoading || isTyping;
-  const content = typeof message.content === 'string' ? message.content : message?.content?.map(c => {
-    if (c.type === MessageContentTypeValues.TEXT) {
-      return c.text;
-    }
-    if (c.type === MessageContentTypeValues.IMAGE) {
-      return `![Image](${c.url})`;
-    }
-    if (c.type === MessageContentTypeValues.FILE) {
-      return `![File](${c.url})`;
-    }
-    if (c.type === MessageContentTypeValues.VIDEO) {
-      return `![Video](${c.url})`;
-    }
-  }).join('\n\n') ?? '';
-
-
-  // Use currentThinking during streaming, fallback to stored message thinking
-  const thinkingText = (isTyping && currentThinking) ? currentThinking : undefined;
-  const { think, rest } = parseResponse(content, isTyping, thinkingText);
+  
+  // Parse the message to get aggregated content, thinking, tool calls, and analyses
+  const parsed = parseResponse(
+    message, 
+    (isTyping ? currentThinking : null), 
+    (isTyping && currentToolCalls ? currentToolCalls as ToolCall[] : null)
+  );
+  
   const isUser = message.role === 'user';
 
   return (
@@ -74,10 +63,10 @@ const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
             <MessageActions message={message} isUser={isUser} />
           </Box>
 
-          {!isUser && (think || inProgress) && <ThinkSection think={think || ""} inProgress={inProgress} />}
-          {!isUser && currentToolCalls && <ToolCallsSection toolCalls={currentToolCalls as { tool_name?: string; name?: string; success?: boolean; execution_time_ms?: number; args?: Record<string, unknown>; result_data?: Record<string, unknown>; error_message?: string; }[]} isTyping={isTyping} />}
+          {!isUser && (parsed.thinking || inProgress) && <ThinkSection think={parsed.thinking || ""} inProgress={inProgress} />}
+          {!isUser && parsed.toolCalls && <ToolCallsSection toolCalls={parsed.toolCalls as { tool_name?: string; name?: string; success?: boolean; execution_time_ms?: number; args?: Record<string, unknown>; result_data?: Record<string, unknown>; error_message?: string; }[]} isTyping={isTyping} />}
           <MarkdownRenderer sanitizeForLaTeX={sanitizeForLaTeX}>
-            {rest}
+            {parsed.content}
           </MarkdownRenderer>
         </Paper>
       </Fade>

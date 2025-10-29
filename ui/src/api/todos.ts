@@ -31,7 +31,7 @@ export const getTodo = async (accessToken: string, todoId: number) =>
     path: `todos/${todoId}`
   });
 
-export const createTodo = async (accessToken: string, todoRequest: CreateTodoRequest) =>
+export const createTodo = async (accessToken: string, todoRequest: TodoItem) =>
   req<TodoItem>({
     method: 'POST',
     headers: getHeaders(accessToken),
@@ -39,7 +39,7 @@ export const createTodo = async (accessToken: string, todoRequest: CreateTodoReq
     body: JSON.stringify(todoRequest)
   });
 
-export const updateTodo = async (accessToken: string, todoId: number, todoRequest: UpdateTodoRequest) =>
+export const updateTodo = async (accessToken: string, todoId: number, todoRequest: TodoItem) =>
   req<TodoItem>({
     method: 'PUT',
     headers: getHeaders(accessToken),
