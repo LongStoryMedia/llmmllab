@@ -25,6 +25,7 @@ class StreamingState(Enum):
     THINKING = "thinking"  # Between <think> and </think> tags
     PROCESSING = "processing"  # After tool execution, processing results
     EXECUTING = "executing"  # Between tool call tags, parsing arguments
+    INTENT_ANALYSIS = "intent_analysis"  # Between <intent-analysis> tags, filter out
     RESPONDING = "responding"  # Default state for main response content
 
 
@@ -42,6 +43,7 @@ class StreamingResponseState:
         self.state = StreamingState.RESPONDING
         self.thinking_buffer = ""
         self.tool_call_buffer = ""
+        self.intent_analysis_buffer = ""
         self.response_buffer = ""
         self.current_tool_call: Optional[Dict[str, Any]] = None
         self.tool_calls: List[ToolCall] = []
@@ -55,12 +57,17 @@ class StreamingResponseState:
         self.think_end_pattern = re.compile(r"</think>")
         self.tool_call_start_pattern = re.compile(r"<(?:tool|function)[-_]call>")
         self.tool_call_end_pattern = re.compile(r"</(?:tool|function)[-_]call>")
+        self.intent_start_pattern = re.compile(r"<intent[-_]?analysis>")
+        self.intent_end_pattern = re.compile(r"</intent[-_]?analysis>")
 
         # JSON metadata detection patterns
         self.json_start_pattern = re.compile(r'^\s*\{\s*"')
         self.json_block_pattern = re.compile(
             r'^\s*\{\s*"[^"]+"\s*:\s*\[?\{'
         )  # Detect structured JSON blocks
+        self.intent_analysis_pattern = re.compile(
+            r'^\s*\{\s*"intents"\s*:\s*\['
+        )  # Specifically catch intent analysis blocks
 
     def process_chunk(self, chunk: str) -> ChatResponse:
         """
@@ -92,6 +99,9 @@ class StreamingResponseState:
         if self.state == StreamingState.EXECUTING:
             return self._handle_executing_content(chunk)
 
+        if self.state == StreamingState.INTENT_ANALYSIS:
+            return self._handle_intent_analysis_content(chunk)
+
         return self._handle_responding_content(chunk)
 
     def _check_state_transitions(self, chunk: str) -> None:
@@ -108,6 +118,20 @@ class StreamingResponseState:
             self.state = StreamingState.RESPONDING
             # Remove the tag from future processing
             chunk = self.think_end_pattern.sub("", chunk)
+
+        # Check for intent analysis start
+        if self.intent_start_pattern.search(chunk):
+            self.state = StreamingState.INTENT_ANALYSIS
+            # Remove the tag from future processing
+            chunk = self.intent_start_pattern.sub("", chunk)
+
+        # Check for intent analysis end
+        if self.intent_end_pattern.search(chunk):
+            self.state = StreamingState.RESPONDING
+            # Clear intent analysis buffer - we don't want to show this content
+            self.intent_analysis_buffer = ""
+            # Remove the tag from future processing
+            chunk = self.intent_end_pattern.sub("", chunk)
 
         # Check for tool call start (XML tags)
         if self.tool_call_start_pattern.search(chunk):
@@ -220,6 +244,19 @@ class StreamingResponseState:
             done=False,
         )
 
+    def _handle_intent_analysis_content(self, chunk: str) -> ChatResponse:
+        """Handle content when in INTENT_ANALYSIS state - filter out completely."""
+        # Clean chunk and add to intent analysis buffer (but don't include in response)
+        clean_chunk = self._clean_xml_tags(chunk)
+        if clean_chunk:
+            self.intent_analysis_buffer += clean_chunk
+
+        # Return empty response - intent analysis should be filtered out from user view
+        return ChatResponse(
+            message=Message(role=MessageRole.ASSISTANT, content=[]), 
+            done=False,
+        )
+
     def _handle_responding_content(self, chunk: str) -> ChatResponse:
         """Handle content when in RESPONDING state (default)."""
         # Clean chunk and add to response buffer
@@ -256,6 +293,8 @@ class StreamingResponseState:
         chunk = self.think_end_pattern.sub("", chunk)
         chunk = self.tool_call_start_pattern.sub("", chunk)
         chunk = self.tool_call_end_pattern.sub("", chunk)
+        chunk = self.intent_start_pattern.sub("", chunk)
+        chunk = self.intent_end_pattern.sub("", chunk)
 
         return chunk
 
@@ -276,13 +315,25 @@ class StreamingResponseState:
             # Look for common metadata patterns
             metadata_indicators = [
                 '"intent":',
+                '"intents":',
                 '"analysis":',
+                '"analyses":',
                 '"category":',
                 '"classification":',
                 '"reasoning":',
                 '"metadata":',
                 '"type":',
                 '"complexity":',
+                '"complexity_level":',
+                '"workflow_type":',
+                '"required_capabilities":',
+                '"domain_specificity":',
+                '"reusability_potential":',
+                '"confidence":',
+                '"tool_complexity_score":',
+                '"computational_requirements":',
+                '"requires_tools":',
+                '"requires_custom_tools":',
                 '"user_intent":',
                 '"system_type":',
                 '"session_context":',
@@ -305,8 +356,11 @@ class StreamingResponseState:
         for line in lines:
             stripped_line = line.strip()
 
-            # Detect start of JSON block
-            if not self.in_json_block and self.json_block_pattern.match(stripped_line):
+            # Detect start of JSON block (general or specific intent analysis)
+            if not self.in_json_block and (
+                self.json_block_pattern.match(stripped_line) or 
+                self.intent_analysis_pattern.match(stripped_line)
+            ):
                 self.in_json_block = True
                 continue
 
@@ -398,7 +452,7 @@ class StreamingResponseState:
                     self.tool_call_buffer = buffer[json_end + 1 :]
                     self.current_tool_call = None
 
-            except (json.JSONDecodeError, Exception) as e:
+            except (json.JSONDecodeError, Exception):
                 # If parsing fails, keep accumulating content
                 pass
 

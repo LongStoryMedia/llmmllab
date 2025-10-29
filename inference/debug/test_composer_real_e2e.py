@@ -465,12 +465,11 @@ class ComposerRealEndToEndTester:
             # Create a message that will benefit from tool usage
             query_text = (
                 query
-                or """I need current information about the latest developments in artificial intelligence in 2024. 
+                or """I need current information about the latest developments in artificial intelligence. 
 Specifically, I'm interested in:
-1. Major AI model releases in 2024
+1. Major AI model releases
 2. Recent breakthroughs in AI research
 3. Current AI safety developments
-
 Please search for the most recent information and provide a comprehensive summary."""
             )
 

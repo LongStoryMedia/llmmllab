@@ -71,6 +71,9 @@ class ToolCallStorage:
             else None
         )
 
+        # Handle created_at field - use None if not present (SQL will default to NOW())
+        created_at_value = getattr(tool_call, 'created_at', None)
+        
         row = await conn.fetchrow(
             self.get_query("tool_call.add_tool_call"),
             tool_call.message_id,  # $1
@@ -82,7 +85,7 @@ class ToolCallStorage:
             tool_call.error_message,  # $7
             tool_call.execution_time_ms,  # $8
             resource_usage_json,  # $9
-            tool_call.created_at,  # $10
+            created_at_value,  # $10
         )
 
         if row:
