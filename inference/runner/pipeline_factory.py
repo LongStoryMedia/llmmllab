@@ -170,6 +170,7 @@ class PipelineFactory:
                 precision=str(details_dict.get("precision", "fp16")),  # type: ignore[arg-type]
                 weight=float(details_dict.get("weight", 1.0)),
                 gguf_file=details_dict.get("gguf_file"),
+                clip_model_path=details_dict.get("clip_model_path"),
                 description=details_dict.get("description"),
             )
         except Exception as e:
