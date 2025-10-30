@@ -8,10 +8,7 @@ import json
 from typing import Dict, Any, Optional, Type, List
 from pydantic import BaseModel  # noqa: F401
 # llama_cpp imported lazily within methods to reduce unnecessary top-level dependencies
-try:
-    from PIL import Image  # type: ignore
-except Exception:  # Pillow may not be installed in minimal environment
-    Image = None  # type: ignore
+# Pillow not required for text-only stabilization; multimodal image loading currently disabled.
 
 from models import Model, ModelProfile
 from runner.pipelines.llamacpp import BaseLlamaCppPipeline
@@ -39,6 +36,8 @@ class Qwen3VLPipeline(BaseLlamaCppPipeline):
     ):
         # Store multimodal-specific parameters before calling super().__init__
         self._multimodal_chat_handler = None
+        # Text-only stabilization flag: when true, skip vision handler to avoid segfault until root cause fixed.
+        self._text_only_mode = os.getenv("QWEN3_VL_TEXT_ONLY", "false").lower() == "true"
         super().__init__(model, profile, grammar, **kwargs)
 
     @property
@@ -105,6 +104,9 @@ class Qwen3VLPipeline(BaseLlamaCppPipeline):
 
     def _get_chat_handler(self):
         """Override to provide multimodal chat handler."""
+        if self._text_only_mode:
+            self._logger.info("Text-only mode enabled for Qwen3 VL; skipping vision chat handler")
+            return None
         return self._create_chat_handler()
 
     def _get_chat_format(self) -> Optional[str]:  # noqa: D401
@@ -156,9 +158,16 @@ class Qwen3VLPipeline(BaseLlamaCppPipeline):
 
     def _get_res(self, messages, stop: Optional[List[str]] = None, tools: Optional[List[Any]] = None, stream: bool = False):
         """Extend base response retrieval to include images for multimodal."""
-        image_paths = self._extract_image_paths(messages)
+        image_paths: List[str] = []
+        # In text-only mode, skip image extraction entirely.
+        if not self._text_only_mode:
+            image_paths = self._extract_image_paths(messages)
         converted_tools = self._convert_tools_to_simple_format(tools)
-        llama_messages = self._prepare_multimodal_messages(messages, image_paths)
+        llama_messages = (
+            self._prepare_multimodal_messages(messages, image_paths)
+            if (not self._text_only_mode)
+            else self._format_messages_for_llama(messages)
+        )
         self._logger.info(
             f"Chat completion (VL): model={self.model.name}, messages={len(llama_messages)}, tools={len(converted_tools) if converted_tools else 0}, image_paths={len(image_paths)}"
         )
