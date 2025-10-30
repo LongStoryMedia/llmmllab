@@ -274,9 +274,12 @@ class GraphBuilder:
                 node_metadata=primary_node_metadata,
                 priority=PipelinePriority.HIGH,
             )
+            # TEMP FIX: Use primary_profile instead of analysis_profile to avoid grammar constraints
+            # with multimodal content. The qwen3vl model should handle multimodal content better
+            # than qwen3-4b with grammar constraints.
             classifier_agent = ClassifierAgent(
                 self.pipeline_factory,
-                analysis_profile,
+                primary_profile,  # Using primary_profile (qwen3vl) instead of analysis_profile (qwen3-4b)
                 classifier_node_metadata,
             )
             engineering_agent = EngineeringAgent(

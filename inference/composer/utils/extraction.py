@@ -40,12 +40,18 @@ def extract_content_from_message(msg: Message) -> str:
     if isinstance(content, list):
         content_parts = []
         for content_part in content:
-            if hasattr(content_part, "text"):
+            if hasattr(content_part, "text") and content_part.text is not None:
                 content_parts.append(content_part.text)
+            elif hasattr(content_part, "url") and content_part.url is not None:
+                # For image content, add a placeholder or description
+                content_parts.append("[Image]")
             elif isinstance(content_part, str):
                 content_parts.append(content_part)
             else:
-                content_parts.append(str(content_part))
+                # Only append non-None string representations
+                str_repr = str(content_part)
+                if str_repr and str_repr != "None":
+                    content_parts.append(str_repr)
         return "\n".join(content_parts)
 
     # Handle single content
