@@ -88,15 +88,8 @@ class BaseLlamaCppPipeline(BaseChatModel):
         self.use_intelligent_oom = (
             os.getenv("ENABLE_INTELLIGENT_OOM_RECOVERY", "false").lower() == "true"
         )
-        if self.use_intelligent_oom:
-            self.oom_recovery = IntelligentOOMRecovery()
-            self.llama_instance = self._initialize_llama_with_intelligent_oom_recovery(
-                self._get_gguf_path()
-            )
-        else:
-            # Simple initialization - fail fast on errors
-            self.oom_recovery = None
-            self.llama_instance = self._initialize_llama_simple(self._get_gguf_path())
+        self.oom_recovery = IntelligentOOMRecovery() if self.use_intelligent_oom else None
+        self.llama_instance = self._initialize_llama(self._get_gguf_path())
 
     @property
     def _llm_type(self) -> str:
@@ -105,7 +98,6 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
     @property
     def _identifying_params(self) -> Dict[str, Any]:
-        """Return a dictionary of identifying parameters."""
         return {
             "model_name": self.model.name,
             "model_path": self._get_gguf_path(),
@@ -113,194 +105,50 @@ class BaseLlamaCppPipeline(BaseChatModel):
             "temperature": self.profile.parameters.temperature or 0.7,
         }
 
-    def bind_tools(
-        self, tools: List[BaseTool], **kwargs: Any
-    ) -> "BaseLlamaCppPipeline":
-        """
-        Bind tools to this model for tool calling support.
+    def _initialize_llama(self, gguf_path: str) -> llama_cpp.Llama:
+        """Unified initialization path.
 
-        For llama-cpp-python models, tools are handled through the grammar system
-        and function calling via prompt formatting.
-
-        Args:
-            tools: List of tools to bind to the model
-            **kwargs: Additional keyword arguments for tool binding
-
-        Returns:
-            A new instance of the model with tools bound
-        """
-        self._bound_tools = tools
-        return self
-
-    def _get_gguf_path(self) -> str:
-        """Get the GGUF file path from model definition."""
-        return (
-            self.model.details.gguf_file
-            if hasattr(self.model.details, "gguf_file") and self.model.details.gguf_file
-            else self.model.model
-        )
-
-    def _get_optimal_threads(self) -> int:
-        """Get optimal thread count based on system capabilities."""
-        try:
-            cpu_count = multiprocessing.cpu_count()
-            optimal_threads = min(max(cpu_count // 2, 2), 8)
-            return optimal_threads
-        except Exception:
-            self._logger.warning(
-                "Could not determine CPU count, using default threading"
-            )
-            return 4
-        """Clear pipeline instance and GPU memory."""
-        if hasattr(self, "llama_instance") and self.llama_instance:
-            try:
-                self.llama_instance.close()
-            except Exception:
-                pass
-            del self.llama_instance
-            self.llama_instance = None
-
-        # Clear GPU memory
-        try:
-            self.hardware_manager.clear_memory(aggressive=True)
-        except Exception as e:
-            self._logger.warning(f"Error clearing GPU memory: {e}")
-
-        # Give GPU a moment to clean up
-        time.sleep(1)
-
-    def _initialize_llama_with_intelligent_oom_recovery(
-        self, gguf_path: str
-    ) -> llama_cpp.Llama:
-        """
-        Initialize Llama instance using intelligent ML-based OOM recovery.
-
-        Strategy:
-        1. Use ML to predict optimal starting parameters based on model size and system resources
-        2. On OOM, follow structured recovery: clear memory -> reduce batch -> move to CPU -> reduce context
-        3. Learn from successful/failed attempts to improve future predictions
+        Always tries profile parameters first. If intelligent OOM recovery is enabled
+        and an OOM occurs, a recovery loop will progressively downscale parameters.
         """
         if llama_cpp.Llama is None:
             raise ImportError("llama-cpp-python is required but not installed")
 
-        assert self.oom_recovery
-
-        # Get original target parameters
-        target_n_ctx = self.profile.parameters.num_ctx or 32768
-        target_n_batch = self.profile.parameters.batch_size or 512
-        target_n_ubatch = 512
-
-        # GPU layers - default to full offload
-        requested_gpu_layers = -1
-        if (
-            self.profile.gpu_config is not None
-            and self.profile.gpu_config.gpu_layers is not None
-        ):
-            requested_gpu_layers = self.profile.gpu_config.gpu_layers
-
-        # Use ML to predict optimal starting parameters
-        predicted_params = self.oom_recovery.predict_optimal_parameters_from_profile(
-            model_profile=self.profile,
-            model_path=gguf_path,
-            hardware_manager=self.hardware_manager,
-        )
-
-        # Convert -1 (full offload) to a reasonable default for validation
-        # We'll convert it back to -1 when actually initializing llama.cpp
-        validated_gpu_layers = requested_gpu_layers if requested_gpu_layers >= 0 else 99
-
-        # Keep track of original parameters for recovery calculations
-        original_params = OptimalParameters(
-            n_ctx=target_n_ctx,
-            n_batch=target_n_batch,
-            n_ubatch=target_n_ubatch,
-            n_gpu_layers=validated_gpu_layers,
-        )
-
-        # Start with ML-predicted parameters
-        current_params = predicted_params.model_copy()
-
-        # Other configuration
-        perplexity_enabled = bool(
-            getattr(self.profile.parameters, "enable_perplexity_guard", False)
-        )
+        params = self.profile.parameters
         gcfg = self.profile.gpu_config or DEFAULT_GPU_CONFIG
+        n_ctx_initial = params.num_ctx or 4096
+        n_batch_initial = params.batch_size or 64
+        n_ubatch_initial = getattr(params, "n_ubatch", 1) or 1
+        n_gpu_layers_initial = (
+            self.profile.gpu_config.gpu_layers if self.profile.gpu_config and self.profile.gpu_config.gpu_layers is not None else -1
+        )
+        perplexity_enabled = bool(getattr(params, "enable_perplexity_guard", False))
 
-        # OOM recovery loop with intelligent strategy
-        max_attempts = 10
-
-        for attempt in range(1, max_attempts + 1):
+        if self.oom_recovery is None:
             try:
                 self._logger.info(
-                    f"🚀 Initializing {self.model.name} (attempt {attempt}): "
-                    f"n_ctx={current_params.n_ctx:,}, n_batch={current_params.n_batch}, "
-                    f"n_ubatch={current_params.n_ubatch}, gpu_layers={current_params.n_gpu_layers}"
+                    f"🚀 Initializing (no recovery) {self.model.name}: n_ctx={n_ctx_initial:,}, n_batch={n_batch_initial}, n_ubatch={n_ubatch_initial}, gpu_layers={n_gpu_layers_initial}"
                 )
-
-                start_time = time.time()
-
-                # Isolation Experiment 2: Force n_ubatch > 1 to test whether ubatch=1 edge case
-                # contributes to illegal memory access during first decode. Keep flash attention at profile default.
-                # This override is temporary and will be reverted after testing.
-                if current_params.n_ubatch == 1:
-                    self._logger.warning(
-                        "[Experiment 2] Overriding n_ubatch from 1 -> 8 for scheduling isolation"
-                    )
-                    current_params.n_ubatch = 8
-
-                # Experiment 3 additions (active even if Experiment 2 triggered): minimize context & batch, disable CUDA graphs, tweak offload, unified KV off.
-                # These changes attempt to rule out large buffer sizing and new graph capture path introduced upstream.
-                exp3_active = True
-                if exp3_active:
-                    # Clamp context and batch lower
-                    if current_params.n_ctx > 8192:
-                        self._logger.warning(
-                            f"[Experiment 3] Clamping n_ctx {current_params.n_ctx} -> 8192"
-                        )
-                        current_params.n_ctx = 8192
-                    if current_params.n_batch > 64:
-                        self._logger.warning(
-                            f"[Experiment 3] Clamping n_batch {current_params.n_batch} -> 64"
-                        )
-                        current_params.n_batch = 64
-                    # Force offload_kqv True to shift kernel path; disable CUDA graphs via env if supported
-                    os.environ.setdefault("GGML_CUDA_DISABLE_GRAPHS", "1")
-                    os.environ.setdefault("LLAMA_CUDA_DISABLE_GRAPH", "1")  # alternate naming just in case
-                    self._logger.warning(
-                        "[Experiment 3] Applied: offload_kqv=True, kv_unified=False, CUDA graphs disabled via env"
-                    )
-
-                # Convert back to -1 for full offload if originally requested
-                actual_gpu_layers = (
-                    requested_gpu_layers
-                    if requested_gpu_layers == -1
-                    else current_params.n_gpu_layers
-                )
-
-                llama_instance = llama_cpp.Llama(
+                return llama_cpp.Llama(
                     model_path=gguf_path,
-                    n_gpu_layers=actual_gpu_layers,
-                    split_mode=llama_cpp.LLAMA_SPLIT_MODE_ROW,
+                    n_ctx=n_ctx_initial,
+                    n_batch=n_batch_initial,
+                    n_ubatch=n_ubatch_initial,
+                    n_gpu_layers=n_gpu_layers_initial,
                     tensor_split=gcfg.tensor_split,
                     vocab_only=False,
                     use_mmap=True,
                     use_mlock=False,
                     kv_overrides=None,
-                    # Context Params
-                    seed=self.profile.parameters.seed or llama_cpp.LLAMA_DEFAULT_SEED,
-                    n_ctx=current_params.n_ctx,
-                    n_batch=current_params.n_batch,
-                    n_ubatch=current_params.n_ubatch,
+                    seed=params.seed or llama_cpp.LLAMA_DEFAULT_SEED,
                     n_threads=self._get_optimal_threads(),
-                    temperature=self.profile.parameters.temperature or 0.7,
-                    top_p=self.profile.parameters.top_p or 0.8,
-                    top_k=self.profile.parameters.top_k or 20,
-                    repeat_penalty=self.profile.parameters.repeat_penalty or 1.05,
+                    temperature=params.temperature or 0.7,
+                    top_p=params.top_p or 0.95,
+                    top_k=params.top_k or 40,
+                    repeat_penalty=params.repeat_penalty or 1.05,
                     f16_kv=True,
                     verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
-                    flash_attn=getattr(
-                        self.profile.parameters, "flash_attention", True
-                    ),
+                    flash_attn=getattr(params, "flash_attention", True),
                     logits_all=perplexity_enabled,
                     logprobs=1 if perplexity_enabled else 0,
                     embedding=False,
@@ -315,10 +163,10 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     yarn_beta_fast=32.0,
                     yarn_beta_slow=1.0,
                     yarn_orig_ctx=0,
-                    offload_kqv=True if exp3_active else False,
+                    offload_kqv=False,
                     op_offload=None,
                     swa_full=None,
-                    kv_unified=False if exp3_active else None,
+                    kv_unified=None,
                     no_perf=False,
                     last_n_tokens_size=64,
                     lora_base=None,
@@ -332,71 +180,118 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     type_v=None,
                     smp_infill=False,
                 )
+            except Exception as e:
+                self._logger.error(f"❌ Initialization failed (no recovery): {e}")
+                raise
 
-                # Success! Record the configuration for ML training
-                initialization_time_ms = (time.time() - start_time) * 1000
-
-                # Get GPU memory usage if available
-                gpu_memory_used_mb = 0
+        original_params = OptimalParameters(
+            n_ctx=n_ctx_initial,
+            n_batch=n_batch_initial,
+            n_ubatch=n_ubatch_initial,
+            n_gpu_layers=(n_gpu_layers_initial if n_gpu_layers_initial >= 0 else 99),
+        )
+        predicted = self.oom_recovery.predict_optimal_parameters_from_profile(
+            model_profile=self.profile,
+            model_path=gguf_path,
+            hardware_manager=self.hardware_manager,
+        ).model_copy()
+        attempt_params_list = [
+            OptimalParameters(
+                n_ctx=original_params.n_ctx,
+                n_batch=original_params.n_batch,
+                n_ubatch=original_params.n_ubatch,
+                n_gpu_layers=original_params.n_gpu_layers,
+            ),
+            predicted,
+        ]
+        max_attempts = 10
+        current_params = attempt_params_list[0]
+        attempt_index = 0
+        for attempt in range(1, max_attempts + 1):
+            try:
+                self._logger.info(
+                    f"🚀 Initializing {self.model.name} (attempt {attempt}): n_ctx={current_params.n_ctx:,}, n_batch={current_params.n_batch}, n_ubatch={current_params.n_ubatch}, gpu_layers={current_params.n_gpu_layers}"
+                )
+                start_time = time.time()
+                llama_instance = llama_cpp.Llama(
+                    model_path=gguf_path,
+                    n_ctx=current_params.n_ctx,
+                    n_batch=current_params.n_batch,
+                    n_ubatch=current_params.n_ubatch,
+                    n_gpu_layers=(
+                        -1 if n_gpu_layers_initial == -1 else current_params.n_gpu_layers
+                    ),
+                    tensor_split=gcfg.tensor_split,
+                    vocab_only=False,
+                    use_mmap=True,
+                    use_mlock=False,
+                    kv_overrides=None,
+                    seed=params.seed or llama_cpp.LLAMA_DEFAULT_SEED,
+                    n_threads=self._get_optimal_threads(),
+                    temperature=params.temperature or 0.7,
+                    top_p=params.top_p or 0.95,
+                    top_k=params.top_k or 40,
+                    repeat_penalty=params.repeat_penalty or 1.05,
+                    f16_kv=True,
+                    verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
+                    flash_attn=getattr(params, "flash_attention", True),
+                    logits_all=perplexity_enabled,
+                    logprobs=1 if perplexity_enabled else 0,
+                    embedding=False,
+                    chat_format=None,
+                    n_threads_batch=None,
+                    rope_scaling_type=None,
+                    pooling_type=llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
+                    rope_freq_base=0.0,
+                    rope_freq_scale=0.0,
+                    yarn_ext_factor=-1.0,
+                    yarn_attn_factor=1.0,
+                    yarn_beta_fast=32.0,
+                    yarn_beta_slow=1.0,
+                    yarn_orig_ctx=0,
+                    offload_kqv=False,
+                    op_offload=None,
+                    swa_full=None,
+                    kv_unified=None,
+                    no_perf=False,
+                    last_n_tokens_size=64,
+                    lora_base=None,
+                    lora_scale=1.0,
+                    lora_path=None,
+                    numa=False,
+                    chat_handler=self._get_chat_handler() if hasattr(self, "_get_chat_handler") else None,  # type: ignore
+                    draft_model=None,
+                    tokenizer=None,
+                    type_k=None,
+                    type_v=None,
+                    smp_infill=False,
+                )
+                init_ms = (time.time() - start_time) * 1000
+                gpu_used = 0
                 try:
-                    memory_stats = self.hardware_manager.update_all_memory_stats()
-                    if memory_stats:
-                        # Find primary GPU stats - look for GPU with id=0 first
-                        primary_gpu_stats = None
-
-                        # First, look for GPU with id=0 (cuda:0 equivalent)
-                        for stats in memory_stats.values():
-                            if (
-                                hasattr(stats, "id")
-                                and stats.id == 0
-                                and hasattr(stats, "mem_used")
-                                and hasattr(stats, "name")
-                                and "nvidia" in stats.name.lower()
-                            ):
-                                primary_gpu_stats = stats
-                                break
-
-                        # If no GPU with id=0 found, use the first NVIDIA GPU
-                        if primary_gpu_stats is None:
-                            for stats in memory_stats.values():
-                                if (
-                                    hasattr(stats, "mem_used")
-                                    and hasattr(stats, "name")
-                                    and "nvidia" in stats.name.lower()
-                                ):
-                                    primary_gpu_stats = stats
-                                    break
-
-                        # Extract memory usage from primary GPU
-                        if primary_gpu_stats and hasattr(primary_gpu_stats, "mem_used"):
-                            gpu_memory_used_mb = primary_gpu_stats.mem_used
+                    stats = self.hardware_manager.update_all_memory_stats()
+                    for s in stats.values():
+                        if hasattr(s, "id") and s.id == 0 and hasattr(s, "mem_used"):
+                            gpu_used = s.mem_used
+                            break
                 except Exception:
                     pass
-
-                # Record success for ML learning (only if OOM recovery is enabled)
-                if self.oom_recovery is not None:
-                    self.oom_recovery.record_success(
-                        model_path=gguf_path,
-                        params=current_params,
-                        hardware_manager=self.hardware_manager,
-                        initialization_time_ms=initialization_time_ms,
-                        gpu_memory_used_mb=gpu_memory_used_mb,
-                    )
-
-                self._logger.info(
-                    f"✅ Successfully initialized {self.model.name} (attempt {attempt}): "
-                    f"n_ctx={current_params.n_ctx:,}, n_batch={current_params.n_batch}, "
-                    f"n_ubatch={current_params.n_ubatch}, gpu_layers={current_params.n_gpu_layers} "
-                    f"in {initialization_time_ms:.1f}ms"
+                self.oom_recovery.record_success(
+                    model_path=gguf_path,
+                    params=current_params,
+                    hardware_manager=self.hardware_manager,
+                    initialization_time_ms=init_ms,
+                    gpu_memory_used_mb=gpu_used,
                 )
-
+                self._logger.info(
+                    f"✅ Initialized {self.model.name}: n_ctx={current_params.n_ctx:,}, n_batch={current_params.n_batch}, n_ubatch={current_params.n_ubatch} in {init_ms:.1f}ms"
+                )
                 return llama_instance
-
             except Exception as e:
-                error_str = str(e).lower()
+                err = str(e).lower()
                 is_oom = any(
-                    oom_indicator in error_str
-                    for oom_indicator in [
+                    t in err
+                    for t in [
                         "out of memory",
                         "oom",
                         "cuda error",
@@ -411,274 +306,41 @@ class BaseLlamaCppPipeline(BaseChatModel):
                         "ggml_backend_alloc_ctx_tensors_from_buft",
                     ]
                 )
-
                 if not is_oom:
-                    # Not an OOM error, re-raise immediately
-                    self._logger.error(f"❌ Non-OOM error during initialization: {e}")
-                    raise e
-
-                # Handle OOM with intelligent recovery
-                self._logger.warning(
-                    f"🔥 OOM detected (attempt {attempt}): {error_str}"
-                )
-
-                # CRITICAL: Clean up any failed instance
+                    self._logger.error(f"❌ Non-OOM init failure: {e}")
+                    raise
+                self._logger.warning(f"🔥 OOM detected (attempt {attempt}): {e}")
                 try:
                     if "llama_instance" in locals():
-                        try:
-                            llama_instance.close()
-                            self._logger.debug("🧹 Closed failed llama_instance")
-                        except Exception:
-                            pass
-                        # (removed erroneous insertion)
-                except Exception as cleanup_e:
-                    self._logger.warning(
-                        f"Error during failed instance cleanup: {cleanup_e}"
-                    )
-
-                # Execute intelligent recovery strategy
-                recovery_result = self.oom_recovery.execute_recovery_strategy(
+                        llama_instance.close()
+                except Exception:
+                    pass
+                # Use a valid strategy label for logging integration; treat as clear_memory for first pass
+                self.oom_recovery.record_failure(
+                    attempt=attempt,
+                    strategy="clear_memory",
+                    params=current_params,
+                    error_message=err,
+                )
+                recovery = self.oom_recovery.execute_recovery_strategy(
                     attempt=attempt,
                     original_params=original_params,
                     current_params=current_params,
                     hardware_manager=self.hardware_manager,
                 )
-                new_params = recovery_result.parameters
-                strategy = recovery_result.strategy_name
-
-                # Record the failed attempt for ML training
-                self.oom_recovery.record_failure(
-                    attempt=attempt,
-                    strategy=strategy,
-                    params=current_params,
-                    error_message=error_str,
-                )
-
-                # Clear memory according to strategy
-                if strategy == "clear_memory" or attempt > 1:
-                    self._logger.info(
-                        f"🧹 Executing memory cleanup (strategy: {strategy})"
-                    )
-                    try:
-                        self._clear_pipeline_and_memory()
-                        # Give extra time for memory cleanup on higher attempts
-                        time.sleep(min(attempt * 0.5, 3.0))
-                    except Exception as cleanup_e:
-                        self._logger.warning(
-                            f"Error during memory cleanup: {cleanup_e}"
-                        )
-
-                # Check if we've reached max attempts
+                current_params = recovery.parameters
+                if attempt_index == 0 and len(attempt_params_list) > 1:
+                    attempt_index = 1
+                    current_params = attempt_params_list[1]
                 if attempt >= max_attempts:
-                    self._logger.error(
-                        f"❌ Failed to initialize after {max_attempts} intelligent recovery attempts"
-                    )
-
-                    # Log recovery statistics for debugging
                     stats = self.oom_recovery.get_statistics()
-                    self._logger.info(f"OOM Recovery Statistics: {stats}")
-
-                    raise RuntimeError(
-                        f"Failed to initialize {self.model.name} after {max_attempts} intelligent recovery attempts. "
-                        f"Last strategy: {strategy}, Final params: {new_params}"
-                    ) from e
-
-                # Update parameters for next attempt
-                current_params = new_params
-
-        # Should never reach here due to the attempt >= max_attempts check above
-        raise RuntimeError(f"Unexpected end of recovery loop for {self.model.name}")
-
-    def _initialize_llama_simple(self, gguf_path: str) -> llama_cpp.Llama:
-        """
-        Simple Llama initialization without intelligent OOM recovery.
-        Fails fast on any errors instead of attempting recovery.
-        """
-        if llama_cpp.Llama is None:
-            raise ImportError("llama-cpp-python is required but not installed")
-
-        # Use profile parameters directly without ML optimization
-        params = self.profile.parameters
-        n_ctx = params.num_ctx or 8192  # Conservative default
-        n_batch = params.batch_size or 64  # Conservative default
-        # Use GPU configuration from profile or default to full GPU usage
-        gpu_config = self.profile.gpu_config or DEFAULT_GPU_CONFIG
-        n_gpu_layers = (
-            gpu_config.gpu_layers if gpu_config.gpu_layers is not None else -1
-        )
-        gcfg = self.profile.gpu_config or DEFAULT_GPU_CONFIG
-
-        # -----------------------------
-        # Experiment Flag Handling
-        # -----------------------------
-        # Experiment 1: Disable flash attention to rule out new kernel path issues
-        exp_disable_flash_attn = (
-            os.getenv("EXPERIMENT_DISABLE_FLASH_ATTENTION", "false").lower() == "true"
-        )
-        # Experiment 2: Force n_ubatch > 1 (already implemented below)
-        # Experiment 3: Clamp ctx/batch, force offload_kqv True, kv_unified False, disable CUDA graphs
-        exp3_active = os.getenv("EXPERIMENT_3_ACTIVE", "true").lower() == "true"
-        # Existing small ctx env (Experiment 4 consolidation) - keep backward compatibility
-        exp_force_small = os.getenv("EXPERIMENT_SMALL_CTX", "true").lower() == "true"
-        # Additional offload override (if user wants explicit control when exp3_active off)
-        exp_offload_kqv_env = (
-            os.getenv("EXPERIMENT_OFFLOAD_KQV", "false").lower() == "true"
-        )
-        single_gpu_mode = os.getenv("EXPERIMENT_SINGLE_GPU", "false").lower() == "true"
-        disable_graphs = os.getenv("EXPERIMENT_DISABLE_GRAPHS", "true").lower() == "true"
-
-        # Apply Experiment 3 clamps (priority over generic small clamps)
-        if exp3_active:
-            if n_ctx > 8192:
-                self._logger.warning(
-                    f"[Experiment 3] Clamping n_ctx {n_ctx} -> 8192 (simple path)"
-                )
-                n_ctx = 8192
-            if n_batch > 64:
-                self._logger.warning(
-                    f"[Experiment 3] Clamping n_batch {n_batch} -> 64 (simple path)"
-                )
-                n_batch = 64
-        else:
-            if exp_force_small and n_ctx > 8192:
-                self._logger.warning(
-                    f"[Experiment 4] Clamping n_ctx {n_ctx} -> 8192 (simple path)"
-                )
-                n_ctx = 8192
-            if exp_force_small and n_batch > 64:
-                self._logger.warning(
-                    f"[Experiment 4] Clamping n_batch {n_batch} -> 64 (simple path)"
-                )
-                n_batch = 64
-
-        # Single GPU isolation (Experiment 4)
-        if single_gpu_mode:
-            forced_id = os.getenv("EXPERIMENT_SINGLE_GPU_ID", "1")
-            os.environ.setdefault("CUDA_VISIBLE_DEVICES", forced_id)
-            self._logger.warning(
-                f"[Experiment 4] Single-GPU isolation active: CUDA_VISIBLE_DEVICES={forced_id}"
-            )
-
-        # Disable CUDA graphs (Experiments 3/4 shared)
-        if disable_graphs:
-            os.environ.setdefault("GGML_CUDA_DISABLE_GRAPHS", "1")
-            os.environ.setdefault("LLAMA_CUDA_DISABLE_GRAPH", "1")
-            self._logger.warning("[Experiment] CUDA graphs disabled via env")
-
-        # Determine final offload_kqv decision
-        final_offload_kqv = exp3_active or exp_offload_kqv_env
-        final_kv_unified = False if exp3_active else None
-
-        # Log consolidated experiment state before model load
-        self._logger.info(
-            "🚀 Simple initialization %s: n_ctx=%s, n_batch=%s, gpu_layers=%s, "
-            "single_gpu=%s, exp_disable_flash_attn=%s, exp3_active=%s, offload_kqv=%s, kv_unified=%s, disable_graphs=%s" % (
-                self.model.name,
-                f"{n_ctx:,}",
-                n_batch,
-                n_gpu_layers,
-                single_gpu_mode,
-                exp_disable_flash_attn,
-                exp3_active,
-                final_offload_kqv,
-                final_kv_unified,
-                disable_graphs,
-            )
-        )
-
-        # -----------------------------
-        # Experiment 5: Low-level rope / attention overrides
-        # -----------------------------
-        exp5_active = os.getenv("EXPERIMENT_5_ACTIVE", "true").lower() == "true"
-        exp5_yarn_orig_ctx = int(os.getenv("EXPERIMENT_5_YARN_ORIG_CTX", "1048576")) if exp5_active else 0
-        # Allow forcing attention types; llama.cpp internal enums may map; keep None if not set
-        # For now we only pass yarn_orig_ctx and let upstream choose kernel types.
-        if exp5_active:
-            self._logger.warning(
-                f"[Experiment 5] Activating yarn_orig_ctx override -> {exp5_yarn_orig_ctx}"
-            )
-
-        try:
-            # Simple, direct initialization - no retries
-            # Isolation Experiment 2 (simple path): ensure n_ubatch > 1 by passing explicit value.
-            experiment_n_ubatch = 8  # keep ubatch >1 to avoid edge path
-            self._logger.warning(f"[Experiment 2] Forcing n_ubatch={experiment_n_ubatch} (simple path)")
-            llama_instance = llama_cpp.Llama(
-                model_path=gguf_path,
-                n_ctx=n_ctx,
-                n_batch=n_batch,
-                n_ubatch=experiment_n_ubatch,
-                n_gpu_layers=n_gpu_layers,
-                split_mode=llama_cpp.LLAMA_SPLIT_MODE_ROW,
-                tensor_split=None if single_gpu_mode else gcfg.tensor_split,
-                vocab_only=False,
-                use_mmap=True,
-                use_mlock=False,
-                kv_overrides=None,
-                # Context Params
-                seed=self.profile.parameters.seed or llama_cpp.LLAMA_DEFAULT_SEED,
-                n_threads=self._get_optimal_threads(),
-                temperature=self.profile.parameters.temperature or 0.7,
-                top_p=self.profile.parameters.top_p or 0.8,
-                top_k=self.profile.parameters.top_k or 20,
-                repeat_penalty=self.profile.parameters.repeat_penalty or 1.05,
-                f16_kv=True,
-                verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
-                flash_attn=(
-                    False
-                    if exp_disable_flash_attn
-                    else getattr(self.profile.parameters, "flash_attention", True)
-                ),
-                embedding=False,
-                chat_format=None,
-                n_threads_batch=None,
-                rope_scaling_type=None,
-                pooling_type=llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
-                rope_freq_base=0.0,
-                rope_freq_scale=0.0,
-                yarn_ext_factor=-1.0,
-                yarn_attn_factor=1.0,
-                yarn_beta_fast=32.0,
-                yarn_beta_slow=1.0,
-                yarn_orig_ctx=exp5_yarn_orig_ctx if exp5_active else 0,
-                offload_kqv=final_offload_kqv,
-                op_offload=None,
-                swa_full=None,
-                kv_unified=final_kv_unified,
-                no_perf=False,
-                last_n_tokens_size=64,
-                lora_base=None,
-                lora_scale=1.0,
-                lora_path=None,
-                numa=False,
-                chat_handler=None,
-                draft_model=None,
-                tokenizer=None,
-                type_k=None,
-                type_v=None,
-                smp_infill=False,
-            )
-
-            self._logger.info(f"✅ Simple initialization successful: {self.model.name}")
-            if exp5_active:
-                try:
-                    # Log selected internal configuration if accessible
-                    backend_desc = getattr(llama_instance, "backend_desc", None)
-                    self._logger.info(
-                        f"[Experiment 5] Post-init: yarn_orig_ctx={exp5_yarn_orig_ctx}, backend_desc={backend_desc}"
+                    self._logger.error(
+                        f"❌ Failed to initialize {self.model.name} after {max_attempts} attempts. Stats: {stats}"
                     )
-                except Exception:
-                    pass
-            return llama_instance
-
-        except Exception as e:
-            self._logger.error(
-                f"❌ Simple initialization failed for {self.model.name}: {e}"
-            )
-            raise RuntimeError(
-                f"Failed to initialize {self.model.name}: {e}. "
-                f"Enable ENABLE_INTELLIGENT_OOM_RECOVERY=true for advanced recovery."
-            ) from e
+                    raise RuntimeError(
+                        f"Failed to initialize {self.model.name} after {max_attempts} attempts"
+                    ) from e
+        raise RuntimeError(f"Unexpected termination of init loop for {self.model.name}")
 
     def _format_messages_for_llama(
         self, messages: List[BaseMessage]
