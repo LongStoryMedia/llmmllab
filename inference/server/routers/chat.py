@@ -153,6 +153,7 @@ async def chat_completion(
                 # Execute workflow with state and checkpointing
                 events = []
                 final_response_data = {}
+                tool_execution_results = []  # Collect real tool execution results
 
                 # Configure threading for persistent state management
                 config = RunnableConfig(
@@ -204,6 +205,53 @@ async def chat_completion(
                                 # Let streaming state manage content accumulation
                                 # Don't duplicate accumulation here
 
+                    elif event_type == "on_tool_end":
+                        # Capture actual tool execution results with real status and timing
+                        try:
+                            # Get tool execution details from event data
+                            tool_name = event_data.get("name", "unknown_tool")
+                            tool_input = event_data.get("input", {})
+                            tool_output = event_data.get("output", {})
+                            
+                            # Calculate execution time from event timestamps if available
+                            execution_time_ms = None
+                            if isinstance(event, dict):
+                                start_time = event.get("metadata", {}).get("start_time")
+                                end_time = event.get("metadata", {}).get("end_time") 
+                                if start_time and end_time:
+                                    execution_time_ms = (end_time - start_time) * 1000
+
+                            # Determine success based on whether we got an error
+                            error_message = None
+                            success = True
+                            if isinstance(tool_output, dict) and "error" in tool_output:
+                                success = False
+                                error_message = str(tool_output.get("error", "Unknown error"))
+                            elif hasattr(tool_output, "error"):
+                                success = False
+                                error_message = str(getattr(tool_output, "error", "Unknown error"))
+
+                            # Create real tool execution result
+                            real_tool_result = ToolCall(
+                                name=tool_name,
+                                execution_id=f"tool_exec_{len(tool_execution_results)}",
+                                success=success,
+                                args=tool_input if isinstance(tool_input, dict) else {"input": str(tool_input)},
+                                result_data=tool_output if isinstance(tool_output, dict) else {"output": str(tool_output)},
+                                error_message=error_message,
+                                execution_time_ms=execution_time_ms,
+                            )
+                            
+                            tool_execution_results.append(real_tool_result)
+                            
+                            logger.info(
+                                f"📊 Captured real tool execution: {tool_name} - "
+                                f"Success: {success}, Time: {execution_time_ms}ms"
+                            )
+                            
+                        except Exception as e:
+                            logger.warning(f"Failed to capture tool execution result: {e}")
+
                     elif event_type.endswith("_end"):
                         # Capture final workflow data
                         if isinstance(event_data, dict):
@@ -219,6 +267,11 @@ async def chat_completion(
 
                 # Get final consolidated response from streaming state
                 final_response = streaming_state.get_final_response()
+                
+                # Replace streaming state tool calls with real execution results if available
+                if tool_execution_results and final_response.message:
+                    final_response.message.tool_calls = tool_execution_results
+                    logger.info(f"🔄 Replaced streaming tool calls with {len(tool_execution_results)} real execution results")
 
                 # Store the assistant's response in database using streaming state's accumulated content
                 # Convert analyses from final response data to IntentAnalysis objects
@@ -245,6 +298,17 @@ async def chat_completion(
                         f"✅ Response buffer has {len(streaming_state.response_buffer)} characters"
                     )
 
+                # Use real tool execution results if available, otherwise fall back to streaming state
+                final_tool_calls = None
+                if tool_execution_results:
+                    # Use real tool execution results with actual status and timing
+                    final_tool_calls = tool_execution_results
+                    logger.info(f"✅ Using {len(tool_execution_results)} real tool execution results")
+                elif streaming_state.tool_calls:
+                    # Fallback to streaming state tool calls (legacy behavior)
+                    final_tool_calls = streaming_state.tool_calls
+                    logger.warning(f"⚠️ Using {len(streaming_state.tool_calls)} streaming state tool calls (no real results)")
+
                 assistant_message = Message(
                     role=MessageRole.ASSISTANT,
                     content=[
@@ -254,11 +318,7 @@ async def chat_completion(
                         )
                     ],
                     conversation_id=conversation_id,
-                    tool_calls=(
-                        streaming_state.tool_calls
-                        if streaming_state.tool_calls
-                        else None
-                    ),
+                    tool_calls=final_tool_calls,
                     thoughts=(
                         [Thought(text=streaming_state.accumulated_thinking)]
                         if streaming_state.accumulated_thinking
