@@ -24,11 +24,13 @@ def main() -> None:
 
     # Instantiate pipeline factory (local cache mode)
     # Retrieve a default profile (assumes DEFAULT_MODEL_PROFILES contains profile for model)
-    profile = None
-    for p in DEFAULT_PROFILES:
-        if getattr(p, "model_name", None) == model_name:
-            profile = p
-            break
+    profile = DEFAULT_PROFILES.get("engineering")
+    if getattr(profile, "model_name", None) != model_name:
+        # Fallback scan if unexpected mismatch
+        for key, p in DEFAULT_PROFILES.items():
+            if getattr(p, "model_name", None) == model_name:
+                profile = p
+                break
     if profile is None:
         print(f"[error] No default model profile found for {model_name}")
         sys.exit(1)
