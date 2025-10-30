@@ -3,6 +3,8 @@
 ./chat_completion_output_qwen3_30b_a3b_q4_k_m_20251030_032141.txt
 ./chat_completion_output_qwen3_30b_a3b_q4_k_m_20251030_032437.txt
 ./chat_completion_output_qwen3_30b_a3b_q4_k_m_20251030_033408.txt
+./chat_completion_output_qwen3_30b_a3b_q4_k_m_20251030_034550.txt
+./chat_completion_output_qwen3_30b_a3b_q4_k_m_20251030_034753.txt
 ./composer_llm_output_how did norse people become so large, evolutionarily?_20251029_024801.txt
 ./composer_llm_output_qwen3_30b_a3b_q4_k_m_20251029_024949.txt
 ./composer_llm_output_qwen3_30b_a3b_q4_k_m_20251029_025310.txt
@@ -18,6 +20,8 @@
 ./composer_test_20251030_032231.json
 ./composer_test_20251030_032525.json
 ./composer_test_20251030_033458.json
+./composer_test_20251030_034637.json
+./composer_test_20251030_034844.json
 ./workflow_graph_20251029_024804.md
 ./workflow_graph_20251029_024952.md
 ./workflow_graph_20251029_025313.md

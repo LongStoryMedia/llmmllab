@@ -184,6 +184,12 @@ async def chat_completion(
                     # Debug: Log all event types to understand what's available
                     if event_type and "tool" in event_type.lower():
                         logger.info(f"🔧 Tool-related event: {event_type} - data keys: {list(event_data.keys()) if isinstance(event_data, dict) else 'not dict'}")
+                        
+                        # Debug: Show full event data structure for tool events
+                        if "tool" in event_type.lower():
+                            logger.info(f"🔍 Full event data: {json.dumps(serialize_event_data(event_data), indent=2)}")
+                        
+                        # Don't duplicate accumulation here
 
                     # Process streaming events for immediate response
                     if event_type == "on_chat_model_stream":
@@ -217,33 +223,35 @@ async def chat_completion(
                             tool_input = event_data.get("input", {})
                             tool_output = event_data.get("output", {})
                             
-                            # Extract tool name from input structure
+                            # Smart tool name detection based on tool characteristics
                             if isinstance(tool_input, dict):
-                                # Check if input has the tool name directly
-                                if "name" in tool_input:
-                                    tool_name = tool_input["name"]
-                                # Check if input has a tool call structure
-                                elif "tool" in tool_input:
-                                    tool_call = tool_input["tool"]
-                                    if isinstance(tool_call, dict) and "name" in tool_call:
-                                        tool_name = tool_call["name"]
-                            # Check if input is an object with name attribute
-                            elif hasattr(tool_input, "name"):
-                                tool_name = getattr(tool_input, "name", "unknown_tool")
+                                # Check for web search patterns
+                                if "query" in tool_input and len(tool_input) == 2 and "runtime" in tool_input:
+                                    tool_name = "web_search"
+                                # Check for memory retrieval patterns 
+                                elif "query" in tool_input and "memory_type" in tool_input:
+                                    tool_name = "memory_retrieval"
+                                # Check for summarization patterns
+                                elif "content" in tool_input:
+                                    tool_name = "summarization"
+                                # Check for read web content patterns
+                                elif "url" in tool_input:
+                                    tool_name = "read_web_content"
+                                # Fallback: check output type for additional clues
+                                elif tool_name == "unknown_tool" and hasattr(tool_output, "name"):
+                                    tool_name = getattr(tool_output, "name", "unknown_tool")
                             
-                            # If still unknown, try to extract from output
-                            if tool_name == "unknown_tool" and hasattr(tool_output, "name"):
-                                tool_name = getattr(tool_output, "name", "unknown_tool")
-                            
-                            # If still unknown, check output content for tool name
+                            # If still unknown, try to extract from output content
                             if tool_name == "unknown_tool" and isinstance(tool_output, (str, dict)):
                                 output_str = str(tool_output)
-                                import re
-                                # Look for name='toolname' pattern in the output
-                                name_match = re.search(r"name='([^']+)'", output_str)
-                                if name_match:
-                                    tool_name = name_match.group(1)
-                                    logger.info(f"🔧 Extracted tool name from output: {tool_name}")
+                                # Look for web search results pattern
+                                if "Web Search Results" in output_str or "Found" in output_str and "results:" in output_str:
+                                    tool_name = "web_search"
+                                # Look for other tool patterns in output
+                                elif "memory" in output_str.lower() and "retrieved" in output_str.lower():
+                                    tool_name = "memory_retrieval"
+                                elif "summary" in output_str.lower() or "summarized" in output_str.lower():
+                                    tool_name = "summarization"
                             
                             logger.info(f"🔧 Tool end event - name: {tool_name}, input keys: {list(tool_input.keys()) if isinstance(tool_input, dict) else 'not dict'}, output type: {type(tool_output)}")
                             
