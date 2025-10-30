@@ -192,6 +192,8 @@ class StreamingResponseState:
                 self.current_tool_call = None
                 self.state = StreamingState.PROCESSING
 
+
+
             # Remove the tag from future processing
             chunk = self.tool_call_end_pattern.sub("", chunk)
 
