@@ -149,9 +149,6 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
         if self.oom_recovery is None:
             try:
-                return llama_cpp.Llama(
-                    f"🚀 Initializing (no recovery) {self.model.name}: n_ctx={n_ctx_initial:,}, n_batch={n_batch_initial}, n_ubatch={n_ubatch_initial}, gpu_layers={n_gpu_layers_initial}"
-                )
                 initial_params = OptimalParameters(
                     n_ctx=n_ctx_initial,
                     n_batch=n_batch_initial,
@@ -187,7 +184,6 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     logits_all=perplexity_enabled,
                     logprobs=1 if perplexity_enabled else 0,
                     embedding=False,
-                    chat_format=None,
                     n_threads_batch=None,
                     rope_scaling_type=None,
                     pooling_type=llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
