@@ -586,6 +586,18 @@ class BaseLlamaCppPipeline(BaseChatModel):
             )
         )
 
+        # -----------------------------
+        # Experiment 5: Low-level rope / attention overrides
+        # -----------------------------
+        exp5_active = os.getenv("EXPERIMENT_5_ACTIVE", "true").lower() == "true"
+        exp5_yarn_orig_ctx = int(os.getenv("EXPERIMENT_5_YARN_ORIG_CTX", "1048576")) if exp5_active else 0
+        # Allow forcing attention types; llama.cpp internal enums may map; keep None if not set
+        # For now we only pass yarn_orig_ctx and let upstream choose kernel types.
+        if exp5_active:
+            self._logger.warning(
+                f"[Experiment 5] Activating yarn_orig_ctx override -> {exp5_yarn_orig_ctx}"
+            )
+
         try:
             # Simple, direct initialization - no retries
             # Isolation Experiment 2 (simple path): ensure n_ubatch > 1 by passing explicit value.
@@ -628,7 +640,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 yarn_attn_factor=1.0,
                 yarn_beta_fast=32.0,
                 yarn_beta_slow=1.0,
-                yarn_orig_ctx=0,
+                yarn_orig_ctx=exp5_yarn_orig_ctx if exp5_active else 0,
                 offload_kqv=final_offload_kqv,
                 op_offload=None,
                 swa_full=None,
@@ -648,6 +660,15 @@ class BaseLlamaCppPipeline(BaseChatModel):
             )
 
             self._logger.info(f"✅ Simple initialization successful: {self.model.name}")
+            if exp5_active:
+                try:
+                    # Log selected internal configuration if accessible
+                    backend_desc = getattr(llama_instance, "backend_desc", None)
+                    self._logger.info(
+                        f"[Experiment 5] Post-init: yarn_orig_ctx={exp5_yarn_orig_ctx}, backend_desc={backend_desc}"
+                    )
+                except Exception:
+                    pass
             return llama_instance
 
         except Exception as e:
