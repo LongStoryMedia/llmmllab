@@ -510,26 +510,15 @@ def get_planning_intent_subgraph():
     if planning_intent_subgraph is None:
         # Import here to avoid circular imports
         from runner.pipeline_factory import pipeline_factory
-        from models.default_model_profiles import DEFAULT_ANALYSIS_PROFILE, DEFAULT_PRIMARY_MODEL
-        from models.model_profile_config import ModelProfile, ModelParameters
-        import uuid
+        from models.default_model_profiles import DEFAULT_PRIMARY_PROFILE
 
-        # TEMP FIX: Create modified analysis profile using multimodal model instead of qwen3-4b
-        # This avoids grammar constraints that crash with multimodal content
-        temp_analysis_profile = ModelProfile(
-            id=uuid.uuid4(),  # Temporary ID
-            user_id="system",
-            name="Analysis (Multimodal Compatible)",
-            type="analysis",
-            description="Profile for analysis using multimodal model to avoid grammar constraints",
-            model_name="qwen3-vl-32b-thinking-abliterated",  # Use multimodal model instead of qwen3-4b
-            parameters=DEFAULT_ANALYSIS_PROFILE.parameters  # Keep same parameters
-        )
-
+        # Use primary profile which now uses multimodal model qwen3-vl-32b-thinking-abliterated
+        # This avoids grammar constraint crashes with multimodal content
+        
         # Create classifier agent
         classifier_agent = ClassifierAgent(
             pipeline_factory=pipeline_factory,
-            profile=temp_analysis_profile,  # Using modified profile with qwen3vl instead of qwen3-4b
+            profile=DEFAULT_PRIMARY_PROFILE,  # Primary profile now uses multimodal model
             node_metadata=NodeMetadata(
                 node_name="PlanningClassifierAgent",
                 node_id="planning_classifier",

@@ -56,7 +56,7 @@ DEFAULT_ENGINEERING_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000018
 DEFAULT_RERANKING_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000019")
 
 # Default model IDs from models.json
-DEFAULT_TEXT_TO_TEXT_MODEL = "qwen3-30b-a3b-q4-k-m"
+DEFAULT_TEXT_TO_TEXT_MODEL = "qwen3-vl-32b-thinking-abliterated"  # Changed to multimodal model
 DEFAULT_VISION_TEXT_TO_TEXT_MODEL = "qwen2.5-vl-32b-instruct-q4-k-m"
 DEFAULT_TEXT_TO_IMAGE_MODEL = "black-forest-labs-flux.1-dev"
 DEFAULT_IMAGE_TO_IMAGE_MODEL = "black-forest-labs-flux.1-kontext-dev"

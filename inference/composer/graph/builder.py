@@ -274,24 +274,11 @@ class GraphBuilder:
                 node_metadata=primary_node_metadata,
                 priority=PipelinePriority.HIGH,
             )
-            # TEMP FIX: Create multimodal-compatible profile for classifier agent
-            # Use the same multimodal model that's configured in the user's primary profile
-            # to avoid grammar constraint crashes with multimodal content
-            from models import ModelProfile
-            temp_classifier_profile = ModelProfile(
-                id=uuid.uuid4(),
-                user_id=primary_profile.user_id,
-                name="Classifier (Multimodal Compatible)",
-                type=9,  # MODEL_PROFILE_TYPE_ANALYSIS
-                description="Classifier profile using primary multimodal model to avoid grammar constraints",
-                model_name=primary_profile.model_name,  # Use same model as primary profile
-                parameters=analysis_profile.parameters,  # Keep analysis parameters but with multimodal model
-                system_prompt=analysis_profile.system_prompt  # Use same system prompt as analysis profile
-            )
-            
+            # Use primary_profile for classifier agent instead of analysis_profile
+            # Primary profile now uses qwen3-vl-32b multimodal model which avoids grammar constraint crashes
             classifier_agent = ClassifierAgent(
                 self.pipeline_factory,
-                temp_classifier_profile,  # Using multimodal-compatible profile
+                primary_profile,  # Primary profile now uses multimodal model
                 classifier_node_metadata,
             )
             engineering_agent = EngineeringAgent(
