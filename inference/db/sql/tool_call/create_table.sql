@@ -70,7 +70,12 @@ WHERE
     result_data IS NOT NULL;
 
 -- Enable compression on tool_calls hypertable
-ALTER TABLE tool_calls SET (timescaledb.compress, timescaledb.compress_segmentby = 'message_id');
+-- Use created_at for ordering (time dimension) and message_id for segmenting (different columns)
+ALTER TABLE tool_calls SET (
+    timescaledb.compress, 
+    timescaledb.compress_orderby = 'created_at DESC',
+    timescaledb.compress_segmentby = 'message_id'
+);
 
 -- Add compression policy for tool_calls
 SELECT
