@@ -508,31 +508,82 @@ class BaseLlamaCppPipeline(BaseChatModel):
         )
         gcfg = self.profile.gpu_config or DEFAULT_GPU_CONFIG
 
-        # Experiment-aware logging (OOM recovery disabled path)
-        single_gpu_mode = os.getenv("EXPERIMENT_SINGLE_GPU", "false").lower() == "true"
+        # -----------------------------
+        # Experiment Flag Handling
+        # -----------------------------
+        # Experiment 1: Disable flash attention to rule out new kernel path issues
+        exp_disable_flash_attn = (
+            os.getenv("EXPERIMENT_DISABLE_FLASH_ATTENTION", "false").lower() == "true"
+        )
+        # Experiment 2: Force n_ubatch > 1 (already implemented below)
+        # Experiment 3: Clamp ctx/batch, force offload_kqv True, kv_unified False, disable CUDA graphs
+        exp3_active = os.getenv("EXPERIMENT_3_ACTIVE", "true").lower() == "true"
+        # Existing small ctx env (Experiment 4 consolidation) - keep backward compatibility
         exp_force_small = os.getenv("EXPERIMENT_SMALL_CTX", "true").lower() == "true"
-        exp_offload_kqv = os.getenv("EXPERIMENT_OFFLOAD_KQV", "false").lower() == "true"
+        # Additional offload override (if user wants explicit control when exp3_active off)
+        exp_offload_kqv_env = (
+            os.getenv("EXPERIMENT_OFFLOAD_KQV", "false").lower() == "true"
+        )
+        single_gpu_mode = os.getenv("EXPERIMENT_SINGLE_GPU", "false").lower() == "true"
+        disable_graphs = os.getenv("EXPERIMENT_DISABLE_GRAPHS", "true").lower() == "true"
 
-        if exp_force_small and n_ctx > 8192:
-            self._logger.warning(f"[Experiment 4] Clamping n_ctx {n_ctx} -> 8192 (simple path)")
-            n_ctx = 8192
-        if exp_force_small and n_batch > 64:
-            self._logger.warning(f"[Experiment 4] Clamping n_batch {n_batch} -> 64 (simple path)")
-            n_batch = 64
+        # Apply Experiment 3 clamps (priority over generic small clamps)
+        if exp3_active:
+            if n_ctx > 8192:
+                self._logger.warning(
+                    f"[Experiment 3] Clamping n_ctx {n_ctx} -> 8192 (simple path)"
+                )
+                n_ctx = 8192
+            if n_batch > 64:
+                self._logger.warning(
+                    f"[Experiment 3] Clamping n_batch {n_batch} -> 64 (simple path)"
+                )
+                n_batch = 64
+        else:
+            if exp_force_small and n_ctx > 8192:
+                self._logger.warning(
+                    f"[Experiment 4] Clamping n_ctx {n_ctx} -> 8192 (simple path)"
+                )
+                n_ctx = 8192
+            if exp_force_small and n_batch > 64:
+                self._logger.warning(
+                    f"[Experiment 4] Clamping n_batch {n_batch} -> 64 (simple path)"
+                )
+                n_batch = 64
 
+        # Single GPU isolation (Experiment 4)
         if single_gpu_mode:
             forced_id = os.getenv("EXPERIMENT_SINGLE_GPU_ID", "1")
             os.environ.setdefault("CUDA_VISIBLE_DEVICES", forced_id)
-            self._logger.warning(f"[Experiment 4] Single-GPU isolation active: CUDA_VISIBLE_DEVICES={forced_id}")
+            self._logger.warning(
+                f"[Experiment 4] Single-GPU isolation active: CUDA_VISIBLE_DEVICES={forced_id}"
+            )
 
-        if os.getenv("EXPERIMENT_DISABLE_GRAPHS", "true").lower() == "true":
+        # Disable CUDA graphs (Experiments 3/4 shared)
+        if disable_graphs:
             os.environ.setdefault("GGML_CUDA_DISABLE_GRAPHS", "1")
             os.environ.setdefault("LLAMA_CUDA_DISABLE_GRAPH", "1")
-            self._logger.warning("[Experiment 4] CUDA graphs disabled via env")
+            self._logger.warning("[Experiment] CUDA graphs disabled via env")
 
+        # Determine final offload_kqv decision
+        final_offload_kqv = exp3_active or exp_offload_kqv_env
+        final_kv_unified = False if exp3_active else None
+
+        # Log consolidated experiment state before model load
         self._logger.info(
-            f"🚀 Simple initialization {self.model.name}: n_ctx={n_ctx:,}, n_batch={n_batch}, gpu_layers={n_gpu_layers}, "
-            f"single_gpu={single_gpu_mode}, offload_kqv={exp_offload_kqv}"
+            "🚀 Simple initialization %s: n_ctx=%s, n_batch=%s, gpu_layers=%s, "
+            "single_gpu=%s, exp_disable_flash_attn=%s, exp3_active=%s, offload_kqv=%s, kv_unified=%s, disable_graphs=%s" % (
+                self.model.name,
+                f"{n_ctx:,}",
+                n_batch,
+                n_gpu_layers,
+                single_gpu_mode,
+                exp_disable_flash_attn,
+                exp3_active,
+                final_offload_kqv,
+                final_kv_unified,
+                disable_graphs,
+            )
         )
 
         try:
@@ -561,7 +612,11 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 repeat_penalty=self.profile.parameters.repeat_penalty or 1.05,
                 f16_kv=True,
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
-                flash_attn=getattr(self.profile.parameters, "flash_attention", True),
+                flash_attn=(
+                    False
+                    if exp_disable_flash_attn
+                    else getattr(self.profile.parameters, "flash_attention", True)
+                ),
                 embedding=False,
                 chat_format=None,
                 n_threads_batch=None,
@@ -574,9 +629,10 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 yarn_beta_fast=32.0,
                 yarn_beta_slow=1.0,
                 yarn_orig_ctx=0,
-                offload_kqv=exp_offload_kqv,
+                offload_kqv=final_offload_kqv,
                 op_offload=None,
                 swa_full=None,
+                kv_unified=final_kv_unified,
                 no_perf=False,
                 last_n_tokens_size=64,
                 lora_base=None,
