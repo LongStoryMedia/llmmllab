@@ -11,7 +11,7 @@ import os
 import sys
 from typing import List
 
-from models.default_model_profiles import DEFAULT_TEXT_TO_TEXT_MODEL, DEFAULT_MODEL_PROFILES
+from models.default_model_profiles import DEFAULT_TEXT_TO_TEXT_MODEL, DEFAULT_PROFILES
 from runner.pipeline_factory import pipeline_factory
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -25,7 +25,7 @@ def main() -> None:
     # Instantiate pipeline factory (local cache mode)
     # Retrieve a default profile (assumes DEFAULT_MODEL_PROFILES contains profile for model)
     profile = None
-    for p in DEFAULT_MODEL_PROFILES:
+    for p in DEFAULT_PROFILES:
         if getattr(p, "model_name", None) == model_name:
             profile = p
             break
