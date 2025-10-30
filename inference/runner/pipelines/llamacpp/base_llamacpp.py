@@ -140,62 +140,77 @@ class BaseLlamaCppPipeline(BaseChatModel):
         )
         perplexity_enabled = bool(getattr(params, "enable_perplexity_guard", False))
 
+        def _build_llama_kwargs(op: OptimalParameters) -> Dict[str, Any]:
+            """Construct kwargs dict for llama_cpp.Llama from current parameters.
+
+            Only dynamic scaling parameters (n_ctx, n_batch, n_ubatch, n_gpu_layers) vary between attempts.
+            All other profile-derived settings remain constant.
+            """
+            return {
+                "model_path": gguf_path,
+                "n_ctx": op.n_ctx,
+                "n_batch": op.n_batch,
+                "n_ubatch": op.n_ubatch,
+                "n_gpu_layers": (-1 if n_gpu_layers_initial == -1 else op.n_gpu_layers),
+                "tensor_split": gcfg.tensor_split,
+                "vocab_only": False,
+                "use_mmap": True,
+                "use_mlock": False,
+                "kv_overrides": None,
+                "seed": params.seed or llama_cpp.LLAMA_DEFAULT_SEED,
+                "n_threads": self._get_optimal_threads(),
+                "temperature": params.temperature or 0.7,
+                "top_p": params.top_p or 0.95,
+                "top_k": params.top_k or 40,
+                "repeat_penalty": params.repeat_penalty or 1.05,
+                "f16_kv": True,
+                "verbose": os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
+                "flash_attn": getattr(params, "flash_attention", True),
+                "logits_all": perplexity_enabled,
+                "logprobs": 1 if perplexity_enabled else 0,
+                "embedding": False,
+                "chat_format": None,
+                "n_threads_batch": None,
+                "rope_scaling_type": None,
+                "pooling_type": llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
+                "rope_freq_base": 0.0,
+                "rope_freq_scale": 0.0,
+                "yarn_ext_factor": -1.0,
+                "yarn_attn_factor": 1.0,
+                "yarn_beta_fast": 32.0,
+                "yarn_beta_slow": 1.0,
+                "yarn_orig_ctx": 0,
+                "offload_kqv": False,
+                "op_offload": None,
+                "swa_full": None,
+                "kv_unified": None,
+                "no_perf": False,
+                "last_n_tokens_size": 64,
+                "lora_base": None,
+                "lora_scale": 1.0,
+                "lora_path": None,
+                "numa": False,
+                "chat_handler": self._get_chat_handler() if hasattr(self, "_get_chat_handler") else None,  # type: ignore
+                "draft_model": None,
+                "tokenizer": None,
+                "type_k": None,
+                "type_v": None,
+                "smp_infill": False,
+            }
+
         if self.oom_recovery is None:
             try:
                 self._logger.info(
                     f"🚀 Initializing (no recovery) {self.model.name}: n_ctx={n_ctx_initial:,}, n_batch={n_batch_initial}, n_ubatch={n_ubatch_initial}, gpu_layers={n_gpu_layers_initial}"
                 )
-                return llama_cpp.Llama(
-                    model_path=gguf_path,
+                initial_params = OptimalParameters(
                     n_ctx=n_ctx_initial,
                     n_batch=n_batch_initial,
                     n_ubatch=n_ubatch_initial,
-                    n_gpu_layers=n_gpu_layers_initial,
-                    tensor_split=gcfg.tensor_split,
-                    vocab_only=False,
-                    use_mmap=True,
-                    use_mlock=False,
-                    kv_overrides=None,
-                    seed=params.seed or llama_cpp.LLAMA_DEFAULT_SEED,
-                    n_threads=self._get_optimal_threads(),
-                    temperature=params.temperature or 0.7,
-                    top_p=params.top_p or 0.95,
-                    top_k=params.top_k or 40,
-                    repeat_penalty=params.repeat_penalty or 1.05,
-                    f16_kv=True,
-                    verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
-                    flash_attn=getattr(params, "flash_attention", True),
-                    logits_all=perplexity_enabled,
-                    logprobs=1 if perplexity_enabled else 0,
-                    embedding=False,
-                    chat_format=None,
-                    n_threads_batch=None,
-                    rope_scaling_type=None,
-                    pooling_type=llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
-                    rope_freq_base=0.0,
-                    rope_freq_scale=0.0,
-                    yarn_ext_factor=-1.0,
-                    yarn_attn_factor=1.0,
-                    yarn_beta_fast=32.0,
-                    yarn_beta_slow=1.0,
-                    yarn_orig_ctx=0,
-                    offload_kqv=False,
-                    op_offload=None,
-                    swa_full=None,
-                    kv_unified=None,
-                    no_perf=False,
-                    last_n_tokens_size=64,
-                    lora_base=None,
-                    lora_scale=1.0,
-                    lora_path=None,
-                    numa=False,
-                    chat_handler=self._get_chat_handler() if hasattr(self, "_get_chat_handler") else None,  # type: ignore
-                    draft_model=None,
-                    tokenizer=None,
-                    type_k=None,
-                    type_v=None,
-                    smp_infill=False,
+                    n_gpu_layers=(n_gpu_layers_initial if n_gpu_layers_initial >= 0 else 99),
                 )
+                llama_kwargs = _build_llama_kwargs(initial_params)
+                return llama_cpp.Llama(**llama_kwargs)
             except Exception as e:
                 self._logger.error(f"❌ Initialization failed (no recovery): {e}")
                 raise
@@ -229,59 +244,8 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     f"🚀 Initializing {self.model.name} (attempt {attempt}): n_ctx={current_params.n_ctx:,}, n_batch={current_params.n_batch}, n_ubatch={current_params.n_ubatch}, gpu_layers={current_params.n_gpu_layers}"
                 )
                 start_time = time.time()
-                llama_instance = llama_cpp.Llama(
-                    model_path=gguf_path,
-                    n_ctx=current_params.n_ctx,
-                    n_batch=current_params.n_batch,
-                    n_ubatch=current_params.n_ubatch,
-                    n_gpu_layers=(
-                        -1 if n_gpu_layers_initial == -1 else current_params.n_gpu_layers
-                    ),
-                    tensor_split=gcfg.tensor_split,
-                    vocab_only=False,
-                    use_mmap=True,
-                    use_mlock=False,
-                    kv_overrides=None,
-                    seed=params.seed or llama_cpp.LLAMA_DEFAULT_SEED,
-                    n_threads=self._get_optimal_threads(),
-                    temperature=params.temperature or 0.7,
-                    top_p=params.top_p or 0.95,
-                    top_k=params.top_k or 40,
-                    repeat_penalty=params.repeat_penalty or 1.05,
-                    f16_kv=True,
-                    verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
-                    flash_attn=getattr(params, "flash_attention", True),
-                    logits_all=perplexity_enabled,
-                    logprobs=1 if perplexity_enabled else 0,
-                    embedding=False,
-                    chat_format=None,
-                    n_threads_batch=None,
-                    rope_scaling_type=None,
-                    pooling_type=llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
-                    rope_freq_base=0.0,
-                    rope_freq_scale=0.0,
-                    yarn_ext_factor=-1.0,
-                    yarn_attn_factor=1.0,
-                    yarn_beta_fast=32.0,
-                    yarn_beta_slow=1.0,
-                    yarn_orig_ctx=0,
-                    offload_kqv=False,
-                    op_offload=None,
-                    swa_full=None,
-                    kv_unified=None,
-                    no_perf=False,
-                    last_n_tokens_size=64,
-                    lora_base=None,
-                    lora_scale=1.0,
-                    lora_path=None,
-                    numa=False,
-                    chat_handler=self._get_chat_handler() if hasattr(self, "_get_chat_handler") else None,  # type: ignore
-                    draft_model=None,
-                    tokenizer=None,
-                    type_k=None,
-                    type_v=None,
-                    smp_infill=False,
-                )
+                llama_kwargs = _build_llama_kwargs(current_params)
+                llama_instance = llama_cpp.Llama(**llama_kwargs)
                 init_ms = (time.time() - start_time) * 1000
                 gpu_used = 0
                 try:
