@@ -183,7 +183,7 @@ async def chat_completion(
 
                     # Debug: Log all event types to understand what's available
                     if event_type and "tool" in event_type.lower():
-                        logger.debug(f"🔧 Tool-related event: {event_type}")
+                        logger.info(f"🔧 Tool-related event: {event_type} - data keys: {list(event_data.keys()) if isinstance(event_data, dict) else 'not dict'}")
 
                     # Process streaming events for immediate response
                     if event_type == "on_chat_model_stream":
@@ -213,9 +213,39 @@ async def chat_completion(
                         # Capture actual tool execution results with real status and timing
                         try:
                             # Get tool execution details from event data
-                            tool_name = event_data.get("name", "unknown_tool")
+                            tool_name = "unknown_tool"
                             tool_input = event_data.get("input", {})
                             tool_output = event_data.get("output", {})
+                            
+                            # Extract tool name from input structure
+                            if isinstance(tool_input, dict):
+                                # Check if input has the tool name directly
+                                if "name" in tool_input:
+                                    tool_name = tool_input["name"]
+                                # Check if input has a tool call structure
+                                elif "tool" in tool_input:
+                                    tool_call = tool_input["tool"]
+                                    if isinstance(tool_call, dict) and "name" in tool_call:
+                                        tool_name = tool_call["name"]
+                            # Check if input is an object with name attribute
+                            elif hasattr(tool_input, "name"):
+                                tool_name = getattr(tool_input, "name", "unknown_tool")
+                            
+                            # If still unknown, try to extract from output
+                            if tool_name == "unknown_tool" and hasattr(tool_output, "name"):
+                                tool_name = getattr(tool_output, "name", "unknown_tool")
+                            
+                            # If still unknown, check output content for tool name
+                            if tool_name == "unknown_tool" and isinstance(tool_output, (str, dict)):
+                                output_str = str(tool_output)
+                                import re
+                                # Look for name='toolname' pattern in the output
+                                name_match = re.search(r"name='([^']+)'", output_str)
+                                if name_match:
+                                    tool_name = name_match.group(1)
+                                    logger.info(f"🔧 Extracted tool name from output: {tool_name}")
+                            
+                            logger.info(f"🔧 Tool end event - name: {tool_name}, input keys: {list(tool_input.keys()) if isinstance(tool_input, dict) else 'not dict'}, output type: {type(tool_output)}")
                             
                             # Calculate execution time from event timestamps if available
                             execution_time_ms = None
@@ -276,6 +306,43 @@ async def chat_completion(
                         if "tool" in event_type.lower():
                             logger.info(f"🛠️ Tool end event detected: {event_type}")
                             logger.info(f"   Event data keys: {list(event_data.keys()) if isinstance(event_data, dict) else 'not dict'}")
+                            logger.info(f"   Event data full: {str(event_data)}")
+                            
+                            # Look for tool name in input
+                            if isinstance(event_data, dict) and 'input' in event_data:
+                                input_data = event_data['input']
+                                logger.info(f"   Input data type: {type(input_data)}")
+                                logger.info(f"   Input data: {str(input_data)}")
+                                
+                                # Check for tool name in input
+                                if hasattr(input_data, 'name'):
+                                    logger.info(f"   Input has name attribute: {input_data.name}")
+                                if hasattr(input_data, 'tool'):
+                                    logger.info(f"   Input has tool attribute: {input_data.tool}")
+                                if isinstance(input_data, dict):
+                                    logger.info(f"   Input dict keys: {list(input_data.keys())}")
+                                    if 'name' in input_data:
+                                        logger.info(f"   Input name: {input_data['name']}")
+                                    if 'tool' in input_data:
+                                        logger.info(f"   Input tool: {input_data['tool']}")
+                                        
+                            # Look for tool name in output  
+                            if isinstance(event_data, dict) and 'output' in event_data:
+                                output_data = event_data['output']
+                                logger.info(f"   Output data type: {type(output_data)}")
+                                logger.info(f"   Output data: {str(output_data)}")
+                                
+                                # Check for tool name in output
+                                if hasattr(output_data, 'name'):
+                                    logger.info(f"   Output has name attribute: {output_data.name}")
+                                if hasattr(output_data, 'tool'):
+                                    logger.info(f"   Output has tool attribute: {output_data.tool}")
+                                if isinstance(output_data, dict):
+                                    logger.info(f"   Output dict keys: {list(output_data.keys())}")
+                                    if 'name' in output_data:
+                                        logger.info(f"   Output name: {output_data['name']}")
+                                    if 'tool' in output_data:
+                                        logger.info(f"   Output tool: {output_data['tool']}")
                         
                         # Capture final workflow data
                         if isinstance(event_data, dict):

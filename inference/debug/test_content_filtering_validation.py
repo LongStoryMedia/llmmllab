@@ -33,17 +33,34 @@ async def quick_validation_test(server_url="http://localhost:8000"):
         # Prepare a test message that should trigger tools and content generation
         test_query = "What are the latest developments in AI for October 2025? Please search for recent news and analyze the current trends."
         
+        # First, we need to create a conversation and user through the database
+        from db import storage
+        from models import User, UserConfig, Conversation, Message, MessageRole, MessageContent, MessageContentType
+        
+        # Create test user
+        test_user_id = f"test_validation_{uuid.uuid4().hex[:8]}"
+        test_user = User(id=test_user_id, name=f"Validation User {test_user_id}")
+        await storage.user.add_user(test_user)
+        
+        # Create test conversation
+        test_conversation = Conversation(
+            user_id=test_user_id,
+            title="Content Filtering Validation Test",
+        )
+        conversation_result = await storage.conversation.add_conversation(test_conversation)
+        conversation_id = conversation_result if isinstance(conversation_result, int) else conversation_result.get("id")
+        
         # Create test message data
         message_data = {
             "role": "user",
             "content": [{"type": "text", "text": test_query}],
-            "conversation_id": 1,  # Use existing conversation
+            "conversation_id": conversation_id,
         }
         
         # Headers
         headers = {
             "Content-Type": "application/json",
-            "User-ID": "test_validation_user",
+            "User-ID": test_user_id,
             "X-Request-ID": f"validation_{uuid.uuid4().hex[:8]}",
         }
         
@@ -153,9 +170,22 @@ async def quick_validation_test(server_url="http://localhost:8000"):
             
     except Exception as e:
         print(f"❌ Test failed with error: {e}")
+        import traceback
+        traceback.print_exc()
         return False
         
     finally:
+        # Cleanup test data
+        try:
+            if 'test_user_id' in locals():
+                # Clean up conversation and user
+                if 'conversation_id' in locals():
+                    await storage.conversation.delete_conversation(conversation_id)
+                await storage.user.delete_user(test_user_id)
+                print("🧹 Cleanup completed")
+        except Exception as cleanup_error:
+            print(f"⚠️  Cleanup warning: {cleanup_error}")
+        
         await client.aclose()
 
 

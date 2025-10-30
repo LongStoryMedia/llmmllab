@@ -557,8 +557,17 @@ Please search for the most recent information and provide a comprehensive summar
 
             logger.info(f"   📝 Sending HTTP request for message: {user_message.id}")
             
-            # Prepare request data exactly as UI would send it
-            request_data = user_message.model_dump()
+            # Prepare request data exactly as UI would send it (with JSON-serializable fields only)
+            request_data = {
+                "role": user_message.role.value,  # Convert enum to string
+                "content": [
+                    {
+                        "type": content.type.value,  # Convert enum to string
+                        "text": content.text
+                    } for content in user_message.content
+                ],
+                "conversation_id": user_message.conversation_id,
+            }
             
             # Make HTTP POST request to chat completion endpoint
             headers = {
