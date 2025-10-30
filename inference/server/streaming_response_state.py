@@ -196,31 +196,40 @@ class StreamingResponseState:
             chunk = self.tool_call_end_pattern.sub("", chunk)
 
     def _handle_thinking_content(self, chunk: str) -> ChatResponse:
-        """Handle content when in THINKING state."""
-        # Clean chunk of XML tags
+        """Handle content when in THINKING state - return in thoughts field, not main content."""
+        # Clean chunk of XML tags and add to thinking buffer
         clean_chunk = self._clean_xml_tags(chunk)
         if clean_chunk:
             self.thinking_buffer += clean_chunk
             self.accumulated_thinking += clean_chunk
 
-        # Return ChatResponse with thinking content
+        # Return ChatResponse with thinking content in the thoughts field (not main content)
         thoughts = [Thought(text=clean_chunk)] if clean_chunk else None
-        message = Message(role=MessageRole.ASSISTANT, content=[], thoughts=thoughts)
+        message = Message(
+            role=MessageRole.ASSISTANT, 
+            content=[],  # Empty main content - thoughts go in separate field
+            thoughts=thoughts
+        )
         return ChatResponse(
             message=message,
             done=False,
         )
 
     def _handle_processing_content(self, chunk: str) -> ChatResponse:
-        """Handle content when in PROCESSING state."""
-        # Processing state also goes to thinking for now (as per requirements)
+        """Handle content when in PROCESSING state - return in thoughts field like thinking."""
+        # Processing state also goes to thinking buffer and thoughts field  
         clean_chunk = self._clean_xml_tags(chunk)
         if clean_chunk:
             self.thinking_buffer += clean_chunk
             self.accumulated_thinking += clean_chunk
 
+        # Return ChatResponse with processing content in thoughts field (not main content)
         thoughts = [Thought(text=clean_chunk)] if clean_chunk else None
-        message = Message(role=MessageRole.ASSISTANT, content=[], thoughts=thoughts)
+        message = Message(
+            role=MessageRole.ASSISTANT,
+            content=[],  # Empty main content - processing goes in thoughts field
+            thoughts=thoughts
+        )
         return ChatResponse(
             message=message,
             done=False,
