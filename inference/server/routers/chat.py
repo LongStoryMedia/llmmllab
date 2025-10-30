@@ -231,12 +231,27 @@ async def chat_completion(
                                 success = False
                                 error_message = str(getattr(tool_output, "error", "Unknown error"))
 
+                            # Filter out ToolRuntime and other non-serializable objects from args
+                            clean_args = {}
+                            if isinstance(tool_input, dict):
+                                filtered_keys = []
+                                for k, v in tool_input.items():
+                                    if k == "runtime" or str(type(v).__name__) == "ToolRuntime":
+                                        filtered_keys.append(k)
+                                    else:
+                                        clean_args[k] = v
+                                
+                                if filtered_keys:
+                                    logger.debug(f"🔧 Filtered out non-serializable keys from tool args: {filtered_keys}")
+                            else:
+                                clean_args = {"input": str(tool_input)}
+
                             # Create real tool execution result
                             real_tool_result = ToolCall(
                                 name=tool_name,
                                 execution_id=f"tool_exec_{len(tool_execution_results)}",
                                 success=success,
-                                args=tool_input if isinstance(tool_input, dict) else {"input": str(tool_input)},
+                                args=clean_args,
                                 result_data=tool_output if isinstance(tool_output, dict) else {"output": str(tool_output)},
                                 error_message=error_message,
                                 execution_time_ms=execution_time_ms,
