@@ -67,6 +67,14 @@ class BaseLlamaCppPipeline(BaseChatModel):
         grammar: Optional[Type[BaseModel]],
         **kwargs,
     ):
+        """Base LlamaCpp pipeline implementation.
+
+        Experiment 4 adds optional single-GPU isolation to rule out mixed compute capability issues.
+        Enable with environment variable:
+            EXPERIMENT_SINGLE_GPU=true (forces CUDA_VISIBLE_DEVICES to EXPERIMENT_SINGLE_GPU_ID or '1')
+            EXPERIMENT_SINGLE_GPU_ID=1 (defaults to 1 if unset)
+        """
+
         # Pass the required fields to the parent constructor for Pydantic validation
         super().__init__(model=model, profile=profile, grammar=grammar, **kwargs)  # type: ignore
         self._logger = llmmllogger.bind(
@@ -137,17 +145,12 @@ class BaseLlamaCppPipeline(BaseChatModel):
         try:
             cpu_count = multiprocessing.cpu_count()
             optimal_threads = min(max(cpu_count // 2, 2), 8)
-            self._logger.debug(
-                f"Using {optimal_threads} threads (CPU count: {cpu_count})"
-            )
             return optimal_threads
         except Exception:
             self._logger.warning(
                 "Could not determine CPU count, using default threading"
             )
             return 4
-
-    def _clear_pipeline_and_memory(self):
         """Clear pipeline instance and GPU memory."""
         if hasattr(self, "llama_instance") and self.llama_instance:
             try:
@@ -505,18 +508,38 @@ class BaseLlamaCppPipeline(BaseChatModel):
         )
         gcfg = self.profile.gpu_config or DEFAULT_GPU_CONFIG
 
+        # Experiment-aware logging (OOM recovery disabled path)
+        single_gpu_mode = os.getenv("EXPERIMENT_SINGLE_GPU", "false").lower() == "true"
+        exp_force_small = os.getenv("EXPERIMENT_SMALL_CTX", "true").lower() == "true"
+        exp_offload_kqv = os.getenv("EXPERIMENT_OFFLOAD_KQV", "false").lower() == "true"
+
+        if exp_force_small and n_ctx > 8192:
+            self._logger.warning(f"[Experiment 4] Clamping n_ctx {n_ctx} -> 8192 (simple path)")
+            n_ctx = 8192
+        if exp_force_small and n_batch > 64:
+            self._logger.warning(f"[Experiment 4] Clamping n_batch {n_batch} -> 64 (simple path)")
+            n_batch = 64
+
+        if single_gpu_mode:
+            forced_id = os.getenv("EXPERIMENT_SINGLE_GPU_ID", "1")
+            os.environ.setdefault("CUDA_VISIBLE_DEVICES", forced_id)
+            self._logger.warning(f"[Experiment 4] Single-GPU isolation active: CUDA_VISIBLE_DEVICES={forced_id}")
+
+        if os.getenv("EXPERIMENT_DISABLE_GRAPHS", "true").lower() == "true":
+            os.environ.setdefault("GGML_CUDA_DISABLE_GRAPHS", "1")
+            os.environ.setdefault("LLAMA_CUDA_DISABLE_GRAPH", "1")
+            self._logger.warning("[Experiment 4] CUDA graphs disabled via env")
+
         self._logger.info(
-            f"🚀 Simple initialization {self.model.name}: "
-            f"n_ctx={n_ctx:,}, n_batch={n_batch}, gpu_layers={n_gpu_layers}"
+            f"🚀 Simple initialization {self.model.name}: n_ctx={n_ctx:,}, n_batch={n_batch}, gpu_layers={n_gpu_layers}, "
+            f"single_gpu={single_gpu_mode}, offload_kqv={exp_offload_kqv}"
         )
 
         try:
             # Simple, direct initialization - no retries
             # Isolation Experiment 2 (simple path): ensure n_ubatch > 1 by passing explicit value.
-            experiment_n_ubatch = 8
-            self._logger.warning(
-                f"[Experiment 2] Forcing n_ubatch={experiment_n_ubatch} in simple initialization"
-            )
+            experiment_n_ubatch = 8  # keep ubatch >1 to avoid edge path
+            self._logger.warning(f"[Experiment 2] Forcing n_ubatch={experiment_n_ubatch} (simple path)")
             llama_instance = llama_cpp.Llama(
                 model_path=gguf_path,
                 n_ctx=n_ctx,
@@ -524,7 +547,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 n_ubatch=experiment_n_ubatch,
                 n_gpu_layers=n_gpu_layers,
                 split_mode=llama_cpp.LLAMA_SPLIT_MODE_ROW,
-                tensor_split=gcfg.tensor_split,
+                tensor_split=None if single_gpu_mode else gcfg.tensor_split,
                 vocab_only=False,
                 use_mmap=True,
                 use_mlock=False,
@@ -551,7 +574,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 yarn_beta_fast=32.0,
                 yarn_beta_slow=1.0,
                 yarn_orig_ctx=0,
-                offload_kqv=False,
+                offload_kqv=exp_offload_kqv,
                 op_offload=None,
                 swa_full=None,
                 no_perf=False,
