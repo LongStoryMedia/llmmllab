@@ -88,7 +88,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
         self.use_intelligent_oom = (
             os.getenv("ENABLE_INTELLIGENT_OOM_RECOVERY", "false").lower() == "true"
         )
-        self.oom_recovery = IntelligentOOMRecovery() if self.use_intelligent_oom else None
+        self.oom_recovery = (
+            IntelligentOOMRecovery() if self.use_intelligent_oom else None
+        )
         self.llama_instance = self._initialize_llama(self._get_gguf_path())
 
     @property
@@ -118,7 +120,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
             cpu_count = multiprocessing.cpu_count()
             return min(max(cpu_count // 2, 2), 8)
         except Exception:
-            self._logger.warning("Could not determine CPU count, defaulting to 4 threads")
+            self._logger.warning(
+                "Could not determine CPU count, defaulting to 4 threads"
+            )
             return 4
 
     def _initialize_llama(self, gguf_path: str) -> llama_cpp.Llama:
@@ -136,35 +140,43 @@ class BaseLlamaCppPipeline(BaseChatModel):
         n_batch_initial = params.batch_size or 64
         n_ubatch_initial = getattr(params, "n_ubatch", 1) or 1
         n_gpu_layers_initial = (
-            self.profile.gpu_config.gpu_layers if self.profile.gpu_config and self.profile.gpu_config.gpu_layers is not None else -1
+            self.profile.gpu_config.gpu_layers
+            if self.profile.gpu_config
+            and self.profile.gpu_config.gpu_layers is not None
+            else -1
         )
         perplexity_enabled = bool(getattr(params, "enable_perplexity_guard", False))
 
-
         if self.oom_recovery is None:
             try:
-                self._logger.info(
+                return llama_cpp.Llama(
                     f"🚀 Initializing (no recovery) {self.model.name}: n_ctx={n_ctx_initial:,}, n_batch={n_batch_initial}, n_ubatch={n_ubatch_initial}, gpu_layers={n_gpu_layers_initial}"
                 )
                 initial_params = OptimalParameters(
                     n_ctx=n_ctx_initial,
                     n_batch=n_batch_initial,
                     n_ubatch=n_ubatch_initial,
-                    n_gpu_layers=(n_gpu_layers_initial if n_gpu_layers_initial >= 0 else 99),
+                    n_gpu_layers=(
+                        n_gpu_layers_initial if n_gpu_layers_initial >= 0 else 99
+                    ),
                 )
                 return llama_cpp.Llama(
                     model_path=gguf_path,
                     n_ctx=initial_params.n_ctx,
                     n_batch=initial_params.n_batch,
                     n_ubatch=initial_params.n_ubatch,
-                    n_gpu_layers=(-1 if n_gpu_layers_initial == -1 else initial_params.n_gpu_layers),
+                    n_gpu_layers=(
+                        -1
+                        if n_gpu_layers_initial == -1
+                        else initial_params.n_gpu_layers
+                    ),
                     tensor_split=gcfg.tensor_split,
                     vocab_only=False,
                     use_mmap=True,
                     use_mlock=False,
                     kv_overrides=None,
                     seed=params.seed or llama_cpp.LLAMA_DEFAULT_SEED,
-                    n_threads=self._get_optimal_threads(),
+                    chat_format=self._get_chat_format(),
                     temperature=params.temperature or 0.7,
                     top_p=params.top_p or 0.95,
                     top_k=params.top_k or 40,
@@ -191,7 +203,6 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     swa_full=None,
                     kv_unified=None,
                     no_perf=False,
-                    last_n_tokens_size=64,
                     lora_base=None,
                     lora_scale=1.0,
                     lora_path=None,
@@ -241,8 +252,12 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     n_ctx=current_params.n_ctx,
                     n_batch=current_params.n_batch,
                     n_ubatch=current_params.n_ubatch,
-                    n_gpu_layers=(-1 if n_gpu_layers_initial == -1 else current_params.n_gpu_layers),
-                    tensor_split=gcfg.tensor_split,
+                    n_gpu_layers=(
+                        -1
+                        if n_gpu_layers_initial == -1
+                        else current_params.n_gpu_layers
+                    ),
+                    chat_format=self._get_chat_format(),
                     vocab_only=False,
                     use_mmap=True,
                     use_mlock=False,
@@ -259,7 +274,6 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     logits_all=perplexity_enabled,
                     logprobs=1 if perplexity_enabled else 0,
                     embedding=False,
-                    chat_format=None,
                     n_threads_batch=None,
                     rope_scaling_type=None,
                     pooling_type=llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
@@ -400,6 +414,10 @@ class BaseLlamaCppPipeline(BaseChatModel):
             output_tokens=completion_tokens,
             total_tokens=prompt_tokens + completion_tokens,
         )
+
+    def _get_chat_format(self) -> Optional[str]:
+        """Hook for subclasses to specify chat_format during llama initialization."""
+        return None
 
     def _convert_tools_to_simple_format(self, tools):
         """Convert LangChain tools to simple format for llama-cpp-python."""
