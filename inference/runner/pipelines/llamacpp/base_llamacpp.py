@@ -105,6 +105,22 @@ class BaseLlamaCppPipeline(BaseChatModel):
             "temperature": self.profile.parameters.temperature or 0.7,
         }
 
+    def _get_gguf_path(self) -> str:
+        """Return resolved GGUF file path for model."""
+        details = getattr(self.model, "details", None)
+        if details and hasattr(details, "gguf_file") and details.gguf_file:
+            return details.gguf_file
+        return self.model.model
+
+    def _get_optimal_threads(self) -> int:
+        """Determine a conservative optimal thread count."""
+        try:
+            cpu_count = multiprocessing.cpu_count()
+            return min(max(cpu_count // 2, 2), 8)
+        except Exception:
+            self._logger.warning("Could not determine CPU count, defaulting to 4 threads")
+            return 4
+
     def _initialize_llama(self, gguf_path: str) -> llama_cpp.Llama:
         """Unified initialization path.
 
