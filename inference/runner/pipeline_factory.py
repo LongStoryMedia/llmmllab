@@ -347,6 +347,8 @@ class PipelineFactory:
 
             if model.task == ModelTask.TEXTTOTEXT:
                 return self._create_text_pipeline(model, profile, grammar)
+            if model.task == ModelTask.VISIONTEXTTOTEXT:
+                return self._create_text_pipeline(model, profile, grammar)
             if model.task == ModelTask.TEXTTOEMBEDDINGS:
                 return self._create_embedding_pipeline(model, profile)
             if model.task == ModelTask.TEXTTOIMAGE:
@@ -406,6 +408,13 @@ class PipelineFactory:
             )
 
             return Qwen25VLPipeline(model, profile, grammar)
+
+        if model.pipeline == "Qwen3VLPipeline":
+            from .pipelines.imgtxt2txt.qwen3_vl import (  # pylint: disable=import-outside-toplevel
+                Qwen3VLPipeline,
+            )
+
+            return Qwen3VLPipeline(model, profile, grammar)
 
         if model.pipeline == "LlamaChatSummPipe":
             from .pipelines.txt2txt.llamachatsum import (  # pylint: disable=import-outside-toplevel
