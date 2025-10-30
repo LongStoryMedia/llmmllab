@@ -236,6 +236,15 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
                 start_time = time.time()
 
+                # Isolation Experiment 1: Force-disable flash attention to test if CUDA illegal memory access
+                # is related to flash attention kernels on mixed compute capability GPUs (7.5 + 8.6).
+                # This is a temporary hard override; subsequent experiments will revert this change.
+                experiment_flash_attn_enabled = False
+                if experiment_flash_attn_enabled is False:
+                    self._logger.warning(
+                        "[Experiment 1] flash_attention forcibly disabled for initialization attempt"
+                    )
+
                 # Convert back to -1 for full offload if originally requested
                 actual_gpu_layers = (
                     requested_gpu_layers
@@ -264,9 +273,8 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     repeat_penalty=self.profile.parameters.repeat_penalty or 1.05,
                     f16_kv=True,
                     verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
-                    flash_attn=getattr(
-                        self.profile.parameters, "flash_attention", True
-                    ),
+                    # Hard override (Experiment 1)
+                    flash_attn=experiment_flash_attn_enabled,
                     logits_all=perplexity_enabled,
                     logprobs=1 if perplexity_enabled else 0,
                     embedding=False,
@@ -290,7 +298,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     lora_scale=1.0,
                     lora_path=None,
                     numa=False,
-                    chat_handler=None,
+                    chat_handler=self._get_chat_handler() if hasattr(self, "_get_chat_handler") else None,  # type: ignore
                     draft_model=None,
                     tokenizer=None,
                     type_k=None,
@@ -480,6 +488,12 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
         try:
             # Simple, direct initialization - no retries
+            # Isolation Experiment 1 duplicate logic for simple path as safety (should usually use intelligent path)
+            experiment_flash_attn_enabled = False
+            if experiment_flash_attn_enabled is False:
+                self._logger.warning(
+                    "[Experiment 1] flash_attention forcibly disabled for simple initialization"
+                )
             llama_instance = llama_cpp.Llama(
                 model_path=gguf_path,
                 n_ctx=n_ctx,
@@ -500,7 +514,8 @@ class BaseLlamaCppPipeline(BaseChatModel):
                 repeat_penalty=self.profile.parameters.repeat_penalty or 1.05,
                 f16_kv=True,
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
-                flash_attn=getattr(self.profile.parameters, "flash_attention", True),
+                # Hard override (Experiment 1)
+                flash_attn=experiment_flash_attn_enabled,
                 embedding=False,
                 chat_format=None,
                 n_threads_batch=None,
