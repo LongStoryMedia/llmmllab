@@ -181,6 +181,10 @@ async def chat_completion(
                         event_type = getattr(event, "event", "")
                         event_data = getattr(event, "data", {})
 
+                    # Debug: Log all event types to understand what's available
+                    if event_type and "tool" in event_type.lower():
+                        logger.debug(f"🔧 Tool-related event: {event_type}")
+
                     # Process streaming events for immediate response
                     if event_type == "on_chat_model_stream":
                         # Handle streaming tokens
@@ -268,6 +272,11 @@ async def chat_completion(
                             logger.warning(f"Failed to capture tool execution result: {e}")
 
                     elif event_type.endswith("_end"):
+                        # Debug: Log all end events to see what we get
+                        if "tool" in event_type.lower():
+                            logger.info(f"🛠️ Tool end event detected: {event_type}")
+                            logger.info(f"   Event data keys: {list(event_data.keys()) if isinstance(event_data, dict) else 'not dict'}")
+                        
                         # Capture final workflow data
                         if isinstance(event_data, dict):
                             output = event_data.get("output", {})
