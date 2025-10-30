@@ -179,7 +179,8 @@ class BaseLlamaCppPipeline(BaseChatModel):
         current_params = attempt_params_list[0]
         attempt_index = 0  # track transition to predicted params after first OOM
 
-        for attempt in range(1, max_attempts + 1):
+        attempt = 1
+        while attempt <= max_attempts:
             try:
                 self._logger.info(
                     f"🚀 Initializing {self.model.name} (attempt {attempt}): n_ctx={current_params.n_ctx:,}, n_batch={current_params.n_batch}, n_ubatch={current_params.n_ubatch}, gpu_layers={current_params.n_gpu_layers}"
@@ -315,173 +316,20 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     attempt_index = 1
                     current_params = attempt_params_list[1]
                 if attempt >= max_attempts:
-                    stats = self.oom_recovery.get_statistics()
+                    stats = (
+                        self.oom_recovery.get_statistics()
+                        if self.oom_recovery is not None
+                        else {}
+                    )
                     self._logger.error(
                         f"❌ Failed to initialize {self.model.name} after {max_attempts} attempts. Stats: {stats}"
                     )
                     raise RuntimeError(
                         f"Failed to initialize {self.model.name} after {max_attempts} attempts"
                     ) from e
-        raise RuntimeError(f"Unexpected termination of init loop for {self.model.name}")
-
-        original_params = OptimalParameters(
-            n_ctx=n_ctx_initial,
-            n_batch=n_batch_initial,
-            n_ubatch=n_ubatch_initial,
-            n_gpu_layers=(n_gpu_layers_initial if n_gpu_layers_initial >= 0 else 99),
-        )
-        predicted = self.oom_recovery.predict_optimal_parameters_from_profile(
-            model_profile=self.profile,
-            model_path=gguf_path,
-            hardware_manager=self.hardware_manager,
-        ).model_copy()
-        attempt_params_list = [
-            OptimalParameters(
-                n_ctx=original_params.n_ctx,
-                n_batch=original_params.n_batch,
-                n_ubatch=original_params.n_ubatch,
-                n_gpu_layers=original_params.n_gpu_layers,
-            ),
-            predicted,
-        ]
-        max_attempts = 10
-        current_params = attempt_params_list[0]
-        attempt_index = 0
-        for attempt in range(1, max_attempts + 1):
-            try:
-                self._logger.info(
-                    f"🚀 Initializing {self.model.name} (attempt {attempt}): n_ctx={current_params.n_ctx:,}, n_batch={current_params.n_batch}, n_ubatch={current_params.n_ubatch}, gpu_layers={current_params.n_gpu_layers}"
-                )
-                start_time = time.time()
-                llama_instance = llama_cpp.Llama(
-                    model_path=gguf_path,
-                    n_ctx=current_params.n_ctx,
-                    n_batch=current_params.n_batch,
-                    n_ubatch=current_params.n_ubatch,
-                    n_gpu_layers=(
-                        -1
-                        if n_gpu_layers_initial == -1
-                        else current_params.n_gpu_layers
-                    ),
-                    chat_format=self._get_chat_format(),
-                    vocab_only=False,
-                    use_mmap=True,
-                    use_mlock=False,
-                    kv_overrides=None,
-                    seed=params.seed or llama_cpp.LLAMA_DEFAULT_SEED,
-                    n_threads=self._get_optimal_threads(),
-                    temperature=params.temperature or 0.7,
-                    top_p=params.top_p or 0.95,
-                    top_k=params.top_k or 40,
-                    repeat_penalty=params.repeat_penalty or 1.05,
-                    f16_kv=True,
-                    verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
-                    flash_attn=getattr(params, "flash_attention", True),
-                    logits_all=perplexity_enabled,
-                    logprobs=1 if perplexity_enabled else 0,
-                    embedding=False,
-                    n_threads_batch=None,
-                    rope_scaling_type=None,
-                    pooling_type=llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
-                    rope_freq_base=0.0,
-                    rope_freq_scale=0.0,
-                    yarn_ext_factor=-1.0,
-                    yarn_attn_factor=1.0,
-                    yarn_beta_fast=32.0,
-                    yarn_beta_slow=1.0,
-                    yarn_orig_ctx=0,
-                    offload_kqv=False,
-                    op_offload=None,
-                    swa_full=None,
-                    kv_unified=None,
-                    no_perf=False,
-                    last_n_tokens_size=64,
-                    lora_base=None,
-                    lora_scale=1.0,
-                    lora_path=None,
-                    numa=False,
-                    chat_handler=self._get_chat_handler() if hasattr(self, "_get_chat_handler") else None,  # type: ignore
-                    draft_model=None,
-                    tokenizer=None,
-                    type_k=None,
-                    type_v=None,
-                    smp_infill=False,
-                )
-                init_ms = (time.time() - start_time) * 1000
-                gpu_used = 0
-                try:
-                    stats = self.hardware_manager.update_all_memory_stats()
-                    for s in stats.values():
-                        if hasattr(s, "id") and s.id == 0 and hasattr(s, "mem_used"):
-                            gpu_used = s.mem_used
-                            break
-                except Exception:
-                    pass
-                self.oom_recovery.record_success(
-                    model_path=gguf_path,
-                    params=current_params,
-                    hardware_manager=self.hardware_manager,
-                    initialization_time_ms=init_ms,
-                    gpu_memory_used_mb=gpu_used,
-                )
-                self._logger.info(
-                    f"✅ Initialized {self.model.name}: n_ctx={current_params.n_ctx:,}, n_batch={current_params.n_batch}, n_ubatch={current_params.n_ubatch} in {init_ms:.1f}ms"
-                )
-                return llama_instance
-            except Exception as e:
-                err = str(e).lower()
-                is_oom = any(
-                    t in err
-                    for t in [
-                        "out of memory",
-                        "oom",
-                        "cuda error",
-                        "memory allocation failed",
-                        "insufficient memory",
-                        "cudamalloc failed",
-                        "failed to create llama_context",
-                        "context creation failed",
-                        "failed to allocate",
-                        "allocation failed",
-                        "ggml_cuda_alloc_buffer",
-                        "ggml_backend_alloc_ctx_tensors_from_buft",
-                    ]
-                )
-                if not is_oom:
-                    self._logger.error(f"❌ Non-OOM init failure: {e}")
-                    raise
-                self._logger.warning(f"🔥 OOM detected (attempt {attempt}): {e}")
-                try:
-                    if "llama_instance" in locals():
-                        llama_instance.close()
-                except Exception:
-                    pass
-                # Use a valid strategy label for logging integration; treat as clear_memory for first pass
-                self.oom_recovery.record_failure(
-                    attempt=attempt,
-                    strategy="clear_memory",
-                    params=current_params,
-                    error_message=err,
-                )
-                recovery = self.oom_recovery.execute_recovery_strategy(
-                    attempt=attempt,
-                    original_params=original_params,
-                    current_params=current_params,
-                    hardware_manager=self.hardware_manager,
-                )
-                current_params = recovery.parameters
-                if attempt_index == 0 and len(attempt_params_list) > 1:
-                    attempt_index = 1
-                    current_params = attempt_params_list[1]
-                if attempt >= max_attempts:
-                    stats = self.oom_recovery.get_statistics()
-                    self._logger.error(
-                        f"❌ Failed to initialize {self.model.name} after {max_attempts} attempts. Stats: {stats}"
-                    )
-                    raise RuntimeError(
-                        f"Failed to initialize {self.model.name} after {max_attempts} attempts"
-                    ) from e
-        raise RuntimeError(f"Unexpected termination of init loop for {self.model.name}")
+                attempt += 1
+        # Should never reach here: attempt starts at 1 and loop raises on max_attempts
+        raise RuntimeError(f"Initialization fell through unexpectedly for {self.model.name}")
 
     def _format_messages_for_llama(
         self, messages: List[BaseMessage]
