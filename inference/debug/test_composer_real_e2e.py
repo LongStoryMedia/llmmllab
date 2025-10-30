@@ -63,7 +63,8 @@ class ChatCompletionE2ETester:
 
         # Support multiple models for comprehensive testing
         available_models = [
-            "qwen3-30b-a3b-q4-k-m",  # Primary model - use this as default
+            "qwen3-vl-32b-thinking-abliterated",  # Primary multimodal model - use this as default
+            "qwen3-30b-a3b-q4-k-m",
             "openai-gpt-oss-20b-uncensored-q5_1",
             "qwen2.5-vl-32b-instruct-q4-k-m",
         ]
@@ -478,19 +479,28 @@ class ChatCompletionE2ETester:
             if not storage or not storage.message:
                 raise RuntimeError("Storage message service not available")
 
-            # Create a message that will benefit from tool usage
+            # Create a multimodal message for testing vision capabilities
             query_text = (
                 query
-                or """I need current information about the latest developments in artificial intelligence. 
-Specifically, I'm interested in:
-1. Major AI model releases
-2. Recent breakthroughs in AI research
-3. Current AI safety developments
-Please search for the most recent information and provide a comprehensive summary."""
+                or """Look at this image and describe what you see. What colors are visible, and what might this represent? Also, please provide information about the latest developments in multimodal AI models that can process both text and images together."""
             )
 
+            # Create a simple test image (red square) as base64
+            import base64
+            from io import BytesIO
+            from PIL import Image
+            
+            # Create test image
+            img = Image.new('RGB', (200, 200), color='red')
+            buffer = BytesIO()
+            img.save(buffer, format='PNG')
+            img_data = buffer.getvalue()
+            img_base64 = base64.b64encode(img_data).decode('utf-8')
+            test_image_data = f"data:image/png;base64,{img_base64}"
+
             content_list = [
-                MessageContent(type=MessageContentType.TEXT, text=query_text)
+                MessageContent(type=MessageContentType.TEXT, text=query_text),
+                MessageContent(type=MessageContentType.IMAGE, url=test_image_data)
             ]
 
             user_message = Message(
@@ -1439,7 +1449,8 @@ async def main():
 
     # Available models for testing
     available_models = [
-        "qwen3-30b-a3b-q4-k-m",  # Primary model - use this as default
+        "qwen3-vl-32b-thinking-abliterated",  # Primary multimodal model - use this as default
+        "qwen3-30b-a3b-q4-k-m",
         "openai-gpt-oss-20b-uncensored-q5_1",
     ]
 

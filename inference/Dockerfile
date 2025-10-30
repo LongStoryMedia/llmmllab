@@ -38,8 +38,9 @@ RUN python3 -m venv /tmp/build_venv && \
     # Install llama-cpp-python dependencies first
     pip install --no-cache-dir diskcache>=5.6.1 typing-extensions>=4.5.0 numpy>=1.20.0 jinja2>=2.11.3 && \
     # Only build llama-cpp-python with CUDA (the main package that needs compilation)
+    # Updated to use commit 835e918 with qwen3vl architecture support
     CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86" \
-    pip wheel --wheel-dir /opt/wheels git+https://github.com/LongStoryMedia/llama-cpp-python.git@feature/b6482 --no-deps -vvv && \
+    pip wheel --wheel-dir /opt/wheels git+https://github.com/LongStoryMedia/llama-cpp-python.git@feat/qwen3vl --no-deps -vvv && \
     # Clean up immediately to reduce layer size
     deactivate && \
     rm -rf /tmp/build_venv /root/.cache /tmp/*
