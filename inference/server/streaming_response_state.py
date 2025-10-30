@@ -204,7 +204,14 @@ class StreamingResponseState:
             self.accumulated_thinking += clean_chunk
 
         # Return ChatResponse with thinking content in the thoughts field (not main content)
-        thoughts = [Thought(text=clean_chunk)] if clean_chunk else None
+        # Create Thought object with proper fields for serialization
+        thoughts = [Thought(
+            text=clean_chunk,
+            id=None,
+            message_id=None,
+            created_at=None
+        )] if clean_chunk else None
+        
         message = Message(
             role=MessageRole.ASSISTANT, 
             content=[],  # Empty main content - thoughts go in separate field
@@ -224,7 +231,14 @@ class StreamingResponseState:
             self.accumulated_thinking += clean_chunk
 
         # Return ChatResponse with processing content in thoughts field (not main content)
-        thoughts = [Thought(text=clean_chunk)] if clean_chunk else None
+        # Create Thought object with proper fields for serialization
+        thoughts = [Thought(
+            text=clean_chunk,
+            id=None,
+            message_id=None,
+            created_at=None
+        )] if clean_chunk else None
+        
         message = Message(
             role=MessageRole.ASSISTANT,
             content=[],  # Empty main content - processing goes in thoughts field
@@ -273,28 +287,28 @@ class StreamingResponseState:
 
         # Filter out JSON metadata blocks
         if clean_chunk:
+            # Check if this chunk is JSON metadata that should be filtered
+            if self._is_json_metadata(clean_chunk):
+                # Debug: Log when JSON metadata is detected and filtered
+                from utils.logging import llmmllogger
+
+                logger = llmmllogger.logger.bind(component="StreamingResponseState")
+                logger.debug(
+                    f"� JSON metadata filtered: '{clean_chunk[:100]}{'...' if len(clean_chunk) > 100 else ''}'"
+                )
+                # Return empty response - do NOT include this content
+                return ChatResponse(
+                    message=Message(role=MessageRole.ASSISTANT, content=[]), 
+                    done=False
+                )
+            
+            # Process the chunk through boundaries detection
             filtered_chunk = self._detect_json_block_boundaries(clean_chunk)
-            # Only process non-JSON content
+            
+            # Only add to response buffer if it passes all filters
             if filtered_chunk and not self._is_json_metadata(filtered_chunk):
                 self.response_buffer += filtered_chunk
-            elif clean_chunk and not filtered_chunk:
-                # Debug: Log when content is filtered out
-                from utils.logging import llmmllogger
-
-                logger = llmmllogger.logger.bind(component="StreamingResponseState")
-                logger.debug(
-                    f"🚫 Filtered out content: '{clean_chunk[:100]}{'...' if len(clean_chunk) > 100 else ''}'"
-                )
-            elif self._is_json_metadata(clean_chunk):
-                # Debug: Log when JSON metadata is detected
-                from utils.logging import llmmllogger
-
-                logger = llmmllogger.logger.bind(component="StreamingResponseState")
-                logger.debug(
-                    f"🔍 JSON metadata filtered: '{clean_chunk[:100]}{'...' if len(clean_chunk) > 100 else ''}')"
-                )
-
-                # Return ChatResponse with main message content
+                # Return ChatResponse with this valid content
                 content = [
                     MessageContent(type=MessageContentType.TEXT, text=filtered_chunk)
                 ]
@@ -302,8 +316,16 @@ class StreamingResponseState:
                     message=Message(role=MessageRole.ASSISTANT, content=content),
                     done=False,
                 )
+            else:
+                # Debug: Log when content is filtered out
+                from utils.logging import llmmllogger
 
-        # Return empty response if content was filtered out
+                logger = llmmllogger.logger.bind(component="StreamingResponseState")
+                logger.debug(
+                    f"🚫 Filtered out content: '{clean_chunk[:100]}{'...' if len(clean_chunk) > 100 else ''}'"
+                )
+
+        # Return empty response if no valid content
         return ChatResponse(
             message=Message(role=MessageRole.ASSISTANT, content=[]), done=False
         )
@@ -458,10 +480,15 @@ class StreamingResponseState:
                             "execution_time_ms": 0,
                         }
 
-                    # Extract function call details
-                    self.current_tool_call["tool_name"] = function_data.get(
-                        "name", function_data.get("function", "")
+                    # Extract function call details - try multiple fields for tool name
+                    tool_name = (
+                        function_data.get("name") or 
+                        function_data.get("function") or 
+                        function_data.get("tool_name") or
+                        self._infer_tool_name_from_args(function_data)
                     )
+                    
+                    self.current_tool_call["tool_name"] = tool_name
                     self.current_tool_call["args"] = function_data.get(
                         "args",
                         function_data.get(
@@ -488,12 +515,46 @@ class StreamingResponseState:
 
         # Look for common function call indicators
         function_indicators = ["name", "function", "tool_name"]
-        args_indicators = ["args", "arguments", "parameters"]
+        args_indicators = ["args", "arguments", "parameters", "query", "url", "search"]
 
         has_function = any(key in data for key in function_indicators)
         has_args = any(key in data for key in args_indicators)
 
-        return has_function and (has_args or len(data) >= 1)
+        # Also accept data that looks like tool arguments even without explicit name
+        return has_function and has_args or self._can_infer_tool_from_args(data)
+
+    def _can_infer_tool_from_args(self, data: dict) -> bool:
+        """Check if we can infer a tool from the argument structure."""
+        if not isinstance(data, dict):
+            return False
+        
+        # Common tool argument patterns
+        tool_patterns = {
+            "query": ["web_search", "search"],
+            "url": ["fetch_url", "web_fetch"],
+            "code": ["execute_code", "code_runner"],
+            "filename": ["file_read", "file_write"],
+            "path": ["file_operations"],
+        }
+        
+        return any(key in data for key in tool_patterns.keys())
+
+    def _infer_tool_name_from_args(self, data: dict) -> str:
+        """Infer tool name from argument structure when explicit name is missing."""
+        if not isinstance(data, dict):
+            return ""
+        
+        # Infer tool names based on argument patterns
+        if "query" in data:
+            return "web_search"
+        elif "url" in data:
+            return "fetch_url"
+        elif "code" in data:
+            return "execute_code"
+        elif "filename" in data or "path" in data:
+            return "file_operations"
+        
+        return "unknown_tool"
 
     def _detect_function_call_start(self, chunk: str) -> bool:
         """Detect if chunk contains the start of a function call without XML wrappers."""
@@ -527,7 +588,12 @@ class StreamingResponseState:
         # Don't include response_buffer content since it's already been streamed
         # Only include the final thinking and tool_calls
         thinking = (
-            Thought(text=self.accumulated_thinking)
+            Thought(
+                text=self.accumulated_thinking,
+                id=None,
+                message_id=None,
+                created_at=None
+            )
             if self.accumulated_thinking
             else None
         )
