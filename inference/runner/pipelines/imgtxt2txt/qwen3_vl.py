@@ -6,12 +6,16 @@ Optimized for Qwen3 VL models with vision capabilities.
 import os
 import json
 from typing import Dict, Any, Optional, Type, List
+from llama_cpp.llama import Llama
+from llama_cpp.llama_chat_format import LlamaChatCompletionHandler, Qwen25VLChatHandler
 from pydantic import BaseModel  # noqa: F401
+
 # llama_cpp imported lazily within methods to reduce unnecessary top-level dependencies
 # Pillow not required for text-only stabilization; multimodal image loading currently disabled.
 
 from models import Model, ModelProfile
 from runner.pipelines.llamacpp import BaseLlamaCppPipeline
+from torch import clip_
 
 
 class Qwen3VLPipeline(BaseLlamaCppPipeline):
@@ -32,12 +36,11 @@ class Qwen3VLPipeline(BaseLlamaCppPipeline):
         model: Model,
         profile: ModelProfile,
         grammar: Optional[Type[BaseModel]] = None,
-        **kwargs
+        **kwargs,
     ):
         # Store multimodal-specific parameters before calling super().__init__
+        # Text-only stabilization flag must be set before base __init__ (which calls _get_chat_handler)
         self._multimodal_chat_handler = None
-        # Text-only stabilization flag: when true, skip vision handler to avoid segfault until root cause fixed.
-        self._text_only_mode = os.getenv("QWEN3_VL_TEXT_ONLY", "false").lower() == "true"
         super().__init__(model, profile, grammar, **kwargs)
 
     @property
@@ -60,6 +63,18 @@ class Qwen3VLPipeline(BaseLlamaCppPipeline):
         )
         return base_params
 
+    def _initialize_llama(
+        self, gguf_path: str, h: LlamaChatCompletionHandler | None = None
+    ) -> Llama:
+        clip_model_path = self._get_clip_model_path()
+        if clip_model_path:
+            return super()._initialize_llama(
+                gguf_path,
+                Qwen25VLChatHandler(clip_model_path=clip_model_path, verbose=False),
+            )
+        else:
+            return super()._initialize_llama(gguf_path, h)
+
     def _get_clip_model_path(self) -> Optional[str]:
         """Get the clip model path for multimodal processing from model details.
 
@@ -76,37 +91,37 @@ class Qwen3VLPipeline(BaseLlamaCppPipeline):
                     self._logger.warning(
                         f"Configured clip model path does not exist: {clip_path}"
                     )
-        self._logger.warning(
-            f"No clip model path configured for {self.model.name}"
-        )
+        self._logger.warning(f"No clip model path configured for {self.model.name}")
         return None
 
     def _create_chat_handler(self):
         """Create the appropriate chat handler for Qwen3 VL multimodal processing."""
         try:
             from llama_cpp.llama_chat_format import Qwen25VLChatHandler
+
             clip_path = self._get_clip_model_path()
             if clip_path:
-                self._logger.info(f"Creating Qwen25VLChatHandler with clip model: {clip_path}")
+                self._logger.info(
+                    f"Creating Qwen25VLChatHandler with clip model: {clip_path}"
+                )
                 # Create the chat handler with the clip model path
                 return Qwen25VLChatHandler(clip_model_path=clip_path)
             else:
-                self._logger.error("No clip model path available for multimodal chat handler")
+                self._logger.error(
+                    "No clip model path available for multimodal chat handler"
+                )
                 return None
         except ImportError:
-            self._logger.error("Qwen25VLChatHandler not available in this llama-cpp-python version")
+            self._logger.error(
+                "Qwen25VLChatHandler not available in this llama-cpp-python version"
+            )
             return None
         except Exception as e:
             self._logger.error(f"Failed to create Qwen25VLChatHandler: {e}")
             return None
 
-
-
     def _get_chat_handler(self):
         """Override to provide multimodal chat handler."""
-        if self._text_only_mode:
-            self._logger.info("Text-only mode enabled for Qwen3 VL; skipping vision chat handler")
-            return None
         return self._create_chat_handler()
 
     def _get_chat_format(self) -> Optional[str]:  # noqa: D401
@@ -135,7 +150,9 @@ class Qwen3VLPipeline(BaseLlamaCppPipeline):
                 idx = end + 1
         return paths
 
-    def _prepare_multimodal_messages(self, messages, image_paths: List[str]) -> List[Dict[str, str]]:
+    def _prepare_multimodal_messages(
+        self, messages, image_paths: List[str]
+    ) -> List[Dict[str, str]]:
         """Embed image path markers into the first system message for the Qwen VL chat handler.
 
         The upstream handler expects images referenced in the prompt. We inline markers:
@@ -144,30 +161,27 @@ class Qwen3VLPipeline(BaseLlamaCppPipeline):
         """
         llama_messages = self._format_messages_for_llama(messages)
         if image_paths:
-            tag_block = "\n".join(
-                [f"<img src=\"{p}\" />" for p in image_paths if p]
-            )
+            tag_block = "\n".join([f'<img src="{p}" />' for p in image_paths if p])
             # Prepend to first system message if exists, else create one
             if llama_messages and llama_messages[0]["role"] == "system":
-                llama_messages[0]["content"] = tag_block + "\n" + llama_messages[0]["content"]
-            else:
-                llama_messages.insert(
-                    0, {"role": "system", "content": tag_block}
+                llama_messages[0]["content"] = (
+                    tag_block + "\n" + llama_messages[0]["content"]
                 )
+            else:
+                llama_messages.insert(0, {"role": "system", "content": tag_block})
         return llama_messages
 
-    def _get_res(self, messages, stop: Optional[List[str]] = None, tools: Optional[List[Any]] = None, stream: bool = False):
+    def _get_res(
+        self,
+        messages,
+        stop: Optional[List[str]] = None,
+        tools: Optional[List[Any]] = None,
+        stream: bool = False,
+    ):
         """Extend base response retrieval to include images for multimodal."""
-        image_paths: List[str] = []
-        # In text-only mode, skip image extraction entirely.
-        if not self._text_only_mode:
-            image_paths = self._extract_image_paths(messages)
+        image_paths = self._extract_image_paths(messages)
         converted_tools = self._convert_tools_to_simple_format(tools)
-        llama_messages = (
-            self._prepare_multimodal_messages(messages, image_paths)
-            if (not self._text_only_mode)
-            else self._format_messages_for_llama(messages)
-        )
+        llama_messages = self._prepare_multimodal_messages(messages, image_paths)
         self._logger.info(
             f"Chat completion (VL): model={self.model.name}, messages={len(llama_messages)}, tools={len(converted_tools) if converted_tools else 0}, image_paths={len(image_paths)}"
         )
@@ -180,6 +194,7 @@ class Qwen3VLPipeline(BaseLlamaCppPipeline):
             }
             try:
                 from llama_cpp import llama_grammar as _llama_grammar
+
                 grammar = _llama_grammar.LlamaGrammar.from_json_schema(
                     json.dumps(self.grammar.model_json_schema())
                 )
