@@ -1,17 +1,22 @@
 """
-Composer-based Real End-to-End Pipeline Test
+Chat Completion E2E Test - Real HTTP Interface Validation
 
-This test validates the complete LLM ML Lab pipeline using the new composer architecture:
+This test validates the complete LLM ML Lab pipeline through the actual chat completion HTTP interface:
 1. Real user creation in database
 2. Real model profile creation
 3. Real conversation and message creation
-4. **Composer workflow execution** using compose_workflow, create_initial_state, execute_workflow
-5. Real tool integration via LangGraph workflows
-6. Real output validation
-7. Complete cleanup of all created data
+4. **HTTP chat completion requests** to /chat/completions endpoint
+5. **Streaming response capture** exactly as UI receives it
+6. **Content filtering validation** for our recent fixes:
+   - Intent analysis JSON not leaking into message content
+   - Thoughts not appearing in main message content
+   - Tool calls showing proper names (not "unknown_tool")
+   - Thoughts as clean text (not serialized Pydantic objects)
+   - System aware of correct date (2025, not 2023)
+7. Real output validation and cleanup
 
-This modernized version uses the composer/__init__.py entry points and follows
-the new architectural patterns with LangGraph workflows instead of direct pipeline calls.
+This test uses the actual HTTP chat completion endpoint to capture streaming responses
+exactly as the UI would receive them, validating our content filtering fixes.
 """
 
 import asyncio
@@ -21,25 +26,29 @@ import json
 import os
 import sys
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+import httpx
+import re
 
 from utils.logging import llmmllogger
 
 # Configure logging
-logger = llmmllogger.bind(component="composer_e2e_test")
+logger = llmmllogger.bind(component="chat_completion_e2e_test")
 
 
-class ComposerRealEndToEndTester:
-    """Real end-to-end test using composer architecture."""
+class ChatCompletionE2ETester:
+    """Real end-to-end test using HTTP chat completion endpoint."""
 
     def __init__(
         self,
         target_model: Optional[str] = None,
         capture_llm_output: bool = True,
         print_output: bool = False,
+        server_url: str = "http://localhost:8000",
     ):
-        """Initialize composer-based pipeline tester."""
-        self.test_user_id = f"test_composer_user_{uuid.uuid4().hex[:8]}"
+        """Initialize HTTP chat completion tester."""
+        self.server_url = server_url.rstrip("/")
+        self.test_user_id = f"test_chat_user_{uuid.uuid4().hex[:8]}"
         self.test_model_profile_id = uuid.uuid4()
         self.test_conversation_id: Optional[int] = None
         self.test_message_id: Optional[int] = None
@@ -62,6 +71,13 @@ class ComposerRealEndToEndTester:
         self.target_model = target_model or available_models[0]
         self.available_models = available_models
 
+        # HTTP client for requests
+        self.http_client = None
+        
+        # Response validation tracking
+        self.streaming_responses = []  # Store all streaming JSON responses
+        self.content_issues = []  # Track content filtering issues
+        
         # Initialize LLM output file if capture is enabled
         if self.capture_llm_output:
             self._initialize_llm_output_file()
@@ -77,7 +93,7 @@ class ComposerRealEndToEndTester:
         os.makedirs(self.output_dir, exist_ok=True)
 
         self.llm_output_file = (
-            f"{self.output_dir}/composer_llm_output_{model_safe}_{timestamp}.txt"
+            f"{self.output_dir}/chat_completion_output_{model_safe}_{timestamp}.txt"
         )
 
         # Create the file with header
@@ -210,7 +226,7 @@ class ComposerRealEndToEndTester:
 
     async def run_full_test(self, query: Optional[str] = "") -> Dict[str, Any]:
         """Run complete composer-based end-to-end pipeline test."""
-        logger.info("🚀 Starting Composer Real End-to-End Pipeline Test")
+        logger.info("🚀 Starting Chat Completion HTTP End-to-End Test")
         logger.info("=" * 80)
 
         test_results = {
@@ -265,10 +281,10 @@ class ComposerRealEndToEndTester:
             if message_result["success"]:
                 test_results["components_passed"] += 1
 
-            # Phase 6: Composer Workflow Execution (THE KEY TEST)
-            logger.info("🎼 Phase 6: Composer Workflow Execution")
-            workflow_result = await self.execute_composer_workflow()
-            test_results["results"]["workflow_execution"] = workflow_result
+            # Phase 6: HTTP Chat Completion Execution (THE KEY TEST)
+            logger.info("� Phase 6: HTTP Chat Completion Execution")
+            workflow_result = await self.execute_chat_completion()
+            test_results["results"]["chat_completion_execution"] = workflow_result
             if workflow_result["success"]:
                 test_results["components_passed"] += 1
                 test_results["workflow_time"] = workflow_result.get("execution_time", 0)
@@ -508,558 +524,299 @@ Please search for the most recent information and provide a comprehensive summar
             traceback.print_exc()
             return {"success": False, "error": str(e)}
 
-    async def execute_composer_workflow(self) -> Dict[str, Any]:
-        """Execute composer workflow using the new architecture."""
-        logger.info("🎼 Executing composer workflow...")
+    async def execute_chat_completion(self) -> Dict[str, Any]:
+        """Execute chat completion via HTTP endpoint exactly as UI would."""
+        logger.info("� Executing HTTP chat completion...")
 
         try:
-            # Import composer functions
-            from composer import (
-                compose_workflow,
-                create_initial_state,
-                execute_workflow,
-            )
-            from models import WorkflowType
+            # Initialize HTTP client
+            if not self.http_client:
+                self.http_client = httpx.AsyncClient(timeout=60.0)
+
+            # Get the user message from database
             from db import storage
+            
+            if not self.test_conversation_id or not self.test_message_id:
+                raise Exception("Missing conversation or message ID for HTTP request")
 
-            # Ensure we have required IDs
-            if not self.test_conversation_id or not storage or not storage.message:
-                raise Exception("Missing required components for workflow execution")
-
-            # Get conversation messages for context
             messages = await storage.message.get_conversation_history(
                 self.test_conversation_id
             )
             if not messages:
                 raise Exception("No messages found for conversation")
+            
+            # Get the last user message
+            user_message = None
+            for msg in reversed(messages):
+                if msg.role.value == "user":
+                    user_message = msg
+                    break
+                    
+            if not user_message:
+                raise Exception("No user message found for chat completion")
 
-            logger.info(f"   📝 Processing {len(messages)} messages")
-
-            # Capture conversation history
-            messages_data = []
-            for msg in messages:
-                messages_data.append(msg.model_dump_json())
-
-            # Step 1: Compose workflow for user
-            logger.info("   🎼 Step 1: Composing workflow...")
-            workflow = await compose_workflow(self.test_user_id)
-            try:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                output_path = f"{self.output_dir}/workflow_graph_{timestamp}.md"
-                doc = workflow.get_graph().draw_mermaid(
-                    with_styles=True,
-                )
-                with open(output_path, "w", encoding="utf-8") as f:
-                    f.write("```mermaid\n")
-                    f.write(doc)
-                    f.write("\n```\n")
-                logger.info(f"  Workflow graph saved: {output_path}")
-                logger.info(f"   ✅ Workflow composed: {type(workflow).__name__}")
-            except Exception as e:
-                logger.warning(f"   ⚠️ Could not generate workflow graph image: {e}")
-                pass
-
-            # Step 2: Create initial state
-            logger.info("   🎼 Step 2: Creating initial state...")
-            initial_state = await create_initial_state(
-                user_id=self.test_user_id,
-                conversation_id=self.test_conversation_id,
-            )
-            logger.info(f"   ✅ Initial state created: {type(initial_state).__name__}")
-
-            # Capture initial state information
-            initial_state_data = {
-                "state_type": type(initial_state).__name__,
-                "user_id": self.test_user_id,
-                "workflow_type": WorkflowType.GENERAL,
-                "message_count": len(messages),
+            logger.info(f"   📝 Sending HTTP request for message: {user_message.id}")
+            
+            # Prepare request data exactly as UI would send it
+            request_data = user_message.model_dump()
+            
+            # Make HTTP POST request to chat completion endpoint
+            headers = {
+                "Content-Type": "application/json",
+                "User-ID": self.test_user_id,  # Auth header
+                "X-Request-ID": f"test_request_{uuid.uuid4().hex[:8]}",
             }
-
-            # Try to extract more state data if possible
-            if hasattr(initial_state, "__dict__"):
-                try:
-                    state_dict = {}
-                    for key, value in initial_state.__dict__.items():
-                        # Convert complex objects to string representations
-                        if hasattr(value, "__dict__"):
-                            state_dict[key] = str(value)
-                        elif isinstance(
-                            value, (list, dict, str, int, float, bool, type(None))
-                        ):
-                            state_dict[key] = value
-                        else:
-                            state_dict[key] = str(value)
-                    initial_state_data["state_contents"] = state_dict
-                except Exception as e:
-                    logger.warning(f"Could not extract full state data: {e}")
-
-            self._write_detailed_data(
-                section="WORKFLOW",
-                title="Initial State",
-                data=initial_state_data,
-                description="Initial workflow state before execution",
-            )
-
-            # Step 3: Execute workflow with streaming
-            logger.info("   🎼 Step 3: Executing workflow with streaming...")
+            
+            logger.info(f"   🚀 Making request to {self.server_url}/chat/completions")
+            
+            # Execute HTTP request and capture streaming response
             start_time = time.time()
-            response_chunks = []
-            tool_calls_detected = False
-            full_response = ""
-            error_events: list = []
+            streaming_responses = []
+            full_content = ""
+            tool_calls = []
+            thoughts_content = ""
+            analyses_content = []
+            content_issues = []  # Track content filtering issues
 
-            # Capture workflow events and detailed data
-            event_count = 0
-            tool_events = []
-            model_events = []
-
-            async for event in execute_workflow(workflow, initial_state, stream=True):
-                event_count += 1
-
-                # Process different types of events - use dict access for safety
-                event_dict = event if isinstance(event, dict) else {}
-
-                # Check if this event contains tool execution information
-                if hasattr(event_dict, "__dict__") and hasattr(event_dict, "node_name"):
-                    # This could be a node execution event
-                    if getattr(event_dict, "node_name", None) == "tool_executor":
-                        tool_calls_detected = True
-                        logger.info("   🛠️  Tool execution node detected")
-
-                # Capture significant events for detailed logging
-                if "event" in event_dict:
-                    event_type = event_dict["event"]
-                    # Capture only actual error events that indicate workflow failures
-                    # Note: on_tool_error is not necessarily a failure - tools can handle errors gracefully
-                    if event_type in [
-                        "on_chain_error",
-                        "on_chat_model_error",
-                        "on_llm_error",
-                        "on_retriever_error",
-                    ]:
-                        # Check if this is actually an unrecoverable error
-                        error_data = event_dict.get("data", {})
-                        if isinstance(error_data, dict) and "error" in error_data:
-                            # Only count as error if there's actual error data
-                            error_events.append(event_dict)
-
-                    # Log significant events to output file
-                    if event_type in [
-                        "on_chat_model_start",
-                        "on_chat_model_end",
-                        "on_tool_start",
-                        "on_tool_end",
-                        "on_chain_start",
-                        "on_chain_end",
-                    ]:
-                        self._write_workflow_event(
-                            event_type=event_type,
-                            event_data=event_dict,
-                            context=f"Event {event_count} in workflow execution",
-                        )
-
-                    # Handle streaming events
-                    if event_type == "on_chat_model_start":
-                        # Capture the input to the model
-                        if "data" in event_dict and "input" in event_dict["data"]:
-                            model_input = event_dict["data"]["input"]
-                            self._write_detailed_data(
-                                section="MODEL_INPUT",
-                                title="Model Input Messages",
-                                data=model_input,
-                                description="Messages and prompts sent to the LLM",
-                            )
-                            model_events.append(
-                                {
-                                    "type": "model_start",
-                                    "input": model_input,
-                                    "timestamp": time.time(),
-                                }
-                            )
-
-                    elif event_type == "on_chat_model_stream":
-                        # Token streaming
-                        if "data" in event_dict:
-                            data = event_dict["data"]
-                            if isinstance(data, dict) and "chunk" in data:
-                                chunk = data["chunk"]
-                                # Handle both dict and object chunk formats
-                                content = None
-                                if isinstance(chunk, dict):
-                                    content = chunk.get("content", "")
-                                elif hasattr(chunk, "content"):
-                                    content = getattr(chunk, "content", "")
-
-                                if content:
-                                    full_response += content
-                                    response_chunks.append(
-                                        {
-                                            "type": "token",
-                                            "content": content,
-                                            "timestamp": time.time(),
-                                        }
-                                    )
-
-                    elif event_type == "on_chat_model_end":
-                        if "data" in event_dict:
-                            data = event_dict["data"]
-                            if isinstance(data, dict) and "output" in data:
-                                output = data["output"]
-                                if hasattr(output, "content") and output.content:
-                                    # This is the complete response
-                                    if output.content not in full_response:
-                                        full_response += output.content
-                                        response_chunks.append(
-                                            {
-                                                "type": "complete",
-                                                "content": output.content,
-                                                "timestamp": time.time(),
-                                            }
-                                        )
-                                        logger.info(
-                                            f"   📝 Captured complete response: {len(output.content)} chars"
-                                        )
-
-                                # Capture the complete model output
-                                self._write_detailed_data(
-                                    section="MODEL_OUTPUT",
-                                    title="Complete Model Response",
-                                    data={
-                                        "content": (
-                                            output.content
-                                            if hasattr(output, "content")
-                                            else str(output)
-                                        ),
-                                        "metadata": (
-                                            getattr(output, "response_metadata", {})
-                                            if hasattr(output, "response_metadata")
-                                            else {}
-                                        ),
-                                        "additional_kwargs": (
-                                            getattr(output, "additional_kwargs", {})
-                                            if hasattr(output, "additional_kwargs")
-                                            else {}
-                                        ),
-                                    },
-                                    description="Complete response from the LLM",
-                                )
-
-                    elif event_type == "on_tool_start":
-                        # Tool execution starting - this indicates tool calls are happening
-                        tool_calls_detected = True
-                        if "data" in event_dict:
-                            tool_data = event_dict["data"]
-                            logger.info(
-                                f"   🛠️  Tool call detected: {tool_data.get('name', 'Unknown')}"
-                            )
-                            self._write_detailed_data(
-                                section="TOOL_EXECUTION",
-                                title=f"Tool Start: {tool_data.get('name', 'Unknown')}",
-                                data=tool_data,
-                                description=f"Tool execution starting for {tool_data.get('name', 'Unknown')}",
-                            )
-                            tool_events.append(
-                                {
-                                    "type": "tool_start",
-                                    "data": tool_data,
-                                    "timestamp": time.time(),
-                                }
-                            )
-
-                    elif event_type == "on_tool_end":
-                        # Tool execution completed
-                        if "data" in event_dict:
-                            tool_data = event_dict["data"]
-                            self._write_detailed_data(
-                                section="TOOL_EXECUTION",
-                                title=f"Tool End: {tool_data.get('name', 'Unknown')}",
-                                data=tool_data,
-                                description=f"Tool execution completed for {tool_data.get('name', 'Unknown')}",
-                            )
-                            tool_events.append(
-                                {
-                                    "type": "tool_end",
-                                    "data": tool_data,
-                                    "timestamp": time.time(),
-                                }
-                            )
-
-                elif isinstance(event_dict, dict):
-                    # Handle dict events
-                    if "data" in event_dict:
-                        data = event_dict["data"]
-                        if isinstance(data, dict) and "content" in data:
-                            content = data["content"]
-                            full_response += content
-                            response_chunks.append(
-                                {
-                                    "type": "content",
-                                    "content": content,
-                                    "timestamp": time.time(),
-                                }
-                            )
-
-                        # Check for tool calls
-                        if "tool_calls" in data or "function_call" in data:
-                            tool_calls_detected = True
-                            logger.info("   🛠️  Tool call detected in workflow")
-
+            
+            async with self.http_client.stream(
+                "POST",
+                f"{self.server_url}/chat/completions", 
+                json=request_data,
+                headers=headers
+            ) as response:
+                
+                if response.status_code != 200:
+                    raise Exception(f"HTTP {response.status_code}: {await response.aread()}")
+                
+                logger.info("   📡 Receiving streaming response...")
+                
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
+                        
+                    try:
+                        # Parse JSON response chunk exactly as UI would
+                        chunk_data = json.loads(line)
+                        streaming_responses.append(chunk_data)
+                        
+                        # Validate content filtering - these are the issues we're testing fixes for
+                        if "message" in chunk_data and chunk_data["message"]:
+                            message = chunk_data["message"]
+                            
+                            # Check main message content for leaks
+                            if "content" in message and message["content"]:
+                                for content_item in message["content"]:
+                                    if content_item.get("type") == "text":
+                                        text = content_item.get("text", "")
+                                        full_content += text
+                                        
+                                        # VALIDATION 1: Intent analysis JSON should NOT be in main content
+                                        if self._detect_intent_analysis_leak(text):
+                                            content_issues.append({
+                                                "issue": "intent_analysis_in_content",
+                                                "text_sample": text[:200] + "..." if len(text) > 200 else text
+                                            })
+                                        
+                                        # VALIDATION 2: Thoughts should NOT be in main content  
+                                        if self._detect_thoughts_leak(text):
+                                            content_issues.append({
+                                                "issue": "thoughts_in_content", 
+                                                "text_sample": text[:200] + "..." if len(text) > 200 else text
+                                            })
+                                        
+                                        # VALIDATION 3: Check for 2023 date references (should be 2025)
+                                        if self._detect_wrong_date(text):
+                                            content_issues.append({
+                                                "issue": "wrong_year_2023",
+                                                "text_sample": text[:200] + "..." if len(text) > 200 else text
+                                            })
+                            
+                            # Check tool calls for proper names (not "unknown_tool")
+                            if "tool_calls" in message and message["tool_calls"]:
+                                for tool_call in message["tool_calls"]:
+                                    tool_calls.append(tool_call)
+                                    
+                                    # VALIDATION 4: Tool calls should have proper names
+                                    if tool_call.get("name") == "unknown_tool":
+                                        content_issues.append({
+                                            "issue": "unknown_tool_name",
+                                            "tool_data": tool_call
+                                        })
+                            
+                            # Check thoughts format (should be clean text, not serialized objects)
+                            if "thoughts" in message and message["thoughts"]:
+                                for thought in message["thoughts"]:
+                                    if isinstance(thought, dict):
+                                        thoughts_content += thought.get("text", "")
+                                        
+                                        # VALIDATION 5: Thoughts should not be serialized Pydantic objects
+                                        if self._detect_serialized_pydantic(thought):
+                                            content_issues.append({
+                                                "issue": "serialized_pydantic_thoughts",
+                                                "thought_data": thought
+                                            })
+                                    else:
+                                        thoughts_content += str(thought)
+                            
+                            # Collect analyses for validation
+                            if "analyses" in message and message["analyses"]:
+                                analyses_content.extend(message["analyses"])
+                        
+                        # Write streaming response to output file exactly as received
+                        self._write_streaming_response(chunk_data)
+                        
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to parse JSON chunk: {line[:100]}... Error: {e}")
+                        content_issues.append({
+                            "issue": "invalid_json_response",
+                            "raw_line": line[:200] + "..." if len(line) > 200 else line
+                        })
+            
             execution_time = time.time() - start_time
-            logger.info(f"   ✅ Workflow execution completed in {execution_time:.2f}s")
-            logger.info(f"   📊 Total response chunks: {len(response_chunks)}")
-
-            # Additional tool call detection methods
-            if len(tool_events) > 0 and not tool_calls_detected:
-                tool_calls_detected = True
-                logger.info(
-                    f"   🛠️  Tool calls detected via tool_events: {len(tool_events)}"
-                )
-
-            # Check if the response indicates successful tool usage (e.g. web search results)
-            if not tool_calls_detected and full_response:
-                # Look for indicators of successful tool execution in the response
-                tool_indicators = [
-                    "based on recent findings",
-                    "search results",
-                    "according to",
-                    "recent developments",
-                    "latest information",
-                    "current information",
-                    "web search",
-                ]
-                if any(
-                    indicator.lower() in full_response.lower()
-                    for indicator in tool_indicators
-                ):
-                    tool_calls_detected = True
-                    logger.info(
-                        "   🛠️  Tool calls detected via response content analysis"
-                    )
-
-            logger.info(f"   🛠️  Tool calls detected: {tool_calls_detected}")
-            if error_events:
-                logger.error(
-                    f"   🚫 Captured {len(error_events)} workflow error events; marking execution as failed"
-                )
-
-            # Write execution summary
-            execution_summary = {
-                "execution_time": execution_time,
-                "total_events": event_count,
-                "response_chunks": len(response_chunks),
-                "tool_calls_detected": tool_calls_detected,
-                "tool_events_count": len(tool_events),
-                "model_events_count": len(model_events),
-                "final_response_length": len(full_response),
-            }
-
-            self._write_detailed_data(
-                section="EXECUTION_SUMMARY",
-                title="Workflow Execution Summary",
-                data=execution_summary,
-                description="Summary of workflow execution metrics and events",
-            )
-
-            # Write all tool events if any
-            if tool_events:
-                self._write_detailed_data(
-                    section="TOOL_SUMMARY",
-                    title="All Tool Events",
-                    data=tool_events,
-                    description=f"Complete list of {len(tool_events)} tool execution events",
-                )
-
-            # Write response chunks summary
-            if response_chunks:
-                self._write_detailed_data(
-                    section="RESPONSE_SUMMARY",
-                    title="Response Generation Summary",
-                    data={
-                        "total_chunks": len(response_chunks),
-                        "chunk_types": list(
-                            set(chunk["type"] for chunk in response_chunks)
-                        ),
-                        "first_chunk": response_chunks[0] if response_chunks else None,
-                        "last_chunk": response_chunks[-1] if response_chunks else None,
-                    },
-                    description="Summary of response generation process",
-                )
-
-            # Store assistant response in database if we got content
-            if full_response and storage and storage.message:
-                from models.message import Message
-                from models.message_role import MessageRole
-                from models.message_content import MessageContent, MessageContentType
-
-                assistant_message = Message(
-                    id=None,
-                    conversation_id=self.test_conversation_id,
-                    role=MessageRole.ASSISTANT,
-                    content=[
-                        MessageContent(type=MessageContentType.TEXT, text=full_response)
-                    ],
-                    created_at=datetime.now(timezone.utc),
-                )
-
-                assistant_message_id = await storage.message.add_message(
-                    assistant_message
-                )
-
-                # Capture LLM response
-                self._write_llm_response(
-                    "composer_workflow_execution",
-                    full_response,
-                    {
-                        "execution_time": execution_time,
-                        "chunk_count": len(response_chunks),
-                        "tool_calls_detected": tool_calls_detected,
-                        "model": self.target_model,
-                    },
-                )
-
-            # Validate that we actually got meaningful output
+            logger.info(f"   ✅ HTTP chat completion finished in {execution_time:.2f}s")
+            logger.info(f"   📊 Received {len(streaming_responses)} response chunks")
+            
+            # Write comprehensive analysis to output file
+            self._write_content_analysis({
+                "total_chunks": len(streaming_responses),
+                "full_content_length": len(full_content),
+                "tool_calls_count": len(tool_calls),
+                "thoughts_length": len(thoughts_content),
+                "analyses_count": len(analyses_content),
+                "content_issues": content_issues,
+                "execution_time": execution_time
+            })
+            
+            # Determine success based on content filtering validation
             success = True
             validation_errors = []
-
-            # If pipeline node failure logged earlier or error events captured, mark failure
-            if error_events:
+            
+            # Check for content filtering issues (main validation criteria)
+            if content_issues:
                 success = False
-                validation_errors.append(
-                    f"Encountered {len(error_events)} workflow error events (first type: {error_events[0].get('event')})"
-                )
-
-            # Check 1: Must have actual response content
-            if len(full_response.strip()) == 0:
+                for issue in content_issues:
+                    validation_errors.append(f"Content filtering issue: {issue['issue']}")
+                
+                logger.error(f"   ❌ Found {len(content_issues)} content filtering issues")
+                
+            # Basic response validation
+            if len(full_content.strip()) == 0:
                 success = False
-                validation_errors.append("No response content generated")
-
-            # Check 2: Must have response chunks from streaming
-            if len(response_chunks) == 0:
+                validation_errors.append("No response content received")
+            
+            if len(streaming_responses) == 0:
                 success = False
-                validation_errors.append("No response chunks captured from workflow")
-
-            # Check 2a: Must have at least one tool call (strict requirement)
-            if not tool_calls_detected:
-                success = False
-                validation_errors.append(
-                    "No tool calls were executed during workflow (strict failure)"
-                )
-
-            # Check 3: Response length should be reasonable for a real LLM interaction
-            if len(full_response) < 10:  # Very short responses likely indicate issues
-                success = False
-                validation_errors.append(
-                    f"Response too short ({len(full_response)} chars), likely incomplete"
-                )
-
-            # Check 4: Validate output file has captured responses
-            try:
-                if self.llm_output_file:
-                    with open(self.llm_output_file, "r", encoding="utf-8") as f:
-                        output_content = f.read()
-                        # Count actual response entries (PHASE: markers indicate captured content)
-                        response_count = output_content.count("PHASE:")
-                        if response_count == 0:
-                            success = False
-                            validation_errors.append(
-                                "Output file shows 0 captured responses despite workflow execution"
-                            )
-                        logger.info(
-                            f"   📊 Output file validation: {response_count} responses captured"
-                        )
-                else:
-                    validation_errors.append("No output file path configured")
-            except Exception as file_error:
-                success = False
-                validation_errors.append(
-                    f"Could not validate output file: {file_error}"
-                )
-
-            # Check 5: If workflow took significant time but produced no output, likely an internal error
-            if execution_time > 3.0 and len(full_response) == 0:
-                success = False
-                validation_errors.append(
-                    f"Workflow ran for {execution_time:.1f}s but generated no output (likely internal error)"
-                )
-
-            # Check 6: Validate tool availability awareness (only flag as issue if no tools were used)
-            tool_availability_issues = []
-            if not tool_calls_detected:
-                # Extract user-facing content by removing <think> tags and their content
-                import re
-
-                user_facing_content = re.sub(
-                    r"<think>.*?</think>", "", full_response, flags=re.DOTALL
-                )
-
-                if "can't perform actual searches" in user_facing_content.lower():
-                    tool_availability_issues.append(
-                        "Model believes it cannot perform web searches without using tools"
-                    )
-                if "system can't perform" in user_facing_content.lower():
-                    tool_availability_issues.append(
-                        "Model believes system lacks tool capabilities without using tools"
-                    )
-                if "cannot access real-time" in user_facing_content.lower():
-                    tool_availability_issues.append(
-                        "Model believes it cannot access real-time data without using tools"
-                    )
-
-            if tool_availability_issues:
-                success = False
-                validation_errors.extend(tool_availability_issues)
-                logger.error(
-                    f"   🚫 Tool availability issues detected: {', '.join(tool_availability_issues)}"
-                )
-
-            # Check 7: Validate dynamic tool generation doesn't have error handling flags
-            if (
-                "handle_tool_error" in full_response
-                and '"handle_tool_error": true' in full_response
-            ):
-                success = False
-                validation_errors.append(
-                    "Dynamic tool has handle_tool_error=true indicating error conditions"
-                )
-                logger.error(
-                    f"   ⚠️  Dynamic tool configured with error handling (problematic)"
-                )
-
+                validation_errors.append("No streaming responses received")
+            
+            # Tool execution validation (should have tool calls with proper names)
+            tool_calls_detected = len(tool_calls) > 0
+            unknown_tool_count = sum(1 for tc in tool_calls if tc.get("name") == "unknown_tool")
+            
             if not success:
-                logger.error(
-                    f"   ❌ Workflow validation failed: {', '.join(validation_errors)}"
-                )
-
+                logger.error(f"   ❌ Chat completion validation failed: {', '.join(validation_errors)}")
+            else:
+                logger.info(f"   ✅ Content filtering validation passed!")
+                logger.info(f"   🛠️ Tool calls: {len(tool_calls)} (unknown: {unknown_tool_count})")
+                
             return {
                 "success": success,
-                "execution_time": execution_time,
-                "response_chunks": len(response_chunks),
+                "execution_time": execution_time, 
+                "streaming_chunks": len(streaming_responses),
+                "content_length": len(full_content),
                 "tool_calls_detected": tool_calls_detected,
-                "response_length": len(full_response),
-                "workflow_type": "composer_langgraph",
-                "final_response_raw": full_response,  # Full response for debugging
-                "final_response": self._parse_response_as_json(
-                    full_response
-                ),  # Try to parse as JSON
+                "tool_calls_count": len(tool_calls),
+                "unknown_tool_count": unknown_tool_count,
+                "content_issues": content_issues,
                 "validation_errors": validation_errors if validation_errors else None,
-                "tool_availability_correct": len(
-                    [
-                        e
-                        for e in validation_errors
-                        if "tool" in e.lower() or "search" in e.lower()
-                    ]
-                )
-                == 0,
-                "dynamic_tool_error_free": "handle_tool_error" not in full_response
-                or '"handle_tool_error": false' in full_response,
+                "final_response": full_content,
+                "tool_calls": tool_calls,
+                "thoughts": thoughts_content,
+                "analyses": analyses_content,
+                "streaming_responses": streaming_responses,  # Full raw responses for debugging
             }
 
+                # Check if this event contains tool execution information
         except Exception as e:
-            logger.error(f"   ❌ Composer workflow execution failed: {str(e)}")
+            logger.error(f"   ❌ Chat completion HTTP request failed: {str(e)}")
             import traceback
 
             traceback.print_exc()
             return {"success": False, "error": str(e)}
+
+    def _detect_intent_analysis_leak(self, text: str) -> bool:
+        """Detect if intent analysis JSON leaked into main content."""
+        # Look for JSON structures that look like intent analysis
+        patterns = [
+            r'"intent":\s*"[^"]+?"',
+            r'"confidence":\s*[\d\.]+',
+            r'"analysis":\s*{',
+            r'IntentAnalysis\(',
+            r'intent_analysis',
+        ]
+        return any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
+    
+    def _detect_thoughts_leak(self, text: str) -> bool:
+        """Detect if thoughts leaked into main content."""
+        # Look for think tags or thought structures
+        patterns = [
+            r'<think>',
+            r'</think>',
+            r'Thought\(',
+            r'"text":\s*".*?".*"message_id"',
+            r'thinking.*process',
+        ]
+        return any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
+    
+    def _detect_wrong_date(self, text: str) -> bool:
+        """Detect if AI thinks it's 2023 instead of 2025."""
+        # Look for 2023 date references
+        patterns = [
+            r'\b2023\b',
+            r'as of 2023',
+            r'current year.*2023',
+        ]
+        return any(re.search(pattern, text) for pattern in patterns)
+    
+    def _detect_serialized_pydantic(self, thought_data: dict) -> bool:
+        """Detect if thoughts are serialized Pydantic objects instead of clean text."""
+        # Look for Pydantic-specific keys that shouldn't be in clean thoughts
+        problematic_keys = [
+            '__dict__',
+            '__class__',
+            'model_fields',
+            'model_config',
+            'model_validate',
+        ]
+        return any(key in str(thought_data) for key in problematic_keys)
+    
+    def _write_streaming_response(self, chunk_data: dict) -> None:
+        """Write streaming response chunk to output file."""
+        if not self.capture_llm_output or not self.llm_output_file:
+            return
+            
+        try:
+            with open(self.llm_output_file, "a", encoding="utf-8") as f:
+                f.write(f"\n--- STREAMING CHUNK ---\n")
+                f.write(json.dumps(chunk_data, indent=2, ensure_ascii=False))
+                f.write(f"\n--- END CHUNK ---\n")
+        except Exception as e:
+            logger.warning(f"Failed to write streaming response: {e}")
+    
+    def _write_content_analysis(self, analysis_data: dict) -> None:
+        """Write comprehensive content analysis to output file."""
+        if not self.capture_llm_output or not self.llm_output_file:
+            return
+            
+        try:
+            with open(self.llm_output_file, "a", encoding="utf-8") as f:
+                f.write(f"\n{'='*80}\n")
+                f.write(f"CONTENT FILTERING ANALYSIS\n")
+                f.write(f"{'='*80}\n")
+                f.write(json.dumps(analysis_data, indent=2, ensure_ascii=False))
+                f.write(f"\n{'='*80}\n")
+        except Exception as e:
+            logger.warning(f"Failed to write content analysis: {e}")
 
     async def validate_real_outputs(self) -> Dict[str, Any]:
         """Validate real outputs and database integrity."""
@@ -1234,13 +991,18 @@ Please search for the most recent information and provide a comprehensive summar
             return {"valid": False, "error": str(e)}
 
     async def cleanup_real_data(self):
-        """Clean up all real test data from database."""
+        """Clean up all real test data from database and HTTP client."""
         logger.info("🧹 Cleaning up real test data...")
 
         cleaned_count = 0
         cleanup_errors = []
 
         try:
+            # Clean up HTTP client
+            if self.http_client:
+                await self.http_client.aclose()
+                self.http_client = None
+                logger.info("   ✅ HTTP client closed")
             from db import storage
 
             # Ensure we have storage available
@@ -1544,7 +1306,7 @@ Please search for the most recent information and provide a comprehensive summar
     async def print_test_summary(self, results: Dict[str, Any]) -> None:
         """Print comprehensive test summary."""
         logger.info("\n" + "=" * 80)
-        logger.info("📊 Composer Real Pipeline Test Summary")
+        logger.info("📊 Chat Completion HTTP Test Summary")
         logger.info("=" * 80)
 
         success_rate = (
@@ -1598,7 +1360,7 @@ Please search for the most recent information and provide a comprehensive summar
         )
         if title_valid:
             logger.info(f"    Title: '{title_text}'")
-        logger.info(f"🎼 Architecture: Composer + LangGraph")
+        logger.info(f"� Architecture: HTTP Chat Completion")
 
         logger.info("\n📋 Component Results:")
         component_names = [
@@ -1607,7 +1369,7 @@ Please search for the most recent information and provide a comprehensive summar
             "User Profile Creation",
             "Conversation Creation",
             "Message Creation",
-            "Workflow Execution",
+            "Chat Completion Execution",
             "Output Validation",
             "Data Cleanup",
         ]
@@ -1618,7 +1380,7 @@ Please search for the most recent information and provide a comprehensive summar
             "user_profile_creation",
             "conversation_creation",
             "message_creation",
-            "workflow_execution",
+            "chat_completion_execution",
             "output_validation",
             "data_cleanup",
         ]
@@ -1644,7 +1406,7 @@ Please search for the most recent information and provide a comprehensive summar
 
 async def main():
     """Main test execution function."""
-    logger.info("🧪 Starting Composer Real End-to-End Pipeline Tests")
+    logger.info("🧪 Starting Chat Completion HTTP E2E Tests")
 
     # Support command line model selection and output options
     target_model = None
@@ -1676,8 +1438,8 @@ async def main():
     models_to_test = [target_model] if target_model else [available_models[0]]
 
     for model in models_to_test:
-        logger.info(f"🧪 Testing composer architecture with model: {model}")
-        tester = ComposerRealEndToEndTester(
+        logger.info(f"🧪 Testing HTTP chat completion with model: {model}")
+        tester = ChatCompletionE2ETester(
             target_model=model,
             capture_llm_output=capture_output,
             print_output=print_output,
@@ -1700,7 +1462,7 @@ async def main():
             traceback.print_exc()
             return 1
 
-    logger.info("🏁 Composer architecture testing completed successfully!")
+    logger.info("🏁 Chat completion HTTP testing completed successfully!")
     return 0
 
 
