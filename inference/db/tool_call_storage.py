@@ -60,16 +60,42 @@ class ToolCallStorage:
         """Internal method to add tool call using a specific connection."""
         import json
 
-        # Convert optional dict fields to JSON strings
-        args_json = json.dumps(tool_call.args) if tool_call.args else "{}"
-        result_data_json = (
-            json.dumps(tool_call.result_data) if tool_call.result_data else "{}"
-        )
-        resource_usage_json = (
-            json.dumps(tool_call.resource_usage.dict())
-            if tool_call.resource_usage
-            else "{}"
-        )
+        # Convert optional dict fields to JSON strings with safe serialization
+        try:
+            args_json = json.dumps(tool_call.args) if tool_call.args else "{}"
+        except (TypeError, ValueError) as e:
+            self.logger.error(f"Failed to serialize tool_call.args: {e}, args: {tool_call.args}")
+            # Filter out non-serializable objects
+            if tool_call.args and isinstance(tool_call.args, dict):
+                safe_args = {k: str(v) if not isinstance(v, (str, int, float, bool, list, dict)) else v 
+                           for k, v in tool_call.args.items()}
+                args_json = json.dumps(safe_args)
+            else:
+                args_json = "{}"
+        
+        try:
+            result_data_json = (
+                json.dumps(tool_call.result_data) if tool_call.result_data else "{}"
+            )
+        except (TypeError, ValueError) as e:
+            self.logger.error(f"Failed to serialize tool_call.result_data: {e}, result_data: {tool_call.result_data}")
+            # Filter out non-serializable objects
+            if tool_call.result_data and isinstance(tool_call.result_data, dict):
+                safe_result = {k: str(v) if not isinstance(v, (str, int, float, bool, list, dict)) else v 
+                             for k, v in tool_call.result_data.items()}
+                result_data_json = json.dumps(safe_result)
+            else:
+                result_data_json = "{}"
+
+        try:
+            resource_usage_json = (
+                json.dumps(tool_call.resource_usage.dict())
+                if tool_call.resource_usage
+                else "{}"
+            )
+        except (TypeError, ValueError) as e:
+            self.logger.error(f"Failed to serialize tool_call.resource_usage: {e}")
+            resource_usage_json = "{}"
 
         # Handle created_at field - use None if not present (SQL will default to NOW())
         created_at_value = getattr(tool_call, 'created_at', None)
