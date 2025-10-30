@@ -11,8 +11,8 @@ import os
 import sys
 from typing import List
 
-from models.default_model_profiles import DEFAULT_TEXT_TO_TEXT_MODEL
-from runner.pipeline_factory import PipelineFactory
+from models.default_model_profiles import DEFAULT_TEXT_TO_TEXT_MODEL, DEFAULT_MODEL_PROFILES
+from runner.pipeline_factory import pipeline_factory
 from langchain_core.messages import HumanMessage, SystemMessage
 
 def main() -> None:
@@ -23,14 +23,21 @@ def main() -> None:
     print(f"[debug] Using model: {model_name}")
 
     # Instantiate pipeline factory (local cache mode)
-    factory = PipelineFactory()
-    print("[debug] PipelineFactory created")
+    # Retrieve a default profile (assumes DEFAULT_MODEL_PROFILES contains profile for model)
+    profile = None
+    for p in DEFAULT_MODEL_PROFILES:
+        if getattr(p, "model_name", None) == model_name:
+            profile = p
+            break
+    if profile is None:
+        print(f"[error] No default model profile found for {model_name}")
+        sys.exit(1)
 
-    # Acquire pipeline instance
+    print("[debug] Using global pipeline_factory to obtain pipeline")
     try:
-        pipeline = factory.get_pipeline(model_name=model_name)
+        pipeline = pipeline_factory.get_pipeline(profile)
     except Exception as e:
-        print(f"[error] Failed to create pipeline: {e}")
+        print(f"[error] Failed to create pipeline via global factory: {e}")
         sys.exit(1)
 
     print("[debug] Pipeline acquired; beginning single completion test")
