@@ -291,12 +291,15 @@ class BaseAgent(ABC, Generic[T]):
         returns:
             str: Extracted system prompt
         """
-        system_prompt = f"Current Date: {datetime.datetime.now().strftime('%Y-%m-%d')}"
+        current_date = datetime.datetime.now().strftime('%Y-%m-%d')
         msgs = normalize_message_input(messages)
         convo = []
 
         if self.profile.system_prompt:
-            system_prompt = self.profile.system_prompt
+            # Incorporate current date into the existing system prompt
+            system_prompt = f"Current Date: {current_date}\n\n{self.profile.system_prompt}"
+        else:
+            system_prompt = f"Current Date: {current_date}"
 
         for msg in msgs:
             if msg.role == MessageRole.SYSTEM:

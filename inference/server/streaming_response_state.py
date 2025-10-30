@@ -387,7 +387,26 @@ class StreamingResponseState:
                 '"system_type":',
                 '"session_context":',
             ]
-            return any(indicator in stripped for indicator in metadata_indicators)
+            
+            # More aggressive check - if it looks like structured metadata JSON, filter it
+            if any(indicator in stripped for indicator in metadata_indicators):
+                return True
+                
+            # Also check for complete JSON objects that look like metadata
+            try:
+                import json
+                parsed = json.loads(stripped)
+                if isinstance(parsed, dict):
+                    # Check if it contains metadata-like keys
+                    metadata_keys = [
+                        'intents', 'intent', 'analysis', 'analyses', 'workflow_type',
+                        'complexity_level', 'required_capabilities', 'confidence',
+                        'computational_requirements', 'classification', 'reasoning'
+                    ]
+                    if any(key in parsed for key in metadata_keys):
+                        return True
+            except (json.JSONDecodeError, ValueError):
+                pass
 
         return False
 
