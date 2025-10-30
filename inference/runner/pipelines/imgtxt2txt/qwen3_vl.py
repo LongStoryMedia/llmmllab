@@ -133,61 +133,34 @@ class Qwen3VLPipeline(BaseLlamaCppPipeline):
                 idx = end + 1
         return paths
 
-    def _load_images(self, paths: List[str]) -> List[Any]:
-        images: List[Any] = []
-        if not paths and Image is not None:
-            # Provide a placeholder 1024x1024 black image to satisfy handler when no images are passed.
-            try:
-                placeholder = Image.new("RGB", (1024, 1024), color=(0, 0, 0))
-                images.append(placeholder)
-                self._logger.warning(
-                    "No images detected; supplied placeholder to avoid vision handler segfault"
-                )
-                return images
-            except Exception as e:
-                self._logger.error(f"Failed to create placeholder image: {e}")
-                return images
-        if Image is None:
-            if paths:
-                self._logger.error(
-                    "Pillow not available; cannot load image paths required for multimodal request"
-                )
-            return images
-        for p in paths:
-            try:
-                if os.path.exists(p):
-                    img = Image.open(p)
-                    images.append(img)
-                else:
-                    self._logger.warning(f"Image path does not exist: {p}")
-            except Exception as e:
-                self._logger.error(f"Failed to load image '{p}': {e}")
-        if not images and paths:
-            self._logger.warning(
-                "No valid images loaded; providing placeholder to avoid segfault"
-            )
-            try:
-                placeholder = Image.new("RGB", (1024, 1024), color=(0, 0, 0))
-                images.append(placeholder)
-            except Exception:
-                pass
-        return images
+    def _prepare_multimodal_messages(self, messages, image_paths: List[str]) -> List[Dict[str, str]]:
+        """Embed image path markers into the first system message for the Qwen VL chat handler.
 
-    def _get_res(
-        self,
-        messages,
-        stop: Optional[List[str]] = None,
-        tools: Optional[List[Any]] = None,
-        stream: bool = False,
-    ):
+        The upstream handler expects images referenced in the prompt. We inline markers:
+        <img src="/path/to/image" />
+        This avoids passing unsupported images kwarg.
+        """
+        llama_messages = self._format_messages_for_llama(messages)
+        if image_paths:
+            tag_block = "\n".join(
+                [f"<img src=\"{p}\" />" for p in image_paths if p]
+            )
+            # Prepend to first system message if exists, else create one
+            if llama_messages and llama_messages[0]["role"] == "system":
+                llama_messages[0]["content"] = tag_block + "\n" + llama_messages[0]["content"]
+            else:
+                llama_messages.insert(
+                    0, {"role": "system", "content": tag_block}
+                )
+        return llama_messages
+
+    def _get_res(self, messages, stop: Optional[List[str]] = None, tools: Optional[List[Any]] = None, stream: bool = False):
         """Extend base response retrieval to include images for multimodal."""
         image_paths = self._extract_image_paths(messages)
-        images = self._load_images(image_paths)
-        # Delegate to base logic for text/tool formatting
         converted_tools = self._convert_tools_to_simple_format(tools)
-        llama_messages = self._format_messages_for_llama(messages)
+        llama_messages = self._prepare_multimodal_messages(messages, image_paths)
         self._logger.info(
-            f"Chat completion (VL): model={self.model.name}, messages={len(llama_messages)}, tools={len(converted_tools) if converted_tools else 0}, images={len(images)}"
+            f"Chat completion (VL): model={self.model.name}, messages={len(llama_messages)}, tools={len(converted_tools) if converted_tools else 0}, image_paths={len(image_paths)}"
         )
         response_format = None
         grammar = None
@@ -221,8 +194,7 @@ class Qwen3VLPipeline(BaseLlamaCppPipeline):
             kwargs["response_format"] = response_format  # type: ignore
         if grammar:
             kwargs["grammar"] = grammar
-        if images:
-            kwargs["images"] = images
+        # No direct images kwarg; image references embedded in messages
         if not getattr(self, "llama_instance", None):
             raise RuntimeError("Llama instance not initialized for Qwen3VLPipeline")
         return self.llama_instance.create_chat_completion(**kwargs)  # type: ignore
