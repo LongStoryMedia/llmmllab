@@ -245,6 +245,28 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     )
                     current_params.n_ubatch = 8
 
+                # Experiment 3 additions (active even if Experiment 2 triggered): minimize context & batch, disable CUDA graphs, tweak offload, unified KV off.
+                # These changes attempt to rule out large buffer sizing and new graph capture path introduced upstream.
+                exp3_active = True
+                if exp3_active:
+                    # Clamp context and batch lower
+                    if current_params.n_ctx > 8192:
+                        self._logger.warning(
+                            f"[Experiment 3] Clamping n_ctx {current_params.n_ctx} -> 8192"
+                        )
+                        current_params.n_ctx = 8192
+                    if current_params.n_batch > 64:
+                        self._logger.warning(
+                            f"[Experiment 3] Clamping n_batch {current_params.n_batch} -> 64"
+                        )
+                        current_params.n_batch = 64
+                    # Force offload_kqv True to shift kernel path; disable CUDA graphs via env if supported
+                    os.environ.setdefault("GGML_CUDA_DISABLE_GRAPHS", "1")
+                    os.environ.setdefault("LLAMA_CUDA_DISABLE_GRAPH", "1")  # alternate naming just in case
+                    self._logger.warning(
+                        "[Experiment 3] Applied: offload_kqv=True, kv_unified=False, CUDA graphs disabled via env"
+                    )
+
                 # Convert back to -1 for full offload if originally requested
                 actual_gpu_layers = (
                     requested_gpu_layers
@@ -290,9 +312,10 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     yarn_beta_fast=32.0,
                     yarn_beta_slow=1.0,
                     yarn_orig_ctx=0,
-                    offload_kqv=False,
+                    offload_kqv=True if exp3_active else False,
                     op_offload=None,
                     swa_full=None,
+                    kv_unified=False if exp3_active else None,
                     no_perf=False,
                     last_n_tokens_size=64,
                     lora_base=None,
@@ -404,7 +427,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
                             self._logger.debug("🧹 Closed failed llama_instance")
                         except Exception:
                             pass
-                        del llama_instance
+                        # (removed erroneous insertion)
                 except Exception as cleanup_e:
                     self._logger.warning(
                         f"Error during failed instance cleanup: {cleanup_e}"
