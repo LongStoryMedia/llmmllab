@@ -3,7 +3,13 @@
 import os
 import sys
 
-from models import Message, MessageContent, MessageContentType, MessageRole, NodeMetadata
+from models import (
+    Message,
+    MessageContent,
+    MessageContentType,
+    MessageRole,
+    NodeMetadata,
+)
 from models.default_model_profiles import DEFAULT_TEXT_TO_TEXT_MODEL, DEFAULT_PROFILES
 from runner.pipeline_factory import pipeline_factory
 from composer.agents import ChatAgent
@@ -85,24 +91,26 @@ async def wrapper() -> None:
         raise
 
     # Extract final assistant message(s)
-    final_messages = result_state.get("messages", []) if isinstance(result_state, dict) else []
+    final_messages = (
+        result_state.get("messages", []) if isinstance(result_state, dict) else []
+    )
     last_ai = None
     for m in reversed(final_messages):
-        if getattr(m, 'type', '') == 'ai':
+        if getattr(m, "type", "") == "ai":
             last_ai = m
             break
     if last_ai is None:
         print("[warn] No AI message produced")
     else:
-        content = getattr(last_ai, 'content', '')
+        content = getattr(last_ai, "content", "")
         if isinstance(content, str):
             print("\n[assistant]", content)
         elif isinstance(content, list):  # LangChain content parts
             for part in content:
-                if isinstance(part, dict) and part.get('type') == 'output_text':
-                    print(part.get('text', ''), end='')
+                if isinstance(part, dict) and part.get("type") == "output_text":
+                    print(part.get("text", ""), end="")
         # Tool calls (structured)
-        tool_calls = getattr(last_ai, 'tool_calls', None)
+        tool_calls = getattr(last_ai, "tool_calls", None)
         if tool_calls:
             print("\n[assistant tool_calls]:", tool_calls)
 
