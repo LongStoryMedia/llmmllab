@@ -62,10 +62,9 @@ class PlanningIntentSubgraph:
     2. Generate todos based on analysis results
     """
 
-    def __init__(self, classifier_agent: ClassifierAgent, pipeline_factory):
+    def __init__(self, classifier_agent: ClassifierAgent):
         """Initialize intent analysis subgraph."""
         self.classifier_agent = classifier_agent
-        self.pipeline_factory = pipeline_factory
         self.graph: Optional[CompiledStateGraph] = None
         self._build_graph()
 
@@ -108,7 +107,7 @@ class PlanningIntentSubgraph:
             messages=langchain_messages,
             available_static_tools=static_tools,
         )
-        
+
         # Store intent analyses in database separately from message content
         await self._store_intent_analyses(intent_analyses, state)
 
@@ -199,44 +198,51 @@ class PlanningIntentSubgraph:
         """Store intent analyses in the database separately from message content."""
         try:
             from db import storage
-            
+
             if not storage.initialized or not storage.analysis:
-                logger.warning("Analysis storage not initialized, skipping intent analysis storage")
+                logger.warning(
+                    "Analysis storage not initialized, skipping intent analysis storage"
+                )
                 return
-            
+
             messages = state.get("messages", [])
             conversation_id = state.get("conversation_id")
-            
+
             if not messages or not conversation_id:
-                logger.warning("Missing messages or conversation_id for intent analysis storage")
+                logger.warning(
+                    "Missing messages or conversation_id for intent analysis storage"
+                )
                 return
-                
+
             # Find the latest user message to associate analyses with
             user_message_id = None
             for msg in reversed(messages):
                 if hasattr(msg, "role") and getattr(msg, "role", "") == "user":
                     user_message_id = getattr(msg, "id", None)
                     break
-                    
+
             if not user_message_id:
-                logger.warning("No user message found to associate intent analysis with")
+                logger.warning(
+                    "No user message found to associate intent analysis with"
+                )
                 return
-            
+
             # Store each intent analysis
             for intent_analysis in intent_analyses:
                 try:
                     analysis_id = await storage.analysis.add_analysis(
-                        message_id=user_message_id,
-                        intent_analysis=intent_analysis
+                        message_id=user_message_id, intent_analysis=intent_analysis
                     )
                     if analysis_id:
                         logger.debug(f"Stored intent analysis with ID: {analysis_id}")
                     else:
-                        logger.warning("Failed to store intent analysis - no ID returned")
-                        
+                        logger.warning(
+                            "Failed to store intent analysis - no ID returned"
+                        )
+
                 except Exception as e:
                     logger.error(f"Failed to store individual intent analysis: {e}")
-                    
+
         except Exception as e:
             logger.error(f"Failed to store intent analyses: {e}")
 
@@ -498,38 +504,3 @@ class PlanningIntentSubgraph:
                 f"Intent analysis subgraph execution failed: {e}", exc_info=True
             )
             return Command(update={})
-
-
-# Global instance
-planning_intent_subgraph = None
-
-
-def get_planning_intent_subgraph():
-    """Get or create planning intent subgraph instance."""
-    global planning_intent_subgraph
-    if planning_intent_subgraph is None:
-        # Import here to avoid circular imports
-        from runner.pipeline_factory import pipeline_factory
-        from models.default_model_profiles import DEFAULT_PRIMARY_PROFILE
-
-        # Use primary profile which now uses multimodal model qwen3-vl-32b-thinking-abliterated
-        # This avoids grammar constraint crashes with multimodal content
-        
-        # Create classifier agent
-        classifier_agent = ClassifierAgent(
-            pipeline_factory=pipeline_factory,
-            profile=DEFAULT_PRIMARY_PROFILE,  # Primary profile now uses multimodal model
-            node_metadata=NodeMetadata(
-                node_name="PlanningClassifierAgent",
-                node_id="planning_classifier",
-                node_type="agent",
-                user_id="system",
-                conversation_id=0,
-            ),
-        )
-
-        planning_intent_subgraph = PlanningIntentSubgraph(
-            classifier_agent, pipeline_factory
-        )
-
-    return planning_intent_subgraph

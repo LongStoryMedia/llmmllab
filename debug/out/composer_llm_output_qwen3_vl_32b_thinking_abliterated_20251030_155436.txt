@@ -1,0 +1,19 @@
+Composer LLM Output Capture - Real End-to-End Test
+============================================================
+Model: qwen3-vl-32b-thinking-abliterated
+Test User: test_composer_user_6e697abf
+Architecture: Composer + LangGraph
+Timestamp: 2025-10-30T20:54:36.426794+00:00
+============================================================
+
+
+============================================================
+TEST SUMMARY
+============================================================
+Total Responses: 0
+Total Characters: 0
+Average Response Length: 0 chars
+Model Used: qwen3-vl-32b-thinking-abliterated
+Architecture: Composer + LangGraph
+Test Completed: 2025-10-30T20:54:39.890378+00:00
+============================================================

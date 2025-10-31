@@ -84,7 +84,8 @@ MAX_SUMMARY_LEVELS = int(os.environ.get("MAX_SUMMARY_LEVELS", "3"))
 
 # Config storage
 CONFIG_DIR = os.environ.get("CONFIG_DIR", "/app/config")
-MODELS_CONFIG_PATH = os.path.join("/app", ".models.json")
+# Prefer YAML config; legacy JSON supported in factory fallback
+MODELS_CONFIG_PATH = os.path.join("/app", ".models.yaml")
 
 # Inference services configuration
 INFERENCE_SERVICES_OLLAMA_BASE_URL = os.environ.get(

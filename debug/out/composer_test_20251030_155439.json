@@ -1,0 +1,44 @@
+{
+  "overall_success": false,
+  "execution_time": 3.4627931118011475,
+  "workflow_time": 0,
+  "components_passed": 0,
+  "total_components": 8,
+  "results": {
+    "infrastructure_setup": {
+      "success": false,
+      "error": "No module named 'langgraph.checkpoint.postgres'"
+    },
+    "composer_initialization": {
+      "success": false,
+      "error": "No module named 'langgraph.checkpoint.postgres'"
+    },
+    "conversation_creation": {
+      "success": false,
+      "error": "No module named 'langgraph.checkpoint.postgres'"
+    },
+    "user_profile_creation": {
+      "success": false,
+      "model_name": "qwen3-30b-a3b-q4-k-m"
+    },
+    "message_creation": {
+      "success": false,
+      "error": "No module named 'langgraph.checkpoint.postgres'"
+    },
+    "workflow_execution": {
+      "success": false,
+      "error": "No module named 'langgraph.checkpoint.postgres'"
+    },
+    "output_validation": {
+      "success": false,
+      "error": "No module named 'langgraph.checkpoint.postgres'"
+    },
+    "data_cleanup": {
+      "success": false,
+      "error": "No module named 'langgraph.checkpoint.postgres'",
+      "cleaned_count": 0
+    }
+  },
+  "entities_created": 0,
+  "entities_cleaned": 0
+}

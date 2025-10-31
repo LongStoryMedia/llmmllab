@@ -4,6 +4,7 @@ modern/legacy pipeline selection. Replaces the previous garbled version.
 """
 
 import json
+import yaml
 import logging
 import os
 import threading
@@ -71,51 +72,69 @@ class PipelineFactory:
     # ---------- Model loading ----------
 
     def _load_available_models(self) -> None:
-        try:
-            models_file = "/app/.models.json"
-            if not os.path.exists(models_file):
-                # Fallback to env-specified path for local/dev testing
-                env_path = os.environ.get("MODELS_FILE_PATH")
-                if env_path and os.path.exists(env_path):
-                    models_file = env_path
-                    self.logger.info(
-                        f"Using models config from MODELS_FILE_PATH: {models_file}"
-                    )
-                else:
-                    self.logger.error(f"Models config file not found: {models_file}")
-                    return
+        """Load available models from YAML (preferred) or JSON (legacy) configuration.
 
-            with open(models_file, "r", encoding="utf-8") as f:
-                models_data = json.load(f)
+        Order of precedence:
+        1. MODELS_FILE_PATH env var (can point to YAML or JSON)
+        2. /app/.models.yaml
+        3. /app/.models.json (legacy fallback)
+        """
+        candidates: List[str] = []
+        env_path = os.environ.get("MODELS_FILE_PATH")
+        if env_path:
+            candidates.append(env_path)
+        candidates.extend(["/app/.models.yaml", "/app/.models.json"])
 
-            if not isinstance(models_data, list):
-                self.logger.error("Models config is not a list; ignoring")
-                return
+        chosen_path: Optional[str] = None
+        for path in candidates:
+            if path and os.path.exists(path):
+                chosen_path = path
+                break
 
-            loaded_count = 0
-            for data in models_data:
-                try:
-                    model = self._create_model_from_data(data)
-                    if model:
-                        id_key = str(data.get("id") or model.id or "")
-                        if not id_key:
-                            self.logger.error(
-                                f"Skipping model with missing id: {getattr(model, 'name', 'unknown')}"
-                            )
-                            continue
-                        self._available_models[id_key] = model
-                        loaded_count += 1
-                except Exception as e:
-                    self.logger.error(
-                        f"Error creating model from {data.get('id', 'unknown')}: {e}"
-                    )
-
-            self.logger.info(
-                f"Loaded {loaded_count}/{len(models_data)} models from config"
+        if not chosen_path:
+            self.logger.error(
+                "No models configuration file found (checked env, .models.yaml, .models.json)"
             )
+            return
 
+        # Attempt parsing based on extension; allow YAML for .yaml/.yml, otherwise JSON
+        try:
+            with open(chosen_path, "r", encoding="utf-8") as f:
+                if chosen_path.endswith((".yaml", ".yml")):
+                    models_data = yaml.safe_load(f)
+                else:
+                    models_data = json.load(f)
         except Exception as e:
-            self.logger.error(f"Error loading models config: {e}")
+            self.logger.error(f"Failed to parse models file {chosen_path}: {e}")
+            return
+
+        if not isinstance(models_data, list):
+            self.logger.error(
+                f"Models config {chosen_path} is not a list; ignoring contents"
+            )
+            return
+
+        loaded_count = 0
+        for data in models_data:
+            try:
+                model = self._create_model_from_data(data)
+                if model:
+                    id_key = str(data.get("id") or model.id or "")
+                    if not id_key:
+                        self.logger.error(
+                            f"Skipping model with missing id: {getattr(model, 'name', 'unknown')}"
+                        )
+                        continue
+                    self._available_models[id_key] = model
+                    loaded_count += 1
+            except Exception as e:
+                self.logger.error(
+                    f"Error creating model from {data.get('id', 'unknown')}: {e}"
+                )
+
+        self.logger.info(
+            f"Loaded {loaded_count}/{len(models_data)} models from config ({os.path.basename(chosen_path)})"
+        )
 
     def _create_model_from_data(self, data: Dict[str, Any]) -> Optional[Model]:
         # LoRA weights
@@ -265,8 +284,9 @@ class PipelineFactory:
         }:
 
             def create_embedding_fn(
-                m: Model, p: ModelProfile, g: Optional[Type[BaseModel]] = None
+                m: Model, p: ModelProfile, _g: Optional[Type[BaseModel]] = None
             ) -> Optional[Embeddings]:
+                # _g unused: embeddings creation does not use grammar
                 return self._create_embedding_pipeline(m, p)
 
             pipeline = self.local_cache.get_or_create(

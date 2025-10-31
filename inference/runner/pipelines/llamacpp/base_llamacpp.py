@@ -141,9 +141,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
 
         params = self.profile.parameters
         gcfg = self.profile.gpu_config or DEFAULT_GPU_CONFIG
-        n_ctx_initial = params.num_ctx or 4096
-        n_batch_initial = params.batch_size or 64
-        n_ubatch_initial = getattr(params, "n_ubatch", 1) or 1
+        n_ctx_initial = params.num_ctx or 40960
+        n_batch_initial = params.batch_size or 256
+        n_ubatch_initial = params.batch_size or 256
         n_gpu_layers_initial = (
             self.profile.gpu_config.gpu_layers
             if self.profile.gpu_config
@@ -192,7 +192,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     n_batch=current_params.n_batch,
                     n_ubatch=current_params.n_ubatch,
                     n_gpu_layers=(
-                        -1 if n_gpu_layers_initial == -1 else current_params.n_gpu_layers
+                        -1
+                        if n_gpu_layers_initial == -1
+                        else current_params.n_gpu_layers
                     ),
                     tensor_split=gcfg.tensor_split,
                     chat_format=self._get_chat_format(),
@@ -232,12 +234,7 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     lora_scale=1.0,
                     lora_path=None,
                     numa=False,
-                    # Use getattr for optional subclass-provided chat handler to satisfy type checker
-                    chat_handler=(
-                        handler
-                        if handler is not None
-                        else getattr(self, "_get_chat_handler", lambda: None)()
-                    ),  # type: ignore[arg-type]
+                    chat_handler=handler,  # type: ignore[arg-type]
                     draft_model=None,
                     tokenizer=None,
                     type_k=None,
@@ -329,7 +326,9 @@ class BaseLlamaCppPipeline(BaseChatModel):
                     ) from e
                 attempt += 1
         # Should never reach here: attempt starts at 1 and loop raises on max_attempts
-        raise RuntimeError(f"Initialization fell through unexpectedly for {self.model.name}")
+        raise RuntimeError(
+            f"Initialization fell through unexpectedly for {self.model.name}"
+        )
 
     def _format_messages_for_llama(
         self, messages: List[BaseMessage]

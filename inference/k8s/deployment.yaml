@@ -197,5 +197,9 @@ spec:
             - name: SEARX_HOST
               value: "http://searxng.searxng.svc.cluster.local:8080"
 
+            # OOM Recovery for large models
+            - name: ENABLE_INTELLIGENT_OOM_RECOVERY
+              value: "false"
+
   strategy:
     type: Recreate

@@ -32,7 +32,6 @@ from composer.agents.primary_summary_agent import PrimarySummaryAgent
 from composer.agents.master_summary_agent import MasterSummaryAgent
 
 # Import all nodes
-from composer.nodes.routing import IntentClassifierNode
 from composer.nodes.routing.router import WorkflowRouter
 from composer.nodes.tools import (
     ToolCollectionNode,
@@ -51,6 +50,7 @@ from composer.tools.registry import ToolRegistry
 
 from composer.graph.state import WorkflowState
 from composer.graph.subgraphs import ToolsAgentSubgraph
+from composer.graph.subgraphs import PlanningIntentSubgraph
 
 # Checkpoint integration handled through CheckpointStorage service
 
@@ -278,7 +278,7 @@ class GraphBuilder:
             # Primary profile now uses qwen3-vl-32b multimodal model which avoids grammar constraint crashes
             classifier_agent = ClassifierAgent(
                 self.pipeline_factory,
-                primary_profile,  # Primary profile now uses multimodal model
+                analysis_profile,
                 classifier_node_metadata,
             )
             engineering_agent = EngineeringAgent(
@@ -319,7 +319,6 @@ class GraphBuilder:
             tool_registry = ToolRegistry(self.pipeline_factory)
 
             # Create nodes with injected agents and storage
-            classifier_node = IntentClassifierNode(classifier_agent)
             engineering_node = EngineeringAgentNode(engineering_agent)
             memory_creation_node = MemoryCreationNode(embedding_agent)
             memory_search_node = MemorySearchNode(
@@ -360,7 +359,7 @@ class GraphBuilder:
 
             # Create nodes with injected dependencies
             # Intent analysis -> router -> (optional specialized agents) pattern
-            workflow.add_node("intent_analysis", classifier_node)
+            # workflow.add_node("intent_analysis", classifier_node)
             workflow.add_node("workflow_router", router_node)
 
             # Engineering agent (invoked only when routing selects engineering)
@@ -389,6 +388,10 @@ class GraphBuilder:
                 chat_agent=primary_agent,
             )
 
+            intent_analysis_subgraph = PlanningIntentSubgraph(
+                classifier_agent=classifier_agent
+            )
+
             # Create wrapper for subgraph execution
             async def tools_agent_node(state: WorkflowState) -> WorkflowState:
                 """Execute the intelligent tools agent subgraph and return updated state."""
@@ -398,7 +401,17 @@ class GraphBuilder:
                         setattr(state, key, value)
                 return state
 
+            # Create wrapper for intent subgraph
+            async def intent_analysis_node(state: WorkflowState) -> WorkflowState:
+                """Execute the intent analysis subgraph and return updated state."""
+                command = await intent_analysis_subgraph.execute(state)
+                if command and command.update:
+                    for key, value in command.update.items():
+                        setattr(state, key, value)
+                return state
+
             workflow.add_node("tools_agent", tools_agent_node)
+            workflow.add_node("intent_analysis", intent_analysis_node)
 
             # Build a logical workflow graph structure:
             # 1. Start -> Static tool loading (loads static tools + previous dynamic tools)

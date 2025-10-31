@@ -181,16 +181,6 @@ async def chat_completion(
                         event_type = getattr(event, "event", "")
                         event_data = getattr(event, "data", {})
 
-                    # Debug: Log all event types to understand what's available
-                    if event_type and "tool" in event_type.lower():
-                        logger.info(f"🔧 Tool-related event: {event_type} - data keys: {list(event_data.keys()) if isinstance(event_data, dict) else 'not dict'}")
-                        
-                        # Debug: Show full event data structure for tool events
-                        if "tool" in event_type.lower():
-                            logger.info(f"🔍 Full event data: {json.dumps(serialize_event_data(event_data), indent=2)}")
-                        
-                        # Don't duplicate accumulation here
-
                     # Process streaming events for immediate response
                     if event_type == "on_chat_model_stream":
                         # Handle streaming tokens
@@ -222,14 +212,21 @@ async def chat_completion(
                             tool_name = "unknown_tool"
                             tool_input = event_data.get("input", {})
                             tool_output = event_data.get("output", {})
-                            
+
                             # Smart tool name detection based on tool characteristics
                             if isinstance(tool_input, dict):
                                 # Check for web search patterns
-                                if "query" in tool_input and len(tool_input) == 2 and "runtime" in tool_input:
+                                if (
+                                    "query" in tool_input
+                                    and len(tool_input) == 2
+                                    and "runtime" in tool_input
+                                ):
                                     tool_name = "web_search"
-                                # Check for memory retrieval patterns 
-                                elif "query" in tool_input and "memory_type" in tool_input:
+                                # Check for memory retrieval patterns
+                                elif (
+                                    "query" in tool_input
+                                    and "memory_type" in tool_input
+                                ):
                                     tool_name = "memory_retrieval"
                                 # Check for summarization patterns
                                 elif "content" in tool_input:
@@ -238,28 +235,46 @@ async def chat_completion(
                                 elif "url" in tool_input:
                                     tool_name = "read_web_content"
                                 # Fallback: check output type for additional clues
-                                elif tool_name == "unknown_tool" and hasattr(tool_output, "name"):
-                                    tool_name = getattr(tool_output, "name", "unknown_tool")
-                            
+                                elif tool_name == "unknown_tool" and hasattr(
+                                    tool_output, "name"
+                                ):
+                                    tool_name = getattr(
+                                        tool_output, "name", "unknown_tool"
+                                    )
+
                             # If still unknown, try to extract from output content
-                            if tool_name == "unknown_tool" and isinstance(tool_output, (str, dict)):
+                            if tool_name == "unknown_tool" and isinstance(
+                                tool_output, (str, dict)
+                            ):
                                 output_str = str(tool_output)
                                 # Look for web search results pattern
-                                if "Web Search Results" in output_str or "Found" in output_str and "results:" in output_str:
+                                if (
+                                    "Web Search Results" in output_str
+                                    or "Found" in output_str
+                                    and "results:" in output_str
+                                ):
                                     tool_name = "web_search"
                                 # Look for other tool patterns in output
-                                elif "memory" in output_str.lower() and "retrieved" in output_str.lower():
+                                elif (
+                                    "memory" in output_str.lower()
+                                    and "retrieved" in output_str.lower()
+                                ):
                                     tool_name = "memory_retrieval"
-                                elif "summary" in output_str.lower() or "summarized" in output_str.lower():
+                                elif (
+                                    "summary" in output_str.lower()
+                                    or "summarized" in output_str.lower()
+                                ):
                                     tool_name = "summarization"
-                            
-                            logger.info(f"🔧 Tool end event - name: {tool_name}, input keys: {list(tool_input.keys()) if isinstance(tool_input, dict) else 'not dict'}, output type: {type(tool_output)}")
-                            
+
+                            logger.info(
+                                f"🔧 Tool end event - name: {tool_name}, input keys: {list(tool_input.keys()) if isinstance(tool_input, dict) else 'not dict'}, output type: {type(tool_output)}"
+                            )
+
                             # Calculate execution time from event timestamps if available
                             execution_time_ms = None
                             if isinstance(event, dict):
                                 start_time = event.get("metadata", {}).get("start_time")
-                                end_time = event.get("metadata", {}).get("end_time") 
+                                end_time = event.get("metadata", {}).get("end_time")
                                 if start_time and end_time:
                                     execution_time_ms = (end_time - start_time) * 1000
 
@@ -268,23 +283,32 @@ async def chat_completion(
                             success = True
                             if isinstance(tool_output, dict) and "error" in tool_output:
                                 success = False
-                                error_message = str(tool_output.get("error", "Unknown error"))
+                                error_message = str(
+                                    tool_output.get("error", "Unknown error")
+                                )
                             elif hasattr(tool_output, "error"):
                                 success = False
-                                error_message = str(getattr(tool_output, "error", "Unknown error"))
+                                error_message = str(
+                                    getattr(tool_output, "error", "Unknown error")
+                                )
 
                             # Filter out ToolRuntime and other non-serializable objects from args
                             clean_args = {}
                             if isinstance(tool_input, dict):
                                 filtered_keys = []
                                 for k, v in tool_input.items():
-                                    if k == "runtime" or str(type(v).__name__) == "ToolRuntime":
+                                    if (
+                                        k == "runtime"
+                                        or str(type(v).__name__) == "ToolRuntime"
+                                    ):
                                         filtered_keys.append(k)
                                     else:
                                         clean_args[k] = v
-                                
+
                                 if filtered_keys:
-                                    logger.debug(f"🔧 Filtered out non-serializable keys from tool args: {filtered_keys}")
+                                    logger.debug(
+                                        f"🔧 Filtered out non-serializable keys from tool args: {filtered_keys}"
+                                    )
                             else:
                                 clean_args = {"input": str(tool_input)}
 
@@ -294,64 +318,92 @@ async def chat_completion(
                                 execution_id=f"tool_exec_{len(tool_execution_results)}",
                                 success=success,
                                 args=clean_args,
-                                result_data=tool_output if isinstance(tool_output, dict) else {"output": str(tool_output)},
+                                result_data=(
+                                    tool_output
+                                    if isinstance(tool_output, dict)
+                                    else {"output": str(tool_output)}
+                                ),
                                 error_message=error_message,
                                 execution_time_ms=execution_time_ms,
                             )
-                            
+
                             tool_execution_results.append(real_tool_result)
-                            
+
                             logger.info(
                                 f"📊 Captured real tool execution: {tool_name} - "
                                 f"Success: {success}, Time: {execution_time_ms}ms"
                             )
-                            
+
                         except Exception as e:
-                            logger.warning(f"Failed to capture tool execution result: {e}")
+                            logger.warning(
+                                f"Failed to capture tool execution result: {e}"
+                            )
 
                     elif event_type.endswith("_end"):
                         # Debug: Log all end events to see what we get
                         if "tool" in event_type.lower():
                             logger.info(f"🛠️ Tool end event detected: {event_type}")
-                            logger.info(f"   Event data keys: {list(event_data.keys()) if isinstance(event_data, dict) else 'not dict'}")
+                            logger.info(
+                                f"   Event data keys: {list(event_data.keys()) if isinstance(event_data, dict) else 'not dict'}"
+                            )
                             logger.info(f"   Event data full: {str(event_data)}")
-                            
+
                             # Look for tool name in input
-                            if isinstance(event_data, dict) and 'input' in event_data:
-                                input_data = event_data['input']
+                            if isinstance(event_data, dict) and "input" in event_data:
+                                input_data = event_data["input"]
                                 logger.info(f"   Input data type: {type(input_data)}")
                                 logger.info(f"   Input data: {str(input_data)}")
-                                
+
                                 # Check for tool name in input
-                                if hasattr(input_data, 'name'):
-                                    logger.info(f"   Input has name attribute: {input_data.name}")
-                                if hasattr(input_data, 'tool'):
-                                    logger.info(f"   Input has tool attribute: {input_data.tool}")
+                                if hasattr(input_data, "name"):
+                                    logger.info(
+                                        f"   Input has name attribute: {input_data.name}"
+                                    )
+                                if hasattr(input_data, "tool"):
+                                    logger.info(
+                                        f"   Input has tool attribute: {input_data.tool}"
+                                    )
                                 if isinstance(input_data, dict):
-                                    logger.info(f"   Input dict keys: {list(input_data.keys())}")
-                                    if 'name' in input_data:
-                                        logger.info(f"   Input name: {input_data['name']}")
-                                    if 'tool' in input_data:
-                                        logger.info(f"   Input tool: {input_data['tool']}")
-                                        
-                            # Look for tool name in output  
-                            if isinstance(event_data, dict) and 'output' in event_data:
-                                output_data = event_data['output']
+                                    logger.info(
+                                        f"   Input dict keys: {list(input_data.keys())}"
+                                    )
+                                    if "name" in input_data:
+                                        logger.info(
+                                            f"   Input name: {input_data['name']}"
+                                        )
+                                    if "tool" in input_data:
+                                        logger.info(
+                                            f"   Input tool: {input_data['tool']}"
+                                        )
+
+                            # Look for tool name in output
+                            if isinstance(event_data, dict) and "output" in event_data:
+                                output_data = event_data["output"]
                                 logger.info(f"   Output data type: {type(output_data)}")
                                 logger.info(f"   Output data: {str(output_data)}")
-                                
+
                                 # Check for tool name in output
-                                if hasattr(output_data, 'name'):
-                                    logger.info(f"   Output has name attribute: {output_data.name}")
-                                if hasattr(output_data, 'tool'):
-                                    logger.info(f"   Output has tool attribute: {output_data.tool}")
+                                if hasattr(output_data, "name"):
+                                    logger.info(
+                                        f"   Output has name attribute: {output_data.name}"
+                                    )
+                                if hasattr(output_data, "tool"):
+                                    logger.info(
+                                        f"   Output has tool attribute: {output_data.tool}"
+                                    )
                                 if isinstance(output_data, dict):
-                                    logger.info(f"   Output dict keys: {list(output_data.keys())}")
-                                    if 'name' in output_data:
-                                        logger.info(f"   Output name: {output_data['name']}")
-                                    if 'tool' in output_data:
-                                        logger.info(f"   Output tool: {output_data['tool']}")
-                        
+                                    logger.info(
+                                        f"   Output dict keys: {list(output_data.keys())}"
+                                    )
+                                    if "name" in output_data:
+                                        logger.info(
+                                            f"   Output name: {output_data['name']}"
+                                        )
+                                    if "tool" in output_data:
+                                        logger.info(
+                                            f"   Output tool: {output_data['tool']}"
+                                        )
+
                         # Capture final workflow data
                         if isinstance(event_data, dict):
                             output = event_data.get("output", {})
@@ -366,11 +418,13 @@ async def chat_completion(
 
                 # Get final consolidated response from streaming state
                 final_response = streaming_state.get_final_response()
-                
+
                 # Replace streaming state tool calls with real execution results if available
                 if tool_execution_results and final_response.message:
                     final_response.message.tool_calls = tool_execution_results
-                    logger.info(f"🔄 Replaced streaming tool calls with {len(tool_execution_results)} real execution results")
+                    logger.info(
+                        f"🔄 Replaced streaming tool calls with {len(tool_execution_results)} real execution results"
+                    )
 
                 # Store the assistant's response in database using streaming state's accumulated content
                 # Convert analyses from final response data to IntentAnalysis objects
@@ -402,11 +456,15 @@ async def chat_completion(
                 if tool_execution_results:
                     # Use real tool execution results with actual status and timing
                     final_tool_calls = tool_execution_results
-                    logger.info(f"✅ Using {len(tool_execution_results)} real tool execution results")
+                    logger.info(
+                        f"✅ Using {len(tool_execution_results)} real tool execution results"
+                    )
                 elif streaming_state.tool_calls:
                     # Fallback to streaming state tool calls (legacy behavior)
                     final_tool_calls = streaming_state.tool_calls
-                    logger.warning(f"⚠️ Using {len(streaming_state.tool_calls)} streaming state tool calls (no real results)")
+                    logger.warning(
+                        f"⚠️ Using {len(streaming_state.tool_calls)} streaming state tool calls (no real results)"
+                    )
 
                 assistant_message = Message(
                     role=MessageRole.ASSISTANT,
