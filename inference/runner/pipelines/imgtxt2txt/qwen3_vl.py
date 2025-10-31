@@ -15,117 +15,38 @@ from pydantic import BaseModel  # noqa: F401
 
 from models import Model, ModelProfile
 from runner.pipelines.llamacpp import BaseLlamaCppPipeline
-from torch import clip_
 
 
 class Qwen3VLPipeline(BaseLlamaCppPipeline):
-    """
-    Qwen3 VL multimodal chat model implementation.
-
-    Features:
-    - Optimized for Qwen3 VL models (e.g., Qwen3-VL-32B-Thinking-abliterated)
-    - Vision capabilities with multimodal processing
-    - Custom chat format for Qwen3 VL models
-    - Hardware optimization for large VL models
-    - <think> tag processing for reasoning models
-    - Supports image and video inputs
-    """
+    """Qwen3 VL multimodal chat model implementation."""
 
     def __init__(
         self,
         model: Model,
         profile: ModelProfile,
         grammar: Optional[Type[BaseModel]] = None,
-        **kwargs,
+        **kwargs: Any,
     ):
-        # Store multimodal-specific parameters before calling super().__init__
-        # Text-only stabilization flag must be set before base __init__ (which calls _get_chat_handler)
         self._multimodal_chat_handler = None
         super().__init__(model, profile, grammar, **kwargs)
 
-    @property
-    def _llm_type(self) -> str:
-        """Get the type of language model used by this chat model."""
-        return "qwen3-vl-llamacpp"
-
-    @property
-    def _identifying_params(self) -> Dict[str, Any]:
-        """Return a dictionary of identifying parameters."""
-        base_params = super()._identifying_params
-        base_params.update(
-            {
-                "model_type": "qwen3-vl",
-                "vision_capable": True,
-                "multimodal": True,
-                "chat_format": "chatml",
-                "supports_thinking": True,
-            }
-        )
-        return base_params
-
     def _initialize_llama(
-        self, gguf_path: str, h: LlamaChatCompletionHandler | None = None
-    ) -> Llama:
-        clip_model_path = self._get_clip_model_path()
-        if clip_model_path:
-            return super()._initialize_llama(
-                gguf_path,
-                Qwen25VLChatHandler(clip_model_path=clip_model_path, verbose=False),
-            )
-        else:
-            return super()._initialize_llama(gguf_path, h)
+        self, gguf_path: str, handler: LlamaChatCompletionHandler | None = None
+    ) -> Llama:  # type: ignore[override]
+        """Attach Qwen25VLChatHandler only when ENABLE_QWEN_VISION_HANDLER=true.
 
-    def _get_clip_model_path(self) -> Optional[str]:
-        """Get the clip model path for multimodal processing from model details.
-
-        Uses getattr to avoid static typing errors if attribute not declared in ModelDetails.
+        By default, vision is disabled to avoid segfaults; enabling env var forces
+        handler attachment. Set SKIP_QWEN_VISION_HANDLER=true to explicitly skip.
         """
-        details = getattr(self.model, "details", None)
-        if details is not None:
-            clip_path = getattr(details, "clip_model_path", None)
-            if clip_path:
-                if os.path.exists(clip_path):
-                    self._logger.info(f"Using clip model from config: {clip_path}")
-                    return clip_path
-                else:
-                    self._logger.warning(
-                        f"Configured clip model path does not exist: {clip_path}"
-                    )
-        self._logger.warning(f"No clip model path configured for {self.model.name}")
-        return None
-
-    def _create_chat_handler(self):
-        """Create the appropriate chat handler for Qwen3 VL multimodal processing."""
-        try:
-            from llama_cpp.llama_chat_format import Qwen25VLChatHandler
-
-            clip_path = self._get_clip_model_path()
-            if clip_path:
-                self._logger.info(
-                    f"Creating Qwen25VLChatHandler with clip model: {clip_path}"
-                )
-                # Create the chat handler with the clip model path
-                return Qwen25VLChatHandler(clip_model_path=clip_path)
-            else:
-                self._logger.error(
-                    "No clip model path available for multimodal chat handler"
-                )
-                return None
-        except ImportError:
-            self._logger.error(
-                "Qwen25VLChatHandler not available in this llama-cpp-python version"
-            )
-            return None
-        except Exception as e:
-            self._logger.error(f"Failed to create Qwen25VLChatHandler: {e}")
-            return None
-
-    def _get_chat_handler(self):
-        """Override to provide multimodal chat handler."""
-        return self._create_chat_handler()
+        clip_path = getattr(self.model.details, "clip_model_path", None)
+        vision_enabled = os.getenv("ENABLE_QWEN_VISION_HANDLER", "false").lower() == "true"
+        vision_skipped = os.getenv("SKIP_QWEN_VISION_HANDLER", "false").lower() == "true"
+        if clip_path and vision_enabled and not vision_skipped:
+            vh = Qwen25VLChatHandler(clip_model_path=clip_path, verbose=True)
+            return super()._initialize_llama(gguf_path, vh)
+        return super()._initialize_llama(gguf_path, handler)
 
     def _get_chat_format(self) -> Optional[str]:  # noqa: D401
-        """Return chat format string for llama initialization."""
         return "chatml"
 
     # --- Multimodal extensions ---
