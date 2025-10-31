@@ -10,7 +10,7 @@ from composer.agents import ChatAgent
 from composer.tools.registry import ToolRegistry
 from composer.graph.subgraphs import ToolsAgentSubgraph
 from composer.graph.state import ToolsState
-from composer.utils.conversion import convert_messages_to_langchain
+from composer.utils.conversion import convert_messages_to_base_langchain
 
 TEST_IMAGE_URL = (
     "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg"
@@ -62,8 +62,8 @@ async def wrapper() -> None:
 
     tools_subgraph = ToolsAgentSubgraph(registry, agent)
 
-    # Convert internal model messages to LangChain messages expected by ToolsState
-    lc_messages = convert_messages_to_langchain(messages)
+    # Convert internal model messages to LangChain BaseMessage objects expected by ToolsState
+    lc_messages = convert_messages_to_base_langchain(messages)
 
     # Minimal required ToolsState fields (fill with safe defaults)
     state: ToolsState = {
