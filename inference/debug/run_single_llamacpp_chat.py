@@ -45,6 +45,20 @@ async def wrapper() -> None:
     # Retrieve a default profile (assumes DEFAULT_MODEL_PROFILES contains profile for model)
     profile = get_profile()
 
+    # TEMP SHIM: patch underlying model objects in pipeline_factory cache so BaseLlamaCppPipeline
+    # finds details.gguf_path. We avoid guessing and only add if missing.
+    try:
+        models_map = getattr(pipeline_factory, "models", None)
+        if isinstance(models_map, dict):
+            target_name = profile.model_name
+            mdl = models_map.get(target_name)
+            if mdl and hasattr(mdl, "details"):
+                det = mdl.details
+                if det is not None and not hasattr(det, "gguf_path"):
+                    setattr(det, "gguf_path", getattr(det, "gguf_file", None) or getattr(mdl, "model", None))
+    except Exception:
+        pass
+
     agent = ChatAgent(
         pipeline_factory,
         profile,
