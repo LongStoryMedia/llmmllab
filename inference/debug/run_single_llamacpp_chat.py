@@ -10,7 +10,11 @@ from models import (
     MessageRole,
     NodeMetadata,
 )
-from models.default_model_profiles import DEFAULT_TEXT_TO_TEXT_MODEL, DEFAULT_PROFILES
+from models.default_model_profiles import DEFAULT_PROFILES
+
+# Force using a model profile that points to a GGUF-backed model known to have details.gguf_file.
+# Adjust if repository model set differs; fallback to primary profile's name.
+FORCED_MODEL_NAME = "qwen3-vl-2b-thinking-abliterated"
 from runner.pipeline_factory import pipeline_factory
 from composer.agents import ChatAgent
 from composer.tools.registry import ToolRegistry
@@ -24,7 +28,7 @@ TEST_IMAGE_URL = (
 
 
 def get_profile():
-    model_name = DEFAULT_TEXT_TO_TEXT_MODEL
+    model_name = FORCED_MODEL_NAME
     profile = DEFAULT_PROFILES.get("primary")
     if getattr(profile, "model_name", None) != model_name:
         for _, p in DEFAULT_PROFILES.items():
@@ -45,19 +49,6 @@ async def wrapper() -> None:
     # Retrieve a default profile (assumes DEFAULT_MODEL_PROFILES contains profile for model)
     profile = get_profile()
 
-    # TEMP SHIM: patch underlying model objects in pipeline_factory cache so BaseLlamaCppPipeline
-    # finds details.gguf_path. We avoid guessing and only add if missing.
-    try:
-        models_map = getattr(pipeline_factory, "models", None)
-        if isinstance(models_map, dict):
-            target_name = profile.model_name
-            mdl = models_map.get(target_name)
-            if mdl and hasattr(mdl, "details"):
-                det = mdl.details
-                if det is not None and not hasattr(det, "gguf_path"):
-                    setattr(det, "gguf_path", getattr(det, "gguf_file", None) or getattr(mdl, "model", None))
-    except Exception:
-        pass
 
     agent = ChatAgent(
         pipeline_factory,
