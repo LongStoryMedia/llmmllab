@@ -8,7 +8,18 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, Iterator, AsyncIterator, List, Optional, Sequence, Tuple, Type, cast
+from typing import (
+    Any,
+    Dict,
+    Iterator,
+    AsyncIterator,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    cast,
+)
 
 from pydantic import BaseModel
 import llama_cpp
@@ -52,7 +63,10 @@ class BaseLlamaCppPipeline(BasePipeline):
 
     @property
     def _identifying_params(self) -> Dict[str, Any]:  # type: ignore
-        return {"model_name": getattr(self.model, "name", "unknown"), "grammar": bool(self.grammar)}
+        return {
+            "model_name": getattr(self.model, "name", "unknown"),
+            "grammar": bool(self.grammar),
+        }
 
     def bind_tools(
         self,
@@ -69,9 +83,22 @@ class BaseLlamaCppPipeline(BasePipeline):
             return
         ctx = self.profile.parameters.num_ctx or 4096
         optimal = OptimalParameters(n_ctx=ctx, n_batch=32, n_ubatch=8, n_gpu_layers=0)
-        model_path = getattr(getattr(self.model, "details", object()), "gguf_path", None)
+        # Resolve model file path with robust fallbacks:
+        # 1. model.details.gguf_file (preferred schema field)
+        # 2. model.details.gguf_path (legacy / older naming if present)
+        # 3. model.model (raw model path/name)
+        details = getattr(self.model, "details", None)
+        model_path: Optional[str] = None
+        if details is not None:
+            model_path = getattr(details, "gguf_file", None) or getattr(
+                details, "gguf_path", None
+            )
+        if not model_path:
+            model_path = getattr(self.model, "model", None)
         if not isinstance(model_path, str) or not model_path:
-            raise ValueError("Model details missing gguf_path for llama.cpp initialization")
+            raise ValueError(
+                "Unable to resolve model file path (expected details.gguf_file or model)"
+            )
         self.llama_instance = llama_cpp.Llama(
             model_path=model_path,
             n_ctx=optimal.n_ctx,
@@ -79,7 +106,9 @@ class BaseLlamaCppPipeline(BasePipeline):
             verbose=False,
         )
 
-    def _format_messages_for_llama(self, messages: List[BaseMessage]) -> List[Dict[str, Any]]:
+    def _format_messages_for_llama(
+        self, messages: List[BaseMessage]
+    ) -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
         for m in messages:
             role = "user"
@@ -126,7 +155,9 @@ class BaseLlamaCppPipeline(BasePipeline):
     ) -> Tuple[str, List[LangChainToolCall]]:
         tool_calls: List[LangChainToolCall] = []
         cleaned = content
-        xml_pat = r"<(?:tool|function)[-_]call>\s*(\{.*?\})\s*</(?:tool|function)[-_]call>"
+        xml_pat = (
+            r"<(?:tool|function)[-_]call>\s*(\{.*?\})\s*</(?:tool|function)[-_]call>"
+        )
         for m in re.finditer(xml_pat, content, re.DOTALL | re.IGNORECASE):
             try:
                 data = json.loads(m.group(1).strip())
@@ -176,8 +207,12 @@ class BaseLlamaCppPipeline(BasePipeline):
                 except Exception:
                     continue
         if tool_calls and cleaned:
-            cleaned = re.sub(r"assistant+\s*$", "", cleaned, flags=re.IGNORECASE).strip()
-            cleaned = re.sub(r"\s*assistant+\s*", " ", cleaned, flags=re.IGNORECASE).strip()
+            cleaned = re.sub(
+                r"assistant+\s*$", "", cleaned, flags=re.IGNORECASE
+            ).strip()
+            cleaned = re.sub(
+                r"\s*assistant+\s*", " ", cleaned, flags=re.IGNORECASE
+            ).strip()
         return cleaned, tool_calls
 
     def _get_res(
@@ -231,7 +266,9 @@ class BaseLlamaCppPipeline(BasePipeline):
                 name = fn.get("name", tc.get("name", ""))
                 args_str = fn.get("arguments", "{}")
                 try:
-                    args = json.loads(args_str) if isinstance(args_str, str) else args_str
+                    args = (
+                        json.loads(args_str) if isinstance(args_str, str) else args_str
+                    )
                 except json.JSONDecodeError:
                     args = {"input": args_str}
                 explicit_calls.append(
@@ -243,7 +280,9 @@ class BaseLlamaCppPipeline(BasePipeline):
                     )
                 )
             except Exception as e:  # pragma: no cover
-                self._logger.warning("Explicit tool call conversion failed", error=str(e))
+                self._logger.warning(
+                    "Explicit tool call conversion failed", error=str(e)
+                )
         if explicit_calls:
             cleaned_content = content
             tool_calls = explicit_calls
@@ -269,7 +308,9 @@ class BaseLlamaCppPipeline(BasePipeline):
         tools = kwargs.get("tools") or []
         if tools:
             self._bound_tools = list(set(self._bound_tools + list(tools)))
-        response_stream = self._get_res(messages, stop=stop, tools=self._bound_tools, stream=True)
+        response_stream = self._get_res(
+            messages, stop=stop, tools=self._bound_tools, stream=True
+        )
         accumulated = ""
         explicit_stream_calls: List[LangChainToolCall] = []
         for chunk in response_stream:
@@ -288,25 +329,35 @@ class BaseLlamaCppPipeline(BasePipeline):
                     name = fn.get("name", tc.get("name", ""))
                     args_str = fn.get("arguments", "{}")
                     try:
-                        args = json.loads(args_str) if isinstance(args_str, str) else args_str
+                        args = (
+                            json.loads(args_str)
+                            if isinstance(args_str, str)
+                            else args_str
+                        )
                     except json.JSONDecodeError:
                         args = {"input": args_str}
                     explicit_stream_calls.append(
                         LangChainToolCall(
-                            id=tc.get("id", f"call_stream_{len(explicit_stream_calls)}"),
+                            id=tc.get(
+                                "id", f"call_stream_{len(explicit_stream_calls)}"
+                            ),
                             name=name if isinstance(name, str) else str(name),
                             args=args if isinstance(args, dict) else {},
                             type="tool_call",
                         )
                     )
                 except Exception as e:  # pragma: no cover
-                    self._logger.warning("Streaming tool call conversion failed", error=str(e))
+                    self._logger.warning(
+                        "Streaming tool call conversion failed", error=str(e)
+                    )
             if finish_reason == "stop":
                 if explicit_stream_calls:
                     cleaned_content = accumulated
                     final_calls = explicit_stream_calls
                 else:
-                    cleaned_content, final_calls = self._parse_tool_calls_from_content(accumulated)
+                    cleaned_content, final_calls = self._parse_tool_calls_from_content(
+                        accumulated
+                    )
                 final_chunk = AIMessageChunk(
                     content=cleaned_content,
                     tool_calls=final_calls,  # type: ignore
@@ -324,7 +375,9 @@ class BaseLlamaCppPipeline(BasePipeline):
             if piece:
                 inc_chunk = AIMessageChunk(
                     content=piece,
-                    response_metadata={"model_name": getattr(self.model, "name", "unknown")},
+                    response_metadata={
+                        "model_name": getattr(self.model, "name", "unknown")
+                    },
                     chunk_position=None,
                 )
                 gen_chunk = ChatGenerationChunk(message=inc_chunk)
@@ -348,7 +401,9 @@ class BaseLlamaCppPipeline(BasePipeline):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> AsyncIterator[ChatGenerationChunk]:  # pragma: no cover
-        for chunk in self._stream(messages, stop=stop, run_manager=run_manager, **kwargs):
+        for chunk in self._stream(
+            messages, stop=stop, run_manager=run_manager, **kwargs
+        ):
             yield chunk
 
     def generate_prompt(
@@ -367,4 +422,3 @@ class BaseLlamaCppPipeline(BasePipeline):
 
 
 __all__ = ["BaseLlamaCppPipeline"]
-
