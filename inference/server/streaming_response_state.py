@@ -192,8 +192,6 @@ class StreamingResponseState:
                 self.current_tool_call = None
                 self.state = StreamingState.PROCESSING
 
-
-
             # Remove the tag from future processing
             chunk = self.tool_call_end_pattern.sub("", chunk)
 
@@ -207,17 +205,16 @@ class StreamingResponseState:
 
         # Return ChatResponse with thinking content in the thoughts field (not main content)
         # Create Thought object with proper fields for serialization
-        thoughts = [Thought(
-            text=clean_chunk,
-            id=None,
-            message_id=None,
-            created_at=None
-        )] if clean_chunk else None
-        
+        thoughts = (
+            [Thought(text=clean_chunk, id=None, message_id=None, created_at=None)]
+            if clean_chunk
+            else None
+        )
+
         message = Message(
-            role=MessageRole.ASSISTANT, 
+            role=MessageRole.ASSISTANT,
             content=[],  # Empty main content - thoughts go in separate field
-            thoughts=thoughts
+            thoughts=thoughts,
         )
         return ChatResponse(
             message=message,
@@ -226,7 +223,7 @@ class StreamingResponseState:
 
     def _handle_processing_content(self, chunk: str) -> ChatResponse:
         """Handle content when in PROCESSING state - return in thoughts field like thinking."""
-        # Processing state also goes to thinking buffer and thoughts field  
+        # Processing state also goes to thinking buffer and thoughts field
         clean_chunk = self._clean_xml_tags(chunk)
         if clean_chunk:
             self.thinking_buffer += clean_chunk
@@ -234,17 +231,16 @@ class StreamingResponseState:
 
         # Return ChatResponse with processing content in thoughts field (not main content)
         # Create Thought object with proper fields for serialization
-        thoughts = [Thought(
-            text=clean_chunk,
-            id=None,
-            message_id=None,
-            created_at=None
-        )] if clean_chunk else None
-        
+        thoughts = (
+            [Thought(text=clean_chunk, id=None, message_id=None, created_at=None)]
+            if clean_chunk
+            else None
+        )
+
         message = Message(
             role=MessageRole.ASSISTANT,
             content=[],  # Empty main content - processing goes in thoughts field
-            thoughts=thoughts
+            thoughts=thoughts,
         )
         return ChatResponse(
             message=message,
@@ -300,13 +296,12 @@ class StreamingResponseState:
                 )
                 # Return empty response - do NOT include this content
                 return ChatResponse(
-                    message=Message(role=MessageRole.ASSISTANT, content=[]), 
-                    done=False
+                    message=Message(role=MessageRole.ASSISTANT, content=[]), done=False
                 )
-            
+
             # Process the chunk through boundaries detection
             filtered_chunk = self._detect_json_block_boundaries(clean_chunk)
-            
+
             # Only add to response buffer if it passes all filters
             if filtered_chunk and not self._is_json_metadata(filtered_chunk):
                 self.response_buffer += filtered_chunk
@@ -387,21 +382,30 @@ class StreamingResponseState:
                 '"system_type":',
                 '"session_context":',
             ]
-            
+
             # More aggressive check - if it looks like structured metadata JSON, filter it
             if any(indicator in stripped for indicator in metadata_indicators):
                 return True
-                
+
             # Also check for complete JSON objects that look like metadata
             try:
                 import json
+
                 parsed = json.loads(stripped)
                 if isinstance(parsed, dict):
                     # Check if it contains metadata-like keys
                     metadata_keys = [
-                        'intents', 'intent', 'analysis', 'analyses', 'workflow_type',
-                        'complexity_level', 'required_capabilities', 'confidence',
-                        'computational_requirements', 'classification', 'reasoning'
+                        "intents",
+                        "intent",
+                        "analysis",
+                        "analyses",
+                        "workflow_type",
+                        "complexity_level",
+                        "required_capabilities",
+                        "confidence",
+                        "computational_requirements",
+                        "classification",
+                        "reasoning",
                     ]
                     if any(key in parsed for key in metadata_keys):
                         return True
@@ -503,12 +507,12 @@ class StreamingResponseState:
 
                     # Extract function call details - try multiple fields for tool name
                     tool_name = (
-                        function_data.get("name") or 
-                        function_data.get("function") or 
-                        function_data.get("tool_name") or
-                        self._infer_tool_name_from_args(function_data)
+                        function_data.get("name")
+                        or function_data.get("function")
+                        or function_data.get("tool_name")
+                        or self._infer_tool_name_from_args(function_data)
                     )
-                    
+
                     self.current_tool_call["tool_name"] = tool_name
                     self.current_tool_call["args"] = function_data.get(
                         "args",
@@ -548,7 +552,7 @@ class StreamingResponseState:
         """Check if we can infer a tool from the argument structure."""
         if not isinstance(data, dict):
             return False
-        
+
         # Common tool argument patterns
         tool_patterns = {
             "query": ["web_search", "search"],
@@ -557,14 +561,14 @@ class StreamingResponseState:
             "filename": ["file_read", "file_write"],
             "path": ["file_operations"],
         }
-        
+
         return any(key in data for key in tool_patterns.keys())
 
     def _infer_tool_name_from_args(self, data: dict) -> str:
         """Infer tool name from argument structure when explicit name is missing."""
         if not isinstance(data, dict):
             return ""
-        
+
         # Infer tool names based on argument patterns
         if "query" in data:
             return "web_search"
@@ -574,7 +578,7 @@ class StreamingResponseState:
             return "execute_code"
         elif "filename" in data or "path" in data:
             return "file_operations"
-        
+
         return "unknown_tool"
 
     def _detect_function_call_start(self, chunk: str) -> bool:
@@ -613,7 +617,7 @@ class StreamingResponseState:
                 text=self.accumulated_thinking,
                 id=None,
                 message_id=None,
-                created_at=None
+                created_at=None,
             )
             if self.accumulated_thinking
             else None

@@ -469,26 +469,15 @@ class ComposerRealEndToEndTester:
                 or """Look at this image and describe what you see. What colors are visible, and what might this represent? Also, please provide information about the latest developments in multimodal AI models that can process both text and images together."""
             )
 
-            # Create a simple test image (red square) as base64
-            import base64
-            from io import BytesIO
-            from PIL import Image
-
-            # Create test image
-            img = Image.new("RGB", (200, 200), color="red")
-            buffer = BytesIO()
-            img.save(buffer, format="PNG")
-            img_data = buffer.getvalue()
-            img_base64 = base64.b64encode(img_data).decode("utf-8")
-            test_image_data = f"data:image/png;base64,{img_base64}"
-
             content_list = [
+                MessageContent(
+                    type=MessageContentType.IMAGE,
+                    url="https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg",
+                ),
                 MessageContent(type=MessageContentType.TEXT, text=query_text),
-                MessageContent(type=MessageContentType.IMAGE, url=test_image_data),
             ]
 
             user_message = Message(
-                id=None,  # Will be assigned by database
                 conversation_id=self.test_conversation_id,
                 role=MessageRole.USER,
                 content=content_list,

@@ -170,7 +170,7 @@ class ToolsAgentSubgraph:
     ) -> bool:
         """
         Check if a tool call request is a duplicate of a previous one.
-        
+
         Only considers exact duplicates (same tool name AND same arguments).
         Different arguments to the same tool are allowed for legitimate use cases like:
         - Multiple web searches with different queries
@@ -184,7 +184,7 @@ class ToolsAgentSubgraph:
                 and prev_request["args"] == current_request["args"]
             ):
                 duplicate_count += 1
-        
+
         # Allow 1 duplicate (so 2 total calls with same args), block after that
         # This handles cases where the AI might legitimately retry a failed call
         return duplicate_count >= 2
@@ -231,6 +231,10 @@ class ToolsAgentSubgraph:
 
             # Execute chat completion with full conversation history and tools
             # The agent will see: [user_message, previous_ai_message, tool_results, ...]
+            logger.debug(
+                f"Invoking chat agent with {len(langchain_messages)} messages and {len(tools_list) if tools_list else 0} tools\n"
+                f"tools: {[tool.name for tool in tools_list] if tools_list else 'None'}"
+            )
             response_msg = await self.chat_agent.chat_completion_with_conversion(
                 messages=langchain_messages,  # Full conversation including tool results
                 tools=tools_list,

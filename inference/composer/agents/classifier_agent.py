@@ -163,7 +163,7 @@ IMPORTANT: Return JSON that is valid against this schema:
 If multiple intents are needed, include additional objects in the intents array.
 """
         msgs = []
-        msgs.extend(messages)
+        msgs.extend(messages[:-1])  # All but last message
         msgs.append(analysis_prompt)
         result = await self.run(
             messages=msgs,

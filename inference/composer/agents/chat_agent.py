@@ -119,9 +119,8 @@ class ChatAgent(BaseAgent[ChatResponse]):
 
                 # Accumulate content and tool calls
 
-                # Collect tool calls from message content
+                # Collect tool calls and content from message
                 if chunk.message and chunk.message.content:
-                    content_text = extract_message_text(chunk.message)
                     for content in chunk.message.content:
                         if content.type == MessageContentType.TOOL_CALL:
                             # Extract tool call data from content
@@ -134,12 +133,13 @@ class ChatAgent(BaseAgent[ChatResponse]):
                                 except (json.JSONDecodeError, AttributeError):
                                     # If not JSON, skip this content item
                                     pass
-                            elif (
-                                content.type == MessageContentType.THINKING
-                                or content.type == MessageContentType.TEXT
-                            ):
-                                if hasattr(content, "text") and content.text:
-                                    final_content += content.text
+                        elif (
+                            content.type == MessageContentType.THINKING
+                            or content.type == MessageContentType.TEXT
+                        ):
+                            # Accumulate text content properly
+                            if hasattr(content, "text") and content.text:
+                                final_content += content.text
 
             self.logger.info(
                 "Streaming completion with metadata finished",

@@ -36,6 +36,7 @@ from models import (
 )
 from composer.graph.state import WorkflowState
 from composer.agents.classifier_agent import ClassifierAgent
+from composer.utils.extraction import extract_content_from_base_langchain_message
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="PlanningIntentSubgraph")
@@ -134,7 +135,7 @@ class PlanningIntentSubgraph:
 
         if messages:
             last_message = messages[-1]
-            content = getattr(last_message, "content", "").lower()
+            content = extract_content_from_base_langchain_message(last_message).lower()
 
             # Keyword-based complexity indicators
             technical_keywords = [

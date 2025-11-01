@@ -64,25 +64,41 @@ class ToolCallStorage:
         try:
             args_json = json.dumps(tool_call.args) if tool_call.args else "{}"
         except (TypeError, ValueError) as e:
-            self.logger.error(f"Failed to serialize tool_call.args: {e}, args: {tool_call.args}")
+            self.logger.error(
+                f"Failed to serialize tool_call.args: {e}, args: {tool_call.args}"
+            )
             # Filter out non-serializable objects
             if tool_call.args and isinstance(tool_call.args, dict):
-                safe_args = {k: str(v) if not isinstance(v, (str, int, float, bool, list, dict)) else v 
-                           for k, v in tool_call.args.items()}
+                safe_args = {
+                    k: (
+                        str(v)
+                        if not isinstance(v, (str, int, float, bool, list, dict))
+                        else v
+                    )
+                    for k, v in tool_call.args.items()
+                }
                 args_json = json.dumps(safe_args)
             else:
                 args_json = "{}"
-        
+
         try:
             result_data_json = (
                 json.dumps(tool_call.result_data) if tool_call.result_data else "{}"
             )
         except (TypeError, ValueError) as e:
-            self.logger.error(f"Failed to serialize tool_call.result_data: {e}, result_data: {tool_call.result_data}")
+            self.logger.error(
+                f"Failed to serialize tool_call.result_data: {e}, result_data: {tool_call.result_data}"
+            )
             # Filter out non-serializable objects
             if tool_call.result_data and isinstance(tool_call.result_data, dict):
-                safe_result = {k: str(v) if not isinstance(v, (str, int, float, bool, list, dict)) else v 
-                             for k, v in tool_call.result_data.items()}
+                safe_result = {
+                    k: (
+                        str(v)
+                        if not isinstance(v, (str, int, float, bool, list, dict))
+                        else v
+                    )
+                    for k, v in tool_call.result_data.items()
+                }
                 result_data_json = json.dumps(safe_result)
             else:
                 result_data_json = "{}"
@@ -98,8 +114,8 @@ class ToolCallStorage:
             resource_usage_json = "{}"
 
         # Handle created_at field - use None if not present (SQL will default to NOW())
-        created_at_value = getattr(tool_call, 'created_at', None)
-        
+        created_at_value = getattr(tool_call, "created_at", None)
+
         row = await conn.fetchrow(
             self.get_query("tool_call.add_tool_call"),
             tool_call.message_id,  # $1
@@ -146,26 +162,33 @@ class ToolCallStorage:
                 for row in rows:
                     # Parse JSON fields back to dict/objects
                     import json
-                    
+
                     args = row["args"]
                     if isinstance(args, str):
                         args = json.loads(args) if args.strip() else {}
                     elif args is None:
                         args = {}
-                    
-                    result_data = row["result_data"] 
+
+                    result_data = row["result_data"]
                     if isinstance(result_data, str):
-                        result_data = json.loads(result_data) if result_data.strip() else {}
+                        result_data = (
+                            json.loads(result_data) if result_data.strip() else {}
+                        )
                     elif result_data is None or result_data == {}:
                         result_data = None
-                    
+
                     resource_usage_data = row["resource_usage"]
                     if isinstance(resource_usage_data, str):
-                        resource_usage_data = json.loads(resource_usage_data) if resource_usage_data.strip() else {}
-                    
+                        resource_usage_data = (
+                            json.loads(resource_usage_data)
+                            if resource_usage_data.strip()
+                            else {}
+                        )
+
                     resource_usage = None
                     if resource_usage_data and isinstance(resource_usage_data, dict):
                         from models.resource_usage import ResourceUsage
+
                         try:
                             resource_usage = ResourceUsage(**resource_usage_data)
                         except Exception as e:
@@ -173,7 +196,9 @@ class ToolCallStorage:
                             resource_usage = None
 
                     tool_execution_result = ToolCall(
-                        name=row["tool_name"],  # Map tool_name from DB to name field in model
+                        name=row[
+                            "tool_name"
+                        ],  # Map tool_name from DB to name field in model
                         execution_id=row["execution_id"],
                         success=row["success"],
                         args=args,

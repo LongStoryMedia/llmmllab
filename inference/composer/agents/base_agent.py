@@ -171,11 +171,15 @@ class BaseAgent(ABC, Generic[T]):
             self.logger.debug("Creating persistent LangChain agent")
             # Get the model configuration from pipeline factory
 
-            # with self.pipeline_factory.pipeline(
-            #     self.profile, priority, grammar
-            # ) as chat_model:
-            #     if not chat_model:
-            #         raise NodeExecutionError("Failed to create chat model")
+            if tools:
+                system_prompt += (
+                    "\n\nYou have access to the following tools:\n"
+                    + "\n".join(
+                        [f"- {tool.name}: {tool.description}" for tool in tools]
+                    )
+                    + "\n\nUse them wisely to assist the user."
+                )
+
             chat_model = self.pipeline_factory.get_pipeline(
                 self.profile, priority, grammar
             )
@@ -291,13 +295,15 @@ class BaseAgent(ABC, Generic[T]):
         returns:
             str: Extracted system prompt
         """
-        current_date = datetime.datetime.now().strftime('%Y-%m-%d')
+        current_date = datetime.datetime.now().strftime("%Y-%m-%d")
         msgs = normalize_message_input(messages)
         convo = []
 
         if self.profile.system_prompt:
             # Incorporate current date into the existing system prompt
-            system_prompt = f"Current Date: {current_date}\n\n{self.profile.system_prompt}"
+            system_prompt = (
+                f"Current Date: {current_date}\n\n{self.profile.system_prompt}"
+            )
         else:
             system_prompt = f"Current Date: {current_date}"
 

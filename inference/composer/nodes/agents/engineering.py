@@ -102,7 +102,6 @@ class EngineeringAgentNode:
                     tools=state.available_tools
                     or [],  # Use tools from tool orchestration if available
                     grammar=None,  # Could be enhanced based on state requirements
-                    active_todos=getattr(state, 'active_todos', None),  # Include todos for context
                 )
 
                 # Add engineering response to state messages

@@ -1,8 +1,10 @@
-"""Execute ToolsAgentSubgraph with a single multimodal user message for debugging."""
+"""Test ToolsAgentSubgraph as main graph with LlamaCpp pipeline."""
 
 import os
 import sys
+from typing import List
 
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
 from models import (
     Message,
     MessageContent,
@@ -10,17 +12,16 @@ from models import (
     MessageRole,
     NodeMetadata,
 )
-from models.default_model_profiles import DEFAULT_PROFILES
-
-# Force using a model profile that points to a GGUF-backed model known to have details.gguf_file.
-# Adjust if repository model set differs; fallback to primary profile's name.
-FORCED_MODEL_NAME = "qwen3-vl-2b-thinking-abliterated"
+from models.default_model_profiles import DEFAULT_TEXT_TO_TEXT_MODEL, DEFAULT_PROFILES
 from runner.pipeline_factory import pipeline_factory
 from composer.agents import ChatAgent
 from composer.tools.registry import ToolRegistry
 from composer.graph.subgraphs import ToolsAgentSubgraph
 from composer.graph.state import ToolsState
 from composer.utils.conversion import convert_messages_to_base_langchain
+from utils.logging import llmmllogger
+
+logger = llmmllogger.bind(component="test_tools_agent_subgraph")
 
 TEST_IMAGE_URL = (
     "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg"
@@ -28,7 +29,7 @@ TEST_IMAGE_URL = (
 
 
 def get_profile():
-    model_name = FORCED_MODEL_NAME
+    model_name = DEFAULT_TEXT_TO_TEXT_MODEL
     profile = DEFAULT_PROFILES.get("primary")
     if getattr(profile, "model_name", None) != model_name:
         for _, p in DEFAULT_PROFILES.items():
@@ -45,10 +46,12 @@ async def wrapper() -> None:
     # Ensure verbose logging minimal unless TRACE requested
     os.environ.setdefault("LOG_LEVEL", "INFO")
 
+    logger.info("🚀 Starting ToolsAgentSubgraph test")
+
     # Instantiate pipeline factory (local cache mode)
     # Retrieve a default profile (assumes DEFAULT_MODEL_PROFILES contains profile for model)
     profile = get_profile()
-
+    logger.info(f"📊 Using model profile: {profile.model_name}")
 
     agent = ChatAgent(
         pipeline_factory,
@@ -57,8 +60,12 @@ async def wrapper() -> None:
     )
 
     registry = ToolRegistry(pipeline_factory)
+    logger.info(
+        f"🛠️ Tool registry initialized with {len(registry.get_all_executable_tools())} tools"
+    )
 
-    messages = [
+    # Create test messages
+    test_messages = [
         Message(
             role=MessageRole.USER,
             content=[
@@ -71,55 +78,127 @@ async def wrapper() -> None:
         )
     ]
 
-    tools_subgraph = ToolsAgentSubgraph(registry, agent)
+    # Convert to LangChain core messages for ToolsState
+    langchain_messages = convert_messages_to_base_langchain(test_messages)
+    logger.info(
+        f"📝 Converted {len(test_messages)} messages to {len(langchain_messages)} LangChain messages"
+    )
 
-    # Convert internal model messages to LangChain BaseMessage objects expected by ToolsState
-    lc_messages = convert_messages_to_base_langchain(messages)
+    # Create ToolsAgentSubgraph
+    tools_agent_subgraph = ToolsAgentSubgraph(
+        registry,
+        agent,
+    )
+    logger.info("🤖 ToolsAgentSubgraph initialized")
 
-    # Minimal required ToolsState fields (fill with safe defaults)
-    state: ToolsState = {
-        "messages": lc_messages,  # type: ignore
-        "user_id": "debug_user",
+    # Create initial ToolsState
+    tools_state: ToolsState = {
+        "messages": langchain_messages,
+        "user_id": "test_user",
         "conversation_id": 1,
-        "user_config": None,
+        "user_config": None,  # No user config for this test
         "system_config": None,
-        "current_date": __import__("datetime").datetime.now().isoformat(),
+        "current_date": "2025-10-31T00:00:00",
         "tool_call_count": 0,
     }
 
-    print("[debug] Executing ToolsAgentSubgraph graph (single invoke)...")
+    logger.info("🎯 Starting ToolsAgentSubgraph streaming execution...")
 
+    # Execute the subgraph with streaming
     try:
-        result_state = await tools_subgraph.graph.ainvoke(state)  # type: ignore
+        if not tools_agent_subgraph.graph:
+            logger.error("❌ ToolsAgentSubgraph graph not initialized")
+            return
+
+        print("\n" + "=" * 80)
+        print("STREAMING TOOLS AGENT SUBGRAPH EXECUTION")
+        print("=" * 80)
+        print()
+
+        message_count = 0
+        current_content = ""
+        current_tool_calls = []
+
+        # Stream the graph execution
+        async for chunk in tools_agent_subgraph.graph.astream(tools_state):
+            print(f"📦 Received chunk: {chunk}")
+            
+            # Handle different chunk formats from LangGraph
+            for node_name, node_output in chunk.items():
+                print(f"🔄 Processing node '{node_name}' with output keys: {list(node_output.keys())}")
+                
+                if node_name in ["chat_agent", "tools"]:
+                    messages = node_output.get("messages", [])
+                    print(f"📬 Node '{node_name}' has {len(messages)} messages")
+                    
+                    for msg_idx, msg in enumerate(messages):
+                        message_count += 1
+                        msg_type = getattr(msg, "type", type(msg).__name__)
+                        content = getattr(msg, "content", "")
+                        tool_calls = getattr(msg, "tool_calls", [])
+                        
+                        print(f"\n🔄 [{node_name}] Message {message_count} (idx {msg_idx}) [{msg_type}]:")
+                        print(f"   Raw message: {type(msg)} with content length: {len(str(content))}")
+                        
+                        # Always show content if it exists, regardless of previous content
+                        if content:
+                            # Handle different content formats
+                            if isinstance(content, str):
+                                print(f"📝 Content ({len(content)} chars):")
+                                print(f"   {content}")
+                            elif isinstance(content, list):
+                                print(f"📝 Content List ({len(content)} items):")
+                                for i, item in enumerate(content):
+                                    if isinstance(item, dict) and 'text' in item:
+                                        text = item['text']
+                                        print(f"   Item {i+1}: {text}")
+                                    else:
+                                        print(f"   Item {i+1}: {item}")
+                            else:
+                                print(f"📝 Content ({len(str(content))} chars):")
+                                print(f"   {content}")
+                            print("   " + "-" * 50)
+                        else:
+                            print(f"📝 No content in this message")
+                        
+                        # Handle tool calls
+                        if tool_calls:
+                            print(f"🛠️ Tool calls: {len(tool_calls)} calls")
+                            for j, tc in enumerate(tool_calls):
+                                if isinstance(tc, dict):
+                                    tool_name = tc.get('name', 'unknown')
+                                    tool_args = tc.get('args', {})
+                                    print(f"  {j+1}. Calling {tool_name} with args: {tool_args}")
+                                else:
+                                    tool_name = getattr(tc, 'name', 'unknown')
+                                    tool_args = getattr(tc, 'args', {})
+                                    print(f"  {j+1}. Calling {tool_name} with args: {tool_args}")
+                        else:
+                            print(f"🛠️ No tool calls in this message")
+                        
+                        # Show additional message attributes for debugging
+                        print(f"🔍 Debug - Message attributes:")
+                        for attr in ['id', 'additional_kwargs', 'response_metadata']:
+                            if hasattr(msg, attr):
+                                attr_value = getattr(msg, attr)
+                                print(f"   {attr}: {attr_value}")
+                        
+                        print(flush=True)
+
+        print("\n" + "=" * 80)
+        print(f"✅ STREAMING COMPLETE - Total message events: {message_count}")
+        print("=" * 80)
+
+        logger.info("🎉 Streaming test completed successfully")
+
     except Exception as e:
-        print(f"[error] Subgraph execution failed: {e}")
+        logger.error(f"❌ ToolsAgentSubgraph execution failed: {e}")
+        import traceback
+
+        traceback.print_exc()
         raise
 
-    # Extract final assistant message(s)
-    final_messages = (
-        result_state.get("messages", []) if isinstance(result_state, dict) else []
-    )
-    last_ai = None
-    for m in reversed(final_messages):
-        if getattr(m, "type", "") == "ai":
-            last_ai = m
-            break
-    if last_ai is None:
-        print("[warn] No AI message produced")
-    else:
-        content = getattr(last_ai, "content", "")
-        if isinstance(content, str):
-            print("\n[assistant]", content)
-        elif isinstance(content, list):  # LangChain content parts
-            for part in content:
-                if isinstance(part, dict) and part.get("type") == "output_text":
-                    print(part.get("text", ""), end="")
-        # Tool calls (structured)
-        tool_calls = getattr(last_ai, "tool_calls", None)
-        if tool_calls:
-            print("\n[assistant tool_calls]:", tool_calls)
-
-    print("\n[debug] ToolsAgentSubgraph execution complete")
+    print("\n[debug] Completed ToolsAgentSubgraph test without immediate crash")
 
 
 if __name__ == "__main__":

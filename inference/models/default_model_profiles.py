@@ -59,11 +59,10 @@ DEFAULT_RERANKING_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000019")
 DEFAULT_TEXT_TO_TEXT_MODEL = (
     "qwen3-vl-32b-thinking-abliterated"  # Changed to multimodal model
 )
-DEFAULT_VISION_TEXT_TO_TEXT_MODEL = "qwen2.5-vl-32b-instruct-q4-k-m"
 DEFAULT_TEXT_TO_IMAGE_MODEL = "black-forest-labs-flux.1-dev"
 DEFAULT_IMAGE_TO_IMAGE_MODEL = "black-forest-labs-flux.1-kontext-dev"
 DEFAULT_TEXT_TO_EMBEDDINGS_MODEL = "nomic-embed-text-v2"
-DEFAULT_SUMMARIZATION_MODEL = "llama-chat-summary-3_2-3b-q5-k-m"
+DEFAULT_SUMMARIZATION_MODEL = "qwen3-vl-2b-thinking-abliterated"
 DEFAULT_ANALYSIS_MODEL = "qwen3-vl-2b-thinking-abliterated"
 
 # Define default model profiles
@@ -597,42 +596,6 @@ DEFAULT_MODEL_PROFILE_CONFIG = ModelProfileConfig(
     engineering_profile_id=DEFAULT_ENGINEERING_PROFILE_ID,
     reranking_profile_id=DEFAULT_RERANKING_PROFILE_ID,
 )
-
-
-# Helper function to get a model by task
-def get_model_for_task(task: str) -> str:
-    """Get the best model ID for a specific task from models.json"""
-    import json
-    import os
-
-    # Default mappings in case models.json can't be loaded
-    default_models = {
-        "TextToText": DEFAULT_TEXT_TO_TEXT_MODEL,
-        "VisionTextToText": DEFAULT_VISION_TEXT_TO_TEXT_MODEL,
-        "TextToImage": DEFAULT_TEXT_TO_IMAGE_MODEL,
-        "ImageToImage": DEFAULT_IMAGE_TO_IMAGE_MODEL,
-        "TextToEmbeddings": DEFAULT_TEXT_TO_EMBEDDINGS_MODEL,
-    }
-
-    try:
-        # Attempt to load models.json
-        models_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models.json"
-        )
-        with open(models_path, "r") as f:
-            models_data = json.load(f)
-
-        # Find the first model matching the task
-        for model in models_data:
-            if model.get("task") == task:
-                return model.get("id")
-
-        # Fall back to default if no match found
-        return default_models.get(task, DEFAULT_TEXT_TO_TEXT_MODEL)
-    except Exception:
-        # If there's an error loading models.json, return the default
-        return default_models.get(task, DEFAULT_TEXT_TO_TEXT_MODEL)
-
 
 # Create a mapping of all default profiles
 DEFAULT_PROFILES = {

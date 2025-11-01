@@ -20,7 +20,6 @@ from models import (
 from utils.logging import llmmllogger
 from .extraction import (
     extract_content_from_message,
-    extract_content_from_langchain_message,
     _text_to_message_content_list,
 )
 from .tool_call_types import (
@@ -118,15 +117,41 @@ def from_lc_message(lc_message: Union[BaseMessage, LangChainMessage]) -> Message
         else:
             text_content = str(lc_message)
 
+    # Attempt structured parsing if lc_message.content is a list of dicts
+    structured_contents: List[MessageContent] = []
+    raw_content = getattr(lc_message, "content", None)
+
+    if isinstance(raw_content, list):
+        for part in raw_content:
+            if (
+                isinstance(part, dict)
+                and part.get("type") == "image_url"
+                and isinstance(part.get("image_url"), dict)
+            ):
+                url = part["image_url"].get("url")
+                if url:
+                    structured_contents.append(
+                        MessageContent(type=MessageContentType.IMAGE, url=url)
+                    )
+            elif isinstance(part, dict) and part.get("type") == "text":
+                txt = part.get("text") or ""
+                structured_contents.append(
+                    MessageContent(type=MessageContentType.TEXT, text=txt)
+                )
+            elif isinstance(part, str):
+                structured_contents.append(
+                    MessageContent(type=MessageContentType.TEXT, text=part)
+                )
+
+    if not structured_contents:
+        # Fallback to single text content
+        structured_contents = [
+            MessageContent(type=MessageContentType.TEXT, text=text_content)
+        ]
+
     return Message(
         role=role,
-        content=[
-            MessageContent(
-                type=MessageContentType.TEXT,
-                text=text_content,
-                url=None,
-            )
-        ],
+        content=structured_contents,
     )
 
 
@@ -136,7 +161,15 @@ def message_to_langchain_message(msg: Message) -> LangChainMessage:
     IMPORTANT: Preserve tool_calls so downstream tool processing
     can handle them correctly.
     """
-    content_text = extract_content_from_message(msg)
+    content = []
+    for c in msg.content:
+        if c.type == MessageContentType.TEXT:
+            content.append({"type": "text", "text": c.text})
+        elif c.type == MessageContentType.IMAGE:
+            content.append({"type": "image_url", "image_url": {"url": c.url}})
+        else:
+            # Fallback to text representation for unknown content types
+            content.append({"type": "text", "text": str(c)})
 
     # Determine message type from role
     message_type = "human"  # Default
@@ -178,7 +211,7 @@ def message_to_langchain_message(msg: Message) -> LangChainMessage:
     )
 
     langchain_msg = LangChainMessage(
-        content=content_text,
+        content=content,
         type=message_type,
         tool_calls=tool_calls_for_lc,
     )
@@ -207,7 +240,55 @@ def langchain_message_to_message(
     Returns:
         Converted Message object
     """
-    content_text = extract_content_from_langchain_message(lc_msg)
+    # Preserve structured multimodal content instead of collapsing to plain text.
+    # LangChainMessage.content may be a list of dicts like:
+    # [{"type": "image_url", "image_url": {"url": "..."}}, {"type": "text", "text": "..."}]
+    # Previous implementation flattened everything, losing image metadata; this breaks vision models.
+
+    raw_content = getattr(lc_msg, "content", [])
+    message_contents: List[MessageContent] = []
+
+    if isinstance(raw_content, list):
+        for part in raw_content:
+            # Dict with image
+            if (
+                isinstance(part, dict)
+                and part.get("type") == "image_url"
+                and isinstance(part.get("image_url"), dict)
+            ):
+                url = part["image_url"].get("url")
+                if url:
+                    message_contents.append(
+                        MessageContent(type=MessageContentType.IMAGE, url=url)
+                    )
+            # Dict with text
+            elif isinstance(part, dict) and part.get("type") == "text":
+                text_val = part.get("text") or ""
+                message_contents.append(
+                    MessageContent(type=MessageContentType.TEXT, text=text_val)
+                )
+            # Raw string part
+            elif isinstance(part, str):
+                message_contents.append(
+                    MessageContent(type=MessageContentType.TEXT, text=part)
+                )
+            else:
+                # Fallback: string representation
+                try:
+                    repr_text = str(part)
+                    if repr_text and repr_text != "None":
+                        message_contents.append(
+                            MessageContent(type=MessageContentType.TEXT, text=repr_text)
+                        )
+                except Exception:
+                    # Ignore unparsable parts
+                    pass
+    else:
+        # Single (likely text) content
+        content_text = str(raw_content) if raw_content else ""
+        message_contents.append(
+            MessageContent(type=MessageContentType.TEXT, text=content_text)
+        )
 
     # Determine role from message type
     role = MessageRole.USER  # Default
@@ -221,7 +302,6 @@ def langchain_message_to_message(
             role = MessageRole.USER
 
     # Convert LangChain tool call requests to execution results if present
-    # Note: This is unusual since LangChain messages typically contain requests, not results
     tool_execution_results = None
     if hasattr(lc_msg, "tool_calls") and lc_msg.tool_calls:
         logger.debug(
@@ -230,18 +310,21 @@ def langchain_message_to_message(
         tool_execution_results = []
         for tc in lc_msg.tool_calls:
             if isinstance(tc, dict) and "name" in tc and "args" in tc:
-                # Convert tool call request to a successful execution result
                 result = tool_call_request_to_execution_result(
                     request=LangChainToolCall(
                         name=tc["name"], args=tc["args"], id=tc.get("id")
                     ),
-                    success=True,  # Assume success since this is coming from LangChain
+                    success=True,
                     result_data={"status": "completed"},
                 )
                 tool_execution_results.append(result)
 
+    # Fallback: ensure at least one text item so downstream logic doesn't see empty content
+    if not message_contents:
+        message_contents.append(MessageContent(type=MessageContentType.TEXT, text=""))
+
     return Message(
-        content=_text_to_message_content_list(content_text),
+        content=message_contents,
         role=role,
         conversation_id=conversation_id,
         tool_calls=tool_execution_results,
