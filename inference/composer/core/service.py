@@ -28,6 +28,7 @@ from models import (
 from composer.graph.state import WorkflowState
 from composer.graph.builder import GraphBuilder
 from composer.graph.cache import WorkflowCache
+from composer.graph.executor import WorkflowExecutor
 from utils.logging import llmmllogger
 from composer.utils.conversion import (
     convert_messages_to_langchain,
@@ -62,6 +63,8 @@ class ComposerService:
         self.graph_builder: Optional["GraphBuilder"] = None
         # Workflow cache is now created per-user during workflow composition
         self.workflow_caches: Dict[str, WorkflowCache] = {}
+        # Generic workflow executor for streaming
+        self.executor = WorkflowExecutor(logger=self.logger, default_context="composer_service")
 
     def _ensure_graph_builder(self, user_config: UserConfig) -> None:
         """Lazily create GraphBuilder when needed, ensuring storage is available."""
@@ -223,90 +226,36 @@ class ComposerService:
         Execute a compiled workflow with the given initial state.
 
         Supports both streaming and batch execution modes.
+        Now uses the generic WorkflowExecutor for consistent behavior.
         """
-        try:
-            # Execute workflow with proper checkpointer configuration
-            # Create thread configuration for checkpointing
-            config: RunnableConfig = {
-                "configurable": {
-                    "thread_id": f"thread_{initial_state.user_id}_{initial_state.conversation_id}"
-                }
-            }
-
-            async for event in workflow.astream_events(
-                initial_state.model_dump(), config=config, version="v2"
+        # Create thread ID for checkpointing
+        thread_id = f"thread_{initial_state.user_id}_{initial_state.conversation_id}"
+        
+        if stream:
+            # Use generic streaming executor
+            async for event in self.executor.stream_workflow(
+                workflow=workflow,
+                initial_state=initial_state,
+                thread_id=thread_id,
+                context_name="composer_service"
             ):
-                try:
-                    # Inject tool_calls and node metadata into event data if present in state but missing in event
-                    if isinstance(event, dict):
-                        data = event.get("data")
-                        # Events that carry a full state snapshot expose 'values'; prefer that
-                        if data and isinstance(data, dict):
-                            # If state serialization present
-                            state_values = data.get("values") or data.get("state")
-                            if state_values and isinstance(state_values, dict):
-                                # Create a shallow copy to avoid mutating a typed dict structure
-                                new_data = dict(data)
-                                updated = False
-
-                                # Inject tool_calls if missing
-                                tc = state_values.get("tool_calls")
-                                if tc and "tool_calls" not in data:
-                                    new_data["tool_calls"] = tc
-                                    updated = True
-
-                                # Inject node metadata if available
-                                node_metadata = state_values.get("node_metadata")
-                                if node_metadata and "node_metadata" not in data:
-                                    new_data["node_metadata"] = node_metadata
-                                    updated = True
-
-                                # Apply enriched data if we made changes
-                                if updated:
-                                    event["data"] = new_data  # type: ignore[index]
-
-                            # Also check if the event itself has node information we can enrich
-                            event_name = event.get("name", "")
-                            event_type = event.get("event", "")
-
-                            # Add execution metadata to certain event types for better traceability
-                            if event_type in [
-                                "on_chain_start",
-                                "on_chain_end",
-                                "on_tool_start",
-                                "on_tool_end",
-                            ]:
-                                if "metadata" not in event:
-                                    event["metadata"] = {}  # type: ignore[index]
-
-                                # Add timing and context information
-                                event["metadata"].update(
-                                    {  # type: ignore[index]
-                                        "timestamp": datetime.now(
-                                            timezone.utc
-                                        ).isoformat(),
-                                        "workflow_context": "composer_service",
-                                    }
-                                )
-
-                            # Else if top-level tool_calls already emitted by node update, keep as-is
-                    yield event
-                except Exception as e:
-                    self.logger.warning(
-                        "Error enriching workflow event",
-                        extra={
-                            "error": str(e),
-                            "event_type": event.get("event", "unknown"),
-                        },
-                    )
-                    # On any injection error, still yield original event to avoid stream disruption
-                    yield event
-
-        except Exception as e:
-            self.logger.error(
-                "Workflow execution failed", extra={"error": str(e)}, exc_info=True
-            )
-            yield {"event": "workflow_error", "data": {"error": str(e)}}
+                yield event
+        else:
+            # Use batch execution mode
+            try:
+                result = await self.executor.execute_workflow_batch(
+                    workflow=workflow,
+                    initial_state=initial_state,
+                    thread_id=thread_id
+                )
+                yield {"event": "workflow_complete", "data": result}
+            except Exception as e:
+                self.logger.error(
+                    "Batch workflow execution failed", 
+                    extra={"error": str(e)}, 
+                    exc_info=True
+                )
+                yield {"event": "workflow_error", "data": {"error": str(e)}}
 
     async def shutdown(self):
         """Clean up resources on service shutdown."""

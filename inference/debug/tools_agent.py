@@ -2,7 +2,7 @@
 
 import os
 import sys
-from typing import List
+from typing import List, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
 from models import (
@@ -11,8 +11,10 @@ from models import (
     MessageContentType,
     MessageRole,
     NodeMetadata,
+    ModelProfile,
 )
 from models.default_model_profiles import DEFAULT_TEXT_TO_TEXT_MODEL, DEFAULT_PROFILES
+from models.default_configs import create_default_user_config
 from runner.pipeline_factory import pipeline_factory
 from composer.agents import ChatAgent
 from composer.tools.registry import ToolRegistry
@@ -28,7 +30,7 @@ TEST_IMAGE_URL = (
 )
 
 
-def get_profile():
+def get_profile(model_id: str) -> ModelProfile:
     model_name = DEFAULT_TEXT_TO_TEXT_MODEL
     profile = DEFAULT_PROFILES.get("primary")
     if getattr(profile, "model_name", None) != model_name:
@@ -39,10 +41,11 @@ def get_profile():
     if profile is None:
         print(f"[error] No default model profile found for {model_name}")
         sys.exit(1)
+    profile.model_name = model_id
     return profile
 
 
-async def wrapper() -> None:
+async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
     # Ensure verbose logging minimal unless TRACE requested
     os.environ.setdefault("LOG_LEVEL", "INFO")
 
@@ -50,7 +53,7 @@ async def wrapper() -> None:
 
     # Instantiate pipeline factory (local cache mode)
     # Retrieve a default profile (assumes DEFAULT_MODEL_PROFILES contains profile for model)
-    profile = get_profile()
+    profile = get_profile(model_id)
     logger.info(f"📊 Using model profile: {profile.model_name}")
 
     agent = ChatAgent(
@@ -64,17 +67,25 @@ async def wrapper() -> None:
         f"🛠️ Tool registry initialized with {len(registry.get_all_executable_tools())} tools"
     )
 
+    content = []
+
+    if image_url or (not query and not image_url):
+        if not image_url:
+            image_url = TEST_IMAGE_URL
+        content.append(MessageContent(type=MessageContentType.IMAGE, url=image_url))
+    content.append(
+        MessageContent(
+            type=MessageContentType.TEXT,
+            text=query
+            or "What do you see in this image? Please describe it briefly, then search the web for similar images and provide links to at least two relevant sources.",
+        )
+    )
+
     # Create test messages
     test_messages = [
         Message(
             role=MessageRole.USER,
-            content=[
-                MessageContent(type=MessageContentType.IMAGE, url=TEST_IMAGE_URL),
-                MessageContent(
-                    type=MessageContentType.TEXT,
-                    text="What do you see in this image? Please describe it briefly, then search the web for similar images and provide links to at least two relevant sources.",
-                ),
-            ],
+            content=content,
         )
     ]
 
@@ -91,12 +102,13 @@ async def wrapper() -> None:
     )
     logger.info("🤖 ToolsAgentSubgraph initialized")
 
+    user_config = create_default_user_config(user_id="test_user")
     # Create initial ToolsState
     tools_state: ToolsState = {
         "messages": langchain_messages,
         "user_id": "test_user",
-        "conversation_id": 1,
-        "user_config": None,  # No user config for this test
+        "conversation_id": 717,
+        "user_config": user_config,
         "system_config": None,
         "current_date": "2025-10-31T00:00:00",
         "tool_call_count": 0,
@@ -116,30 +128,34 @@ async def wrapper() -> None:
         print()
 
         message_count = 0
-        current_content = ""
-        current_tool_calls = []
 
         # Stream the graph execution
         async for chunk in tools_agent_subgraph.graph.astream(tools_state):
             print(f"📦 Received chunk: {chunk}")
-            
+
             # Handle different chunk formats from LangGraph
             for node_name, node_output in chunk.items():
-                print(f"🔄 Processing node '{node_name}' with output keys: {list(node_output.keys())}")
-                
+                print(
+                    f"🔄 Processing node '{node_name}' with output keys: {list(node_output.keys())}"
+                )
+
                 if node_name in ["chat_agent", "tools"]:
                     messages = node_output.get("messages", [])
                     print(f"📬 Node '{node_name}' has {len(messages)} messages")
-                    
+
                     for msg_idx, msg in enumerate(messages):
                         message_count += 1
                         msg_type = getattr(msg, "type", type(msg).__name__)
                         content = getattr(msg, "content", "")
                         tool_calls = getattr(msg, "tool_calls", [])
-                        
-                        print(f"\n🔄 [{node_name}] Message {message_count} (idx {msg_idx}) [{msg_type}]:")
-                        print(f"   Raw message: {type(msg)} with content length: {len(str(content))}")
-                        
+
+                        print(
+                            f"\n🔄 [{node_name}] Message {message_count} (idx {msg_idx}) [{msg_type}]:"
+                        )
+                        print(
+                            f"   Raw message: {type(msg)} with content length: {len(str(content))}"
+                        )
+
                         # Always show content if it exists, regardless of previous content
                         if content:
                             # Handle different content formats
@@ -149,8 +165,8 @@ async def wrapper() -> None:
                             elif isinstance(content, list):
                                 print(f"📝 Content List ({len(content)} items):")
                                 for i, item in enumerate(content):
-                                    if isinstance(item, dict) and 'text' in item:
-                                        text = item['text']
+                                    if isinstance(item, dict) and "text" in item:
+                                        text = item["text"]
                                         print(f"   Item {i+1}: {text}")
                                     else:
                                         print(f"   Item {i+1}: {item}")
@@ -160,29 +176,33 @@ async def wrapper() -> None:
                             print("   " + "-" * 50)
                         else:
                             print(f"📝 No content in this message")
-                        
+
                         # Handle tool calls
                         if tool_calls:
                             print(f"🛠️ Tool calls: {len(tool_calls)} calls")
                             for j, tc in enumerate(tool_calls):
                                 if isinstance(tc, dict):
-                                    tool_name = tc.get('name', 'unknown')
-                                    tool_args = tc.get('args', {})
-                                    print(f"  {j+1}. Calling {tool_name} with args: {tool_args}")
+                                    tool_name = tc.get("name", "unknown")
+                                    tool_args = tc.get("args", {})
+                                    print(
+                                        f"  {j+1}. Calling {tool_name} with args: {tool_args}"
+                                    )
                                 else:
-                                    tool_name = getattr(tc, 'name', 'unknown')
-                                    tool_args = getattr(tc, 'args', {})
-                                    print(f"  {j+1}. Calling {tool_name} with args: {tool_args}")
+                                    tool_name = getattr(tc, "name", "unknown")
+                                    tool_args = getattr(tc, "args", {})
+                                    print(
+                                        f"  {j+1}. Calling {tool_name} with args: {tool_args}"
+                                    )
                         else:
                             print(f"🛠️ No tool calls in this message")
-                        
+
                         # Show additional message attributes for debugging
                         print(f"🔍 Debug - Message attributes:")
-                        for attr in ['id', 'additional_kwargs', 'response_metadata']:
+                        for attr in ["id", "additional_kwargs", "response_metadata"]:
                             if hasattr(msg, attr):
                                 attr_value = getattr(msg, attr)
                                 print(f"   {attr}: {attr_value}")
-                        
+
                         print(flush=True)
 
         print("\n" + "=" * 80)
@@ -203,5 +223,18 @@ async def wrapper() -> None:
 
 if __name__ == "__main__":
     import asyncio
+    import argparse
 
-    asyncio.run(wrapper())
+    parser = argparse.ArgumentParser(description="Run a single LLaMA CPP chat.")
+    parser.add_argument(
+        "--model", type=str, default=DEFAULT_TEXT_TO_TEXT_MODEL, help="Model ID to use"
+    )
+    parser.add_argument(
+        "--query", type=str, default="", help="Query to send to the model"
+    )
+    parser.add_argument(
+        "--image", type=str, default="", help="Image URL to include in the query"
+    )
+    args = parser.parse_args()
+
+    asyncio.run(wrapper(model_id=args.model, query=args.query, image_url=args.image))
