@@ -64,7 +64,9 @@ class ComposerService:
         # Workflow cache is now created per-user during workflow composition
         self.workflow_caches: Dict[str, WorkflowCache] = {}
         # Generic workflow executor for streaming
-        self.executor = WorkflowExecutor(logger=self.logger, default_context="composer_service")
+        self.executor = WorkflowExecutor(
+            logger=self.logger, default_context="composer_service"
+        )
 
     def _ensure_graph_builder(self, user_config: UserConfig) -> None:
         """Lazily create GraphBuilder when needed, ensuring storage is available."""
@@ -230,30 +232,30 @@ class ComposerService:
         """
         # Create thread ID for checkpointing
         thread_id = f"thread_{initial_state.user_id}_{initial_state.conversation_id}"
-        
+
         if stream:
             # Use generic streaming executor
             async for event in self.executor.stream_workflow(
                 workflow=workflow,
                 initial_state=initial_state,
                 thread_id=thread_id,
-                context_name="composer_service"
+                context_name="composer_service",
             ):
                 yield event
         else:
             # Use batch execution mode
             try:
-                result = await self.executor.execute_workflow_batch(
+                result = await self.executor.run_workflow(
                     workflow=workflow,
                     initial_state=initial_state,
-                    thread_id=thread_id
+                    thread_id=thread_id,
                 )
                 yield {"event": "workflow_complete", "data": result}
             except Exception as e:
                 self.logger.error(
-                    "Batch workflow execution failed", 
-                    extra={"error": str(e)}, 
-                    exc_info=True
+                    "Batch workflow execution failed",
+                    extra={"error": str(e)},
+                    exc_info=True,
                 )
                 yield {"event": "workflow_error", "data": {"error": str(e)}}
 

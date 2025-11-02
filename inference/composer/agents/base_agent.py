@@ -4,13 +4,10 @@ Provides node metadata injection, logging setup, and common error handling patte
 """
 
 import datetime
-from pyexpat import model
-import sys
 from typing import (
     Optional,
     Any,
     Dict,
-    Tuple,
     TypeVar,
     Generic,
     AsyncIterator,
@@ -36,7 +33,6 @@ from models import (
     ChatResponse,
     PipelinePriority,
     Message,
-    ToolCall,
 )
 from runner import PipelineFactory
 from utils.logging import llmmllogger
@@ -177,7 +173,12 @@ class BaseAgent(ABC, Generic[T]):
                     + "\n".join(
                         [f"- {tool.name}: {tool.description}" for tool in tools]
                     )
-                    + "\n\nUse them wisely to assist the user."
+                    + "\n\nUse them wisely to assist the user.\n\n"
+                    + """TOOL CALLING FORMAT:
+When you need to call a tool, you MUST use this EXACT JSON format wrapped in <tool_call> tags:
+<tool_call>{"name": "tool_name", "arguments": "{\"param\": \"value\"}"}</tool_call>
+NEVER fabricate or hallucinate tool results. ALWAYS call the actual tool when you need information.
+The arguments field MUST be a JSON string (double-quoted), not a JSON object."""
                 )
 
             chat_model = self.pipeline_factory.get_pipeline(

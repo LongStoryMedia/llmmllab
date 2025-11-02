@@ -4,14 +4,12 @@ from .executor import (
     WorkflowExecutor,
     create_executor,
     stream_workflow,
-    execute_workflow,
-    StateDictConvertible,
+    run_workflow,
 )
 
 __all__ = [
     "WorkflowExecutor",
-    "create_executor", 
+    "create_executor",
     "stream_workflow",
-    "execute_workflow",
-    "StateDictConvertible",
+    "run_workflow",
 ]

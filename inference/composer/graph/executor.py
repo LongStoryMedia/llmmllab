@@ -6,54 +6,43 @@ across different graph types and state models, extracting the streaming logic
 from ComposerService into a generic, reusable component.
 """
 
-import asyncio
 from typing import (
     Any,
     AsyncGenerator,
     Dict,
+    Generic,
     Optional,
     TypeVar,
     Union,
-    Callable,
-    Protocol,
 )
 from datetime import datetime, timezone
 
+from pydantic import BaseModel
+
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.runnables.config import RunnableConfig
+from langchain_core.runnables.schema import StreamEvent, EventData
 
 from utils.logging import llmmllogger
 
-
-# Generic type for state objects
-StateT = TypeVar('StateT')
+StateT = TypeVar("StateT", bound=Union[Dict[str, Any], BaseModel])
 
 
-class StateDictConvertible(Protocol):
-    """Protocol for state objects that can be converted to dict format."""
-    
-    def model_dump(self) -> Dict[str, Any]:
-        """Convert state to dictionary format for LangGraph execution."""
-        ...
-
-
-class WorkflowExecutor:
+class WorkflowExecutor(Generic[StateT]):
     """
     Generic workflow executor for CompiledStateGraph streaming.
-    
+
     Provides reusable streaming execution capabilities that can handle
     any CompiledStateGraph with any state type, as long as the state
     can be converted to a dictionary format.
     """
 
     def __init__(
-        self,
-        logger: Optional[Any] = None,
-        default_context: str = "workflow_executor"
+        self, logger: Optional[Any] = None, default_context: str = "workflow_executor"
     ):
         """
         Initialize the workflow executor.
-        
+
         Args:
             logger: Optional logger instance. If None, uses default llmmllogger
             default_context: Default context string for metadata enrichment
@@ -62,44 +51,40 @@ class WorkflowExecutor:
         self.default_context = default_context
 
     def create_thread_config(
-        self,
-        thread_id: str,
-        additional_config: Optional[Dict[str, Any]] = None
+        self, thread_id: str, additional_config: Optional[Dict[str, Any]] = None
     ) -> RunnableConfig:
         """
         Create a thread configuration for workflow checkpointing.
-        
+
         Args:
             thread_id: Unique thread identifier for checkpointing
             additional_config: Additional configuration parameters
-            
+
         Returns:
             RunnableConfig: Configuration for LangGraph execution
         """
-        config: RunnableConfig = {
-            "configurable": {"thread_id": thread_id}
-        }
-        
+        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+
         if additional_config:
             config.setdefault("configurable", {}).update(additional_config)
-        
+
         return config
 
     async def stream_workflow(
         self,
         workflow: CompiledStateGraph,
-        initial_state: Union[StateT, Dict[str, Any]],
+        initial_state: StateT,
         config: Optional[RunnableConfig] = None,
         thread_id: Optional[str] = None,
         enrich_events: bool = True,
         context_name: Optional[str] = None,
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[Dict[str, Any] | StreamEvent, None]:
         """
         Execute a compiled workflow with streaming output.
-        
+
         This method provides generic streaming execution for any CompiledStateGraph
         and state type, with optional event enrichment and error handling.
-        
+
         Args:
             workflow: CompiledStateGraph to execute
             initial_state: Initial state for workflow execution (dict or convertible object)
@@ -107,7 +92,7 @@ class WorkflowExecutor:
             thread_id: Thread ID for checkpointing (used if config is None)
             enrich_events: Whether to enrich events with metadata and tool_calls
             context_name: Context name for metadata (defaults to default_context)
-            
+
         Yields:
             Dict[str, Any]: Stream events from workflow execution
         """
@@ -117,11 +102,8 @@ class WorkflowExecutor:
                 state_dict = initial_state
             else:
                 # Assume state has model_dump method (Pydantic-like)
-                if hasattr(initial_state, 'model_dump'):
+                if hasattr(initial_state, "model_dump"):
                     state_dict = initial_state.model_dump()
-                elif hasattr(initial_state, 'dict'):
-                    # Fallback for older Pydantic versions
-                    state_dict = initial_state.dict()
                 else:
                     raise ValueError(
                         f"State type {type(initial_state)} must be dict or have model_dump/dict method"
@@ -133,16 +115,16 @@ class WorkflowExecutor:
 
             # Stream workflow events
             async for event in workflow.astream_events(
-                state_dict, 
-                config=config, 
-                version="v2"
+                state_dict, config=config, version="v2"
             ):
                 try:
                     if enrich_events:
-                        event = self._enrich_event(event, context_name or self.default_context)
-                    
+                        event = self._enrich_event(
+                            event, context_name or self.default_context
+                        )
+
                     yield event
-                    
+
                 except Exception as e:
                     self.logger.warning(
                         "Error enriching workflow event",
@@ -156,28 +138,26 @@ class WorkflowExecutor:
 
         except Exception as e:
             self.logger.error(
-                "Workflow execution failed", 
-                extra={"error": str(e)}, 
-                exc_info=True
+                "Workflow execution failed", extra={"error": str(e)}, exc_info=True
             )
             yield {"event": "workflow_error", "data": {"error": str(e)}}
 
-    def _enrich_event(self, event: Dict[str, Any], context_name: str) -> Dict[str, Any]:
+    def _enrich_event(self, event: StreamEvent, context_name: str) -> StreamEvent:
         """
         Enrich workflow events with additional metadata and tool information.
-        
+
         Args:
             event: Original event from workflow execution
             context_name: Context name for metadata
-            
+
         Returns:
             Dict[str, Any]: Enriched event
         """
         if not isinstance(event, dict):
             return event
 
-        data = event.get("data")
-        
+        data: EventData = event.get("data")
+
         # Events that carry a full state snapshot expose 'values'; prefer that
         if data and isinstance(data, dict):
             # If state serialization present
@@ -201,16 +181,15 @@ class WorkflowExecutor:
 
                 # Apply enriched data if we made changes
                 if updated:
-                    event["data"] = new_data
+                    event["data"] = new_data  # type: ignore
 
         # Also check if the event itself has node information we can enrich
-        event_name = event.get("name", "")
         event_type = event.get("event", "")
 
         # Add execution metadata to certain event types for better traceability
         if event_type in [
             "on_chain_start",
-            "on_chain_end", 
+            "on_chain_end",
             "on_tool_start",
             "on_tool_end",
         ]:
@@ -218,14 +197,16 @@ class WorkflowExecutor:
                 event["metadata"] = {}
 
             # Add timing and context information
-            event["metadata"].update({
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "workflow_context": context_name,
-            })
+            event["metadata"].update(
+                {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "workflow_context": context_name,
+                }
+            )
 
         return event
 
-    async def execute_workflow_batch(
+    async def run_workflow(
         self,
         workflow: CompiledStateGraph,
         initial_state: Union[StateT, Dict[str, Any]],
@@ -234,13 +215,13 @@ class WorkflowExecutor:
     ) -> Dict[str, Any]:
         """
         Execute a compiled workflow in batch mode (non-streaming).
-        
+
         Args:
             workflow: CompiledStateGraph to execute
             initial_state: Initial state for workflow execution
             config: Optional RunnableConfig
             thread_id: Thread ID for checkpointing
-            
+
         Returns:
             Dict[str, Any]: Final workflow result
         """
@@ -249,9 +230,9 @@ class WorkflowExecutor:
             if isinstance(initial_state, dict):
                 state_dict = initial_state
             else:
-                if hasattr(initial_state, 'model_dump'):
+                if hasattr(initial_state, "model_dump"):
                     state_dict = initial_state.model_dump()
-                elif hasattr(initial_state, 'dict'):
+                elif hasattr(initial_state, "dict"):
                     state_dict = initial_state.dict()
                 else:
                     raise ValueError(
@@ -268,25 +249,24 @@ class WorkflowExecutor:
 
         except Exception as e:
             self.logger.error(
-                "Batch workflow execution failed", 
-                extra={"error": str(e)}, 
-                exc_info=True
+                "Batch workflow execution failed",
+                extra={"error": str(e)},
+                exc_info=True,
             )
             raise
 
 
 # Convenience factory functions
 def create_executor(
-    logger: Optional[Any] = None,
-    context: str = "workflow_executor"
+    logger: Optional[Any] = None, context: str = "workflow_executor"
 ) -> WorkflowExecutor:
     """
     Create a new WorkflowExecutor instance.
-    
+
     Args:
         logger: Optional logger instance
         context: Default context name
-        
+
     Returns:
         WorkflowExecutor: New executor instance
     """
@@ -299,11 +279,11 @@ async def stream_workflow(
     thread_id: Optional[str] = None,
     config: Optional[RunnableConfig] = None,
     logger: Optional[Any] = None,
-    context: str = "workflow_stream"
-) -> AsyncGenerator[Dict[str, Any], None]:
+    context: str = "workflow_stream",
+) -> AsyncGenerator[StreamEvent | Dict[str, Any], None]:
     """
     Convenience function for streaming workflow execution.
-    
+
     Args:
         workflow: CompiledStateGraph to execute
         initial_state: Initial state for workflow execution
@@ -311,47 +291,47 @@ async def stream_workflow(
         config: Optional RunnableConfig
         logger: Optional logger instance
         context: Context name for metadata
-        
+
     Yields:
         Dict[str, Any]: Stream events from workflow execution
     """
     executor = create_executor(logger=logger, context=context)
-    
+
     async for event in executor.stream_workflow(
         workflow=workflow,
         initial_state=initial_state,
         config=config,
         thread_id=thread_id,
-        context_name=context
+        context_name=context,
     ):
         yield event
 
 
-async def execute_workflow(
+async def run_workflow(
     workflow: CompiledStateGraph,
     initial_state: Union[StateT, Dict[str, Any]],
     thread_id: Optional[str] = None,
     config: Optional[RunnableConfig] = None,
-    logger: Optional[Any] = None
+    logger: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     Convenience function for batch workflow execution.
-    
+
     Args:
         workflow: CompiledStateGraph to execute
         initial_state: Initial state for workflow execution
         thread_id: Thread ID for checkpointing
         config: Optional RunnableConfig
         logger: Optional logger instance
-        
+
     Returns:
         Dict[str, Any]: Final workflow result
     """
     executor = create_executor(logger=logger)
-    
-    return await executor.execute_workflow_batch(
+
+    return await executor.run_workflow(
         workflow=workflow,
         initial_state=initial_state,
         config=config,
-        thread_id=thread_id
+        thread_id=thread_id,
     )

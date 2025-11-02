@@ -504,7 +504,7 @@ class BaseLlamaCppPipeline(BasePipeline):
 
                 # Handle both regular and Hermes-style arguments
                 arguments = tool_data.get("arguments", {})
-                
+
                 # If arguments is a string (Hermes format), parse it as JSON
                 if isinstance(arguments, str):
                     try:
@@ -633,20 +633,24 @@ class BaseLlamaCppPipeline(BasePipeline):
         if not tool_calls:
             # Hermes format: {"name": "tool_name", "arguments": "{\"param\": \"value\"}"}
             # The arguments field is a JSON string, not an object
-            hermes_pattern = r'\{"name":\s*"([^"]+)"\s*,\s*"arguments":\s*"([^"]+)"\s*\}'
-            
+            hermes_pattern = (
+                r'\{"name":\s*"([^"]+)"\s*,\s*"arguments":\s*"([^"]+)"\s*\}'
+            )
+
             matches = re.finditer(hermes_pattern, content, re.DOTALL)
-            
+
             for match in matches:
                 try:
                     tool_name = match.group(1).strip()
                     arguments_str = match.group(2).strip()
-                    
+
                     # Parse the arguments string as JSON
                     # Need to handle escaped quotes in the arguments string
-                    arguments_str = arguments_str.replace('\\"', '"').replace('\\\\', '\\')
+                    arguments_str = arguments_str.replace('\\"', '"').replace(
+                        "\\\\", "\\"
+                    )
                     arguments = json.loads(arguments_str)
-                    
+
                     tool_call = LangChainToolCall(
                         id=f"call_{len(tool_calls)}",
                         name=tool_name,
@@ -654,10 +658,12 @@ class BaseLlamaCppPipeline(BasePipeline):
                         type="tool_call",
                     )
                     tool_calls.append(tool_call)
-                    
+
                     # Remove this tool call from content
-                    cleaned_content = cleaned_content.replace(match.group(0), "").strip()
-                    
+                    cleaned_content = cleaned_content.replace(
+                        match.group(0), ""
+                    ).strip()
+
                 except (json.JSONDecodeError, KeyError) as e:
                     self._logger.warning(
                         f"Failed to parse Hermes tool call: {e}, tool_name: {tool_name if 'tool_name' in locals() else 'unknown'}, arguments: {arguments_str if 'arguments_str' in locals() else 'unknown'}"
