@@ -23,6 +23,7 @@ from models import LangChainMessage, NodeMetadata
 from composer.graph.state import WorkflowState, ToolsState
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
+from composer.middleware import VisionSummarizationMiddleware
 from composer.utils.conversion import (
     convert_base_langchain_to_messages,
     convert_messages_to_langchain,
@@ -46,11 +47,24 @@ class ToolsAgentSubgraph:
         self,
         tool_registry: ToolRegistry,
         chat_agent: ChatAgent,
+        enable_vision_optimization: bool = True,
     ):
         """Initialize subgraph with dependency injection."""
         self.tool_registry = tool_registry
         self.chat_agent = chat_agent
+        self.enable_vision_optimization = enable_vision_optimization
         self.graph = None
+        
+        # Initialize vision optimization middleware
+        self.vision_middleware = None
+        if enable_vision_optimization:
+            self.vision_middleware = VisionSummarizationMiddleware(
+                max_image_reprocessing=1,  # Allow only 1 reprocessing per image
+                summary_template="Previous image analysis: {analysis}",
+                enable_logging=True,
+            )
+            logger.info("🖼️ Vision optimization middleware enabled")
+        
         self._build_graph()
 
     def _create_tool_node(self) -> ToolNode:
@@ -229,14 +243,69 @@ class ToolsAgentSubgraph:
             executable_tools = self.tool_registry.get_all_executable_tools()
             tools_list = list(executable_tools.values()) if executable_tools else None
 
-            # Execute chat completion with full conversation history and tools
-            # The agent will see: [user_message, previous_ai_message, tool_results, ...]
+            # Apply vision optimization middleware if enabled
+            optimized_messages = langchain_messages
+            if self.vision_middleware:
+                try:
+                    # Convert to BaseMessage format for middleware processing
+                    base_messages = []
+                    for msg in langchain_messages:
+                        if hasattr(msg, 'type') and hasattr(msg, 'content'):
+                            if msg.type == 'human':
+                                base_messages.append(HumanMessage(content=msg.content))
+                            elif msg.type == 'ai':
+                                base_messages.append(AIMessage(content=msg.content))
+                            else:
+                                base_messages.append(HumanMessage(content=str(msg.content)))
+                        else:
+                            # Already a BaseMessage
+                            base_messages.append(msg)
+                    
+                    # Apply vision optimization to BaseMessage format
+                    logger.debug(f"🖼️ Vision middleware processing {len(base_messages)} messages")
+                    self.vision_middleware._update_processed_images_cache(base_messages)
+                    optimized_base_messages = self.vision_middleware._replace_processed_images_in_messages(base_messages)
+                    logger.debug(f"🖼️ Vision middleware result: {len(optimized_base_messages)} messages")
+                    
+                    # Convert back to LangChain message format if needed
+                    if optimized_base_messages != base_messages:
+                        optimized_messages = []
+                        for msg in optimized_base_messages:
+                            if isinstance(msg, HumanMessage):
+                                # Convert back to LangChainMessage format
+                                from models import LangChainMessage
+                                optimized_messages.append(LangChainMessage(
+                                    content=msg.content,
+                                    type='human'
+                                ))
+                            elif isinstance(msg, AIMessage):
+                                from models import LangChainMessage
+                                optimized_messages.append(LangChainMessage(
+                                    content=msg.content,
+                                    type='ai'
+                                ))
+                            else:
+                                optimized_messages.append(msg)
+                        
+                        logger.info(f"🖼️ Vision middleware replaced processed images with summaries")
+                    
+                    # Log cache statistics periodically
+                    cache_stats = self.vision_middleware.get_cache_stats()
+                    if cache_stats['total_processed_images'] > 0:
+                        logger.debug(f"🖼️ Vision cache: {cache_stats['total_processed_images']} images, {cache_stats['total_processing_count']} total processes")
+                        
+                except Exception as e:
+                    logger.warning(f"Vision middleware optimization failed, using original messages: {e}")
+                    optimized_messages = langchain_messages
+
+            # Execute chat completion with optimized conversation history and tools
+            # The agent will see: [user_message, previous_ai_message, tool_results, ...] (potentially optimized)
             logger.debug(
-                f"Invoking chat agent with {len(langchain_messages)} messages and {len(tools_list) if tools_list else 0} tools\n"
+                f"Invoking chat agent with {len(optimized_messages)} optimized messages and {len(tools_list) if tools_list else 0} tools\n"
                 f"tools: {[tool.name for tool in tools_list] if tools_list else 'None'}"
             )
             response_msg = await self.chat_agent.chat_completion_with_conversion(
-                messages=langchain_messages,  # Full conversation including tool results
+                messages=optimized_messages,  # Optimized conversation including tool results
                 tools=tools_list,
             )
 
