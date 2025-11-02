@@ -55,15 +55,9 @@ class ToolsAgentSubgraph:
         self.enable_vision_optimization = enable_vision_optimization
         self.graph = None
         
-        # Initialize vision optimization middleware
-        self.vision_middleware = None
-        if enable_vision_optimization:
-            self.vision_middleware = VisionSummarizationMiddleware(
-                max_image_reprocessing=1,  # Allow only 1 reprocessing per image
-                summary_template="Previous image analysis: {analysis}",
-                enable_logging=True,
-            )
-            logger.info("🖼️ Vision optimization middleware enabled")
+        # Initialize vision cache for optimization
+        self.vision_cache = {}
+        logger.info("🖼️ Vision optimization enabled")
         
         self._build_graph()
 
@@ -106,7 +100,7 @@ class ToolsAgentSubgraph:
             builder = StateGraph(ToolsState)
 
             # Add chat agent node
-            builder.add_node("chat_agent", self._chat_agent_wrapper)
+            builder.add_node("chat_agent", self._chat_agent_node)
 
             # Add tool executor node - must be named "tools" for tools_condition
             tool_node = self._create_tool_node()
@@ -203,206 +197,156 @@ class ToolsAgentSubgraph:
         # This handles cases where the AI might legitimately retry a failed call
         return duplicate_count >= 2
 
-    async def _chat_agent_wrapper(self, state: ToolsState) -> Dict[str, Any]:
-        """
-        Chat agent wrapper that properly manages conversation state.
-
-        CRITICAL: The agent must see the full conversation history including
-        tool results to make proper decisions about whether to continue with
-        more tools or provide a final answer.
-
-        ANTI-RECURSION: Prevents duplicate tool calls to avoid infinite loops.
-        """
-        try:
-            # Get all messages from state - this includes conversation history + tool results
-            messages = state["messages"]
-
-            # Log conversation state for debugging
-            logger.debug(f"Agent wrapper processing {len(messages)} messages")
-            for i, msg in enumerate(messages[-3:]):  # Log last 3 messages
-                msg_type = getattr(msg, "type", type(msg).__name__)
-                msg_has_tool_calls = (
-                    has_tool_calls(msg) if isinstance(msg, BaseMessage) else False
-                )
-                logger.debug(
-                    f"  Message {len(messages)-3+i}: {msg_type}, tool_calls={msg_has_tool_calls}"
-                )
-
-            # Extract previous tool call requests to prevent duplicates
-            previous_tool_requests = self._extract_previous_tool_call_requests(messages)
-            logger.debug(
-                f"Found {len(previous_tool_requests)} previous tool call requests in conversation"
-            )
-
-            # Convert to our format while preserving ALL conversation history
-            langchain_messages = convert_messages_to_langchain(
-                convert_base_langchain_to_messages(messages)
-            )
-
-            # Get tools from registry for the agent
-            executable_tools = self.tool_registry.get_all_executable_tools()
-            tools_list = list(executable_tools.values()) if executable_tools else None
-
-            # Apply vision optimization middleware if enabled
-            optimized_messages = langchain_messages
-            if self.vision_middleware:
-                try:
-                    # Convert to BaseMessage format for middleware processing
-                    base_messages = []
-                    for msg in langchain_messages:
-                        if hasattr(msg, 'type') and hasattr(msg, 'content'):
-                            if msg.type == 'human':
-                                base_messages.append(HumanMessage(content=msg.content))
-                            elif msg.type == 'ai':
-                                base_messages.append(AIMessage(content=msg.content))
-                            else:
-                                base_messages.append(HumanMessage(content=str(msg.content)))
-                        else:
-                            # Already a BaseMessage
-                            base_messages.append(msg)
+    def _optimize_vision_content(self, messages: List) -> List:
+        """Simple vision optimization using standard LangChain patterns."""
+        import re
+        import hashlib
+        import json
+        
+        optimized_messages = []
+        for msg in messages:
+            has_vision = False
+            content_hash = None
+            
+            # Check for different vision content formats
+            content = getattr(msg, 'content', '')
+            
+            if isinstance(content, str):
+                # Check for vision tokens (our format)
+                vision_pattern = r'<\|vision_start\|>.*?<\|vision_end\|>'
+                if re.search(vision_pattern, content):
+                    has_vision = True
+                    content_hash = hashlib.md5(content.encode()).hexdigest()[:8]
+            
+            elif isinstance(content, list):
+                # Check for LangChain content blocks with images
+                for block in content:
+                    if isinstance(block, dict):
+                        if block.get('type') == 'image_url' or block.get('type') == 'image':
+                            has_vision = True
+                            # Create hash from image URL or data
+                            image_content = json.dumps(block, sort_keys=True)
+                            content_hash = hashlib.md5(image_content.encode()).hexdigest()[:8]
+                            break
+            
+            if has_vision and content_hash:
+                # Check if we've processed this before
+                if content_hash in self.vision_cache:
+                    # Replace with cached summary
+                    cached_summary = self.vision_cache[content_hash]
                     
-                    # Apply vision optimization to BaseMessage format
-                    logger.debug(f"🖼️ Vision middleware processing {len(base_messages)} messages")
-                    self.vision_middleware._update_processed_images_cache(base_messages)
-                    optimized_base_messages = self.vision_middleware._replace_processed_images_in_messages(base_messages)
-                    logger.debug(f"🖼️ Vision middleware result: {len(optimized_base_messages)} messages")
-                    
-                    # Convert back to LangChain message format if needed
-                    if optimized_base_messages != base_messages:
-                        optimized_messages = []
-                        for msg in optimized_base_messages:
-                            if isinstance(msg, HumanMessage):
-                                # Convert back to LangChainMessage format
-                                from models import LangChainMessage
-                                optimized_messages.append(LangChainMessage(
-                                    content=msg.content,
-                                    type='human'
-                                ))
-                            elif isinstance(msg, AIMessage):
-                                from models import LangChainMessage
-                                optimized_messages.append(LangChainMessage(
-                                    content=msg.content,
-                                    type='ai'
-                                ))
-                            else:
-                                optimized_messages.append(msg)
-                        
-                        logger.info(f"🖼️ Vision middleware replaced processed images with summaries")
-                    
-                    # Log cache statistics periodically
-                    cache_stats = self.vision_middleware.get_cache_stats()
-                    if cache_stats['total_processed_images'] > 0:
-                        logger.debug(f"🖼️ Vision cache: {cache_stats['total_processed_images']} images, {cache_stats['total_processing_count']} total processes")
-                        
-                except Exception as e:
-                    logger.warning(f"Vision middleware optimization failed, using original messages: {e}")
-                    optimized_messages = langchain_messages
-
-            # Execute chat completion with optimized conversation history and tools
-            # The agent will see: [user_message, previous_ai_message, tool_results, ...] (potentially optimized)
-            logger.debug(
-                f"Invoking chat agent with {len(optimized_messages)} optimized messages and {len(tools_list) if tools_list else 0} tools\n"
-                f"tools: {[tool.name for tool in tools_list] if tools_list else 'None'}"
-            )
-            response_msg = await self.chat_agent.chat_completion_with_conversion(
-                messages=optimized_messages,  # Optimized conversation including tool results
-                tools=tools_list,
-            )
-
-            # Convert response back to LangChain core AIMessage format for LangGraph
-            tool_call_requests = []
-            filtered_requests = []
-            duplicates_blocked = 0
-            response_tool_requests = self._extract_tool_call_requests_from_message(
-                response_msg
-            )
-            total_tool_requests = len(response_tool_requests)
-
-            if response_tool_requests:
-                for request in response_tool_requests:
-                    # Check if this is a duplicate tool call request
-                    if self._is_duplicate_tool_call_request(
-                        request, previous_tool_requests
-                    ):
-                        logger.warning(
-                            f"🔄 BLOCKED duplicate tool call request: {request['name']} with args {request['args']} (seen 2+ times already)"
+                    if isinstance(content, str):
+                        # Replace vision tokens with summary
+                        optimized_content = re.sub(
+                            r'<\|vision_start\|>.*?<\|vision_end\|>', 
+                            f"[Previous image analysis: {cached_summary}]", 
+                            content
                         )
-                        duplicates_blocked += 1
-                        continue
+                        new_msg = HumanMessage(content=optimized_content) if hasattr(msg, 'type') and msg.type == "human" else msg
+                    else:
+                        # Replace image content blocks with text summary
+                        new_content = []
+                        for block in content:
+                            if isinstance(block, dict) and (block.get('type') == 'image_url' or block.get('type') == 'image'):
+                                new_content.append({
+                                    'type': 'text', 
+                                    'text': f"[Previous image analysis: {cached_summary}]"
+                                })
+                            else:
+                                new_content.append(block)
+                        new_msg = HumanMessage(content=new_content) if hasattr(msg, 'type') and msg.type == "human" else msg
+                    
+                    optimized_messages.append(new_msg)
+                    logger.info(f"🖼️ Using cached vision analysis (hash: {content_hash})")
+                else:
+                    # First time seeing this image - store hash for later caching
+                    setattr(msg, '_vision_hash', content_hash)
+                    optimized_messages.append(msg)
+                    logger.debug(f"🖼️ New vision content detected (hash: {content_hash})")
+            else:
+                optimized_messages.append(msg)
+                
+        return optimized_messages
+    
+    def _cache_vision_analysis(self, messages: List, response_content: str):
+        """Extract and cache vision analysis from AI response."""
+        import re
+        
+        # Look for messages that had vision content
+        for msg in messages:
+            if hasattr(msg, '_vision_hash'):
+                content_hash = msg._vision_hash
+                
+                # Extract analysis from response (simple heuristic)
+                if response_content and len(response_content) > 50:
+                    # Use first 100 characters as summary
+                    summary = response_content[:100].strip()
+                    if summary:
+                        self.vision_cache[content_hash] = summary
+                        logger.info(f"🖼️ Cached vision analysis (hash: {content_hash})")
 
-                    # Keep the validated request
-                    tool_call_requests.append(request)
-                    filtered_requests.append(request)
-
-            # Critical fix: If we have many tool requests but blocked some duplicates OR
-            # if we have excessive tool usage (indicating potential loop), force final answer
-            excessive_tool_usage = (
-                len(previous_tool_requests) > 15
-            )  # More than 15 previous tool requests indicates a loop (increased from 8)
-            should_force_final_answer = (
-                duplicates_blocked > 0
-                or excessive_tool_usage
-                or (
-                    total_tool_requests > 0 and len(tool_call_requests) == 0
-                )  # All tool requests were blocked
+    async def _chat_agent_node(self, state: ToolsState) -> ToolsState:
+        """LangChain agent node with vision optimization preprocessing."""
+        from langchain_core.messages import AIMessage, HumanMessage
+        
+        # Apply vision optimization to messages before sending to model  
+        messages = state["messages"]
+        optimized_messages = self._optimize_vision_content(messages)
+        
+        # Log optimization activity
+        vision_optimized = any(hasattr(msg, '_vision_hash') for msg in optimized_messages)
+        if vision_optimized:
+            logger.info("🖼️ Vision optimization applied to messages")
+        
+        try:
+            # Get available tools
+            tools_dict = self.tool_registry.get_all_executable_tools()
+            tools_list = list(tools_dict.values()) if tools_dict else None
+            
+            # Use our existing chat agent with the optimized messages
+            response = await self.chat_agent.chat_completion_with_conversion(
+                messages=optimized_messages,
+                tools=tools_list,
+                stream=False  # For simplicity in the subgraph
             )
-
-            if should_force_final_answer:
-                reason = []
-                if duplicates_blocked > 0:
-                    reason.append(
-                        f"blocked {duplicates_blocked} duplicate tool requests"
+            
+            # Cache vision analysis from the response
+            if response and hasattr(response, 'content'):
+                content = response.content if isinstance(response.content, str) else str(response.content)
+                self._cache_vision_analysis(optimized_messages, content)
+            
+            # Convert response to proper LangChain message type
+            if hasattr(response, 'content'):
+                if hasattr(response, 'tool_calls') and response.tool_calls:
+                    # AI message with tool calls
+                    langchain_response = AIMessage(
+                        content=response.content,
+                        tool_calls=[
+                            {
+                                "name": tc.get("name", ""),
+                                "args": tc.get("args", {}),
+                                "id": tc.get("id", f"call_{i}")
+                            }
+                            for i, tc in enumerate(response.tool_calls)
+                        ]
                     )
-                if excessive_tool_usage:
-                    reason.append(
-                        f"detected excessive tool usage ({len(previous_tool_requests)} previous requests)"
-                    )
-                if total_tool_requests > 0 and len(tool_call_requests) == 0:
-                    reason.append("all tool requests were blocked as duplicates")
-
-                logger.info(f"🛡️ Forcing final answer - {', '.join(reason)}")
-
-                final_content = (
-                    response_msg.content
-                    or "Based on the information I have already gathered from previous tool calls, I can provide you with a comprehensive response."
-                )
-                # Create final answer message with no tool calls - this will cause tools_condition to route to END
-                ai_message = AIMessage(
-                    content=final_content,
-                    tool_calls=[],  # No tool calls - force final answer and END routing
-                    additional_kwargs=getattr(response_msg, "additional_kwargs", {}),
-                    response_metadata=getattr(response_msg, "response_metadata", {}),
-                )
+                else:
+                    # Simple AI message
+                    langchain_response = AIMessage(content=response.content)
             else:
-                # Create AIMessage compatible with LangGraph ToolNode
-                ai_message = AIMessage(
-                    content=response_msg.content or "",
-                    tool_calls=tool_call_requests,  # Use validated requests
-                    additional_kwargs=getattr(response_msg, "additional_kwargs", {}),
-                    response_metadata=getattr(response_msg, "response_metadata", {}),
-                )
-
-            # Log what the agent decided to do
-            if tool_call_requests:
-                logger.info(
-                    f"Agent decided to make {len(tool_call_requests)} tool call requests: {[req['name'] for req in tool_call_requests]}"
-                )
-            else:
-                logger.info(
-                    "Agent decided to provide final answer - no more tool calls"
-                )
-
-            # Return ONLY the new AI message - LangGraph will append it to conversation
-            return {"messages": [ai_message]}
-
+                # Fallback
+                langchain_response = AIMessage(content="I apologize, but I couldn't process your request properly.")
+            
+            # Return updated state following LangChain agent pattern
+            return {
+                **state,
+                "messages": optimized_messages + [langchain_response]
+            }
+            
         except Exception as e:
-            logger.error(f"Chat agent wrapper failed: {e}")
-            import traceback
-
-            traceback.print_exc()
-            # Return error message
-            error_msg = AIMessage(content=f"Agent error: {str(e)}")
-            return {"messages": [error_msg]}
+            logger.error(f"Error in chat agent node: {e}")
+            # Fallback: return state unchanged
+            return state
 
     # Removed _should_continue - using LangGraph's built-in tools_condition instead
 
