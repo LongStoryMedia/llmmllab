@@ -234,6 +234,7 @@ class ToolsAgentSubgraph:
                 if content_hash in self.vision_cache:
                     # Replace with cached summary
                     cached_summary = self.vision_cache[content_hash]
+                    logger.info(f"🖼️ Using cached analysis for hash {content_hash}: {cached_summary[:50]}...")
                     
                     if isinstance(content, str):
                         # Replace vision tokens with summary
@@ -242,19 +243,26 @@ class ToolsAgentSubgraph:
                             f"[Previous image analysis: {cached_summary}]", 
                             content
                         )
-                        new_msg = HumanMessage(content=optimized_content) if hasattr(msg, 'type') and msg.type == "human" else msg
+                        new_msg = HumanMessage(content=optimized_content)
                     else:
-                        # Replace image content blocks with text summary
+                        # Replace ALL image content blocks with text summary - this is key!
                         new_content = []
+                        has_images = False
                         for block in content:
                             if isinstance(block, dict) and (block.get('type') == 'image_url' or block.get('type') == 'image'):
-                                new_content.append({
-                                    'type': 'text', 
-                                    'text': f"[Previous image analysis: {cached_summary}]"
-                                })
+                                has_images = True
+                                # Don't add image blocks - replace with text only
                             else:
                                 new_content.append(block)
-                        new_msg = HumanMessage(content=new_content) if hasattr(msg, 'type') and msg.type == "human" else msg
+                        
+                        # Add the cached summary as a text block
+                        if has_images:
+                            new_content.insert(0, {
+                                'type': 'text', 
+                                'text': f"[Previous image analysis: {cached_summary}]"
+                            })
+                        
+                        new_msg = HumanMessage(content=new_content if new_content else f"[Previous image analysis: {cached_summary}]")
                     
                     optimized_messages.append(new_msg)
                     logger.info(f"🖼️ Using cached vision analysis (hash: {content_hash})")
@@ -279,8 +287,17 @@ class ToolsAgentSubgraph:
                 
                 # Extract analysis from response (simple heuristic)
                 if response_content and len(response_content) > 50:
-                    # Use first 100 characters as summary
-                    summary = response_content[:100].strip()
+                    # Use first meaningful sentence as summary  
+                    sentences = response_content.split('.')
+                    for sentence in sentences:
+                        clean_sentence = sentence.strip()
+                        if len(clean_sentence) > 30 and 'image' in clean_sentence.lower():
+                            summary = clean_sentence + '.'
+                            break
+                    else:
+                        # Fallback to first 100 characters
+                        summary = response_content[:100].strip()
+                    
                     if summary:
                         self.vision_cache[content_hash] = summary
                         logger.info(f"🖼️ Cached vision analysis (hash: {content_hash})")
@@ -288,6 +305,7 @@ class ToolsAgentSubgraph:
     async def _chat_agent_node(self, state: ToolsState) -> ToolsState:
         """LangChain agent node with vision optimization preprocessing."""
         from langchain_core.messages import AIMessage, HumanMessage
+        from composer.utils.conversion import convert_langchain_messages_to_messages, message_to_langchain_message
         
         # Apply vision optimization to messages before sending to model  
         messages = state["messages"]
@@ -303,39 +321,24 @@ class ToolsAgentSubgraph:
             tools_dict = self.tool_registry.get_all_executable_tools()
             tools_list = list(tools_dict.values()) if tools_dict else None
             
-            # Use our existing chat agent with the optimized messages
-            response = await self.chat_agent.chat_completion_with_conversion(
-                messages=optimized_messages,
+            # Convert optimized LangChain messages to Message objects for direct pipeline use
+            # This bypasses chat_completion_with_conversion and its internal conversions
+            optimized_core_messages = convert_langchain_messages_to_messages(optimized_messages)
+            
+            # Use the ChatAgent's base chat completion method directly
+            response = await self.chat_agent.chat_completion(
+                messages=optimized_messages,  # Pass LangChain messages directly
                 tools=tools_list,
-                stream=False  # For simplicity in the subgraph
+                stream=False
             )
             
             # Cache vision analysis from the response
-            if response and hasattr(response, 'content'):
-                content = response.content if isinstance(response.content, str) else str(response.content)
+            if response and hasattr(response, 'message') and response.message:
+                content = str(response.message.content[0].text if response.message.content else "")
                 self._cache_vision_analysis(optimized_messages, content)
             
-            # Convert response to proper LangChain message type
-            if hasattr(response, 'content'):
-                if hasattr(response, 'tool_calls') and response.tool_calls:
-                    # AI message with tool calls
-                    langchain_response = AIMessage(
-                        content=response.content,
-                        tool_calls=[
-                            {
-                                "name": tc.get("name", ""),
-                                "args": tc.get("args", {}),
-                                "id": tc.get("id", f"call_{i}")
-                            }
-                            for i, tc in enumerate(response.tool_calls)
-                        ]
-                    )
-                else:
-                    # Simple AI message
-                    langchain_response = AIMessage(content=response.content)
-            else:
-                # Fallback
-                langchain_response = AIMessage(content="I apologize, but I couldn't process your request properly.")
+            # Convert response message to LangChain format
+            langchain_response = message_to_langchain_message(response.message) if response.message else AIMessage(content="No response generated")
             
             # Return updated state following LangChain agent pattern
             return {
