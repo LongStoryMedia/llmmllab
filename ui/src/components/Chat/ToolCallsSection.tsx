@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, Paper, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
+import { Box, Typography, Paper, Accordion, AccordionSummary, AccordionDetails, Chip, Button } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { styled } from '@mui/material/styles';
 import ReactMarkdown from 'react-markdown';
@@ -155,15 +155,132 @@ const parseWebSearchOutput = (raw: string): ParsedWebSearchOutput | null => {
   return { queryHeader, resultsHeader, results, note };
 };
 
-// Helper function to extract and format generic content (fallback)
-const formatToolCallResult = (result: Record<string, unknown>) => {
-  if (result.output && typeof result.output === 'string') {
-    return result.output;
+// ---------------- Generic Structured Rendering Utilities ----------------
+const isLikelyMarkdown = (text: string): boolean => /[#*_`>-]|\n\n|\*\*.+\*\*/.test(text);
+const isUrl = (value: string): boolean => /^https?:\/\//i.test(value);
+
+const truncate = (value: string, max = 400): { truncated: string; isTruncated: boolean } => {
+  if (value.length <= max) {
+    return { truncated: value, isTruncated: false };
   }
-  if (result.content && typeof result.content === 'string') {
-    return result.content;
+  return { truncated: value.slice(0, max) + '…', isTruncated: true };
+};
+
+// Render a single key/value pair intelligently
+interface KVItemProps {
+  label: string;
+  value: unknown;
+}
+
+const KVItem: React.FC<KVItemProps> = ({ label, value }) => {
+  const [expanded, setExpanded] = React.useState(false);
+  if (value === null || value === undefined) {
+    return null;
   }
-  return JSON.stringify(result, null, 2);
+
+  // Array of objects table rendering heuristic
+  if (Array.isArray(value) && value.length > 0 && value.every(v => typeof v === 'object' && v && !Array.isArray(v))) {
+    const keys = Array.from(new Set(value.flatMap(v => Object.keys(v as Record<string, unknown>))));
+    return (
+      <Box sx={{ mb: 1 }}>
+        <Typography variant="caption" sx={{ fontWeight: 600 }}>{label} (list):</Typography>
+        <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse', mt: 0.5, fontSize: '0.7rem' }}>
+          <Box component="thead">
+            <Box component="tr">
+              {keys.map(k => (
+                <Box component="th" key={k} sx={{ textAlign: 'left', borderBottom: theme => `1px solid ${theme.palette.divider}`, paddingRight: 1 }}>{k}</Box>
+              ))}
+            </Box>
+          </Box>
+          <Box component="tbody">
+            {value.slice(0, expanded ? value.length : 20).map((row, i) => (
+              <Box component="tr" key={i}>
+                {keys.map(k => {
+                  const cell = (row as Record<string, unknown>)[k];
+                  const cellStr = typeof cell === 'string' ? cell : JSON.stringify(cell);
+                  return (
+                    <Box component="td" key={k} sx={{ verticalAlign: 'top', paddingRight: 1, paddingTop: 0.5 }}>
+                      {isUrl(cellStr) ? (
+                        <a href={cellStr} target="_blank" rel="noopener noreferrer" style={{ color: '#80cbc4' }}>{cellStr}</a>
+                      ) : cellStr.length > 120 ? cellStr.slice(0, 117) + '…' : cellStr}
+                    </Box>
+                  );
+                })}
+              </Box>
+            ))}
+          </Box>
+        </Box>
+        {value.length > 20 && (
+          <Button size="small" variant="text" onClick={() => setExpanded(e => !e)} sx={{ mt: 0.5 }}>
+            {expanded ? 'Show less' : `Show ${value.length - 20} more`}
+          </Button>
+        )}
+      </Box>
+    );
+  }
+
+  const strValue = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  const { truncated, isTruncated } = truncate(strValue);
+  const finalText = expanded || !isTruncated ? strValue : truncated;
+
+  let rendered: React.ReactNode;
+  if (typeof value === 'string') {
+    if (isUrl(value)) {
+      rendered = <a href={value} target="_blank" rel="noopener noreferrer" style={{ color: '#80cbc4' }}>{value}</a>;
+    } else if (isLikelyMarkdown(value)) {
+      rendered = <ReactMarkdown>{finalText}</ReactMarkdown>;
+    } else {
+      rendered = <Typography component="span" sx={{ fontSize: '0.7rem', whiteSpace: 'pre-wrap' }}>{finalText}</Typography>;
+    }
+  } else {
+    rendered = (
+      <Typography component="pre" sx={{ m: 0, fontSize: '0.7rem', whiteSpace: 'pre-wrap' }}>{finalText}</Typography>
+    );
+  }
+
+  return (
+    <Box sx={{ mb: 0.75 }}>
+      <Typography variant="caption" sx={{ fontWeight: 600 }}>{label}:</Typography>{' '}{rendered}
+      {isTruncated && (
+        <Button size="small" onClick={() => setExpanded(e => !e)} sx={{ ml: 1 }} variant="text">
+          {expanded ? 'Show less' : 'Show more'}
+        </Button>
+      )}
+    </Box>
+  );
+};
+
+interface StructuredKVDisplayProps {
+  data: Record<string, unknown>;
+  title?: string;
+}
+
+const StructuredKVDisplay: React.FC<StructuredKVDisplayProps> = ({ data, title }) => {
+  const entries = Object.entries(data);
+  if (!entries.length) {
+    return null;
+  }
+  return (
+    <Box sx={{ mb: 2 }}>
+      {title && (
+        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+          {title}
+        </Typography>
+      )}
+      <Box sx={{
+        backgroundColor: 'background.default',
+        p: 1,
+        borderRadius: 1,
+        maxHeight: 400,
+        overflow: 'auto',
+        border: theme => `1px solid ${theme.palette.divider}`
+      }}>
+        {entries.map(([k, v]) => (
+          <KVItem key={k} label={k} value={v} />
+        ))}
+      </Box>
+    </Box>
+  );
 };
 
 const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({ toolCalls, isTyping = false }) => {
@@ -201,26 +318,12 @@ const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({ toolCalls, isTyping
             </AccordionSummary>
 
             <AccordionDetails>
-              {/* Arguments */}
+              {/* Arguments (generic structured) */}
               {toolCall.args && Object.keys(toolCall.args).length > 0 && (
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                    Arguments:
-                  </Typography>
-                  <Box component="pre" sx={{
-                    fontSize: '0.75rem',
-                    backgroundColor: 'background.default',
-                    padding: 1,
-                    borderRadius: 1,
-                    overflow: 'auto',
-                    maxHeight: 200
-                  }}>
-                    {JSON.stringify(toolCall.args, null, 2)}
-                  </Box>
-                </Box>
+                <StructuredKVDisplay data={toolCall.args} title="Arguments" />
               )}
 
-              {/* Results */}
+              {/* Results (web_search specialized + generic structured) */}
               {toolCall.result_data && Object.keys(toolCall.result_data).length > 0 && (
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="subtitle2" color="text.secondary" gutterBottom>
@@ -250,9 +353,7 @@ const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({ toolCalls, isTyping
                                 </Typography>
                               )}
                               {r.relevance && (
-                                <Typography variant="caption" color="text.secondary">
-                                  Relevance: {r.relevance}
-                                </Typography>
+                                <Chip size="small" label={`Relevance: ${r.relevance}`} sx={{ fontSize: '0.6rem' }} />
                               )}
                             </Paper>
                           ))}
@@ -264,27 +365,8 @@ const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({ toolCalls, isTyping
                         </Box>
                       );
                     }
-                    // Fallback to previous markdown / raw renderer
-                    const formattedContent = formatToolCallResult(toolCall.result_data);
-                    const isMarkdown = typeof formattedContent === 'string' &&
-                      (formattedContent.includes('**') || formattedContent.includes('##'));
-                    if (isMarkdown) {
-                      return (
-                        <ReactMarkdown>{formattedContent}</ReactMarkdown>
-                      );
-                    }
-                    return (
-                      <Box component="pre" sx={{
-                        fontSize: '0.75rem',
-                        backgroundColor: 'background.default',
-                        padding: 1,
-                        borderRadius: 1,
-                        overflow: 'auto',
-                        maxHeight: 200
-                      }}>
-                        {formattedContent}
-                      </Box>
-                    );
+                    // Generic structured display
+                    return <StructuredKVDisplay data={toolCall.result_data} />;
                   })()}
                 </Box>
               )}
