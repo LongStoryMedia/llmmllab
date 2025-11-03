@@ -96,9 +96,12 @@ def extract_content_from_base_langchain_message(msg: BaseMessage) -> str:
             if isinstance(part, str):
                 content_parts.append(part)
             elif isinstance(part, dict) and "text" in part:
-                content_parts.append(part["text"])
+                # Handle None text values safely
+                text_content = part["text"]
+                if text_content is not None:
+                    content_parts.append(str(text_content))
             else:
-                # Handle any other object
+                # Handle any other object safely
                 content_parts.append(str(part))
         return " ".join(content_parts)
 

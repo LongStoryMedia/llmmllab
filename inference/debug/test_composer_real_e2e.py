@@ -15,6 +15,7 @@ the new architectural patterns with LangGraph workflows instead of direct pipeli
 """
 
 import asyncio
+from re import T
 import time
 import uuid
 import json
@@ -209,7 +210,9 @@ class ComposerRealEndToEndTester:
         except (json.JSONDecodeError, TypeError):
             return response_text
 
-    async def run_full_test(self, query: Optional[str] = "") -> Dict[str, Any]:
+    async def run_full_test(
+        self, query: Optional[str] = "", image: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Run complete composer-based end-to-end pipeline test."""
         logger.info("🚀 Starting Composer Real End-to-End Pipeline Test")
         logger.info("=" * 80)
@@ -261,7 +264,9 @@ class ComposerRealEndToEndTester:
 
             # Phase 5: Real Message with Tool Context
             logger.info("📝 Phase 5: Real Message with Tool Context")
-            message_result = await self.create_real_message_with_tools(query=query)
+            message_result = await self.create_real_message_with_tools(
+                query=query, image=image
+            )
             test_results["results"]["message_creation"] = message_result
             if message_result["success"]:
                 test_results["components_passed"] += 1
@@ -449,6 +454,7 @@ class ComposerRealEndToEndTester:
     async def create_real_message_with_tools(
         self,
         query: Optional[str] = "",
+        image: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create real user message with tool-calling context."""
         logger.info("📝 Creating real message with tool context...")
@@ -469,13 +475,24 @@ class ComposerRealEndToEndTester:
                 or """Look at this image and describe what you see. What colors are visible, and what might this represent? Also, please provide information about the latest developments in multimodal AI models that can process both text and images together."""
             )
 
-            content_list = [
+            content_list = []
+            if image or (not query and not image):
+                img = (
+                    image
+                    or "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg"
+                )
+                content_list.append(
+                    MessageContent(
+                        type=MessageContentType.IMAGE,
+                        content=img,
+                    )
+                )
+            content_list.append(
                 MessageContent(
-                    type=MessageContentType.IMAGE,
-                    url="https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg",
-                ),
-                MessageContent(type=MessageContentType.TEXT, text=query_text),
-            ]
+                    type=MessageContentType.TEXT,
+                    content=query_text,
+                )
+            )
 
             user_message = Message(
                 conversation_id=self.test_conversation_id,
@@ -1643,27 +1660,25 @@ class ComposerRealEndToEndTester:
 
 async def main():
     """Main test execution function."""
+    import argparse
+
     logger.info("🧪 Starting Composer Real End-to-End Pipeline Tests")
 
-    # Support command line model selection and output options
-    target_model = None
-    capture_output = True
-    print_output = False
-    query = ""
-
-    # Parse command line arguments
-    for i, arg in enumerate(sys.argv[1:], 1):
-        if arg.startswith("--"):
-            if arg == "--no-capture":
-                capture_output = False
-            elif arg == "--print-output":
-                print_output = True
-            elif arg.startswith("--model="):
-                target_model = arg.split("=", 1)[1]
-            elif arg.startswith("--query="):
-                query = arg.split("=", 1)[1]
-        elif not target_model and not arg.startswith("--"):
-            target_model = arg
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", type=str, help="Target model to test")
+    parser.add_argument(
+        "--no-capture", action="store_true", help="Disable capturing LLM output to file"
+    )
+    parser.add_argument(
+        "--print-output", action="store_true", help="Print full LLM output to console"
+    )
+    parser.add_argument(
+        "--query", type=str, default="", help="Custom query for the test"
+    )
+    parser.add_argument(
+        "--image", type=str, default=None, help="Custom image for the test"
+    )
+    args = parser.parse_args()
 
     # Available models for testing
     available_models = [
@@ -1673,19 +1688,19 @@ async def main():
     ]
 
     # Test specified model or default
-    models_to_test = [target_model] if target_model else [available_models[0]]
+    models_to_test = [args.model] if args.model else [available_models[0]]
 
     for model in models_to_test:
         logger.info(f"🧪 Testing composer architecture with model: {model}")
         tester = ComposerRealEndToEndTester(
             target_model=model,
-            capture_llm_output=capture_output,
-            print_output=print_output,
+            capture_llm_output=args.no_capture,
+            print_output=args.print_output,
         )
 
         # Run the test
         try:
-            results = await tester.run_full_test(query=query)
+            results = await tester.run_full_test(query=args.query, image=args.image)
 
             if results["overall_success"]:
                 logger.info(f"🎉 Composer test with {model} PASSED!")

@@ -72,10 +72,38 @@ class EngineeringAgentNode:
             if not user_query.strip():
                 return state
 
-            for intent in state.intent_classification:
+            # Debug logging for intent classification data
+            self.logger.info(
+                f"Engineering node received {len(state.intent_classification)} intent analyses",
+                extra={
+                    "user_id": user_id,
+                    "intent_count": len(state.intent_classification),
+                    "intent_types": [str(intent.workflow_type) for intent in state.intent_classification],
+                    "intent_domains": [str(intent.technical_domain) for intent in state.intent_classification],
+                    "intent_formats": [str(intent.response_format) for intent in state.intent_classification],
+                },
+            )
+            
+            for i, intent in enumerate(state.intent_classification):
                 # Use technical domain and response format from intent analysis
                 domain = intent.technical_domain
                 response_format = intent.response_format
+                
+                # Debug each intent individually
+                self.logger.info(
+                    f"Processing intent {i+1}/{len(state.intent_classification)}",
+                    extra={
+                        "user_id": user_id,
+                        "intent_index": i,
+                        "workflow_type": str(intent.workflow_type),
+                        "technical_domain": str(intent.technical_domain),
+                        "response_format": str(intent.response_format),
+                        "domain_variable": str(domain),
+                        "response_format_variable": str(response_format),
+                        "domain_is_none": domain is None,
+                        "response_format_is_none": response_format is None,
+                    },
+                )
                 
                 # Skip if engineering fields are not populated (shouldn't happen with fixed prompt)
                 if not domain or not response_format:
