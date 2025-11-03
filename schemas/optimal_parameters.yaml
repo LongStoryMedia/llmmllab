@@ -17,8 +17,8 @@ properties:
     description: "Micro-batch size"
   n_gpu_layers:
     type: integer
-    minimum: 0
-    description: "Number of model layers to place on GPU"
+    minimum: -1
+    description: "Number of model layers to place on GPU (-1 means all layers)"
 required:
   - n_ctx
   - n_batch
