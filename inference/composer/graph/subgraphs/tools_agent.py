@@ -16,7 +16,7 @@ from typing import Dict, Any, List
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, BaseMessage
 from langchain.tools import BaseTool
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.prebuilt import ToolNode  # Keep for type hints if needed
 from langgraph.types import Command
 
 from models import LangChainMessage
@@ -56,37 +56,112 @@ class ToolsAgentSubgraph:
 
         logger.info("ToolsAgentSubgraph initialized")
 
-    def _create_tool_node(self) -> ToolNode:
+    def _create_tool_node(self):
         """
-        Create LangGraph ToolNode with proper tools list and ToolRuntime injection.
-
-        LangChain will automatically inject ToolRuntime for tools with `runtime: ToolRuntime` parameter.
-        This is the correct pattern - no manual ToolRuntime creation needed.
+        Create custom ToolNode with proper state injection for ToolRuntime.
+        
+        LangChain's standard ToolNode doesn't pass the full state to ToolRuntime,
+        causing tools like memory_retrieval to fail with "Missing user_id in state".
+        This custom implementation ensures proper state injection.
         """
+        
+        class StateInjectedToolNode:
+            """Custom ToolNode that properly injects full state into ToolRuntime."""
+            
+            def __init__(self, tool_registry):
+                self.tool_registry = tool_registry
+                
+            async def __call__(self, state: ToolsState) -> ToolsState:
+                """Execute tools with proper state injection."""
+                messages = state.get("messages", [])
+                
+                if not messages:
+                    return state
+                
+                last_message = messages[-1]
+                
+                # Check if last message has tool calls
+                if not (hasattr(last_message, "tool_calls") and last_message.tool_calls):
+                    return state
+                
+                # Get executable tools
+                executable_tools = self.tool_registry.get_all_executable_tools()
+                if not executable_tools:
+                    logger.warning("No executable tools available")
+                    return state
+                
+                # Execute each tool call with proper state injection
+                tool_messages = []
+                
+                for tool_call in last_message.tool_calls:
+                    tool_name = tool_call.get("name")
+                    tool_args = tool_call.get("args", {})
+                    tool_call_id = tool_call.get("id", "unknown")
+                    
+                    if tool_name in executable_tools:
+                        tool = executable_tools[tool_name]
+                        
+                        # Create ToolRuntime with full state - this is the key fix!
+                        class ToolRuntimeImpl:
+                            def __init__(self, state_dict, call_id):
+                                self.state = state_dict  # Full ToolsState with user_id, etc.
+                                self.tool_call_id = call_id
+                        
+                        runtime = ToolRuntimeImpl(state, tool_call_id)
+                        
+                        try:
+                            logger.info(f"🔧 Executing tool '{tool_name}' with full state injection")
+                            logger.debug(f"Tool state includes: {list(state.keys())}")
+                            logger.debug(f"User ID in tool state: {state.get('user_id')}")
+                            
+                            # Call tool with runtime injection
+                            if hasattr(tool, '_arun'):
+                                result = await tool._arun(runtime=runtime, **tool_args)
+                            elif hasattr(tool, 'ainvoke'):
+                                # For newer LangChain tools
+                                result = await tool.ainvoke({**tool_args, "runtime": runtime})
+                            else:
+                                # Fallback synchronous execution
+                                result = tool._run(runtime=runtime, **tool_args)
+                            
+                            tool_messages.append(ToolMessage(
+                                content=str(result),
+                                tool_call_id=tool_call_id,
+                                name=tool_name
+                            ))
+                            
+                            logger.info(f"🔧 Tool '{tool_name}' executed successfully")
+                            
+                        except Exception as e:
+                            logger.error(f"Tool '{tool_name}' execution failed: {e}", exc_info=True)
+                            tool_messages.append(ToolMessage(
+                                content=f"❌ Tool execution failed: {str(e)}",
+                                tool_call_id=tool_call_id,
+                                name=tool_name
+                            ))
+                    else:
+                        logger.warning(f"Tool '{tool_name}' not found in registry")
+                        tool_messages.append(ToolMessage(
+                            content=f"❌ Tool '{tool_name}' not available",
+                            tool_call_id=tool_call_id,
+                            name=tool_name or "unknown"
+                        ))
+                
+                # Return updated state with tool messages
+                updated_messages = messages + tool_messages
+                return {**state, "messages": updated_messages}
+        
         try:
-            # Get executable tools from registry
-            executable_tools = self.tool_registry.get_all_executable_tools()
-            tools_dict: dict[str, BaseTool] = (
-                executable_tools if executable_tools else {}
-            )
-
-            if not tools_dict:
-                logger.warning("No tools available for ToolNode creation")
-                return ToolNode([])  # Empty tool node
-
-            # Convert to list of tool functions for ToolNode
-            tools_list = list(tools_dict.values())
-
-            logger.info(
-                f"🛠️ Creating ToolNode with {len(tools_list)} tools: {list(tools_dict.keys())}"
-            )
-
-            # Create ToolNode - LangChain will handle ToolRuntime injection automatically
-            return ToolNode(tools_list)
-
+            logger.info("🛠️ Creating custom ToolNode with full state injection")
+            return StateInjectedToolNode(self.tool_registry)
+            
         except Exception as e:
-            logger.error(f"Failed to create ToolNode: {e}")
-            return ToolNode([])  # Return empty tool node on error
+            logger.error(f"Failed to create custom ToolNode: {e}")
+            # Return a minimal fallback
+            class EmptyToolNode:
+                async def __call__(self, state: ToolsState) -> ToolsState:
+                    return state
+            return EmptyToolNode()
 
     def _build_graph(self) -> None:
         """Build simple agent following LangChain quickstart pattern."""
@@ -101,10 +176,22 @@ class ToolsAgentSubgraph:
             tool_node = self._create_tool_node()
             builder.add_node("tools", tool_node)
 
-            # EXACTLY like the LangChain quickstart - use built-in tools_condition
+            # Custom routing condition for tool calls (since we use custom ToolNode)
+            def should_continue_to_tools(state: ToolsState) -> str:
+                """Check if we should route to tools or end."""
+                messages = state.get("messages", [])
+                if not messages:
+                    return "__end__"
+                
+                last_message = messages[-1]
+                # Check if message has tool calls using hasattr for safety
+                if hasattr(last_message, "tool_calls") and getattr(last_message, "tool_calls", None):
+                    return "tools"
+                return "__end__"
+            
             builder.add_conditional_edges(
-                "chat_agent",
-                tools_condition,  # Use built-in routing - expects "tools" node
+                "chat_agent", 
+                should_continue_to_tools,
                 {
                     "tools": "tools",
                     "__end__": END,

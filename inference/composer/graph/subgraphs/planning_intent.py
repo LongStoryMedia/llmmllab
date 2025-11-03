@@ -296,7 +296,7 @@ class PlanningIntentSubgraph:
             if messages:
                 for msg in reversed(messages):
                     if isinstance(msg, HumanMessage):
-                        user_message = getattr(msg, "content", "")
+                        user_message = extract_content_from_base_langchain_message(msg)
                         break
 
             # Generate todos based on intent analysis - simplified approach
