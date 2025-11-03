@@ -56,8 +56,30 @@ interface ToolCallsSectionProps {
 const formatToolCallResult = (result: Record<string, unknown>) => {
   // Handle web search results with nested content in output field
   if (result.output && typeof result.output === 'string') {
-    // For the web search case, the content is directly in the output string
-    return result.output;
+    // Parse the output string which may contain escaped content
+    let content = result.output;
+    
+    // Check if it starts with content=" pattern (JSON-like string)
+    const contentMatch = content.match(/^content="(.+?)"\s+name=/s);
+    if (contentMatch) {
+      // Extract the actual content and unescape it
+      content = contentMatch[1]
+        .replace(/\\n/g, '\n')  // Convert literal \n to actual newlines
+        .replace(/\\"/g, '"')   // Convert literal \" to actual quotes
+        .replace(/\\'/g, "'")   // Convert literal \' to actual apostrophes
+        .replace(/\\\\/g, '\\') // Convert literal \\ to actual backslashes
+        .replace(/\\xa0/g, ' '); // Convert non-breaking space
+    } else {
+      // Also handle cases where the entire string might be escaped
+      content = content
+        .replace(/\\n/g, '\n')
+        .replace(/\\"/g, '"')
+        .replace(/\\'/g, "'")
+        .replace(/\\\\/g, '\\')
+        .replace(/\\xa0/g, ' ');
+    }
+    
+    return content;
   }
   
   // Handle direct content field
@@ -162,11 +184,39 @@ const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({ toolCalls, isTyping
                             borderTop: '1px solid',
                             borderColor: 'divider'
                           },
+                          '& a': {
+                            color: 'primary.light',
+                            textDecoration: 'none',
+                            '&:hover': {
+                              textDecoration: 'underline'
+                            }
+                          },
+                          '& code': {
+                            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                            padding: '2px 4px',
+                            borderRadius: '3px',
+                            fontSize: '0.8rem'
+                          },
                           maxHeight: 400,
                           overflow: 'auto',
                           fontSize: '0.875rem'
                         }}>
-                          <ReactMarkdown>{formattedContent}</ReactMarkdown>
+                          <ReactMarkdown
+                            components={{
+                              a: ({ href, children, ...props }) => (
+                                <a 
+                                  href={href} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  {...props}
+                                >
+                                  {children}
+                                </a>
+                              )
+                            }}
+                          >
+                            {formattedContent}
+                          </ReactMarkdown>
                         </Box>
                       );
                     } else {
