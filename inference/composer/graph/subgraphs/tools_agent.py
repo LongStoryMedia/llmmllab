@@ -298,9 +298,17 @@ class ToolsAgentSubgraph:
         # Pass full user_config object for tool access (tools need full config objects)
         user_config = getattr(main_state, "user_config", None)
 
+        # Get user_id with validation
+        user_id = getattr(main_state, "user_id", None)
+        if not user_id:
+            logger.warning(
+                f"WorkflowState missing user_id - this will cause tool failures. "
+                f"user_id={user_id}, conversation_id={getattr(main_state, 'conversation_id', 'missing')}"
+            )
+
         return {
             "messages": langchain_messages,
-            "user_id": getattr(main_state, "user_id", ""),
+            "user_id": user_id or "",  # Still use empty string for backward compatibility, but log the issue
             "conversation_id": getattr(main_state, "conversation_id", 0),
             "user_config": user_config,
             "system_config": None,  # Not available in WorkflowState

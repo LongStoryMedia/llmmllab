@@ -70,9 +70,18 @@ async def memory_retrieval(
                 "Using default memory config - no user_config in tool runtime state"
             )
 
-        # Ensure we have required state
-        if not state.get("user_id"):
-            error_message = "❌ Memory retrieval failed: Missing user_id in state"
+        # Ensure we have required state with detailed debugging
+        user_id = state.get("user_id")
+        if not user_id or user_id == "":
+            error_details = {
+                "user_id_in_state": user_id,
+                "user_id_type": type(user_id).__name__,
+                "state_keys": list(state.keys()) if isinstance(state, dict) else "not_dict",
+                "conversation_id": state.get("conversation_id", "missing"),
+                "user_config_present": state.get("user_config") is not None,
+            }
+            error_message = f"❌ Memory retrieval failed: Missing or empty user_id in state. Debug: {error_details}"
+            logger.error("Memory retrieval state debug", **error_details)
             return error_message
 
         # Initialize storage if not done
