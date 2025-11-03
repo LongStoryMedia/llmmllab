@@ -181,6 +181,14 @@ NEVER fabricate or hallucinate tool results. ALWAYS call the actual tool when yo
 The arguments field MUST be a JSON string (double-quoted), not a JSON object."""
                 )
 
+            current_date = datetime.datetime.now().strftime("%Y-%m-%d")
+
+            system_prompt += f"""TEMPORAL CONTEXT:
+The current date is {current_date}. While this is likely past your training data, you can use this information to provide better responses. If the user asks for the date or time, respond with this date.
+"""
+            if "web_search" in (tool.name for tool in (tools or [])):
+                system_prompt += "If the user asks for current events or recent information, use the web_search tool to find up-to-date information."
+
             chat_model = self.pipeline_factory.get_pipeline(
                 self.profile, priority, grammar
             )
@@ -296,17 +304,10 @@ The arguments field MUST be a JSON string (double-quoted), not a JSON object."""
         returns:
             str: Extracted system prompt
         """
-        current_date = datetime.datetime.now().strftime("%Y-%m-%d")
         msgs = normalize_message_input(messages)
         convo = []
 
-        if self.profile.system_prompt:
-            # Incorporate current date into the existing system prompt
-            system_prompt = (
-                f"Current Date: {current_date}\n\n{self.profile.system_prompt}"
-            )
-        else:
-            system_prompt = f"Current Date: {current_date}"
+        system_prompt = self.profile.system_prompt
 
         for msg in msgs:
             if msg.role == MessageRole.SYSTEM:

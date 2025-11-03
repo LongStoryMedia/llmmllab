@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Typography, Paper, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { styled } from '@mui/material/styles';
+import ReactMarkdown from 'react-markdown';
 
 const ToolCallContainer = styled(Paper)(({ theme }) => ({
   marginBottom: theme.spacing(1),
@@ -50,6 +51,23 @@ interface ToolCallsSectionProps {
   toolCalls: ToolCall[] | null;
   isTyping?: boolean;
 }
+
+// Helper function to extract and format content from tool call results
+const formatToolCallResult = (result: Record<string, unknown>) => {
+  // Handle web search results with nested content in output field
+  if (result.output && typeof result.output === 'string') {
+    // For the web search case, the content is directly in the output string
+    return result.output;
+  }
+  
+  // Handle direct content field
+  if (result.content && typeof result.content === 'string') {
+    return result.content;
+  }
+  
+  // Handle other structured results
+  return JSON.stringify(result, null, 2);
+};
 
 const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({ toolCalls, isTyping = false }) => {
   if (!toolCalls || toolCalls.length === 0) {
@@ -111,16 +129,61 @@ const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({ toolCalls, isTyping
                   <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                     Results:
                   </Typography>
-                  <Box component="pre" sx={{
-                    fontSize: '0.75rem',
-                    backgroundColor: 'background.default',
-                    padding: 1,
-                    borderRadius: 1,
-                    overflow: 'auto',
-                    maxHeight: 200
-                  }}>
-                    {JSON.stringify(toolCall.result_data, null, 2)}
-                  </Box>
+                  {(() => {
+                    const formattedContent = formatToolCallResult(toolCall.result_data);
+                    
+                    // Check if content looks like markdown (contains ** or ## or emoji indicators)
+                    const isMarkdown = typeof formattedContent === 'string' && 
+                      (formattedContent.includes('**') || formattedContent.includes('##') || 
+                       formattedContent.includes('📍') || formattedContent.includes('⭐') || 
+                       formattedContent.includes('🔍') || formattedContent.includes('💡'));
+                    
+                    if (isMarkdown) {
+                      return (
+                        <Box sx={{
+                          '& h1, & h2, & h3': { 
+                            marginTop: 1, 
+                            marginBottom: 0.5,
+                            fontSize: '1rem',
+                            fontWeight: 600
+                          },
+                          '& p': { 
+                            marginBottom: 0.5,
+                            fontSize: '0.875rem',
+                            lineHeight: 1.4
+                          },
+                          '& strong': { 
+                            fontWeight: 600,
+                            color: 'primary.main'
+                          },
+                          '& hr': {
+                            margin: '8px 0',
+                            border: 'none',
+                            borderTop: '1px solid',
+                            borderColor: 'divider'
+                          },
+                          maxHeight: 400,
+                          overflow: 'auto',
+                          fontSize: '0.875rem'
+                        }}>
+                          <ReactMarkdown>{formattedContent}</ReactMarkdown>
+                        </Box>
+                      );
+                    } else {
+                      return (
+                        <Box component="pre" sx={{
+                          fontSize: '0.75rem',
+                          backgroundColor: 'background.default',
+                          padding: 1,
+                          borderRadius: 1,
+                          overflow: 'auto',
+                          maxHeight: 200
+                        }}>
+                          {formattedContent}
+                        </Box>
+                      );
+                    }
+                  })()}
                 </Box>
               )}
 
