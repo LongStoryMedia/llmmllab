@@ -166,10 +166,10 @@ IMPORTANT: If a request asks for both technical information AND implementation/d
 Instructions:
 1. Decompose only if there are clearly separable sub-tasks; else one intent in the intents array.
 2. Each element in intents must follow the enumerations exactly.
-3. For workflow_type=ENGINEERING, BOTH technical_domain AND response_format MUST be included in the JSON output.
+3. For workflow_type=ENGINEERING, populate technical_domain and response_format when identifiable:
    - technical_domain: Choose the most appropriate domain (software_development for most code/API requests)
    - response_format: Choose based on what user wants (code_solution for implementation requests)
-   - CRITICAL: Include BOTH fields in the JSON, do not omit them
+   - These fields help guide the engineering response but are optional
 4. For other workflow types, omit response_format / technical_domain unless clearly implied.
 5. All boolean fields (requires_tools, requires_custom_tools) must be explicitly set.
 6. All required numeric fields must be provided as numbers (not strings).
@@ -189,14 +189,11 @@ VALIDATION: Before outputting JSON, verify that:
 
 User Request: {user_query}
 
-MANDATORY ENGINEERING FIELD CONSTRAINT:
-If you classify any intent as workflow_type="engineering", you MUST populate both:
-- technical_domain: (choose from the enum list above)  
-- response_format: (choose from the enum list above)
-DO NOT output engineering intents with null/None values for these fields.
-
-FOR ENGINEERING WORKFLOWS: Include technical_domain AND response_format in your JSON output.
-Example: "technical_domain": "software_development", "response_format": "code_solution"
+ENGINEERING FIELD GUIDANCE:
+For engineering workflows, populate these fields when identifiable:
+- technical_domain: Choose the most appropriate domain from the enum list
+- response_format: Choose the most appropriate format from the enum list
+These fields help guide the engineering agent but are optional.
 
 IMPORTANT: Return JSON that is valid against this schema:
 {json.dumps(intnt_schema)}

@@ -97,31 +97,18 @@ class EngineeringAgentNode:
                     }
                 )
 
-                # Use technical domain and response format from intent analysis
+                # Use technical domain and response format from intent analysis if available
                 domain = intent.technical_domain
                 response_format = intent.response_format
                 
-                # Skip if engineering fields are not populated - this is a classifier failure
-                if not domain or not response_format:
-                    self.logger.warning(
-                        "Engineering intent missing required fields",
-                        extra={
-                            "user_id": user_id,
-                            "intent_domain": intent.technical_domain,
-                            "intent_format": intent.response_format,
-                            "workflow_type": intent.workflow_type.value if intent.workflow_type else None,
-                        },
-                    )
-                    continue
-                
                 self.logger.info(
-                    "Engineering intent details",
+                    "Processing engineering intent",
                     extra={
                         "user_id": user_id, 
                         "intent_domain": intent.technical_domain,
                         "intent_format": intent.response_format,
-                        "using_domain": domain,
-                        "using_format": response_format,
+                        "has_domain": domain is not None,
+                        "has_format": response_format is not None,
                     },
                 )
                 self.logger.info(
@@ -136,14 +123,17 @@ class EngineeringAgentNode:
 
                 # Generate technical response using engineering agent
                 # Note: Engineering agent doesn't typically use tools in current implementation
-                response = await self.agent.generate_technical_response(
-                    query=user_query,
-                    user_id=user_id,
-                    domain=domain,
-                    response_format=response_format,
-                    tools=None,  # Engineering agent focuses on technical analysis, not tool execution
-                    grammar=None,  # Could be enhanced based on state requirements
-                )
+                # Build kwargs with only non-None values to use method defaults
+                kwargs = {
+                    "query": user_query,
+                    "user_id": user_id,
+                }
+                if domain is not None:
+                    kwargs["domain"] = domain
+                if response_format is not None:
+                    kwargs["response_format"] = response_format
+                
+                response = await self.agent.generate_technical_response(**kwargs)
 
                 # Add engineering response to state messages
 
@@ -151,8 +141,8 @@ class EngineeringAgentNode:
                     content=response,
                     additional_kwargs={
                         "agent": "engineering",
-                        "domain": str(domain),
-                        "format": str(response_format),
+                        "domain": str(domain) if domain else "default",
+                        "format": str(response_format) if response_format else "default",
                     },
                 )
 
