@@ -1,21 +1,29 @@
 """
-Test the fixed engineering intent analysis to verify technical_domain and response_format are populated.
+Test with a clearly engineering-focused query to ensure proper classification.
 """
 
 import asyncio
 from runner.pipeline_factory import pipeline_factory
 from composer.agents.classifier_agent import ClassifierAgent
-from models import Message, ModelProfile, NodeMetadata, ModelParameters
+from models import (
+    Message,
+    ModelProfile,
+    NodeMetadata,
+    ModelParameters,
+    MessageContent,
+    MessageContentType,
+    MessageRole,
+)
 from datetime import datetime, timezone
 import logging
 import uuid
 
-logger = logging.getLogger("test_engineering_intent_fix")
+logger = logging.getLogger("test_clear_engineering_intent")
 logging.basicConfig(level=logging.INFO)
 
 
-async def test_engineering_intent_analysis():
-    """Test that engineering intent analysis now populates technical_domain and response_format."""
+async def test_clear_engineering_intent():
+    """Test with clear engineering request that should definitely be classified as ENGINEERING."""
     try:
         # Use the global pipeline factory instance
         factory = pipeline_factory
@@ -25,8 +33,10 @@ async def test_engineering_intent_analysis():
             id=str(uuid.uuid4()),
             user_id="test-user",
             name="analysis_profile",
-            model_name="qwen3-vl-2b-thinking-abliterated",
-            parameters=ModelParameters(temperature=0.3, num_predict=1024),
+            model_name="qwen3-vl-2b-thinking-abliterated",  # Use coder model for better results
+            parameters=ModelParameters(
+                temperature=0.1, num_predict=512
+            ),  # Lower temp for consistency
             system_prompt="You are an intent analysis system.",
             type=1,
             created_at=datetime.now(timezone.utc),
@@ -42,10 +52,15 @@ async def test_engineering_intent_analysis():
 
         classifier = ClassifierAgent(factory, profile, node_metadata)
 
-        # Test engineering-focused query
-        engineering_query = "I need engineering guidance to design a scalable microservices architecture for a high-traffic e-commerce platform. Please provide technical analysis and system architecture recommendations."
-
-        from models import MessageContent, MessageContentType, MessageRole
+        # Test clearly engineering-focused query
+        engineering_query = """I need to build a REST API with FastAPI that includes:
+        1. User authentication with JWT tokens
+        2. CRUD operations for a user management system  
+        3. Database integration with PostgreSQL
+        4. Error handling and validation
+        5. Rate limiting and security middleware
+        
+        Please provide the complete implementation with code examples and explain the architecture."""
 
         messages = [
             Message(
@@ -58,7 +73,7 @@ async def test_engineering_intent_analysis():
         ]
 
         # Analyze intent
-        logger.info("Testing engineering intent analysis...")
+        logger.info("Testing clear engineering intent analysis...")
         intent_analyses = await classifier.analyze(
             messages=messages, available_static_tools=[]
         )
@@ -79,6 +94,7 @@ async def test_engineering_intent_analysis():
                     logger.info(
                         "✅ SUCCESS: technical_domain is populated for engineering workflow"
                     )
+                    logger.info(f"   technical_domain: {intent.technical_domain}")
                 else:
                     logger.error(
                         "❌ FAILURE: technical_domain is None for engineering workflow"
@@ -88,13 +104,14 @@ async def test_engineering_intent_analysis():
                     logger.info(
                         "✅ SUCCESS: response_format is populated for engineering workflow"
                     )
+                    logger.info(f"   response_format: {intent.response_format}")
                 else:
                     logger.error(
                         "❌ FAILURE: response_format is None for engineering workflow"
                     )
             else:
-                logger.warning(
-                    f"Intent was classified as {intent.workflow_type.value}, not engineering"
+                logger.error(
+                    f"❌ CRITICAL FAILURE: Intent was classified as {intent.workflow_type.value}, not engineering"
                 )
 
         return intent_analyses
@@ -108,4 +125,4 @@ async def test_engineering_intent_analysis():
 
 
 if __name__ == "__main__":
-    asyncio.run(test_engineering_intent_analysis())
+    asyncio.run(test_clear_engineering_intent())

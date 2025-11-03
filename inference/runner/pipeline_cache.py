@@ -6,7 +6,6 @@ consume persistent cached resources. Remote/API providers bypass caching.
 
 from __future__ import annotations
 
-import logging
 import threading
 import time
 import weakref
@@ -17,6 +16,7 @@ from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel
 
 from models import Model, ModelProfile, ModelProvider, PipelinePriority
+from utils.logging import llmmllogger
 from .utils.hardware_manager import hardware_manager
 
 
@@ -61,7 +61,7 @@ class LocalPipelineCacheManager:
         self._cache: Dict[str, _PipelineCacheEntry] = {}
         self._lock = threading.RLock()
         self._cache_timeout = cache_timeout
-        self.logger = logging.getLogger(__name__ + ".LocalCache")
+        self.logger = llmmllogger.logger.bind(component="LocalPipelineCacheManager")
         self._cleanup_thread: Optional[threading.Thread] = None
         self._start_cleanup_thread()
 
@@ -180,7 +180,7 @@ class LocalPipelineCacheManager:
                 self._cache.pop(mid, None)
                 if entry and entry.pipeline:
                     self._cleanup_pipeline(entry.pipeline)
-        hardware_manager.clear_memory(aggressive=True)
+        hardware_manager.clear_memory(aggressive=True, nuclear=True)
         return count
 
     # ---- Internals ----
@@ -278,8 +278,8 @@ class LocalPipelineCacheManager:
                     if removed and removed.pipeline:
                         self._cleanup_pipeline(removed.pipeline)
 
-                # Aggressive memory clear after eviction (no nuclear unless necessary)
-                hardware_manager.clear_memory(aggressive=True, nuclear=False)
+                # Aggressive memory clear after eviction with nuclear clearing for effective GPU memory freeing
+                hardware_manager.clear_memory(aggressive=True, nuclear=True)
                 self.logger.info(
                     "🧹 Completed proactive cache clearing for large model"
                 )
@@ -318,7 +318,7 @@ class LocalPipelineCacheManager:
                 removed = self._cache.pop(mid, None)
             if removed and removed.pipeline:
                 self._cleanup_pipeline(removed.pipeline)
-            hardware_manager.clear_memory(aggressive=True)
+            hardware_manager.clear_memory(aggressive=True, nuclear=True)
             if hardware_manager.check_memory_available(required):
                 self.logger.info(
                     f"Freed memory after evicting {mid} (score {score:.2f}); proceeding"

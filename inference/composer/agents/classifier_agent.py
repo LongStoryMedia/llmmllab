@@ -139,22 +139,24 @@ DO NOT invent capabilities or requirements - only use those listed above.
 Tool Assessment Guidelines:
 - requires_tools: Set to true if the request needs external tools/APIs to be fulfilled (web search, file operations, calculations, etc.)
 - requires_custom_tools: Set to true if existing tools won't suffice and custom tool creation is needed
-- tool_complexity_score: Rate 0.0-1.0 based on how complex the required tooling would be
+- tool_complexity_score: Rate 0.0-1.0 based on how complex the required tooling would be (MUST be between 0.0 and 1.0 inclusive)
   * 0.0-0.3: Basic tools (search, simple calculations)  
   * 0.4-0.6: Moderate tools (data processing, API calls)
   * 0.7-1.0: Complex tools (custom integrations, specialized processing)
 
-Scoring Guidelines:
+Scoring Guidelines (ALL scores MUST be between 0.0 and 1.0 inclusive):
 - domain_specificity: 0.0-1.0 (0.0=general, 1.0=highly domain-specific)
-- reusability_potential: 0.0-1.0 (0.0=one-time use, 1.0=highly reusable)
+- reusability_potential: 0.0-1.0 (0.0=one-time use, 1.0=highly reusable)  
 - confidence: 0.0-1.0 (confidence in your analysis)
 
 Workflow Classification Guidelines:
-- ENGINEERING: Technical design, architecture, system analysis, code implementation, debugging, performance optimization, infrastructure setup, engineering best practices
-- RESEARCH: Information gathering, literature reviews, fact-finding, comparative analysis
-- ANALYSIS: Data analysis, evaluation, assessment of existing systems
-- CREATIVE: Writing, brainstorming, content creation, artistic tasks
-- GENERAL: Simple questions, conversations, basic help
+- ENGINEERING: Technical implementation, code solutions, architecture design, system design, API development, debugging, performance optimization, infrastructure setup, technical guidance, engineering best practices. Examples: "build a REST API", "design a microservices architecture", "implement a caching system", "optimize database performance", "create a CI/CD pipeline"
+- RESEARCH: Pure information gathering about topics, literature reviews, fact-finding, market research, academic research. Examples: "what is machine learning", "research competitors", "find information about X", "summarize recent developments in Y"
+- ANALYSIS: Data analysis, evaluation of existing systems, comparative analysis with specific data. Examples: "analyze this dataset", "evaluate system performance", "compare these options with metrics"
+- CREATIVE: Content creation, writing, brainstorming, artistic tasks. Examples: "write a story", "create marketing copy", "brainstorm ideas"
+- GENERAL: Simple questions, basic conversations, clarifications. Examples: "what time is it", "how are you", "explain briefly"
+
+IMPORTANT: If a request asks for both technical information AND implementation/design guidance, classify as ENGINEERING, not RESEARCH.
 
 Instructions:
 1. Decompose only if there are clearly separable sub-tasks; else one intent in the intents array.
@@ -164,6 +166,7 @@ Instructions:
 5. All boolean fields (requires_tools, requires_custom_tools) must be explicitly set.
 6. All required numeric fields must be provided as numbers (not strings).
 7. Output strictly valid JSON. No prose, no markdown, no comments.
+8. Technical requests asking for implementation guidance, code solutions, or system design should be ENGINEERING, not RESEARCH.
 
 User Request: {user_query}
 

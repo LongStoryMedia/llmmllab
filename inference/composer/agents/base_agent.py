@@ -178,12 +178,14 @@ class BaseAgent(ABC, Generic[T]):
 When you need to call a tool, you MUST use this EXACT JSON format wrapped in <tool_call> tags:
 <tool_call>{"name": "tool_name", "arguments": "{\"param\": \"value\"}"}</tool_call>
 NEVER fabricate or hallucinate tool results. ALWAYS call the actual tool when you need information.
-The arguments field MUST be a JSON string (double-quoted), not a JSON object."""
+The arguments field MUST be a JSON string (double-quoted), not a JSON object.
+"""
                 )
 
             current_date = datetime.datetime.now().strftime("%Y-%m-%d")
 
-            system_prompt += f"""TEMPORAL CONTEXT:
+            system_prompt += f"""
+TEMPORAL CONTEXT:
 The current date is {current_date}. While this is likely past your training data, you can use this information to provide better responses. If the user asks for the date or time, respond with this date.
 """
             if "web_search" in (tool.name for tool in (tools or [])):

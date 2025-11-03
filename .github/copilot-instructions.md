@@ -180,6 +180,17 @@ kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python debug/test_qwen3_pipel
 - the kubernetes pod is not running correctly
 - the pattern does not follow the documented architecture or patterns in existing code
 
+# Validation Steps After Changes 
+
+- Full E2E Test: `kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.test_composer_real_e2e`
+  - this validates the entire inference workflow including composer + runner + db
+- Primary llm completion test: `kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.tools_agent`
+  - this validates the core llm completion functionality
+  - this is only preffered if no changes were made to components other than the [tools_agent](../inference/composer/graph/subgraphs/tools_agent.py) subgraph
+- Unit Tests: `cd inference && pytest test/`
+  - this validates all unit tests
+  - use this if the changes were isolated to pure python logic that does not require e2e testing
+
 # REMEMBER:
 
 NO GUESSWORK!
