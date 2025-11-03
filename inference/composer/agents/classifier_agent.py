@@ -161,14 +161,33 @@ IMPORTANT: If a request asks for both technical information AND implementation/d
 Instructions:
 1. Decompose only if there are clearly separable sub-tasks; else one intent in the intents array.
 2. Each element in intents must follow the enumerations exactly.
-3. For workflow_type=ENGINEERING, always set technical_domain and response_format to appropriate values.
+3. For workflow_type=ENGINEERING, BOTH technical_domain AND response_format are REQUIRED fields - NEVER leave them null/None.
+   - technical_domain: Choose the most appropriate domain (software_development for most code/API requests)
+   - response_format: Choose based on what user wants (code_solution for implementation requests)
 4. For other workflow types, omit response_format / technical_domain unless clearly implied.
 5. All boolean fields (requires_tools, requires_custom_tools) must be explicitly set.
 6. All required numeric fields must be provided as numbers (not strings).
 7. Output strictly valid JSON. No prose, no markdown, no comments.
 8. Technical requests asking for implementation guidance, code solutions, or system design should be ENGINEERING, not RESEARCH.
 
+CRITICAL ENGINEERING FIELD REQUIREMENTS:
+- REST API, FastAPI, API development → technical_domain: "software_development", response_format: "code_solution"
+- System architecture, microservices → technical_domain: "system_architecture", response_format: "detailed_analysis"  
+- Database optimization, queries → technical_domain: "data_engineering", response_format: "best_practices"
+- Infrastructure, DevOps, CI/CD → technical_domain: "devops_infrastructure", response_format: "step_by_step_guide"
+
+VALIDATION: Before outputting JSON, verify that:
+- IF workflow_type is "engineering" THEN technical_domain MUST NOT be null/None
+- IF workflow_type is "engineering" THEN response_format MUST NOT be null/None
+- REJECT any engineering classification that leaves these fields empty
+
 User Request: {user_query}
+
+MANDATORY ENGINEERING FIELD CONSTRAINT:
+If you classify any intent as workflow_type="engineering", you MUST populate both:
+- technical_domain: (choose from the enum list above)  
+- response_format: (choose from the enum list above)
+DO NOT output engineering intents with null/None values for these fields.
 
 IMPORTANT: Return JSON that is valid against this schema:
 {json.dumps(intnt_schema)}

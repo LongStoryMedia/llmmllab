@@ -77,7 +77,7 @@ class EngineeringAgentNode:
                 domain = intent.technical_domain
                 response_format = intent.response_format
                 
-                # Skip if engineering fields are not populated (shouldn't happen with fixed prompt)
+                # Skip if engineering fields are not populated - this is a classifier failure
                 if not domain or not response_format:
                     self.logger.warning(
                         "Engineering intent missing required fields",
@@ -85,6 +85,7 @@ class EngineeringAgentNode:
                             "user_id": user_id,
                             "intent_domain": intent.technical_domain,
                             "intent_format": intent.response_format,
+                            "workflow_type": intent.workflow_type.value if intent.workflow_type else None,
                         },
                     )
                     continue
