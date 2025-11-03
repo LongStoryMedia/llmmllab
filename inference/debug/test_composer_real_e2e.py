@@ -481,12 +481,12 @@ class ComposerRealEndToEndTester:
                     image
                     or "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg"
                 )
-            content_list.append(
-                MessageContent(
-                    type=MessageContentType.IMAGE,
-                    url=img,
+                content_list.append(
+                    MessageContent(
+                        type=MessageContentType.IMAGE,
+                        url=img,
+                    )
                 )
-            )
             content_list.append(
                 MessageContent(
                     type=MessageContentType.TEXT,
