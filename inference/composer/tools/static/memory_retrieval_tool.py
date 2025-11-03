@@ -76,7 +76,9 @@ async def memory_retrieval(
             error_details = {
                 "user_id_in_state": user_id,
                 "user_id_type": type(user_id).__name__,
-                "state_keys": list(state.keys()) if isinstance(state, dict) else "not_dict",
+                "state_keys": (
+                    list(state.keys()) if isinstance(state, dict) else "not_dict"
+                ),
                 "conversation_id": state.get("conversation_id", "missing"),
                 "user_config_present": state.get("user_config") is not None,
             }

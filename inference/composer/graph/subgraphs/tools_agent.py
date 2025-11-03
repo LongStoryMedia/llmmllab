@@ -308,7 +308,8 @@ class ToolsAgentSubgraph:
 
         return {
             "messages": langchain_messages,
-            "user_id": user_id or "",  # Still use empty string for backward compatibility, but log the issue
+            "user_id": user_id
+            or "",  # Still use empty string for backward compatibility, but log the issue
             "conversation_id": getattr(main_state, "conversation_id", 0),
             "user_config": user_config,
             "system_config": None,  # Not available in WorkflowState
