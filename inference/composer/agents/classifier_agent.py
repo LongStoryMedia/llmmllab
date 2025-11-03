@@ -126,6 +126,8 @@ Valid enumerations ONLY:
 workflow_type (choose one per intent): [ {" | ".join(intnt_schema['$defs']['WorkflowType']['enum'])} ]
 complexity_level (choose one per intent): [ {" | ".join(intnt_schema['$defs']['ComplexityLevel']['enum'])} ]
 computational_requirements (choose one per intent): [ {" | ".join(intnt_schema['$defs']['ComputationalRequirement']['enum'])} ]
+technical_domain (set for ENGINEERING workflows): [ {" | ".join(intnt_schema['$defs']['TechnicalDomain']['enum'])} ]
+response_format (set for ENGINEERING workflows): [ {" | ".join(intnt_schema['$defs']['ResponseFormat']['enum'])} ]
 
 required_capabilities (functionality needed - choose many, one, or none):
 {", ".join(intnt_schema['$defs']['RequiredCapability']['enum'])}
@@ -147,13 +149,21 @@ Scoring Guidelines:
 - reusability_potential: 0.0-1.0 (0.0=one-time use, 1.0=highly reusable)
 - confidence: 0.0-1.0 (confidence in your analysis)
 
+Workflow Classification Guidelines:
+- ENGINEERING: Technical design, architecture, system analysis, code implementation, debugging, performance optimization, infrastructure setup, engineering best practices
+- RESEARCH: Information gathering, literature reviews, fact-finding, comparative analysis
+- ANALYSIS: Data analysis, evaluation, assessment of existing systems
+- CREATIVE: Writing, brainstorming, content creation, artistic tasks
+- GENERAL: Simple questions, conversations, basic help
+
 Instructions:
 1. Decompose only if there are clearly separable sub-tasks; else one intent in the intents array.
 2. Each element in intents must follow the enumerations exactly.
-3. Omit response_format / technical_domain unless clearly implied.
-4. All boolean fields (requires_tools, requires_custom_tools) must be explicitly set.
-5. All required numeric fields must be provided as numbers (not strings).
-6. Output strictly valid JSON. No prose, no markdown, no comments.
+3. For workflow_type=ENGINEERING, always set technical_domain and response_format to appropriate values.
+4. For other workflow types, omit response_format / technical_domain unless clearly implied.
+5. All boolean fields (requires_tools, requires_custom_tools) must be explicitly set.
+6. All required numeric fields must be provided as numbers (not strings).
+7. Output strictly valid JSON. No prose, no markdown, no comments.
 
 User Request: {user_query}
 

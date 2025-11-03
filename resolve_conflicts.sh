@@ -17,9 +17,9 @@ find $PWD -name "*conflicted copy*" | while read conflicted_file; do
         # Rename the conflicted copy to the original filename
         mv "$conflicted_file" "$original_file"
     else
-        echo "Original file $original_file not found, just renaming $conflicted_file"
+        echo "Original file $original_file not found, removing conflicted copy $conflicted_file"
         # Just rename the conflicted copy
-        mv "$conflicted_file" "$original_file"
+        rm "$conflicted_file"
     fi
 done
 

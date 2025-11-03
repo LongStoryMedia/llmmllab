@@ -115,6 +115,8 @@ spec:
               value: "llmmll"
             - name: DB_SSLMODE
               value: "disable"
+            - name: DB_REINDEX_ON_MAINTENANCE
+              value: "true"
 
             # Redis configuration
             - name: REDIS_ENABLED

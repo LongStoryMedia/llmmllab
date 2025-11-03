@@ -5,7 +5,7 @@ Provides LangGraph node wrapper for technical engineering response generation.
 
 from typing import TYPE_CHECKING
 
-from models import LangChainMessage
+from models import LangChainMessage, TechnicalDomain, ResponseFormat
 
 from composer.graph.state import WorkflowState
 from composer.core.errors import NodeExecutionError
@@ -73,16 +73,32 @@ class EngineeringAgentNode:
                 return state
 
             for intent in state.intent_classification:
-                if not intent.technical_domain or not intent.response_format:
-                    self.logger.warning(
-                        "Skipping engineering response due to missing intent details",
-                        extra={"user_id": user_id, "intent": intent},
-                    )
-                    continue
-                # Use technical domain and response format from state (determined by analysis)
-                # Fall back to analysis-based determination if not set
+                # Use technical domain and response format from intent analysis
                 domain = intent.technical_domain
                 response_format = intent.response_format
+                
+                # Skip if engineering fields are not populated (shouldn't happen with fixed prompt)
+                if not domain or not response_format:
+                    self.logger.warning(
+                        "Engineering intent missing required fields",
+                        extra={
+                            "user_id": user_id,
+                            "intent_domain": intent.technical_domain,
+                            "intent_format": intent.response_format,
+                        },
+                    )
+                    continue
+                
+                self.logger.info(
+                    "Engineering intent details",
+                    extra={
+                        "user_id": user_id, 
+                        "intent_domain": intent.technical_domain,
+                        "intent_format": intent.response_format,
+                        "using_domain": domain,
+                        "using_format": response_format,
+                    },
+                )
                 self.logger.info(
                     "Generating engineering response",
                     extra={
@@ -94,13 +110,13 @@ class EngineeringAgentNode:
                 )
 
                 # Generate technical response using engineering agent
+                # Note: Engineering agent doesn't typically use tools in current implementation
                 response = await self.agent.generate_technical_response(
                     query=user_query,
                     user_id=user_id,
                     domain=domain,
                     response_format=response_format,
-                    tools=state.available_tools
-                    or [],  # Use tools from tool orchestration if available
+                    tools=None,  # Engineering agent focuses on technical analysis, not tool execution
                     grammar=None,  # Could be enhanced based on state requirements
                 )
 

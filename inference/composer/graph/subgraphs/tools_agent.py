@@ -59,108 +59,120 @@ class ToolsAgentSubgraph:
     def _create_tool_node(self):
         """
         Create custom ToolNode with proper state injection for ToolRuntime.
-        
+
         LangChain's standard ToolNode doesn't pass the full state to ToolRuntime,
         causing tools like memory_retrieval to fail with "Missing user_id in state".
         This custom implementation ensures proper state injection.
         """
-        
+
         class StateInjectedToolNode:
             """Custom ToolNode that properly injects full state into ToolRuntime."""
-            
-            def __init__(self, tool_registry):
+
+            def __init__(self, tool_registry: ToolRegistry):
                 self.tool_registry = tool_registry
-                
+
             async def __call__(self, state: ToolsState) -> ToolsState:
                 """Execute tools with proper state injection."""
                 messages = state.get("messages", [])
-                
+
                 if not messages:
                     return state
-                
+
                 last_message = messages[-1]
-                
+
                 # Check if last message has tool calls
-                if not (hasattr(last_message, "tool_calls") and last_message.tool_calls):
+                if not isinstance(
+                    last_message, (AIMessage, LangChainMessage)
+                ) or not has_tool_calls(last_message):
                     return state
-                
+
                 # Get executable tools
                 executable_tools = self.tool_registry.get_all_executable_tools()
                 if not executable_tools:
                     logger.warning("No executable tools available")
                     return state
-                
+
                 # Execute each tool call with proper state injection
                 tool_messages = []
-                
+
                 for tool_call in last_message.tool_calls:
                     tool_name = tool_call.get("name")
                     tool_args = tool_call.get("args", {})
                     tool_call_id = tool_call.get("id", "unknown")
-                    
+
                     if tool_name in executable_tools:
                         tool = executable_tools[tool_name]
-                        
+
                         # Create ToolRuntime with full state - this is the key fix!
                         class ToolRuntimeImpl:
                             def __init__(self, state_dict, call_id):
-                                self.state = state_dict  # Full ToolsState with user_id, etc.
+                                self.state = (
+                                    state_dict  # Full ToolsState with user_id, etc.
+                                )
                                 self.tool_call_id = call_id
-                        
+
                         runtime = ToolRuntimeImpl(state, tool_call_id)
-                        
+
                         try:
-                            logger.info(f"🔧 Executing tool '{tool_name}' with full state injection")
+                            logger.info(
+                                f"🔧 Executing tool '{tool_name}' with full state injection"
+                            )
                             logger.debug(f"Tool state includes: {list(state.keys())}")
-                            logger.debug(f"User ID in tool state: {state.get('user_id')}")
-                            
-                            # Call tool with runtime injection
-                            if hasattr(tool, '_arun'):
-                                result = await tool._arun(runtime=runtime, **tool_args)
-                            elif hasattr(tool, 'ainvoke'):
-                                # For newer LangChain tools
-                                result = await tool.ainvoke({**tool_args, "runtime": runtime})
-                            else:
-                                # Fallback synchronous execution
-                                result = tool._run(runtime=runtime, **tool_args)
-                            
-                            tool_messages.append(ToolMessage(
-                                content=str(result),
-                                tool_call_id=tool_call_id,
-                                name=tool_name
-                            ))
-                            
+                            logger.debug(
+                                f"User ID in tool state: {state.get('user_id')}"
+                            )
+                            result = await tool.ainvoke(
+                                {**tool_args, "runtime": runtime}
+                            )
+
+                            tool_messages.append(
+                                ToolMessage(
+                                    content=str(result),
+                                    tool_call_id=tool_call_id,
+                                    name=tool_name,
+                                )
+                            )
+
                             logger.info(f"🔧 Tool '{tool_name}' executed successfully")
-                            
+
                         except Exception as e:
-                            logger.error(f"Tool '{tool_name}' execution failed: {e}", exc_info=True)
-                            tool_messages.append(ToolMessage(
-                                content=f"❌ Tool execution failed: {str(e)}",
-                                tool_call_id=tool_call_id,
-                                name=tool_name
-                            ))
+                            logger.error(
+                                f"Tool '{tool_name}' execution failed: {e}",
+                                exc_info=True,
+                            )
+                            tool_messages.append(
+                                ToolMessage(
+                                    content=f"❌ Tool execution failed: {str(e)}",
+                                    tool_call_id=tool_call_id,
+                                    name=tool_name,
+                                )
+                            )
                     else:
                         logger.warning(f"Tool '{tool_name}' not found in registry")
-                        tool_messages.append(ToolMessage(
-                            content=f"❌ Tool '{tool_name}' not available",
-                            tool_call_id=tool_call_id,
-                            name=tool_name or "unknown"
-                        ))
-                
+                        tool_messages.append(
+                            ToolMessage(
+                                content=f"❌ Tool '{tool_name}' not available",
+                                tool_call_id=tool_call_id,
+                                name=tool_name or "unknown",
+                            )
+                        )
+
                 # Return updated state with tool messages
                 updated_messages = messages + tool_messages
                 return {**state, "messages": updated_messages}
-        
+
         try:
             logger.info("🛠️ Creating custom ToolNode with full state injection")
             return StateInjectedToolNode(self.tool_registry)
-            
+
         except Exception as e:
             logger.error(f"Failed to create custom ToolNode: {e}")
+
             # Return a minimal fallback
             class EmptyToolNode:
                 async def __call__(self, state: ToolsState) -> ToolsState:
                     return state
+
             return EmptyToolNode()
 
     def _build_graph(self) -> None:
@@ -182,15 +194,17 @@ class ToolsAgentSubgraph:
                 messages = state.get("messages", [])
                 if not messages:
                     return "__end__"
-                
+
                 last_message = messages[-1]
                 # Check if message has tool calls using hasattr for safety
-                if hasattr(last_message, "tool_calls") and getattr(last_message, "tool_calls", None):
+                if hasattr(last_message, "tool_calls") and getattr(
+                    last_message, "tool_calls", None
+                ):
                     return "tools"
                 return "__end__"
-            
+
             builder.add_conditional_edges(
-                "chat_agent", 
+                "chat_agent",
                 should_continue_to_tools,
                 {
                     "tools": "tools",
