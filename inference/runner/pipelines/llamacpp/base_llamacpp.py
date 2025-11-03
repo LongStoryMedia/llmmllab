@@ -157,12 +157,6 @@ class BaseLlamaCppPipeline(BasePipeline):
         n_ctx_initial = params.num_ctx or 40960
         n_batch_initial = params.batch_size or 256
         n_ubatch_initial = params.batch_size or 256
-        n_gpu_layers_initial = (
-            self.profile.gpu_config.gpu_layers
-            if self.profile.gpu_config
-            and self.profile.gpu_config.gpu_layers is not None
-            else -1
-        )
         perplexity_enabled = bool(getattr(params, "enable_perplexity_guard", False))
 
         # Compose initial optimal parameters
@@ -170,7 +164,7 @@ class BaseLlamaCppPipeline(BasePipeline):
             n_ctx=n_ctx_initial,
             n_batch=n_batch_initial,
             n_ubatch=n_ubatch_initial,
-            n_gpu_layers=(n_gpu_layers_initial if n_gpu_layers_initial >= 0 else 99),
+            n_gpu_layers=gcfg.gpu_layers or -1,
         )
 
         # Prepare attempt parameter list (profile first, then predicted if recovery available)
@@ -204,11 +198,7 @@ class BaseLlamaCppPipeline(BasePipeline):
                     n_ctx=current_params.n_ctx,
                     n_batch=current_params.n_batch,
                     n_ubatch=current_params.n_ubatch,
-                    n_gpu_layers=(
-                        -1
-                        if n_gpu_layers_initial == -1
-                        else current_params.n_gpu_layers
-                    ),
+                    n_gpu_layers=current_params.n_gpu_layers,
                     tensor_split=gcfg.tensor_split,
                     chat_format=self._get_chat_format(),
                     vocab_only=False,
@@ -228,15 +218,15 @@ class BaseLlamaCppPipeline(BasePipeline):
                     logprobs=1 if perplexity_enabled else 0,
                     embedding=False,
                     n_threads_batch=None,
-                    rope_scaling_type=None,
+                    rope_scaling_type=llama_cpp.llama_rope_scaling_type.LLAMA_ROPE_SCALING_TYPE_YARN,
                     pooling_type=llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
                     rope_freq_base=0.0,
-                    rope_freq_scale=0.0,
-                    yarn_ext_factor=-1.0,
+                    rope_freq_scale=1.0,
+                    yarn_ext_factor=4.0,
                     yarn_attn_factor=1.0,
                     yarn_beta_fast=32.0,
                     yarn_beta_slow=1.0,
-                    yarn_orig_ctx=0,
+                    yarn_orig_ctx=262144,
                     offload_kqv=False,
                     op_offload=None,
                     swa_full=None,

@@ -97,17 +97,42 @@ class PlanningIntentSubgraph:
         messages = state.get("messages", [])
         static_tools = state.get("static_tools", [])
 
+        # DEBUG: Log message types and content structure
+        logger.info(f"🔍 DEBUG_INTENT_MESSAGES: Found {len(messages)} messages")
+        for i, msg in enumerate(messages):
+            logger.info(f"🔍 DEBUG_MESSAGE_{i}: type={type(msg)}, has_content={hasattr(msg, 'content')}")
+            if hasattr(msg, 'content'):
+                logger.info(f"🔍 DEBUG_CONTENT_{i}: content_type={type(msg.content)}, content={msg.content}")
+
         # Convert to LangChain messages for classifier
         langchain_messages = []
         for msg in messages:
             if isinstance(msg, (HumanMessage, AIMessage)):
                 langchain_messages.append(msg)
+        
+        logger.info(f"🔍 DEBUG_LANGCHAIN_CONVERSION: Converted {len(langchain_messages)} messages from {len(messages)} total")
 
         # Use classifier agent to analyze intent (no streaming output to prevent leakage)
         intent_analyses = await self.classifier_agent.analyze(
             messages=langchain_messages,
             available_static_tools=static_tools,
         )
+
+        # Debug logging for intent analysis results
+        for i, intent in enumerate(intent_analyses):
+            logger.info(
+                f"🔍 Intent analysis {i+1}: workflow_type={intent.workflow_type}, "
+                f"technical_domain={intent.technical_domain}, "
+                f"response_format={intent.response_format}",
+                extra={
+                    "intent_index": i,
+                    "workflow_type": str(intent.workflow_type),
+                    "technical_domain": str(intent.technical_domain) if intent.technical_domain else None,
+                    "response_format": str(intent.response_format) if intent.response_format else None,
+                    "domain_is_none": intent.technical_domain is None,
+                    "format_is_none": intent.response_format is None,
+                }
+            )
 
         # Store intent analyses in database separately from message content
         await self._store_intent_analyses(intent_analyses, state)
@@ -464,9 +489,18 @@ class PlanningIntentSubgraph:
             current_analyses: List[IntentAnalysis] = getattr(
                 main_state, "intent_classification", []
             )
+            
+            # DEBUG: Log intent analyses before and after transformation
+            for i, analysis in enumerate(planning_result["intent_analyses"]):
+                logger.info(f"🔍 DEBUG_TRANSFORM_BEFORE_{i}: workflow_type={getattr(analysis, 'workflow_type', 'MISSING')}, technical_domain={getattr(analysis, 'technical_domain', 'MISSING')}, response_format={getattr(analysis, 'response_format', 'MISSING')}")
+            
             updates["intent_classification"] = (
                 current_analyses + planning_result["intent_analyses"]
             )
+            
+            # DEBUG: Log final intent classification
+            for i, analysis in enumerate(updates["intent_classification"]):
+                logger.info(f"🔍 DEBUG_TRANSFORM_AFTER_{i}: workflow_type={getattr(analysis, 'workflow_type', 'MISSING')}, technical_domain={getattr(analysis, 'technical_domain', 'MISSING')}, response_format={getattr(analysis, 'response_format', 'MISSING')}")
 
         # Include generated todos in the main state with proper typing
         if planning_result.get("generated_todos"):

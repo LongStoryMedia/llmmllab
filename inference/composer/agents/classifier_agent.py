@@ -97,7 +97,12 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
             intents: List[IntentAnalysis]
 
         intnt_schema = _Intnts.model_json_schema()
-        user_query = messages[-1].content if messages else ""
+        
+        # Extract text content from the last message using the utility function
+        user_query = extract_message_text(messages[-1]) if messages else ""
+        
+        # DEBUG: Log the exact user query being analyzed
+        self.logger.info(f"🔍 DEBUG_USER_QUERY: '{user_query}'")
 
         # Build available tools context
         available_tools_context = ""
@@ -161,9 +166,10 @@ IMPORTANT: If a request asks for both technical information AND implementation/d
 Instructions:
 1. Decompose only if there are clearly separable sub-tasks; else one intent in the intents array.
 2. Each element in intents must follow the enumerations exactly.
-3. For workflow_type=ENGINEERING, BOTH technical_domain AND response_format are REQUIRED fields - NEVER leave them null/None.
+3. For workflow_type=ENGINEERING, BOTH technical_domain AND response_format MUST be included in the JSON output.
    - technical_domain: Choose the most appropriate domain (software_development for most code/API requests)
    - response_format: Choose based on what user wants (code_solution for implementation requests)
+   - CRITICAL: Include BOTH fields in the JSON, do not omit them
 4. For other workflow types, omit response_format / technical_domain unless clearly implied.
 5. All boolean fields (requires_tools, requires_custom_tools) must be explicitly set.
 6. All required numeric fields must be provided as numbers (not strings).
@@ -189,6 +195,9 @@ If you classify any intent as workflow_type="engineering", you MUST populate bot
 - response_format: (choose from the enum list above)
 DO NOT output engineering intents with null/None values for these fields.
 
+FOR ENGINEERING WORKFLOWS: Include technical_domain AND response_format in your JSON output.
+Example: "technical_domain": "software_development", "response_format": "code_solution"
+
 IMPORTANT: Return JSON that is valid against this schema:
 {json.dumps(intnt_schema)}
 
@@ -208,7 +217,17 @@ If multiple intents are needed, include additional objects in the intents array.
         if not txt.strip():
             raise IntentAnalysisError("Empty intent analysis response")
 
+        # DEBUG: Log raw classifier output and parsed result
+        self.logger.info(f"🔍 DEBUG_CLASSIFIER_RAW_OUTPUT: {txt[:500]}")
+        
         intents = parse_structured_output(txt, _Intnts)
+        
+        # DEBUG: Log parsed intents with focus on engineering fields
+        for i, intent in enumerate(intents.intents):
+            self.logger.info(f"🔍 DEBUG_PARSED_INTENT_{i}: workflow_type={intent.workflow_type}, technical_domain={intent.technical_domain}, response_format={intent.response_format}")
+            if intent.workflow_type == "engineering":
+                self.logger.info(f"🔍 DEBUG_ENGINEERING_FIELDS: technical_domain={intent.technical_domain} (type: {type(intent.technical_domain)}), response_format={intent.response_format} (type: {type(intent.response_format)})")
+        
         return intents.intents
 
     async def generate_title(

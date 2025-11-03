@@ -72,7 +72,31 @@ class EngineeringAgentNode:
             if not user_query.strip():
                 return state
 
-            for intent in state.intent_classification:
+            # Debug logging for all intent classification data received
+            self.logger.info(
+                f"Engineering node received {len(state.intent_classification)} intent classifications",
+                extra={
+                    "user_id": user_id,
+                    "intent_count": len(state.intent_classification),
+                }
+            )
+
+            for i, intent in enumerate(state.intent_classification):
+                # Debug logging for each intent
+                self.logger.info(
+                    f"Engineering intent {i+1}: workflow_type={intent.workflow_type}, "
+                    f"technical_domain={intent.technical_domain}, "
+                    f"response_format={intent.response_format}",
+                    extra={
+                        "user_id": user_id,
+                        "intent_index": i,
+                        "workflow_type": str(intent.workflow_type) if intent.workflow_type else None,
+                        "technical_domain": str(intent.technical_domain) if intent.technical_domain else None,
+                        "response_format": str(intent.response_format) if intent.response_format else None,
+                        "intent_object_type": type(intent).__name__,
+                    }
+                )
+
                 # Use technical domain and response format from intent analysis
                 domain = intent.technical_domain
                 response_format = intent.response_format

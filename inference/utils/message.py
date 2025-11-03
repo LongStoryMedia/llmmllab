@@ -26,8 +26,16 @@ def extract_message_text(message: Message) -> str:
     """Extract text content from a message object"""
     text_parts = []
     for content in message.content:
-        if content.type == MessageContentType.TEXT and content.text:
-            text_parts.append(content.text)
+        # Handle both MessageContent objects and dictionaries
+        if isinstance(content, dict):
+            # Handle dictionary format: {'type': 'text', 'text': 'content'}
+            if content.get('type') == 'text' and content.get('text'):
+                text_parts.append(content['text'])
+        else:
+            # Handle MessageContent object format
+            if hasattr(content, 'type') and hasattr(content, 'text'):
+                if content.type == MessageContentType.TEXT and content.text:
+                    text_parts.append(content.text)
     # Do not strip whitespace here; streaming tokens often include leading spaces
     # and trimming per-chunk will remove necessary spacing between words.
     return "\n".join(text_parts)
