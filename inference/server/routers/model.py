@@ -23,6 +23,7 @@ from models.model_profile import ModelProfile, ModelParameters
 from models.model import Model
 from models.model_task import ModelTask
 from models.model_details import ModelDetails
+import yaml
 
 
 router = APIRouter(prefix="/models", tags=["models"])
@@ -37,7 +38,7 @@ async def list_models(request: Request):
     try:
         # Load models from JSON file
         with open(config.MODELS_CONFIG_PATH, "r") as f:
-            models_data = json.load(f)
+            models_data = yaml.safe_load(f)
 
         # Convert to Model objects
         models = []
@@ -120,8 +121,8 @@ async def create_model_profile(profile_req: ModelProfile, request: Request):
         from models.default_model_profiles import DEFAULT_PROFILES
 
         # Handle UUID generation and validation
-        if profile_req.id is None:
-            # Generate a new UUID if none provided
+        if profile_req.id is None or profile_req.id == "":
+            # Generate a new UUID if none provided or empty string
             profile_req.id = uuid.uuid4()
             logger.info(f"Generated new UUID {profile_req.id} for new user profile")
         else:

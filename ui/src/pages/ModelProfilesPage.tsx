@@ -89,7 +89,13 @@ const ModelProfilesPage = () => {
       if (!editingProfile) {
         return;
       }
-      await createModelProfile(token, editingProfile);
+      // For "Save As" (isNew=true) or new profiles without ID, omit the ID to let backend generate a new one
+      let profileToSave = editingProfile;
+      if (isNew || !editingProfile.id) {
+        const { id, ...profileWithoutId } = editingProfile;
+        profileToSave = profileWithoutId;
+      }
+      await createModelProfile(token, profileToSave);
     }
     setDialogOpen(false);
     setEditingProfile(emptyProfile);
