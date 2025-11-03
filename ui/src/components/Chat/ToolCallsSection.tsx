@@ -111,10 +111,10 @@ const parseWebSearchOutput = (raw: string): ParsedWebSearchOutput | null => {
     const extractAfter = (line: string, prefix: RegExp) => line.replace(prefix, '').trim();
 
     const cleanedTitle = titleLine
-      .replace(/^\*\*/,'')
-      .replace(/\*\*$/,'')
-      .replace(/\*\*/g,'')
-      .replace(/<strong>|<\/strong>/g,'')
+      .replace(/^\*\*/, '')
+      .replace(/\*\*$/, '')
+      .replace(/\*\*/g, '')
+      .replace(/<strong>|<\/strong>/g, '')
       .trim();
     const url = extractAfter(urlLine, /^📍\s*URL:\s*/i);
     const contentText = extractAfter(contentLine, /^📄\s*Content:\s*/i);
