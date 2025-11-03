@@ -19,11 +19,10 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.types import Command
 
-from models import LangChainMessage, NodeMetadata
+from models import LangChainMessage
 from composer.graph.state import WorkflowState, ToolsState
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
-from composer.middleware import VisionSummarizationMiddleware
 from composer.utils.conversion import (
     convert_base_langchain_to_messages,
     convert_messages_to_langchain,
@@ -198,46 +197,41 @@ class ToolsAgentSubgraph:
         # TODO: Implement proper vision optimization that prevents processing at pipeline level
         # Current approach was causing more issues than it solved
         return messages
-    
+
     async def _chat_agent_node(self, state: ToolsState) -> ToolsState:
         """Simple LangChain agent node."""
         from langchain_core.messages import AIMessage
-        
+
         # Get messages from state
         messages = state["messages"]
-        
+
         try:
             # Get available tools
             tools_dict = self.tool_registry.get_all_executable_tools()
             tools_list = list(tools_dict.values()) if tools_dict else None
-            
+
             # Convert LangChain BaseMessages to our internal Message format first
             internal_messages = convert_base_langchain_to_messages(messages)
             # Then convert to LangChainMessage format that chat_completion expects
             langchain_format_messages = convert_messages_to_langchain(internal_messages)
-            
+
             # Use the ChatAgent's chat completion method
             response = await self.chat_agent.chat_completion(
-                messages=langchain_format_messages,
-                tools=tools_list,
-                stream=False
+                messages=langchain_format_messages, tools=tools_list, stream=False
             )
-            
+
             # Convert response message to LangChain BaseMessage format
             if response and response.message:
                 langchain_response = to_lc_message(response.message)
             else:
                 langchain_response = AIMessage(content="No response generated")
-            
+
             # Ensure all messages are BaseMessage instances
             updated_messages = list(messages) + [langchain_response]
-            
+
             # Return updated state following LangChain agent pattern
-            return {
-                **state,
-                "messages": updated_messages
-            }
-            
+            return {**state, "messages": updated_messages}
+
         except Exception as e:
             logger.error(f"Error in chat agent node: {e}")
             # Fallback: return state unchanged
