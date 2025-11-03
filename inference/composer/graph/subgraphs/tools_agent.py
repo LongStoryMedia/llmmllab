@@ -27,6 +27,7 @@ from composer.middleware import VisionSummarizationMiddleware
 from composer.utils.conversion import (
     convert_base_langchain_to_messages,
     convert_messages_to_langchain,
+    to_lc_message,
 )
 from composer.utils.tool_call_types import (
     LangChainToolCall,
@@ -47,19 +48,14 @@ class ToolsAgentSubgraph:
         self,
         tool_registry: ToolRegistry,
         chat_agent: ChatAgent,
-        enable_vision_optimization: bool = True,
     ):
-        """Initialize subgraph with dependency injection."""
+        """Initialize agent subgraph with tools."""
         self.tool_registry = tool_registry
         self.chat_agent = chat_agent
-        self.enable_vision_optimization = enable_vision_optimization
         self.graph = None
-        
-        # Initialize vision cache for optimization
-        self.vision_cache = {}
-        logger.info("🖼️ Vision optimization enabled")
-        
         self._build_graph()
+
+        logger.info("ToolsAgentSubgraph initialized")
 
     def _create_tool_node(self) -> ToolNode:
         """
@@ -198,152 +194,48 @@ class ToolsAgentSubgraph:
         return duplicate_count >= 2
 
     def _optimize_vision_content(self, messages: List) -> List:
-        """Simple vision optimization using standard LangChain patterns."""
-        import re
-        import hashlib
-        import json
-        
-        optimized_messages = []
-        for msg in messages:
-            has_vision = False
-            content_hash = None
-            
-            # Check for different vision content formats
-            content = getattr(msg, 'content', '')
-            
-            if isinstance(content, str):
-                # Check for vision tokens (our format)
-                vision_pattern = r'<\|vision_start\|>.*?<\|vision_end\|>'
-                if re.search(vision_pattern, content):
-                    has_vision = True
-                    content_hash = hashlib.md5(content.encode()).hexdigest()[:8]
-            
-            elif isinstance(content, list):
-                # Check for LangChain content blocks with images
-                for block in content:
-                    if isinstance(block, dict):
-                        if block.get('type') == 'image_url' or block.get('type') == 'image':
-                            has_vision = True
-                            # Create hash from image URL or data
-                            image_content = json.dumps(block, sort_keys=True)
-                            content_hash = hashlib.md5(image_content.encode()).hexdigest()[:8]
-                            break
-            
-            if has_vision and content_hash:
-                # Check if we've processed this before
-                if content_hash in self.vision_cache:
-                    # Replace with cached summary
-                    cached_summary = self.vision_cache[content_hash]
-                    logger.info(f"🖼️ Using cached analysis for hash {content_hash}: {cached_summary[:50]}...")
-                    
-                    if isinstance(content, str):
-                        # Replace vision tokens with summary
-                        optimized_content = re.sub(
-                            r'<\|vision_start\|>.*?<\|vision_end\|>', 
-                            f"[Previous image analysis: {cached_summary}]", 
-                            content
-                        )
-                        new_msg = HumanMessage(content=optimized_content)
-                    else:
-                        # Replace ALL image content blocks with text summary - this is key!
-                        new_content = []
-                        has_images = False
-                        for block in content:
-                            if isinstance(block, dict) and (block.get('type') == 'image_url' or block.get('type') == 'image'):
-                                has_images = True
-                                # Don't add image blocks - replace with text only
-                            else:
-                                new_content.append(block)
-                        
-                        # Add the cached summary as a text block
-                        if has_images:
-                            new_content.insert(0, {
-                                'type': 'text', 
-                                'text': f"[Previous image analysis: {cached_summary}]"
-                            })
-                        
-                        new_msg = HumanMessage(content=new_content if new_content else f"[Previous image analysis: {cached_summary}]")
-                    
-                    optimized_messages.append(new_msg)
-                    logger.info(f"🖼️ Using cached vision analysis (hash: {content_hash})")
-                else:
-                    # First time seeing this image - store hash for later caching
-                    setattr(msg, '_vision_hash', content_hash)
-                    optimized_messages.append(msg)
-                    logger.debug(f"🖼️ New vision content detected (hash: {content_hash})")
-            else:
-                optimized_messages.append(msg)
-                
-        return optimized_messages
+        """Simple pass-through - vision optimization disabled for now."""
+        # TODO: Implement proper vision optimization that prevents processing at pipeline level
+        # Current approach was causing more issues than it solved
+        return messages
     
-    def _cache_vision_analysis(self, messages: List, response_content: str):
-        """Extract and cache vision analysis from AI response."""
-        import re
-        
-        # Look for messages that had vision content
-        for msg in messages:
-            if hasattr(msg, '_vision_hash'):
-                content_hash = msg._vision_hash
-                
-                # Extract analysis from response (simple heuristic)
-                if response_content and len(response_content) > 50:
-                    # Use first meaningful sentence as summary  
-                    sentences = response_content.split('.')
-                    for sentence in sentences:
-                        clean_sentence = sentence.strip()
-                        if len(clean_sentence) > 30 and 'image' in clean_sentence.lower():
-                            summary = clean_sentence + '.'
-                            break
-                    else:
-                        # Fallback to first 100 characters
-                        summary = response_content[:100].strip()
-                    
-                    if summary:
-                        self.vision_cache[content_hash] = summary
-                        logger.info(f"🖼️ Cached vision analysis (hash: {content_hash})")
-
     async def _chat_agent_node(self, state: ToolsState) -> ToolsState:
-        """LangChain agent node with vision optimization preprocessing."""
-        from langchain_core.messages import AIMessage, HumanMessage
-        from composer.utils.conversion import convert_langchain_messages_to_messages, message_to_langchain_message
+        """Simple LangChain agent node."""
+        from langchain_core.messages import AIMessage
         
-        # Apply vision optimization to messages before sending to model  
+        # Get messages from state
         messages = state["messages"]
-        optimized_messages = self._optimize_vision_content(messages)
-        
-        # Log optimization activity
-        vision_optimized = any(hasattr(msg, '_vision_hash') for msg in optimized_messages)
-        if vision_optimized:
-            logger.info("🖼️ Vision optimization applied to messages")
         
         try:
             # Get available tools
             tools_dict = self.tool_registry.get_all_executable_tools()
             tools_list = list(tools_dict.values()) if tools_dict else None
             
-            # Convert optimized LangChain messages to Message objects for direct pipeline use
-            # This bypasses chat_completion_with_conversion and its internal conversions
-            optimized_core_messages = convert_langchain_messages_to_messages(optimized_messages)
+            # Convert LangChain BaseMessages to our internal Message format first
+            internal_messages = convert_base_langchain_to_messages(messages)
+            # Then convert to LangChainMessage format that chat_completion expects
+            langchain_format_messages = convert_messages_to_langchain(internal_messages)
             
-            # Use the ChatAgent's base chat completion method directly
+            # Use the ChatAgent's chat completion method
             response = await self.chat_agent.chat_completion(
-                messages=optimized_messages,  # Pass LangChain messages directly
+                messages=langchain_format_messages,
                 tools=tools_list,
                 stream=False
             )
             
-            # Cache vision analysis from the response
-            if response and hasattr(response, 'message') and response.message:
-                content = str(response.message.content[0].text if response.message.content else "")
-                self._cache_vision_analysis(optimized_messages, content)
+            # Convert response message to LangChain BaseMessage format
+            if response and response.message:
+                langchain_response = to_lc_message(response.message)
+            else:
+                langchain_response = AIMessage(content="No response generated")
             
-            # Convert response message to LangChain format
-            langchain_response = message_to_langchain_message(response.message) if response.message else AIMessage(content="No response generated")
+            # Ensure all messages are BaseMessage instances
+            updated_messages = list(messages) + [langchain_response]
             
             # Return updated state following LangChain agent pattern
             return {
                 **state,
-                "messages": optimized_messages + [langchain_response]
+                "messages": updated_messages
             }
             
         except Exception as e:
