@@ -52,42 +52,117 @@ interface ToolCallsSectionProps {
   isTyping?: boolean;
 }
 
-// Helper function to extract and format content from tool call results
-const formatToolCallResult = (result: Record<string, unknown>) => {
-  // Handle web search results with nested content in output field
-  if (result.output && typeof result.output === 'string') {
-    // Parse the output string which may contain escaped content
-    let content = result.output;
-    
-    // Check if it starts with content=" pattern (JSON-like string)
-    const contentMatch = content.match(/^content="(.+?)"\s+name=/s);
-    if (contentMatch) {
-      // Extract the actual content and unescape it
-      content = contentMatch[1]
-        .replace(/\\n/g, '\n')  // Convert literal \n to actual newlines
-        .replace(/\\"/g, '"')   // Convert literal \" to actual quotes
-        .replace(/\\'/g, "'")   // Convert literal \' to actual apostrophes
-        .replace(/\\\\/g, '\\') // Convert literal \\ to actual backslashes
-        .replace(/\\xa0/g, ' '); // Convert non-breaking space
-    } else {
-      // Also handle cases where the entire string might be escaped
-      content = content
-        .replace(/\\n/g, '\n')
-        .replace(/\\"/g, '"')
-        .replace(/\\'/g, "'")
-        .replace(/\\\\/g, '\\')
-        .replace(/\\xa0/g, ' ');
-    }
-    
-    return content;
+// Structured type for parsed web search result
+interface ParsedWebSearchResult {
+  title: string;
+  url: string;
+  content: string;
+  relevance: string;
+}
+
+interface ParsedWebSearchOutput {
+  queryHeader: string;
+  resultsHeader: string;
+  results: ParsedWebSearchResult[];
+  note?: string;
+}
+
+// Parse raw web_search output into structured object
+const parseWebSearchOutput = (raw: string): ParsedWebSearchOutput | null => {
+  if (!raw) {
+    return null;
   }
-  
-  // Handle direct content field
+  // Extract quoted content portion if present
+  const match = raw.match(/^content="(.+?)"\s+name=/s);
+  let content = match ? match[1] : raw;
+
+  // Unescape sequences
+  content = content
+    .replace(/\\n/g, '\n')
+    .replace(/\\"/g, '"')
+    .replace(/\\'/g, "'")
+    .replace(/\\xa0/g, ' ')
+    .replace(/\\\\/g, '\\');
+
+  // Split into lines
+  const lines = content.split(/\n+/).map(l => l.trim()).filter(Boolean);
+  if (lines.length < 3) {
+    return null;
+  }
+
+  const queryHeader = lines[0].replace(/^🔍\s*/, '');
+  let idx = 1;
+  const resultsHeader = lines[idx];
+  idx++;
+
+  const results: ParsedWebSearchResult[] = [];
+  let buffer: string[] = [];
+
+  const flushBuffer = () => {
+    if (buffer.length === 0) {
+      return;
+    }
+    // Buffer pattern: Title line (with ** ... **), URL line starting with 📍 URL:, Content line starting 📄 Content:, relevance line starting ⭐ Relevance:
+    const titleLine = buffer.find(l => /\*\*.*\*\*/.test(l)) || buffer[0];
+    const urlLine = buffer.find(l => /^📍\s*URL:/i.test(l)) || '';
+    const contentLine = buffer.find(l => /^📄\s*Content:/i.test(l)) || '';
+    const relevanceLine = buffer.find(l => /^⭐\s*Relevance:/i.test(l)) || '';
+
+    const extractAfter = (line: string, prefix: RegExp) => line.replace(prefix, '').trim();
+
+    const cleanedTitle = titleLine
+      .replace(/^\*\*/,'')
+      .replace(/\*\*$/,'')
+      .replace(/\*\*/g,'')
+      .replace(/<strong>|<\/strong>/g,'')
+      .trim();
+    const url = extractAfter(urlLine, /^📍\s*URL:\s*/i);
+    const contentText = extractAfter(contentLine, /^📄\s*Content:\s*/i);
+    const relevance = extractAfter(relevanceLine, /^⭐\s*Relevance:\s*/i);
+
+    if (cleanedTitle || url) {
+      results.push({
+        title: cleanedTitle,
+        url,
+        content: contentText,
+        relevance
+      });
+    }
+    buffer = [];
+  };
+
+  for (; idx < lines.length; idx++) {
+    const line = lines[idx];
+    if (line === '---') {
+      flushBuffer();
+      continue;
+    }
+    // Skip note line later
+    if (/^💡/.test(line)) {
+      flushBuffer();
+      break; // Note begins; rest not results.
+    }
+    buffer.push(line);
+  }
+  flushBuffer();
+
+  const noteLine = lines.find(l => /^💡/.test(l));
+  const note = noteLine ? noteLine.replace(/^💡\s*/, '') : undefined;
+
+  if (!results.length) {
+    return null;
+  }
+  return { queryHeader, resultsHeader, results, note };
+};
+
+// Helper function to extract and format generic content (fallback)
+const formatToolCallResult = (result: Record<string, unknown>) => {
+  if (result.output && typeof result.output === 'string') {
+    return result.output;
+  }
   if (result.content && typeof result.content === 'string') {
     return result.content;
   }
-  
-  // Handle other structured results
   return JSON.stringify(result, null, 2);
 };
 
@@ -152,87 +227,64 @@ const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({ toolCalls, isTyping
                     Results:
                   </Typography>
                   {(() => {
-                    const formattedContent = formatToolCallResult(toolCall.result_data);
-                    
-                    // Check if content looks like markdown (contains ** or ## or emoji indicators)
-                    const isMarkdown = typeof formattedContent === 'string' && 
-                      (formattedContent.includes('**') || formattedContent.includes('##') || 
-                       formattedContent.includes('📍') || formattedContent.includes('⭐') || 
-                       formattedContent.includes('🔍') || formattedContent.includes('💡'));
-                    
-                    if (isMarkdown) {
+                    const rawOutput = typeof toolCall.result_data.output === 'string' ? toolCall.result_data.output : undefined;
+                    const parsed = rawOutput ? parseWebSearchOutput(rawOutput) : null;
+                    if (parsed) {
                       return (
-                        <Box sx={{
-                          '& h1, & h2, & h3': { 
-                            marginTop: 1, 
-                            marginBottom: 0.5,
-                            fontSize: '1rem',
-                            fontWeight: 600
-                          },
-                          '& p': { 
-                            marginBottom: 0.5,
-                            fontSize: '0.875rem',
-                            lineHeight: 1.4
-                          },
-                          '& strong': { 
-                            fontWeight: 600,
-                            color: 'primary.main'
-                          },
-                          '& hr': {
-                            margin: '8px 0',
-                            border: 'none',
-                            borderTop: '1px solid',
-                            borderColor: 'divider'
-                          },
-                          '& a': {
-                            color: 'primary.light',
-                            textDecoration: 'none',
-                            '&:hover': {
-                              textDecoration: 'underline'
-                            }
-                          },
-                          '& code': {
-                            backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                            padding: '2px 4px',
-                            borderRadius: '3px',
-                            fontSize: '0.8rem'
-                          },
-                          maxHeight: 400,
-                          overflow: 'auto',
-                          fontSize: '0.875rem'
-                        }}>
-                          <ReactMarkdown
-                            components={{
-                              a: ({ href, children, ...props }) => (
-                                <a 
-                                  href={href} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer" 
-                                  {...props}
-                                >
-                                  {children}
-                                </a>
-                              )
-                            }}
-                          >
-                            {formattedContent}
-                          </ReactMarkdown>
-                        </Box>
-                      );
-                    } else {
-                      return (
-                        <Box component="pre" sx={{
-                          fontSize: '0.75rem',
-                          backgroundColor: 'background.default',
-                          padding: 1,
-                          borderRadius: 1,
-                          overflow: 'auto',
-                          maxHeight: 200
-                        }}>
-                          {formattedContent}
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.dark' }}>{parsed.queryHeader}</Typography>
+                          <Typography variant="caption" sx={{ mb: 1 }}>{parsed.resultsHeader}</Typography>
+                          {parsed.results.map((r, i) => (
+                            <Paper key={i} variant="outlined" sx={{ p: 1, backgroundColor: 'rgba(255,255,255,0.04)' }}>
+                              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                                {r.title}
+                              </Typography>
+                              {r.url && (
+                                <Typography variant="body2" sx={{ mb: 0.5 }}>
+                                  URL: <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: '#80cbc4' }}>{r.url}</a>
+                                </Typography>
+                              )}
+                              {r.content && (
+                                <Typography variant="body2" sx={{ mb: 0.5 }}>
+                                  {r.content}
+                                </Typography>
+                              )}
+                              {r.relevance && (
+                                <Typography variant="caption" color="text.secondary">
+                                  Relevance: {r.relevance}
+                                </Typography>
+                              )}
+                            </Paper>
+                          ))}
+                          {parsed.note && (
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                              {parsed.note}
+                            </Typography>
+                          )}
                         </Box>
                       );
                     }
+                    // Fallback to previous markdown / raw renderer
+                    const formattedContent = formatToolCallResult(toolCall.result_data);
+                    const isMarkdown = typeof formattedContent === 'string' &&
+                      (formattedContent.includes('**') || formattedContent.includes('##'));
+                    if (isMarkdown) {
+                      return (
+                        <ReactMarkdown>{formattedContent}</ReactMarkdown>
+                      );
+                    }
+                    return (
+                      <Box component="pre" sx={{
+                        fontSize: '0.75rem',
+                        backgroundColor: 'background.default',
+                        padding: 1,
+                        borderRadius: 1,
+                        overflow: 'auto',
+                        maxHeight: 200
+                      }}>
+                        {formattedContent}
+                      </Box>
+                    );
                   })()}
                 </Box>
               )}
