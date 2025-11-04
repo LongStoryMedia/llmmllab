@@ -44,6 +44,13 @@ spec:
         - name: ollama
           image: 192.168.0.71:31500/inference:composer
           imagePullPolicy: Always
+          securityContext:
+            # Required for GPU hardware-level operations (pynvml device resets)
+            privileged: true
+            capabilities:
+              add:
+                - SYS_ADMIN # Required for CUDA device reset operations
+                - SYS_RAWIO # Required for direct hardware access
           ports:
             - name: ollama
               containerPort: 11434
@@ -201,7 +208,7 @@ spec:
 
             # OOM Recovery for large models
             - name: ENABLE_INTELLIGENT_OOM_RECOVERY
-              value: "false"
+              value: "true"
 
   strategy:
     type: Recreate

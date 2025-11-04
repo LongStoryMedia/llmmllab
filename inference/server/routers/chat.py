@@ -410,9 +410,9 @@ async def chat_completion(
                         else:
                             output = getattr(event_data, "output", {})
 
-                        logger.debug(
-                            f"Chain end output: {serialize_event_data(output)}"
-                        )
+                        # logger.debug(
+                        #     f"Chain end output: {serialize_event_data(output)}"
+                        # )
                         if output:
                             final_response_data = output
 

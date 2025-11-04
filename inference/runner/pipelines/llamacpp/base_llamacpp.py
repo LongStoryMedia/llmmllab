@@ -106,6 +106,7 @@ class BaseLlamaCppPipeline(BasePipeline):
             IntelligentOOMRecovery() if self.use_intelligent_oom else None
         )
         self.llama_instance = self._initialize_llama(self._get_gguf_path())
+        self.chat_handler: Optional[LlamaChatCompletionHandler] = None
 
     @property
     def _llm_type(self) -> str:
@@ -151,6 +152,9 @@ class BaseLlamaCppPipeline(BasePipeline):
         """
         if llama_cpp.Llama is None:
             raise ImportError("llama-cpp-python is required but not installed")
+
+        if handler:
+            self.chat_handler = handler
 
         params = self.profile.parameters
         gcfg = self.profile.gpu_config or DEFAULT_GPU_CONFIG

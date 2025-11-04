@@ -329,11 +329,56 @@ class EnhancedHardwareManager:
 
                         pynvml.nvmlInit()
                         handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-                        # Reset application clocks to help clear context
-                        pynvml.nvmlDeviceResetApplicationsClocks(handle)
-                        self.logger.info(
-                            f"Reset CUDA context for device {i} using nvidia-ml-py"
-                        )
+
+                        # Try different pynvml reset operations (consumer GPUs have limited support)
+                        reset_success = False
+
+                        # Method 1: Try GPU reset (enterprise GPUs only)
+                        try:
+                            pynvml.nvmlDeviceResetGpuLockedClocks(handle)
+                            reset_success = True
+                            self.logger.info(
+                                f"✅ pynvml: Reset GPU locked clocks for device {i}"
+                            )
+                        except Exception as e1:
+                            self.logger.debug(
+                                f"pynvml GPU locked clocks reset not supported on device {i}: {e1}"
+                            )
+
+                        # Method 2: Try application clocks reset (more widely supported)
+                        try:
+                            pynvml.nvmlDeviceResetApplicationsClocks(handle)
+                            reset_success = True
+                            self.logger.info(
+                                f"✅ pynvml: Reset application clocks for device {i}"
+                            )
+                        except Exception as e2:
+                            self.logger.debug(
+                                f"pynvml application clocks reset not supported on device {i}: {e2}"
+                            )
+
+                        # Method 3: Try memory clearing via pynvml (if available)
+                        try:
+                            # Some consumer GPUs support this
+                            memory_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                            used_mb = int(memory_info.used) / (1024 * 1024)
+                            self.logger.debug(
+                                f"pynvml memory info for device {i}: {used_mb:.0f}MB used"
+                            )
+                            reset_success = True
+                        except Exception as e3:
+                            self.logger.debug(
+                                f"pynvml memory info not available for device {i}: {e3}"
+                            )
+
+                        if reset_success:
+                            self.logger.info(
+                                f"✅ pynvml: Successfully accessed device {i} via nvidia-ml-py"
+                            )
+                        else:
+                            raise RuntimeError(
+                                "No pynvml operations supported on this consumer GPU"
+                            )
                     except Exception as pynvml_e:
                         self.logger.debug(
                             f"pynvml reset failed for device {i}: {pynvml_e}"
@@ -357,25 +402,25 @@ class EnhancedHardwareManager:
                                 with torch.cuda.device(i):
                                     # Step 1: Force clear ALL PyTorch memory structures
                                     torch.cuda.empty_cache()
-                                    
+
                                     # Step 2: Clear memory pools and reset tracking
                                     torch.cuda.reset_peak_memory_stats(i)
                                     torch.cuda.reset_accumulated_memory_stats(i)
-                                    
+
                                     # Step 3: Force delete any cached allocator state
-                                    if hasattr(torch.cuda, 'memory_snapshot'):
+                                    if hasattr(torch.cuda, "memory_snapshot"):
                                         try:
                                             torch.cuda.memory_snapshot()  # Trigger internal cleanup
                                         except Exception:
                                             pass
-                                    
+
                                     # Step 4: Synchronize to ensure everything is processed
                                     torch.cuda.synchronize(i)
-                                    
+
                                     # Step 5: NUCLEAR OPTION - try to force CUDA context destruction via ctypes
                                     try:
                                         import ctypes
-                                        
+
                                         # Try to load CUDA runtime and force device reset
                                         try:
                                             cuda = ctypes.CDLL("libcudart.so")
@@ -384,10 +429,12 @@ class EnhancedHardwareManager:
                                                 cuda = ctypes.CDLL("libcudart.so.12")
                                             except OSError:
                                                 try:
-                                                    cuda = ctypes.CDLL("libcudart.so.11")
+                                                    cuda = ctypes.CDLL(
+                                                        "libcudart.so.11"
+                                                    )
                                                 except OSError:
                                                     cuda = None
-                                        
+
                                         if cuda:
                                             # cudaSetDevice + cudaDeviceReset = nuclear option
                                             cuda.cudaSetDevice(i)
@@ -401,17 +448,27 @@ class EnhancedHardwareManager:
                                                     f"ctypes CUDA reset returned code {result} for device {i}"
                                                 )
                                     except Exception as nuclear_e:
-                                        self.logger.debug(f"Nuclear ctypes approach failed: {nuclear_e}")
-                                    
+                                        self.logger.debug(
+                                            f"Nuclear ctypes approach failed: {nuclear_e}"
+                                        )
+
                                     # Step 6: Final aggressive memory defragmentation
                                     props = torch.cuda.get_device_properties(i)
                                     total_memory = props.total_memory
-                                    
+
                                     # Multiple rounds of increasingly aggressive allocation
-                                    for round_num in range(5):  # More rounds
-                                        for fraction in [0.9, 0.7, 0.5, 0.3, 0.1]:  # Higher fractions
+                                    for _ in range(5):  # More rounds
+                                        for fraction in [
+                                            0.9,
+                                            0.7,
+                                            0.5,
+                                            0.3,
+                                            0.1,
+                                        ]:  # Higher fractions
                                             try:
-                                                size_bytes = int(total_memory * fraction // 4)  # float32
+                                                size_bytes = int(
+                                                    total_memory * fraction // 4
+                                                )  # float32
                                                 temp = torch.empty(
                                                     size_bytes,
                                                     dtype=torch.float32,
@@ -423,7 +480,7 @@ class EnhancedHardwareManager:
                                                 break  # Success
                                             except torch.cuda.OutOfMemoryError:
                                                 continue  # Try smaller
-                                        
+
                                         # Clear cache after each round
                                         torch.cuda.empty_cache()
                                         torch.cuda.synchronize(i)
@@ -499,30 +556,33 @@ class EnhancedHardwareManager:
                         time.sleep(2)
 
             # Step 2: FORCE MODEL DESTRUCTION - this is the key missing piece!
-            self.logger.warning(f"🔥 Attempting to force-destroy loaded models on GPU {dev_idx}")
+            self.logger.warning(
+                f"🔥 Attempting to force-destroy loaded models on GPU {dev_idx}"
+            )
             try:
                 # Force Python garbage collection to destroy any model objects
-                import gc
+
                 gc.collect()
-                
+
                 # Try to find and destroy any llama-cpp-python models
                 try:
-                    import llama_cpp
                     # llama-cpp-python models hold GPU memory outside PyTorch's control
                     # We need to trigger their destructors
                     self.logger.debug(f"Triggering llama-cpp cleanup for GPU {dev_idx}")
                     gc.collect()  # Force garbage collection again
-                except ImportError:
+                except Exception:
                     pass
-                
+
                 # Clear any global model caches that might be holding references
                 try:
                     # If there's a pipeline cache manager, clear it
-                    self.logger.debug(f"Attempting to clear global model caches for GPU {dev_idx}")
+                    self.logger.debug(
+                        f"Attempting to clear global model caches for GPU {dev_idx}"
+                    )
                     gc.collect()  # Another GC pass
                 except Exception as cache_e:
                     self.logger.debug(f"Cache clearing attempt: {cache_e}")
-                    
+
             except Exception as model_destroy_e:
                 self.logger.debug(f"Model destruction attempt: {model_destroy_e}")
 

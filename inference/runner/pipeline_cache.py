@@ -345,14 +345,60 @@ class LocalPipelineCacheManager:
                 pass
 
     def _cleanup_pipeline(self, pipeline: BaseChatModel | Embeddings) -> None:
+        """Properly cleanup pipeline resources by calling both close() and cleanup() methods."""
         try:
+            # Try both close() and cleanup() methods as different pipelines use different names
+            close_fn = getattr(pipeline, "close", None)
+            if callable(close_fn):
+                self.logger.debug(
+                    f"Calling close() on pipeline {type(pipeline).__name__}"
+                )
+                close_fn()
+
             cleanup_fn = getattr(pipeline, "cleanup", None)
             if callable(cleanup_fn):
+                self.logger.debug(
+                    f"Calling cleanup() on pipeline {type(pipeline).__name__}"
+                )
                 cleanup_fn()
+
+            # Also check nested llm attribute
             llm = getattr(pipeline, "llm", None)
             if llm is not None:
+                llm_close = getattr(llm, "close", None)
+                if callable(llm_close):
+                    self.logger.debug(
+                        f"Calling close() on nested llm {type(llm).__name__}"
+                    )
+                    llm_close()
+
                 llm_cleanup = getattr(llm, "cleanup", None)
                 if callable(llm_cleanup):
+                    self.logger.debug(
+                        f"Calling cleanup() on nested llm {type(llm).__name__}"
+                    )
                     llm_cleanup()
-        except Exception:  # pragma: no cover
-            pass
+
+            # Also check for llama_instance directly (BaseLlamaCppPipeline specific)
+            llama_instance = getattr(pipeline, "llama_instance", None)
+            if llama_instance is not None:
+                llama_close = getattr(llama_instance, "close", None)
+                if callable(llama_close):
+                    self.logger.debug(
+                        f"Calling close() on llama_instance {type(llama_instance).__name__}"
+                    )
+                    llama_close()
+
+            self.logger.info(
+                f"🗑️ Successfully cleaned up pipeline {type(pipeline).__name__}"
+            )
+
+        except Exception as e:
+            self.logger.warning(f"Error during pipeline cleanup: {e}")
+        finally:
+            # Force deletion regardless of cleanup success
+            try:
+                if pipeline is not None:
+                    del pipeline
+            except Exception:
+                pass
