@@ -97,26 +97,17 @@ class EngineeringAgent(BaseAgent[str]):
                 has_grammar=bool(grammar),
             )
 
-            # Create system instructions and user message separately for proper prompt structure
-            system_instructions, user_message = await self._create_separated_engineering_prompt(
-                query=query, domain=domain, response_format=response_format
-            )
-
-            # Create properly structured messages: system + user
+            # SIMPLIFIED: Just pass the user query directly without complex prompt construction
             from models import Message, MessageRole, MessageContent, MessageContentType
             
             messages = [
                 Message(
-                    role=MessageRole.SYSTEM,
-                    content=[MessageContent(type=MessageContentType.TEXT, text=system_instructions)]
-                ),
-                Message(
                     role=MessageRole.USER,
-                    content=[MessageContent(type=MessageContentType.TEXT, text=user_message)]
+                    content=[MessageContent(type=MessageContentType.TEXT, text=query)]
                 )
             ]
 
-            # Use BaseAgent's run method with proper message structure
+            # Use BaseAgent's run method with simplified message structure
             result = await self.run(
                 messages=messages,
                 tools=tools,

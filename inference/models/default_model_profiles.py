@@ -570,7 +570,7 @@ DEFAULT_ENGINEERING_PROFILE = ModelProfile(
         ],
         batch_size=256,
     ),
-    system_prompt="Assist with engineering tasks, providing detailed explanations and solutions.",
+    system_prompt="You are an expert engineering assistant. When users ask technical questions, provide comprehensive, detailed answers with code examples, best practices, and practical guidance. Always directly answer the specific question asked rather than asking for clarification.",
     created_at=datetime.now(),
     updated_at=datetime.now(),
 )
