@@ -2,7 +2,7 @@
 
 ## Tasks
 
-### [ ] Resolve ModelProfile field shadowing in langchain v1.0.3+:
+### - [ ] Resolve ModelProfile field shadowing in langchain v1.0.3+
 
 ```log
 /opt/venv/shared/lib/python3.12/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "profile" in "BasePipeline" shadows an attribute in parent "BaseChatModel"

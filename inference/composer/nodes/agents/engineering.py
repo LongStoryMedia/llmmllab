@@ -5,7 +5,7 @@ Provides LangGraph node wrapper for technical engineering response generation.
 
 from typing import TYPE_CHECKING
 
-from models import LangChainMessage, TechnicalDomain, ResponseFormat
+from models import LangChainMessage
 
 from composer.graph.state import WorkflowState
 from composer.core.errors import NodeExecutionError
@@ -78,7 +78,7 @@ class EngineeringAgentNode:
                 extra={
                     "user_id": user_id,
                     "intent_count": len(state.intent_classification),
-                }
+                },
             )
 
             for i, intent in enumerate(state.intent_classification):
@@ -90,21 +90,31 @@ class EngineeringAgentNode:
                     extra={
                         "user_id": user_id,
                         "intent_index": i,
-                        "workflow_type": str(intent.workflow_type) if intent.workflow_type else None,
-                        "technical_domain": str(intent.technical_domain) if intent.technical_domain else None,
-                        "response_format": str(intent.response_format) if intent.response_format else None,
+                        "workflow_type": (
+                            str(intent.workflow_type) if intent.workflow_type else None
+                        ),
+                        "technical_domain": (
+                            str(intent.technical_domain)
+                            if intent.technical_domain
+                            else None
+                        ),
+                        "response_format": (
+                            str(intent.response_format)
+                            if intent.response_format
+                            else None
+                        ),
                         "intent_object_type": type(intent).__name__,
-                    }
+                    },
                 )
 
                 # Use technical domain and response format from intent analysis if available
                 domain = intent.technical_domain
                 response_format = intent.response_format
-                
+
                 self.logger.info(
                     "Processing engineering intent",
                     extra={
-                        "user_id": user_id, 
+                        "user_id": user_id,
                         "intent_domain": intent.technical_domain,
                         "intent_format": intent.response_format,
                         "has_domain": domain is not None,
@@ -132,7 +142,7 @@ class EngineeringAgentNode:
                     kwargs["domain"] = domain
                 if response_format is not None:
                     kwargs["response_format"] = response_format
-                
+
                 response = await self.agent.generate_technical_response(**kwargs)
 
                 # Add engineering response to state messages
@@ -142,7 +152,9 @@ class EngineeringAgentNode:
                     additional_kwargs={
                         "agent": "engineering",
                         "domain": str(domain) if domain else "default",
-                        "format": str(response_format) if response_format else "default",
+                        "format": (
+                            str(response_format) if response_format else "default"
+                        ),
                     },
                 )
 

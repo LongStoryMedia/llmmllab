@@ -97,10 +97,10 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
             intents: List[IntentAnalysis]
 
         intnt_schema = _Intnts.model_json_schema()
-        
+
         # Extract text content from the last message using the utility function
         user_query = extract_message_text(messages[-1]) if messages else ""
-        
+
         # DEBUG: Log the exact user query being analyzed
         self.logger.info(f"🔍 DEBUG_USER_QUERY: '{user_query}'")
 
@@ -154,46 +154,15 @@ Scoring Guidelines (ALL scores MUST be between 0.0 and 1.0 inclusive):
 - reusability_potential: 0.0-1.0 (0.0=one-time use, 1.0=highly reusable)  
 - confidence: 0.0-1.0 (confidence in your analysis)
 
-Workflow Classification Guidelines:
-- ENGINEERING: Technical implementation, code solutions, architecture design, system design, API development, debugging, performance optimization, infrastructure setup, technical guidance, engineering best practices. Examples: "build a REST API", "design a microservices architecture", "implement a caching system", "optimize database performance", "create a CI/CD pipeline"
-- RESEARCH: Pure information gathering about topics, literature reviews, fact-finding, market research, academic research. Examples: "what is machine learning", "research competitors", "find information about X", "summarize recent developments in Y"
-- ANALYSIS: Data analysis, evaluation of existing systems, comparative analysis with specific data. Examples: "analyze this dataset", "evaluate system performance", "compare these options with metrics"
-- CREATIVE: Content creation, writing, brainstorming, artistic tasks. Examples: "write a story", "create marketing copy", "brainstorm ideas"
-- GENERAL: Simple questions, basic conversations, clarifications. Examples: "what time is it", "how are you", "explain briefly"
-
-IMPORTANT: If a request asks for both technical information AND implementation/design guidance, classify as ENGINEERING, not RESEARCH.
-
 Instructions:
 1. Decompose only if there are clearly separable sub-tasks; else one intent in the intents array.
 2. Each element in intents must follow the enumerations exactly.
-3. For workflow_type=ENGINEERING, populate technical_domain and response_format when identifiable:
-   - technical_domain: Choose the most appropriate domain (software_development for most code/API requests)
-   - response_format: Choose based on what user wants (code_solution for implementation requests)
-   - These fields help guide the engineering response but are optional
-4. For other workflow types, omit response_format / technical_domain unless clearly implied.
-5. All boolean fields (requires_tools, requires_custom_tools) must be explicitly set.
-6. All required numeric fields must be provided as numbers (not strings).
-7. Output strictly valid JSON. No prose, no markdown, no comments.
-8. Technical requests asking for implementation guidance, code solutions, or system design should be ENGINEERING, not RESEARCH.
-
-CRITICAL ENGINEERING FIELD REQUIREMENTS:
-- REST API, FastAPI, API development → technical_domain: "software_development", response_format: "code_solution"
-- System architecture, microservices → technical_domain: "system_architecture", response_format: "detailed_analysis"  
-- Database optimization, queries → technical_domain: "data_engineering", response_format: "best_practices"
-- Infrastructure, DevOps, CI/CD → technical_domain: "devops_infrastructure", response_format: "step_by_step_guide"
-
-VALIDATION: Before outputting JSON, verify that:
-- IF workflow_type is "engineering" THEN technical_domain MUST NOT be null/None
-- IF workflow_type is "engineering" THEN response_format MUST NOT be null/None
-- REJECT any engineering classification that leaves these fields empty
+3. Omit response_format / technical_domain unless clearly implied.
+4. All boolean fields (requires_tools, requires_custom_tools) must be explicitly set.
+5. All required numeric fields must be provided as numbers (not strings).
+6. Output strictly valid JSON. No prose, no markdown, no comments.
 
 User Request: {user_query}
-
-ENGINEERING FIELD GUIDANCE:
-For engineering workflows, populate these fields when identifiable:
-- technical_domain: Choose the most appropriate domain from the enum list
-- response_format: Choose the most appropriate format from the enum list
-These fields help guide the engineering agent but are optional.
 
 IMPORTANT: Return JSON that is valid against this schema:
 {json.dumps(intnt_schema)}
@@ -214,17 +183,7 @@ If multiple intents are needed, include additional objects in the intents array.
         if not txt.strip():
             raise IntentAnalysisError("Empty intent analysis response")
 
-        # DEBUG: Log raw classifier output and parsed result
-        self.logger.info(f"🔍 DEBUG_CLASSIFIER_RAW_OUTPUT: {txt[:500]}")
-        
         intents = parse_structured_output(txt, _Intnts)
-        
-        # DEBUG: Log parsed intents with focus on engineering fields
-        for i, intent in enumerate(intents.intents):
-            self.logger.info(f"🔍 DEBUG_PARSED_INTENT_{i}: workflow_type={intent.workflow_type}, technical_domain={intent.technical_domain}, response_format={intent.response_format}")
-            if intent.workflow_type == "engineering":
-                self.logger.info(f"🔍 DEBUG_ENGINEERING_FIELDS: technical_domain={intent.technical_domain} (type: {type(intent.technical_domain)}), response_format={intent.response_format} (type: {type(intent.response_format)})")
-        
         return intents.intents
 
     async def generate_title(

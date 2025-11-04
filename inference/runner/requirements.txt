@@ -18,4 +18,4 @@ tiktoken==0.11.0
 openai-harmony==0.0.4
 nvsmi==0.4.2
 scikit-learn==1.7.2
-pynvml==13.0.1
+nvidia-ml-py==12.560.30

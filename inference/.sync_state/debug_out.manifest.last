@@ -148,6 +148,8 @@
 ./composer_test_20251104_003700.json
 ./composer_test_20251104_003815.json
 ./composer_test_20251104_004509.json
+./composer_test_20251104_010344.json
+./composer_test_20251104_012634.json
 ./workflow_graph_20251029_024804.md
 ./workflow_graph_20251029_024952.md
 ./workflow_graph_20251029_025313.md
@@ -227,3 +229,5 @@
 ./workflow_graph_20251104_003808.md
 ./workflow_graph_20251104_004501.md
 ./workflow_graph_20251104_005414.md
+./workflow_graph_20251104_010052.md
+./workflow_graph_20251104_012334.md
