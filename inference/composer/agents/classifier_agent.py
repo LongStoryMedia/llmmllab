@@ -173,113 +173,32 @@ If multiple intents are needed, include additional objects in the intents array.
         msgs.extend(messages[:-1])  # All but last message
         msgs.append(analysis_prompt)
         
-        # First try with grammar constraints
-        try:
-            result = await self.run(
-                messages=msgs,
-                tools=None,
-                priority=PipelinePriority.HIGH,
-                grammar=_Intnts,
-            )
-        except ValueError as e:
-            if "tool_complexity_score" in str(e) and "less than or equal to 1" in str(e):
-                self.logger.warning(f"Grammar constraint failed for tool_complexity_score, retrying without grammar: {e}")
-                # Retry without grammar constraints to allow manual validation
-                result = await self.run(
-                    messages=msgs,
-                    tools=None,
-                    priority=PipelinePriority.HIGH,
-                    grammar=None,  # No grammar constraints
-                )
-            else:
-                raise  # Re-raise if it's a different error
+        # Execute with grammar constraints to ensure valid schema
+        result = await self.run(
+            messages=msgs,
+            tools=None,
+            priority=PipelinePriority.HIGH,
+            grammar=_Intnts,
+        )
 
         txt = extract_message_text(result.message) if result and result.message else ""
         if not txt.strip():
             raise IntentAnalysisError("Empty intent analysis response")
 
-        try:
-            parsed_intents = parse_structured_output(txt, _Intnts)
-        except Exception as e:
-            # If structured parsing fails due to validation errors, try manual parsing with validation
-            self.logger.warning(f"Structured parsing failed, attempting manual validation: {e}")
-            parsed_intents = self._parse_with_manual_validation(txt, _Intnts)
+        # Parse structured output with schema validation
+        parsed_intents = parse_structured_output(txt, _Intnts)
         
-        # Validate and clamp scores to ensure schema compliance
-        validated_intents = []
-        
-        # Extract intents list with safe casting
-        intent_list = []
+        # Extract intents list - schema constraints ensure valid values
         if hasattr(parsed_intents, 'intents'):
-            # Cast to _Intnts to access the intents attribute safely
             typed_intents = cast(_Intnts, parsed_intents)
-            intent_list = typed_intents.intents
+            return typed_intents.intents
         elif isinstance(parsed_intents, dict) and 'intents' in parsed_intents:
-            intent_list = parsed_intents['intents']
+            return parsed_intents['intents']
         else:
             self.logger.warning(f"Unexpected intents format: {type(parsed_intents)}")
-            intent_list = []
-            
-        if isinstance(intent_list, list):
-            for intent in intent_list:
-                # Clamp all score fields to valid 0.0-1.0 range
-                if hasattr(intent, 'domain_specificity'):
-                    intent.domain_specificity = max(0.0, min(1.0, intent.domain_specificity))
-                if hasattr(intent, 'reusability_potential'):
-                    intent.reusability_potential = max(0.0, min(1.0, intent.reusability_potential))
-                if hasattr(intent, 'confidence'):
-                    intent.confidence = max(0.0, min(1.0, intent.confidence))
-                if hasattr(intent, 'tool_complexity_score'):
-                    intent.tool_complexity_score = max(0.0, min(1.0, intent.tool_complexity_score))
-                validated_intents.append(intent)
-        
-        return validated_intents
+            return []
 
-    def _parse_with_manual_validation(self, txt: str, model_class) -> BaseModel:
-        """Parse with manual validation and score clamping to handle schema validation errors."""
-        
-        try:
-            # Extract JSON from the response
-            start_idx = txt.find("{")
-            end_idx = txt.rfind("}")
-            
-            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-                json_content = txt[start_idx : end_idx + 1]
-                data = json.loads(json_content)
-                
-                # Manually validate and clamp scores in the raw data
-                if "intents" in data and isinstance(data["intents"], list):
-                    for intent_data in data["intents"]:
-                        if isinstance(intent_data, dict):
-                            # Clamp score fields to valid range before model validation
-                            for score_field in ["domain_specificity", "reusability_potential", "confidence", "tool_complexity_score"]:
-                                if score_field in intent_data:
-                                    value = intent_data[score_field]
-                                    if isinstance(value, (int, float)):
-                                        intent_data[score_field] = max(0.0, min(1.0, float(value)))
-                
-                # Now try to create the model with clamped values
-                return model_class.model_validate(data)
-            
-            raise ValueError("Could not extract valid JSON from response")
-            
-        except Exception as e:
-            self.logger.error(f"Manual validation parsing failed: {e}")
-            # Return a minimal valid response as fallback
-            return model_class.model_validate({
-                "intents": [{
-                    "workflow_type": "general",
-                    "complexity_level": "SIMPLE", 
-                    "required_capabilities": [],
-                    "domain_specificity": 0.5,
-                    "reusability_potential": 0.5,
-                    "confidence": 0.8,
-                    "tool_complexity_score": 0.3,
-                    "computational_requirements": "LOW",
-                    "requires_tools": True,
-                    "requires_custom_tools": False
-                }]
-            })
+
 
     async def generate_title(
         self,
