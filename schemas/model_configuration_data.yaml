@@ -17,7 +17,7 @@ properties:
     description: "Micro-batch size used"
   n_gpu_layers:
     type: integer
-    minimum: 0
+    minimum: -1
     description: "Number of GPU layers used"
   model_size_mb:
     type: number

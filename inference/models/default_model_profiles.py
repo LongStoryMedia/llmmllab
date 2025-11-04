@@ -62,8 +62,8 @@ DEFAULT_TEXT_TO_TEXT_MODEL = (
 DEFAULT_TEXT_TO_IMAGE_MODEL = "black-forest-labs-flux.1-dev"
 DEFAULT_IMAGE_TO_IMAGE_MODEL = "black-forest-labs-flux.1-kontext-dev"
 DEFAULT_TEXT_TO_EMBEDDINGS_MODEL = "nomic-embed-text-v2"
-DEFAULT_SUMMARIZATION_MODEL = "qwen3-vl-2b-thinking-abliterated"
-DEFAULT_ANALYSIS_MODEL = "qwen3-vl-2b-thinking-abliterated"
+DEFAULT_SUMMARIZATION_MODEL = "qwen3-4b-ud-q6-k-xl"
+DEFAULT_ANALYSIS_MODEL = "qwen3-4b-ud-q6-k-xl"
 
 # Define default model profiles
 DEFAULT_PRIMARY_PROFILE = ModelProfile(
@@ -74,7 +74,7 @@ DEFAULT_PRIMARY_PROFILE = ModelProfile(
     description="Primary model profile for general chat and reasoning.",
     model_name=DEFAULT_TEXT_TO_TEXT_MODEL,
     parameters=ModelParameters(
-        num_ctx=40960,
+        num_ctx=92160,
         repeat_last_n=128,
         repeat_penalty=1.1,
         temperature=0.6,
