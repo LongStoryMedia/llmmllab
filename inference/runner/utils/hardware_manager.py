@@ -323,121 +323,66 @@ class EnhancedHardwareManager:
                         # Synchronize to ensure operations complete
                         torch.cuda.synchronize(i)
 
-                    # Second: ACTUAL CUDA context reset using cupy if available
+                    # Second: ACTUAL CUDA context reset using pynvml (now always available)
                     try:
-                        import cupy  # type: ignore
+                        import pynvml
 
-                        with cupy.cuda.Device(i):
-                            # This actually destroys and recreates the CUDA context
-                            cupy.cuda.runtime.deviceReset()
+                        pynvml.nvmlInit()
+                        handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+                        # Reset application clocks to help clear context
+                        pynvml.nvmlDeviceResetApplicationsClocks(handle)
                         self.logger.info(
-                            f"Reset CUDA context for device {i} using cupy"
+                            f"Reset CUDA context for device {i} using pynvml"
                         )
-                    except ImportError:
-                        # Fallback: Try using pynvml to reset the GPU
+                    except Exception as pynvml_e:
+                        self.logger.debug(f"pynvml reset failed for device {i}: {pynvml_e}")
+                        # Fallback to cupy if available
                         try:
-                            import pynvml  # type: ignore
+                            import cupy  # type: ignore
 
-                            pynvml.nvmlInit()
-                            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-                            # Force a memory operation that should clear context
-                            pynvml.nvmlDeviceResetApplicationsClocks(handle)
+                            with cupy.cuda.Device(i):
+                                # This actually destroys and recreates the CUDA context
+                                cupy.cuda.runtime.deviceReset()
                             self.logger.info(
-                                f"Reset CUDA context for device {i} using pynvml"
+                                f"Reset CUDA context for device {i} using cupy"
                             )
-                        except (ImportError, Exception):
-                            # Ultimate fallback: Try ctypes direct CUDA call
+                        except ImportError:
+                            # Final fallback: Enhanced PyTorch memory clearing
+                            self.logger.debug("No advanced CUDA reset available, using PyTorch fallback")
                             try:
-                                import ctypes
-                                import os
-                                import glob
-
-                                # Load CUDA runtime library - try multiple possible locations
-                                cuda = None
-                                cuda_paths = [
-                                    # Standard Linux paths
-                                    "libcudart.so",
-                                    "libcudart.so.11",
-                                    "libcudart.so.12", 
-                                    "/usr/local/cuda/lib64/libcudart.so",
-                                    "/usr/lib/x86_64-linux-gnu/libcudart.so",
-                                    "/opt/cuda/lib64/libcudart.so",
-                                    # Container-specific paths
-                                    "/usr/local/cuda-*/lib64/libcudart.so",
-                                    # Windows paths
-                                    "cudart64_11.dll",
-                                    "cudart64_12.dll",
-                                    # macOS path
-                                    "libcudart.dylib"
-                                ]
-                                
-                                for path in cuda_paths:
+                                with torch.cuda.device(i):
+                                    # More aggressive memory clearing
+                                    torch.cuda.empty_cache()
+                                    
+                                    # Clear all cached allocations
+                                    torch.cuda.reset_peak_memory_stats(i)
+                                    torch.cuda.reset_accumulated_memory_stats(i)
+                                    
+                                    # Force memory defragmentation by allocating and freeing
                                     try:
-                                        if "*" in path:
-                                            # Handle glob patterns
-                                            matches = glob.glob(path)
-                                            if matches:
-                                                cuda = ctypes.CDLL(matches[0])
+                                        props = torch.cuda.get_device_properties(i)
+                                        # Try to allocate large chunks to force cleanup
+                                        for size_mb in [1024, 512, 256, 128]:  # Try different sizes
+                                            try:
+                                                size_bytes = size_mb * 1024 * 1024 // 4  # float32
+                                                temp = torch.empty(size_bytes, dtype=torch.float32, device=f"cuda:{i}")
+                                                del temp
+                                                torch.cuda.empty_cache()
                                                 break
-                                        else:
-                                            cuda = ctypes.CDLL(path)
-                                            break
-                                    except OSError:
-                                        continue
-                                
-                                if not cuda:
-                                    raise OSError("Could not find CUDA runtime library")
-
-                                # cudaSetDevice and cudaDeviceReset
-                                cuda.cudaSetDevice(i)
-                                result = cuda.cudaDeviceReset()
-                                if result == 0:  # cudaSuccess
-                                    self.logger.info(
-                                        f"Reset CUDA context for device {i} using direct CUDA call"
-                                    )
-                                else:
-                                    self.logger.warning(
-                                        f"CUDA reset returned error code {result} for device {i}"
-                                    )
-                            except Exception as cuda_e:
-                                self.logger.warning(
-                                    f"Could not perform true CUDA context reset for device {i}: {cuda_e}"
+                                            except torch.cuda.OutOfMemoryError:
+                                                continue
+                                    except Exception:
+                                        pass
+                                    
+                                    # Final sync and cache clear
+                                    torch.cuda.synchronize(i)
+                                    torch.cuda.empty_cache()
+                                    
+                                self.logger.info(
+                                    f"Performed enhanced PyTorch context refresh for device {i}"
                                 )
-                                # Enhanced PyTorch fallback when CUDA context reset fails
-                                try:
-                                    with torch.cuda.device(i):
-                                        # More aggressive memory clearing
-                                        torch.cuda.empty_cache()
-                                        
-                                        # Clear all cached allocations
-                                        torch.cuda.reset_peak_memory_stats(i)
-                                        torch.cuda.reset_accumulated_memory_stats(i)
-                                        
-                                        # Force memory defragmentation by allocating and freeing
-                                        try:
-                                            props = torch.cuda.get_device_properties(i)
-                                            # Try to allocate large chunks to force cleanup
-                                            for size_mb in [1024, 512, 256, 128]:  # Try different sizes
-                                                try:
-                                                    size_bytes = size_mb * 1024 * 1024 // 4  # float32
-                                                    temp = torch.empty(size_bytes, dtype=torch.float32, device=f"cuda:{i}")
-                                                    del temp
-                                                    torch.cuda.empty_cache()
-                                                    break
-                                                except torch.cuda.OutOfMemoryError:
-                                                    continue
-                                        except Exception:
-                                            pass
-                                        
-                                        # Final sync and cache clear
-                                        torch.cuda.synchronize(i)
-                                        torch.cuda.empty_cache()
-                                        
-                                    self.logger.info(
-                                        f"Performed enhanced PyTorch context refresh for device {i}"
-                                    )
-                                except Exception as fallback_e:
-                                    self.logger.error(f"Enhanced PyTorch fallback failed for device {i}: {fallback_e}")
+                            except Exception as fallback_e:
+                                self.logger.error(f"Enhanced PyTorch fallback failed for device {i}: {fallback_e}")
 
                     self.last_device_reset = i
 
