@@ -349,15 +349,44 @@ class EnhancedHardwareManager:
                             # Ultimate fallback: Try ctypes direct CUDA call
                             try:
                                 import ctypes
+                                import os
+                                import glob
 
-                                # Load CUDA runtime library
-                                try:
-                                    cuda = ctypes.CDLL("libcudart.so")
-                                except OSError:
+                                # Load CUDA runtime library - try multiple possible locations
+                                cuda = None
+                                cuda_paths = [
+                                    # Standard Linux paths
+                                    "libcudart.so",
+                                    "libcudart.so.11",
+                                    "libcudart.so.12", 
+                                    "/usr/local/cuda/lib64/libcudart.so",
+                                    "/usr/lib/x86_64-linux-gnu/libcudart.so",
+                                    "/opt/cuda/lib64/libcudart.so",
+                                    # Container-specific paths
+                                    "/usr/local/cuda-*/lib64/libcudart.so",
+                                    # Windows paths
+                                    "cudart64_11.dll",
+                                    "cudart64_12.dll",
+                                    # macOS path
+                                    "libcudart.dylib"
+                                ]
+                                
+                                for path in cuda_paths:
                                     try:
-                                        cuda = ctypes.CDLL("cudart64_*.dll")
+                                        if "*" in path:
+                                            # Handle glob patterns
+                                            matches = glob.glob(path)
+                                            if matches:
+                                                cuda = ctypes.CDLL(matches[0])
+                                                break
+                                        else:
+                                            cuda = ctypes.CDLL(path)
+                                            break
                                     except OSError:
-                                        cuda = ctypes.CDLL("libcudart.dylib")
+                                        continue
+                                
+                                if not cuda:
+                                    raise OSError("Could not find CUDA runtime library")
 
                                 # cudaSetDevice and cudaDeviceReset
                                 cuda.cudaSetDevice(i)
@@ -371,18 +400,44 @@ class EnhancedHardwareManager:
                                         f"CUDA reset returned error code {result} for device {i}"
                                     )
                             except Exception as cuda_e:
-                                # Only log as debug since missing libcudart.dylib is expected on some systems
-                                self.logger.debug(
+                                self.logger.warning(
                                     f"Could not perform true CUDA context reset for device {i}: {cuda_e}"
                                 )
-                                # Final fallback: reinitialize PyTorch context
-                                with torch.cuda.device(i):
-                                    temp = torch.ones(1, device=f"cuda:{i}")
-                                    del temp
-                                    torch.cuda.synchronize(i)
-                                self.logger.debug(
-                                    f"Performed PyTorch context refresh for device {i}"
-                                )
+                                # Enhanced PyTorch fallback when CUDA context reset fails
+                                try:
+                                    with torch.cuda.device(i):
+                                        # More aggressive memory clearing
+                                        torch.cuda.empty_cache()
+                                        
+                                        # Clear all cached allocations
+                                        torch.cuda.reset_peak_memory_stats(i)
+                                        torch.cuda.reset_accumulated_memory_stats(i)
+                                        
+                                        # Force memory defragmentation by allocating and freeing
+                                        try:
+                                            props = torch.cuda.get_device_properties(i)
+                                            # Try to allocate large chunks to force cleanup
+                                            for size_mb in [1024, 512, 256, 128]:  # Try different sizes
+                                                try:
+                                                    size_bytes = size_mb * 1024 * 1024 // 4  # float32
+                                                    temp = torch.empty(size_bytes, dtype=torch.float32, device=f"cuda:{i}")
+                                                    del temp
+                                                    torch.cuda.empty_cache()
+                                                    break
+                                                except torch.cuda.OutOfMemoryError:
+                                                    continue
+                                        except Exception:
+                                            pass
+                                        
+                                        # Final sync and cache clear
+                                        torch.cuda.synchronize(i)
+                                        torch.cuda.empty_cache()
+                                        
+                                    self.logger.info(
+                                        f"Performed enhanced PyTorch context refresh for device {i}"
+                                    )
+                                except Exception as fallback_e:
+                                    self.logger.error(f"Enhanced PyTorch fallback failed for device {i}: {fallback_e}")
 
                     self.last_device_reset = i
 
