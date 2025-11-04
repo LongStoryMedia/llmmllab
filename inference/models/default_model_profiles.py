@@ -63,7 +63,7 @@ DEFAULT_TEXT_TO_IMAGE_MODEL = "black-forest-labs-flux.1-dev"
 DEFAULT_IMAGE_TO_IMAGE_MODEL = "black-forest-labs-flux.1-kontext-dev"
 DEFAULT_TEXT_TO_EMBEDDINGS_MODEL = "nomic-embed-text-v2"
 DEFAULT_SUMMARIZATION_MODEL = "qwen3-4b-ud-q6-k-xl"
-DEFAULT_ANALYSIS_MODEL = "qwen3-4b-ud-q6-k-xl"
+DEFAULT_ANALYSIS_MODEL = "qwen3-vl-32b-thinking-abliterated"  # Use more capable model for schema compliance
 
 # Define default model profiles
 DEFAULT_PRIMARY_PROFILE = ModelProfile(
