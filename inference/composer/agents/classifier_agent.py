@@ -5,7 +5,7 @@ Maps user requests to RequiredCapabilities and assesses computational complexity
 """
 
 import json
-from typing import List, TYPE_CHECKING, cast
+from typing import List, TYPE_CHECKING, cast, Any
 
 from pydantic import BaseModel
 from langchain.agents import create_agent
@@ -176,20 +176,51 @@ If multiple intents are needed, include additional objects in the intents array.
         msgs.extend(messages[:-1])  # All but last message
         msgs.append(analysis_prompt)
         
-        # Execute with grammar constraints to ensure valid schema
-        result = await self.run(
-            messages=msgs,
-            tools=None,
-            priority=PipelinePriority.HIGH,
-            grammar=_Intnts,
-        )
-
-        txt = extract_message_text(result.message) if result and result.message else ""
-        if not txt.strip():
-            raise IntentAnalysisError("Empty intent analysis response")
-
-        # Parse structured output with schema validation
-        parsed_intents = parse_structured_output(txt, _Intnts)
+        # Execute with grammar constraints and auto-correction for validation errors
+        try:
+            result = await self.run(
+                messages=msgs,
+                tools=None,
+                priority=PipelinePriority.HIGH,
+                grammar=_Intnts,
+            )
+            
+            txt = extract_message_text(result.message) if result and result.message else ""
+            if not txt.strip():
+                raise IntentAnalysisError("Empty intent analysis response")
+            
+            # Parse structured output normally if no errors
+            from utils.grammar_generator import parse_structured_output
+            parsed_intents = parse_structured_output(txt, _Intnts)
+            
+        except Exception as error:
+            # Check if this is a tool_complexity_score validation error
+            if "tool_complexity_score" in str(error) and "Input should be less than or equal to 1" in str(error):
+                self.logger.warning(f"🔧 Detected tool_complexity_score validation error, attempting manual retry with correction...")
+                
+                # Re-run without grammar constraints to get raw text
+                try:
+                    result = await self.run(
+                        messages=msgs,
+                        tools=None,
+                        priority=PipelinePriority.HIGH,
+                        grammar=None,  # No grammar constraints
+                    )
+                    
+                    txt = extract_message_text(result.message) if result and result.message else ""
+                    if not txt.strip():
+                        raise IntentAnalysisError("Empty intent analysis response after retry")
+                    
+                    # Apply auto-correction to the raw text
+                    parsed_intents = self._parse_with_auto_correction(txt, _Intnts)
+                    self.logger.info("🔧 Successfully recovered from validation error with auto-correction")
+                    
+                except Exception as retry_error:
+                    self.logger.error(f"🔧 Auto-correction retry failed: {retry_error}")
+                    raise error  # Re-raise original error if retry fails
+            else:
+                # Not a tool_complexity_score error, re-raise
+                raise error
         
         # Extract intents list - schema constraints ensure valid values
         if hasattr(parsed_intents, 'intents'):
@@ -201,7 +232,63 @@ If multiple intents are needed, include additional objects in the intents array.
             self.logger.warning(f"Unexpected intents format: {type(parsed_intents)}")
             return []
 
-
+    def _parse_with_auto_correction(self, txt: str, schema_type: type) -> Any:
+        """
+        Parse structured output with automatic correction for common validation errors.
+        
+        Specifically handles tool_complexity_score > 1.0 by normalizing to valid range.
+        """
+        import json
+        import re
+        from utils.grammar_generator import parse_structured_output
+        
+        try:
+            # First attempt normal parsing
+            return parse_structured_output(txt, schema_type)
+            
+        except Exception as error:
+            # Check if this is a tool_complexity_score validation error
+            if "tool_complexity_score" in str(error) and "Input should be less than or equal to 1" in str(error):
+                self.logger.warning(f"🔧 Detected tool_complexity_score validation error, attempting auto-correction...")
+                
+                try:
+                    # Try to extract the invalid value from error message
+                    match = re.search(r'input_value=(\d+)', str(error))
+                    if match:
+                        invalid_value = int(match.group(1))
+                        self.logger.info(f"🔧 Found invalid tool_complexity_score: {invalid_value}")
+                        
+                        # Parse the JSON and correct the invalid values
+                        try:
+                            json_data = json.loads(txt)
+                            
+                            # Fix tool_complexity_score values > 1.0 by normalizing
+                            if 'intents' in json_data:
+                                for intent in json_data['intents']:
+                                    if 'tool_complexity_score' in intent:
+                                        score = intent['tool_complexity_score']
+                                        if isinstance(score, (int, float)) and score > 1.0:
+                                            # Normalize: divide by 10 if > 1 (e.g., 3 -> 0.3, 5 -> 0.5)
+                                            corrected_score = min(score / 10.0, 1.0)
+                                            intent['tool_complexity_score'] = corrected_score
+                                            self.logger.info(f"🔧 Corrected tool_complexity_score from {score} to {corrected_score}")
+                            
+                            # Try parsing again with corrected data
+                            corrected_txt = json.dumps(json_data)
+                            result = parse_structured_output(corrected_txt, schema_type)
+                            self.logger.info("🔧 Successfully auto-corrected tool_complexity_score validation error")
+                            return result
+                            
+                        except json.JSONDecodeError as json_error:
+                            self.logger.warning(f"🔧 Failed to parse JSON for auto-correction: {json_error}")
+                        except Exception as correction_error:
+                            self.logger.warning(f"🔧 Auto-correction failed: {correction_error}")
+                
+                except Exception as auto_fix_error:
+                    self.logger.warning(f"🔧 Auto-correction attempt failed: {auto_fix_error}")
+            
+            # If auto-correction fails or it's a different error, re-raise original
+            raise error
 
     async def generate_title(
         self,
