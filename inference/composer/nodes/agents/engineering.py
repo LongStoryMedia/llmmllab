@@ -145,9 +145,10 @@ class EngineeringAgentNode:
 
                 response = await self.agent.generate_technical_response(**kwargs)
 
-                # Add engineering response to state messages
+                # Add engineering response to state messages as AI assistant message
 
                 engineering_response = LangChainMessage(
+                    type="ai",  # Specify as assistant message, not user message
                     content=response,
                     additional_kwargs={
                         "agent": "engineering",
