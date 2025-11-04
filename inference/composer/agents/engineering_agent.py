@@ -97,14 +97,28 @@ class EngineeringAgent(BaseAgent[str]):
                 has_grammar=bool(grammar),
             )
 
-            # Create engineering prompt based on domain and format
-            prompt = await self._create_engineering_prompt(
+            # Create system instructions and user message separately for proper prompt structure
+            system_instructions, user_message = await self._create_separated_engineering_prompt(
                 query=query, domain=domain, response_format=response_format
             )
 
-            # Use BaseAgent's run method with proper parameters
+            # Create properly structured messages: system + user
+            from models import Message, MessageRole, MessageContent, MessageContentType
+            
+            messages = [
+                Message(
+                    role=MessageRole.SYSTEM,
+                    content=[MessageContent(type=MessageContentType.TEXT, text=system_instructions)]
+                ),
+                Message(
+                    role=MessageRole.USER,
+                    content=[MessageContent(type=MessageContentType.TEXT, text=user_message)]
+                )
+            ]
+
+            # Use BaseAgent's run method with proper message structure
             result = await self.run(
-                messages=[prompt],
+                messages=messages,
                 tools=tools,
                 priority=PipelinePriority.NORMAL,
                 grammar=grammar,
@@ -315,6 +329,48 @@ Technical Query:
 Please provide a comprehensive technical response addressing the query above. Include relevant technical details, examples where appropriate, and practical guidance."""
 
         return prompt
+
+    async def _create_separated_engineering_prompt(
+        self, query: str, domain: TechnicalDomain, response_format: ResponseFormat
+    ) -> tuple[str, str]:
+        """Create separated system instructions and user message for proper prompt structure."""
+
+        domain_contexts = {
+            TechnicalDomain.SOFTWARE_DEVELOPMENT: "As a software engineering expert, focus on code quality, design patterns, and best practices.",
+            TechnicalDomain.SYSTEM_ARCHITECTURE: "As a system architecture expert, focus on scalability, reliability, and system design principles.",
+            TechnicalDomain.DATA_ENGINEERING: "As a data engineering expert, focus on data pipelines, processing efficiency, and data quality.",
+            TechnicalDomain.DEVOPS_INFRASTRUCTURE: "As a DevOps expert, focus on deployment, automation, monitoring, and infrastructure as code.",
+            TechnicalDomain.SECURITY_ENGINEERING: "As a security engineering expert, focus on threat modeling, secure design, and security best practices.",
+            TechnicalDomain.MACHINE_LEARNING: "As a machine learning engineering expert, focus on model design, data preprocessing, and ML pipelines.",
+            TechnicalDomain.GENERAL_ENGINEERING: "As a general engineering expert, provide comprehensive technical guidance.",
+        }
+
+        format_instructions = {
+            ResponseFormat.DETAILED_ANALYSIS: "Provide a detailed technical analysis with thorough explanations and context.",
+            ResponseFormat.CODE_SOLUTION: "Provide working code with clear comments and explanations.",
+            ResponseFormat.STEP_BY_STEP_GUIDE: "Provide a clear step-by-step guide with actionable instructions.",
+            ResponseFormat.BEST_PRACTICES: "Focus on best practices, patterns, and recommended approaches.",
+            ResponseFormat.TROUBLESHOOTING: "Provide systematic troubleshooting steps and diagnostic approaches.",
+        }
+
+        domain_context = domain_contexts.get(
+            domain, domain_contexts[TechnicalDomain.GENERAL_ENGINEERING]
+        )
+        format_instruction = format_instructions.get(
+            response_format, format_instructions[ResponseFormat.DETAILED_ANALYSIS]
+        )
+
+        # System instructions for the model's behavior and expertise
+        system_instructions = f"""{domain_context}
+
+{format_instruction}
+
+You are an expert technical assistant. When presented with technical queries, provide comprehensive, accurate, and practical responses. Include relevant technical details, examples where appropriate, and practical guidance."""
+
+        # User message contains only the actual query
+        user_message = query
+
+        return system_instructions, user_message
 
     async def _create_architecture_analysis_prompt(
         self, system_description: str, focus_areas: List[str]

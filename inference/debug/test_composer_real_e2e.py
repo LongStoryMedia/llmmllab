@@ -1694,7 +1694,7 @@ async def main():
         logger.info(f"🧪 Testing composer architecture with model: {model}")
         tester = ComposerRealEndToEndTester(
             target_model=model,
-            capture_llm_output=args.no_capture,
+            capture_llm_output=not args.no_capture,
             print_output=args.print_output,
         )
 
