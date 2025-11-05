@@ -80,8 +80,8 @@ def from_lc_message(lc_message: Union[BaseMessage, LangChainMessage]) -> Message
         if isinstance(lc_message.content, str):
             text_content = lc_message.content
         elif isinstance(lc_message.content, list):
-            # Join list items or convert them to string
-            text_content = str(lc_message.content)
+            # For lists, we'll handle structured parsing below - use empty string as fallback
+            text_content = ""
         else:
             # Handle other types by converting to string
             text_content = str(lc_message.content) if lc_message.content else ""
@@ -89,17 +89,17 @@ def from_lc_message(lc_message: Union[BaseMessage, LangChainMessage]) -> Message
     # Handle LangChain core BaseMessage objects
     elif isinstance(lc_message, AIMessage):
         role = MessageRole.ASSISTANT
-        text_content = str(lc_message.content) if lc_message.content else ""
+        text_content = "" if isinstance(lc_message.content, list) else (str(lc_message.content) if lc_message.content else "")
     elif isinstance(lc_message, HumanMessage):
         role = MessageRole.USER
-        text_content = str(lc_message.content) if lc_message.content else ""
+        text_content = "" if isinstance(lc_message.content, list) else (str(lc_message.content) if lc_message.content else "")
     elif isinstance(lc_message, SystemMessage):
         role = MessageRole.SYSTEM
-        text_content = str(lc_message.content) if lc_message.content else ""
+        text_content = "" if isinstance(lc_message.content, list) else (str(lc_message.content) if lc_message.content else "")
     elif isinstance(lc_message, ToolMessage):
         # Tool messages are treated as system messages to preserve tool output context
         role = MessageRole.SYSTEM
-        text_content = str(lc_message.content) if lc_message.content else ""
+        text_content = "" if isinstance(lc_message.content, list) else (str(lc_message.content) if lc_message.content else "")
     else:
         logger.warning(
             f"Unknown LangChain message type: {type(lc_message)}, defaulting to USER"
@@ -111,7 +111,8 @@ def from_lc_message(lc_message: Union[BaseMessage, LangChainMessage]) -> Message
             if isinstance(lc_message.content, str):
                 text_content = lc_message.content
             elif isinstance(lc_message.content, list):
-                text_content = str(lc_message.content)
+                # For lists, we'll handle structured parsing below - use empty string as fallback
+                text_content = ""
             else:
                 text_content = str(lc_message.content) if lc_message.content else ""
         else:
