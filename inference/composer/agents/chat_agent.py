@@ -21,7 +21,6 @@ from models import (
     NodeMetadata,
     ToolCall,
 )
-from utils.message import extract_message_text
 from composer.utils.conversion import (
     message_to_langchain_message,
     convert_langchain_messages_to_messages,

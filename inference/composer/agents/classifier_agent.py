@@ -28,7 +28,10 @@ from composer.utils.conversion import (
     normalize_message_input,
     convert_messages_to_base_langchain,
 )
-from utils.message_conversion import extract_text_from_base_message, extract_text_from_message
+from utils.message_conversion import (
+    extract_text_from_base_message,
+    extract_text_from_message,
+)
 from utils.grammar_generator import parse_structured_output
 from .base_agent import BaseAgent
 
@@ -99,7 +102,7 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
         intnt_schema = _Intnts.model_json_schema()
 
         # Extract text content from the last message using the utility function
-        user_query = extract_text_from_base_message(messages[-1]) if messages else ""
+        user_query = extract_text_from_message(messages[-1]) if messages else ""
 
         # DEBUG: Log the exact user query being analyzed
         self.logger.info(f"🔍 DEBUG_USER_QUERY: '{user_query}'")
@@ -179,7 +182,11 @@ If multiple intents are needed, include additional objects in the intents array.
             grammar=_Intnts,
         )
 
-        txt = extract_text_from_message(result.message) if result and result.message else ""
+        txt = (
+            extract_text_from_message(result.message)
+            if result and result.message
+            else ""
+        )
         if not txt.strip():
             raise IntentAnalysisError("Empty intent analysis response")
 
@@ -207,7 +214,7 @@ If multiple intents are needed, include additional objects in the intents array.
             # Extract text from all messages for context
             conversation_text = ""
             for message in messages[-5:]:  # Use last 5 messages for context
-                text = extract_text_from_base_message(message)
+                text = extract_text_from_message(message)
                 if text.strip():
                     role = "User" if message.role.value == "user" else "Assistant"
                     conversation_text += f"{role}: {text}\n"
@@ -237,7 +244,7 @@ Title:"""
                 system_prompt = getattr(self.profile, "system_prompt", "")
                 for msg in messages:
                     if msg.role == MessageRole.SYSTEM:
-                        system_prompt += f"\n\n{extract_text_from_base_message(msg)}"
+                        system_prompt += f"\n\n{extract_text_from_message(msg)}"
 
                 agent = create_agent(
                     model=cast(BaseChatModel, pipeline),

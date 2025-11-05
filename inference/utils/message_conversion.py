@@ -28,19 +28,20 @@ logger = llmmllogger.bind(component="message_conversion")
 
 
 def message_to_base_message(message: Message) -> BaseMessage:
-    """Convert a Message object to a LangChain BaseMessage."""
-    # Extract text content as a simple string
-    text_content = extract_text_from_message(message)
+    """Convert a Message object to a LangChain BaseMessage, preserving multimodal content."""
+    
+    # Convert Message.content to the multimodal format that LangChain expects
+    content_data = convert_message_content_to_langchain_format(message.content)
 
     if message.role == MessageRole.ASSISTANT:
-        return AIMessage(content=text_content)
+        return AIMessage(content=content_data)
     elif message.role == MessageRole.USER:
-        return HumanMessage(content=text_content)
+        return HumanMessage(content=content_data)
     elif message.role == MessageRole.SYSTEM:
-        return SystemMessage(content=text_content)
+        return SystemMessage(content=content_data)
     else:
         # Default to human message for unknown roles
-        return HumanMessage(content=text_content)
+        return HumanMessage(content=content_data)
 
 
 def base_message_to_message(
@@ -130,6 +131,39 @@ def base_messages_to_messages(
 ) -> List[Message]:
     """Convert a list of LangChain BaseMessages to Message objects."""
     return [base_message_to_message(msg, conversation_id) for msg in base_messages]
+
+
+def convert_message_content_to_langchain_format(content: List[MessageContent]) -> Union[str, List[Union[str, Dict[str, Any]]]]:
+    """
+    Convert Message.content list to LangChain multimodal format.
+    
+    Returns:
+        - str: For simple text-only messages
+        - List[Union[str, Dict[str, Any]]]: For multimodal messages with text and/or images
+    """
+    if not content:
+        return ""
+    
+    # If single text content, return as string for simplicity
+    if len(content) == 1 and content[0].type == MessageContentType.TEXT:
+        return content[0].text or ""
+    
+    # Multimodal content - return as list of dictionaries
+    result = []
+    for content_item in content:
+        if content_item.type == MessageContentType.TEXT:
+            result.append({
+                "type": "text", 
+                "text": content_item.text or ""
+            })
+        elif content_item.type == MessageContentType.IMAGE:
+            result.append({
+                "type": "image_url",
+                "image_url": {"url": content_item.url or ""}
+            })
+        # Add other content types as needed
+    
+    return result
 
 
 def extract_text_from_message(message: Message) -> str:

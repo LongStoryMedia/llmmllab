@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from models import Model, ModelProfile
 from runner.pipelines.llamacpp import BaseLlamaCppPipeline
+from utils.message_conversion import extract_text_from_base_message
 
 
 class Qwen3Moe(BaseLlamaCppPipeline):
@@ -47,29 +48,6 @@ class Qwen3Moe(BaseLlamaCppPipeline):
         )
         return base_params
 
-    def _extract_text_content(self, content) -> str:
-        """
-        Extract text content from either string or multimodal list format.
-        
-        LangChain messages can have content as:
-        - str: Simple text content
-        - List[Dict]: Multimodal content with 'type' and 'text'/'image_url' fields
-        
-        For text-only models like Qwen3-Coder, we need to extract just the text.
-        """
-        if isinstance(content, str):
-            return content
-        elif isinstance(content, list):
-            # Extract text from multimodal format
-            text_parts = []
-            for part in content:
-                if isinstance(part, dict) and part.get("type") == "text":
-                    text_parts.append(part.get("text", ""))
-            return " ".join(text_parts)
-        else:
-            # Fallback: convert to string
-            return str(content)
-
     def _format_messages_for_llama(self, messages: List) -> List[Dict[str, str]]:
         """Override to ensure proper text extraction for text-only models."""
         from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
@@ -77,8 +55,8 @@ class Qwen3Moe(BaseLlamaCppPipeline):
         llama_messages = []
 
         for message in messages:
-            # Extract text content properly for each message type
-            text_content = self._extract_text_content(message.content)
+            # Use consolidated utility to extract text content from BaseMessage
+            text_content = extract_text_from_base_message(message)
             
             if isinstance(message, SystemMessage):
                 llama_messages.append({"role": "system", "content": text_content})
