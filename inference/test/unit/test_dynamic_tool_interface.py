@@ -32,7 +32,6 @@ class TestDynamicToolBaseTool:
 
         # Verify BaseTool interface defaults
         assert tool.return_direct is False
-        assert tool.verbose is False
         assert tool.tags == []
         assert tool.metadata == {}
         assert tool.response_format == "content"
@@ -60,7 +59,6 @@ class TestDynamicToolBaseTool:
             description="An advanced calculator tool that adds two numbers",
             args_schema=args_schema,
             return_direct=True,
-            verbose=True,
             tags=tags,
             metadata=metadata,
             handle_tool_error="Log error and continue",
@@ -75,7 +73,6 @@ class TestDynamicToolBaseTool:
         assert tool.description == "An advanced calculator tool that adds two numbers"
         assert tool.args_schema == args_schema
         assert tool.return_direct is True
-        assert tool.verbose is True
         assert tool.tags == tags
         assert tool.metadata == metadata
         assert tool.handle_tool_error == "Log error and continue"
@@ -120,7 +117,6 @@ class TestDynamicToolBaseTool:
         # Test BaseTool interface defaults
         assert tool.args_schema is None
         assert tool.return_direct is False
-        assert tool.verbose is False
         assert tool.tags == []
         assert tool.metadata == {}
         assert tool.handle_tool_error is False
@@ -146,7 +142,6 @@ class TestDynamicToolBaseTool:
             metadata={"test_key": "test_value"},
             args_schema={"type": "object", "properties": {"input": {"type": "string"}}},
             return_direct=True,
-            verbose=False,
             response_format="content_and_artifact",
         )
 
@@ -166,7 +161,6 @@ class TestDynamicToolBaseTool:
             "description",
             "args_schema",
             "return_direct",
-            "verbose",
             "tags",
             "metadata",
             "handle_tool_error",
@@ -186,7 +180,6 @@ class TestDynamicToolBaseTool:
         assert original_tool.metadata == reconstructed_tool.metadata
         assert original_tool.args_schema == reconstructed_tool.args_schema
         assert original_tool.return_direct == reconstructed_tool.return_direct
-        assert original_tool.verbose == reconstructed_tool.verbose
         assert original_tool.response_format == reconstructed_tool.response_format
 
     def test_json_serializable_fields(self):

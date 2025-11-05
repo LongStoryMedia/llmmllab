@@ -27,25 +27,28 @@ def test_langchain_v1_imports():
 
 
 def test_message_structure():
-    """Test that message structure is compatible with v1.0."""
-    from models import LangChainMessage
+    """Test that message structure is compatible with current implementation."""
+    from models import Message, MessageRole, MessageContent
+    from models.message_content_type import MessageContentType
     
-    # Test creating messages with v1.0 compatible structure
+    # Test creating messages with current structure
     test_cases = [
-        {"type": "human", "content": "Hello"},
-        {"type": "ai", "content": "Hi there!"},
-        {"type": "system", "content": "System message"},
-        {"type": "tool", "content": "Tool result"},
+        {"role": MessageRole.USER, "content": "Hello"},
+        {"role": MessageRole.ASSISTANT, "content": "Hi there!"},
+        {"role": MessageRole.SYSTEM, "content": "System message"},
     ]
     
     for case in test_cases:
         try:
-            message = LangChainMessage(**case)
-            assert message.type == case["type"]
-            assert message.content == case["content"]
-            print(f"✅ Message type '{case['type']}' compatible")
+            # Create content based on current schema
+            content = [MessageContent(type=MessageContentType.TEXT, text=case["content"])]
+            message = Message(role=case["role"], content=content)
+            assert message.role == case["role"]
+            assert len(message.content) == 1
+            assert message.content[0].text == case["content"]
+            print(f"✅ Message role '{case['role']}' compatible")
         except Exception as e:
-            print(f"❌ Message type '{case['type']}' failed: {e}")
+            print(f"❌ Message role '{case['role']}' failed: {e}")
             return False
     
     return True

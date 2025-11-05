@@ -47,7 +47,7 @@ class IntelligentOOMRecovery:
     - Persistent storage of training data for cross-session learning
     """
 
-    def __init__(self, data_dir: str = "/tmp/oom_recovery_data") -> None:
+    def __init__(self, data_dir: str = "/app/oom_recovery_data") -> None:
         self.logger = llmmllogger.bind(component="IntelligentOOMRecovery")
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
