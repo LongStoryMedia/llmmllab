@@ -24,7 +24,7 @@ from langchain.tools import ToolRuntime
 from langchain.chat_models import BaseChatModel
 from runner import pipeline_factory
 from models import ModelProfileType, PipelinePriority
-from utils import extract_message_text
+from utils import extract_text_from_message
 from utils.model_profile import get_model_profile
 from utils.logging import llmmllogger
 from utils.message_conversion import lc_message_to_message
@@ -84,9 +84,7 @@ async def summarization(
             # Since run_pipeline is not available, use the pipeline directly
             # This is a simplified approach that should work with the pipeline
             result = await llm.ainvoke(summary_prompt)
-            summary_text = (
-                extract_message_text(lc_message_to_message(result)) if result else ""
-            )
+            summary_text = extract_text_from_message(result) if result else ""
 
             if summary_text:
                 # Create response message for the conversation

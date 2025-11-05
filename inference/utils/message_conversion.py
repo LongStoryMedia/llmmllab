@@ -33,6 +33,8 @@ from .tool_call_extraction import (
 
 logger = llmmllogger.bind(component="message_conversion")
 
+MessageInput = Union[str, Message, List[Union[str, Message]], List[str], List[Message]]
+
 
 def message_to_lc_message(message: Message) -> BaseMessage:
     """Convert a Message object to a LangChain BaseMessage, preserving multimodal content."""
@@ -199,48 +201,50 @@ def convert_lc_message_content_to_message_format(
     return content
 
 
-def extract_text_from_message(message: Message) -> str:
-    """Extract text content from a Message object."""
-    if not message.content:
-        return ""
+def extract_text_from_message(message: Union[Message, BaseMessage]) -> str:
+    """
+    Extract text content from either a Message object or LangChain BaseMessage.
 
-    text_parts = []
-    for content in message.content:
-        if isinstance(content, MessageContent):
-            if content.type == MessageContentType.TEXT and content.text:
-                text_parts.append(content.text)
-        elif isinstance(content, dict):
-            # Handle dictionary format
-            if content.get("type") == "text" and content.get("text"):
-                text_parts.append(content["text"])
-        else:
-            # Fallback for other types
-            text_str = str(content)
-            if text_str:
-                text_parts.append(text_str)
+    This is the unified function that handles both message types.
+    """
+    if isinstance(message, BaseMessage):
+        # Handle LangChain BaseMessage
+        if not hasattr(message, "content"):
+            return ""
 
-    return "\n".join(text_parts) if text_parts else ""
+        content = message.content
 
+        # Handle multimodal content
+        if isinstance(content, list):
+            text_parts = []
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    text_parts.append(item.get("text", ""))
+                elif isinstance(item, str):
+                    text_parts.append(item)
+            return "".join(
+                text_parts
+            )  # Fixed: removed \n join that was causing newline issues
 
-def extract_text_from_lc_message(base_message: BaseMessage) -> str:
-    """Extract text content from a LangChain BaseMessage."""
-    if not hasattr(base_message, "content"):
-        return ""
+        # Handle simple string content
+        return str(content) if content else ""
 
-    content = base_message.content
-
-    # Handle multimodal content
-    if isinstance(content, list):
+    else:
+        # Handle Message object
         text_parts = []
-        for item in content:
-            if isinstance(item, dict) and item.get("type") == "text":
-                text_parts.append(item.get("text", ""))
-            elif isinstance(item, str):
-                text_parts.append(item)
-        return "\n".join(text_parts)
-
-    # Handle simple string content
-    return str(content) if content else ""
+        for content in message.content:
+            # Handle both MessageContent objects and dictionaries
+            if isinstance(content, dict):
+                # Handle dictionary format: {'type': 'text', 'text': 'content'}
+                if content.get("type") == "text" and content.get("text"):
+                    text_parts.append(content["text"])
+            else:
+                # Handle MessageContent object format
+                if hasattr(content, "type") and hasattr(content, "text"):
+                    if content.type == MessageContentType.TEXT and content.text:
+                        text_parts.append(content.text)
+        # Fixed: use space join instead of newline to prevent character separation
+        return "".join(text_parts)
 
 
 def get_most_recent_user_message_text(messages: List[BaseMessage]) -> str:
@@ -251,17 +255,22 @@ def get_most_recent_user_message_text(messages: List[BaseMessage]) -> str:
     # Look for the most recent user message
     for msg in reversed(messages):
         if isinstance(msg, HumanMessage):
-            return extract_text_from_lc_message(msg)
+            return extract_text_from_message(msg)
 
     # Fallback: if no user message found, use the last message
     if messages:
-        return extract_text_from_lc_message(messages[-1])
+        return extract_text_from_message(messages[-1])
 
     return ""
 
 
 def create_text_message_content(text: str) -> List[MessageContent]:
-    """Create a list containing a single MessageContent object with text content."""
+    """
+    Create a list containing a single MessageContent object with text content.
+
+    This is the unified function for creating text message content.
+    Replaces: convert_string_to_message_content
+    """
     return [MessageContent(type=MessageContentType.TEXT, text=text, url=None)]
 
 

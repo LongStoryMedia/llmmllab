@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from models import Model, ModelProfile
 from runner.pipelines.llamacpp import BaseLlamaCppPipeline
-from utils.message_conversion import extract_text_from_lc_message
+from utils.message_conversion import extract_text_from_message
 
 
 class Qwen3Moe(BaseLlamaCppPipeline):
@@ -61,7 +61,7 @@ class Qwen3Moe(BaseLlamaCppPipeline):
 
         for message in messages:
             # Use consolidated utility to extract text content from BaseMessage
-            text_content = extract_text_from_lc_message(message)
+            text_content = extract_text_from_message(message)
 
             if isinstance(message, SystemMessage):
                 llama_messages.append({"role": "system", "content": text_content})

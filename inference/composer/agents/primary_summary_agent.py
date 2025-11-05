@@ -19,7 +19,7 @@ from models import (
 )
 from runner import PipelineFactory
 from composer.core.errors import NodeExecutionError
-from utils.message import extract_message_text
+from utils.message_conversion import extract_text_from_message
 from .base_agent import BaseAgent
 
 if TYPE_CHECKING:
@@ -162,7 +162,7 @@ class PrimarySummaryAgent(BaseAgent[str]):
 
             # Create conversation text with primary focus on progression
             conversation_text = "\n".join(
-                [f"{msg.role}: {extract_message_text(msg)}" for msg in messages]
+                [f"{msg.role}: {extract_text_from_message(msg)}" for msg in messages]
             )
 
             prompt = await self._create_primary_conversation_prompt(
@@ -322,7 +322,7 @@ Focus on the logical progression and evolution of topics and ideas throughout th
                 priority=PipelinePriority.NORMAL,
             ):
                 if chunk.message and chunk.message.content:
-                    response_chunks.append(extract_message_text(chunk.message))
+                    response_chunks.append(extract_text_from_message(chunk.message))
 
             return "".join(response_chunks)
 

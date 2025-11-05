@@ -25,7 +25,6 @@ from models import (
 )
 from composer.core.errors import IntentAnalysisError
 from utils.message_conversion import (
-    extract_text_from_lc_message,
     extract_text_from_message,
     messages_to_lc_messages,
     normalize_message_input,
@@ -103,8 +102,6 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
         user_query = extract_text_from_message(messages[-1]) if messages else ""
 
         # DEBUG: Log the exact user query being analyzed
-        self.logger.info(f"🔍 DEBUG_USER_QUERY: '{user_query}'")
-
         # Build available tools context
         available_tools_context = ""
         if available_static_tools:

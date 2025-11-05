@@ -8,7 +8,7 @@ key point extraction, and source attribution.
 from typing import TYPE_CHECKING
 
 from composer.graph.state import WorkflowState
-from utils import extract_message_text
+from utils import extract_text_from_message
 from utils.logging import llmmllogger
 
 
@@ -46,7 +46,7 @@ class SearchSummaryNode:
             # Extract search results and query
             search_results = state.web_search_results
             query = state.search_query or (
-                extract_message_text(state.current_user_message)
+                extract_text_from_message(state.current_user_message)
                 if state.current_user_message
                 else None
             )

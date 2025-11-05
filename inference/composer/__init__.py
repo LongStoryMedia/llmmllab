@@ -70,7 +70,7 @@ async def get_or_init_composer_service() -> ComposerService:
     return _composer_service
 
 
-async def compose_workflow(user_id: str) -> "CompiledStateGraph":
+async def compose_workflow(user_id: str) -> CompiledStateGraph:
     """
     Compose a workflow for the given user and conversation messages.
 

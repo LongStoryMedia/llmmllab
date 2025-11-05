@@ -26,8 +26,6 @@ from langchain_core.messages import BaseMessage
 from langgraph.graph.state import CompiledStateGraph
 
 from models import (
-    MessageContent,
-    MessageContentType,
     MessageRole,
     NodeMetadata,
     ModelProfile,
@@ -38,17 +36,13 @@ from models import (
 from runner import PipelineFactory
 from utils.logging import llmmllogger
 from utils.response import create_streaming_chunk, create_error_response
-from utils.message import extract_message_text, MessageInput
 from utils.message_conversion import (
     normalize_message_input,
     messages_to_lc_messages,
     lc_message_to_message,
+    MessageInput,
+    extract_text_from_message,
 )
-from utils.tool_call_types import (
-    tool_call_request_to_execution_result,
-    extract_tool_calls_as_models,
-)
-from utils.tool_call_extraction import extract_tool_calls_from_langchain_message
 from composer.core.errors import NodeExecutionError
 
 
@@ -316,7 +310,7 @@ The current date is {current_date}. While this is likely past your training data
 
         for msg in msgs:
             if msg.role == MessageRole.SYSTEM:
-                system_prompt += f"\n\n{extract_message_text(msg)}"
+                system_prompt += f"\n\n{extract_text_from_message(msg)}"
             else:
                 convo.append(msg)
 
@@ -522,7 +516,7 @@ The current date is {current_date}. While this is likely past your training data
 
                 for message in normalized_messages:
                     if message.content:
-                        text_list.append(extract_message_text(message))
+                        text_list.append(extract_text_from_message(message))
 
                 if not text_list:
                     return []

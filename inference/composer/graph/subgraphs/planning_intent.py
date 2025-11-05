@@ -33,9 +33,9 @@ from models import (
     TodoItem,
     Tool,
 )
-from composer.graph.state import WorkflowState
+from composer.graph.state import WorkflowState, assemble_context_messages
 from composer.agents.classifier_agent import ClassifierAgent
-from utils import extract_message_text
+from utils.message_conversion import extract_text_from_message
 from utils.logging import llmmllogger
 from utils.message_conversion import messages_to_lc_messages, lc_message_to_message
 
@@ -136,7 +136,9 @@ class PlanningIntentSubgraph:
 
         if messages:
             last_message = messages[-1]
-            content = extract_message_text(lc_message_to_message(last_message)).lower()
+            content = extract_text_from_message(
+                lc_message_to_message(last_message)
+            ).lower()
 
             # Keyword-based complexity indicators
             technical_keywords = [
@@ -297,7 +299,9 @@ class PlanningIntentSubgraph:
             if messages:
                 for msg in reversed(messages):
                     if isinstance(msg, HumanMessage):
-                        user_message = extract_message_text(lc_message_to_message(msg))
+                        user_message = extract_text_from_message(
+                            lc_message_to_message(msg)
+                        )
                         break
 
             # Generate todos based on intent analysis - simplified approach
@@ -427,9 +431,9 @@ class PlanningIntentSubgraph:
         self, main_state: WorkflowState
     ) -> PlanningIntentState:
         """Transform main WorkflowState to PlanningIntentState with proper typing."""
-        messages = main_state.messages[-5:] if main_state.messages else []
-
-        langchain_messages = messages_to_lc_messages(messages)
+        langchain_messages = messages_to_lc_messages(
+            assemble_context_messages(main_state)
+        )
 
         # Get static tools with proper typing
         static_tools: List[Tool] = getattr(main_state, "static_tools", [])

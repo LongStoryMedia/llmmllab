@@ -11,7 +11,6 @@ from typing import List
 from composer.agents.chat_agent import ChatAgent
 from models import (
     ChatResponse,
-    LangChainMessage,
     ModelProfile,
     PipelinePriority,
     Message,
@@ -83,15 +82,6 @@ def create_test_chat_agent(
     )
 
 
-def create_test_langchain_messages() -> List[LangChainMessage]:
-    """Create test LangChain messages."""
-    return [
-        LangChainMessage(type="human", content="Hello, how are you?"),
-        LangChainMessage(type="ai", content="I'm doing well, thank you!"),
-        LangChainMessage(type="human", content="What can you help me with?"),
-    ]
-
-
 def create_test_chat_response(include_tool_calls: bool = False) -> ChatResponse:
     """Create a test ChatResponse object."""
     tool_calls = None
@@ -137,7 +127,6 @@ class TestChatAgent:
             profile=profile,
             node_metadata=node_metadata,
             priority=PipelinePriority.HIGH,
-            stream=True,
         )
 
         # Verify initialization
@@ -317,16 +306,14 @@ class TestChatAgent:
 
             # Execute
             messages = create_test_langchain_messages()
-            result = await agent.chat_completion(
-                messages, "test-user", circuit_breaker=circuit_breaker
-            )
+            result = await agent.chat_completion(messages)
 
             # Verify circuit breaker was passed to pipeline factory
             pipeline_factory.pipeline.assert_called_once_with(
                 profile, ChatResponse, PipelinePriority.MEDIUM, circuit_breaker
             )
 
-    @patch("composer.agents.chat_agent.message_to_langchain_message")
+    @patch("composer.agents.chat_agent.message_to_lc_message")
     def test_convert_to_langchain_message(self, mock_convert):
         """Test message conversion to LangChain format."""
         # Setup
@@ -365,7 +352,7 @@ class TestChatAgent:
         assert "No response generated" in result.content
 
     @pytest.mark.asyncio
-    @patch("composer.agents.chat_agent.message_to_langchain_message")
+    @patch("composer.agents.chat_agent.message_to_lc_message")
     @patch("runner.run_pipeline")
     async def test_chat_completion_with_conversion(
         self, mock_run_pipeline, mock_convert

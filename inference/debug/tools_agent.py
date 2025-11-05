@@ -20,7 +20,7 @@ from composer.agents import ChatAgent
 from composer.tools.registry import ToolRegistry
 from composer.graph.subgraphs import ToolsAgentSubgraph
 from composer.graph.state import ToolsState
-from composer.utils.conversion import convert_messages_to_base_langchain
+from utils.message_conversion import messages_to_lc_messages
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="test_tools_agent_subgraph")
@@ -90,7 +90,7 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
     ]
 
     # Convert to LangChain core messages for ToolsState
-    langchain_messages = convert_messages_to_base_langchain(test_messages)
+    langchain_messages = messages_to_lc_messages(test_messages)
     logger.info(
         f"📝 Converted {len(test_messages)} messages to {len(langchain_messages)} LangChain messages"
     )

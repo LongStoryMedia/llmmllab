@@ -8,11 +8,12 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 """
 
 import json
-from typing import AsyncGenerator, Any, Dict, List
+from typing import AsyncGenerator, Any, Dict, List, cast
 from typing_extensions import TypedDict
 from pydantic import BaseModel
 
 from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables.schema import StandardStreamEvent
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -170,21 +171,22 @@ async def chat_completion(
                     config=config,
                     version="v2",
                 ):
-                    events.append(event)
+                    evt = cast(StandardStreamEvent, event)
+                    events.append(evt)
+                    event_type = evt.get("event", "")
+                    event_data = evt.get("data", {})
 
-                    # Handle both dict and object event formats
-                    if isinstance(event, dict):
-                        event_type = event.get("event", "")
-                        event_data = event.get("data", {})
-                    else:
-                        # For non-dict events, try to get event type from attributes
-                        event_type = getattr(event, "event", "")
-                        event_data = getattr(event, "data", {})
+                    logger.debug(
+                        f"{event_type}: {serialize_event_data(event_data)}"
+                    )  # For logging purposes
 
                     # Process streaming events for immediate response
-                    if event_type == "on_chat_model_stream":
+                    if (
+                        event_type == "on_chat_model_stream"
+                        or event_type == "on_llm_stream"
+                    ):
                         # Handle streaming tokens
-                        chunk = event.get("data", {}).get("chunk")
+                        chunk = event_data.get("chunk")
                         if chunk:
                             # Extract content from chunk
                             if hasattr(chunk, "content"):
@@ -196,7 +198,18 @@ async def chat_completion(
 
                             if content:
                                 # Use streaming state manager to process chunk
+                                current_streaming_state = str(streaming_state.state)
+                                logger.debug(
+                                    f"Current streaming state: {current_streaming_state}"
+                                )
                                 chat_response = streaming_state.process_chunk(content)
+                                if (
+                                    str(streaming_state.state)
+                                    != current_streaming_state
+                                ):
+                                    logger.debug(
+                                        f"=================================================================\nUpdated streaming state: {streaming_state.state}\n================================================================="
+                                    )
                                 # logger.debug(
                                 #     f"Stream content: '{serialize_event_data(chat_response)}'"
                                 # )

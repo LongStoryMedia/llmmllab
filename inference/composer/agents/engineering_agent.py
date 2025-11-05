@@ -23,7 +23,7 @@ from models import (
     Tool,
 )
 from composer.core.errors import NodeExecutionError
-from utils.message import extract_message_text
+from utils.message_conversion import extract_text_from_message
 from .base_agent import BaseAgent
 
 
@@ -117,7 +117,7 @@ class EngineeringAgent(BaseAgent[str]):
 
             # Extract response text
             response_text = (
-                extract_message_text(result.message)
+                extract_text_from_message(result.message)
                 if result and result.message
                 else ""
             )
@@ -512,7 +512,7 @@ Code Solution:"""
 
                 # Extract response text
                 response_text = (
-                    extract_message_text(result.message)
+                    extract_text_from_message(result.message)
                     if result and result.message
                     else ""
                 )

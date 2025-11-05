@@ -17,7 +17,7 @@ from models import (
     Message,
 )
 from composer.graph.state import WorkflowState
-from utils.message import extract_message_text
+from utils.message_conversion import extract_text_from_message
 from utils.logging import llmmllogger
 
 
@@ -231,7 +231,7 @@ class MemoryCreationNode:
 
         for msg in messages:
             # Generate embeddings using the injected EmbeddingAgent
-            message_text = extract_message_text(msg)
+            message_text = extract_text_from_message(msg)
             embeddings = await self.embedding_agent.generate_embeddings([message_text])
 
             fragment = MemoryFragment(

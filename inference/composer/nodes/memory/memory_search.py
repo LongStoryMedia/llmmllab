@@ -6,7 +6,7 @@ Searches for similar memories using embeddings.
 from composer.agents.memory_agent import MemoryAgent
 from composer.graph.state import WorkflowState
 from composer.agents.embedding_agent import EmbeddingAgent
-from utils.message import extract_message_text
+from utils import extract_text_from_message
 from utils.logging import llmmllogger
 
 
@@ -61,7 +61,7 @@ class MemorySearchNode:
 
             # Extract message text and generate embeddings using injected EmbeddingAgent
             message = state.current_user_message
-            message_text = extract_message_text(message)
+            message_text = extract_text_from_message(message)
 
             # Use injected EmbeddingAgent to generate embeddings
             embeddings = await self.embedding_agent.generate_embeddings([message_text])

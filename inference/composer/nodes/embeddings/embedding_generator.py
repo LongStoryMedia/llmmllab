@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from composer.graph.state import WorkflowState
 from composer.core.errors import NodeExecutionError
-from utils import extract_message_text
+from utils import extract_text_from_message
 from utils.logging import llmmllogger
 
 if TYPE_CHECKING:
@@ -57,7 +57,7 @@ class EmbeddingGeneratorNode:
             texts = []
             for message in state.messages:
                 if hasattr(message, "content") and message.content:
-                    content = extract_message_text(message)
+                    content = extract_text_from_message(message)
                     if content and content.strip():
                         texts.append(content)
 

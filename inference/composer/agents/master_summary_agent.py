@@ -16,7 +16,7 @@ from models import (
 )
 from runner import PipelineFactory
 from composer.core.errors import NodeExecutionError
-from utils.message import extract_message_text
+from utils.message_conversion import extract_text_from_message
 from .base_agent import BaseAgent
 
 if TYPE_CHECKING:
@@ -400,9 +400,9 @@ Create a master synthesis that combines and synthesizes key information from all
                         f"{current_speaker}:\n" + "\n".join(current_block)
                     )
                 current_speaker = msg.role
-                current_block = [extract_message_text(msg)]
+                current_block = [extract_text_from_message(msg)]
             else:
-                current_block.append(extract_message_text(msg))
+                current_block.append(extract_text_from_message(msg))
 
         # Add the last block
         if current_block and current_speaker:
