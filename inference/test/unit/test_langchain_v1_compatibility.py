@@ -6,6 +6,7 @@ import pytest
 import asyncio
 from typing import List
 
+
 # Test imports are compatible with LangChain v1.0
 def test_langchain_v1_imports():
     """Test that all LangChain v1.0 imports work correctly."""
@@ -13,12 +14,12 @@ def test_langchain_v1_imports():
         # Core LangGraph imports (should remain unchanged)
         from langgraph.graph import StateGraph, END, add_messages
         from langgraph.graph.state import CompiledStateGraph
-        
+
         # LangChain v1.0 imports
         from langgraph.prebuilt import ToolNode  # Moved location in v1.0
         from langchain_core.tools import BaseTool
         from langchain_core.runnables import RunnableParallel, RunnableLambda
-        
+
         print("✅ All LangChain v1.0 imports successful")
         return True
     except ImportError as e:
@@ -30,18 +31,20 @@ def test_message_structure():
     """Test that message structure is compatible with current implementation."""
     from models import Message, MessageRole, MessageContent
     from models.message_content_type import MessageContentType
-    
+
     # Test creating messages with current structure
     test_cases = [
         {"role": MessageRole.USER, "content": "Hello"},
         {"role": MessageRole.ASSISTANT, "content": "Hi there!"},
         {"role": MessageRole.SYSTEM, "content": "System message"},
     ]
-    
+
     for case in test_cases:
         try:
             # Create content based on current schema
-            content = [MessageContent(type=MessageContentType.TEXT, text=case["content"])]
+            content = [
+                MessageContent(type=MessageContentType.TEXT, text=case["content"])
+            ]
             message = Message(role=case["role"], content=content)
             assert message.role == case["role"]
             assert len(message.content) == 1
@@ -50,7 +53,7 @@ def test_message_structure():
         except Exception as e:
             print(f"❌ Message role '{case['role']}' failed: {e}")
             return False
-    
+
     return True
 
 
@@ -59,24 +62,24 @@ def test_tool_node_v1_compatibility():
     try:
         from langgraph.prebuilt import ToolNode
         from langchain_core.tools import BaseTool
-        
+
         # Create a simple test tool
         class TestTool(BaseTool):
             name = "test_tool"
             description = "A test tool"
-            
+
             def _run(self, query: str) -> str:
                 return f"Test result for: {query}"
-            
+
             async def _arun(self, query: str) -> str:
                 return self._run(query)
-        
+
         # Test ToolNode creation with v1.0 features
         tools = [TestTool()]
-        
+
         # Test with handle_tool_errors parameter (v1.0 feature)
         tool_node = ToolNode(tools, handle_tool_errors=True)
-        
+
         print("✅ ToolNode v1.0 compatibility successful")
         return True
     except Exception as e:
@@ -90,22 +93,22 @@ async def test_workflow_state_compatibility():
     try:
         from composer.graph.state import WorkflowState
         from models import LangChainMessage
-        
+
         # Create test state
         state = WorkflowState(
             messages=[
                 LangChainMessage(type="human", content="Test message"),
-                LangChainMessage(type="ai", content="Test response")
+                LangChainMessage(type="ai", content="Test response"),
             ],
-            user_id="test_user"
+            user_id="test_user",
         )
-        
+
         # Test state operations
         assert len(state.messages) == 2
         assert state.messages[0].type == "human"
         assert state.messages[1].type == "ai"
         assert state.user_id == "test_user"
-        
+
         print("✅ WorkflowState v1.0 compatibility successful")
         return True
     except Exception as e:
@@ -120,16 +123,16 @@ def run_all_compatibility_tests():
         ("Message Structure", test_message_structure),
         ("ToolNode v1.0", test_tool_node_v1_compatibility),
     ]
-    
+
     async_tests = [
         ("WorkflowState Compatibility", test_workflow_state_compatibility),
     ]
-    
+
     print("🔍 Testing LangChain v1.0 Compatibility...")
     print("=" * 50)
-    
+
     results = {}
-    
+
     # Run sync tests
     for test_name, test_func in tests:
         print(f"\n📋 {test_name}")
@@ -139,7 +142,7 @@ def run_all_compatibility_tests():
         except Exception as e:
             print(f"❌ {test_name} failed with exception: {e}")
             results[test_name] = False
-    
+
     # Run async tests
     for test_name, test_func in async_tests:
         print(f"\n📋 {test_name}")
@@ -149,25 +152,25 @@ def run_all_compatibility_tests():
         except Exception as e:
             print(f"❌ {test_name} failed with exception: {e}")
             results[test_name] = False
-    
+
     # Summary
     print("\n" + "=" * 50)
     print("📊 Test Summary:")
-    
+
     passed = sum(1 for r in results.values() if r)
     total = len(results)
-    
+
     for test_name, result in results.items():
         status = "✅ PASS" if result else "❌ FAIL"
         print(f"  {status} {test_name}")
-    
+
     print(f"\n🎯 Overall: {passed}/{total} tests passed")
-    
+
     if passed == total:
         print("🎉 All LangChain v1.0 compatibility tests passed!")
     else:
         print("⚠️  Some compatibility issues found. See details above.")
-    
+
     return passed == total
 
 

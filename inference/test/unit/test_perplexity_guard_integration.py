@@ -19,24 +19,26 @@ from models.default_configs import DEFAULT_CIRCUIT_BREAKER_CONFIG
 from models.model_profile import ModelProfile
 
 
-def merge_circuit_breaker_configs(base_config: CircuitBreakerConfig, override_config: CircuitBreakerConfig = None) -> CircuitBreakerConfig:
+def merge_circuit_breaker_configs(
+    base_config: CircuitBreakerConfig, override_config: CircuitBreakerConfig = None
+) -> CircuitBreakerConfig:
     """
     Merge circuit breaker configurations, with override values taking precedence over base values.
     Only non-None values from override_config will replace base_config values.
     """
     if override_config is None:
         return base_config
-    
+
     # Get base config values as dict
     base_dict = base_config.model_dump()
     override_dict = override_config.model_dump()
-    
+
     # Merge: override non-None values replace base values
     merged_dict = base_dict.copy()
     for key, value in override_dict.items():
         if value is not None:
             merged_dict[key] = value
-    
+
     return CircuitBreakerConfig(**merged_dict)
 
 

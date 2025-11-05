@@ -19,24 +19,26 @@ from models.circuit_breaker_config import CircuitBreakerConfig
 from models.default_configs import DEFAULT_CIRCUIT_BREAKER_CONFIG
 
 
-def merge_circuit_breaker_configs(base_config: CircuitBreakerConfig, override_config: CircuitBreakerConfig = None) -> CircuitBreakerConfig:
+def merge_circuit_breaker_configs(
+    base_config: CircuitBreakerConfig, override_config: CircuitBreakerConfig = None
+) -> CircuitBreakerConfig:
     """
     Merge circuit breaker configurations, with override values taking precedence over base values.
     Only non-None values from override_config will replace base_config values.
     """
     if override_config is None:
         return base_config
-    
+
     # Get base config values as dict
     base_dict = base_config.model_dump()
     override_dict = override_config.model_dump()
-    
+
     # Merge: override non-None values replace base values
     merged_dict = base_dict.copy()
     for key, value in override_dict.items():
         if value is not None:
             merged_dict[key] = value
-    
+
     return CircuitBreakerConfig(**merged_dict)
 
 
@@ -54,13 +56,17 @@ class TestCircuitBreakerConfig:
         assert config.cooldown_period == 30.0
 
         # Test perplexity guard settings (currently disabled by default)
-        assert config.enable_perplexity_guard is False  # Updated to match current default
+        assert (
+            config.enable_perplexity_guard is False
+        )  # Updated to match current default
         assert config.perplexity_window == 40
         assert config.perplexity_threshold == 10.0
         assert config.avg_logprob_floor == -6.0
 
         # Test repetition detection settings (currently disabled by default)
-        assert config.enable_repetition_detection is False  # Updated to match current default
+        assert (
+            config.enable_repetition_detection is False
+        )  # Updated to match current default
         assert config.repetition_ngram == 6
         assert config.repetition_threshold == 6
         assert config.min_tokens_for_eval == 20
@@ -262,13 +268,11 @@ class TestPerplexityGuardScenarios:
         global_config = DEFAULT_CIRCUIT_BREAKER_CONFIG
         assert global_config.enable_perplexity_guard is False
 
-        # Profile specifically enables perplexity guard  
+        # Profile specifically enables perplexity guard
         profile_override = CircuitBreakerConfig(enable_perplexity_guard=True)
 
         # Merge should result in enabled perplexity guard
-        final_config = merge_circuit_breaker_configs(
-            global_config, profile_override
-        )
+        final_config = merge_circuit_breaker_configs(global_config, profile_override)
         assert final_config.enable_perplexity_guard is True
 
     def test_scenario_global_disabled_profile_enabled(self):
@@ -285,9 +289,7 @@ class TestPerplexityGuardScenarios:
         profile_override = CircuitBreakerConfig(enable_perplexity_guard=True)
 
         # Merge should result in enabled perplexity guard
-        final_config = merge_circuit_breaker_configs(
-            global_config, profile_override
-        )
+        final_config = merge_circuit_breaker_configs(global_config, profile_override)
         assert final_config.enable_perplexity_guard is True
 
     def test_scenario_global_enabled_profile_unset(self):
@@ -303,9 +305,7 @@ class TestPerplexityGuardScenarios:
         profile_override = CircuitBreakerConfig(base_timeout=180.0, max_retries=5)
 
         # Merge should keep global perplexity guard setting
-        final_config = merge_circuit_breaker_configs(
-            global_config, profile_override
-        )
+        final_config = merge_circuit_breaker_configs(global_config, profile_override)
         assert final_config.enable_perplexity_guard is False
         assert final_config.base_timeout == 180.0  # Override applied
         assert final_config.max_retries == 5  # Override applied

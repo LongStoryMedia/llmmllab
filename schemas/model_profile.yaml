@@ -48,6 +48,9 @@ properties:
   gpu_config:
     $ref: gpu_config.yaml
     description: Optional GPU configuration that overrides global settings
+  parameter_optimization:
+    $ref: parameter_optimization_config.yaml
+    description: Configuration for parameter optimization during model initialization
 required:
   - user_id
   - name

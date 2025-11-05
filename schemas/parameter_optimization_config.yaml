@@ -1,0 +1,94 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Parameter Optimization Configuration
+description: Configuration for optimizing LLM initialization parameters to find maximum values
+
+type: object
+
+properties:
+  enabled:
+    type: boolean
+    description: Enable parameter optimization to find maximum viable values
+    default: false
+
+  optimization_priority:
+    type: array
+    description: List of parameters to optimize in order of priority (highest first)
+    items:
+      type: string
+      enum: ["n_ctx", "n_batch", "n_ubatch", "n_gpu_layers"]
+    default: ["n_ctx", "n_batch"]
+
+  parameter_floors:
+    type: object
+    description: Minimum values for each parameter that must be maintained
+    properties:
+      n_ctx:
+        type: integer
+        minimum: 512
+        description: Minimum context size
+        default: 2048
+      n_batch:
+        type: integer
+        minimum: 8
+        description: Minimum batch size
+        default: 32
+      n_ubatch:
+        type: integer
+        minimum: 8
+        description: Minimum micro-batch size
+        default: 32
+      n_gpu_layers:
+        type: integer
+        minimum: 0
+        description: Minimum GPU layers (0 = CPU only)
+        default: 0
+    additionalProperties: false
+
+  search_strategy:
+    type: string
+    description: Strategy for finding optimal values
+    enum: ["binary_search", "exponential_backoff", "conservative_increment"]
+    default: "binary_search"
+
+  max_search_attempts:
+    type: integer
+    description: Maximum number of search attempts per parameter
+    minimum: 1
+    maximum: 20
+    default: 10
+
+  crash_prevention:
+    type: object
+    description: Settings to prevent container crashes during optimization
+    properties:
+      enable_preallocation_test:
+        type: boolean
+        description: Test memory allocation before full initialization
+        default: true
+      memory_buffer_mb:
+        type: integer
+        description: Memory buffer to reserve (MB) to prevent system OOM
+        minimum: 512
+        maximum: 8192
+        default: 1024
+      timeout_seconds:
+        type: integer
+        description: Maximum time to wait for initialization before considering it failed
+        minimum: 30
+        maximum: 300
+        default: 120
+      enable_graceful_degradation:
+        type: boolean
+        description: Fall back to smaller parameters on failure
+        default: true
+    additionalProperties: false
+
+required:
+  - enabled
+  - optimization_priority
+  - parameter_floors
+  - search_strategy
+  - max_search_attempts
+  - crash_prevention
+
+additionalProperties: false

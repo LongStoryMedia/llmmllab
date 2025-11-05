@@ -30,6 +30,7 @@ from models.prediction_features import PredictionFeatures
 from models.learned_limits import LearnedLimits
 from models.recovery_strategy import RecoveryStrategy
 from models.ml_model_performance import MLModelPerformance
+from models.parameter_optimization_config import ParameterOptimizationConfiguration
 from .hardware_manager import EnhancedHardwareManager
 
 
@@ -848,3 +849,419 @@ class IntelligentOOMRecovery:
         )
 
         return performance
+
+    async def test_memory_preallocation(
+        self, required_memory_mb: float, timeout_seconds: int = 60
+    ) -> bool:
+        """
+        Test memory pre-allocation to prevent container crashes.
+        
+        Returns True if allocation succeeds, False if it would likely cause OOM.
+        """
+        try:
+            import torch
+            import gc
+            
+            if not torch.cuda.is_available():
+                self.logger.warning("No CUDA available for memory preallocation test")
+                return True  # Assume CPU memory is sufficient
+            
+            # Convert to bytes
+            required_bytes = int(required_memory_mb * 1024 * 1024)
+            
+            # Check available memory first
+            total_available = 0
+            for device_idx in range(torch.cuda.device_count()):
+                try:
+                    mem_info = torch.cuda.mem_get_info(device_idx)
+                    total_available += mem_info[0]  # free memory
+                except Exception:
+                    continue
+            
+            if total_available < required_bytes * 1.2:  # Need 20% buffer
+                self.logger.warning(
+                    f"Insufficient memory for preallocation test: "
+                    f"required {required_memory_mb:.0f}MB, available {total_available/(1024*1024):.0f}MB"
+                )
+                return False
+            
+            # Try to allocate a test tensor (smaller portion to avoid actual OOM)
+            test_size = min(required_bytes // 4, 512 * 1024 * 1024)  # Max 512MB test
+            
+            try:
+                # Use timeout to prevent hanging
+                import signal
+                import threading
+                
+                allocation_result = [False]
+                error_result = [None]  # type: ignore
+                
+                def allocate_test():
+                    try:
+                        # Allocate test tensor
+                        device = torch.cuda.current_device()
+                        test_tensor = torch.zeros(
+                            test_size // 4, dtype=torch.float32, device=device
+                        )
+                        # Hold for a moment to test sustainability
+                        torch.cuda.synchronize()
+                        # Clean up immediately
+                        del test_tensor
+                        torch.cuda.empty_cache()
+                        allocation_result[0] = True
+                    except Exception as e:
+                        error_result[0] = e
+                
+                # Run allocation test with timeout
+                thread = threading.Thread(target=allocate_test)
+                thread.daemon = True
+                thread.start()
+                thread.join(timeout=timeout_seconds)
+                
+                if thread.is_alive():
+                    self.logger.warning("Memory preallocation test timed out")
+                    return False
+                
+                if error_result[0]:
+                    self.logger.warning(f"Memory preallocation test failed: {error_result[0]}")
+                    return False
+                
+                return allocation_result[0]
+                
+            except Exception as e:
+                self.logger.error(f"Error during memory preallocation test: {e}")
+                return False
+            finally:
+                # Ensure cleanup
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                
+        except Exception as e:
+            self.logger.error(f"Memory preallocation test failed: {e}")
+            return False
+
+    def optimize_parameters_for_hardware(
+        self,
+        base_params: OptimalParameters,
+        model_profile: ModelProfile,
+        hardware_manager: EnhancedHardwareManager,
+        optimization_config: Optional[ParameterOptimizationConfiguration] = None,
+    ) -> OptimalParameters:
+        """
+        Optimize parameters to find maximum values while respecting constraints.
+        
+        Uses binary search or other strategies to find the highest viable values
+        for specified parameters while maintaining floors for others.
+        """
+        if not optimization_config or not optimization_config.enabled:
+            return base_params
+        
+        self.logger.info(
+            f"🎯 Starting parameter optimization with strategy: {optimization_config.search_strategy}"
+        )
+        
+        # Start with base parameters as our working set
+        current_params = base_params.model_copy()
+        
+        # Apply floors to ensure we don't go below minimums
+        floors = optimization_config.parameter_floors
+        current_params.n_ctx = max(current_params.n_ctx, floors.n_ctx or 2048)
+        current_params.n_batch = max(current_params.n_batch, floors.n_batch or 32)
+        current_params.n_ubatch = max(current_params.n_ubatch, floors.n_ubatch or 32)
+        current_params.n_gpu_layers = max(current_params.n_gpu_layers, floors.n_gpu_layers or 0)
+        
+        # Get system constraints
+        gpu_stats = self.get_system_gpu_stats(hardware_manager)
+        
+        # Optimize each parameter in priority order
+        for param_name in optimization_config.optimization_priority:
+            if param_name in ["n_ctx", "n_batch", "n_ubatch", "n_gpu_layers"]:
+                self.logger.info(f"🔍 Optimizing parameter: {param_name}")
+                
+                optimized_value = self._optimize_single_parameter(
+                    param_name=param_name,
+                    current_params=current_params,
+                    optimization_config=optimization_config,
+                    gpu_stats=gpu_stats,
+                    hardware_manager=hardware_manager,
+                )
+                
+                # Update the parameter
+                setattr(current_params, param_name, optimized_value)
+                
+                self.logger.info(f"✅ Optimized {param_name}: {optimized_value}")
+        
+        self.logger.info(
+            f"🎯 Parameter optimization complete: "
+            f"n_ctx={current_params.n_ctx}, n_batch={current_params.n_batch}, "
+            f"n_ubatch={current_params.n_ubatch}, n_gpu_layers={current_params.n_gpu_layers}"
+        )
+        
+        return current_params
+
+    def _optimize_single_parameter(
+        self,
+        param_name: str,
+        current_params: OptimalParameters,
+        optimization_config: ParameterOptimizationConfiguration,
+        gpu_stats,
+        hardware_manager: EnhancedHardwareManager,
+    ) -> int:
+        """
+        Optimize a single parameter using the specified search strategy.
+        """
+        floors = optimization_config.parameter_floors
+        floor_value = getattr(floors, param_name, 0) or 0
+        current_value = getattr(current_params, param_name)
+        
+        if optimization_config.search_strategy == "binary_search":
+            return self._binary_search_parameter(
+                param_name, current_value, floor_value, current_params, 
+                optimization_config, gpu_stats, hardware_manager
+            )
+        elif optimization_config.search_strategy == "exponential_backoff":
+            return self._exponential_backoff_parameter(
+                param_name, current_value, floor_value, current_params,
+                optimization_config, gpu_stats, hardware_manager
+            )
+        else:  # conservative_increment
+            return self._conservative_increment_parameter(
+                param_name, current_value, floor_value, current_params,
+                optimization_config, gpu_stats, hardware_manager
+            )
+
+    def _binary_search_parameter(
+        self, param_name: str, start_value: int, floor_value: int, 
+        params: OptimalParameters, config: ParameterOptimizationConfiguration,
+        gpu_stats, hardware_manager: EnhancedHardwareManager
+    ) -> int:
+        """Binary search for optimal parameter value."""
+        
+        # Determine search bounds
+        low = max(start_value, floor_value)
+        
+        # Set reasonable upper bounds based on parameter type
+        if param_name == "n_ctx":
+            high = min(start_value * 4, 131072)  # Max 128K context
+        elif param_name == "n_batch":
+            high = min(start_value * 8, 2048)   # Max 2K batch
+        elif param_name == "n_ubatch":
+            high = min(start_value * 4, 512)    # Max 512 ubatch
+        elif param_name == "n_gpu_layers":
+            high = min(start_value + 50, 100)   # Reasonable layer limit
+        else:
+            high = start_value * 2
+        
+        best_value = low
+        attempts = 0
+        max_attempts = config.max_search_attempts
+        
+        while low <= high and attempts < max_attempts:
+            attempts += 1
+            mid = (low + high) // 2
+            
+            # Test this parameter value
+            test_params = params.model_copy()
+            setattr(test_params, param_name, mid)
+            
+            if self._test_parameter_configuration(
+                test_params, config.crash_prevention, hardware_manager
+            ):
+                best_value = mid
+                low = mid + 1  # Try higher values
+                self.logger.debug(f"✅ {param_name}={mid} succeeded, trying higher")
+            else:
+                high = mid - 1  # Try lower values
+                self.logger.debug(f"❌ {param_name}={mid} failed, trying lower")
+        
+        self.logger.info(f"Binary search for {param_name}: {attempts} attempts, best value: {best_value}")
+        return best_value
+
+    def _exponential_backoff_parameter(
+        self, param_name: str, start_value: int, floor_value: int,
+        params: OptimalParameters, config: ParameterOptimizationConfiguration,
+        gpu_stats, hardware_manager: EnhancedHardwareManager
+    ) -> int:
+        """Exponential backoff search for optimal parameter value."""
+        
+        current_value = max(start_value, floor_value)
+        best_value = current_value
+        attempts = 0
+        max_attempts = config.max_search_attempts
+        
+        # Try exponentially increasing values
+        multiplier = 1.5
+        
+        while attempts < max_attempts:
+            attempts += 1
+            test_value = int(current_value * (multiplier ** attempts))
+            
+            # Apply reasonable limits
+            if param_name == "n_ctx" and test_value > 131072:
+                break
+            elif param_name in ["n_batch", "n_ubatch"] and test_value > 2048:
+                break
+            elif param_name == "n_gpu_layers" and test_value > 100:
+                break
+            
+            test_params = params.model_copy()
+            setattr(test_params, param_name, test_value)
+            
+            if self._test_parameter_configuration(
+                test_params, config.crash_prevention, hardware_manager
+            ):
+                best_value = test_value
+                self.logger.debug(f"✅ {param_name}={test_value} succeeded")
+            else:
+                self.logger.debug(f"❌ {param_name}={test_value} failed, stopping exponential search")
+                break
+        
+        self.logger.info(f"Exponential backoff for {param_name}: {attempts} attempts, best value: {best_value}")
+        return best_value
+
+    def _conservative_increment_parameter(
+        self, param_name: str, start_value: int, floor_value: int,
+        params: OptimalParameters, config: ParameterOptimizationConfiguration,
+        gpu_stats, hardware_manager: EnhancedHardwareManager
+    ) -> int:
+        """Conservative increment search for optimal parameter value."""
+        
+        current_value = max(start_value, floor_value)
+        best_value = current_value
+        attempts = 0
+        max_attempts = config.max_search_attempts
+        
+        # Determine increment size based on parameter type
+        if param_name == "n_ctx":
+            increment = max(1024, current_value // 10)
+        elif param_name in ["n_batch", "n_ubatch"]:
+            increment = max(32, current_value // 4)
+        elif param_name == "n_gpu_layers":
+            increment = 5
+        else:
+            increment = max(1, current_value // 10)
+        
+        while attempts < max_attempts:
+            attempts += 1
+            test_value = current_value + (increment * attempts)
+            
+            # Apply reasonable limits
+            if param_name == "n_ctx" and test_value > 131072:
+                break
+            elif param_name in ["n_batch", "n_ubatch"] and test_value > 2048:
+                break
+            elif param_name == "n_gpu_layers" and test_value > 100:
+                break
+            
+            test_params = params.model_copy()
+            setattr(test_params, param_name, test_value)
+            
+            if self._test_parameter_configuration(
+                test_params, config.crash_prevention, hardware_manager
+            ):
+                best_value = test_value
+                self.logger.debug(f"✅ {param_name}={test_value} succeeded")
+            else:
+                self.logger.debug(f"❌ {param_name}={test_value} failed, stopping increment search")
+                break
+        
+        self.logger.info(f"Conservative increment for {param_name}: {attempts} attempts, best value: {best_value}")
+        return best_value
+
+    def _test_parameter_configuration(
+        self, test_params: OptimalParameters, crash_prevention,
+        hardware_manager: EnhancedHardwareManager
+    ) -> bool:
+        """
+        Test if a parameter configuration is viable without full model initialization.
+        
+        Uses memory estimation and preallocation tests to avoid container crashes.
+        """
+        try:
+            # Estimate memory requirements
+            estimated_memory_mb = self.estimate_memory_requirements(test_params)
+            
+            # Check if crash prevention preallocation test is enabled
+            if crash_prevention.enable_preallocation_test:
+                # Test memory preallocation with timeout
+                import asyncio
+                try:
+                    # Run the async test in a sync context
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # We're already in an async context, create a new thread
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(
+                                lambda: asyncio.run(
+                                    self.test_memory_preallocation(
+                                        estimated_memory_mb + crash_prevention.memory_buffer_mb,
+                                        crash_prevention.timeout_seconds
+                                    )
+                                )
+                            )
+                            success = future.result(timeout=crash_prevention.timeout_seconds + 10)
+                    else:
+                        success = loop.run_until_complete(
+                            self.test_memory_preallocation(
+                                estimated_memory_mb + crash_prevention.memory_buffer_mb,
+                                crash_prevention.timeout_seconds
+                            )
+                        )
+                except Exception as e:
+                    self.logger.warning(f"Memory preallocation test failed: {e}")
+                    success = False
+                
+                if not success:
+                    return False
+            
+            # Additional conservative checks
+            gpu_stats = self.get_system_gpu_stats(hardware_manager)
+            available_memory_mb = gpu_stats.total_available_memory
+            
+            # Require significant memory buffer (default 1GB + configured buffer)
+            required_memory_with_buffer = (
+                estimated_memory_mb + 
+                crash_prevention.memory_buffer_mb + 
+                1024  # Additional 1GB safety buffer
+            )
+            
+            if available_memory_mb < required_memory_with_buffer:
+                self.logger.debug(
+                    f"Insufficient memory: need {required_memory_with_buffer:.0f}MB, "
+                    f"available {available_memory_mb:.0f}MB"
+                )
+                return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.warning(f"Parameter configuration test failed: {e}")
+            return False
+
+    def estimate_memory_requirements(self, params: OptimalParameters) -> float:
+        """
+        Estimate memory requirements for given parameters.
+        
+        This is a rough estimation based on typical model memory patterns.
+        """
+        # Base model memory (varies by model size, but we'll use a conservative estimate)
+        base_memory_mb = 4000  # Assume ~4GB base model
+        
+        # Context memory scales with n_ctx
+        context_memory_mb = (params.n_ctx * 4 * 2) / (1024 * 1024)  # 4 bytes per token, 2x for safety
+        
+        # Batch memory scales with n_batch
+        batch_memory_mb = (params.n_batch * 512) / (1024 * 1024)  # Rough estimate
+        
+        # GPU layers reduce CPU memory but increase GPU memory
+        gpu_layer_factor = min(params.n_gpu_layers / 50.0, 1.0)  # Assume 50 layers max
+        
+        total_memory_mb = base_memory_mb + context_memory_mb + batch_memory_mb
+        
+        # Adjust for GPU vs CPU memory
+        if gpu_layer_factor > 0:
+            total_memory_mb *= (1.0 + gpu_layer_factor)  # GPU memory tends to be higher usage
+        
+        return total_memory_mb

@@ -65,6 +65,7 @@ try:
     from . import oom_recovery_attempt_data
     from . import optimal_parameters
     from . import pagination
+    from . import parameter_optimization_config
     from . import pipeline_execution_context
     from . import pipeline_execution_state
     from . import pipeline_metrics
@@ -184,6 +185,7 @@ __all__ = [
     'oom_recovery_attempt_data',
     'optimal_parameters',
     'pagination',
+    'parameter_optimization_config',
     'pipeline_execution_context',
     'pipeline_execution_state',
     'pipeline_metrics',
@@ -289,6 +291,7 @@ __all__ = [
     'ModelDetails',
     'ModelParameters',
     'ModelProfile',
+    'ParameterOptimizationConfiguration',
     'ModelProfileConfig',
     'ModelProfileImageSettings',
     'ModelProfileType',
@@ -298,6 +301,9 @@ __all__ = [
     'OOMRecoveryAttemptData',
     'OptimalParameters',
     'PaginationSchema',
+    'CrashPrevention',
+    'ParameterFloors',
+    'ParameterOptimizationConfiguration',
     'PipelineExecutionContext',
     'PipelineExecutionState',
     'PipelineMetrics',
@@ -514,6 +520,7 @@ from .model_parameters import (
 )
 from .model_profile import (
     ModelProfile,
+    ParameterOptimizationConfiguration,
 )
 from .model_profile_config import (
     ModelProfileConfig,
@@ -541,6 +548,11 @@ from .optimal_parameters import (
 )
 from .pagination import (
     PaginationSchema,
+)
+from .parameter_optimization_config import (
+    CrashPrevention,
+    ParameterFloors,
+    ParameterOptimizationConfiguration,
 )
 from .pipeline_execution_context import (
     PipelineExecutionContext,
