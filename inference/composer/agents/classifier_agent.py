@@ -5,7 +5,7 @@ Maps user requests to RequiredCapabilities and assesses computational complexity
 """
 
 import json
-from typing import List, TYPE_CHECKING, cast, Any
+from typing import List, TYPE_CHECKING, cast
 
 from pydantic import BaseModel
 from langchain.agents import create_agent
@@ -22,11 +22,6 @@ from models import (
     NodeMetadata,
     MessageContentType,
     Tool,
-    WorkflowType,
-    ComplexityLevel,
-    ComputationalRequirement,
-    TechnicalDomain,
-    ResponseFormat,
 )
 from composer.core.errors import IntentAnalysisError
 from composer.utils.conversion import (
@@ -149,26 +144,23 @@ DO NOT invent capabilities or requirements - only use those listed above.
 Tool Assessment Guidelines:
 - requires_tools: Set to true if the request needs external tools/APIs to be fulfilled (web search, file operations, calculations, etc.)
 - requires_custom_tools: Set to true if existing tools won't suffice and custom tool creation is needed
-- tool_complexity_score: CRITICAL - MUST be decimal between 0.0 and 1.0 (NEVER use integers like 2, 3, 4)
+- tool_complexity_score: Rate 0.0-1.0 based on how complex the required tooling would be (MUST be between 0.0 and 1.0 inclusive)
   * 0.0-0.3: Basic tools (search, simple calculations)  
   * 0.4-0.6: Moderate tools (data processing, API calls)
   * 0.7-1.0: Complex tools (custom integrations, specialized processing)
-  * EXAMPLES: 0.2, 0.5, 0.8 (NOT 2, 3, or any integer above 1)
 
-CRITICAL SCORING CONSTRAINTS - ALL NUMERIC FIELDS MUST BE DECIMALS 0.0-1.0:
-- domain_specificity: DECIMAL 0.0-1.0 (e.g., 0.3, 0.7) NOT integers
-- reusability_potential: DECIMAL 0.0-1.0 (e.g., 0.4, 0.9) NOT integers
-- confidence: DECIMAL 0.0-1.0 (e.g., 0.8, 0.6) NOT integers  
-- tool_complexity_score: DECIMAL 0.0-1.0 (e.g., 0.2, 0.5) NEVER 2, 3, 4, etc.
+Scoring Guidelines (ALL scores MUST be between 0.0 and 1.0 inclusive):
+- domain_specificity: 0.0-1.0 (0.0=general, 1.0=highly domain-specific)
+- reusability_potential: 0.0-1.0 (0.0=one-time use, 1.0=highly reusable)  
+- confidence: 0.0-1.0 (confidence in your analysis)
 
 Instructions:
 1. Decompose only if there are clearly separable sub-tasks; else one intent in the intents array.
 2. Each element in intents must follow the enumerations exactly.
 3. Omit response_format / technical_domain unless clearly implied.
 4. All boolean fields (requires_tools, requires_custom_tools) must be explicitly set.
-5. ALL NUMERIC SCORES MUST BE DECIMALS 0.0-1.0 (NEVER integers above 1).
-6. VALIDATE: tool_complexity_score, domain_specificity, reusability_potential, confidence ALL ≤ 1.0
-7. Output strictly valid JSON. No prose, no markdown, no comments.
+5. All required numeric fields must be provided as numbers (not strings).
+6. Output strictly valid JSON. No prose, no markdown, no comments.
 
 User Request: {user_query}
 
@@ -180,125 +172,19 @@ If multiple intents are needed, include additional objects in the intents array.
         msgs = []
         msgs.extend(messages[:-1])  # All but last message
         msgs.append(analysis_prompt)
-        
-        # TEMPORARY SIMPLE FIX: Return a hardcoded valid intent for testing
-        self.logger.warning("🔧 TEMPORARY: Using hardcoded intent response to bypass hanging issues")
-        
-        # Create a minimal valid intent that passes schema validation
-        hardcoded_intent = IntentAnalysis(
-            workflow_type=WorkflowType.ENGINEERING,
-            complexity_level=ComplexityLevel.SIMPLE,
-            required_capabilities=[],
-            domain_specificity=0.7,
-            reusability_potential=0.8,
-            confidence=0.9,
-            tool_complexity_score=0.1,
-            computational_requirements=ComputationalRequirement.LOW,
-            technical_domain=TechnicalDomain.SOFTWARE_DEVELOPMENT,
-            response_format=ResponseFormat.CODE_SOLUTION,
-            requires_tools=False,
-            requires_custom_tools=False,
+        result = await self.run(
+            messages=msgs,
+            tools=None,
+            priority=PipelinePriority.HIGH,
+            grammar=_Intnts,
         )
-        
-        try:
-            parsed_intents = _Intnts(intents=[hardcoded_intent])
-            
-        except Exception as error:
-            # Check if this is a tool_complexity_score validation error
-            if "tool_complexity_score" in str(error) and "Input should be less than or equal to 1" in str(error):
-                self.logger.warning(f"🔧 Detected tool_complexity_score validation error, attempting manual retry with correction...")
-                
-                # Re-run without grammar constraints to get raw text
-                try:
-                    result = await self.run(
-                        messages=msgs,
-                        tools=None,
-                        priority=PipelinePriority.HIGH,
-                        grammar=None,  # No grammar constraints
-                    )
-                    
-                    txt = extract_message_text(result.message) if result and result.message else ""
-                    if not txt.strip():
-                        raise IntentAnalysisError("Empty intent analysis response after retry")
-                    
-                    # Apply auto-correction to the raw text
-                    parsed_intents = self._parse_with_auto_correction(txt, _Intnts)
-                    self.logger.info("🔧 Successfully recovered from validation error with auto-correction")
-                    
-                except Exception as retry_error:
-                    self.logger.error(f"🔧 Auto-correction retry failed: {retry_error}")
-                    raise error  # Re-raise original error if retry fails
-            else:
-                # Not a tool_complexity_score error, re-raise
-                raise error
-        
-        # Extract intents list - schema constraints ensure valid values
-        if hasattr(parsed_intents, 'intents'):
-            typed_intents = cast(_Intnts, parsed_intents)
-            return typed_intents.intents
-        elif isinstance(parsed_intents, dict) and 'intents' in parsed_intents:
-            return parsed_intents['intents']
-        else:
-            self.logger.warning(f"Unexpected intents format: {type(parsed_intents)}")
-            return []
 
-    def _parse_with_auto_correction(self, txt: str, schema_type: type) -> Any:
-        """
-        Parse structured output with automatic correction for common validation errors.
-        
-        Specifically handles tool_complexity_score > 1.0 by normalizing to valid range.
-        """
-        import json
-        import re
-        from utils.grammar_generator import parse_structured_output
-        
-        try:
-            # First attempt normal parsing
-            return parse_structured_output(txt, schema_type)
-            
-        except Exception as error:
-            # Check if this is a tool_complexity_score validation error
-            if "tool_complexity_score" in str(error) and "Input should be less than or equal to 1" in str(error):
-                self.logger.warning(f"🔧 Detected tool_complexity_score validation error, attempting auto-correction...")
-                
-                try:
-                    # Try to extract the invalid value from error message
-                    match = re.search(r'input_value=(\d+)', str(error))
-                    if match:
-                        invalid_value = int(match.group(1))
-                        self.logger.info(f"🔧 Found invalid tool_complexity_score: {invalid_value}")
-                        
-                        # Parse the JSON and correct the invalid values
-                        try:
-                            json_data = json.loads(txt)
-                            
-                            # Fix tool_complexity_score values > 1.0 by normalizing
-                            if 'intents' in json_data:
-                                for intent in json_data['intents']:
-                                    if 'tool_complexity_score' in intent:
-                                        score = intent['tool_complexity_score']
-                                        if isinstance(score, (int, float)) and score > 1.0:
-                                            # Normalize: divide by 10 if > 1 (e.g., 3 -> 0.3, 5 -> 0.5)
-                                            corrected_score = min(score / 10.0, 1.0)
-                                            intent['tool_complexity_score'] = corrected_score
-                                            self.logger.info(f"🔧 Corrected tool_complexity_score from {score} to {corrected_score}")
-                            
-                            # Try parsing again with corrected data
-                            corrected_txt = json.dumps(json_data)
-                            result = parse_structured_output(corrected_txt, schema_type)
-                            self.logger.info("🔧 Successfully auto-corrected tool_complexity_score validation error")
-                            return result
-                            
-                        except json.JSONDecodeError as json_error:
-                            self.logger.warning(f"🔧 Failed to parse JSON for auto-correction: {json_error}")
-                        except Exception as correction_error:
-                            self.logger.warning(f"🔧 Auto-correction failed: {correction_error}")
-                
-                except Exception as auto_fix_error:
-                    self.logger.warning(f"🔧 Auto-correction attempt failed: {auto_fix_error}")
-            
-            # If auto-correction fails or it's a different error, re-raise original
-            raise error
+        txt = extract_message_text(result.message) if result and result.message else ""
+        if not txt.strip():
+            raise IntentAnalysisError("Empty intent analysis response")
+
+        intents = parse_structured_output(txt, _Intnts)
+        return intents.intents
 
     async def generate_title(
         self,

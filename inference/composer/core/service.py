@@ -30,10 +30,6 @@ from composer.graph.builder import GraphBuilder
 from composer.graph.cache import WorkflowCache
 from composer.graph.executor import WorkflowExecutor
 from utils.logging import llmmllogger
-from composer.utils.conversion import (
-    convert_messages_to_langchain,
-    message_to_langchain_message,
-)
 
 
 if TYPE_CHECKING:
@@ -181,18 +177,17 @@ class ComposerService:
             storage.summary
         ).get_summaries_for_conversation(conversation_id)
 
-        langchain_messages = convert_messages_to_langchain(messages)
+        # WorkflowState expects Message objects, not BaseMessage objects
+        # So we use the messages directly without LangChain conversion
 
-        current_user_message = message_to_langchain_message(
-            next(
-                (msg for msg in reversed(messages) if msg.role == MessageRole.USER),
-                Message(
-                    content=[
-                        MessageContent(type=MessageContentType.TEXT, text="", url=None)
-                    ],
-                    role=MessageRole.USER,
-                ),
-            )
+        current_user_message = next(
+            (msg for msg in reversed(messages) if msg.role == MessageRole.USER),
+            Message(
+                content=[
+                    MessageContent(type=MessageContentType.TEXT, text="", url=None)
+                ],
+                role=MessageRole.USER,
+            ),
         )
 
         # Load active todos for continuation context
@@ -202,9 +197,9 @@ class ComposerService:
 
         # Create the state with centralized user configuration and todo context
         state = WorkflowState(
-            messages=langchain_messages,
+            messages=messages,  # Use Message objects directly
             summaries=summaries,
-            current_user_message=current_user_message,
+            current_user_message=current_user_message,  # Use Message object directly
             user_id=user_id,
             user_config=user_config,
             conversation_id=conversation_id,

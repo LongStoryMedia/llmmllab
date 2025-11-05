@@ -16,7 +16,7 @@ from models.message import Message
 from models.message_role import MessageRole
 from models.message_content_type import MessageContentType
 from models.message_content import MessageContent
-from models.lang_chain_message import LangChainMessage
+
 from .logging import llmmllogger
 
 logger = llmmllogger.bind(module=__name__)

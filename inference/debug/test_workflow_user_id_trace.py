@@ -8,7 +8,7 @@ gets lost between initial state creation and memory tool execution.
 
 import asyncio
 from datetime import datetime, timezone
-from models import LangChainMessage
+from models import Message
 from composer.graph.state import WorkflowState
 from composer.core.service import ComposerService
 from utils.logging import llmmllogger

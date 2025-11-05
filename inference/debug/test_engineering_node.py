@@ -3,7 +3,7 @@ Simple test to verify engineering node gets user query in isolation
 """
 
 import asyncio
-from models import UserConfig, Message, LangChainMessage
+from models import UserConfig, Message
 from composer.nodes.agents.engineering import EngineeringAgentNode
 from composer.graph.state import WorkflowState
 from db import storage
@@ -37,9 +37,14 @@ async def test_engineering_node():
         # Create test query message
         test_query = "How can I implement JWT authentication in FastAPI with user registration and login endpoints?"
         
-        test_message = LangChainMessage(
-            content=test_query,
-            type="human"
+        from models import MessageRole, MessageContent, MessageContentType
+        test_message = Message(
+            role=MessageRole.USER,
+            content=[MessageContent(
+                type=MessageContentType.TEXT,
+                text=test_query,
+                url=None
+            )]
         )
         
         # Create test state with required fields for engineering node

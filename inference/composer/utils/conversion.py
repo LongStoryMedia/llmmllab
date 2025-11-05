@@ -12,7 +12,6 @@ from langchain_core.messages import (
 )
 from models import (
     Message,
-    LangChainMessage,
     MessageRole,
     MessageContent,
     MessageContentType,
@@ -53,70 +52,34 @@ def to_lc_message(message: Message) -> BaseMessage:
         return HumanMessage(content=text_content)
 
 
-def from_lc_message(lc_message: Union[BaseMessage, LangChainMessage]) -> Message:
-    """Convert a LangChain message or LangChainMessage to a Message object."""
+def from_lc_message(lc_message: BaseMessage) -> Message:
+    """Convert a LangChain BaseMessage to a Message object."""
 
-    # Handle generated LangChainMessage objects (from schemas)
-    if isinstance(lc_message, LangChainMessage):
-        # Use the type field to determine the role
-        message_type = lc_message.type.lower() if lc_message.type else ""
-
-        if message_type in ("ai", "assistant"):
-            role = MessageRole.ASSISTANT
-        elif message_type in ("human", "user"):
-            role = MessageRole.USER
-        elif message_type == "system":
-            role = MessageRole.SYSTEM
-        elif message_type == "tool":
-            # Tool messages are treated as system messages to preserve context
-            role = MessageRole.SYSTEM
-        else:
-            logger.warning(
-                f"Unknown LangChainMessage type: {lc_message.type}, defaulting to USER"
-            )
-            role = MessageRole.USER
-
-        # Extract content - LangChainMessage.content can be string or list
-        if isinstance(lc_message.content, str):
-            text_content = lc_message.content
-        elif isinstance(lc_message.content, list):
-            # For lists, we'll handle structured parsing below - use empty string as fallback
-            text_content = ""
-        else:
-            # Handle other types by converting to string
-            text_content = str(lc_message.content) if lc_message.content else ""
-
-    # Handle LangChain core BaseMessage objects
-    elif isinstance(lc_message, AIMessage):
+    # Handle LangChain BaseMessage objects
+    if isinstance(lc_message, AIMessage):
         role = MessageRole.ASSISTANT
-        text_content = "" if isinstance(lc_message.content, list) else (str(lc_message.content) if lc_message.content else "")
     elif isinstance(lc_message, HumanMessage):
         role = MessageRole.USER
-        text_content = "" if isinstance(lc_message.content, list) else (str(lc_message.content) if lc_message.content else "")
     elif isinstance(lc_message, SystemMessage):
         role = MessageRole.SYSTEM
-        text_content = "" if isinstance(lc_message.content, list) else (str(lc_message.content) if lc_message.content else "")
     elif isinstance(lc_message, ToolMessage):
         # Tool messages are treated as system messages to preserve tool output context
         role = MessageRole.SYSTEM
-        text_content = "" if isinstance(lc_message.content, list) else (str(lc_message.content) if lc_message.content else "")
     else:
         logger.warning(
             f"Unknown LangChain message type: {type(lc_message)}, defaulting to USER"
         )
         role = MessageRole.USER
 
-        # Extract content for unknown types
-        if hasattr(lc_message, "content"):
-            if isinstance(lc_message.content, str):
-                text_content = lc_message.content
-            elif isinstance(lc_message.content, list):
-                # For lists, we'll handle structured parsing below - use empty string as fallback
-                text_content = ""
-            else:
-                text_content = str(lc_message.content) if lc_message.content else ""
-        else:
-            text_content = str(lc_message)
+    # Extract content - handle both string and list content
+    if isinstance(lc_message.content, str):
+        text_content = lc_message.content
+    elif isinstance(lc_message.content, list):
+        # For lists, we'll handle structured parsing below - use empty string as fallback
+        text_content = ""
+    else:
+        # Handle other types by converting to string
+        text_content = str(lc_message.content) if lc_message.content else ""
 
     # Attempt structured parsing if lc_message.content is a list of dicts
     structured_contents: List[MessageContent] = []
@@ -156,93 +119,27 @@ def from_lc_message(lc_message: Union[BaseMessage, LangChainMessage]) -> Message
     )
 
 
-def message_to_langchain_message(msg: Message) -> LangChainMessage:
-    """Convert a Message object to a LangChainMessage object.
-
-    IMPORTANT: Preserve tool_calls so downstream tool processing
-    can handle them correctly.
-    """
-    content = []
-    for c in msg.content:
-        if c.type == MessageContentType.TEXT:
-            content.append({"type": "text", "text": c.text})
-        elif c.type == MessageContentType.IMAGE:
-            content.append({"type": "image_url", "image_url": {"url": c.url}})
-        else:
-            # Fallback to text representation for unknown content types
-            content.append({"type": "text", "text": str(c)})
-
-    # Determine message type from role
-    message_type = "human"  # Default
-    if hasattr(msg, "role") and msg.role:
-        role_value = msg.role.value if hasattr(msg.role, "value") else str(msg.role)
-        if role_value.lower() in ("assistant", "ai", "system"):
-            message_type = (
-                "ai" if role_value.lower() in ("assistant", "ai") else "system"
-            )
-
-    # Convert tool execution results to LangChain format (requests) if needed
-    # Note: Our Message.tool_calls are ToolExecutionResult objects (completed executions)
-    # LangChain expects tool_calls to be requests, but in practice this conversion
-    # is rarely needed since Messages typically don't contain outgoing tool calls
-    tool_calls_for_lc = None
-    if hasattr(msg, "tool_calls") and msg.tool_calls:
-        # This is unusual - typically only AI messages going TO LangChain would have tool_calls
-        logger.debug(
-            f"Converting {len(msg.tool_calls)} tool execution results to LangChain format"
-        )
-        tool_calls_for_lc = []
-        for tool_result in msg.tool_calls:
-            if hasattr(tool_result, "name") and hasattr(tool_result, "args"):
-                tool_calls_for_lc.append(
-                    {
-                        "name": tool_result.name,
-                        "args": tool_result.args,
-                        "id": getattr(tool_result, "execution_id", None),
-                    }
-                )
-
-    logger.info(
-        "Converting Message to LangChainMessage",
-        has_tool_calls=tool_calls_for_lc is not None,
-        tool_calls_count=len(tool_calls_for_lc) if tool_calls_for_lc else 0,
-        tool_calls_preview=(
-            str(tool_calls_for_lc)[:200] if tool_calls_for_lc else "None"
-        ),
-    )
-
-    langchain_msg = LangChainMessage(
-        content=content,
-        type=message_type,
-        tool_calls=tool_calls_for_lc,
-    )
-
-    logger.info(
-        "Created LangChainMessage",
-        lc_has_tool_calls=langchain_msg.tool_calls is not None,
-        lc_tool_calls_count=(
-            len(langchain_msg.tool_calls) if langchain_msg.tool_calls else 0
-        ),
-    )
-
-    return langchain_msg
+def message_to_langchain_message(msg: Message):
+    """DEPRECATED: Use utils.message_conversion.message_to_base_message instead."""
+    from utils.message_conversion import message_to_base_message
+    return message_to_base_message(msg)
 
 
 def langchain_message_to_message(
-    lc_msg: LangChainMessage, conversation_id: Optional[int] = None
+    lc_msg: BaseMessage, conversation_id: Optional[int] = None
 ) -> Message:
     """
-    Convert a LangChainMessage object to a Message object.
+    Convert a BaseMessage object to a Message object.
 
     Args:
-        lc_msg: LangChainMessage object to convert
+        lc_msg: BaseMessage object to convert
         conversation_id: Optional conversation ID for the Message
 
     Returns:
         Converted Message object
     """
     # Preserve structured multimodal content instead of collapsing to plain text.
-    # LangChainMessage.content may be a list of dicts like:
+    # BaseMessage.content may be a list of dicts like:
     # [{"type": "image_url", "image_url": {"url": "..."}}, {"type": "text", "text": "..."}]
     # Previous implementation flattened everything, losing image metadata; this breaks vision models.
 
@@ -304,7 +201,7 @@ def langchain_message_to_message(
 
     # Convert LangChain tool call requests to execution results if present
     tool_execution_results = None
-    if hasattr(lc_msg, "tool_calls") and lc_msg.tool_calls:
+    if isinstance(lc_msg, AIMessage) and hasattr(lc_msg, "tool_calls") and lc_msg.tool_calls:
         logger.debug(
             f"Converting {len(lc_msg.tool_calls)} LangChain tool calls to execution results"
         )
@@ -332,13 +229,13 @@ def langchain_message_to_message(
     )
 
 
-def convert_messages_to_langchain(messages: List[Message]) -> List[LangChainMessage]:
-    """Convert a list of Message objects to LangChainMessage objects."""
+def convert_messages_to_langchain(messages: List[Message]) -> List[BaseMessage]:
+    """Convert a list of Message objects to BaseMessage objects."""
     langchain_messages = []
 
     for msg in messages:
         if hasattr(msg, "content") and hasattr(msg, "role"):
-            # Convert from Message to LangChainMessage
+            # Convert from Message to BaseMessage
             langchain_messages.append(message_to_langchain_message(msg))
         else:
             # Assume already in correct format or convert to dict
@@ -390,38 +287,15 @@ def convert_base_langchain_to_messages(
 
 
 def convert_langchain_messages_to_messages(
-    lc_messages: List[LangChainMessage], conversation_id: Optional[int] = None
+    lc_messages: List[BaseMessage], conversation_id: Optional[int] = None
 ) -> List[Message]:
     """
-    Convert a list of LangChainMessage objects to Message objects.
-
-    Args:
-        lc_messages: List of LangChainMessage objects to convert
-        conversation_id: Optional conversation ID for all Message objects
-
-    Returns:
-        List of converted Message objects
+    DEPRECATED: Use utils.message_conversion.base_messages_to_messages instead.
+    
+    Convert a list of BaseMessage objects to Message objects.
     """
-    messages = []
-    for lc_msg in lc_messages:
-        if hasattr(lc_msg, "content") and hasattr(lc_msg, "type"):
-            # Convert from LangChainMessage to Message
-            messages.append(langchain_message_to_message(lc_msg, conversation_id))
-        else:
-            # Handle cases where the list might contain Message objects already
-            if hasattr(lc_msg, "content") and hasattr(lc_msg, "role"):
-                messages.append(lc_msg)
-            else:
-                # Try to create a Message from whatever we have
-                messages.append(
-                    Message(
-                        content=_text_to_message_content_list(str(lc_msg)),
-                        role=MessageRole.USER,
-                        conversation_id=conversation_id,
-                    )
-                )
-
-    return messages
+    from utils.message_conversion import base_messages_to_messages
+    return base_messages_to_messages(lc_messages, conversation_id)
 
 
 def normalize_message_input(

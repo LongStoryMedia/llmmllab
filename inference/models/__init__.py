@@ -37,7 +37,6 @@ try:
     from . import intent
     from . import intent_analysis
     from . import internal_config
-    from . import lang_chain_message
     from . import lang_graph_node_state
     from . import lang_graph_state
     from . import learned_limits
@@ -157,7 +156,6 @@ __all__ = [
     'intent',
     'intent_analysis',
     'internal_config',
-    'lang_chain_message',
     'lang_graph_node_state',
     'lang_graph_state',
     'learned_limits',
@@ -272,7 +270,6 @@ __all__ = [
     'Intent',
     'IntentAnalysis',
     'InternalConfig',
-    'LangChainMessage',
     'LangGraphNodeState',
     'LangGraphState',
     'LearnedLimits',
@@ -460,9 +457,6 @@ from .intent_analysis import (
 )
 from .internal_config import (
     InternalConfig,
-)
-from .lang_chain_message import (
-    LangChainMessage,
 )
 from .lang_graph_node_state import (
     LangGraphNodeState,

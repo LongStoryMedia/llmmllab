@@ -4,7 +4,7 @@ Test engineering agent with direct system message to bypass system prompt issues
 """
 
 import asyncio
-from models import UserConfig, Message, LangChainMessage
+from models import UserConfig, Message, MessageRole, MessageContent, MessageContentType
 from composer.nodes.agents.engineering import EngineeringAgentNode
 from composer.graph.state import WorkflowState
 from db import storage
@@ -39,14 +39,22 @@ async def test_engineering_with_system_message():
         test_query = "How can I implement JWT authentication in FastAPI with user registration and login endpoints?"
         
         # Add a system message first
-        system_message = LangChainMessage(
-            content="You are an expert engineering assistant. Answer the user's technical question directly with comprehensive code examples and practical implementation details. Do not ask for clarification - provide a complete solution.",
-            type="system",
+        system_message = Message(
+            role=MessageRole.SYSTEM,
+            content=[MessageContent(
+                type=MessageContentType.TEXT,
+                text="You are an expert engineering assistant. Answer the user's technical question directly with comprehensive code examples and practical implementation details. Do not ask for clarification - provide a complete solution.",
+                url=None
+            )]
         )
         
-        test_message = LangChainMessage(
-            content=test_query,
-            type="human",
+        test_message = Message(
+            role=MessageRole.USER,
+            content=[MessageContent(
+                type=MessageContentType.TEXT,
+                text=test_query,
+                url=None
+            )]
         )
         
         # Create mock intent classification - engineering node requires this

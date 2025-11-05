@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 from models import (
     Memory,
     MemoryFragment,
-    LangChainMessage,
     Summary,
     SearchTopicSynthesis,
     MemorySource,
@@ -101,7 +100,7 @@ class MemoryCreationNode:
     async def _create_memories(
         self,
         things_to_remember: List[
-            Union[Message, LangChainMessage, Summary, SearchTopicSynthesis]
+            Union[Message, Summary, SearchTopicSynthesis]
         ],
         conversation_id: int,
     ) -> List[Memory]:
@@ -109,7 +108,7 @@ class MemoryCreationNode:
         Create Memory objects from a mixed list of content sources.
 
         Args:
-            things_to_remember: List of Message, LangChainMessage, Summary, or SearchTopicSynthesis objects
+            things_to_remember: List of Message, Summary, or SearchTopicSynthesis objects
             user_id: User identifier for embedding generation
 
         Returns:
@@ -123,8 +122,6 @@ class MemoryCreationNode:
         for item in things_to_remember:
             if isinstance(item, Summary):
                 summaries.append(item)
-            elif isinstance(item, LangChainMessage):
-                messages.append(langchain_message_to_message(item))
             elif isinstance(item, Message):
                 messages.append(item)
             elif isinstance(item, SearchTopicSynthesis):

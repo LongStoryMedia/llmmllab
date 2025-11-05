@@ -19,7 +19,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode  # Keep for type hints if needed
 from langgraph.types import Command
 
-from models import LangChainMessage
+from models import Message
 from composer.graph.state import WorkflowState, ToolsState
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
@@ -28,6 +28,7 @@ from composer.utils.conversion import (
     convert_messages_to_langchain,
     to_lc_message,
 )
+from utils.message_conversion import messages_to_base_messages
 from composer.utils.tool_call_types import (
     LangChainToolCall,
     extract_tool_call_requests,
@@ -82,7 +83,7 @@ class ToolsAgentSubgraph:
 
                 # Check if last message has tool calls
                 if not isinstance(
-                    last_message, (AIMessage, LangChainMessage)
+                    last_message, AIMessage
                 ) or not has_tool_calls(last_message):
                     return state
 
@@ -228,7 +229,7 @@ class ToolsAgentSubgraph:
             raise
 
     def _extract_tool_call_requests_from_message(
-        self, msg: BaseMessage | LangChainMessage
+        self, msg: BaseMessage
     ) -> List[LangChainToolCall]:
         """
         Extract tool call requests from a message with strong typing.
@@ -236,22 +237,7 @@ class ToolsAgentSubgraph:
         Returns:
             List of LangChain tool call requests (what AI wants to call)
         """
-        if isinstance(msg, BaseMessage):
-            return extract_tool_call_requests(msg)
-
-        # Handle our LangChainMessage format
-        if hasattr(msg, "tool_calls") and msg.tool_calls:
-            validated_calls = []
-            for tc in msg.tool_calls:
-                if isinstance(tc, dict) and "name" in tc and "args" in tc:
-                    validated_calls.append(
-                        LangChainToolCall(
-                            name=tc["name"], args=tc["args"], id=tc.get("id")
-                        )
-                    )
-            return validated_calls
-
-        return []
+        return extract_tool_call_requests(msg)
 
     def _extract_previous_tool_call_requests(
         self, messages: List[BaseMessage]
@@ -344,57 +330,9 @@ class ToolsAgentSubgraph:
         """Transform main WorkflowState to minimal ToolsState for agent subgraph."""
         # Get recent messages for agent context and convert to LangChain core messages
         recent_messages = getattr(main_state, "messages", [])[-10:]
-        langchain_messages = []
-
-        for msg in recent_messages:
-            if hasattr(msg, "type") and hasattr(msg, "content"):
-                # Convert custom LangChainMessage to proper LangChain core message
-                if msg.type == "human":
-                    langchain_messages.append(HumanMessage(content=msg.content))
-                elif msg.type == "ai":
-                    # Check if this AI message has tool calls and convert properly
-                    tool_calls = []
-                    if hasattr(msg, "tool_calls") and msg.tool_calls:
-                        for tc in msg.tool_calls:
-                            if isinstance(tc, dict):
-                                tool_calls.append(
-                                    {
-                                        "name": tc.get("name", ""),
-                                        "args": tc.get("args", {}),
-                                        "id": tc.get("id", "unknown"),
-                                        "type": "tool_call",
-                                    }
-                                )
-                            else:
-                                # Handle other tool call formats
-                                tool_calls.append(
-                                    {
-                                        "name": getattr(tc, "name", ""),
-                                        "args": getattr(tc, "args", {}),
-                                        "id": getattr(tc, "id", "unknown"),
-                                        "type": "tool_call",
-                                    }
-                                )
-
-                    langchain_messages.append(
-                        AIMessage(
-                            content=msg.content,
-                            tool_calls=tool_calls if tool_calls else [],
-                        )
-                    )
-                elif msg.type == "tool":
-                    langchain_messages.append(
-                        ToolMessage(
-                            content=msg.content,
-                            tool_call_id=getattr(msg, "id", None) or "unknown",
-                        )
-                    )
-                else:
-                    # Default to human message for unknown types
-                    langchain_messages.append(HumanMessage(content=str(msg.content)))
-            else:
-                # Already a proper LangChain message, use as-is
-                langchain_messages.append(msg)
+        
+        # Use the consolidated message conversion utility to convert Message objects to BaseMessage objects
+        langchain_messages = messages_to_base_messages(recent_messages)
 
         # Pass full user_config object for tool access (tools need full config objects)
         user_config = getattr(main_state, "user_config", None)
@@ -436,23 +374,19 @@ class ToolsAgentSubgraph:
             for i, msg in enumerate(agent_messages):
                 if i >= original_count:  # This is a new message from agent
                     if isinstance(msg, (AIMessage, ToolMessage)):
-                        # Convert to LangChainMessage format for main state
+                        # Convert to Message format for main state
                         logger.info(
-                            f"🔄 transform_to_main_state: Converting {type(msg).__name__} with type='{msg.type}' to LangChainMessage"
+                            f"🔄 transform_to_main_state: Converting {type(msg).__name__} to Message"
                         )
-                        lang_chain_msg = LangChainMessage(
-                            content=msg.content,
-                            type=msg.type,
-                            name=getattr(msg, "name", None),
-                            id=getattr(msg, "id", None)
-                            or getattr(msg, "tool_call_id", None),
-                            additional_kwargs=getattr(msg, "additional_kwargs", {}),
-                            response_metadata=getattr(msg, "response_metadata", {}),
-                        )
-                        logger.info(
-                            f"🔄 transform_to_main_state: Created LangChainMessage with type='{lang_chain_msg.type}'"
-                        )
-                        new_messages.append(lang_chain_msg)
+                        # Convert BaseMessage to Message using existing utilities
+                        messages_list = convert_base_langchain_to_messages([msg])
+                        if messages_list:
+                            message_obj = messages_list[0]
+                            message_obj.conversation_id = getattr(main_state, "conversation_id", None)
+                            logger.info(
+                                f"🔄 transform_to_main_state: Created Message with role='{message_obj.role}'"
+                            )
+                            new_messages.append(message_obj)
 
             if new_messages:
                 updates["messages"] = main_messages + new_messages

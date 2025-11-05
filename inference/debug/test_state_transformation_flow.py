@@ -7,7 +7,7 @@ through the transform_to_tools_state conversion to verify where user_id gets los
 """
 
 import asyncio
-from models import LangChainMessage, UserConfig, CircuitBreakerConfig
+from models import Message, MessageRole, MessageContent, MessageContentType, UserConfig, CircuitBreakerConfig
 from composer.graph.state import WorkflowState, ToolsState
 from composer.graph.subgraphs.tools_agent import ToolsAgentSubgraph
 
@@ -17,10 +17,13 @@ def create_test_workflow_state() -> WorkflowState:
 
     # Create test messages
     messages = [
-        LangChainMessage(type="human", content="Hello, I want to retrieve my memories"),
-        LangChainMessage(
-            type="ai",
-            content="I'll help you retrieve your memories using the memory retrieval tool.",
+        Message(
+            role=MessageRole.USER,
+            content=[MessageContent(type=MessageContentType.TEXT, text="Hello, I want to retrieve my memories", url=None)]
+        ),
+        Message(
+            role=MessageRole.ASSISTANT,
+            content=[MessageContent(type=MessageContentType.TEXT, text="I'll help you retrieve your memories using the memory retrieval tool.", url=None)]
         ),
     ]
 
@@ -29,8 +32,9 @@ def create_test_workflow_state() -> WorkflowState:
         user_id="test-user-123",  # This should be passed through
         conversation_id=42,
         messages=messages,
-        current_user_message=LangChainMessage(
-            type="human", content="Hello, I want to retrieve my memories"
+        current_user_message=Message(
+            role=MessageRole.USER,
+            content=[MessageContent(type=MessageContentType.TEXT, text="Hello, I want to retrieve my memories", url=None)]
         ),
     )
 

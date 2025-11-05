@@ -12,7 +12,6 @@ from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
 from models import (
-    LangChainMessage,
     Memory,
     IntentAnalysis,
     TodoItem,
@@ -73,11 +72,11 @@ class WorkflowState(BaseModel):
     )
 
     current_user_message: Annotated[
-        Optional[LangChainMessage], lambda x, y: y if y is not None else x
+        Optional[Message], lambda x, y: y if y is not None else x
     ] = Field(default=None, description="Most recent user message in the conversation")
 
     things_to_remember: Annotated[
-        List[Union[Message, LangChainMessage, Summary, SearchTopicSynthesis]],
+        List[Union[Message, Summary, SearchTopicSynthesis]],
         operator.add,
     ] = Field(
         default_factory=list, description="Key messages or information to remember"
@@ -89,7 +88,7 @@ class WorkflowState(BaseModel):
 
     # Conversation history and final outputs - essential for context and token streaming
     messages: Annotated[
-        List[LangChainMessage], lambda x, y: y if y is not None else x
+        List[Message], lambda x, y: y if y is not None else x
     ] = Field(default_factory=list, description="Conversation history and LLM outputs")
 
     # Structured output from Intent Agent - directs subsequent search and tool decisions

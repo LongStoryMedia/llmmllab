@@ -5,11 +5,11 @@ Provides LangGraph node wrapper for technical engineering response generation.
 
 from typing import TYPE_CHECKING
 
-from models import LangChainMessage
+from models import Message, MessageRole, MessageContent, MessageContentType
 
 from composer.graph.state import WorkflowState
 from composer.core.errors import NodeExecutionError
-from composer.utils.extraction import extract_content_from_langchain_message
+from utils.message_conversion import extract_text_from_message
 from utils.logging import llmmllogger
 
 
@@ -65,9 +65,9 @@ class EngineeringAgentNode:
                     Exception("User ID required for engineering responses"),
                 )
 
-            # Extract user query from last message using langgraph utility
+            # Extract user query from last message
             last_message = state.current_user_message
-            user_query = extract_content_from_langchain_message(last_message)
+            user_query = extract_text_from_message(last_message)
 
             if not user_query.strip():
                 return state
@@ -147,16 +147,14 @@ class EngineeringAgentNode:
 
                 # Add engineering response to state messages as AI assistant message
 
-                engineering_response = LangChainMessage(
-                    type="ai",  # Specify as assistant message, not user message
-                    content=response,
-                    additional_kwargs={
-                        "agent": "engineering",
-                        "domain": str(domain) if domain else "default",
-                        "format": (
-                            str(response_format) if response_format else "default"
-                        ),
-                    },
+                engineering_response = Message(
+                    role=MessageRole.ASSISTANT,
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT, text=response, url=None
+                        )
+                    ],
+                    conversation_id=getattr(state, "conversation_id", None),
                 )
 
                 # Add to messages with proper reducer handling

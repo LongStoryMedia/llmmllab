@@ -11,7 +11,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from utils.logging import llmmllogger
 from db import storage
-from models import LangChainMessage, IntentAnalysis
+from models import Message, MessageRole, MessageContent, MessageContentType, IntentAnalysis
 from composer.graph.state import WorkflowState
 from composer.nodes.agents.engineering import EngineeringAgentNode
 from composer.agents.engineering_agent import EngineeringAgent
@@ -51,9 +51,13 @@ async def test_system_prompt():
     # Create test messages
     user_query = "How can I implement JWT authentication in FastAPI?"
     test_messages = [
-        LangChainMessage(
-            content=user_query,
-            type="human",
+        Message(
+            role=MessageRole.USER,
+            content=[MessageContent(
+                type=MessageContentType.TEXT,
+                text=user_query,
+                url=None
+            )]
         ),
     ]
     

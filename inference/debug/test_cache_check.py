@@ -4,7 +4,7 @@ Test with different query to check if model is caching responses
 """
 
 import asyncio
-from models import UserConfig, Message, LangChainMessage
+from models import UserConfig, Message, MessageRole, MessageContent, MessageContentType
 from composer.nodes.agents.engineering import EngineeringAgentNode
 from composer.graph.state import WorkflowState
 from db import storage
@@ -38,9 +38,13 @@ async def test_different_query():
         # Use a DIFFERENT query to test caching
         test_query = "What are the best practices for database design in PostgreSQL?"
         
-        test_message = LangChainMessage(
-            content=test_query,
-            type="human",
+        test_message = Message(
+            role=MessageRole.USER,
+            content=[MessageContent(
+                type=MessageContentType.TEXT,
+                text=test_query,
+                url=None
+            )]
         )
         
         # Create mock intent classification - engineering node requires this

@@ -14,7 +14,8 @@ from langchain_core.messages import (
     SystemMessage,
 )
 
-from models import Message, LangChainMessage
+from models import Message
+from langchain_core.messages import BaseMessage
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
 
@@ -58,8 +59,8 @@ def extract_content_from_message(msg: Message) -> str:
     return str(content) if content else ""
 
 
-def extract_content_from_langchain_message(msg: LangChainMessage) -> str:
-    """Extract text content from a LangChainMessage object."""
+def extract_content_from_langchain_message(msg: BaseMessage) -> str:
+    """Extract text content from a BaseMessage object."""
     if not hasattr(msg, "content"):
         return str(msg) if msg else ""
 
@@ -109,12 +110,12 @@ def extract_content_from_base_langchain_message(msg: BaseMessage) -> str:
     return str(content) if content else ""
 
 
-def get_most_recent_user_message_content(messages: List[LangChainMessage]) -> str:
+def get_most_recent_user_message_content(messages: List[BaseMessage]) -> str:
     """
     Extract content from the most recent user message in a conversation.
 
     Args:
-        messages: List of LangChainMessage objects
+        messages: List of BaseMessage objects
 
     Returns:
         Content of the most recent user message, or empty string if none found

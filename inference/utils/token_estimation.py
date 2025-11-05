@@ -4,8 +4,7 @@ Provides centralized token estimation logic to avoid duplication.
 """
 
 from typing import Any, List, Dict, Union
-from models import Memory
-from models.lang_chain_message import LangChainMessage
+from models import Memory, Message
 
 
 def estimate_tokens(content: Any) -> int:
@@ -37,14 +36,14 @@ def estimate_tokens(content: Any) -> int:
         return len(str(content)) // 4
 
 
-def estimate_message_tokens(message: LangChainMessage) -> int:
+def estimate_message_tokens(message: Message) -> int:
     """
-    Calculate approximate token count for a LangChain message.
+    Calculate approximate token count for a Message.
 
     Includes content, role formatting, and metadata overhead.
 
     Args:
-        message: LangChain message to calculate tokens for
+        message: Message object to calculate tokens for
 
     Returns:
         Approximate token count including formatting overhead
@@ -157,6 +156,6 @@ def calculate_memory_token_count(memories: List[Memory]) -> int:
     return estimate_memory_tokens(memories)
 
 
-def calculate_message_tokens(message: LangChainMessage) -> int:
+def calculate_message_tokens(message: Message) -> int:
     """Legacy compatibility function - use estimate_message_tokens instead."""
     return estimate_message_tokens(message)

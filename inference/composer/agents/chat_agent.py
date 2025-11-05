@@ -7,11 +7,11 @@ from typing import List, Optional
 from datetime import datetime, timezone
 
 from langchain.tools import BaseTool
+from langchain_core.messages import BaseMessage, AIMessage
 
 from runner import PipelineFactory
 from models import (
     ChatResponse,
-    LangChainMessage,
     ModelProfile,
     PipelinePriority,
     Message,
@@ -60,7 +60,7 @@ class ChatAgent(BaseAgent[ChatResponse]):
 
     async def chat_completion(
         self,
-        messages: List[LangChainMessage],
+        messages: List[BaseMessage],
         tools: Optional[List[BaseTool]] = None,
         stream: bool = True,
     ) -> ChatResponse:
@@ -213,7 +213,7 @@ class ChatAgent(BaseAgent[ChatResponse]):
 
     async def stream_chat_completion(
         self,
-        messages: List[LangChainMessage],
+        messages: List[BaseMessage],
         tools: Optional[List[BaseTool]] = None,
     ):
         """
@@ -240,10 +240,10 @@ class ChatAgent(BaseAgent[ChatResponse]):
 
     async def chat_completion_with_conversion(
         self,
-        messages: List[LangChainMessage],
+        messages: List[BaseMessage],
         tools: Optional[List[BaseTool]] = None,
         stream: bool = True,
-    ) -> LangChainMessage:
+    ) -> BaseMessage:
         """
         Execute chat completion and convert response to LangChainMessage.
 
@@ -271,8 +271,7 @@ class ChatAgent(BaseAgent[ChatResponse]):
             return (
                 message_to_langchain_message(response.message)
                 if response.message
-                else LangChainMessage(
-                    type="ai",
+                else AIMessage(
                     content="",
                 )
             )
@@ -283,12 +282,11 @@ class ChatAgent(BaseAgent[ChatResponse]):
                 e,
                 message_count=len(messages),
             )
-            return LangChainMessage(
-                type="ai",
+            return AIMessage(
                 content="Error during chat completion with conversion",
             )
 
-    def extract_tool_call_requests(self, message: LangChainMessage) -> List[ToolCall]:
+    def extract_tool_call_requests(self, message: BaseMessage) -> List[ToolCall]:
         """
         Extract tool call requests from a LangChain message with strong typing.
 
@@ -327,7 +325,7 @@ class ChatAgent(BaseAgent[ChatResponse]):
             )
             return []
 
-    def has_tool_call_requests(self, message: LangChainMessage) -> bool:
+    def has_tool_call_requests(self, message: BaseMessage) -> bool:
         """
         Check if a LangChain message has tool call requests.
 
