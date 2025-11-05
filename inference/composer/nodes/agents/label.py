@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 
 from runner import PipelineFactory
 from composer.graph.state import WorkflowState
-from composer.utils.conversion import convert_langchain_messages_to_messages
 from utils.logging import llmmllogger
+from utils.message_conversion import lc_messages_to_messages
 
 if TYPE_CHECKING:
     from composer.agents.classifier_agent import ClassifierAgent
@@ -65,9 +65,7 @@ class TitleGenerationNode:
                     extra={"existing_title": state.title},
                 )
                 return state
-            title = await self.classifier_agent.generate_title(
-                convert_langchain_messages_to_messages(state.messages)
-            )
+            title = await self.classifier_agent.generate_title(state.messages)
 
             if title and title.strip():
                 self.logger.info("Title generated successfully", extra={"title": title})

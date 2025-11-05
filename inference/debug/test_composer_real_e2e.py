@@ -472,7 +472,7 @@ class ComposerRealEndToEndTester:
             # Create a multimodal message for testing vision capabilities
             query_text = (
                 query
-                or """Look at this image and describe what you see. What colors are visible, and what might this represent? Also, please provide information about the latest developments in multimodal AI models that can process both text and images together."""
+                or """Look at this image and describe what you see. What colors are visible, and what might this represent? Also, please search the web for information about the latest developments in multimodal AI models that can process both text and images together."""
             )
 
             content_list = []

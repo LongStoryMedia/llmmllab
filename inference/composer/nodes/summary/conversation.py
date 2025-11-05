@@ -7,9 +7,7 @@ combining multiple summaries into higher-level abstractions.
 
 from typing import TYPE_CHECKING
 
-from models import SummaryType
 from composer.graph.state import WorkflowState
-from composer.utils.conversion import convert_langchain_messages_to_messages
 from utils.logging import llmmllogger
 
 if TYPE_CHECKING:
@@ -72,7 +70,7 @@ class ConsolidationNode:
                 # Use primary summary agent for conversation summarization
                 primary_summary = (
                     await self.primary_summary_agent.summarize_conversation(
-                        convert_langchain_messages_to_messages(unsummarized_messages),
+                        unsummarized_messages,
                         state.conversation_id or 0,
                     )
                 )

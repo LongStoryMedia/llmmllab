@@ -79,7 +79,7 @@ def extract_tool_call_requests(message: BaseMessage) -> List[LangChainToolCall]:
 
 def tool_call_request_to_execution_result(
     request: LangChainToolCall,
-    success: bool,
+    success: Optional[bool] = None,
     result_data: Optional[Dict[str, Any]] = None,
     error_message: Optional[str] = None,
     execution_time_ms: Optional[float] = None,
@@ -101,3 +101,39 @@ def tool_call_request_to_execution_result(
         error_message=error_message,
         execution_time_ms=execution_time_ms,
     )
+
+
+def extract_tool_calls_as_models(message: BaseMessage) -> List[ToolCall]:
+    """
+    Extract tool call requests from a LangChain message and convert to ToolCall models.
+
+    This is a convenience function that combines extraction and conversion.
+
+    Args:
+        message: LangChain message to extract tool calls from
+
+    Returns:
+        List of ToolCall models representing the requests
+    """
+    langchain_requests = extract_tool_call_requests(message)
+    return [
+        tool_call_request_to_execution_result(
+            request=request,
+            success=True,  # Requests start as "successful" until execution
+            execution_id=request.get("id"),
+        )
+        for request in langchain_requests
+    ]
+
+
+def has_tool_call_requests_as_models(message: BaseMessage) -> bool:
+    """
+    Check if a LangChain message has tool call requests (convenience wrapper).
+
+    Args:
+        message: LangChain message to check
+
+    Returns:
+        True if message has tool call requests, False otherwise
+    """
+    return has_tool_calls(message)

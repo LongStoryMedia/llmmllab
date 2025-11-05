@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from models import Model, ModelProfile
 from runner.pipelines.llamacpp import BaseLlamaCppPipeline
-from utils.message_conversion import extract_text_from_base_message
+from utils.message_conversion import extract_text_from_lc_message
 
 
 class Qwen3Moe(BaseLlamaCppPipeline):
@@ -27,7 +27,7 @@ class Qwen3Moe(BaseLlamaCppPipeline):
         model: Model,
         profile: ModelProfile,
         grammar: Optional[Type[BaseModel]] = None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(model, profile, grammar, **kwargs)
 
@@ -50,14 +50,19 @@ class Qwen3Moe(BaseLlamaCppPipeline):
 
     def _format_messages_for_llama(self, messages: List) -> List[Dict[str, str]]:
         """Override to ensure proper text extraction for text-only models."""
-        from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
-        
+        from langchain_core.messages import (
+            SystemMessage,
+            HumanMessage,
+            AIMessage,
+            ToolMessage,
+        )
+
         llama_messages = []
 
         for message in messages:
             # Use consolidated utility to extract text content from BaseMessage
-            text_content = extract_text_from_base_message(message)
-            
+            text_content = extract_text_from_lc_message(message)
+
             if isinstance(message, SystemMessage):
                 llama_messages.append({"role": "system", "content": text_content})
             elif isinstance(message, HumanMessage):

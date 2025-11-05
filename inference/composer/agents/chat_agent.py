@@ -7,7 +7,7 @@ from typing import List, Optional
 from datetime import datetime, timezone
 
 from langchain.tools import BaseTool
-from langchain_core.messages import BaseMessage, AIMessage
+from langchain_core.messages import BaseMessage, AIMessage, ToolMessage
 
 from runner import PipelineFactory
 from models import (
@@ -21,10 +21,15 @@ from models import (
     NodeMetadata,
     ToolCall,
 )
-from composer.utils.conversion import (
-    message_to_langchain_message,
-    convert_langchain_messages_to_messages,
+from utils.tool_call_extraction import (
+    extract_tool_calls_from_langchain_message,
+    has_tool_calls_in_langchain_message,
+    extract_tool_calls_from_streaming_chunks,
+    extract_tool_calls_from_message_content,
+    create_tool_call_message_content,
 )
+from utils.message_conversion import lc_messages_to_messages
+from utils import create_error_response
 from .base_agent import BaseAgent
 
 
@@ -59,7 +64,7 @@ class ChatAgent(BaseAgent[ChatResponse]):
 
     async def chat_completion(
         self,
-        messages: List[BaseMessage],
+        messages: List[Message],
         tools: Optional[List[BaseTool]] = None,
         stream: bool = True,
     ) -> ChatResponse:
@@ -80,16 +85,15 @@ class ChatAgent(BaseAgent[ChatResponse]):
         if stream:
             # For streaming, we need to accumulate the response
             return await self._execute_streaming_completion_with_metadata(
-                convert_langchain_messages_to_messages(messages),
+                messages,
                 tools,
             )
-        else:
-            # For non-streaming, use the base class method directly
-            return await self.run(
-                messages=convert_langchain_messages_to_messages(messages),
-                tools=tools,
-                priority=self.priority,
-            )
+        # For non-streaming, use the base class method directly
+        return await self.run(
+            messages=messages,
+            tools=tools,
+            priority=self.priority,
+        )
 
     async def _execute_streaming_completion_with_metadata(
         self,
@@ -99,7 +103,7 @@ class ChatAgent(BaseAgent[ChatResponse]):
         """Execute streaming chat completion using BaseAgent methods with metadata."""
         # Accumulate streaming response
         final_content = ""
-        tool_calls = []
+        chunks = []
         chunk_count = 0
 
         try:
@@ -115,36 +119,26 @@ class ChatAgent(BaseAgent[ChatResponse]):
                     continue
 
                 chunk_count += 1
+                chunks.append(chunk)
 
-                # Accumulate content and tool calls
-
-                # Collect tool calls and content from message
+                # Accumulate text content
                 if chunk.message and chunk.message.content:
                     for content in chunk.message.content:
-                        if content.type == MessageContentType.TOOL_CALL:
-                            # Extract tool call data from content
-                            if hasattr(content, "text") and content.text:
-                                try:
-                                    import json
-
-                                    tool_call_data = json.loads(content.text)
-                                    tool_calls.append(tool_call_data)
-                                except (json.JSONDecodeError, AttributeError):
-                                    # If not JSON, skip this content item
-                                    pass
-                        elif (
-                            content.type == MessageContentType.THINKING
-                            or content.type == MessageContentType.TEXT
+                        if content.type in (
+                            MessageContentType.THINKING,
+                            MessageContentType.TEXT,
                         ):
-                            # Accumulate text content properly
                             if hasattr(content, "text") and content.text:
                                 final_content += content.text
+
+            # Extract tool calls using shared utility
+            tool_execution_results = extract_tool_calls_from_streaming_chunks(chunks)
 
             self.logger.info(
                 "Streaming completion with metadata finished",
                 total_chunks=chunk_count,
                 content_length=len(final_content),
-                tool_calls_count=len(tool_calls),
+                tool_calls_count=len(tool_execution_results),
             )
 
             # Create final response from accumulated content
@@ -154,42 +148,16 @@ class ChatAgent(BaseAgent[ChatResponse]):
                     MessageContent(type=MessageContentType.TEXT, text=final_content)
                 )
 
-            # Add tool calls as content items if present
-            for tool_call in tool_calls:
-                try:
-                    import json
-
-                    tool_call_text = json.dumps(tool_call)
-                    content_items.append(
-                        MessageContent(
-                            type=MessageContentType.TOOL_CALL, text=tool_call_text
-                        )
-                    )
-                except (TypeError, ValueError):
-                    # Skip invalid tool calls
-                    pass
+            # Add tool calls as content items using shared utility
+            for tool_call in tool_execution_results:
+                tool_call_content = create_tool_call_message_content(tool_call)
+                if tool_call_content:
+                    content_items.append(tool_call_content)
 
             final_message = Message(
                 role=MessageRole.ASSISTANT,
                 content=content_items,
             )
-
-            # Convert tool calls to ToolCall objects if present
-            tool_execution_results = []
-            for tool_call in tool_calls:
-                try:
-                    # Convert tool call dict to ToolCall
-                    if isinstance(tool_call, dict):
-                        tool_result = ToolCall(
-                            name=tool_call.get("name", "unknown"),
-                            success=True,  # Assume success if we got this far
-                            args=tool_call.get("args", {}),
-                            result_data=tool_call.get("result", {}),
-                            execution_id=tool_call.get("id", None),
-                        )
-                        tool_execution_results.append(tool_result)
-                except Exception as e:
-                    self.logger.warning(f"Failed to convert tool call to ToolCall: {e}")
 
             # Update final_message with tool_calls if present
             if tool_execution_results:
@@ -231,7 +199,7 @@ class ChatAgent(BaseAgent[ChatResponse]):
             ChatResponse: Streaming chunks with injected node metadata
         """
         async for chunk in self.stream(
-            messages=convert_langchain_messages_to_messages(messages),
+            messages=lc_messages_to_messages(messages),
             tools=tools,
             priority=self.priority,
         ):
@@ -239,10 +207,10 @@ class ChatAgent(BaseAgent[ChatResponse]):
 
     async def chat_completion_with_conversion(
         self,
-        messages: List[BaseMessage],
+        messages: List[Message],
         tools: Optional[List[BaseTool]] = None,
         stream: bool = True,
-    ) -> BaseMessage:
+    ) -> Message:
         """
         Execute chat completion and convert response to LangChainMessage.
 
@@ -266,14 +234,14 @@ class ChatAgent(BaseAgent[ChatResponse]):
                 stream=stream,
             )
 
-            # Convert to LangChain message
-            return (
-                message_to_langchain_message(response.message)
-                if response.message
-                else AIMessage(
-                    content="",
+            if response.message is None:
+                err_response = create_error_response(
+                    "No message returned from chat completion"
                 )
-            )
+                assert err_response.message is not None
+                return err_response.message
+
+            return response.message
 
         except Exception as e:
             self._handle_node_error(
@@ -281,52 +249,28 @@ class ChatAgent(BaseAgent[ChatResponse]):
                 e,
                 message_count=len(messages),
             )
-            return AIMessage(
-                content="Error during chat completion with conversion",
+
+            err_response = create_error_response(
+                "Error during chat completion with conversion"
             )
+            assert err_response.message is not None
+            return err_response.message
 
     def extract_tool_call_requests(self, message: BaseMessage) -> List[ToolCall]:
         """
-        Extract tool call requests from a LangChain message with strong typing.
+        Extract tool call requests from a LangChain message using shared utilities.
 
         Args:
             message: LangChain message to extract tool calls from
 
         Returns:
-            List of validated tool call request dictionaries
+            List of validated ToolCall objects
         """
-        try:
-            tool_calls = getattr(message, "tool_calls", None)
-
-            if tool_calls:
-                # Validate each tool call request
-                validated_requests = []
-                for tc in tool_calls:
-                    if isinstance(tc, dict) and "name" in tc and "args" in tc:
-                        validated_requests.append(ToolCall(**tc))
-
-                if validated_requests:
-                    self.logger.debug(
-                        "Extracted tool call requests",
-                        tool_calls_count=len(validated_requests),
-                        tool_calls_preview=str(validated_requests)[:200],
-                    )
-
-                return validated_requests
-
-            return []
-
-        except Exception as e:
-            self.logger.error(
-                "Failed to extract tool call requests",
-                error=str(e),
-                message_type=getattr(message, "type", "unknown"),
-            )
-            return []
+        return extract_tool_calls_from_langchain_message(message)
 
     def has_tool_call_requests(self, message: BaseMessage) -> bool:
         """
-        Check if a LangChain message has tool call requests.
+        Check if a LangChain message has tool call requests using shared utilities.
 
         Args:
             message: LangChain message to check
@@ -334,5 +278,4 @@ class ChatAgent(BaseAgent[ChatResponse]):
         Returns:
             True if message has tool call requests, False otherwise
         """
-        requests = self.extract_tool_call_requests(message)
-        return len(requests) > 0
+        return has_tool_calls_in_langchain_message(message)

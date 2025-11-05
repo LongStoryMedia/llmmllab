@@ -34,6 +34,5 @@ properties:
     $ref: "resource_usage.yaml"
 required:
   - name
-  - success
   - args
 additionalProperties: false

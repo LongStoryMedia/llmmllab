@@ -24,13 +24,11 @@ from models import (
     Tool,
 )
 from composer.core.errors import IntentAnalysisError
-from composer.utils.conversion import (
-    normalize_message_input,
-    convert_messages_to_base_langchain,
-)
 from utils.message_conversion import (
-    extract_text_from_base_message,
+    extract_text_from_lc_message,
     extract_text_from_message,
+    messages_to_lc_messages,
+    normalize_message_input,
 )
 from utils.grammar_generator import parse_structured_output
 from .base_agent import BaseAgent
@@ -253,7 +251,7 @@ Title:"""
 
                 # Convert to native LangChain BaseMessage objects instead of our LangChainMessage
 
-                normalized_messages = convert_messages_to_base_langchain(
+                normalized_messages = messages_to_lc_messages(
                     normalize_message_input(title_prompt)
                 )
 

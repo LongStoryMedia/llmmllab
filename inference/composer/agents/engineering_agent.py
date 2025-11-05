@@ -99,11 +99,11 @@ class EngineeringAgent(BaseAgent[str]):
 
             # SIMPLIFIED: Just pass the user query directly without complex prompt construction
             from models import Message, MessageRole, MessageContent, MessageContentType
-            
+
             messages = [
                 Message(
                     role=MessageRole.USER,
-                    content=[MessageContent(type=MessageContentType.TEXT, text=query)]
+                    content=[MessageContent(type=MessageContentType.TEXT, text=query)],
                 )
             ]
 

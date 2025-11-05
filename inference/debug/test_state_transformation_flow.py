@@ -7,7 +7,14 @@ through the transform_to_tools_state conversion to verify where user_id gets los
 """
 
 import asyncio
-from models import Message, MessageRole, MessageContent, MessageContentType, UserConfig, CircuitBreakerConfig
+from models import (
+    Message,
+    MessageRole,
+    MessageContent,
+    MessageContentType,
+    UserConfig,
+    CircuitBreakerConfig,
+)
 from composer.graph.state import WorkflowState, ToolsState
 from composer.graph.subgraphs.tools_agent import ToolsAgentSubgraph
 
@@ -19,11 +26,23 @@ def create_test_workflow_state() -> WorkflowState:
     messages = [
         Message(
             role=MessageRole.USER,
-            content=[MessageContent(type=MessageContentType.TEXT, text="Hello, I want to retrieve my memories", url=None)]
+            content=[
+                MessageContent(
+                    type=MessageContentType.TEXT,
+                    text="Hello, I want to retrieve my memories",
+                    url=None,
+                )
+            ],
         ),
         Message(
             role=MessageRole.ASSISTANT,
-            content=[MessageContent(type=MessageContentType.TEXT, text="I'll help you retrieve your memories using the memory retrieval tool.", url=None)]
+            content=[
+                MessageContent(
+                    type=MessageContentType.TEXT,
+                    text="I'll help you retrieve your memories using the memory retrieval tool.",
+                    url=None,
+                )
+            ],
         ),
     ]
 
@@ -34,7 +53,13 @@ def create_test_workflow_state() -> WorkflowState:
         messages=messages,
         current_user_message=Message(
             role=MessageRole.USER,
-            content=[MessageContent(type=MessageContentType.TEXT, text="Hello, I want to retrieve my memories", url=None)]
+            content=[
+                MessageContent(
+                    type=MessageContentType.TEXT,
+                    text="Hello, I want to retrieve my memories",
+                    url=None,
+                )
+            ],
         ),
     )
 

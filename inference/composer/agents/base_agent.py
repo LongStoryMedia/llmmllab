@@ -15,13 +15,14 @@ from typing import (
     cast,
 )
 from abc import ABC
+from numpy import isin
 from pydantic import BaseModel
 from langchain.agents.structured_output import ProviderStrategy
 from langchain.agents import create_agent, AgentState
 from langchain.chat_models import BaseChatModel
 from langchain.embeddings.base import Embeddings
 from langchain_core.tools import BaseTool
-from langchain_core.messages import AIMessageChunk
+from langchain_core.messages import BaseMessage
 from langgraph.graph.state import CompiledStateGraph
 
 from models import (
@@ -37,16 +38,18 @@ from models import (
 from runner import PipelineFactory
 from utils.logging import llmmllogger
 from utils.response import create_streaming_chunk, create_error_response
-from utils.message import extract_message_text
-from composer.core.errors import NodeExecutionError
-from composer.utils.conversion import (
+from utils.message import extract_message_text, MessageInput
+from utils.message_conversion import (
     normalize_message_input,
-    convert_messages_to_base_langchain,
-    MessageInput,
+    messages_to_lc_messages,
+    lc_message_to_message,
 )
-from composer.utils.tool_call_types import (
+from utils.tool_call_types import (
     tool_call_request_to_execution_result,
+    extract_tool_calls_as_models,
 )
+from utils.tool_call_extraction import extract_tool_calls_from_langchain_message
+from composer.core.errors import NodeExecutionError
 
 
 T = TypeVar("T")
@@ -363,77 +366,32 @@ The current date is {current_date}. While this is likely past your training data
             agent = self._get_or_create_agent(system_prompt, tools, priority, grammar)
 
             # Convert messages to LangChain format
-            normalized_messages = convert_messages_to_base_langchain(convo)
+            normalized_messages = messages_to_lc_messages(convo)
             npt = {"messages": normalized_messages}
 
             # Stream agent execution with recursion limit
             chunk_count = 0
             async for chunk in agent.astream(
-                npt,  # type: ignore
-                stream_mode="messages",
+                npt, stream_mode="messages", subgraphs=True  # type: ignore
             ):
+                msg_chunk = {}
+                metadata = {}
+
+                self.logger.debug(f"Processing streaming chunk: {chunk}")
+
                 # stream_mode "messages" returns AIMessageChunk objects with metadata
                 if isinstance(chunk, tuple) and len(chunk) >= 2:
                     msg_chunk, metadata = chunk
-                    if isinstance(msg_chunk, AIMessageChunk):
-                        # Extract text content
-                        text_content = (
-                            str(msg_chunk.content) if msg_chunk.content else ""
-                        )
+                elif isinstance(chunk, BaseMessage):
+                    msg_chunk = chunk
 
-                        # Extract tool calls from LangChain chunk
-                        tool_calls = None
+                if isinstance(msg_chunk, BaseMessage):
+                    msg = lc_message_to_message(msg_chunk)
 
-                        # Get structured tool calls from LangChain AIMessageChunk
-                        if hasattr(msg_chunk, "tool_calls") and msg_chunk.tool_calls:
-                            tool_calls = []
-                            for tc in msg_chunk.tool_calls:
-                                execution_id = tc.get(
-                                    "id", f"call_{len(tool_calls)}_{tc['name']}"
-                                )
-                                call = tool_call_request_to_execution_result(
-                                    request=tc,
-                                    success=True,  # Assume success during streaming
-                                    execution_id=execution_id,
-                                    result_data=None,  # No result data yet during streaming
-                                )
-                                tool_calls.append(call)
-
-                        # Prepare content array
-                        content = []
-                        if text_content:
-                            content.append(
-                                MessageContent(
-                                    type=MessageContentType.TEXT,
-                                    text=text_content,
-                                )
-                            )
-
-                        # Prepare content array
-                        content = []
-                        if text_content:
-                            content.append(
-                                MessageContent(
-                                    type=MessageContentType.TEXT,
-                                    text=text_content,
-                                )
-                            )
-
-                        chat_chunk = ChatResponse(
-                            done=False,
-                            message=Message(
-                                role=MessageRole.ASSISTANT,
-                                content=content,
-                                tool_calls=tool_calls,
-                            ),
-                            channels={
-                                "node_metadata": self._node_metadata.model_dump(),
-                                "chunk_metadata": metadata,
-                            },
-                        )
-                        chat_chunk.channels = self._node_metadata.model_dump()
-                        chunk_count += 1
-                        yield chat_chunk
+                    chat_chunk = ChatResponse(done=False, message=msg)
+                    chat_chunk.channels = self._node_metadata.model_dump()
+                    chunk_count += 1
+                    yield chat_chunk
 
             # Yield end chunk with node metadata
             yield create_streaming_chunk(
@@ -495,7 +453,7 @@ The current date is {current_date}. While this is likely past your training data
             agent = self._get_or_create_agent(system_prompt, tools, priority, grammar)
 
             # Convert messages to LangChain format
-            normalized_messages = convert_messages_to_base_langchain(convo)
+            normalized_messages = messages_to_lc_messages(convo)
             # Execute agent with normalized messages
             result = await agent.ainvoke(
                 {"messages": normalized_messages},  # type: ignore
@@ -505,23 +463,12 @@ The current date is {current_date}. While this is likely past your training data
 
             # Convert agent result to ChatResponse
             last_message = result["messages"][-1]
+            assert isinstance(last_message, BaseMessage)
+            msg = lc_message_to_message(last_message)
             response = ChatResponse(
                 done=True,
-                message=Message(
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=(
-                                str(last_message.content)
-                                if hasattr(last_message, "content")
-                                else ""
-                            ),
-                        )
-                    ],
-                    role=MessageRole.ASSISTANT,
-                ),
+                message=msg,
             )
-
             response.channels = self._node_metadata.model_dump()
             return response
 

@@ -17,7 +17,6 @@ from models import (
     Message,
 )
 from composer.graph.state import WorkflowState
-from composer.utils.conversion import langchain_message_to_message
 from utils.message import extract_message_text
 from utils.logging import llmmllogger
 
@@ -99,9 +98,7 @@ class MemoryCreationNode:
 
     async def _create_memories(
         self,
-        things_to_remember: List[
-            Union[Message, Summary, SearchTopicSynthesis]
-        ],
+        things_to_remember: List[Union[Message, Summary, SearchTopicSynthesis]],
         conversation_id: int,
     ) -> List[Memory]:
         """

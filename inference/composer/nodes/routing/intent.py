@@ -5,9 +5,8 @@ Directly integrates the PlanningIntentSubgraph (class-based) without lazy global
 
 from typing import TYPE_CHECKING
 
-from composer.graph.state import WorkflowState
+from composer.graph.state import WorkflowState, assemble_context_messages
 from composer.graph.subgraphs.planning_intent import PlanningIntentSubgraph
-from composer.utils.state import assemble_context_messages
 from utils.logging import llmmllogger
 
 if TYPE_CHECKING:

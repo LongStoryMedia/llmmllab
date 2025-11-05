@@ -7,7 +7,7 @@ properties:
     type: array
     description: Sequence of messages
     items:
-      $ref: lang_chain_message.yaml
+      $ref: message.yaml
       description: A message in the conversation
   user_input:
     type: string

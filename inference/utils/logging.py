@@ -111,13 +111,14 @@ class LlmmlLogger:
         # Set up logging
         log_level = os.environ.get("LOG_LEVEL", "info").lower()
         log_level_map = {
+            "trace": logging.DEBUG,
             "debug": logging.DEBUG,
             "info": logging.INFO,
             "warning": logging.WARNING,
             "error": logging.ERROR,
             "critical": logging.CRITICAL,
         }
-        logging_level = log_level_map.get(log_level, logging.INFO)
+        logging_level = log_level_map.get(log_level, "info")
 
         # Check if we should force colors (useful for Kubernetes logs)
         force_colors = os.environ.get("FORCE_COLOR", "0") == "1"

@@ -8,7 +8,7 @@ our improved error handling and logging works correctly.
 
 import asyncio
 from unittest.mock import MagicMock
-from models import Message, MessageRole, MessageContent, MessageContentType
+from models import LangChainMessage
 from composer.graph.state import WorkflowState, ToolsState
 from composer.graph.subgraphs.tools_agent import ToolsAgentSubgraph
 from composer.tools.static.memory_retrieval_tool import memory_retrieval
@@ -30,14 +30,8 @@ def create_workflow_state_with_user_id_issue(user_id_value):
 
     state = WorkflowState(
         conversation_id=42,
-        messages=[Message(
-            role=MessageRole.USER,
-            content=[MessageContent(type=MessageContentType.TEXT, text="Test message", url=None)]
-        )],
-        current_user_message=Message(
-            role=MessageRole.USER,
-            content=[MessageContent(type=MessageContentType.TEXT, text="Test message", url=None)]
-        ),
+        messages=[LangChainMessage(type="human", content="Test message")],
+        current_user_message=LangChainMessage(type="human", content="Test message"),
     )
 
     # Manually set user_id to the test value

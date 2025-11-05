@@ -22,6 +22,9 @@ from .logging import llmmllogger
 logger = llmmllogger.bind(module=__name__)
 
 
+MessageInput = Union[str, Message, List[Union[str, Message]], List[str], List[Message]]
+
+
 def extract_message_text(message: Message) -> str:
     """Extract text content from a message object"""
     text_parts = []
@@ -29,11 +32,11 @@ def extract_message_text(message: Message) -> str:
         # Handle both MessageContent objects and dictionaries
         if isinstance(content, dict):
             # Handle dictionary format: {'type': 'text', 'text': 'content'}
-            if content.get('type') == 'text' and content.get('text'):
-                text_parts.append(content['text'])
+            if content.get("type") == "text" and content.get("text"):
+                text_parts.append(content["text"])
         else:
             # Handle MessageContent object format
-            if hasattr(content, 'type') and hasattr(content, 'text'):
+            if hasattr(content, "type") and hasattr(content, "text"):
                 if content.type == MessageContentType.TEXT and content.text:
                     text_parts.append(content.text)
     # Do not strip whitespace here; streaming tokens often include leading spaces

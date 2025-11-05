@@ -5,7 +5,6 @@ Searches for similar memories using embeddings.
 
 from composer.agents.memory_agent import MemoryAgent
 from composer.graph.state import WorkflowState
-from composer.utils.conversion import langchain_message_to_message
 from composer.agents.embedding_agent import EmbeddingAgent
 from utils.message import extract_message_text
 from utils.logging import llmmllogger
@@ -61,7 +60,7 @@ class MemorySearchNode:
             enable_cross_user = state.user_config.memory.enable_cross_user
 
             # Extract message text and generate embeddings using injected EmbeddingAgent
-            message = langchain_message_to_message(state.current_user_message)
+            message = state.current_user_message
             message_text = extract_message_text(message)
 
             # Use injected EmbeddingAgent to generate embeddings

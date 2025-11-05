@@ -29,16 +29,15 @@ from langgraph.graph.message import add_messages
 from models import (
     IntentAnalysis,
     WorkflowType,
-    NodeMetadata,
     ComplexityLevel,
     TodoItem,
     Tool,
-    MessageRole,
 )
 from composer.graph.state import WorkflowState
 from composer.agents.classifier_agent import ClassifierAgent
-from composer.utils.extraction import extract_content_from_base_langchain_message
+from utils import extract_message_text
 from utils.logging import llmmllogger
+from utils.message_conversion import messages_to_lc_messages, lc_message_to_message
 
 
 logger = llmmllogger.bind(component="PlanningIntentSubgraph")
@@ -137,7 +136,7 @@ class PlanningIntentSubgraph:
 
         if messages:
             last_message = messages[-1]
-            content = extract_content_from_base_langchain_message(last_message).lower()
+            content = extract_message_text(lc_message_to_message(last_message)).lower()
 
             # Keyword-based complexity indicators
             technical_keywords = [
@@ -298,7 +297,7 @@ class PlanningIntentSubgraph:
             if messages:
                 for msg in reversed(messages):
                     if isinstance(msg, HumanMessage):
-                        user_message = extract_content_from_base_langchain_message(msg)
+                        user_message = extract_message_text(lc_message_to_message(msg))
                         break
 
             # Generate todos based on intent analysis - simplified approach
@@ -430,35 +429,7 @@ class PlanningIntentSubgraph:
         """Transform main WorkflowState to PlanningIntentState with proper typing."""
         messages = main_state.messages[-5:] if main_state.messages else []
 
-        # Convert to LangChain core messages with proper text extraction
-        def extract_text_content(msg):
-            """Extract text from Message object's content list."""
-            if not hasattr(msg, 'content') or not msg.content:
-                return ""
-            
-            text_parts = []
-            for content in msg.content:
-                if hasattr(content, 'text') and hasattr(content, 'type'):
-                    # MessageContent object
-                    if content.text:
-                        text_parts.append(content.text)
-                elif isinstance(content, dict) and content.get('type') == 'text':
-                    # Dict format
-                    if content.get('text'):
-                        text_parts.append(content['text'])
-                elif isinstance(content, str):
-                    # String format (fallback)
-                    text_parts.append(content)
-            return "\n".join(text_parts)
-        
-        langchain_messages: List[BaseMessage] = []
-        for msg in messages:
-            if hasattr(msg, "role") and hasattr(msg, "content"):
-                text_content = extract_text_content(msg)
-                if msg.role == MessageRole.USER:
-                    langchain_messages.append(HumanMessage(content=text_content))
-                elif msg.role == MessageRole.ASSISTANT:
-                    langchain_messages.append(AIMessage(content=text_content))
+        langchain_messages = messages_to_lc_messages(messages)
 
         # Get static tools with proper typing
         static_tools: List[Tool] = getattr(main_state, "static_tools", [])

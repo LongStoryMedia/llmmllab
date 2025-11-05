@@ -14,6 +14,9 @@ from langgraph.graph.message import add_messages
 from models import (
     Memory,
     IntentAnalysis,
+    MessageContent,
+    MessageContentType,
+    MessageRole,
     TodoItem,
     Tool,
     WorkflowType,
@@ -23,7 +26,10 @@ from models import (
     SearchResult,
     Message,
     NodeMetadata,
+    ToolCall,
 )
+
+from utils.message_conversion import lc_messages_to_messages
 
 
 class ToolsState(TypedDict):
@@ -87,9 +93,9 @@ class WorkflowState(BaseModel):
     )
 
     # Conversation history and final outputs - essential for context and token streaming
-    messages: Annotated[
-        List[Message], lambda x, y: y if y is not None else x
-    ] = Field(default_factory=list, description="Conversation history and LLM outputs")
+    messages: Annotated[List[Message], lambda x, y: y if y is not None else x] = Field(
+        default_factory=list, description="Conversation history and LLM outputs"
+    )
 
     # Structured output from Intent Agent - directs subsequent search and tool decisions
     intent_classification: Annotated[
@@ -141,7 +147,7 @@ class WorkflowState(BaseModel):
     # without parsing raw assistant content. Replaced (not concatenated)
     # each time a new assistant message is produced.
     tool_calls: Annotated[
-        Optional[List[Dict[str, Any]]],
+        Optional[List[ToolCall]],
         lambda current, new: new if new is not None else current,
     ] = Field(
         default=None,
@@ -284,4 +290,131 @@ class WorkflowState(BaseModel):
     ] = Field(
         default_factory=dict,
         description="Metadata for checkpoint persistence including turn tracking",
+    )
+
+
+def assemble_context_messages(
+    state: WorkflowState, max_tokens: Optional[int] = None
+) -> List[Message]:
+    """
+    Assemble a comprehensive list of Message objects from WorkflowState.
+
+    Implements the context extension architecture from context_extension.md:
+    1. Core conversation messages (highest priority)
+    2. Retrieved memories (semantic relevance)
+    3. Hierarchical summaries (context continuity)
+
+    This function should be used every time messages are being sent to a pipeline
+    to ensure consistent context assembly following the three-pronged approach.
+
+    Args:
+        state: WorkflowState containing messages, memories, and summaries
+        max_tokens: Optional maximum token count for context window management
+
+    Returns:
+        List of Message objects assembled in context extension priority order,
+        trimmed to fit within context window if max_tokens is provided
+    """
+    assembled_messages: List[Message] = []
+    assert state.messages
+    assert state.conversation_id
+
+    # 1. CORE CONVERSATION MESSAGES (Highest Priority)
+    # Convert LangChainMessage objects from state.messages to Message objects
+    assembled_messages.extend(state.messages)
+
+    # 2. RETRIEVED MEMORIES (Semantic Relevance Priority)
+    # Following context_extension.md: "Memory search results ordered by similarity"
+    if state.retrieved_memories:
+        for memory in state.retrieved_memories:
+            assembled_messages.append(_memory_to_message(memory, state.conversation_id))
+
+    # 3. HIERARCHICAL SUMMARIES (Context Continuity)
+    # Following context_extension.md: "Hierarchical compression maintaining context"
+    if state.summaries:
+        for summary in state.summaries:
+            assembled_messages.append(
+                _summary_to_message(summary, state.conversation_id)
+            )
+
+    final_messages = list(reversed(assembled_messages))
+
+    # Apply context window trimming if max_tokens is provided
+    # if max_tokens:
+    #     final_messages = _trim_messages_to_context_window(final_messages, max_tokens)
+
+    return final_messages
+
+
+def _memory_to_message(
+    memory: Memory, conversation_id: Optional[int] = None
+) -> Message:
+    """
+    Convert a Memory object to a list of Message objects.
+
+    Follows the context pairing logic from context_extension.md:
+    - User messages are paired with assistant responses
+    - Assistant messages are paired with user queries
+    - Summaries are used directly
+
+    Args:
+        memory: Memory object from WorkflowState.retrieved_memories
+        conversation_id: Optional conversation ID for the messages
+
+    Returns:
+        List of Message objects constructed from memory fragments
+    """
+    message = Message(
+        content=[],
+        role=MessageRole.SYSTEM,
+        conversation_id=conversation_id,
+        created_at=getattr(memory, "created_at", None),
+    )
+
+    txt = (
+        f"MEMORY FROM {memory.created_at}, conversation ID {memory.conversation_id}:\n"
+    )
+
+    for fragment in memory.fragments:
+        txt += f"{fragment.role.value.upper()}: {fragment.content}\n"
+
+    message.content.append(
+        MessageContent(
+            type=MessageContentType.TEXT,
+            text=txt,
+            url=None,
+        )
+    )
+    return message
+
+
+def _summary_to_message(
+    summary: Summary, conversation_id: Optional[int] = None
+) -> Message:
+    """
+    Convert a Summary object to a Message with SYSTEM role.
+
+    Following context_extension.md guidance, summaries are integrated as system messages
+    to provide hierarchical context without disrupting conversation flow.
+
+    Args:
+        summary: Summary object from WorkflowState.summaries
+        conversation_id: Optional conversation ID for the message
+
+    Returns:
+        Message object with SYSTEM role containing summary content
+    """
+    content_text = f"[Summary Level {summary.level}]: {summary.content}"
+
+    return Message(
+        content=[
+            MessageContent(
+                type=MessageContentType.TEXT,
+                text=content_text,
+                url=None,
+            )
+        ],
+        role=MessageRole.SYSTEM,
+        conversation_id=conversation_id,
+        created_at=getattr(summary, "created_at", None),
     )

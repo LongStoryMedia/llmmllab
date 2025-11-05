@@ -22,11 +22,12 @@ from typing import cast
 from langchain_core.tools import tool
 from langchain.tools import ToolRuntime
 from langchain.chat_models import BaseChatModel
-from composer.utils.extraction import extract_content_from_base_langchain_message
 from runner import pipeline_factory
 from models import ModelProfileType, PipelinePriority
+from utils import extract_message_text
 from utils.model_profile import get_model_profile
 from utils.logging import llmmllogger
+from utils.message_conversion import lc_message_to_message
 
 
 # Single summarization tool using ToolRuntime pattern with strong typing
@@ -76,39 +77,37 @@ async def summarization(
             summary_prompt = f"Please provide a concise summary of the following content:\n\n{content}"
 
             # Get pipeline and generate summary
-            with pipeline_factory.pipeline(
+            pipeline = pipeline_factory.get_pipeline(
                 model_profile, PipelinePriority.NORMAL
-            ) as pipeline:
-                llm = cast(BaseChatModel, pipeline)
-                # Since run_pipeline is not available, use the pipeline directly
-                # This is a simplified approach that should work with the pipeline
-                result = await llm.ainvoke(summary_prompt)
-                summary_text = (
-                    extract_content_from_base_langchain_message(result)
-                    if result
-                    else ""
+            )
+            llm = cast(BaseChatModel, pipeline)
+            # Since run_pipeline is not available, use the pipeline directly
+            # This is a simplified approach that should work with the pipeline
+            result = await llm.ainvoke(summary_prompt)
+            summary_text = (
+                extract_message_text(lc_message_to_message(result)) if result else ""
+            )
+
+            if summary_text:
+                # Create response message for the conversation
+                response_message = json.dumps(
+                    {
+                        "status": "success",
+                        "summary": summary_text,
+                        "original_length": len(content),
+                        "summary_length": len(summary_text),
+                    },
+                    indent=2,
                 )
 
-                if summary_text:
-                    # Create response message for the conversation
-                    response_message = json.dumps(
-                        {
-                            "status": "success",
-                            "summary": summary_text,
-                            "original_length": len(content),
-                            "summary_length": len(summary_text),
-                        },
-                        indent=2,
-                    )
+                logger.info(
+                    "Summarization completed successfully",
+                    original_length=len(content),
+                    summary_length=len(summary_text),
+                )
 
-                    logger.info(
-                        "Summarization completed successfully",
-                        original_length=len(content),
-                        summary_length=len(summary_text),
-                    )
-
-                    # Return summary result - ToolNode will automatically create ToolMessage
-                    return f"📝 **Summary of Content**\n\n{summary_text}"
+                # Return summary result - ToolNode will automatically create ToolMessage
+                return f"📝 **Summary of Content**\n\n{summary_text}"
 
         except Exception as llm_error:
             logger.warning(

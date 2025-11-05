@@ -6,7 +6,13 @@ Provides circuit breaker protection wrapper for any node with fault tolerance.
 import asyncio
 from typing import Any
 
-from models import CircuitBreakerConfig, Message, MessageRole, MessageContent, MessageContentType
+from models import (
+    CircuitBreakerConfig,
+    Message,
+    MessageRole,
+    MessageContent,
+    MessageContentType,
+)
 from composer.graph.state import WorkflowState
 from utils.logging import llmmllogger
 
@@ -113,12 +119,14 @@ class CircuitProtectedNode:
         # Add fallback message
         fallback_message = Message(
             role=MessageRole.ASSISTANT,
-            content=[MessageContent(
-                type=MessageContentType.TEXT,
-                text=f"I'm experiencing technical difficulties. Please try again later. Error: {str(error)[:100]}...",
-                url=None
-            )],
-            conversation_id=getattr(state, "conversation_id", None)
+            content=[
+                MessageContent(
+                    type=MessageContentType.TEXT,
+                    text=f"I'm experiencing technical difficulties. Please try again later. Error: {str(error)[:100]}...",
+                    url=None,
+                )
+            ],
+            conversation_id=getattr(state, "conversation_id", None),
         )
         state.messages.append(fallback_message)
 

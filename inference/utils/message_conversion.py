@@ -5,6 +5,8 @@ This module consolidates all message conversion logic to eliminate duplicate imp
 and provide a single source of truth for message format conversion.
 """
 
+import json
+from json import tool
 from typing import List, Optional, Union, Dict, Any
 from datetime import datetime, timezone
 
@@ -22,29 +24,40 @@ from models import (
     MessageContent,
     MessageContentType,
 )
-from utils.logging import llmmllogger
+from .logging import llmmllogger
+from .tool_call_types import is_langchain_tool_call
+from .tool_call_extraction import (
+    extract_tool_calls_from_message_content,
+    extract_tool_calls_from_langchain_message,
+)
 
 logger = llmmllogger.bind(component="message_conversion")
 
 
-def message_to_base_message(message: Message) -> BaseMessage:
+def message_to_lc_message(message: Message) -> BaseMessage:
     """Convert a Message object to a LangChain BaseMessage, preserving multimodal content."""
-    
+
     # Convert Message.content to the multimodal format that LangChain expects
     content_data = convert_message_content_to_langchain_format(message.content)
+    tool_calls = extract_tool_calls_from_message_content(message.content)
 
-    if message.role == MessageRole.ASSISTANT:
+    if message.role == MessageRole.ASSISTANT or message.role == MessageRole.AGENT:
         return AIMessage(content=content_data)
     elif message.role == MessageRole.USER:
         return HumanMessage(content=content_data)
     elif message.role == MessageRole.SYSTEM:
+        return SystemMessage(content=content_data)
+    elif message.role == MessageRole.TOOL:
+        return ToolMessage(content=content_data)
+    elif message.role == MessageRole.OBSERVER:
+        # Treat observer messages as system messages
         return SystemMessage(content=content_data)
     else:
         # Default to human message for unknown roles
         return HumanMessage(content=content_data)
 
 
-def base_message_to_message(
+def lc_message_to_message(
     base_message: BaseMessage, conversation_id: Optional[int] = None
 ) -> Message:
     """Convert a LangChain BaseMessage to a Message object."""
@@ -52,27 +65,98 @@ def base_message_to_message(
     # Determine role based on message type
     if isinstance(base_message, AIMessage):
         role = MessageRole.ASSISTANT
-        message_type = "ai"
     elif isinstance(base_message, HumanMessage):
         role = MessageRole.USER
-        message_type = "human"
     elif isinstance(base_message, SystemMessage):
         role = MessageRole.SYSTEM
-        message_type = "system"
     elif isinstance(base_message, ToolMessage):
-        role = MessageRole.ASSISTANT  # Tool messages are typically assistant responses
-        message_type = "tool"
+        role = MessageRole.TOOL  # Tool messages are typically assistant responses
     else:
         # Default to user role for unknown types
         role = MessageRole.USER
-        message_type = "human"
 
     # Handle content - preserve multimodal structure or convert to MessageContent
+    content = convert_lc_message_content_to_message_format(base_message.content)
+    tool_calls = extract_tool_calls_from_langchain_message(base_message)
+
+    return Message(
+        role=role,
+        content=content,
+        conversation_id=conversation_id,
+        created_at=datetime.now(timezone.utc),
+        tool_calls=tool_calls,
+    )
+
+
+def messages_to_lc_messages(messages: List[Message]) -> List[BaseMessage]:
+    """Convert a list of Message objects to LangChain BaseMessages."""
+    return [message_to_lc_message(msg) for msg in messages]
+
+
+def lc_messages_to_messages(
+    base_messages: List[BaseMessage], conversation_id: Optional[int] = None
+) -> List[Message]:
+    """Convert a list of LangChain BaseMessages to Message objects."""
+    return [lc_message_to_message(msg, conversation_id) for msg in base_messages]
+
+
+def convert_message_content_to_langchain_format(
+    content: List[MessageContent],
+) -> Union[str, List[Union[str, Dict[str, Any]]]]:
+    """
+    Convert Message.content list to LangChain multimodal format.
+
+    Returns:
+        - str: For simple text-only messages
+        - List[Union[str, Dict[str, Any]]]: For multimodal messages with text and/or images
+    """
+    if not content:
+        return ""
+
+    # If single text content, return as string for simplicity
+    if len(content) == 1 and content[0].type == MessageContentType.TEXT:
+        return content[0].text or ""
+
+    # Multimodal content - return as list of dictionaries
+    result = []
+    for content_item in content:
+        if content_item.type == MessageContentType.TEXT:
+            result.append({"type": "text", "text": content_item.text or ""})
+        elif content_item.type == MessageContentType.IMAGE:
+            result.append(
+                {"type": "image_url", "image_url": {"url": content_item.url or ""}}
+            )
+        # Add other content types as needed
+
+    return result
+
+
+def convert_lc_message_content_to_message_format(
+    lc_content: Union[str, List[Union[str, Dict[str, Any]]]],
+) -> List[MessageContent]:
+    """
+    Convert LangChain BaseMessage content to Message.content format.
+
+    Args:
+        lc_content: Content from LangChain BaseMessage (str or list)
+
+    Returns:
+        - List[MessageContent]: List of MessageContent objects
+    """
+
     content = []
-    if isinstance(base_message.content, list):
+    if isinstance(lc_content, list):
         # Multimodal content - convert each item to MessageContent
-        for item in base_message.content:
+        for item in lc_content:
             if isinstance(item, dict):
+                if is_langchain_tool_call(item.get("content", {})):
+                    content.append(
+                        MessageContent(
+                            type=MessageContentType.TOOL_CALL,
+                            text=json.dumps(item.get("content", {})),
+                            url=None,
+                        )
+                    )
                 if item.get("type") == "text":
                     content.append(
                         MessageContent(
@@ -108,62 +192,11 @@ def base_message_to_message(
         content = [
             MessageContent(
                 type=MessageContentType.TEXT,
-                text=str(base_message.content) if base_message.content else "",
+                text=str(lc_content) if lc_content else "",
                 url=None,
             )
         ]
-
-    return Message(
-        role=role,
-        content=content,
-        conversation_id=conversation_id,
-        created_at=datetime.now(timezone.utc),
-    )
-
-
-def messages_to_base_messages(messages: List[Message]) -> List[BaseMessage]:
-    """Convert a list of Message objects to LangChain BaseMessages."""
-    return [message_to_base_message(msg) for msg in messages]
-
-
-def base_messages_to_messages(
-    base_messages: List[BaseMessage], conversation_id: Optional[int] = None
-) -> List[Message]:
-    """Convert a list of LangChain BaseMessages to Message objects."""
-    return [base_message_to_message(msg, conversation_id) for msg in base_messages]
-
-
-def convert_message_content_to_langchain_format(content: List[MessageContent]) -> Union[str, List[Union[str, Dict[str, Any]]]]:
-    """
-    Convert Message.content list to LangChain multimodal format.
-    
-    Returns:
-        - str: For simple text-only messages
-        - List[Union[str, Dict[str, Any]]]: For multimodal messages with text and/or images
-    """
-    if not content:
-        return ""
-    
-    # If single text content, return as string for simplicity
-    if len(content) == 1 and content[0].type == MessageContentType.TEXT:
-        return content[0].text or ""
-    
-    # Multimodal content - return as list of dictionaries
-    result = []
-    for content_item in content:
-        if content_item.type == MessageContentType.TEXT:
-            result.append({
-                "type": "text", 
-                "text": content_item.text or ""
-            })
-        elif content_item.type == MessageContentType.IMAGE:
-            result.append({
-                "type": "image_url",
-                "image_url": {"url": content_item.url or ""}
-            })
-        # Add other content types as needed
-    
-    return result
+    return content
 
 
 def extract_text_from_message(message: Message) -> str:
@@ -189,7 +222,7 @@ def extract_text_from_message(message: Message) -> str:
     return "\n".join(text_parts) if text_parts else ""
 
 
-def extract_text_from_base_message(base_message: BaseMessage) -> str:
+def extract_text_from_lc_message(base_message: BaseMessage) -> str:
     """Extract text content from a LangChain BaseMessage."""
     if not hasattr(base_message, "content"):
         return ""
@@ -218,11 +251,11 @@ def get_most_recent_user_message_text(messages: List[BaseMessage]) -> str:
     # Look for the most recent user message
     for msg in reversed(messages):
         if isinstance(msg, HumanMessage):
-            return extract_text_from_base_message(msg)
+            return extract_text_from_lc_message(msg)
 
     # Fallback: if no user message found, use the last message
     if messages:
-        return extract_text_from_base_message(messages[-1])
+        return extract_text_from_lc_message(messages[-1])
 
     return ""
 

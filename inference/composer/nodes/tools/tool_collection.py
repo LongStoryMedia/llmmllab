@@ -8,8 +8,8 @@ from typing import List
 from models import Tool, IntentAnalysis
 from composer.graph.state import WorkflowState
 from composer.tools.registry import ToolRegistry
-from composer.utils.extraction import extract_content_from_langchain_message
 from composer.agents.engineering_agent import EngineeringAgent
+from utils import extract_message_text
 from utils.logging import llmmllogger
 
 
@@ -61,9 +61,7 @@ class ToolCollectionNode:
 
             # Step 2: Decide if dynamic tools are needed and create them
             dynamic_tools = await self._collect_dynamic_tools(
-                user_query=extract_content_from_langchain_message(
-                    state.current_user_message
-                ),
+                user_query=extract_message_text(state.current_user_message),
                 user_id=state.user_id,
                 intents=state.intent_classification,
                 static_tools=static_tools,

@@ -19,17 +19,16 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode  # Keep for type hints if needed
 from langgraph.types import Command
 
-from models import Message
 from composer.graph.state import WorkflowState, ToolsState
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
-from composer.utils.conversion import (
-    convert_base_langchain_to_messages,
-    convert_messages_to_langchain,
-    to_lc_message,
+from utils.message_conversion import (
+    messages_to_lc_messages,
+    message_to_lc_message,
+    lc_messages_to_messages,
+    lc_message_to_message,
 )
-from utils.message_conversion import messages_to_base_messages
-from composer.utils.tool_call_types import (
+from utils.tool_call_types import (
     LangChainToolCall,
     extract_tool_call_requests,
     has_tool_calls,
@@ -82,9 +81,9 @@ class ToolsAgentSubgraph:
                 last_message = messages[-1]
 
                 # Check if last message has tool calls
-                if not isinstance(
-                    last_message, AIMessage
-                ) or not has_tool_calls(last_message):
+                if not isinstance(last_message, AIMessage) or not has_tool_calls(
+                    last_message
+                ):
                     return state
 
                 # Get executable tools
@@ -297,27 +296,19 @@ class ToolsAgentSubgraph:
             tools_dict = self.tool_registry.get_all_executable_tools()
             tools_list = list(tools_dict.values()) if tools_dict else None
 
-            # Convert LangChain BaseMessages to our internal Message format first
-            internal_messages = convert_base_langchain_to_messages(messages)
-            # Then convert to LangChainMessage format that chat_completion expects
-            langchain_format_messages = convert_messages_to_langchain(internal_messages)
-
             # Use the ChatAgent's chat completion method
             response = await self.chat_agent.chat_completion(
-                messages=langchain_format_messages, tools=tools_list, stream=False
+                messages=lc_messages_to_messages(messages),
+                tools=tools_list,
+                stream=False,
             )
 
             # Convert response message to LangChain BaseMessage format
             if response and response.message:
-                langchain_response = to_lc_message(response.message)
-            else:
-                langchain_response = AIMessage(content="No response generated")
-
-            # Ensure all messages are BaseMessage instances
-            updated_messages = list(messages) + [langchain_response]
+                state["messages"].append(message_to_lc_message(response.message))
 
             # Return updated state following LangChain agent pattern
-            return {**state, "messages": updated_messages}
+            return state
 
         except Exception as e:
             logger.error(f"Error in chat agent node: {e}")
@@ -330,9 +321,9 @@ class ToolsAgentSubgraph:
         """Transform main WorkflowState to minimal ToolsState for agent subgraph."""
         # Get recent messages for agent context and convert to LangChain core messages
         recent_messages = getattr(main_state, "messages", [])[-10:]
-        
+
         # Use the consolidated message conversion utility to convert Message objects to BaseMessage objects
-        langchain_messages = messages_to_base_messages(recent_messages)
+        langchain_messages = messages_to_lc_messages(recent_messages)
 
         # Pass full user_config object for tool access (tools need full config objects)
         user_config = getattr(main_state, "user_config", None)
@@ -379,10 +370,12 @@ class ToolsAgentSubgraph:
                             f"🔄 transform_to_main_state: Converting {type(msg).__name__} to Message"
                         )
                         # Convert BaseMessage to Message using existing utilities
-                        messages_list = convert_base_langchain_to_messages([msg])
+                        messages_list = lc_messages_to_messages([msg])
                         if messages_list:
                             message_obj = messages_list[0]
-                            message_obj.conversation_id = getattr(main_state, "conversation_id", None)
+                            message_obj.conversation_id = getattr(
+                                main_state, "conversation_id", None
+                            )
                             logger.info(
                                 f"🔄 transform_to_main_state: Created Message with role='{message_obj.role}'"
                             )
