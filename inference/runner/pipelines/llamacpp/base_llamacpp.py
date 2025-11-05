@@ -212,6 +212,8 @@ class BaseLlamaCppPipeline(BasePipeline):
         if handler:
             self.chat_handler = handler
 
+
+
         params = self.profile.parameters
         gcfg = self.profile.gpu_config or DEFAULT_GPU_CONFIG
         
@@ -257,10 +259,20 @@ class BaseLlamaCppPipeline(BasePipeline):
             attempt_params_list = [force_params]
             current_params = force_params
             max_attempts = 1 if self.oom_recovery is None else 10
+            self._logger.info(f"🔍 DEBUG Using force_params: n_ctx={current_params.n_ctx}, n_batch={current_params.n_batch}")
         else:
-            # Use the original logic with ML predictions
+            # Use optimized parameters if available, otherwise profile parameters
             max_attempts = 1 if self.oom_recovery is None else 10
-            current_params = attempt_params_list[0]
+            
+            # Always prefer ML-optimized parameters if available (they're safer)
+            should_use_optimization = len(attempt_params_list) > 1  # Use optimized params if available
+            
+            if should_use_optimization:
+                current_params = attempt_params_list[1]  # Use ML-optimized parameters
+                self._logger.info(f"✅ Using ML-optimized parameters: n_ctx={current_params.n_ctx}, n_batch={current_params.n_batch}")
+            else:
+                current_params = attempt_params_list[0]  # Use profile parameters
+                self._logger.info(f"� Using profile parameters: n_ctx={current_params.n_ctx}, n_batch={current_params.n_batch}")
         
         attempt_index = 0  # track transition to predicted params after first OOM
         attempt = 1
@@ -325,7 +337,7 @@ class BaseLlamaCppPipeline(BasePipeline):
 
             try:
                 self._logger.info(
-                    f"🚀 Initializing {self.model.name} (attempt {attempt}): n_ctx={current_params.n_ctx:,}, n_batch={current_params.n_batch}, n_ubatch={current_params.n_ubatch}, gpu_layers={current_params.n_gpu_layers}, stop={params.stop}"
+                    f"🚀 Initializing {self.model.name} (attempt {attempt}): n_ctx={current_params.n_ctx:,}, n_batch={current_params.n_batch}"
                 )
                 start_time = time.time()
                 
