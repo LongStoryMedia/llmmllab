@@ -20,7 +20,7 @@ properties:
     type: string
     description: Name of the model to use
   parameters:
-    $ref: "#/definitions/ModelParameters"
+    $ref: model_parameters.yaml
     description: Parameters for configuring the model
   system_prompt:
     type: string
@@ -58,6 +58,3 @@ required:
   - parameters
   - system_prompt
   - type
-definitions:
-  ModelParameters:
-    $ref: model_parameters.yaml

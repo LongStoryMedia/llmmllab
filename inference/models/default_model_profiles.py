@@ -9,9 +9,9 @@ from .model_profile import ModelProfile
 from .model_parameters import ModelParameters
 from .model_profile_config import ModelProfileConfig
 from .parameter_optimization_config import (
-    ParameterOptimizationConfiguration,
+    ParameterOptimizationConfig,
     ParameterFloors,
-    CrashPrevention
+    CrashPrevention,
 )
 
 # Define profile types as constants (similar to the Go implementation)
@@ -73,14 +73,14 @@ DEFAULT_ANALYSIS_MODEL = "qwen3-4b-ud-q6-k-xl"
 # Parameter optimization configurations for different model classes
 
 # Optimized config for 4B models (good balance of performance and safety)
-ANALYSIS_MODEL_OPTIMIZATION = ParameterOptimizationConfiguration(
+ANALYSIS_MODEL_OPTIMIZATION = ParameterOptimizationConfig(
     enabled=True,
     optimization_priority=["n_ctx", "n_batch", "n_ubatch"],
     parameter_floors=ParameterFloors(
-        n_ctx=8192,   # Minimum useful context for analysis
+        n_ctx=8192,  # Minimum useful context for analysis
         n_batch=128,  # Higher minimum batch for 4B models
         n_ubatch=128,
-        n_gpu_layers=0  # Allow CPU fallback
+        n_gpu_layers=0,  # Allow CPU fallback
     ),
     search_strategy="binary_search",
     max_search_attempts=8,
@@ -88,28 +88,48 @@ ANALYSIS_MODEL_OPTIMIZATION = ParameterOptimizationConfiguration(
         enable_preallocation_test=True,
         memory_buffer_mb=2048,  # Larger buffer for analysis models
         timeout_seconds=90,
-        enable_graceful_degradation=True
-    )
+        enable_graceful_degradation=True,
+    ),
 )
 
 # Optimized config for 30B models (conservative but effective)
-ENGINEERING_MODEL_OPTIMIZATION = ParameterOptimizationConfiguration(
+ENGINEERING_MODEL_OPTIMIZATION = ParameterOptimizationConfig(
     enabled=True,
     optimization_priority=["n_ctx", "n_batch"],
     parameter_floors=ParameterFloors(
         n_ctx=32768,  # Higher minimum context for engineering tasks
-        n_batch=64,   # Conservative batch for large models
+        n_batch=64,  # Conservative batch for large models
         n_ubatch=64,
-        n_gpu_layers=0
+        n_gpu_layers=0,
     ),
     search_strategy="conservative_increment",
     max_search_attempts=6,
     crash_prevention=CrashPrevention(
         enable_preallocation_test=True,
         memory_buffer_mb=4096,  # Large buffer for 30B models
-        timeout_seconds=150,    # More time for large models
-        enable_graceful_degradation=True
-    )
+        timeout_seconds=150,  # More time for large models
+        enable_graceful_degradation=True,
+    ),
+)
+
+# Optimized config for primary large models (32B+ models - very conservative)
+PRIMARY_MODEL_OPTIMIZATION = ParameterOptimizationConfig(
+    enabled=True,
+    optimization_priority=["n_ctx", "n_batch"],
+    parameter_floors=ParameterFloors(
+        n_ctx=16384,  # Conservative starting context for 32B models
+        n_batch=32,  # Very conservative batch for large models
+        n_ubatch=32,
+        n_gpu_layers=0,
+    ),
+    search_strategy="conservative_increment",
+    max_search_attempts=6,  # Reduced attempts for safety
+    crash_prevention=CrashPrevention(
+        enable_preallocation_test=True,
+        memory_buffer_mb=8192,  # Much larger buffer for 32B VL models
+        timeout_seconds=180,  # Extra time for large models
+        enable_graceful_degradation=True,
+    ),
 )
 
 # Define default model profiles
@@ -121,7 +141,7 @@ DEFAULT_PRIMARY_PROFILE = ModelProfile(
     description="Primary model profile for general chat and reasoning.",
     model_name=DEFAULT_TEXT_TO_TEXT_MODEL,
     parameters=ModelParameters(
-        num_ctx=131072,
+        num_ctx=65536,  # More conservative starting point for 32B model
         repeat_last_n=-1,
         repeat_penalty=1.1,
         temperature=0.6,
@@ -132,6 +152,7 @@ DEFAULT_PRIMARY_PROFILE = ModelProfile(
         min_p=0.01,
         max_tokens=400000,
         n_parts=-1,
+        batch_size=128,  # Conservative starting batch size for 32B model
         stop=["<|im_end|>"],
         think=True,
     ),
@@ -165,6 +186,7 @@ RESPONSE STRUCTURE:
 4. Move on immediately
 
 Avoid circular reasoning, excessive elaboration, or repetitive explanations. Be decisive and concise.""",
+    parameter_optimization=PRIMARY_MODEL_OPTIMIZATION,
     created_at=datetime.now(),
     updated_at=datetime.now(),
 )

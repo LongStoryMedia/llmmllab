@@ -29,6 +29,10 @@ import {
   Security as SecurityIcon
 } from '@mui/icons-material';
 import { useConfigContext } from '../../context/ConfigContext';
+import { UserConfig } from '../../types/UserConfig';
+import { updateConfig } from '../../api';
+import { useAuth } from '../../auth';
+import { getToken } from '../../api';
 
 const OPTIMIZATION_STRATEGIES = [
   { value: 'binary_search', label: 'Binary Search', description: 'Fast, precise optimization for stable systems' },
@@ -86,20 +90,43 @@ const DEFAULT_OPTIMIZATION_CONFIG: LocalParameterOptimizationConfiguration = {
 
 const ParameterOptimizationSettings = () => {
   const { config, isLoading } = useConfigContext();
+  const auth = useAuth();
   const [localConfig, setLocalConfig] = useState<LocalParameterOptimizationConfiguration>(DEFAULT_OPTIMIZATION_CONFIG);
   const [saveStatus, setSaveStatus] = useState<{ success?: boolean; message: string } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Load current optimization config from selected model profile
+  // Load current optimization config from user config
   useEffect(() => {
-    // For now, we'll need to add this to a specific profile or global config
-    // This is a placeholder - we'll need to determine where to store this
-    if (config?.model_profiles) {
-      // Could be stored in global config or per-profile
-      // For now, initialize with defaults
-      setLocalConfig(prev => ({
-        ...DEFAULT_OPTIMIZATION_CONFIG,
-        ...prev
-      }));
+    if (config?.parameter_optimization) {
+      // Convert from server format to local format (handle any type differences)
+      const serverConfig = config.parameter_optimization as {
+        enabled: boolean;
+        optimization_priority: OptimizationParam[] | string[];
+        parameter_floors: LocalParameterOptimizationConfiguration['parameter_floors'];
+        search_strategy: SearchStrategy;
+        max_search_attempts: number;
+        crash_prevention: LocalParameterOptimizationConfiguration['crash_prevention'];
+      };
+      setLocalConfig({
+        enabled: serverConfig.enabled || false,
+        optimization_priority: Array.isArray(serverConfig.optimization_priority) 
+          ? serverConfig.optimization_priority as OptimizationParam[]
+          : ['n_ctx', 'n_batch'],
+        parameter_floors: serverConfig.parameter_floors || {
+          n_ctx: 8192,
+          n_batch: 64,
+          n_ubatch: 64,
+          n_gpu_layers: 0
+        },
+        search_strategy: serverConfig.search_strategy || 'conservative_increment',
+        max_search_attempts: serverConfig.max_search_attempts || 6,
+        crash_prevention: serverConfig.crash_prevention || {
+          enable_preallocation_test: true,
+          memory_buffer_mb: 4096,
+          timeout_seconds: 120,
+          enable_graceful_degradation: true
+        }
+      });
     }
   }, [config]);
 
@@ -145,23 +172,57 @@ const ParameterOptimizationSettings = () => {
     handlePriorityChange(updated);
   };
 
+  const convertLocalToServerConfig = (local: LocalParameterOptimizationConfiguration) => {
+    // Convert our properly typed local config to the server's expected format
+    return {
+      enabled: local.enabled,
+      optimization_priority: local.optimization_priority as string[], // Type assertion due to generated type issue
+      parameter_floors: local.parameter_floors,
+      search_strategy: local.search_strategy,
+      max_search_attempts: local.max_search_attempts,
+      crash_prevention: local.crash_prevention
+    };
+  };
+
   const handleSave = async () => {
     setSaveStatus(null);
+    setIsSaving(true);
 
     try {
-      // TODO: Implement saving optimization config to the appropriate location
-      // This will need backend API support for per-profile optimization settings
-      console.log('Saving parameter optimization config:', localConfig);
+      if (!config) {
+        setSaveStatus({
+          success: false,
+          message: 'No configuration available to save.'
+        });
+        return;
+      }
+
+      // Update the user config with new parameter optimization settings
+      const updatedConfig = {
+        ...config,
+        parameter_optimization: convertLocalToServerConfig(localConfig)
+      };
+
+      const success = await updateConfig(getToken(auth.user), updatedConfig as UserConfig);
       
-      setSaveStatus({
-        success: true,
-        message: 'Parameter optimization settings saved successfully!'
-      });
+      if (success) {
+        setSaveStatus({
+          success: true,
+          message: 'Parameter optimization settings saved successfully!'
+        });
+      } else {
+        setSaveStatus({
+          success: false,
+          message: 'Failed to save parameter optimization settings.'
+        });
+      }
     } catch (error) {
       setSaveStatus({
         success: false,
         message: error instanceof Error ? error.message : 'Failed to save settings'
       });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -391,10 +452,10 @@ const ParameterOptimizationSettings = () => {
         <Button
           variant="contained"
           onClick={handleSave}
-          disabled={isLoading}
+          disabled={isLoading || isSaving}
           size="large"
         >
-          Save Parameter Optimization Settings
+          {isSaving ? 'Saving...' : 'Save Parameter Optimization Settings'}
         </Button>
       </Box>
     </Box>

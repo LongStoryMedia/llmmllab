@@ -7,7 +7,7 @@ properties:
     type: string
     description: User ID
   summarization:
-    $ref: summarization_config.yamls
+    $ref: summarization_config.yaml
   memory:
     $ref: memory_config.yaml
   web_search:
@@ -24,6 +24,8 @@ properties:
     $ref: circuit_breaker_config.yaml
   gpu_config:
     $ref: gpu_config.yaml
+  parameter_optimization:
+    $ref: parameter_optimization_config.yaml
   workflow:
     $ref: workflow_config.yaml
   tool:
@@ -46,3 +48,4 @@ required:
   - workflow
   - tool
   - context_window
+  - parameter_optimization

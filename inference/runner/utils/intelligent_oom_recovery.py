@@ -30,7 +30,7 @@ from models.prediction_features import PredictionFeatures
 from models.learned_limits import LearnedLimits
 from models.recovery_strategy import RecoveryStrategy
 from models.ml_model_performance import MLModelPerformance
-from models.parameter_optimization_config import ParameterOptimizationConfiguration
+from models.parameter_optimization_config import ParameterOptimizationConfig
 from .hardware_manager import EnhancedHardwareManager
 
 
@@ -948,7 +948,7 @@ class IntelligentOOMRecovery:
         base_params: OptimalParameters,
         model_profile: ModelProfile,
         hardware_manager: EnhancedHardwareManager,
-        optimization_config: Optional[ParameterOptimizationConfiguration] = None,
+        optimization_config: Optional[ParameterOptimizationConfig] = None,
     ) -> OptimalParameters:
         """
         Optimize parameters to find maximum values while respecting constraints.
@@ -1008,7 +1008,7 @@ class IntelligentOOMRecovery:
         self,
         param_name: str,
         current_params: OptimalParameters,
-        optimization_config: ParameterOptimizationConfiguration,
+        optimization_config: ParameterOptimizationConfig,
         gpu_stats,
         hardware_manager: EnhancedHardwareManager,
     ) -> int:
@@ -1056,7 +1056,7 @@ class IntelligentOOMRecovery:
         start_value: int,
         floor_value: int,
         params: OptimalParameters,
-        config: ParameterOptimizationConfiguration,
+        config: ParameterOptimizationConfig,
         gpu_stats,
         hardware_manager: EnhancedHardwareManager,
     ) -> int:
@@ -1067,7 +1067,7 @@ class IntelligentOOMRecovery:
 
         # Set reasonable upper bounds based on parameter type
         if param_name == "n_ctx":
-            high = min(start_value * 4, 131072)  # Max 128K context
+            high = min(start_value * 4, 98304)  # Max 96K context (more conservative)
         elif param_name == "n_batch":
             high = min(start_value * 8, 2048)  # Max 2K batch
         elif param_name == "n_ubatch":
@@ -1110,7 +1110,7 @@ class IntelligentOOMRecovery:
         start_value: int,
         floor_value: int,
         params: OptimalParameters,
-        config: ParameterOptimizationConfiguration,
+        config: ParameterOptimizationConfig,
         gpu_stats,
         hardware_manager: EnhancedHardwareManager,
     ) -> int:
@@ -1161,7 +1161,7 @@ class IntelligentOOMRecovery:
         start_value: int,
         floor_value: int,
         params: OptimalParameters,
-        config: ParameterOptimizationConfiguration,
+        config: ParameterOptimizationConfig,
         gpu_stats,
         hardware_manager: EnhancedHardwareManager,
     ) -> int:
@@ -1186,8 +1186,8 @@ class IntelligentOOMRecovery:
             attempts += 1
             test_value = current_value + (increment * attempts)
 
-            # Apply reasonable limits
-            if param_name == "n_ctx" and test_value > 131072:
+            # Apply reasonable limits based on model size
+            if param_name == "n_ctx" and test_value > 98304:  # Max 96K context (conservative)
                 break
             elif param_name in ["n_batch", "n_ubatch"] and test_value > 2048:
                 break

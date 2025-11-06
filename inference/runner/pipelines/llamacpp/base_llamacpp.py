@@ -47,8 +47,8 @@ from langchain_core.messages.ai import UsageMetadata
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.tools.base import BaseTool
 
-from models import Model, ModelProfile, OptimalParameters
-from models.default_configs import DEFAULT_GPU_CONFIG
+from models import Model, ModelProfile, OptimalParameters, UserConfig
+from models.config_utils import resolve_parameter_optimization_config, resolve_gpu_config
 from utils.logging import llmmllogger
 from runner.utils.hardware_manager import hardware_manager
 from runner.utils.intelligent_oom_recovery import IntelligentOOMRecovery
@@ -76,12 +76,14 @@ class BaseLlamaCppPipeline(BasePipeline):
     model: Model
     profile: ModelProfile
     grammar: Optional[Type[BaseModel]]
+    user_config: Optional[UserConfig] = None
 
     def __init__(
         self,
         model: Model,
         profile: ModelProfile,
         grammar: Optional[Type[BaseModel]],
+        user_config: Optional[UserConfig] = None,
         **kwargs,
     ):
         """Base LlamaCpp pipeline implementation.
@@ -93,11 +95,12 @@ class BaseLlamaCppPipeline(BasePipeline):
         """
 
         # Pass the required fields to the parent constructor for Pydantic validation
-        super().__init__(model=model, profile=profile, grammar=grammar, **kwargs)  # type: ignore
+        super().__init__(model=model, profile=profile, grammar=grammar, user_config=user_config, **kwargs)  # type: ignore
         self._logger = llmmllogger.bind(
             component=self.__class__.__name__, model=model.name
         )
         self.grammar = grammar
+        self.user_config = user_config
         self._bound_tools: List[BaseTool] = kwargs.get("_bound_tools", [])
         self.hardware_manager = hardware_manager
 
@@ -156,7 +159,7 @@ class BaseLlamaCppPipeline(BasePipeline):
         
         # Step 1: Get base parameters from profile
         params = self.profile.parameters
-        gcfg = self.profile.gpu_config or DEFAULT_GPU_CONFIG
+        gcfg = resolve_gpu_config(self.profile, self.user_config)
         
         base_params = OptimalParameters(
             n_ctx=params.num_ctx or 40960,
@@ -166,7 +169,7 @@ class BaseLlamaCppPipeline(BasePipeline):
         )
         
         # Step 2: Apply parameter optimization if configured
-        optimization_config = getattr(self.profile, 'parameter_optimization', None)
+        optimization_config = resolve_parameter_optimization_config(self.profile, self.user_config)
         optimized_params = base_params
         
         if self.oom_recovery is not None and optimization_config and optimization_config.enabled:
@@ -217,7 +220,7 @@ class BaseLlamaCppPipeline(BasePipeline):
 
 
         params = self.profile.parameters
-        gcfg = self.profile.gpu_config or DEFAULT_GPU_CONFIG
+        gcfg = resolve_gpu_config(self.profile, self.user_config)
         
         # Use forced parameters if provided (from optimization), otherwise use profile defaults
         if force_params:

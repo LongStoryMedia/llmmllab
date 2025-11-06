@@ -1,9 +1,7 @@
 $schema: http://json-schema.org/draft-07/schema#
-title: Parameter Optimization Configuration
+title: ParameterOptimizationConfig
 description: Configuration for optimizing LLM initialization parameters to find maximum values
-
 type: object
-
 properties:
   enabled:
     type: boolean
