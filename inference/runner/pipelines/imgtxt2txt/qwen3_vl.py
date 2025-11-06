@@ -13,8 +13,7 @@ from pydantic import BaseModel  # noqa: F401
 # llama_cpp imported lazily within methods to reduce unnecessary top-level dependencies
 # Pillow not required for text-only stabilization; multimodal image loading currently disabled.
 
-from models import Model, ModelProfile, OptimalParameters
-from models.default_configs import DEFAULT_GPU_CONFIG
+from models import Model, ModelProfile
 from runner.pipelines.llamacpp import BaseLlamaCppPipeline
 
 
@@ -51,25 +50,20 @@ class Qwen3VLPipeline(BaseLlamaCppPipeline):
         )
         return base_params
 
-    def initialize_llama_with_optimization(self) -> Llama:
-        """Override to handle multimodal chat handler with optimization."""
+    def _initialize_llama(
+        self, gguf_path: str, h: LlamaChatCompletionHandler | None = None
+    ) -> Llama:
         if self.model.details.clip_model_path:
-            # Create the vision handler
             handler = Qwen25VLChatHandler(
                 clip_model_path=self.model.details.clip_model_path,
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
             )
-            
-            # Use the parent optimization logic with our custom vision handler
-            gguf_path = self._get_gguf_path()
-            
-            # Let the base class handle ALL parameter optimization
-            # We just need to pass the vision handler
-            self._logger.info("🔍 DEBUG Qwen3VL delegating to base class with vision handler")
-            return self._initialize_llama(gguf_path, handler=handler)
+            return super()._initialize_llama(
+                gguf_path,
+                handler,
+            )
         else:
-            # No vision support, use parent method
-            return super().initialize_llama_with_optimization()
+            return super()._initialize_llama(gguf_path, h)
 
 
 __all__ = ["Qwen3VLPipeline"]

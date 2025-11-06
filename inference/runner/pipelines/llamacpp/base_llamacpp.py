@@ -1087,7 +1087,23 @@ class BaseLlamaCppPipeline(BasePipeline):
             raise
 
     def close(self):
-        """Clean up resources."""
+        """Clean up resources and unlock pipeline if needed."""
+        # Unlock pipeline if it was automatically locked by get_pipeline()
+        try:
+            from runner.pipeline_factory import pipeline_factory  # Lazy import to avoid circular deps
+            
+            # Only unlock if this is a local pipeline (remote pipelines don't get locked)
+            if hasattr(self, 'profile') and self.profile:
+                success = pipeline_factory.unlock_pipeline(self.profile)
+                if success:
+                    self._logger.debug(f"🔓 Unlocked pipeline for model: {self.profile.model_name}")
+                else:
+                    self._logger.debug(f"🔓 Pipeline unlock skipped for model: {self.profile.model_name} (likely remote)")
+        except Exception as e:
+            # Don't fail close() if unlock fails - just log it
+            self._logger.warning(f"Failed to unlock pipeline during close: {e}")
+        
+        # Clean up llama instance
         if hasattr(self, "llama_instance") and self.llama_instance:
             try:
                 self.llama_instance.close()
