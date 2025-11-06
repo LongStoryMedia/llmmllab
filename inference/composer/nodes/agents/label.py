@@ -86,9 +86,9 @@ class TitleGenerationNode:
                     "error": str(e),
                 },
             )
-            
+
             # Cleanup classifier agent resources even on error
             self.classifier_agent.cleanup()
-            
+
             # Escalate by raising so tests fail visibly
             raise

@@ -121,9 +121,19 @@ class ToolsAgentSubgraph:
                             logger.debug(
                                 f"User ID in tool state: {state.get('user_id')}"
                             )
-                            result = await tool.ainvoke(
-                                {**tool_args, "runtime": runtime}
-                            )
+                            
+                            # Add timeout to tool execution to prevent hanging
+                            import asyncio
+                            tool_timeout = 120  # 2 minutes per tool
+                            
+                            try:
+                                result = await asyncio.wait_for(
+                                    tool.ainvoke({**tool_args, "runtime": runtime}),
+                                    timeout=tool_timeout
+                                )
+                            except asyncio.TimeoutError:
+                                logger.error(f"⏰ Tool '{tool_name}' execution timed out after {tool_timeout} seconds")
+                                result = f"❌ Tool execution timed out after {tool_timeout} seconds"
 
                             tool_messages.append(
                                 ToolMessage(
@@ -188,19 +198,39 @@ class ToolsAgentSubgraph:
             tool_node = self._create_tool_node()
             builder.add_node("tools", tool_node)
 
-            # Custom routing condition for tool calls (since we use custom ToolNode)
+            # Custom routing condition for tool calls with safety limits
             def should_continue_to_tools(state: ToolsState) -> str:
-                """Check if we should route to tools or end."""
+                """Check if we should route to tools or end with safety limits."""
                 messages = state.get("messages", [])
                 if not messages:
                     return "__end__"
 
+                # Count total interactions to prevent infinite loops
+                total_messages = len(messages)
+                max_messages = 50  # Safety limit
+                if total_messages > max_messages:
+                    logger.warning(f"🛑 Stopping: reached message limit ({total_messages}/{max_messages})")
+                    return "__end__"
+
+                # Count tool call iterations in recent messages
+                recent_messages = messages[-20:]  # Look at last 20 messages
+                tool_call_count = sum(1 for msg in recent_messages 
+                                    if hasattr(msg, "tool_calls") and getattr(msg, "tool_calls", None))
+                max_tool_iterations = 10  # Safety limit
+                if tool_call_count > max_tool_iterations:
+                    logger.warning(f"🛑 Stopping: reached tool call limit ({tool_call_count}/{max_tool_iterations})")
+                    return "__end__"
+
                 last_message = messages[-1]
-                # Check if message has tool calls using hasattr for safety
+                # Check if message has tool calls
                 if hasattr(last_message, "tool_calls") and getattr(
                     last_message, "tool_calls", None
                 ):
+                    tool_calls = getattr(last_message, "tool_calls", [])
+                    logger.info(f"🔧 Routing to tools: {len(tool_calls)} tool calls to execute")
                     return "tools"
+                    
+                logger.info("✅ No tool calls found, ending workflow")
                 return "__end__"
 
             builder.add_conditional_edges(
@@ -396,8 +426,20 @@ class ToolsAgentSubgraph:
             # Transform to agent state
             tools_state = self.transform_to_tools_state(main_state)
 
-            # Execute the agent subgraph with LangChain defaults
-            result = await self.graph.ainvoke(tools_state)
+            # Execute the agent subgraph with timeout and iteration limit
+            import asyncio
+            
+            # Set timeout for graph execution (5 minutes max)
+            timeout_seconds = 300
+            
+            try:
+                result = await asyncio.wait_for(
+                    self.graph.ainvoke(tools_state), 
+                    timeout=timeout_seconds
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"❌ Agent subgraph execution timed out after {timeout_seconds} seconds")
+                return Command(update={})
 
             # Transform results back to main state updates
             logger.info(

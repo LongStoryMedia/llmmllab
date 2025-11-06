@@ -9,6 +9,9 @@ properties:
   message_id:
     type: integer
     description: "ID of the associated message this analysis belongs to"
+  task:
+    type: string
+    description: "The specific task inferred from the user message for this analysis"
   workflow_type:
     $ref: "workflow_type.yaml"
     description: "Primary intent category identified from the user message"

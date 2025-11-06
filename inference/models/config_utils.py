@@ -15,8 +15,7 @@ logger = llmmllogger.bind(component="ConfigUtils")
 
 
 def resolve_parameter_optimization_config(
-    profile: ModelProfile, 
-    user_config: Optional[UserConfig] = None
+    profile: ModelProfile, user_config: Optional[UserConfig] = None
 ) -> Optional[ParameterOptimizationConfig]:
     """
     Resolve parameter optimization configuration using hierarchical pattern.

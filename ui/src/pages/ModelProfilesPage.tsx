@@ -725,6 +725,356 @@ const ModelProfilesPage = () => {
             </AccordionDetails>
           </Accordion>
 
+          {/* Parameter Optimization Configuration Section */}
+          <Accordion sx={{ mt: 2 }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <SettingsIcon sx={{ mr: 1 }} />
+                <Typography variant="h6">
+                  Parameter Optimization (Optional)
+                </Typography>
+                {editingProfile?.parameter_optimization && (
+                  <Chip
+                    label="Custom Settings Active"
+                    color="primary"
+                    size="small"
+                    sx={{ ml: 2 }}
+                  />
+                )}
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Configure automatic parameter optimization to find the maximum viable context size, batch size, and other parameters for this model profile.
+              </Typography>
+
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={!!editingProfile?.parameter_optimization}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setEditingProfile({
+                          ...editingProfile,
+                          parameter_optimization: {
+                            enabled: true,
+                            // @ts-expect-error ts()
+                            optimization_priority: ['n_ctx', 'n_gpu_layers', 'n_batch', 'n_ubatch'],
+                            parameter_floors: {
+                              n_ctx: 2048,
+                              n_batch: 32,
+                              n_ubatch: 32,
+                              n_gpu_layers: 0
+                            },
+                            search_strategy: 'binary_search',
+                            max_search_attempts: 5,
+                            crash_prevention: {
+                              enable_preallocation_test: true,
+                              memory_buffer_mb: 1024,
+                              timeout_seconds: 300,
+                              enable_graceful_degradation: true
+                            }
+                          }
+                        });
+                      } else {
+                        const { parameter_optimization, ...restProfile } = editingProfile!;
+                        setEditingProfile(restProfile);
+                      }
+                    }}
+                  />
+                }
+                label="Enable Parameter Optimization for this Profile"
+              />
+
+              {editingProfile?.parameter_optimization && (
+                <>
+                  {/* Basic Settings */}
+                  <Typography variant="subtitle1" sx={{ mt: 2, mb: 1, fontWeight: 'bold' }}>
+                    Basic Settings
+                  </Typography>
+
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={editingProfile?.parameter_optimization?.enabled ?? true}
+                        onChange={(e) => {
+                          const currentConfig = editingProfile?.parameter_optimization;
+                          if (currentConfig !== undefined) {
+                            setEditingProfile({
+                              ...editingProfile,
+                              parameter_optimization: {
+                                ...currentConfig,
+                                enabled: e.target.checked
+                              }
+                            });
+                          }
+                        }}
+                      />
+                    }
+                    label="Enable Optimization"
+                    sx={{ mb: 1, display: 'block' }}
+                  />
+
+                  <FormControl fullWidth margin="normal">
+                    <InputLabel>Search Strategy</InputLabel>
+                    <Select
+                      value={editingProfile?.parameter_optimization?.search_strategy || 'binary_search'}
+                      onChange={(e) => {
+                        const currentConfig = editingProfile?.parameter_optimization;
+                        if (currentConfig !== undefined) {
+                          setEditingProfile({
+                            ...editingProfile,
+                            parameter_optimization: {
+                              ...currentConfig,
+                              search_strategy: e.target.value as 'binary_search' | 'exponential_backoff' | 'conservative_increment'
+                            }
+                          });
+                        }
+                      }}
+                      label="Search Strategy"
+                    >
+                      <MenuItem value="binary_search">Binary Search - Fast, good for finding maximum</MenuItem>
+                      <MenuItem value="exponential_backoff">Exponential Backoff - Safe, conservative</MenuItem>
+                      <MenuItem value="conservative_increment">Conservative Increment - Slow but safe</MenuItem>
+                    </Select>
+                  </FormControl>
+
+                  <TextField
+                    label="Max Search Attempts"
+                    type="number"
+                    value={editingProfile?.parameter_optimization?.max_search_attempts ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.parameter_optimization;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          parameter_optimization: {
+                            ...currentConfig,
+                            max_search_attempts: value || 5
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 1, max: 20, step: 1 }}
+                    helperText="Maximum optimization attempts per parameter (1-20)"
+                  />
+
+                  {/* Parameter Floors */}
+                  <Typography variant="subtitle1" sx={{ mt: 3, mb: 1, fontWeight: 'bold' }}>
+                    Minimum Parameter Values
+                  </Typography>
+
+                  <TextField
+                    label="Minimum Context Size (n_ctx)"
+                    type="number"
+                    value={editingProfile?.parameter_optimization?.parameter_floors?.n_ctx ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.parameter_optimization;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          parameter_optimization: {
+                            ...currentConfig,
+                            parameter_floors: {
+                              ...currentConfig.parameter_floors,
+                              n_ctx: value
+                            }
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 512, max: 65536, step: 512 }}
+                    helperText="Minimum context window size (512-65536)"
+                  />
+
+                  <TextField
+                    label="Minimum Batch Size (n_batch)"
+                    type="number"
+                    value={editingProfile?.parameter_optimization?.parameter_floors?.n_batch ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.parameter_optimization;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          parameter_optimization: {
+                            ...currentConfig,
+                            parameter_floors: {
+                              ...currentConfig.parameter_floors,
+                              n_batch: value
+                            }
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 1, max: 2048, step: 1 }}
+                    helperText="Minimum batch size for processing (1-2048)"
+                  />
+
+                  <TextField
+                    label="Minimum Micro-Batch Size (n_ubatch)"
+                    type="number"
+                    value={editingProfile?.parameter_optimization?.parameter_floors?.n_ubatch ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.parameter_optimization;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          parameter_optimization: {
+                            ...currentConfig,
+                            parameter_floors: {
+                              ...currentConfig.parameter_floors,
+                              n_ubatch: value
+                            }
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 1, max: 2048, step: 1 }}
+                    helperText="Minimum micro-batch size (1-2048)"
+                  />
+
+                  <TextField
+                    label="Minimum GPU Layers (n_gpu_layers)"
+                    type="number"
+                    value={editingProfile?.parameter_optimization?.parameter_floors?.n_gpu_layers ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.parameter_optimization;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          parameter_optimization: {
+                            ...currentConfig,
+                            parameter_floors: {
+                              ...currentConfig.parameter_floors,
+                              n_gpu_layers: value
+                            }
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 0, max: 200, step: 1 }}
+                    helperText="Minimum GPU layers (0=CPU only, 200+ for full GPU)"
+                  />
+
+                  {/* Crash Prevention */}
+                  <Typography variant="subtitle1" sx={{ mt: 3, mb: 1, fontWeight: 'bold' }}>
+                    Safety & Crash Prevention
+                  </Typography>
+
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={editingProfile?.parameter_optimization?.crash_prevention?.enable_preallocation_test ?? true}
+                        onChange={(e) => {
+                          const currentConfig = editingProfile?.parameter_optimization;
+                          if (currentConfig !== undefined) {
+                            setEditingProfile({
+                              ...editingProfile,
+                              parameter_optimization: {
+                                ...currentConfig,
+                                crash_prevention: {
+                                  ...currentConfig.crash_prevention,
+                                  enable_preallocation_test: e.target.checked
+                                }
+                              }
+                            });
+                          }
+                        }}
+                      />
+                    }
+                    label="Enable Pre-allocation Test"
+                    sx={{ mb: 1, display: 'block' }}
+                  />
+
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={editingProfile?.parameter_optimization?.crash_prevention?.enable_graceful_degradation ?? true}
+                        onChange={(e) => {
+                          const currentConfig = editingProfile?.parameter_optimization;
+                          if (currentConfig !== undefined) {
+                            setEditingProfile({
+                              ...editingProfile,
+                              parameter_optimization: {
+                                ...currentConfig,
+                                crash_prevention: {
+                                  ...currentConfig.crash_prevention,
+                                  enable_graceful_degradation: e.target.checked
+                                }
+                              }
+                            });
+                          }
+                        }}
+                      />
+                    }
+                    label="Enable Graceful Degradation"
+                    sx={{ mb: 1, display: 'block' }}
+                  />
+
+                  <TextField
+                    label="Memory Buffer (MB)"
+                    type="number"
+                    value={editingProfile?.parameter_optimization?.crash_prevention?.memory_buffer_mb ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.parameter_optimization;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          parameter_optimization: {
+                            ...currentConfig,
+                            crash_prevention: {
+                              ...currentConfig.crash_prevention,
+                              memory_buffer_mb: value
+                            }
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 100, max: 8192, step: 100 }}
+                    helperText="Memory buffer to reserve (100-8192 MB)"
+                  />
+
+                  <TextField
+                    label="Timeout (seconds)"
+                    type="number"
+                    value={editingProfile?.parameter_optimization?.crash_prevention?.timeout_seconds ?? ''}
+                    onChange={(e) => {
+                      const currentConfig = editingProfile?.parameter_optimization;
+                      if (currentConfig !== undefined) {
+                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                        setEditingProfile({
+                          ...editingProfile,
+                          parameter_optimization: {
+                            ...currentConfig,
+                            crash_prevention: {
+                              ...currentConfig.crash_prevention,
+                              timeout_seconds: value
+                            }
+                          }
+                        });
+                      }
+                    }}
+                    fullWidth margin="normal"
+                    inputProps={{ min: 30, max: 1800, step: 30 }}
+                    helperText="Initialization timeout (30-1800 seconds)"
+                  />
+                </>
+              )}
+            </AccordionDetails>
+          </Accordion>
+
           {/* GPU Configuration Section */}
           <Accordion sx={{ mt: 2 }}>
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>

@@ -48,7 +48,10 @@ from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResu
 from langchain_core.tools.base import BaseTool
 
 from models import Model, ModelProfile, OptimalParameters, UserConfig
-from models.config_utils import resolve_parameter_optimization_config, resolve_gpu_config
+from models.config_utils import (
+    resolve_parameter_optimization_config,
+    resolve_gpu_config,
+)
 from utils.logging import llmmllogger
 from runner.utils.hardware_manager import hardware_manager
 from runner.utils.intelligent_oom_recovery import IntelligentOOMRecovery
@@ -148,32 +151,40 @@ class BaseLlamaCppPipeline(BasePipeline):
 
     def initialize_llama_with_optimization(self) -> llama_cpp.Llama:
         """Initialize llama with parameter optimization and crash prevention.
-        
+
         This method handles:
         1. Parameter optimization (if enabled)
-        2. Memory preallocation testing  
+        2. Memory preallocation testing
         3. Timeout protection
         4. Fallback to the base initialization method with optimized params
         """
         gguf_path = self._get_gguf_path()
-        
+
         # Step 1: Get base parameters from profile
         params = self.profile.parameters
         gcfg = resolve_gpu_config(self.profile, self.user_config)
-        
+
         base_params = OptimalParameters(
             n_ctx=params.num_ctx or 40960,
             n_batch=params.batch_size or 256,
             n_ubatch=params.batch_size or 256,
             n_gpu_layers=gcfg.gpu_layers or -1,
         )
-        
+
         # Step 2: Apply parameter optimization if configured
-        optimization_config = resolve_parameter_optimization_config(self.profile, self.user_config)
+        optimization_config = resolve_parameter_optimization_config(
+            self.profile, self.user_config
+        )
         optimized_params = base_params
-        
-        if self.oom_recovery is not None and optimization_config and optimization_config.enabled:
-            self._logger.info("🎯 Parameter optimization enabled, finding optimal values...")
+
+        if (
+            self.oom_recovery is not None
+            and optimization_config
+            and optimization_config.enabled
+        ):
+            self._logger.info(
+                "🎯 Parameter optimization enabled, finding optimal values..."
+            )
             try:
                 optimized_params = self.oom_recovery.optimize_parameters_for_hardware(
                     base_params=base_params,
@@ -181,10 +192,14 @@ class BaseLlamaCppPipeline(BasePipeline):
                     hardware_manager=self.hardware_manager,
                     optimization_config=optimization_config,
                 )
-                self._logger.info(f"✅ Parameter optimization complete: {optimized_params}")
+                self._logger.info(
+                    f"✅ Parameter optimization complete: {optimized_params}"
+                )
             except Exception as e:
-                self._logger.warning(f"Parameter optimization failed, using base params: {e}")
-        
+                self._logger.warning(
+                    f"Parameter optimization failed, using base params: {e}"
+                )
+
         # Step 3: Initialize with the optimized parameters
         try:
             return self._initialize_llama(gguf_path, force_params=optimized_params)
@@ -194,9 +209,9 @@ class BaseLlamaCppPipeline(BasePipeline):
             return self._initialize_llama(gguf_path, force_params=base_params)
 
     def _initialize_llama(
-        self, 
-        gguf_path: str, 
-        handler: Optional[LlamaChatCompletionHandler] = None, 
+        self,
+        gguf_path: str,
+        handler: Optional[LlamaChatCompletionHandler] = None,
         force_params: Optional[OptimalParameters] = None,
     ) -> llama_cpp.Llama:
         """Initialize the llama_cpp.Llama instance with optional OOM recovery.
@@ -205,7 +220,7 @@ class BaseLlamaCppPipeline(BasePipeline):
         - Always attempt profile parameters first.
         - If intelligent OOM recovery is configured, retry only on OOM-class errors.
         - Non-OOM exceptions raise immediately (no parameter downscaling).
-        
+
         Args:
             gguf_path: Path to the GGUF model file
             handler: Optional chat completion handler
@@ -217,11 +232,9 @@ class BaseLlamaCppPipeline(BasePipeline):
         if handler:
             self.chat_handler = handler
 
-
-
         params = self.profile.parameters
         gcfg = resolve_gpu_config(self.profile, self.user_config)
-        
+
         # Use forced parameters if provided (from optimization), otherwise use profile defaults
         if force_params:
             n_ctx_initial = force_params.n_ctx
@@ -233,7 +246,7 @@ class BaseLlamaCppPipeline(BasePipeline):
             n_batch_initial = params.batch_size or 256
             n_ubatch_initial = params.batch_size or 256
             gpu_layers_initial = gcfg.gpu_layers or -1
-            
+
         perplexity_enabled = bool(getattr(params, "enable_perplexity_guard", False))
 
         # Compose initial optimal parameters
@@ -264,60 +277,86 @@ class BaseLlamaCppPipeline(BasePipeline):
             attempt_params_list = [force_params]
             current_params = force_params
             max_attempts = 1 if self.oom_recovery is None else 10
-            self._logger.info(f"🔍 DEBUG Using force_params: n_ctx={current_params.n_ctx}, n_batch={current_params.n_batch}")
+            self._logger.info(
+                f"🔍 DEBUG Using force_params: n_ctx={current_params.n_ctx}, n_batch={current_params.n_batch}"
+            )
         else:
             # Use optimized parameters if available, otherwise profile parameters
             max_attempts = 1 if self.oom_recovery is None else 10
-            
+
             # Always prefer ML-optimized parameters if available (they're safer)
-            should_use_optimization = len(attempt_params_list) > 1  # Use optimized params if available
-            
+            should_use_optimization = (
+                len(attempt_params_list) > 1
+            )  # Use optimized params if available
+
             if should_use_optimization:
                 current_params = attempt_params_list[1]  # Use ML-optimized parameters
-                self._logger.info(f"✅ Using ML-optimized parameters: n_ctx={current_params.n_ctx}, n_batch={current_params.n_batch}")
+                self._logger.info(
+                    f"✅ Using ML-optimized parameters: n_ctx={current_params.n_ctx}, n_batch={current_params.n_batch}"
+                )
             else:
                 current_params = attempt_params_list[0]  # Use profile parameters
-                self._logger.info(f"� Using profile parameters: n_ctx={current_params.n_ctx}, n_batch={current_params.n_batch}")
-        
+                self._logger.info(
+                    f"� Using profile parameters: n_ctx={current_params.n_ctx}, n_batch={current_params.n_batch}"
+                )
+
         attempt_index = 0  # track transition to predicted params after first OOM
         attempt = 1
         while attempt <= max_attempts:
             # Pre-initialization crash prevention checks
             if self.oom_recovery is not None:
                 # Get crash prevention config from profile
-                profile_optimization = getattr(self.profile, 'parameter_optimization', None)
-                crash_prevention = getattr(profile_optimization, 'crash_prevention', None) if profile_optimization else None
+                profile_optimization = getattr(
+                    self.profile, "parameter_optimization", None
+                )
+                crash_prevention = (
+                    getattr(profile_optimization, "crash_prevention", None)
+                    if profile_optimization
+                    else None
+                )
                 if crash_prevention and crash_prevention.enable_preallocation_test:
                     try:
                         # Estimate memory requirements for current parameters
-                        estimated_memory = self.oom_recovery.estimate_memory_requirements(current_params)
+                        estimated_memory = (
+                            self.oom_recovery.estimate_memory_requirements(
+                                current_params
+                            )
+                        )
                         buffer_memory = crash_prevention.memory_buffer_mb
-                        
+
                         # Test memory preallocation to prevent container crashes
                         import asyncio
+
                         try:
                             # Run in a new event loop to avoid conflicts
                             prealloc_success = asyncio.run(
                                 self.oom_recovery.test_memory_preallocation(
                                     estimated_memory + buffer_memory,
-                                    crash_prevention.timeout_seconds
+                                    crash_prevention.timeout_seconds,
                                 )
                             )
                         except RuntimeError:
                             # If we're already in an event loop, use thread executor
                             import concurrent.futures
-                            timeout_val = crash_prevention.timeout_seconds if crash_prevention else 120
+
+                            timeout_val = (
+                                crash_prevention.timeout_seconds
+                                if crash_prevention
+                                else 120
+                            )
                             with concurrent.futures.ThreadPoolExecutor() as executor:
                                 future = executor.submit(
                                     lambda: asyncio.run(
                                         self.oom_recovery.test_memory_preallocation(
                                             estimated_memory + buffer_memory,
-                                            timeout_val
+                                            timeout_val,
                                         )
                                     )
                                 )
-                                prealloc_success = future.result(timeout=timeout_val + 10)
-                        
+                                prealloc_success = future.result(
+                                    timeout=timeout_val + 10
+                                )
+
                         if not prealloc_success:
                             self._logger.warning(
                                 f"❌ Memory preallocation test failed, skipping initialization "
@@ -335,24 +374,40 @@ class BaseLlamaCppPipeline(BasePipeline):
                                 attempt += 1
                                 continue
                             else:
-                                raise RuntimeError("Memory preallocation test failed and no recovery available")
-                                
+                                raise RuntimeError(
+                                    "Memory preallocation test failed and no recovery available"
+                                )
+
                     except Exception as e:
                         self._logger.warning(f"Memory preallocation test error: {e}")
 
+            split_mode = (
+                llama_cpp.LLAMA_SPLIT_MODE_NONE
+                if gcfg.split_mode is "none"
+                else (
+                    llama_cpp.LLAMA_SPLIT_MODE_ROW
+                    if gcfg.split_mode is "row"
+                    else llama_cpp.LLAMA_SPLIT_MODE_LAYER
+                )
+            )
             try:
                 self._logger.info(
                     f"🚀 Initializing {self.model.name} (attempt {attempt}): n_ctx={current_params.n_ctx:,}, n_batch={current_params.n_batch}"
                 )
                 start_time = time.time()
-                
+
                 # Set a process-level timeout to prevent hanging indefinitely
                 import signal
-                
-                timeout_seconds = crash_prevention.timeout_seconds if crash_prevention else 300
-                
+
+                timeout_seconds = (
+                    crash_prevention.timeout_seconds if crash_prevention else 300
+                )
+
                 def timeout_handler(signum, frame):
-                    raise TimeoutError(f"Model initialization timed out after {timeout_seconds} seconds")
+                    raise TimeoutError(
+                        f"Model initialization timed out after {timeout_seconds} seconds"
+                    )
+
                 old_handler = signal.signal(signal.SIGALRM, timeout_handler)
                 signal.alarm(timeout_seconds)
                 llama_instance = llama_cpp.Llama(
@@ -362,6 +417,8 @@ class BaseLlamaCppPipeline(BasePipeline):
                     n_ubatch=current_params.n_ubatch,
                     n_gpu_layers=current_params.n_gpu_layers,
                     tensor_split=gcfg.tensor_split,
+                    main_gpu=gcfg.main_gpu or 0,
+                    split_mode=split_mode,
                     chat_format=self._get_chat_format(),
                     vocab_only=False,
                     use_mmap=True,
@@ -406,11 +463,11 @@ class BaseLlamaCppPipeline(BasePipeline):
                     type_v=None,
                     smp_infill=False,
                 )
-                
+
                 # Clear the timeout alarm
                 signal.alarm(0)
                 signal.signal(signal.SIGALRM, old_handler)
-                
+
                 init_ms = (time.time() - start_time) * 1000
                 gpu_used = 0
                 try:
@@ -441,7 +498,7 @@ class BaseLlamaCppPipeline(BasePipeline):
                     signal.signal(signal.SIGALRM, old_handler)
                 except:
                     pass
-                
+
                 err = str(e).lower()
                 is_oom = any(
                     t in err
@@ -459,19 +516,19 @@ class BaseLlamaCppPipeline(BasePipeline):
                         "ggml_cuda_alloc_buffer",
                         "ggml_backend_alloc_ctx_tensors_from_buft",
                         "device-side assert triggered",  # CUDA assertion failures
-                        "invalid device pointer",        # GPU memory corruption
-                        "an illegal memory access",      # CUDA memory violations
-                        "device kernel image is invalid", # Model/CUDA compatibility
-                        "too many resources requested",   # Resource exhaustion
-                        "resource temporarily unavailable", # System resource limits
-                        "killed",                        # Process killed by OOM killer
-                        "segmentation fault",            # Memory corruption crashes
-                        "aborted",                       # Process aborts
-                        "timeout",                       # Our custom timeout
-                        "timed out",                     # Various timeout errors
-                        "bad_alloc",                     # C++ memory allocation failures
-                        "std::bad_alloc",               # Standard C++ allocation error
-                        "cannot allocate memory",        # System memory errors
+                        "invalid device pointer",  # GPU memory corruption
+                        "an illegal memory access",  # CUDA memory violations
+                        "device kernel image is invalid",  # Model/CUDA compatibility
+                        "too many resources requested",  # Resource exhaustion
+                        "resource temporarily unavailable",  # System resource limits
+                        "killed",  # Process killed by OOM killer
+                        "segmentation fault",  # Memory corruption crashes
+                        "aborted",  # Process aborts
+                        "timeout",  # Our custom timeout
+                        "timed out",  # Various timeout errors
+                        "bad_alloc",  # C++ memory allocation failures
+                        "std::bad_alloc",  # Standard C++ allocation error
+                        "cannot allocate memory",  # System memory errors
                     ]
                 )
                 if not is_oom or self.oom_recovery is None:
@@ -1095,19 +1152,25 @@ class BaseLlamaCppPipeline(BasePipeline):
         """Clean up resources and unlock pipeline if needed."""
         # Unlock pipeline if it was automatically locked by get_pipeline()
         try:
-            from runner.pipeline_factory import pipeline_factory  # Lazy import to avoid circular deps
-            
+            from runner.pipeline_factory import (
+                pipeline_factory,
+            )  # Lazy import to avoid circular deps
+
             # Only unlock if this is a local pipeline (remote pipelines don't get locked)
-            if hasattr(self, 'profile') and self.profile:
+            if hasattr(self, "profile") and self.profile:
                 success = pipeline_factory.unlock_pipeline(self.profile)
                 if success:
-                    self._logger.debug(f"🔓 Unlocked pipeline for model: {self.profile.model_name}")
+                    self._logger.debug(
+                        f"🔓 Unlocked pipeline for model: {self.profile.model_name}"
+                    )
                 else:
-                    self._logger.debug(f"🔓 Pipeline unlock skipped for model: {self.profile.model_name} (likely remote)")
+                    self._logger.debug(
+                        f"🔓 Pipeline unlock skipped for model: {self.profile.model_name} (likely remote)"
+                    )
         except Exception as e:
             # Don't fail close() if unlock fails - just log it
             self._logger.warning(f"Failed to unlock pipeline during close: {e}")
-        
+
         # Clean up llama instance
         if hasattr(self, "llama_instance") and self.llama_instance:
             try:
