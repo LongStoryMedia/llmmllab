@@ -11,6 +11,7 @@ import RefinementSettings from './RefinementSettings';
 import ImageGenerationSettings from './ImageGenerationSettings';
 import CircuitBreakerSettings from './CircuitBreakerSettings';
 import GpuSettings from './GpuSettings';
+import ParameterOptimizationSettings from './ParameterOptimizationSettings';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -45,7 +46,7 @@ function a11yProps(index: number) {
   };
 }
 
-const tabRoutes = ["profile", "models", "summarization", "retrieval", "websearch", "security", "refinement", "image-generation", "gpu", "circuit-breaker"];
+const tabRoutes = ["profile", "models", "summarization", "retrieval", "websearch", "security", "refinement", "image-generation", "gpu", "parameter-optimization", "circuit-breaker"];
 
 const SettingsTabs = ({ onTabChange, currentTab }: { onTabChange: (tab: string) => void, currentTab: string }) => {
   const theme = useTheme();
@@ -106,7 +107,8 @@ const SettingsTabs = ({ onTabChange, currentTab }: { onTabChange: (tab: string) 
               <Tab label="Refinement" {...a11yProps(6)} />
               <Tab label="Image Generation" {...a11yProps(7)} />
               <Tab label="GPU Configuration" {...a11yProps(8)} />
-              <Tab label="Circuit Breaker" {...a11yProps(9)} />
+              <Tab label="Parameter Optimization" {...a11yProps(9)} />
+              <Tab label="Circuit Breaker" {...a11yProps(10)} />
             </Tabs>
 
             <Box sx={{ p: 2 }}>
@@ -138,6 +140,9 @@ const SettingsTabs = ({ onTabChange, currentTab }: { onTabChange: (tab: string) 
                 <GpuSettings />
               </TabPanel>
               <TabPanel value={tabValue} index={9}>
+                <ParameterOptimizationSettings />
+              </TabPanel>
+              <TabPanel value={tabValue} index={10}>
                 <CircuitBreakerSettings />
               </TabPanel>
             </Box>
