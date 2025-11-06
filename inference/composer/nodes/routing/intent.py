@@ -49,6 +49,10 @@ class IntentClassifierNode:
                     else:
                         setattr(state, key, value)
             self.logger.info("Intent classification completed")
+            
+            # Cleanup classifier agent resources after completion
+            self.agent.cleanup()
+            
         except Exception as e:
             self.logger.error(
                 "Intent classifier planning subgraph failed; falling back",
@@ -63,9 +67,17 @@ class IntentClassifierNode:
                     available_static_tools=state.static_tools,
                 )
                 state.intent_classification.extend(intent_analyses)
+                
+                # Cleanup classifier agent resources after fallback completion
+                self.agent.cleanup()
+                
             except Exception as fallback_error:
                 self.logger.error(
                     "Fallback classifier analyze failed", error=str(fallback_error)
                 )
+                
+                # Cleanup classifier agent resources even on fallback error
+                self.agent.cleanup()
+                
                 raise e
         return state

@@ -8,6 +8,11 @@ from datetime import datetime
 from .model_profile import ModelProfile
 from .model_parameters import ModelParameters
 from .model_profile_config import ModelProfileConfig
+from .parameter_optimization_config import (
+    ParameterOptimizationConfiguration,
+    ParameterFloors,
+    CrashPrevention
+)
 
 # Define profile types as constants (similar to the Go implementation)
 MODEL_PROFILE_TYPE_PRIMARY = 1
@@ -65,6 +70,48 @@ DEFAULT_TEXT_TO_EMBEDDINGS_MODEL = "nomic-embed-text-v2"
 DEFAULT_SUMMARIZATION_MODEL = "qwen3-4b-ud-q6-k-xl"
 DEFAULT_ANALYSIS_MODEL = "qwen3-4b-ud-q6-k-xl"
 
+# Parameter optimization configurations for different model classes
+
+# Optimized config for 4B models (good balance of performance and safety)
+ANALYSIS_MODEL_OPTIMIZATION = ParameterOptimizationConfiguration(
+    enabled=True,
+    optimization_priority=["n_ctx", "n_batch", "n_ubatch"],
+    parameter_floors=ParameterFloors(
+        n_ctx=8192,   # Minimum useful context for analysis
+        n_batch=128,  # Higher minimum batch for 4B models
+        n_ubatch=128,
+        n_gpu_layers=0  # Allow CPU fallback
+    ),
+    search_strategy="binary_search",
+    max_search_attempts=8,
+    crash_prevention=CrashPrevention(
+        enable_preallocation_test=True,
+        memory_buffer_mb=2048,  # Larger buffer for analysis models
+        timeout_seconds=90,
+        enable_graceful_degradation=True
+    )
+)
+
+# Optimized config for 30B models (conservative but effective)
+ENGINEERING_MODEL_OPTIMIZATION = ParameterOptimizationConfiguration(
+    enabled=True,
+    optimization_priority=["n_ctx", "n_batch"],
+    parameter_floors=ParameterFloors(
+        n_ctx=32768,  # Higher minimum context for engineering tasks
+        n_batch=64,   # Conservative batch for large models
+        n_ubatch=64,
+        n_gpu_layers=0
+    ),
+    search_strategy="conservative_increment",
+    max_search_attempts=6,
+    crash_prevention=CrashPrevention(
+        enable_preallocation_test=True,
+        memory_buffer_mb=4096,  # Large buffer for 30B models
+        timeout_seconds=150,    # More time for large models
+        enable_graceful_degradation=True
+    )
+)
+
 # Define default model profiles
 DEFAULT_PRIMARY_PROFILE = ModelProfile(
     id=DEFAULT_PRIMARY_PROFILE_ID,
@@ -74,8 +121,8 @@ DEFAULT_PRIMARY_PROFILE = ModelProfile(
     description="Primary model profile for general chat and reasoning.",
     model_name=DEFAULT_TEXT_TO_TEXT_MODEL,
     parameters=ModelParameters(
-        num_ctx=92160,
-        repeat_last_n=128,
+        num_ctx=131072,
+        repeat_last_n=-1,
         repeat_penalty=1.1,
         temperature=0.6,
         seed=-1,
@@ -313,10 +360,10 @@ DEFAULT_ANALYSIS_PROFILE = ModelProfile(
     user_id="system",
     name="Analysis (Default)",
     type=MODEL_PROFILE_TYPE_ANALYSIS,
-    description="Profile for detailed analysis of text.",
+    description="Profile for detailed analysis of text with optimized parameters.",
     model_name=DEFAULT_ANALYSIS_MODEL,
     parameters=ModelParameters(
-        num_ctx=40960,
+        num_ctx=65536,  # Increased from 40960 for better analysis capacity
         repeat_last_n=-1,
         repeat_penalty=1.05,
         temperature=0.7,
@@ -333,7 +380,9 @@ DEFAULT_ANALYSIS_PROFILE = ModelProfile(
             "<|end|>",
         ],
         think=False,
+        batch_size=512,  # Increased from default 256 for better throughput
     ),
+    parameter_optimization=ANALYSIS_MODEL_OPTIMIZATION,
     system_prompt="Perform an in-depth analysis of the provided text. Identify key themes, patterns, and insights.",
     created_at=datetime.now(),
     updated_at=datetime.now(),
@@ -549,10 +598,10 @@ DEFAULT_ENGINEERING_PROFILE = ModelProfile(
     user_id="system",
     name="Engineering (Default)",
     type=MODEL_PROFILE_TYPE_ENGINEERING,
-    description="Profile for engineering tasks.",
+    description="Profile for engineering tasks with optimized parameters.",
     model_name="qwen3-coder-30b-a3b",
     parameters=ModelParameters(
-        num_ctx=100000,
+        num_ctx=131072,  # Increased from 100000 for larger code context
         repeat_last_n=-1,
         repeat_penalty=1.05,
         temperature=0.7,
@@ -568,8 +617,9 @@ DEFAULT_ENGINEERING_PROFILE = ModelProfile(
             "<|endoftext|>",
             "<|end|>",
         ],
-        batch_size=256,
+        batch_size=384,  # Increased from 256 for better throughput
     ),
+    parameter_optimization=ENGINEERING_MODEL_OPTIMIZATION,
     system_prompt="You are an expert engineering assistant. When users ask technical questions, provide comprehensive, detailed answers with code examples, best practices, and practical guidance. Always directly answer the specific question asked rather than asking for clarification.",
     created_at=datetime.now(),
     updated_at=datetime.now(),

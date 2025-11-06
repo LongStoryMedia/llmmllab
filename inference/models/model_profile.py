@@ -11,37 +11,81 @@ from .parameter_optimization_config import ParameterOptimizationConfiguration
 import uuid
 from pydantic import BaseModel, Field, AnyUrl, EmailStr, conint, confloat
 
+
 class ModelProfile(BaseModel):
     """ModelProfile represents a model profile used for generating responses"""
-    id: Annotated[Optional[uuid.UUID], Field(default=None, description="Unique identifier for the profile")] = None
+
+    id: Annotated[
+        Optional[uuid.UUID],
+        Field(default=None, description="Unique identifier for the profile"),
+    ] = None
     """Unique identifier for the profile"""
-    user_id: Annotated[str, Field(..., description="Id of the user who owns the profile")]
+    user_id: Annotated[
+        str, Field(..., description="Id of the user who owns the profile")
+    ]
     """Id of the user who owns the profile"""
     name: Annotated[str, Field(..., description="Name of the profile")]
     """Name of the profile"""
-    description: Annotated[Optional[str], Field(default=None, description="Description of the profile")] = None
+    description: Annotated[
+        Optional[str], Field(default=None, description="Description of the profile")
+    ] = None
     """Description of the profile"""
     model_name: Annotated[str, Field(..., description="Name of the model to use")]
     """Name of the model to use"""
-    parameters: Annotated[ModelParameters, Field(..., description="Parameters for configuring the model")]
+    parameters: Annotated[
+        ModelParameters, Field(..., description="Parameters for configuring the model")
+    ]
     """Parameters for configuring the model"""
-    system_prompt: Annotated[str, Field(..., description="System prompt to send to the model")]
+    system_prompt: Annotated[
+        str, Field(..., description="System prompt to send to the model")
+    ]
     """System prompt to send to the model"""
-    created_at: Annotated[Optional[datetime], Field(default=None, description="Timestamp of when the profile was created")] = None
+    created_at: Annotated[
+        Optional[datetime],
+        Field(default=None, description="Timestamp of when the profile was created"),
+    ] = None
     """Timestamp of when the profile was created"""
-    updated_at: Annotated[Optional[datetime], Field(default=None, description="Timestamp of when the profile was last updated")] = None
+    updated_at: Annotated[
+        Optional[datetime],
+        Field(
+            default=None, description="Timestamp of when the profile was last updated"
+        ),
+    ] = None
     """Timestamp of when the profile was last updated"""
-    model_version: Annotated[Optional[str], Field(default=None, description="Version of the model")] = None
+    model_version: Annotated[
+        Optional[str], Field(default=None, description="Version of the model")
+    ] = None
     """Version of the model"""
     type: Annotated[int, Field(..., description="Type of the model profile")]
     """Type of the model profile"""
-    image_settings: Annotated[Optional[ModelProfileImageSettings], Field(default=None, description="Image settings for the model profile")] = None
+    image_settings: Annotated[
+        Optional[ModelProfileImageSettings],
+        Field(default=None, description="Image settings for the model profile"),
+    ] = None
     """Image settings for the model profile"""
-    circuit_breaker: Annotated[Optional[CircuitBreakerConfig], Field(default=None, description="Optional circuit breaker configuration that overrides global settings")] = None
+    circuit_breaker: Annotated[
+        Optional[CircuitBreakerConfig],
+        Field(
+            default=None,
+            description="Optional circuit breaker configuration that overrides global settings",
+        ),
+    ] = None
     """Optional circuit breaker configuration that overrides global settings"""
-    gpu_config: Annotated[Optional[GPUConfig], Field(default=None, description="Optional GPU configuration that overrides global settings")] = None
+    gpu_config: Annotated[
+        Optional[GPUConfig],
+        Field(
+            default=None,
+            description="Optional GPU configuration that overrides global settings",
+        ),
+    ] = None
     """Optional GPU configuration that overrides global settings"""
-    parameter_optimization: Annotated[Optional[ParameterOptimizationConfiguration], Field(default=None, description="Configuration for parameter optimization during model initialization")] = None
+    parameter_optimization: Annotated[
+        Optional[ParameterOptimizationConfiguration],
+        Field(
+            default=None,
+            description="Configuration for parameter optimization during model initialization",
+        ),
+    ] = None
     """Configuration for parameter optimization during model initialization"""
 
     class Config:

@@ -13,7 +13,7 @@ from pydantic import BaseModel  # noqa: F401
 # llama_cpp imported lazily within methods to reduce unnecessary top-level dependencies
 # Pillow not required for text-only stabilization; multimodal image loading currently disabled.
 
-from models import Model, ModelProfile
+from models import Model, ModelProfile, OptimalParameters
 from runner.pipelines.llamacpp import BaseLlamaCppPipeline
 
 
@@ -51,19 +51,19 @@ class Qwen3VLPipeline(BaseLlamaCppPipeline):
         return base_params
 
     def _initialize_llama(
-        self, gguf_path: str, h: LlamaChatCompletionHandler | None = None
+        self,
+        gguf_path: str,
+        h: LlamaChatCompletionHandler | None = None,
+        force_params: Optional[OptimalParameters] = None,
     ) -> Llama:
         if self.model.details.clip_model_path:
             handler = Qwen25VLChatHandler(
                 clip_model_path=self.model.details.clip_model_path,
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
             )
-            return super()._initialize_llama(
-                gguf_path,
-                handler,
-            )
+            return super()._initialize_llama(gguf_path, handler, force_params)
         else:
-            return super()._initialize_llama(gguf_path, h)
+            return super()._initialize_llama(gguf_path, h, force_params)
 
 
 __all__ = ["Qwen3VLPipeline"]

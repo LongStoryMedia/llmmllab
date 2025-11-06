@@ -13,6 +13,7 @@ from langchain.tools import BaseTool
 
 from models import (
     IntentAnalysis,
+    Message,
     ModelProfile,
     PipelinePriority,
     TechnicalDomain,
@@ -64,7 +65,7 @@ class EngineeringAgent(BaseAgent[str]):
 
     async def generate_technical_response(
         self,
-        query: str,
+        messages: List[Message],
         user_id: str,
         domain: TechnicalDomain = TechnicalDomain.GENERAL_ENGINEERING,
         response_format: ResponseFormat = ResponseFormat.DETAILED_ANALYSIS,
@@ -90,22 +91,11 @@ class EngineeringAgent(BaseAgent[str]):
             self.logger.info(
                 "Generating technical response",
                 user_id=user_id,
-                query_length=len(query),
                 domain=domain,
                 response_format=response_format,
                 has_tools=bool(tools),
                 has_grammar=bool(grammar),
             )
-
-            # SIMPLIFIED: Just pass the user query directly without complex prompt construction
-            from models import Message, MessageRole, MessageContent, MessageContentType
-
-            messages = [
-                Message(
-                    role=MessageRole.USER,
-                    content=[MessageContent(type=MessageContentType.TEXT, text=query)],
-                )
-            ]
 
             # Use BaseAgent's run method with simplified message structure
             result = await self.run(
@@ -142,143 +132,6 @@ class EngineeringAgent(BaseAgent[str]):
             raise NodeExecutionError(
                 f"Technical response generation failed: {e}"
             ) from e
-
-    async def analyze_system_architecture(
-        self,
-        system_description: str,
-        user_id: str,
-        analysis_focus: Optional[List[str]] = None,
-        tools: Optional[List[Any]] = None,
-    ) -> Dict[str, Any]:
-        """
-        Analyze system architecture and provide recommendations.
-
-        Args:
-            system_description: Description of the system to analyze
-            user_id: User identifier
-            analysis_focus: Specific areas to focus analysis on
-            tools: Optional tools for enhanced analysis capabilities
-
-        Returns:
-            Structured analysis results
-        """
-        try:
-            self.logger.info(
-                "Analyzing system architecture",
-                user_id=user_id,
-                description_length=len(system_description),
-                focus_areas=analysis_focus or [],
-            )
-
-            # Create architecture analysis prompt
-            analysis_prompt = await self._create_architecture_analysis_prompt(
-                system_description, analysis_focus or []
-            )
-
-            # Generate analysis using technical response method
-            analysis = await self.generate_technical_response(
-                query=analysis_prompt,
-                user_id=user_id,
-                domain=TechnicalDomain.SYSTEM_ARCHITECTURE,
-                response_format=ResponseFormat.DETAILED_ANALYSIS,
-                tools=tools,
-            )
-
-            # Structure the analysis results
-            structured_analysis = {
-                "analysis": analysis,
-                "system_description": system_description,
-                "focus_areas": analysis_focus or [],
-                "analysis_length": len(analysis),
-                "recommendations": await self._extract_recommendations(analysis),
-                "potential_issues": await self._extract_potential_issues(analysis),
-            }
-
-            self.logger.info(
-                "System architecture analysis completed",
-                user_id=user_id,
-                analysis_length=len(analysis),
-            )
-
-            return structured_analysis
-
-        except Exception as e:
-            self.logger.error(
-                "System architecture analysis failed", user_id=user_id, error=str(e)
-            )
-            raise NodeExecutionError(f"System architecture analysis failed: {e}") from e
-
-    async def generate_code_solution(
-        self,
-        problem_statement: str,
-        user_id: str,
-        programming_language: Optional[str] = None,
-        constraints: Optional[List[str]] = None,
-        tools: Optional[List[Any]] = None,
-        grammar: Optional[Any] = None,
-    ) -> Dict[str, Any]:
-        """
-        Generate code solution for engineering problem.
-
-        Args:
-            problem_statement: Description of the problem to solve
-            user_id: User identifier
-            programming_language: Preferred programming language
-            constraints: Optional constraints for the solution
-            tools: Optional tools for enhanced code generation
-            grammar: Optional grammar for structured code output
-
-        Returns:
-            Code solution with explanation and metadata
-        """
-        try:
-            self.logger.info(
-                "Generating code solution",
-                user_id=user_id,
-                problem_length=len(problem_statement),
-                language=programming_language,
-                has_constraints=bool(constraints),
-            )
-
-            # Create code generation prompt
-            code_prompt = await self._create_code_generation_prompt(
-                problem_statement, programming_language, constraints or []
-            )
-
-            # Generate code solution
-            solution = await self.generate_technical_response(
-                query=code_prompt,
-                user_id=user_id,
-                domain=TechnicalDomain.SOFTWARE_DEVELOPMENT,
-                response_format=ResponseFormat.CODE_SOLUTION,
-                tools=tools,
-                grammar=grammar,
-            )
-
-            # Structure the code solution
-            code_solution = {
-                "solution": solution,
-                "problem_statement": problem_statement,
-                "programming_language": programming_language,
-                "constraints": constraints or [],
-                "solution_length": len(solution),
-                "code_blocks": await self._extract_code_blocks(solution),
-                "explanation": await self._extract_explanation(solution),
-            }
-
-            self.logger.info(
-                "Code solution generated successfully",
-                user_id=user_id,
-                solution_length=len(solution),
-            )
-
-            return code_solution
-
-        except Exception as e:
-            self.logger.error(
-                "Code solution generation failed", user_id=user_id, error=str(e)
-            )
-            raise NodeExecutionError(f"Code solution generation failed: {e}") from e
 
     async def _create_engineering_prompt(
         self, query: str, domain: TechnicalDomain, response_format: ResponseFormat

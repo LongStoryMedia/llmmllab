@@ -73,6 +73,9 @@ class TitleGenerationNode:
             else:
                 self.logger.warning("Title generation returned empty result")
 
+            # Cleanup classifier agent resources after completion
+            self.classifier_agent.cleanup()
+
             return state
 
         except Exception as e:
@@ -83,5 +86,9 @@ class TitleGenerationNode:
                     "error": str(e),
                 },
             )
+            
+            # Cleanup classifier agent resources even on error
+            self.classifier_agent.cleanup()
+            
             # Escalate by raising so tests fail visibly
             raise

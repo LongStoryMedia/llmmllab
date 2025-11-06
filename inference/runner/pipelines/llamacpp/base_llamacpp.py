@@ -191,8 +191,10 @@ class BaseLlamaCppPipeline(BasePipeline):
             return self._initialize_llama(gguf_path, force_params=base_params)
 
     def _initialize_llama(
-        self, gguf_path: str, handler: Optional[LlamaChatCompletionHandler] = None, 
-        force_params: Optional[OptimalParameters] = None
+        self, 
+        gguf_path: str, 
+        handler: Optional[LlamaChatCompletionHandler] = None, 
+        force_params: Optional[OptimalParameters] = None,
     ) -> llama_cpp.Llama:
         """Initialize the llama_cpp.Llama instance with optional OOM recovery.
 

@@ -176,9 +176,9 @@ async def chat_completion(
                     event_type = evt.get("event", "")
                     event_data = evt.get("data", {})
 
-                    logger.debug(
-                        f"{event_type}: {serialize_event_data(event_data)}"
-                    )  # For logging purposes
+                    # logger.debug(
+                    #     f"{event_type}: {serialize_event_data(event_data)}"
+                    # )  # For logging purposes
 
                     # Process streaming events for immediate response
                     if (
@@ -199,9 +199,9 @@ async def chat_completion(
                             if content:
                                 # Use streaming state manager to process chunk
                                 current_streaming_state = str(streaming_state.state)
-                                logger.debug(
-                                    f"Current streaming state: {current_streaming_state}"
-                                )
+                                # logger.debug(
+                                #     f"Current streaming state: {current_streaming_state}"
+                                # )
                                 chat_response = streaming_state.process_chunk(content)
                                 if (
                                     str(streaming_state.state)

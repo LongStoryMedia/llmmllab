@@ -169,6 +169,9 @@ class EngineeringAgentNode:
                     },
                 )
 
+            # Cleanup agent resources after completion
+            self.agent.cleanup()
+            
             return state
 
         except Exception as e:
@@ -179,6 +182,9 @@ class EngineeringAgentNode:
                     "error": str(e),
                 },
             )
+
+            # Cleanup agent resources even on error
+            self.agent.cleanup()
 
             # Continue workflow execution on error without adding response
             return state

@@ -120,6 +120,9 @@ class PlanningIntentSubgraph:
             f"🔍 Intent: Completed analysis with {len(intent_analyses)} intents, complexity: {complexity_score}"
         )
 
+        # Cleanup classifier agent resources after analysis completion
+        self.classifier_agent.cleanup()
+
         return {
             "intent_analyses": intent_analyses,
             "complexity_score": complexity_score,
