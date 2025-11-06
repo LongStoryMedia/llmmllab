@@ -9,7 +9,8 @@ from __future__ import annotations
 import threading
 import time
 import weakref
-from typing import Any, Callable, Dict, List, Optional, Type, cast
+from contextlib import contextmanager
+from typing import Any, Callable, Dict, List, Optional, Type, cast, Generator
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.embeddings import Embeddings
@@ -30,6 +31,8 @@ class _PipelineCacheEntry:
         self.creation_time = time.time()
         self.last_accessed = self.creation_time
         self.access_count = 1
+        self.in_use = False  # Prevent eviction while pipeline is actively generating
+        self._use_count = 0  # Track concurrent usage
 
     @property
     def pipeline(self) -> Optional[BaseChatModel | Embeddings]:
@@ -41,6 +44,17 @@ class _PipelineCacheEntry:
     def touch(self) -> None:
         self.last_accessed = time.time()
         self.access_count += 1
+
+    def lock(self) -> None:
+        """Mark pipeline as in-use to prevent eviction."""
+        self._use_count += 1
+        self.in_use = True
+        self.touch()
+
+    def unlock(self) -> None:
+        """Release pipeline from in-use state."""
+        self._use_count = max(0, self._use_count - 1)
+        self.in_use = self._use_count > 0
 
     def eviction_score(self, now: float) -> float:
         age_penalty = (now - self.last_accessed) / 3600.0
@@ -141,16 +155,20 @@ class LocalPipelineCacheManager:
     def stats(self) -> Dict[str, Any]:  # noqa: ANN401
         with self._lock:
             alive = {mid: e for mid, e in self._cache.items() if e.is_alive()}
+            locked_count = sum(1 for e in alive.values() if e.in_use)
             mem = hardware_manager.update_all_memory_stats()
             return {
                 "count": len(self._cache),
                 "alive": len(alive),
                 "dead": len(self._cache) - len(alive),
+                "locked": locked_count,
                 "entries": {
                     mid: {
                         "priority": e.priority.name,
                         "access_count": e.access_count,
                         "last_accessed": e.last_accessed,
+                        "in_use": e.in_use,
+                        "use_count": e._use_count,
                     }
                     for mid, e in alive.items()
                 },
@@ -172,6 +190,45 @@ class LocalPipelineCacheManager:
                 entry.priority = priority
                 return True
         return False
+
+    def lock_pipeline(self, model_id: str) -> bool:
+        """Lock a pipeline to prevent eviction during active use."""
+        with self._lock:
+            entry = self._cache.get(model_id)
+            if entry and entry.is_alive():
+                entry.lock()
+                self.logger.debug(f"🔒 Locked pipeline {model_id} for active use")
+                return True
+        return False
+
+    def unlock_pipeline(self, model_id: str) -> bool:
+        """Unlock a pipeline when no longer actively in use."""
+        with self._lock:
+            entry = self._cache.get(model_id)
+            if entry and entry.is_alive():
+                entry.unlock()
+                self.logger.debug(f"🔓 Unlocked pipeline {model_id}")
+                return True
+        return False
+
+    @contextmanager
+    def pipeline_in_use(self, model_id: str) -> Generator[bool, None, None]:
+        """
+        Context manager to safely lock/unlock a pipeline during active use.
+        
+        Usage:
+            with cache_manager.pipeline_in_use(model_id) as locked:
+                if locked:
+                    # Pipeline is locked, safe to use
+                    result = await pipeline.generate(...)
+                # Pipeline automatically unlocked when exiting context
+        """
+        locked = self.lock_pipeline(model_id)
+        try:
+            yield locked
+        finally:
+            if locked:
+                self.unlock_pipeline(model_id)
 
     def force_cleanup(self) -> int:
         with self._lock:
@@ -264,9 +321,21 @@ class LocalPipelineCacheManager:
             self.logger.info(
                 f"🚀 Large model detected ({required/1e9:.2f}GB), proactively clearing cache"
             )
-            # Clear ALL other models immediately for large models
+            # Clear ALL other models immediately for large models, except those in use
             with self._lock:
-                evict_targets = [mid for mid in self._cache.keys() if mid != exclude]
+                evict_targets = [
+                    mid for mid, entry in self._cache.items() 
+                    if mid != exclude and not entry.in_use
+                ]
+                locked_targets = [
+                    mid for mid, entry in self._cache.items() 
+                    if mid != exclude and entry.in_use
+                ]
+
+            if locked_targets:
+                self.logger.warning(
+                    f"⚠️ Cannot evict {len(locked_targets)} models currently in use: {locked_targets}"
+                )
 
             if evict_targets:
                 self.logger.info(
@@ -308,11 +377,21 @@ class LocalPipelineCacheManager:
             candidates = [
                 (mid, e, e.eviction_score(now))
                 for mid, e in self._cache.items()
-                if e.is_alive() and mid != exclude
+                if e.is_alive() and mid != exclude and not e.in_use
             ]
+            locked_pipelines = [
+                mid for mid, e in self._cache.items()
+                if e.is_alive() and mid != exclude and e.in_use
+            ]
+
+        if locked_pipelines:
+            self.logger.warning(
+                f"⚠️ Skipping {len(locked_pipelines)} locked pipelines during eviction: {locked_pipelines}"
+            )
+
         candidates.sort(key=lambda x: (x[2], x[1].priority, x[1].last_accessed))
 
-        # Standard eviction - one at a time
+        # Standard eviction - one at a time (only unlocked pipelines)
         for mid, _, score in candidates:
             with self._lock:
                 removed = self._cache.pop(mid, None)
