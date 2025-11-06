@@ -215,7 +215,7 @@ class LocalPipelineCacheManager:
     def pipeline_in_use(self, model_id: str) -> Generator[bool, None, None]:
         """
         Context manager to safely lock/unlock a pipeline during active use.
-        
+
         Usage:
             with cache_manager.pipeline_in_use(model_id) as locked:
                 if locked:
@@ -324,11 +324,13 @@ class LocalPipelineCacheManager:
             # Clear ALL other models immediately for large models, except those in use
             with self._lock:
                 evict_targets = [
-                    mid for mid, entry in self._cache.items() 
+                    mid
+                    for mid, entry in self._cache.items()
                     if mid != exclude and not entry.in_use
                 ]
                 locked_targets = [
-                    mid for mid, entry in self._cache.items() 
+                    mid
+                    for mid, entry in self._cache.items()
                     if mid != exclude and entry.in_use
                 ]
 
@@ -380,7 +382,8 @@ class LocalPipelineCacheManager:
                 if e.is_alive() and mid != exclude and not e.in_use
             ]
             locked_pipelines = [
-                mid for mid, e in self._cache.items()
+                mid
+                for mid, e in self._cache.items()
                 if e.is_alive() and mid != exclude and e.in_use
             ]
 

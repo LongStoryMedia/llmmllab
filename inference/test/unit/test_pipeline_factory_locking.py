@@ -64,27 +64,27 @@ class TestPipelineFactoryLocking:
 
     @patch('runner.pipeline_factory.PipelineFactory.create_pipeline')
     def test_context_manager_locks_local_pipeline(self, mock_create):
-        """Test that context manager automatically locks local pipelines."""
+        """Test that context manager automatically locks and unlocks local pipelines."""
         # Mock the pipeline creation
         mock_pipeline = MagicMock()
         mock_create.return_value = mock_pipeline
         
-        # Mock the cache to return our local model as local
+        # Mock the cache methods
         with patch.object(self.factory.local_cache, 'is_local', return_value=True):
-            with patch.object(self.factory.local_cache, 'pipeline_in_use') as mock_context:
-                with patch.object(self.factory.local_cache, '_ensure_memory', return_value=True):
-                    # Mock the context manager to yield True (locked successfully)
-                    mock_context.return_value.__enter__.return_value = True
-                    mock_context.return_value.__exit__.return_value = None
-                    
-                    profile = self._create_test_profile("test-local-model")
-                    
-                    # Use the context manager
-                    with self.factory.pipeline(profile) as pipeline:
-                        assert pipeline == mock_pipeline
-                    
-                    # Verify locking was attempted
-                    mock_context.assert_called_once_with("test-local-model")
+            with patch.object(self.factory.local_cache, '_ensure_memory', return_value=True):
+                with patch.object(self.factory.local_cache, 'lock_pipeline', return_value=True) as mock_lock:
+                    with patch.object(self.factory.local_cache, 'unlock_pipeline', return_value=True) as mock_unlock:
+                        
+                        profile = self._create_test_profile("test-local-model")
+                        
+                        # Use the context manager
+                        with self.factory.pipeline(profile) as pipeline:
+                            assert pipeline == mock_pipeline
+                        
+                        # Verify locking was called during get_pipeline()
+                        mock_lock.assert_called_once_with("test-local-model")
+                        # Verify unlocking was called when exiting context
+                        mock_unlock.assert_called_once_with("test-local-model")
 
     @patch('runner.pipeline_factory.PipelineFactory.create_pipeline')
     def test_context_manager_skips_locking_remote_pipeline(self, mock_create):
@@ -95,48 +95,48 @@ class TestPipelineFactoryLocking:
         
         # Mock the cache to return remote model as not local
         with patch.object(self.factory.local_cache, 'is_local', return_value=False):
-            with patch.object(self.factory.local_cache, 'pipeline_in_use') as mock_context:
-                
-                profile = self._create_test_profile("test-remote-model")
-                
-                # Use the context manager
-                with self.factory.pipeline(profile) as pipeline:
-                    assert pipeline == mock_pipeline
-                
-                # Verify locking was NOT attempted for remote pipeline
-                mock_context.assert_not_called()
+            with patch.object(self.factory.local_cache, 'lock_pipeline') as mock_lock:
+                with patch.object(self.factory.local_cache, 'unlock_pipeline') as mock_unlock:
+                    
+                    profile = self._create_test_profile("test-remote-model")
+                    
+                    # Use the context manager
+                    with self.factory.pipeline(profile) as pipeline:
+                        assert pipeline == mock_pipeline
+                    
+                    # Verify locking was NOT attempted for remote pipeline
+                    mock_lock.assert_not_called()
+                    mock_unlock.assert_not_called()
 
-    @patch('runner.pipeline_factory.PipelineFactory.get_pipeline')
-    def test_get_pipeline_safely_locks_local(self, mock_get_pipeline):
-        """Test that get_pipeline_safely automatically locks local pipelines."""
+    @patch('runner.pipeline_factory.PipelineFactory.create_pipeline')
+    def test_get_pipeline_locks_local_automatically(self, mock_create):
+        """Test that get_pipeline automatically locks local pipelines."""
         mock_pipeline = MagicMock()
-        mock_get_pipeline.return_value = mock_pipeline
+        mock_create.return_value = mock_pipeline
         
         # Mock local cache methods
-        with patch.object(self.factory.local_cache, 'is_local', return_value=True):
+        with patch.object(self.factory.local_cache, '_ensure_memory', return_value=True):
             with patch.object(self.factory.local_cache, 'lock_pipeline', return_value=True) as mock_lock:
                 
                 profile = self._create_test_profile("test-local-model")
-                result_pipeline = self.factory.get_pipeline_safely(profile)
+                result_pipeline = self.factory.get_pipeline(profile)
                 
                 assert result_pipeline == mock_pipeline
                 mock_lock.assert_called_once_with("test-local-model")
 
-    @patch('runner.pipeline_factory.PipelineFactory.get_pipeline')
-    def test_get_pipeline_safely_skips_remote(self, mock_get_pipeline):
-        """Test that get_pipeline_safely skips locking for remote pipelines."""
+    @patch('runner.pipeline_factory.PipelineFactory.create_pipeline')
+    def test_get_pipeline_skips_locking_remote(self, mock_create):
+        """Test that get_pipeline skips locking for remote pipelines."""
         mock_pipeline = MagicMock()
-        mock_get_pipeline.return_value = mock_pipeline
+        mock_create.return_value = mock_pipeline
         
-        # Mock remote cache behavior
-        with patch.object(self.factory.local_cache, 'is_local', return_value=False):
-            with patch.object(self.factory.local_cache, 'lock_pipeline') as mock_lock:
-                
-                profile = self._create_test_profile("test-remote-model")
-                result_pipeline = self.factory.get_pipeline_safely(profile)
-                
-                assert result_pipeline == mock_pipeline
-                mock_lock.assert_not_called()
+        with patch.object(self.factory.local_cache, 'lock_pipeline') as mock_lock:
+            
+            profile = self._create_test_profile("test-remote-model")
+            result_pipeline = self.factory.get_pipeline(profile)
+            
+            assert result_pipeline == mock_pipeline
+            mock_lock.assert_not_called()
 
     def test_unlock_pipeline_local(self):
         """Test that unlock_pipeline works for local pipelines."""
@@ -167,9 +167,7 @@ class TestPipelineFactoryLocking:
             mock_get.return_value = mock_pipeline
             
             with patch.object(self.factory.local_cache, 'is_local', return_value=True):
-                with patch.object(self.factory.local_cache, 'pipeline_in_use') as mock_context:
-                    mock_context.return_value.__enter__.return_value = True
-                    mock_context.return_value.__exit__.return_value = None
+                with patch.object(self.factory.local_cache, 'unlock_pipeline', return_value=True) as mock_unlock:
                     
                     profile = self._create_test_profile("test-local-model")
                     
@@ -179,5 +177,6 @@ class TestPipelineFactoryLocking:
                         # Should increment during use
                         assert self.factory._active_local_uses == initial_uses + 1
                     
-                    # Should decrement after use
+                    # Should decrement after use and unlock called
                     assert self.factory._active_local_uses == initial_uses
+                    mock_unlock.assert_called_once_with("test-local-model")

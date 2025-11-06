@@ -229,7 +229,7 @@ class PipelineFactory:
         if not model:
             raise RuntimeError(f"Model with ID '{model_id}' not found.")
 
-        # Local providers -> managed cached path
+        # Local providers -> managed cached path with automatic locking
         if getattr(model, "provider", None) in {
             ModelProvider.LLAMA_CPP,
             ModelProvider.STABLE_DIFFUSION_CPP,
@@ -247,9 +247,17 @@ class PipelineFactory:
                 raise RuntimeError(
                     f"Failed to create cached pipeline for model '{model.name}'"
                 )
+            
+            # Automatically lock local pipelines for safety
+            locked = self.local_cache.lock_pipeline(model_id)
+            if locked:
+                self.logger.debug(f"Automatically locked pipeline {model_id} for safe usage")
+            else:
+                self.logger.warning(f"Could not lock pipeline {model_id} - proceeding without lock")
+            
             return pipeline
 
-        # Remote / API providers -> create transient each call, no caching
+        # Remote / API providers -> create transient each call, no caching or locking needed
         pipeline = self.create_pipeline(model, profile)
         if not pipeline:
             raise RuntimeError(
@@ -258,40 +266,6 @@ class PipelineFactory:
         self.logger.debug(
             f"Created transient pipeline for remote provider {getattr(model, 'provider', 'unknown')} ({model.name})"
         )
-        return pipeline
-
-    def get_pipeline_safely(
-        self,
-        profile: ModelProfile,
-        priority: PipelinePriority = PipelinePriority.NORMAL,
-        grammar: Optional[Type[BaseModel]] = None,
-    ) -> Union[BaseChatModel, Embeddings]:
-        """
-        Get a pipeline with automatic locking for safe usage.
-        
-        This is equivalent to calling get_pipeline() but for local providers,
-        it automatically locks the pipeline to prevent eviction during use.
-        
-        Returns a tuple of (pipeline, unlock_fn) where unlock_fn should be called
-        when done using the pipeline.
-        
-        Better to use the context manager pipeline() method when possible.
-        """
-        model_id = profile.model_name
-        model = self._get_model_by_id(model_id)
-        if not model:
-            raise RuntimeError(f"Model with ID '{model_id}' not found.")
-        
-        pipeline = self.get_pipeline(profile, priority, grammar)
-        
-        # For local providers, lock the pipeline
-        if self.local_cache.is_local(model):
-            locked = self.local_cache.lock_pipeline(model_id)
-            if locked:
-                self.logger.debug(f"Automatically locked pipeline {model_id} for safe usage")
-            else:
-                self.logger.warning(f"Could not lock pipeline {model_id} - proceed with caution")
-        
         return pipeline
 
     def unlock_pipeline(self, profile: ModelProfile) -> bool:
@@ -366,45 +340,36 @@ class PipelineFactory:
         grammar: Optional[Type[BaseModel]] = None,
     ):
         """
-        Context manager for safe pipeline usage with automatic locking.
+        Context manager for safe pipeline usage with automatic locking and unlocking.
         
-        For local providers, this automatically locks the pipeline to prevent
-        eviction during active inference, then unlocks when done.
+        get_pipeline() automatically locks local providers, this context manager
+        ensures proper unlocking when done.
         """
         model_id = profile.model_name
         model = self._get_model_by_id(model_id)
         if not model:
             raise RuntimeError(f"Model with ID '{model_id}' not found.")
         
-        # Get the pipeline
+        # Get the pipeline (automatically locked if local provider)
         pipeline = self.get_pipeline(profile, priority, grammar)
         
-        # Check if this is a local provider that needs locking
+        # Check if this is a local provider that was locked
         is_local = self.local_cache.is_local(model)
         
+        # Track usage for coordination
         if is_local:
-            # Use the cache manager's context manager for automatic locking
-            with self.local_cache.pipeline_in_use(model_id) as locked:
-                if not locked:
-                    self.logger.warning(f"Could not lock pipeline {model_id} - proceeding without lock")
-                
-                # Track usage for coordination
+            with self._coord_cond:
+                self._active_local_uses += 1
+        
+        try:
+            yield pipeline
+        finally:
+            if is_local:
+                # Unlock the pipeline and update coordination
+                self.local_cache.unlock_pipeline(model_id)
                 with self._coord_cond:
-                    self._active_local_uses += 1
-                
-                try:
-                    yield pipeline
-                finally:
-                    with self._coord_cond:
-                        self._active_local_uses = max(0, self._active_local_uses - 1)
-                        self._coord_cond.notify_all()
-        else:
-            # Remote/API providers - no locking needed, just yield directly
-            try:
-                yield pipeline
-            finally:
-                # Remote pipelines may need cleanup but no cache coordination
-                pass
+                    self._active_local_uses = max(0, self._active_local_uses - 1)
+                    self._coord_cond.notify_all()
 
     def _get_model_by_id(self, model_id: str) -> Optional[Model]:
         if not self._available_models:

@@ -1,120 +1,174 @@
-# Pipeline Cache Locking Usage Guide
+# Pipeline Cache Locking
 
-The pipeline cache now includes locking functionality to prevent pipelines from being evicted while they're actively generating responses. This prevents race conditions that could interrupt ongoing inference operations.
+## Overview
 
-## Pipeline Factory Integration (Recommended)
+This document describes the pipeline cache locking system that prevents eviction of pipelines during active inference operations. The system provides automatic protection against race conditions where pipelines could be evicted while generating responses.
 
-The easiest way to use safe pipeline locking is through the PipelineFactory, which automatically handles locking for local providers:
+## Core Architecture
 
-### 1. Context Manager (Preferred)
+### Pipeline Cache Entry Locking
+
+Each pipeline cache entry (`_PipelineCacheEntry`) includes:
+
+- `lock_count: int` - Number of active locks (supports nested/concurrent locking)
+- `in_use: bool` - Computed property indicating if pipeline is locked
 
 ```python
-from runner.pipeline_factory import pipeline_factory
-
-profile = ModelProfile(
-    user_id="user123",
-    name="Chat Profile",
-    model_name="qwen-model",
-    parameters=ModelParameters(temperature=0.7),
-    system_prompt="You are a helpful assistant",
-    type=0
-)
-
-# Automatic locking for local providers, no locking for remote providers
-with pipeline_factory.pipeline(profile) as pipeline:
-    # Pipeline is automatically locked for local providers
-    result = await pipeline.ainvoke(messages)
-    # Automatic unlock when exiting context
+# Lock/unlock operations support concurrent usage
+entry.lock()    # Increment lock count
+entry.unlock()  # Decrement lock count (with underflow protection)
 ```
 
-### 2. Manual Safe Pipeline Usage
+### Automatic Eviction Protection
+
+The cache manager automatically skips locked pipelines during eviction:
 
 ```python
-# Get pipeline with automatic locking
-pipeline = pipeline_factory.get_pipeline_safely(profile)
+def _ensure_memory(self, model_profile):
+    # Eviction logic automatically respects locks
+    candidates = [
+        entry for entry in self._cache.values()
+        if not entry.in_use  # Skip locked pipelines
+    ]
+```
+
+### PipelineFactory Integration
+
+The `PipelineFactory` provides automatic locking with a clean, safe API:
+
+```python
+# get_pipeline() automatically locks local pipelines
+pipeline = factory.get_pipeline(profile)  # Auto-locked for local models
+
+# Context manager provides automatic cleanup
+with factory.pipeline(profile) as pipeline:
+    # Pipeline is automatically locked (if local)
+    response = await pipeline.generate(prompt)
+    # Pipeline is automatically unlocked on exit
+```
+
+## Usage Patterns
+
+### Basic Usage (Recommended)
+
+The simplest and safest approach uses the context manager:
+
+```python
+from runner.pipeline_factory import PipelineFactory
+
+# Context manager handles all locking automatically
+with factory.pipeline(profile) as pipeline:
+    # Safe to use pipeline - protected from eviction
+    response = await pipeline.generate(prompt)
+    # Automatic unlock when done
+```
+
+### Manual Pipeline Management
+
+For advanced use cases requiring manual control:
+
+```python
+# Manual locking (local pipelines only)
+pipeline = factory.get_pipeline(profile)  # Auto-locked if local
 try:
-    # Use the pipeline (protected from eviction if local)
-    result = await pipeline.ainvoke(messages)
+    response = await pipeline.generate(prompt)
 finally:
-    # Unlock when done
-    pipeline_factory.unlock_pipeline(profile)
+    factory.unlock_pipeline(profile)  # Manual cleanup required
 ```
 
-## Direct Cache Manager Usage
+### Remote vs Local Pipelines
 
-For advanced use cases, you can work directly with the cache manager:
-
-### 1. Manual Locking/Unlocking
+The locking system intelligently handles different pipeline types:
 
 ```python
-from runner.pipeline_cache import LocalPipelineCacheManager
+# Local pipelines: Automatic locking applied
+local_profile = ModelProfile(model_id="llama-8b-local")
+with factory.pipeline(local_profile) as pipeline:
+    # Pipeline is locked and protected from eviction
+    pass
 
-cache_manager = LocalPipelineCacheManager()
-
-# Get your pipeline through normal means
-pipeline = cache_manager.get_or_create(model, profile, priority, create_fn)
-model_id = model.id or model.model
-
-# Lock before starting inference
-if cache_manager.lock_pipeline(model_id):
-    try:
-        # Safe to use pipeline - it won't be evicted
-        result = await pipeline.generate(messages)
-    finally:
-        # Always unlock when done
-        cache_manager.unlock_pipeline(model_id)
+# Remote pipelines: No locking needed (not cached locally)  
+remote_profile = ModelProfile(model_id="gpt-4")
+with factory.pipeline(remote_profile) as pipeline:
+    # No locking overhead - remote pipelines aren't cached
+    pass
 ```
 
-### 2. Context Manager for Cache
+## Implementation Details
+
+### LocalPipelineCacheManager
+
+Provides both manual and context manager APIs:
 
 ```python
-# Automatic locking/unlocking with context manager
+# Manual operations
+success = cache_manager.lock_pipeline(model_id)
+cache_manager.unlock_pipeline(model_id)
+
+# Context manager (legacy - prefer PipelineFactory)
 with cache_manager.pipeline_in_use(model_id) as locked:
     if locked:
-        # Pipeline is locked and safe to use
-        result = await pipeline.generate(messages)
-        # Automatic unlock when exiting context
-    else:
-        # Pipeline not found or couldn't be locked
-        handle_error()
+        # Pipeline successfully locked
+        pass
 ```
 
-## Key Benefits
+### PipelineFactory Design
 
-1. **Race Condition Prevention**: Pipelines cannot be evicted mid-generation
-2. **Automatic Local/Remote Detection**: Factory automatically locks only local providers  
-3. **Concurrent Usage Support**: Multiple requests can lock the same pipeline simultaneously  
-4. **Automatic Cleanup**: Context managers ensure unlock even if exceptions occur
-5. **Memory Pressure Awareness**: Eviction skips locked pipelines and logs warnings
-6. **Observable State**: Cache statistics include lock counts for monitoring
-
-## Architecture
-
-- **Local Providers** (llama.cpp, stable_diffusion_cpp): Automatically locked to prevent eviction
-- **Remote Providers** (OpenAI, etc.): No locking needed since they're not cached
-- **Factory Integration**: Seamless locking without manual cache management
-- **Memory Coordination**: Tracks active usage and coordinates eviction safely
-
-## Monitoring
-
-Check cache statistics to monitor locking behavior:
+The factory coordinates between local cache locking and usage tracking:
 
 ```python
-stats = cache_manager.stats()
-print(f"Total pipelines: {stats['count']}")
-print(f"Currently locked: {stats['locked']}")
-
-for model_id, entry_stats in stats['entries'].items():
-    if entry_stats['in_use']:
-        print(f"  {model_id}: locked (use_count={entry_stats['use_count']})")
+def get_pipeline(self, profile):
+    """Get pipeline with automatic locking for local models."""
+    pipeline = self.create_pipeline(profile)
+    
+    # Auto-lock local pipelines after creation
+    if self.local_cache.is_local(profile.model_id):
+        self.local_cache.lock_pipeline(profile.model_id)
+        
+    return pipeline
 ```
+
+## Thread Safety
+
+The locking system is thread-safe with proper coordination:
+
+- Cache entry locks use atomic operations
+- Factory tracks active uses with thread-safe counters
+- Context managers ensure proper cleanup even on exceptions
+
+## Performance Considerations
+
+- **Negligible overhead**: Lock operations are simple counter increments
+- **Local-only locking**: Remote pipelines skip locking entirely
+- **Efficient eviction**: Locked pipeline detection is O(1) per cache entry
 
 ## Best Practices
 
-1. **Use PipelineFactory context manager** - handles everything automatically
-2. **Keep lock duration minimal** - only lock during actual inference
-3. **Handle lock failures gracefully** - pipeline might not exist in cache
-4. **Monitor lock counts** - high locked counts may indicate memory pressure
-5. **Use appropriate priorities** - higher priority pipelines are less likely to be evicted
+1. **Use context managers**: Automatic cleanup prevents lock leaks
+2. **Prefer factory methods**: Higher-level APIs handle complexities
+3. **Trust automatic behavior**: The system intelligently handles local vs remote
+4. **Monitor lock counts**: Use cache stats for debugging if needed
 
-The integrated locking system ensures reliable inference operations even under memory pressure by protecting actively-used pipelines from eviction while maintaining optimal performance for remote providers.
+## Error Handling
+
+The system includes comprehensive error handling:
+
+- Underflow protection prevents negative lock counts
+- Missing pipeline graceful handling  
+- Exception safety in context managers
+- Debug logging for troubleshooting
+
+## Cache Statistics
+
+Lock information is included in cache statistics:
+
+```python
+stats = cache_manager.stats()
+# {
+#     "total_entries": 3,
+#     "locked_entries": 1,  # Number of currently locked pipelines
+#     "lock_details": {
+#         "model-1": {"lock_count": 2, "in_use": True}
+#     }
+# }
+```
