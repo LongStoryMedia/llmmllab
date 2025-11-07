@@ -36,6 +36,7 @@ import { ParameterOptimizationConfig } from '../../types/ParameterOptimizationCo
 import { PerformanceParameter } from '../../types/PerformanceParameter';
 import { ParameterTuningStrategy, ParameterTuningStrategyValues } from '../../types/ParameterTuningStrategy';
 import { CrashPrevention } from '../../types/CrashPrevention';
+import { getAllParameterDisplayInfo, createDefaultPerformanceParameter } from '../../utils/parameterUtils';
 
 const OPTIMIZATION_STRATEGIES = [
   { value: ParameterTuningStrategyValues.BINARY_SEARCH, label: 'Binary Search', description: 'Fast, precise optimization for stable systems' },
@@ -43,13 +44,8 @@ const OPTIMIZATION_STRATEGIES = [
   { value: ParameterTuningStrategyValues.EXPONENTIAL_BACKOFF, label: 'Exponential Backoff', description: 'Advanced strategy for complex scenarios' }
 ] as const;
 
-const OPTIMIZATION_PARAMETERS = [
-  { value: 'n_ctx', label: 'Context Size (n_ctx)', description: 'Memory window for model attention' },
-  { value: 'n_batch', label: 'Batch Size (n_batch)', description: 'Number of tokens processed together' },
-  { value: 'n_ubatch', label: 'Micro-batch (n_ubatch)', description: 'Internal batching for efficiency' },
-  { value: 'n_gpu_layers', label: 'GPU Layers', description: 'Layers to offload to GPU vs CPU' },
-  { value: 'batch_size', label: 'Batch Size', description: 'Alternative batch size parameter' }
-] as const;
+// All parameter configurations now dynamically generated from type-safe utilities
+const OPTIMIZATION_PARAMETERS = getAllParameterDisplayInfo();
 
 const OPERATORS = [
   { value: '+', label: 'Add (+)', description: 'Add modifier to parameter value' },
@@ -58,17 +54,9 @@ const OPERATORS = [
   { value: '/', label: 'Divide (/)', description: 'Divide parameter value by modifier' }
 ] as const;
 
-// Create a default performance parameter
-const createDefaultPerformanceParameter = (parameterName: PerformanceParameter['parameter_name']): PerformanceParameter => ({
-  parameter_name: parameterName,
-  priority: 1,
-  tuning_strategy: ParameterTuningStrategyValues.CONSERVATIVE_INCREMENT as ParameterTuningStrategy,
-  max_search_attempts: 10,
-  floor: parameterName === 'n_ctx' ? 8192 : parameterName === 'n_gpu_layers' ? 0 : 32,
-  operator: '*' as PerformanceParameter['operator'],
-  modifier: parameterName === 'n_gpu_layers' ? 1 : 2,
-  max_value: parameterName === 'n_ctx' ? 131072 : parameterName === 'n_gpu_layers' ? 125 : 8192
-});
+// All default parameter configurations now handled by parameterUtils.ts
+
+// Default performance parameter creation now handled by utility function
 
 const DEFAULT_CRASH_PREVENTION: CrashPrevention = {
   enable_preallocation_test: true,
