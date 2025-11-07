@@ -51,6 +51,9 @@ properties:
   parameter_optimization:
     $ref: parameter_optimization_config.yaml
     description: Configuration for parameter optimization during model initialization
+  draft_model:
+    type: string
+    description: Optional draft model to use for faster initial responses
 required:
   - user_id
   - name
