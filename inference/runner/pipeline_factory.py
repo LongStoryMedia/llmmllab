@@ -3,12 +3,9 @@ Production-ready pipeline factory with weakref caching, background cleanup, and
 modern/legacy pipeline selection. Replaces the previous garbled version.
 """
 
-import json
-import yaml
 import logging
-import os
 import threading
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Dict, Optional, Type, Union
 from contextlib import contextmanager
 
 from langchain_core.language_models import BaseChatModel
@@ -16,14 +13,13 @@ from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel
 from models import (
     Model,
-    LoraWeight,
-    ModelDetails,
     ModelProfile,
     ModelProvider,
     ModelTask,
     PipelinePriority,
 )
 from .pipeline_cache import LocalPipelineCacheManager
+from .utils.model_loader import ModelLoader
 
 
 class PipelineFactory:
@@ -40,7 +36,7 @@ class PipelineFactory:
         self.logger = logging.getLogger(__name__)
 
         # Initialize attributes that were removed but are still used
-        self._available_models: Dict[str, Model] = {}
+        self._available_models: Dict[str, Model] = ModelLoader().get_available_models()
         self.prefer_langgraph = False  # Default value for langgraph preference
         self._active_loads = 0  # Track active loading operations
         self._active_local_uses = 0  # Track active local pipeline uses
@@ -52,171 +48,12 @@ class PipelineFactory:
         self._coord_lock = threading.Lock()
         self._coord_cond = threading.Condition(self._coord_lock)
 
-        # Track models currently being loaded to prevent duplicate loading
-        self._loading_models: Dict[str, threading.Event] = (
-            {}
-        )  # model_id -> Event to wait for loading completion
-
-        # Load available models from config file
-        self._load_available_models()
-
         # Set self.models to the loaded models, with models_map as fallback
         self.models: Dict[str, Model] = (
             self._available_models if self._available_models else (models_map or {})
         )
 
         self.logger.info("PipelineFactory initialized with LocalPipelineCacheManager")
-
-    # Background cleanup is handled entirely in LocalPipelineCacheManager
-
-    # ---------- Model loading ----------
-
-    def _load_available_models(self) -> None:
-        """Load available models from YAML (preferred) or JSON (legacy) configuration.
-
-        Order of precedence:
-        1. MODELS_FILE_PATH env var (can point to YAML or JSON)
-        2. /app/.models.yaml
-        3. /app/.models.json (legacy fallback)
-        """
-        candidates: List[str] = []
-        env_path = os.environ.get("MODELS_FILE_PATH")
-        if env_path:
-            candidates.append(env_path)
-        candidates.extend(["/app/.models.yaml", "/app/.models.json"])
-
-        chosen_path: Optional[str] = None
-        for path in candidates:
-            if path and os.path.exists(path):
-                chosen_path = path
-                break
-
-        if not chosen_path:
-            self.logger.error(
-                "No models configuration file found (checked env, .models.yaml, .models.json)"
-            )
-            return
-
-        # Attempt parsing based on extension; allow YAML for .yaml/.yml, otherwise JSON
-        try:
-            with open(chosen_path, "r", encoding="utf-8") as f:
-                if chosen_path.endswith((".yaml", ".yml")):
-                    models_data = yaml.safe_load(f)
-                else:
-                    models_data = json.load(f)
-        except Exception as e:
-            self.logger.error(f"Failed to parse models file {chosen_path}: {e}")
-            return
-
-        if not isinstance(models_data, list):
-            self.logger.error(
-                f"Models config {chosen_path} is not a list; ignoring contents"
-            )
-            return
-
-        loaded_count = 0
-        for data in models_data:
-            try:
-                model = self._create_model_from_data(data)
-                if model:
-                    id_key = str(data.get("id") or model.id or "")
-                    if not id_key:
-                        self.logger.error(
-                            f"Skipping model with missing id: {getattr(model, 'name', 'unknown')}"
-                        )
-                        continue
-                    self._available_models[id_key] = model
-                    loaded_count += 1
-            except Exception as e:
-                self.logger.error(
-                    f"Error creating model from {data.get('id', 'unknown')}: {e}"
-                )
-
-        self.logger.info(
-            f"Loaded {loaded_count}/{len(models_data)} models from config ({os.path.basename(chosen_path)})"
-        )
-
-    def _create_model_from_data(self, data: Dict[str, Any]) -> Optional[Model]:
-        # LoRA weights
-        loras: List[LoraWeight] = []
-        for lw in data.get("lora_weights", []) or []:
-            try:
-                loras.append(
-                    LoraWeight(
-                        id=lw.get("id", ""),
-                        name=lw.get("name", ""),
-                        weight_name=lw.get("weight_name", ""),
-                        adapter_name=lw.get("adapter_name", ""),
-                        parent_model=lw.get("parent_model", ""),
-                    )
-                )
-            except Exception:
-                continue
-
-        details_dict = data.get("details", {}) or {}
-        try:
-            # Map specialization values to valid schema enum values
-            specialization = details_dict.get("specialization")
-            if specialization:
-                # Map invalid specialization values to valid ones
-                specialization_map = {
-                    "ImageTextToText": "Text",
-                    "TextGeneration": "Text",
-                    "TextSummarization": "Text",
-                    "TextToText": "Text",
-                    "TextToEmbeddings": "Embedding",
-                    # Valid values remain unchanged
-                    "Text": "Text",
-                    "LoRA": "LoRA",
-                    "Embedding": "Embedding",
-                    "TextToImage": "TextToImage",
-                    "ImageToImage": "ImageToImage",
-                    "Audio": "Audio",
-                }
-                specialization = specialization_map.get(
-                    specialization, "Text"
-                )  # Default to "Text"
-
-            details = ModelDetails(
-                parent_model=details_dict.get("parent_model"),
-                format=str(details_dict.get("format", "")),
-                family=str(details_dict.get("family", "")),
-                families=list(details_dict.get("families", [])),
-                parameter_size=str(details_dict.get("parameter_size", "")),
-                quantization_level=details_dict.get("quantization_level"),
-                specialization=specialization,  # type: ignore[arg-type]
-                dtype=str(details_dict.get("dtype", "bf16")),
-                precision=str(details_dict.get("precision", "fp16")),  # type: ignore[arg-type]
-                weight=float(details_dict.get("weight", 1.0)),
-                gguf_file=details_dict.get("gguf_file"),
-                clip_model_path=details_dict.get("clip_model_path"),
-                description=details_dict.get("description"),
-            )
-        except Exception as e:
-            self.logger.error(f"Invalid model details for {data.get('id')}: {e}")
-            return None
-
-        try:
-            model = Model(
-                id=data.get("id"),
-                name=data["name"],
-                model=data["model"],
-                provider=data["provider"],
-                modified_at=data["modified_at"],
-                size=data["size"],
-                digest=data["digest"],
-                pipeline=data.get("pipeline"),
-                lora_weights=loras,
-                details=details,
-                task=data.get("task", "TextToText"),
-            )
-        except Exception as e:
-            self.logger.error(f"Invalid model entry: {e}")
-            return None
-
-        return model
-
-    # ---------- Public API ----------
 
     def get_pipeline(
         self,
@@ -458,14 +295,6 @@ class PipelineFactory:
                 raise
             self.logger.info("Successfully created Qwen3Moe")
             return pipeline
-
-        if model.pipeline == "Qwen25VLGGUFPipeline":
-            # File may not exist; fallback handled below
-            from .pipelines.imgtxt2txt.qwen25_vl import (  # pylint: disable=import-outside-toplevel
-                Qwen25VLPipeline,
-            )
-
-            return Qwen25VLPipeline(model, profile, grammar)
 
         if model.pipeline == "Qwen3VLPipeline":
             from .pipelines.imgtxt2txt.qwen3_vl import (  # pylint: disable=import-outside-toplevel

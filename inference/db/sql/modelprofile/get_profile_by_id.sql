@@ -12,7 +12,8 @@ SELECT
   model_version,
   type,
   circuit_breaker,
-  gpu_config
+  gpu_config,
+  draft_model
 FROM
   model_profiles
 WHERE

@@ -205,6 +205,7 @@ class ModelProfileStorage:
                 profile.type,
                 circuit_breaker_json,
                 gpu_config_json,
+                profile.draft_model,
             )
 
             # Update the profile with current timestamps (which are set by the database)
@@ -256,6 +257,7 @@ class ModelProfileStorage:
                 profile.type,
                 circuit_breaker_json,
                 gpu_config_json,
+                profile.draft_model,
                 profile.user_id,
             )
 

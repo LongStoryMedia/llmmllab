@@ -11,6 +11,7 @@ SET
   type = $8,
   circuit_breaker = $9,
   gpu_config = $10,
+  draft_model = $11,
   updated_at = NOW()
 WHERE
   id = $1

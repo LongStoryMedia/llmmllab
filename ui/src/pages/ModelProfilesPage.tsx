@@ -216,6 +216,7 @@ const ModelProfilesPage = () => {
           <ModelSelector
             onSelect={e => setEditingProfile({ ...editingProfile, draft_model: e.target.value })}
             name={editingProfile?.draft_model || 'draft model'}
+            label="Draft Model (optional)"
           />
           <TextField
             label="System Prompt"

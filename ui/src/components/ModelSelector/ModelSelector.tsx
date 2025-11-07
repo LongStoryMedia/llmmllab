@@ -7,9 +7,10 @@ import ControlLoader from '../Shared/ControlLoader';
 interface ModelCardProps {
   onSelect: (event: SelectChangeEvent) => void;
   name: string;
+  label?: string;
 }
 
-const ModelSelector: React.FC<ModelCardProps> = ({ onSelect, name }) => {
+const ModelSelector: React.FC<ModelCardProps> = ({ onSelect, name, label }) => {
   const { models, isLoading } = useChat();
 
   return (
@@ -17,7 +18,7 @@ const ModelSelector: React.FC<ModelCardProps> = ({ onSelect, name }) => {
       <ControlLoader text='Loading models...' /> :
       <Box sx={{ mb: 2, p: 2 }}>
         <Typography variant="h6" gutterBottom>
-          Select a Model
+          {label || "Select a Model"}
         </Typography>
         <FormControl fullWidth>
           <InputLabel id="model-select-label">Model</InputLabel>
@@ -26,7 +27,7 @@ const ModelSelector: React.FC<ModelCardProps> = ({ onSelect, name }) => {
             id="model-select"
             value={name}
             onChange={onSelect}
-            label="Model"
+            label={"Model"}
           >
             {models && models?.map((model) => (
               <MenuItem key={model.name} value={model.id}>
