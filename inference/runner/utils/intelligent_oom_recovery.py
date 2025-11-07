@@ -167,6 +167,15 @@ class IntelligentOOMRecovery:
 
         # Extract base parameters from model profile with proper defaults
         base_n_ctx = params.num_ctx or 32768
+        
+        # ✅ CRITICAL FIX: Respect model's training context to avoid waste and crashes
+        if model.details.original_ctx and model.details.original_ctx > 0:
+            # Never exceed the model's training context - it's wasteful and can cause issues
+            base_n_ctx = min(base_n_ctx, model.details.original_ctx)
+            self.logger.info(
+                f"🎯 Limiting context to training size: {base_n_ctx} (model trained on {model.details.original_ctx})"
+            )
+        
         base_batch_size = params.batch_size or 512
         base_n_ubatch = base_batch_size  # Default n_ubatch = n_batch
 
@@ -444,6 +453,7 @@ class IntelligentOOMRecovery:
         original_params: OptimalParameters,
         current_params: OptimalParameters,
         hardware_manager: EnhancedHardwareManager,  # noqa: ARG002  # Reserved for future memory clearing
+        model: Optional[Model] = None,
     ) -> RecoveryStrategy:
         """
         Execute OOM recovery strategy based on attempt number.
@@ -485,18 +495,38 @@ class IntelligentOOMRecovery:
         elif attempt <= 6:
             # Level 3: Move layers to CPU (max 1/3 of total layers as specified)
             strategy_name = "move_to_cpu"
-            original_gpu_layers = original_params.n_gpu_layers
+            
+            # Handle the case where original n_gpu_layers was -1 (auto-allocation)
+            if original_params.n_gpu_layers == -1:
+                # Get the actual number of layers from model details
+                if model is not None:
+                    try:
+                        breakdown = self._get_breakdown(current_params, model)
+                        total_layers = breakdown.get("total_layers", 32)
+                        actual_gpu_layers = current_params.n_gpu_layers
+                        if actual_gpu_layers == -1:
+                            actual_gpu_layers = total_layers
+                    except Exception:
+                        actual_gpu_layers = 32  # Conservative fallback
+                else:
+                    actual_gpu_layers = 32  # Conservative fallback when no model
+            else:
+                actual_gpu_layers = original_params.n_gpu_layers
 
-            if original_gpu_layers > 0:
+            if actual_gpu_layers > 0:
                 # Calculate how many layers to move to CPU (max 1/3 as requested)
-                max_cpu_layers = max(original_gpu_layers // 3, 1)  # At most 1/3 to CPU
+                max_cpu_layers = max(actual_gpu_layers // 3, 1)  # At most 1/3 to CPU
                 layers_to_move = min(
                     max_cpu_layers, (attempt - 4) * 5
                 )  # Progressive movement
+                new_gpu_layers = max(actual_gpu_layers - layers_to_move, 0)
+                
+                self.logger.info(
+                    f"Moving {layers_to_move} layers to CPU: {actual_gpu_layers} → {new_gpu_layers}"
+                )
+                
                 new_params = current_params.model_copy(
-                    update={
-                        "n_gpu_layers": max(original_gpu_layers - layers_to_move, 0)
-                    }
+                    update={"n_gpu_layers": new_gpu_layers}
                 )
             else:
                 # If already CPU-only, reduce batch further

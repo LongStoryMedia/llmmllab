@@ -25,7 +25,7 @@ properties:
     description: "Micro-batch size used in this attempt"
   n_gpu_layers:
     type: integer
-    minimum: 0
+    minimum: -1
     description: "Number of GPU layers used in this attempt"
   success:
     type: boolean

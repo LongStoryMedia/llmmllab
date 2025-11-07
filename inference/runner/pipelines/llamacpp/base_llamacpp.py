@@ -390,6 +390,7 @@ class BaseLlamaCppPipeline(BasePipeline):
                                 original_params=original_params,
                                 current_params=current_params,
                                 hardware_manager=self.hardware_manager,
+                                model=self.model,
                             )
                             current_params = recovery.parameters
                             attempt += 1
@@ -579,6 +580,7 @@ class BaseLlamaCppPipeline(BasePipeline):
                     original_params=original_params,
                     current_params=current_params,
                     hardware_manager=self.hardware_manager,
+                    model=self.model,
                 )
                 current_params = recovery.parameters
                 # After first OOM move to predicted params (if available) before further downscaling

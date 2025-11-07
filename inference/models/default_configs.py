@@ -237,10 +237,10 @@ DEFAULT_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
         ),
     ],
     crash_prevention=CrashPrevention(
-        enable_preallocation_test=True,
+        enable_preallocation_test=False,
         memory_buffer_mb=4096,
         timeout_seconds=120,
-        enable_graceful_degradation=True,
+        enable_graceful_degradation=False,
     ),
 )
 
