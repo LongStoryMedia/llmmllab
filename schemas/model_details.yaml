@@ -87,8 +87,4 @@ required:
   - families
   - parameter_size
   - original_ctx
-  - n_layers
-  - hidden_size
-  - n_heads
-  - n_kv_heads
   - size
