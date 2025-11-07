@@ -193,7 +193,7 @@ DEFAULT_CONTEXT_WINDOW_CONFIG = ContextWindowConfig(
 
 # Default parameter optimization configuration (disabled by default)
 DEFAULT_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
-    enabled=True,
+    enabled=False,
     parameters=[
         PerformanceParameter(
             parameter_name="n_ctx",

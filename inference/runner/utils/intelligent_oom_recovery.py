@@ -337,12 +337,26 @@ class IntelligentOOMRecovery:
     def _get_breakdown(
         self, params: OptimalParameters, model: Model
     ) -> MemoryBreakdown:
-        """Get memory breakdown using Resizer."""
-        if self.memory_breakdown is None:
-            self.memory_breakdown = self.resizer.calculate_memory_breakdown(
+        """Get memory breakdown using Resizer with proper caching."""
+        # Create cache key from parameters that affect memory calculation
+        cache_key = (
+            params.n_ctx,
+            params.n_batch, 
+            params.n_ubatch,
+            params.n_gpu_layers,
+            model.id  # Include model ID to handle different models
+        )
+        
+        # Check if we have cached breakdown for these exact parameters
+        if not hasattr(self, '_breakdown_cache'):
+            self._breakdown_cache = {}
+            
+        if cache_key not in self._breakdown_cache:
+            self._breakdown_cache[cache_key] = self.resizer.calculate_memory_breakdown(
                 params, model
             )
-        return self.memory_breakdown
+            
+        return self._breakdown_cache[cache_key]
 
     def predict_optimal_parameters_from_profile(
         self,
@@ -926,18 +940,38 @@ class IntelligentOOMRecovery:
         """
         Optimize parameters to find maximum values while respecting constraints.
 
-        Uses binary search or other strategies to find the highest viable values
-        for specified parameters while maintaining floors for others.
+        Optimized version with better bounds checking and early termination.
         """
         if not optimization_config or not optimization_config.enabled:
             return base_params
 
-        self.logger.info(f"🎯 Starting parameter optimization")
+        # Clear any cached breakdowns for fresh calculations
+        if hasattr(self, '_breakdown_cache'):
+            self._breakdown_cache.clear()
+
+        gpu_stats = self.get_system_gpu_stats()
+        available_memory_mb = gpu_stats.total_available_memory
+        
+        self.logger.info(
+            f"🎯 Starting parameter optimization with {available_memory_mb:.0f}MB available GPU memory"
+        )
 
         # Start with base parameters as our working set
         current_params = base_params.model_copy()
 
-        for p in optimization_config.parameters:
+        # Log initial configuration and memory estimate
+        try:
+            initial_memory_mb = self.estimate_memory_requirements(current_params, model)
+            self.logger.info(
+                f"📊 Initial configuration memory estimate: {initial_memory_mb:.0f}MB "
+                f"({initial_memory_mb/available_memory_mb*100:.1f}% of available)"
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to estimate initial memory: {e}")
+
+        optimization_start_time = asyncio.get_event_loop().time()
+
+        for i, p in enumerate(optimization_config.parameters):
             # Map batch_size to n_batch for OptimalParameters compatibility
             param_attr = (
                 "n_batch" if p.parameter_name == "batch_size" else p.parameter_name
@@ -952,7 +986,12 @@ class IntelligentOOMRecovery:
                 self.logger.warning(
                     f"Parameter {p.parameter_name} (mapped to {param_attr}) not found in OptimalParameters, skipping"
                 )
-            self.logger.info(f"🔍 Optimizing parameter: {p.parameter_name}")
+                continue
+                
+            param_start_time = asyncio.get_event_loop().time()
+            self.logger.info(
+                f"🔍 Optimizing parameter {i+1}/{len(optimization_config.parameters)}: {p.parameter_name}"
+            )
 
             optimized_value = self._optimize_single_parameter(
                 param=p,
@@ -961,8 +1000,37 @@ class IntelligentOOMRecovery:
                 model=model,
             )
 
-            # Update the parameter
+            # Update the parameter and log the change
+            old_value = getattr(current_params, param_attr)
             setattr(current_params, param_attr, optimized_value)
+            
+            param_duration = asyncio.get_event_loop().time() - param_start_time
+            
+            try:
+                new_memory_mb = self.estimate_memory_requirements(current_params, model)
+                self.logger.info(
+                    f"✅ {p.parameter_name}: {old_value} → {optimized_value} "
+                    f"(memory: {new_memory_mb:.0f}MB, took {param_duration:.1f}s)"
+                )
+            except Exception:
+                self.logger.info(
+                    f"✅ {p.parameter_name}: {old_value} → {optimized_value} "
+                    f"(took {param_duration:.1f}s)"
+                )
+
+        total_duration = asyncio.get_event_loop().time() - optimization_start_time
+        
+        try:
+            final_memory_mb = self.estimate_memory_requirements(current_params, model)
+            self.logger.info(
+                f"🎯 Parameter optimization complete in {total_duration:.1f}s. "
+                f"Final memory estimate: {final_memory_mb:.0f}MB "
+                f"({final_memory_mb/available_memory_mb*100:.1f}% of available)"
+            )
+        except Exception:
+            self.logger.info(
+                f"🎯 Parameter optimization complete in {total_duration:.1f}s"
+            )
 
         return current_params
 
@@ -1006,34 +1074,43 @@ class IntelligentOOMRecovery:
         config: ParameterOptimizationConfig,
         model: Model,
     ) -> int:
-        """Binary search for optimal parameter value."""
+        """Optimized binary search for optimal parameter value."""
         param_name = param.parameter_name
         start_value = getattr(params, param_name)
         assert isinstance(start_value, int), "Parameter value must be an integer"
         floor_value = param.floor
 
-        # Determine search bounds
-        low = max(start_value, floor_value)
-        if param.operator == "*":
-            high = max(start_value * param.modifier, param.max_value)
-        elif param.operator == "+":
-            high = max(start_value + param.modifier, param.max_value)
-        elif param.operator == "-":
-            high = max(start_value - param.modifier, param.max_value)
-        else:  # "/"
-            high = max(start_value // param.modifier, param.max_value)
+        # Get system constraints for smarter bounds
+        gpu_stats = self.get_system_gpu_stats()
+        available_memory_mb = gpu_stats.total_available_memory
+        
+        # Calculate smart bounds based on hardware constraints
+        low, high = self._calculate_smart_bounds(
+            param, start_value, floor_value, available_memory_mb, model
+        )
 
         best_value = low
         attempts = 0
-        max_attempts = param.max_search_attempts
+        max_attempts = min(param.max_search_attempts, 8)  # Cap attempts for efficiency
+
+        self.logger.debug(
+            f"🔍 Binary search for {param_name}: bounds [{low}, {high}], "
+            f"available memory: {available_memory_mb:.0f}MB"
+        )
 
         while low <= high and attempts < max_attempts:
             attempts += 1
             mid = (low + high) // 2
 
-            # Test this parameter value
+            # Test this parameter value with fast validation first
             test_params = params.model_copy()
             setattr(test_params, param_name, mid)
+
+            # Early termination: if this is obviously too high, don't even test
+            if self._is_obviously_too_high(test_params, available_memory_mb, model):
+                high = mid - 1
+                self.logger.debug(f"⚡ {param_name}={mid} obviously too high, skipping test")
+                continue
 
             if self._test_parameter_configuration(
                 test_params,
@@ -1048,9 +1125,89 @@ class IntelligentOOMRecovery:
                 self.logger.debug(f"❌ {param_name}={mid} failed, trying lower")
 
         self.logger.info(
-            f"Binary search for {param_name}: {attempts} attempts, best value: {best_value}"
+            f"🔍 Binary search for {param_name}: {attempts} attempts, "
+            f"best value: {best_value} (range was [{floor_value}, {param.max_value}])"
         )
         return best_value
+
+    def _calculate_smart_bounds(
+        self,
+        param: PerformanceParameter,
+        start_value: int,
+        floor_value: int,
+        available_memory_mb: float,
+        model: Model,
+    ) -> tuple[int, int]:
+        """Calculate smart search bounds based on hardware constraints."""
+        param_name = param.parameter_name
+        
+        # Conservative lower bound
+        low = max(start_value, floor_value)
+        
+        # Calculate hardware-constrained upper bound
+        if param_name == "n_ctx":
+            # Context size is limited by available memory
+            # Estimate max context based on KV cache memory constraints
+            max_reasonable_ctx = min(
+                int(available_memory_mb * 0.3 / 0.02),  # Rough KV cache estimation
+                param.max_value,
+                32768  # Reasonable maximum
+            )
+            high = max_reasonable_ctx
+            
+        elif param_name == "n_batch":
+            # Batch size affects activation memory
+            max_reasonable_batch = min(
+                int(available_memory_mb * 0.1 / 4),  # Rough activation estimation  
+                param.max_value,
+                2048  # Reasonable maximum
+            )
+            high = max_reasonable_batch
+            
+        elif param_name == "n_gpu_layers":
+            # GPU layers limited by model architecture
+            try:
+                breakdown = self._get_breakdown(
+                    OptimalParameters(
+                        n_ctx=2048, n_batch=512, n_ubatch=512, n_gpu_layers=-1
+                    ),
+                    model
+                )
+                max_layers = breakdown.get("total_layers", 32)
+                high = min(max_layers, param.max_value)
+            except Exception:
+                high = min(40, param.max_value)  # Reasonable default
+                
+        else:
+            # Use parameter's configured bounds for other parameters
+            if param.operator == "*":
+                high = max(start_value * param.modifier, param.max_value)
+            elif param.operator == "+":
+                high = max(start_value + param.modifier, param.max_value)
+            elif param.operator == "-":
+                high = max(start_value - param.modifier, param.max_value)
+            else:  # "/"
+                high = max(start_value // param.modifier, param.max_value)
+        
+        # Ensure bounds are valid
+        high = min(high, param.max_value)
+        low = min(low, high)
+        
+        return low, high
+
+    def _is_obviously_too_high(
+        self, test_params: OptimalParameters, available_memory_mb: float, model: Model
+    ) -> bool:
+        """Quick check if parameters are obviously too high to avoid expensive testing."""
+        try:
+            # Get rough memory estimate
+            estimated_memory_mb = self.estimate_memory_requirements(test_params, model)
+            
+            # If estimate is more than 90% of available memory, it's obviously too high
+            return estimated_memory_mb > available_memory_mb * 0.9
+            
+        except Exception:
+            return False  # If estimation fails, let the full test decide
 
     def _exponential_backoff_parameter(
         self,
@@ -1158,83 +1315,126 @@ class IntelligentOOMRecovery:
         """
         Test if a parameter configuration is viable without full model initialization.
 
-        Uses memory estimation and preallocation tests to avoid container crashes.
+        Optimized version that uses fast mathematical validation before expensive GPU tests.
         """
         try:
-            # Estimate memory requirements
-            estimated_memory_mb = self.estimate_memory_requirements(test_params, model)
-
-            # Check if crash prevention preallocation test is enabled
-            if crash_prevention.enable_preallocation_test:
-                self.logger.debug(
-                    f"Testing memory preallocation for estimated "
-                    f"{estimated_memory_mb:.0f}MB"
-                )
-
-                try:
-                    # Run the async test in a sync context
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # We're already in an async context, create a new thread
-                        import concurrent.futures
-
-                        with concurrent.futures.ThreadPoolExecutor() as executor:
-                            future = executor.submit(
-                                lambda: asyncio.run(
-                                    self.test_memory_preallocation(
-                                        estimated_memory_mb
-                                        + crash_prevention.memory_buffer_mb,
-                                        crash_prevention.timeout_seconds,
-                                    )
-                                )
-                            )
-                            success = future.result(
-                                timeout=crash_prevention.timeout_seconds + 10
-                            )
-                    else:
-                        success = loop.run_until_complete(
-                            self.test_memory_preallocation(
-                                estimated_memory_mb + crash_prevention.memory_buffer_mb,
-                                crash_prevention.timeout_seconds,
-                            )
-                        )
-                except Exception as e:
-                    self.logger.warning(f"Memory preallocation test failed: {e}")
-                    success = False
-
-                if not success:
-                    return False
-
-            # Additional conservative checks
-            gpu_stats = self.get_system_gpu_stats()
-            available_memory_mb = gpu_stats.total_available_memory
-
-            # Require significant memory buffer (default 1GB + configured buffer)
-            required_memory_with_buffer = (
-                estimated_memory_mb
-                + crash_prevention.memory_buffer_mb
-                + 1024  # Additional 1GB safety buffer
-            )
-
-            if available_memory_mb < required_memory_with_buffer:
-                self.logger.debug(
-                    f"Insufficient memory: need {required_memory_with_buffer:.0f}MB, "
-                    f"available {available_memory_mb:.0f}MB"
-                )
+            # Fast mathematical validation first
+            if not self._fast_parameter_validation(test_params, model):
                 return False
-
+                
+            # Only run expensive GPU tests if fast validation passes
+            if crash_prevention.enable_preallocation_test:
+                return self._run_gpu_preallocation_test(test_params, model, crash_prevention)
+                
             return True
 
         except Exception as e:
             self.logger.warning(f"Parameter configuration test failed: {e}")
             return False
 
+    def _fast_parameter_validation(
+        self, test_params: OptimalParameters, model: Model
+    ) -> bool:
+        """
+        Fast mathematical validation without GPU allocation.
+        
+        Returns False immediately for obviously bad configurations.
+        """
+        try:
+            # Get accurate memory estimate for these specific parameters
+            estimated_memory_mb = self.estimate_memory_requirements(test_params, model)
+            
+            # Check available GPU memory
+            gpu_stats = self.get_system_gpu_stats()
+            available_memory_mb = gpu_stats.total_available_memory
+            
+            # Require at least 2GB safety buffer for fast rejection
+            if available_memory_mb < estimated_memory_mb + 2048:
+                self.logger.debug(
+                    f"Fast rejection: need {estimated_memory_mb:.0f}MB + 2GB buffer, "
+                    f"available {available_memory_mb:.0f}MB"
+                )
+                return False
+                
+            # Sanity check parameters
+            if test_params.n_ctx < 512 or test_params.n_ctx > 32768:
+                self.logger.debug(f"Fast rejection: n_ctx {test_params.n_ctx} out of reasonable range")
+                return False
+                
+            if test_params.n_batch < 1 or test_params.n_batch > 2048:
+                self.logger.debug(f"Fast rejection: n_batch {test_params.n_batch} out of reasonable range")
+                return False
+                
+            if test_params.n_ubatch < 1 or test_params.n_ubatch > test_params.n_batch:
+                self.logger.debug(f"Fast rejection: n_ubatch {test_params.n_ubatch} invalid")
+                return False
+                
+            return True
+            
+        except Exception as e:
+            self.logger.debug(f"Fast validation failed: {e}")
+            return False
+
+    def _run_gpu_preallocation_test(
+        self,
+        test_params: OptimalParameters,
+        model: Model,
+        crash_prevention: CrashPrevention,
+    ) -> bool:
+        """
+        Run expensive GPU preallocation test only after fast validation passes.
+        """
+        try:
+            estimated_memory_mb = self.estimate_memory_requirements(test_params, model)
+            
+            self.logger.debug(
+                f"Running GPU preallocation test for {estimated_memory_mb:.0f}MB"
+            )
+
+            try:
+                # Run the async test in a sync context
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # We're already in an async context, create a new thread
+                    import concurrent.futures
+
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(
+                            lambda: asyncio.run(
+                                self.test_memory_preallocation(
+                                    estimated_memory_mb
+                                    + crash_prevention.memory_buffer_mb,
+                                    crash_prevention.timeout_seconds,
+                                )
+                            )
+                        )
+                        success = future.result(
+                            timeout=crash_prevention.timeout_seconds + 10
+                        )
+                else:
+                    success = loop.run_until_complete(
+                        self.test_memory_preallocation(
+                            estimated_memory_mb + crash_prevention.memory_buffer_mb,
+                            crash_prevention.timeout_seconds,
+                        )
+                    )
+            except Exception as e:
+                self.logger.warning(f"GPU preallocation test failed: {e}")
+                success = False
+
+            return success
+            
+        except Exception as e:
+            self.logger.warning(f"GPU preallocation test setup failed: {e}")
+            return False
+
     def estimate_memory_requirements(
         self, params: OptimalParameters, model: Model
     ) -> float:
         """
-        Estimate memory requirements for given parameters.
+        Estimate memory requirements for given parameters in MB.
 
-        This is a rough estimation based on typical model memory patterns.
+        Returns accurate memory estimation based on current parameters.
         """
-        return self._get_breakdown(params, model)["total_gpu_gb"]
+        breakdown = self._get_breakdown(params, model)
+        return breakdown["total_gpu_gb"] * 1024  # Convert GB to MB
