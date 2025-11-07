@@ -18,8 +18,7 @@ import ModelSelector from '../components/ModelSelector/ModelSelector';
 import { getToken } from '../api';
 import { ModelProfileType } from '../types/ModelProfileType';
 import { ParameterOptimizationConfig } from '../types/ParameterOptimizationConfig';
-import { PerformanceParameter } from '../types/PerformanceParameter';
-import { ParameterTuningStrategy, ParameterTuningStrategyValues } from '../types/ParameterTuningStrategy';
+import { createDefaultPerformanceParameter } from '../utils/parameterUtils';
 
 const getModelProfileTypeName = (type: ModelProfileType): string => {
   switch (type) {
@@ -46,40 +45,13 @@ const getModelProfileTypeName = (type: ModelProfileType): string => {
   }
 };
 
-// Helper function to create default parameter optimization config
+// Helper function to create default parameter optimization config using dynamic system
 const createDefaultParameterOptimizationConfig = (): ParameterOptimizationConfig => ({
   enabled: true,
   parameters: [
-    {
-      parameter_name: 'n_ctx',
-      priority: 1,
-      tuning_strategy: ParameterTuningStrategyValues.BINARY_SEARCH as ParameterTuningStrategy,
-      max_search_attempts: 10,
-      floor: 2048,
-      operator: '*' as PerformanceParameter['operator'],
-      modifier: 2,
-      max_value: 131072
-    },
-    {
-      parameter_name: 'n_gpu_layers',
-      priority: 2,
-      tuning_strategy: ParameterTuningStrategyValues.BINARY_SEARCH as ParameterTuningStrategy,
-      max_search_attempts: 10,
-      floor: 0,
-      operator: '+' as PerformanceParameter['operator'],
-      modifier: 10,
-      max_value: 125
-    },
-    {
-      parameter_name: 'n_batch',
-      priority: 3,
-      tuning_strategy: ParameterTuningStrategyValues.CONSERVATIVE_INCREMENT as ParameterTuningStrategy,
-      max_search_attempts: 5,
-      floor: 32,
-      operator: '*' as PerformanceParameter['operator'],
-      modifier: 2,
-      max_value: 8192
-    }
+    createDefaultPerformanceParameter('n_ctx'),
+    createDefaultPerformanceParameter('n_gpu_layers'),
+    createDefaultPerformanceParameter('n_batch')
   ],
   crash_prevention: {
     enable_preallocation_test: true,
