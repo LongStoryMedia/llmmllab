@@ -55,6 +55,7 @@ from models.config_utils import (
 from utils.logging import llmmllogger
 from runner.utils.hardware_manager import hardware_manager
 from runner.utils.intelligent_oom_recovery import IntelligentOOMRecovery
+from runner.utils.resizer import Resizer
 from runner.pipelines.base import BasePipeline
 
 
@@ -106,6 +107,9 @@ class BaseLlamaCppPipeline(BasePipeline):
         self.user_config = user_config
         self._bound_tools: List[BaseTool] = kwargs.get("_bound_tools", [])
         self.hardware_manager = hardware_manager
+
+        # Initialize Resizer for accurate memory calculations
+        self.resizer = Resizer()
 
         # Initialize intelligent OOM recovery system (can be disabled)
         self.use_intelligent_oom = (
@@ -269,9 +273,8 @@ class BaseLlamaCppPipeline(BasePipeline):
         if self.oom_recovery is not None:
             try:
                 predicted = self.oom_recovery.predict_optimal_parameters_from_profile(
+                    model=self.model,
                     model_profile=self.profile,
-                    model_path=gguf_path,
-                    hardware_manager=self.hardware_manager,
                 ).model_copy()
                 attempt_params_list.append(predicted)
             except Exception as e:
@@ -299,99 +302,112 @@ class BaseLlamaCppPipeline(BasePipeline):
             if should_use_optimization:
                 current_params = attempt_params_list[1]  # Use ML-optimized parameters
                 self._logger.info(
-                    f"✅ Using ML-optimized parameters: n_ctx={current_params.n_ctx}, n_batch={current_params.n_batch}"
+                    f"""✅ Using ML-optimized parameters: 
+                    n_ctx={current_params.n_ctx}, 
+                    n_batch={current_params.n_batch}
+                    n_ubatch={current_params.n_ubatch}
+                    n_gpu_layers={current_params.n_gpu_layers}
+                    """
                 )
             else:
                 current_params = attempt_params_list[0]  # Use profile parameters
                 self._logger.info(
-                    f"� Using profile parameters: n_ctx={current_params.n_ctx}, n_batch={current_params.n_batch}"
+                    f"""� Using profile parameters: 
+                    n_ctx={current_params.n_ctx}, 
+                    n_batch={current_params.n_batch}
+                    n_ubatch={current_params.n_ubatch}
+                    n_gpu_layers={current_params.n_gpu_layers}
+                    """
                 )
 
+        optimization_config = resolve_parameter_optimization_config(
+            self.profile, self.user_config
+        )
+        # Get crash prevention config from profile
+        crash_prevention = None
+        if optimization_config:
+            crash_prevention = optimization_config.crash_prevention
         attempt_index = 0  # track transition to predicted params after first OOM
         attempt = 1
         while attempt <= max_attempts:
             # Pre-initialization crash prevention checks
-            if self.oom_recovery is not None:
-                # Get crash prevention config from profile
-                profile_optimization = self.profile.parameter_optimization
-                crash_prevention = None
-                if profile_optimization:
-                    crash_prevention = profile_optimization.crash_prevention
+            if (
+                self.oom_recovery is not None
+                and crash_prevention
+                and crash_prevention.enable_preallocation_test
+            ):
+                try:
+                    # Estimate memory requirements for current parameters using Resizer
+                    memory_breakdown = self.resizer.calculate_memory_breakdown(
+                        current_params,
+                        self.model,
+                    )
+                    estimated_memory = (
+                        memory_breakdown["total_gpu_gb"] * 1024
+                    )  # Convert GB to MB
+                    buffer_memory = crash_prevention.memory_buffer_mb
 
-                if crash_prevention and crash_prevention.enable_preallocation_test:
+                    # Test memory preallocation to prevent container crashes
+                    import asyncio
+
                     try:
-                        # Estimate memory requirements for current parameters
-                        estimated_memory = (
-                            self.oom_recovery.estimate_memory_requirements(
-                                current_params,
-                                self.model,
+                        # Run in a new event loop to avoid conflicts
+                        prealloc_success = asyncio.run(
+                            self.oom_recovery.test_memory_preallocation(
+                                estimated_memory + buffer_memory,
+                                crash_prevention.timeout_seconds,
                             )
                         )
-                        buffer_memory = crash_prevention.memory_buffer_mb
+                    except RuntimeError:
+                        # If we're already in an event loop, use thread executor
+                        import concurrent.futures
 
-                        # Test memory preallocation to prevent container crashes
-                        import asyncio
-
-                        try:
-                            # Run in a new event loop to avoid conflicts
-                            prealloc_success = asyncio.run(
-                                self.oom_recovery.test_memory_preallocation(
-                                    estimated_memory + buffer_memory,
-                                    crash_prevention.timeout_seconds,
-                                )
-                            )
-                        except RuntimeError:
-                            # If we're already in an event loop, use thread executor
-                            import concurrent.futures
-
-                            timeout_val = (
-                                crash_prevention.timeout_seconds
-                                if crash_prevention
-                                else 120
-                            )
-                            with concurrent.futures.ThreadPoolExecutor() as executor:
-                                future = executor.submit(
-                                    lambda: asyncio.run(
-                                        self.oom_recovery.test_memory_preallocation(
-                                            estimated_memory + buffer_memory,
-                                            timeout_val,
-                                        )
+                        timeout_val = (
+                            crash_prevention.timeout_seconds
+                            if crash_prevention
+                            else 120
+                        )
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(
+                                lambda: asyncio.run(
+                                    self.oom_recovery.test_memory_preallocation(
+                                        estimated_memory + buffer_memory,
+                                        timeout_val,
                                     )
                                 )
-                                prealloc_success = future.result(
-                                    timeout=timeout_val + 10
-                                )
-
-                        if not prealloc_success:
-                            self._logger.warning(
-                                f"❌ Memory preallocation test failed, skipping initialization "
-                                f"to prevent container crash (estimated: {estimated_memory:.0f}MB + {buffer_memory}MB buffer)"
                             )
-                            # Force immediate parameter reduction rather than risking crash
-                            if self.oom_recovery is not None:
-                                recovery = self.oom_recovery.execute_recovery_strategy(
-                                    attempt=attempt,
-                                    original_params=original_params,
-                                    current_params=current_params,
-                                    hardware_manager=self.hardware_manager,
-                                )
-                                current_params = recovery.parameters
-                                attempt += 1
-                                continue
-                            else:
-                                raise RuntimeError(
-                                    "Memory preallocation test failed and no recovery available"
-                                )
+                            prealloc_success = future.result(timeout=timeout_val + 10)
 
-                    except Exception as e:
-                        self._logger.warning(f"Memory preallocation test error: {e}")
+                    if not prealloc_success:
+                        self._logger.warning(
+                            f"❌ Memory preallocation test failed, skipping initialization "
+                            f"to prevent container crash (estimated: {estimated_memory:.0f}MB + {buffer_memory}MB buffer)"
+                        )
+                        # Force immediate parameter reduction rather than risking crash
+                        if self.oom_recovery is not None:
+                            recovery = self.oom_recovery.execute_recovery_strategy(
+                                attempt=attempt,
+                                original_params=original_params,
+                                current_params=current_params,
+                                hardware_manager=self.hardware_manager,
+                            )
+                            current_params = recovery.parameters
+                            attempt += 1
+                            continue
+                        else:
+                            raise RuntimeError(
+                                "Memory preallocation test failed and no recovery available"
+                            )
+
+                except Exception as e:
+                    self._logger.warning(f"Memory preallocation test error: {e}")
 
             split_mode = (
                 llama_cpp.LLAMA_SPLIT_MODE_NONE
-                if gcfg.split_mode is "none"
+                if gcfg.split_mode == "none"
                 else (
                     llama_cpp.LLAMA_SPLIT_MODE_ROW
-                    if gcfg.split_mode is "row"
+                    if gcfg.split_mode == "row"
                     else llama_cpp.LLAMA_SPLIT_MODE_LAYER
                 )
             )
@@ -491,9 +507,8 @@ class BaseLlamaCppPipeline(BasePipeline):
 
                 if self.oom_recovery is not None:
                     self.oom_recovery.record_success(
-                        model_path=gguf_path,
+                        model=self.model,
                         params=current_params,
-                        hardware_manager=self.hardware_manager,
                         initialization_time_ms=init_ms,
                         gpu_memory_used_mb=gpu_used,
                     )

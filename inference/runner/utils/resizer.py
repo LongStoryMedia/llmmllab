@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 class MemoryBreakdown(TypedDict):
     """Type definition for memory breakdown return values."""
+
     model_weights_gpu_gb: float
     clip_model_gb: float
     kv_cache_gb: float
@@ -222,15 +223,6 @@ class Resizer:
                 )  # Assume GQA
 
         return total_layers, hidden_size, n_heads, n_kv_heads
-
-    def calculate_memory(
-        self, optimal_params: OptimalParameters, model: Model
-    ) -> float:
-        """
-        Calculate total GPU memory requirements in GB.
-        """
-        memory_breakdown = self.calculate_memory_breakdown(optimal_params, model)
-        return memory_breakdown["total_gpu_gb"]
 
     def calculate_memory_breakdown(
         self, optimal_params: OptimalParameters, model: Model

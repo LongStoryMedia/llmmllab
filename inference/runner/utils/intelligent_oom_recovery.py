@@ -42,7 +42,7 @@ from models import (
 from runner.utils import hardware_manager
 
 from .hardware_manager import EnhancedHardwareManager
-from .resizer import Resizer
+from .resizer import MemoryBreakdown, Resizer
 
 
 class IntelligentOOMRecovery:
@@ -88,43 +88,9 @@ class IntelligentOOMRecovery:
         self._load_training_data()
         self._train_models()
         self.resizer = Resizer()
+        self.memory_breakdown: Optional[MemoryBreakdown] = None
 
-    def get_model_size_mb(self, model_path: str) -> float:
-        """Get model file size in MB with intelligent fallback estimation."""
-        if not os.path.exists(model_path):
-            # File doesn't exist, use intelligent estimation based on model name patterns
-            return self._estimate_model_size_from_name(model_path)
-
-        try:
-            size_bytes = os.path.getsize(model_path)
-            return size_bytes / (1024 * 1024)
-        except Exception as e:
-            self.logger.warning(f"Error getting model size for {model_path}: {e}")
-            return self._estimate_model_size_from_name(model_path)
-
-    def _estimate_model_size_from_name(self, model_path: str) -> float:
-        """Estimate model size based on filename patterns."""
-        model_name = model_path.lower()
-
-        # Pattern matching for common model sizes
-        if "3b" in model_name or "3.2b" in model_name:
-            return 2000.0  # ~2GB for 3B models
-        elif "7b" in model_name:
-            return 4000.0  # ~4GB for 7B models
-        elif "13b" in model_name:
-            return 8000.0  # ~8GB for 13B models
-        elif "20b" in model_name:
-            return 12000.0  # ~12GB for 20B models
-        elif "30b" in model_name or "33b" in model_name:
-            return 20000.0  # ~20GB for 30B models
-        elif "70b" in model_name:
-            return 40000.0  # ~40GB for 70B models
-        elif "qwen" in model_name:
-            return 20000.0  # Default for Qwen models (usually 30B range)
-        else:
-            return 8000.0  # Conservative default estimate
-
-    def get_system_gpu_stats(self, hardware_manager) -> SystemGPUStats:
+    def get_system_gpu_stats(self) -> SystemGPUStats:
         """
         Get comprehensive GPU statistics for dynamic multi-GPU systems.
 
@@ -178,14 +144,6 @@ class IntelligentOOMRecovery:
                 gpus=gpus,
             )
 
-            # Log comprehensive GPU information
-            gpu_list = ", ".join(
-                [
-                    f"GPU{gpu.id}({gpu.mem_free:.0f}/{gpu.mem_total:.0f}MB)"
-                    for gpu in gpus
-                ]
-            )
-
             return system_stats
 
         except Exception as e:
@@ -198,7 +156,7 @@ class IntelligentOOMRecovery:
             )
 
     def create_configuration_from_model_profile(
-        self, model_profile: ModelProfile, gpu_stats: SystemGPUStats
+        self, model: Model, model_profile: ModelProfile, gpu_stats: SystemGPUStats
     ) -> OptimalParameters:
         """
         Create initial configuration from ModelProfile, integrating model profile parameters
@@ -219,7 +177,9 @@ class IntelligentOOMRecovery:
                 base_n_gpu_layers = self._estimate_gpu_layers_from_system(gpu_stats)
             else:
                 # Explicit configuration from profile
-                base_n_gpu_layers = max(0, gpu_config.gpu_layers)
+                base_n_gpu_layers = min(
+                    model.details.n_layers or 1000, gpu_config.gpu_layers
+                )
         else:
             # Default: estimate based on available memory
             base_n_gpu_layers = self._estimate_gpu_layers_from_system(gpu_stats)
@@ -281,10 +241,10 @@ class IntelligentOOMRecovery:
         if len(self.configurations) < 5:
             # Insufficient data for learning, use conservative initial estimates
             return LearnedLimits(
-                max_context=16384,  # Conservative initial estimate
+                max_context=72000,  # Conservative initial estimate
                 max_batch=256,  # Conservative initial estimate
                 max_gpu_layers=64,  # Conservative initial estimate
-                context_95th_percentile=8192,
+                context_95th_percentile=65536,
                 batch_95th_percentile=128,
                 gpu_layers_95th_percentile=32,
             )
@@ -374,11 +334,20 @@ class IntelligentOOMRecovery:
             ]
         )
 
+    def _get_breakdown(
+        self, params: OptimalParameters, model: Model
+    ) -> MemoryBreakdown:
+        """Get memory breakdown using Resizer."""
+        if self.memory_breakdown is None:
+            self.memory_breakdown = self.resizer.calculate_memory_breakdown(
+                params, model
+            )
+        return self.memory_breakdown
+
     def predict_optimal_parameters_from_profile(
         self,
+        model: Model,
         model_profile: ModelProfile,
-        model_path: str,
-        hardware_manager,
     ) -> OptimalParameters:
         """
         Predict optimal parameters using model profile configuration and ML models.
@@ -387,15 +356,17 @@ class IntelligentOOMRecovery:
         with system capabilities and ML-based optimization.
         """
         # Get system GPU statistics
-        gpu_stats = self.get_system_gpu_stats(hardware_manager)
+        gpu_stats = self.get_system_gpu_stats()
 
         # Start with model profile configuration
         base_config = self.create_configuration_from_model_profile(
-            model_profile, gpu_stats
+            model, model_profile, gpu_stats
         )
 
+        model_breakdown = self._get_breakdown(base_config, model)
+
         # Get model size for ML features
-        model_size_mb = self.get_model_size_mb(model_path)
+        model_size_mb = model_breakdown["model_size_gb"] * 1024  # Convert GB to MB
 
         # Extract features for ML prediction
         features = self._extract_features(
@@ -562,15 +533,15 @@ class IntelligentOOMRecovery:
 
     def record_success(
         self,
-        model_path: str,
+        model: Model,
         params: OptimalParameters,
-        hardware_manager,
         initialization_time_ms: float = 0.0,
         gpu_memory_used_mb: float = 0.0,
     ) -> None:
         """Record a successful configuration for ML training."""
-        model_size_mb = self.get_model_size_mb(model_path)
-        gpu_stats = self.get_system_gpu_stats(hardware_manager)
+        memory_breakdown = self._get_breakdown(params, model)
+        model_size_mb = memory_breakdown["model_size_gb"] * 1024  # Convert GB to MB
+        gpu_stats = self.get_system_gpu_stats()
 
         config = ModelConfigurationData(
             n_ctx=params.n_ctx,
@@ -1235,7 +1206,7 @@ class IntelligentOOMRecovery:
                     return False
 
             # Additional conservative checks
-            gpu_stats = self.get_system_gpu_stats(hardware_manager)
+            gpu_stats = self.get_system_gpu_stats()
             available_memory_mb = gpu_stats.total_available_memory
 
             # Require significant memory buffer (default 1GB + configured buffer)
@@ -1266,27 +1237,4 @@ class IntelligentOOMRecovery:
 
         This is a rough estimation based on typical model memory patterns.
         """
-        base_memory_mb = model.size / (1024 * 1024)  # Bytes to MB
-
-        # Context memory scales with n_ctx
-        context_memory_mb = (params.n_ctx * 4 * 2) / (
-            1024 * 1024
-        )  # 4 bytes per token, 2x for safety
-
-        # Batch memory scales with n_batch
-        batch_memory_mb = (params.n_batch * 512) / (1024 * 1024)  # Rough estimate
-
-        # GPU layers reduce CPU memory but increase GPU memory
-        gpu_layer_factor = min(
-            params.n_gpu_layers / 100.0, 1.0
-        )  # Assume 100 layers max
-
-        total_memory_mb = base_memory_mb + context_memory_mb + batch_memory_mb
-
-        # Adjust for GPU vs CPU memory
-        if gpu_layer_factor > 0:
-            total_memory_mb *= (
-                1.0 + gpu_layer_factor
-            )  # GPU memory tends to be higher usage
-
-        return total_memory_mb
+        return self._get_breakdown(params, model)["total_gpu_gb"]
