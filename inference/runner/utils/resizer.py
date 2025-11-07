@@ -1,4 +1,4 @@
-from typing import Optional, Dict
+from typing import Optional, Dict, TypedDict
 
 from models import Model, ModelDetails, OptimalParameters
 
@@ -8,6 +8,25 @@ from typing import Optional, List, Literal, Annotated, Dict, Tuple
 from pydantic import BaseModel, Field
 
 # (Paste the updated ModelDetails, Model, and OptimalParameters classes here)
+
+
+class MemoryBreakdown(TypedDict):
+    """Type definition for memory breakdown return values."""
+    model_weights_gpu_gb: float
+    clip_model_gb: float
+    kv_cache_gb: float
+    activation_gb: float
+    overhead_gb: float
+    total_gpu_gb: float
+    cpu_memory_gb: float
+    gpu_layers_loaded: int
+    total_layers: int
+    quantization_bits: int
+    model_size_b: float
+    model_size_gb: float
+    hidden_size: int
+    n_heads: int
+    n_kv_heads: int
 
 
 class Resizer:
@@ -124,6 +143,23 @@ class Resizer:
         # Default (fallback)
         total_layers, hidden_size, n_heads, n_kv_heads = 32, 4096, 32, 32
 
+        if "qwen" in family_lower:
+            if model_size_b <= 0.5:  # Qwen2-0.5B
+                total_layers, hidden_size, n_heads, n_kv_heads = 24, 896, 14, 2
+            elif model_size_b <= 1.5:  # Qwen2-1.5B
+                total_layers, hidden_size, n_heads, n_kv_heads = 28, 1536, 12, 2
+            elif model_size_b <= 7:  # Qwen2-7B
+                total_layers, hidden_size, n_heads, n_kv_heads = 28, 3584, 28, 4
+            elif model_size_b <= 14:  # Qwen2-57B-A14B (MoE expert size)
+                # Heuristic: Assume 14B expert is similar to a 7B model
+                total_layers, hidden_size, n_heads, n_kv_heads = 28, 3584, 28, 4
+            elif model_size_b <= 72:  # Qwen2-72B
+                total_layers, hidden_size, n_heads, n_kv_heads = 80, 8192, 64, 8
+            else:  # Fallback for larger Qwen
+                total_layers, hidden_size, n_heads, n_kv_heads = 80, 8192, 64, 8
+
+            return total_layers, hidden_size, n_heads, n_kv_heads
+
         if "phi" in family_lower:
             if model_size_b <= 4:  # Phi-3 Mini (3.8B)
                 total_layers, hidden_size, n_heads, n_kv_heads = 32, 3072, 32, 32
@@ -198,7 +234,7 @@ class Resizer:
 
     def calculate_memory_breakdown(
         self, optimal_params: OptimalParameters, model: Model
-    ) -> Dict[str, float]:
+    ) -> MemoryBreakdown:
         """
         Calculate detailed GPU memory requirements breakdown.
         """
@@ -220,11 +256,10 @@ class Resizer:
 
         # --- 2. GET MODEL ARCHITECTURE ---
 
-        # --- IMPROVEMENT: Use provided details if they exist ---
+        # (This section is unchanged - it gets total_layers, hidden_size, etc.)
         if model.details.n_layers:
             total_layers = model.details.n_layers
         else:
-            # Fall back to heuristic
             total_layers, _, _, _ = self._get_model_architecture_details(
                 model_size_b, model.details.family
             )
@@ -232,15 +267,12 @@ class Resizer:
         if model.details.hidden_size and model.details.n_heads:
             hidden_size = model.details.hidden_size
             n_heads = model.details.n_heads
-            # Default n_kv_heads to n_heads if not provided (non-GQA)
             n_kv_heads = model.details.n_kv_heads or n_heads
         else:
-            # Fall back to heuristic
             _, hidden_size, n_heads, n_kv_heads = self._get_model_architecture_details(
                 model_size_b, model.details.family
             )
 
-        # Handle n_gpu_layers = -1 (all layers)
         if n_gpu_layers == -1:
             gpu_layers_to_load = total_layers
         else:
@@ -248,41 +280,39 @@ class Resizer:
 
         # --- 3. CALCULATE MEMORY COMPONENTS ---
 
-        # --- Component 1: Model Weights ---
-        # This is the most accurate calculation: proportion of the *actual file size*.
+        # --- Component 1: Model Weights (GGUF) ---
         gpu_layer_proportion = (
             gpu_layers_to_load / total_layers if total_layers > 0 else 0
         )
         model_weights_gpu_gb = model_size_gb * gpu_layer_proportion
 
         # --- Component 2: KV Cache ---
-        # --- ACCURACY FIX: Use GQA-aware formula ---
-        # Formula: n_layers * n_ctx * hidden_size * (n_kv_heads / n_heads) * 2 (K/V) * 2 (bytes/fp16)
-        # Simplified: n_layers * n_ctx * hidden_size * (n_kv_heads / n_heads) * 4
         gqa_factor = n_kv_heads / n_heads if n_heads > 0 else 1
-        bytes_per_token_per_layer = (
-            hidden_size * gqa_factor * 2 * 2
-        )  # hidden * GQA * (K+V) * (fp16)
-
+        bytes_per_token_per_layer = hidden_size * gqa_factor * 2 * 2
         kv_cache_bytes = gpu_layers_to_load * n_ctx * bytes_per_token_per_layer
         kv_cache_gb = kv_cache_bytes / (1024**3)
 
         # --- Component 3: Activation/Compute Buffer ---
-        # --- ACCURACY FIX: Use formula based on n_ctx and n_ubatch ---
-        # This is the "scratch" buffer for prompt processing.
-        # It scales with context, micro-batch, and hidden size.
-        # Using 4 bytes for fp32/int32 intermediates during computation.
         activation_bytes = n_ctx * n_ubatch * hidden_size * 4
         activation_gb = activation_bytes / (1024**3)
 
         # --- Component 4: Overhead ---
-        # --- IMPROVEMENT: Use a more stable heuristic ---
-        # Fixed overhead for CUDA context + small % for fragmentation.
         overhead_gb = 0.8 + (model_weights_gpu_gb * 0.05)
+
+        # --- Component 5: CLIP Model (mmproj) ---
+        clip_model_gb = 0.0
+        if model.details.clip_model_size and model.details.clip_model_size > 0:
+            clip_model_gb = model.details.clip_model_size / (1024**3)
 
         # --- 4. CALCULATE TOTALS ---
 
-        total_gpu_gb = model_weights_gpu_gb + kv_cache_gb + activation_gb + overhead_gb
+        total_gpu_gb = (
+            model_weights_gpu_gb
+            + kv_cache_gb
+            + activation_gb
+            + overhead_gb
+            + clip_model_gb  # <-- Add CLIP model size here
+        )
 
         # CPU memory (for layers not on GPU)
         cpu_layer_proportion = (
@@ -294,6 +324,7 @@ class Resizer:
 
         return {
             "model_weights_gpu_gb": round(model_weights_gpu_gb, 2),
+            "clip_model_gb": round(clip_model_gb, 2),  # <-- Add to breakdown
             "kv_cache_gb": round(kv_cache_gb, 2),
             "activation_gb": round(activation_gb, 2),
             "overhead_gb": round(overhead_gb, 2),

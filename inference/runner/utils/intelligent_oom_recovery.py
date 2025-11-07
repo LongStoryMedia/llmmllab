@@ -39,8 +39,10 @@ from models import (
     PerformanceParameter,
     CrashPrevention,
 )
-from .hardware_manager import EnhancedHardwareManager
 from runner.utils import hardware_manager
+
+from .hardware_manager import EnhancedHardwareManager
+from .resizer import Resizer
 
 
 class IntelligentOOMRecovery:
@@ -85,6 +87,7 @@ class IntelligentOOMRecovery:
         # Load existing data and train models
         self._load_training_data()
         self._train_models()
+        self.resizer = Resizer()
 
     def get_model_size_mb(self, model_path: str) -> float:
         """Get model file size in MB with intelligent fallback estimation."""
