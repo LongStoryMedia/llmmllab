@@ -746,8 +746,21 @@ class IntelligentOOMRecovery:
             if attempts_file.exists():
                 with open(attempts_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    # TypedDict creation from JSON data
-                    self.recovery_attempts = data
+                    # Convert JSON data to properly typed recovery attempts
+                    typed_attempts: List[OOMRecoveryAttemptData] = []
+                    for item in data:
+                        attempt = OOMRecoveryAttemptData(
+                            attempt=item["attempt"],
+                            strategy=item["strategy"],
+                            n_ctx=item["n_ctx"],
+                            n_batch=item["n_batch"],
+                            n_ubatch=item["n_ubatch"],
+                            n_gpu_layers=item["n_gpu_layers"],
+                            success=item["success"],
+                            error_message=item["error_message"],
+                        )
+                        typed_attempts.append(attempt)
+                    self.recovery_attempts = typed_attempts
 
             self.logger.info(
                 f"Loaded {len(self.configurations)} configurations and {len(self.recovery_attempts)} recovery attempts"

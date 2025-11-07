@@ -111,7 +111,7 @@ class BaseLlamaCppPipeline(BasePipeline):
         # Initialize Resizer for accurate memory calculations
         self.resizer = Resizer()
 
-        # Initialize intelligent OOM recovery system (can be disabled)
+        # Initialize intelligent OOM recovery system (disabled by default for stability)
         self.use_intelligent_oom = (
             os.getenv("ENABLE_INTELLIGENT_OOM_RECOVERY", "false").lower() == "true"
         )
@@ -271,16 +271,23 @@ class BaseLlamaCppPipeline(BasePipeline):
         # Prepare attempt parameter list (profile first, then predicted if recovery available)
         attempt_params_list: List[OptimalParameters] = [original_params]
         if self.oom_recovery is not None:
-            try:
-                predicted = self.oom_recovery.predict_optimal_parameters_from_profile(
-                    model=self.model,
-                    model_profile=self.profile,
-                ).model_copy()
-                attempt_params_list.append(predicted)
-            except Exception as e:
-                self._logger.warning(
-                    f"OOM recovery prediction failed; continuing with original params only: {e}"
-                )
+            # Only predict parameters if parameter optimization is enabled in profile
+            optimization_config = resolve_parameter_optimization_config(
+                self.profile, self.user_config
+            )
+            if optimization_config and optimization_config.enabled:
+                try:
+                    predicted = (
+                        self.oom_recovery.predict_optimal_parameters_from_profile(
+                            model=self.model,
+                            model_profile=self.profile,
+                        ).model_copy()
+                    )
+                    attempt_params_list.append(predicted)
+                except Exception as e:
+                    self._logger.warning(
+                        f"OOM recovery prediction failed; continuing with original params only: {e}"
+                    )
 
         # If force_params provided, use them as the starting point (skip optimization)
         if force_params:
@@ -456,7 +463,7 @@ class BaseLlamaCppPipeline(BasePipeline):
                     top_p=params.top_p or 0.95,
                     top_k=params.top_k or 40,
                     repeat_penalty=params.repeat_penalty or 1.05,
-                    verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
+                    verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "debug",
                     flash_attn=getattr(params, "flash_attention", True),
                     logits_all=perplexity_enabled,
                     logprobs=1 if perplexity_enabled else 0,
