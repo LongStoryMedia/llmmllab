@@ -23,6 +23,7 @@ from models.model_profile import ModelProfile, ModelParameters
 from models.model import Model
 from models.model_task import ModelTask
 from models.model_details import ModelDetails
+from runner.utils.model_loader import ModelLoader
 import yaml
 
 
@@ -36,18 +37,18 @@ async def list_models(request: Request):
     _ = get_user_id(request)
 
     try:
-        # Load models from JSON file
-        with open(config.MODELS_CONFIG_PATH, "r") as f:
-            models_data = yaml.safe_load(f)
+        # Use ModelLoader for consistent model loading with validation and defaults
+        model_loader = ModelLoader()
+        models_dict = model_loader.get_available_models()
 
-        # Convert to Model objects
-        models = []
-        for model_data in models_data:
-            models.append(Model(**model_data))
+        # Convert dictionary values to list
+        models = list(models_dict.values())
 
+        logger.info(f"Successfully loaded {len(models)} models for API")
         return models
+
     except Exception as e:
-        logger.error(f"Error loading models from JSON: {e}")
+        logger.error(f"Error loading models: {e}")
         raise HTTPException(
             status_code=500, detail=f"Error loading models: {str(e)}"
         ) from e
