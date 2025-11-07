@@ -29,8 +29,10 @@ from .context_window_config import (
     Prioritization,
     Optimization,
 )
+from .model_profile_config import ModelProfileConfig
+import uuid
 
-from .default_model_profiles import DEFAULT_MODEL_PROFILE_CONFIG
+# Removed circular import - DEFAULT_MODEL_PROFILE_CONFIG created inline below
 
 
 # Default preferences configuration
@@ -196,41 +198,41 @@ DEFAULT_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
             parameter_name="n_ctx",
             priority=1,
             tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
-            max_search_attempts=10,
-            floor=16384,
+            max_search_attempts=15,
+            floor=65536,  # Start with current profile setting and push higher
             operator="*",
-            modifier=4,
-            max_value=131072,
+            modifier=2,  # More aggressive scaling
+            max_value=262144,  # Push to model's trained context limit
         ),
         PerformanceParameter(
             parameter_name="n_gpu_layers",
             priority=2,
             tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
             max_search_attempts=10,
-            floor=35,
+            floor=1,  # Start low and find the maximum that works
             operator="+",
-            modifier=50,
-            max_value=125,
+            modifier=10,  # Smaller increments for precise optimization  
+            max_value=999,  # Very high limit (effectively unlimited GPU layers)
         ),
         PerformanceParameter(
             parameter_name="n_batch",
             priority=3,
             tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
-            max_search_attempts=10,
-            floor=32,
+            max_search_attempts=15,
+            floor=128,  # Start with profile setting and push higher
             operator="*",
-            modifier=4,
-            max_value=8192,
+            modifier=2,  # More aggressive scaling for throughput
+            max_value=16384,  # Allow much larger batches for high-memory systems
         ),
         PerformanceParameter(
             parameter_name="n_ubatch",
             priority=4,
             tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
-            max_search_attempts=10,
-            floor=8,
+            max_search_attempts=15,
+            floor=128,  # Start with profile setting and push higher
             operator="*",
-            modifier=8,
-            max_value=8192,
+            modifier=2,  # More aggressive scaling
+            max_value=16384,  # Allow much larger ubatch for throughput
         ),
         PerformanceParameter(
             parameter_name="batch_size",
@@ -251,6 +253,28 @@ DEFAULT_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
     ),
 )
 
+# Default model profile configuration (inline to avoid circular import)
+DEFAULT_MODEL_PROFILE_CONFIG = ModelProfileConfig(
+    primary_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+    summarization_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000002"),
+    master_summary_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000003"),
+    brief_summary_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000004"),
+    key_points_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000005"),
+    improvement_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000007"),
+    memory_retrieval_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000008"),
+    self_critique_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000006"),
+    analysis_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000009"),
+    research_task_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000010"),
+    research_plan_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000011"),
+    research_consolidation_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000012"),
+    research_analysis_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000013"),
+    embedding_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000014"),
+    formatting_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000015"),
+    image_generation_prompt_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000016"),
+    image_generation_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000017"),
+    engineering_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000018"),
+    reranking_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000019"),
+)
 
 # Function to create a default user config
 def create_default_user_config(user_id: str) -> UserConfig:

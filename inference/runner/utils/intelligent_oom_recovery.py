@@ -893,7 +893,7 @@ class IntelligentOOMRecovery:
                 # Use timeout to prevent hanging
 
                 allocation_result = [False]
-                error_result = []
+                error_result: list[Exception | None] = [None]  # Initialize with None instead of empty list
 
                 def allocate_test():
                     try:

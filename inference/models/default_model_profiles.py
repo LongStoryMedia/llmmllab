@@ -8,12 +8,7 @@ from datetime import datetime
 from .model_profile import ModelProfile
 from .model_parameters import ModelParameters
 from .model_profile_config import ModelProfileConfig
-from .parameter_optimization_config import (
-    ParameterOptimizationConfig,
-    PerformanceParameter,
-    ParameterTuningStrategy,
-)
-from .crash_prevention import CrashPrevention
+from .default_configs import DEFAULT_PARAMETER_OPTIMIZATION_CONFIG
 
 # Define profile types as constants (similar to the Go implementation)
 MODEL_PROFILE_TYPE_PRIMARY = 1
@@ -58,69 +53,6 @@ DEFAULT_IMAGE_GENERATION_PROMPT_PROFILE_ID = uuid.UUID(
     "00000000-0000-0000-0000-000000000016"
 )
 DEFAULT_IMAGE_GENERATION_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000017")
-
-# Default parameter optimization configuration for model profiles
-DEFAULT_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
-    enabled=True,
-    parameters=[
-        PerformanceParameter(
-            parameter_name="n_ctx",
-            priority=1,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
-            max_search_attempts=10,
-            floor=16384,
-            operator="*",
-            modifier=4,
-            max_value=131072,
-        ),
-        PerformanceParameter(
-            parameter_name="n_gpu_layers",
-            priority=2,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
-            max_search_attempts=10,
-            floor=35,
-            operator="+",
-            modifier=50,
-            max_value=125,
-        ),
-        PerformanceParameter(
-            parameter_name="n_batch",
-            priority=3,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
-            max_search_attempts=10,
-            floor=32,
-            operator="*",
-            modifier=4,
-            max_value=8192,
-        ),
-        PerformanceParameter(
-            parameter_name="n_ubatch",
-            priority=4,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
-            max_search_attempts=10,
-            floor=8,
-            operator="*",
-            modifier=8,
-            max_value=8192,
-        ),
-        PerformanceParameter(
-            parameter_name="batch_size",
-            priority=4,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
-            max_search_attempts=10,
-            floor=8,
-            operator="*",
-            modifier=8,
-            max_value=8192,
-        ),
-    ],
-    crash_prevention=CrashPrevention(
-        enable_preallocation_test=True,
-        memory_buffer_mb=1024,
-        timeout_seconds=120,
-        enable_graceful_degradation=True,
-    ),
-)
 DEFAULT_ENGINEERING_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000018")
 DEFAULT_RERANKING_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000019")
 
@@ -147,6 +79,7 @@ DEFAULT_PRIMARY_PROFILE = ModelProfile(
     model_name=DEFAULT_TEXT_TO_TEXT_MODEL,
     parameters=ModelParameters(
         num_ctx=65536,  # More conservative starting point for 32B model
+        n_gpu_layers=-1,  # Utilize more GPU layers for better performance
         repeat_last_n=-1,
         repeat_penalty=1.1,
         temperature=0.6,
@@ -157,7 +90,7 @@ DEFAULT_PRIMARY_PROFILE = ModelProfile(
         min_p=0.01,
         max_tokens=400000,
         n_parts=-1,
-        batch_size=384,  # Conservative starting batch size for 32B model
+        batch_size=128,  # Conservative starting batch size for 32B model
         stop=["<|im_end|>"],
         think=True,
     ),
@@ -191,7 +124,7 @@ RESPONSE STRUCTURE:
 4. Move on immediately
 
 Avoid circular reasoning, excessive elaboration, or repetitive explanations. Be decisive and concise.""",
-    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,  # Enable aggressive optimization to find maximum performance
     created_at=datetime.now(),
     updated_at=datetime.now(),
 )
