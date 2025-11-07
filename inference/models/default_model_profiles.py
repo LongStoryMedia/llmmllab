@@ -8,7 +8,10 @@ from datetime import datetime
 from .model_profile import ModelProfile
 from .model_parameters import ModelParameters
 from .model_profile_config import ModelProfileConfig
-from .default_configs import DEFAULT_PARAMETER_OPTIMIZATION_CONFIG
+from .default_configs import (
+    DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
+    DEFAULT_MODEL_PROFILE_CONFIG,
+)
 
 # Define profile types as constants (similar to the Go implementation)
 MODEL_PROFILE_TYPE_PRIMARY = 1
@@ -31,31 +34,6 @@ MODEL_PROFILE_TYPE_IMAGE_GENERATION = 17
 MODEL_PROFILE_TYPE_ENGINEERING = 18
 MODEL_PROFILE_TYPE_RERANKING = 19
 
-# Create default UUIDs (similar to the Go implementation)
-DEFAULT_PRIMARY_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
-DEFAULT_SUMMARIZATION_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000002")
-DEFAULT_MASTER_SUMMARY_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000003")
-DEFAULT_BRIEF_SUMMARY_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000004")
-DEFAULT_KEY_POINTS_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000005")
-DEFAULT_SELF_CRITIQUE_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000006")
-DEFAULT_IMPROVEMENT_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000007")
-DEFAULT_MEMORY_RETRIEVAL_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000008")
-DEFAULT_ANALYSIS_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000009")
-DEFAULT_RESEARCH_TASK_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000010")
-DEFAULT_RESEARCH_PLAN_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000011")
-DEFAULT_RESEARCH_CONSOLIDATION_PROFILE_ID = uuid.UUID(
-    "00000000-0000-0000-0000-000000000012"
-)
-DEFAULT_RESEARCH_ANALYSIS_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000013")
-DEFAULT_EMBEDDING_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000014")
-DEFAULT_FORMATTING_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000015")
-DEFAULT_IMAGE_GENERATION_PROMPT_PROFILE_ID = uuid.UUID(
-    "00000000-0000-0000-0000-000000000016"
-)
-DEFAULT_IMAGE_GENERATION_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000017")
-DEFAULT_ENGINEERING_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000018")
-DEFAULT_RERANKING_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000019")
-
 # Default model IDs from models.json
 DEFAULT_TEXT_TO_TEXT_MODEL = (
     "qwen3-vl-32b-thinking-abliterated"  # Changed to multimodal model
@@ -71,7 +49,7 @@ DEFAULT_ANALYSIS_MODEL = "qwen3-4b-ud-q6-k-xl"
 
 # Define default model profiles
 DEFAULT_PRIMARY_PROFILE = ModelProfile(
-    id=DEFAULT_PRIMARY_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.primary_profile_id,
     user_id="system",
     name="Primary (Default)",
     type=MODEL_PROFILE_TYPE_PRIMARY,
@@ -79,7 +57,6 @@ DEFAULT_PRIMARY_PROFILE = ModelProfile(
     model_name=DEFAULT_TEXT_TO_TEXT_MODEL,
     parameters=ModelParameters(
         num_ctx=65536,  # More conservative starting point for 32B model
-        n_gpu_layers=-1,  # Utilize more GPU layers for better performance
         repeat_last_n=-1,
         repeat_penalty=1.1,
         temperature=0.6,
@@ -144,7 +121,7 @@ Avoid circular reasoning, excessive elaboration, or repetitive explanations. Be 
 
 
 DEFAULT_SUMMARIZATION_PROFILE = ModelProfile(
-    id=DEFAULT_SUMMARIZATION_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.summarization_profile_id,
     user_id="system",
     name="Summarization (Default)",
     type=MODEL_PROFILE_TYPE_PRIMARY_SUMMARY,
@@ -183,7 +160,7 @@ DEFAULT_SUMMARIZATION_PROFILE = ModelProfile(
 )
 
 DEFAULT_MASTER_SUMMARY_PROFILE = ModelProfile(
-    id=DEFAULT_MASTER_SUMMARY_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.master_summary_profile_id,
     user_id="system",
     name="Master Summary (Default)",
     type=MODEL_PROFILE_TYPE_MASTER_SUMMARY,
@@ -209,7 +186,7 @@ DEFAULT_MASTER_SUMMARY_PROFILE = ModelProfile(
 )
 
 DEFAULT_BRIEF_SUMMARY_PROFILE = ModelProfile(
-    id=DEFAULT_BRIEF_SUMMARY_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.brief_summary_profile_id,
     user_id="system",
     name="Brief Summary (Default)",
     type=MODEL_PROFILE_TYPE_BRIEF_SUMMARY,
@@ -234,7 +211,7 @@ DEFAULT_BRIEF_SUMMARY_PROFILE = ModelProfile(
 )
 
 DEFAULT_KEY_POINTS_PROFILE = ModelProfile(
-    id=DEFAULT_KEY_POINTS_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.key_points_profile_id,
     user_id="system",
     name="Key Points (Default)",
     type=MODEL_PROFILE_TYPE_KEY_POINTS,
@@ -260,7 +237,7 @@ DEFAULT_KEY_POINTS_PROFILE = ModelProfile(
 )
 
 DEFAULT_SELF_CRITIQUE_PROFILE = ModelProfile(
-    id=DEFAULT_SELF_CRITIQUE_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.self_critique_profile_id,
     user_id="system",
     name="Self Critique (Default)",
     type=MODEL_PROFILE_TYPE_SELF_CRITIQUE,
@@ -289,7 +266,7 @@ DEFAULT_SELF_CRITIQUE_PROFILE = ModelProfile(
 )
 
 DEFAULT_IMPROVEMENT_PROFILE = ModelProfile(
-    id=DEFAULT_IMPROVEMENT_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.improvement_profile_id,
     user_id="system",
     name="Improvement (Default)",
     type=MODEL_PROFILE_TYPE_IMPROVEMENT,
@@ -315,7 +292,7 @@ DEFAULT_IMPROVEMENT_PROFILE = ModelProfile(
 )
 
 DEFAULT_MEMORY_RETRIEVAL_PROFILE = ModelProfile(
-    id=DEFAULT_MEMORY_RETRIEVAL_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.memory_retrieval_profile_id,
     user_id="system",
     name="Memory Retrieval (Default)",
     type=MODEL_PROFILE_TYPE_MEMORY_RETRIEVAL,
@@ -340,7 +317,7 @@ DEFAULT_MEMORY_RETRIEVAL_PROFILE = ModelProfile(
 )
 
 DEFAULT_ANALYSIS_PROFILE = ModelProfile(
-    id=DEFAULT_ANALYSIS_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.analysis_profile_id,
     user_id="system",
     name="Analysis (Default)",
     type=MODEL_PROFILE_TYPE_ANALYSIS,
@@ -373,7 +350,7 @@ DEFAULT_ANALYSIS_PROFILE = ModelProfile(
 )
 
 DEFAULT_RESEARCH_TASK_PROFILE = ModelProfile(
-    id=DEFAULT_RESEARCH_TASK_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.research_task_profile_id,
     user_id="system",
     name="Research Task (Default)",
     type=MODEL_PROFILE_TYPE_RESEARCH_TASK,
@@ -398,7 +375,7 @@ DEFAULT_RESEARCH_TASK_PROFILE = ModelProfile(
 )
 
 DEFAULT_RESEARCH_PLAN_PROFILE = ModelProfile(
-    id=DEFAULT_RESEARCH_PLAN_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.research_plan_profile_id,
     user_id="system",
     name="Research Plan (Default)",
     type=MODEL_PROFILE_TYPE_RESEARCH_PLAN,
@@ -422,7 +399,7 @@ DEFAULT_RESEARCH_PLAN_PROFILE = ModelProfile(
 )
 
 DEFAULT_RESEARCH_CONSOLIDATION_PROFILE = ModelProfile(
-    id=DEFAULT_RESEARCH_CONSOLIDATION_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.research_consolidation_profile_id,
     user_id="system",
     name="Research Consolidation (Default)",
     type=MODEL_PROFILE_TYPE_RESEARCH_CONSOLIDATION,
@@ -446,7 +423,7 @@ DEFAULT_RESEARCH_CONSOLIDATION_PROFILE = ModelProfile(
 )
 
 DEFAULT_RESEARCH_ANALYSIS_PROFILE = ModelProfile(
-    id=DEFAULT_RESEARCH_ANALYSIS_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.research_analysis_profile_id,
     user_id="system",
     name="Research Analysis (Default)",
     type=MODEL_PROFILE_TYPE_RESEARCH_ANALYSIS,
@@ -477,7 +454,7 @@ DEFAULT_RESEARCH_ANALYSIS_PROFILE = ModelProfile(
 )
 
 DEFAULT_EMBEDDING_PROFILE = ModelProfile(
-    id=DEFAULT_EMBEDDING_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.embedding_profile_id,
     user_id="system",
     name="Embedding (Default)",
     type=MODEL_PROFILE_TYPE_EMBEDDING,
@@ -495,7 +472,7 @@ DEFAULT_EMBEDDING_PROFILE = ModelProfile(
 )
 
 DEFAULT_RERANKING_PROFILE = ModelProfile(
-    id=DEFAULT_RERANKING_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.reranking_profile_id,
     user_id="system",
     name="Content Re-ranking (Default)",
     type=MODEL_PROFILE_TYPE_RERANKING,
@@ -513,7 +490,7 @@ DEFAULT_RERANKING_PROFILE = ModelProfile(
 )
 
 DEFAULT_FORMATTING_PROFILE = ModelProfile(
-    id=DEFAULT_FORMATTING_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.formatting_profile_id,
     user_id="system",
     name="Formatting (Default)",
     type=MODEL_PROFILE_TYPE_FORMATTING,
@@ -545,7 +522,7 @@ DEFAULT_FORMATTING_PROFILE = ModelProfile(
 )
 
 DEFAULT_IMAGE_GENERATION_PROMPT_PROFILE = ModelProfile(
-    id=DEFAULT_IMAGE_GENERATION_PROMPT_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.image_generation_prompt_profile_id,
     user_id="system",
     name="Image Generation Prompt (Default)",
     type=MODEL_PROFILE_TYPE_IMAGE_GENERATION_PROMPT,
@@ -569,7 +546,7 @@ DEFAULT_IMAGE_GENERATION_PROMPT_PROFILE = ModelProfile(
 )
 
 DEFAULT_IMAGE_GENERATION_PROFILE = ModelProfile(
-    id=DEFAULT_IMAGE_GENERATION_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.image_generation_profile_id,
     user_id="system",
     name="Image Generation (Default)",
     type=MODEL_PROFILE_TYPE_IMAGE_GENERATION,
@@ -587,7 +564,7 @@ DEFAULT_IMAGE_GENERATION_PROFILE = ModelProfile(
 )
 
 DEFAULT_ENGINEERING_PROFILE = ModelProfile(
-    id=DEFAULT_ENGINEERING_PROFILE_ID,
+    id=DEFAULT_MODEL_PROFILE_CONFIG.engineering_profile_id,
     user_id="system",
     name="Engineering (Default)",
     type=MODEL_PROFILE_TYPE_ENGINEERING,
@@ -620,25 +597,25 @@ DEFAULT_ENGINEERING_PROFILE = ModelProfile(
 
 # Create the default model profile config
 DEFAULT_MODEL_PROFILE_CONFIG = ModelProfileConfig(
-    primary_profile_id=DEFAULT_PRIMARY_PROFILE_ID,
-    summarization_profile_id=DEFAULT_SUMMARIZATION_PROFILE_ID,
-    master_summary_profile_id=DEFAULT_MASTER_SUMMARY_PROFILE_ID,
-    brief_summary_profile_id=DEFAULT_BRIEF_SUMMARY_PROFILE_ID,
-    key_points_profile_id=DEFAULT_KEY_POINTS_PROFILE_ID,
-    improvement_profile_id=DEFAULT_IMPROVEMENT_PROFILE_ID,
-    memory_retrieval_profile_id=DEFAULT_MEMORY_RETRIEVAL_PROFILE_ID,
-    self_critique_profile_id=DEFAULT_SELF_CRITIQUE_PROFILE_ID,
-    analysis_profile_id=DEFAULT_ANALYSIS_PROFILE_ID,
-    research_task_profile_id=DEFAULT_RESEARCH_TASK_PROFILE_ID,
-    research_plan_profile_id=DEFAULT_RESEARCH_PLAN_PROFILE_ID,
-    research_consolidation_profile_id=DEFAULT_RESEARCH_CONSOLIDATION_PROFILE_ID,
-    research_analysis_profile_id=DEFAULT_RESEARCH_ANALYSIS_PROFILE_ID,
-    embedding_profile_id=DEFAULT_EMBEDDING_PROFILE_ID,
-    formatting_profile_id=DEFAULT_FORMATTING_PROFILE_ID,
-    image_generation_prompt_profile_id=DEFAULT_IMAGE_GENERATION_PROMPT_PROFILE_ID,
-    image_generation_profile_id=DEFAULT_IMAGE_GENERATION_PROFILE_ID,
-    engineering_profile_id=DEFAULT_ENGINEERING_PROFILE_ID,
-    reranking_profile_id=DEFAULT_RERANKING_PROFILE_ID,
+    primary_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.primary_profile_id,
+    summarization_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.summarization_profile_id,
+    master_summary_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.master_summary_profile_id,
+    brief_summary_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.brief_summary_profile_id,
+    key_points_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.key_points_profile_id,
+    improvement_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.improvement_profile_id,
+    memory_retrieval_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.memory_retrieval_profile_id,
+    self_critique_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.self_critique_profile_id,
+    analysis_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.analysis_profile_id,
+    research_task_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.research_task_profile_id,
+    research_plan_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.research_plan_profile_id,
+    research_consolidation_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.research_consolidation_profile_id,
+    research_analysis_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.research_analysis_profile_id,
+    embedding_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.embedding_profile_id,
+    formatting_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.formatting_profile_id,
+    image_generation_prompt_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.image_generation_prompt_profile_id,
+    image_generation_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.image_generation_profile_id,
+    engineering_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.engineering_profile_id,
+    reranking_profile_id=DEFAULT_MODEL_PROFILE_CONFIG.reranking_profile_id,
 )
 
 # Create a mapping of all default profiles

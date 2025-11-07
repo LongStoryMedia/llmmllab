@@ -66,17 +66,6 @@ export const PARAMETER_CONFIGS: ParameterConfig = {
     defaultOperator: '+',
     defaultModifier: 10,
     defaultMaxValue: 125
-  },
-  batch_size: {
-    label: 'Batch Size (Alt)',
-    description: 'Alternative batch size parameter',
-    defaultPriority: 5,
-    defaultStrategy: ParameterTuningStrategyValues.CONSERVATIVE_INCREMENT as ParameterTuningStrategy,
-    defaultMaxAttempts: 5,
-    defaultFloor: 8,
-    defaultOperator: '*',
-    defaultModifier: 2,
-    defaultMaxValue: 8192
   }
   // When you add new parameters to the YAML schema and regenerate types,
   // TypeScript will show a compile error here until you add the new parameter configuration.

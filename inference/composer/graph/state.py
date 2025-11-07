@@ -334,7 +334,7 @@ def assemble_context_messages(
                 _summary_to_message(summary, state.conversation_id)
             )
 
-    final_messages = list(reversed(assembled_messages))
+    final_messages = list(assembled_messages)
 
     # Apply context window trimming if max_tokens is provided
     # if max_tokens:

@@ -10,7 +10,6 @@ properties:
       - n_batch
       - n_ubatch
       - n_gpu_layers
-      - batch_size
     description: Name of the performance parameter
   priority:
     type: integer

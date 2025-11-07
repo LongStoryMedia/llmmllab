@@ -60,8 +60,35 @@ properties:
   weight:
     type: number
     description: Weight of the model (applies to LoRA models)
+  size:
+    type: integer
+    description: Size of the model in bytes
+  original_ctx:
+    type: integer
+    description: Original context window size of the model
+  n_layers:
+    type: integer
+    description: Number of layers in the model
+  hidden_size:
+    type: integer
+    description: Hidden size of the model
+  n_heads:
+    type: integer
+    description: Number of attention heads in the model
+  n_kv_heads:
+    type: integer
+    description: Number of key-value heads in the model
+  clip_model_size:
+    type: integer
+    description: Size of the CLIP model in bytes, if applicable
 required:
   - format
   - family
   - families
   - parameter_size
+  - original_ctx
+  - n_layers
+  - hidden_size
+  - n_heads
+  - n_kv_heads
+  - size

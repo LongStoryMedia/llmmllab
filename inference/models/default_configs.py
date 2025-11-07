@@ -6,6 +6,8 @@ When schemas are updated and models regenerated, the linter will indicate
 where these defaults need to be updated.
 """
 
+import uuid
+
 from .preferences_config import PreferencesConfig
 from .memory_config import MemoryConfig
 from .summarization_config import SummarizationConfig
@@ -30,7 +32,6 @@ from .context_window_config import (
     Optimization,
 )
 from .model_profile_config import ModelProfileConfig
-import uuid
 
 # Removed circular import - DEFAULT_MODEL_PROFILE_CONFIG created inline below
 
@@ -211,7 +212,7 @@ DEFAULT_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
             max_search_attempts=10,
             floor=1,  # Start low and find the maximum that works
             operator="+",
-            modifier=10,  # Smaller increments for precise optimization  
+            modifier=10,  # Smaller increments for precise optimization
             max_value=999,  # Very high limit (effectively unlimited GPU layers)
         ),
         PerformanceParameter(
@@ -234,20 +235,10 @@ DEFAULT_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
             modifier=2,  # More aggressive scaling
             max_value=16384,  # Allow much larger ubatch for throughput
         ),
-        PerformanceParameter(
-            parameter_name="batch_size",
-            priority=4,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
-            max_search_attempts=10,
-            floor=8,
-            operator="*",
-            modifier=8,
-            max_value=8192,
-        ),
     ],
     crash_prevention=CrashPrevention(
         enable_preallocation_test=True,
-        memory_buffer_mb=1024,
+        memory_buffer_mb=4096,
         timeout_seconds=120,
         enable_graceful_degradation=True,
     ),
@@ -270,11 +261,14 @@ DEFAULT_MODEL_PROFILE_CONFIG = ModelProfileConfig(
     research_analysis_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000013"),
     embedding_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000014"),
     formatting_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000015"),
-    image_generation_prompt_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000016"),
+    image_generation_prompt_profile_id=uuid.UUID(
+        "00000000-0000-0000-0000-000000000016"
+    ),
     image_generation_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000017"),
     engineering_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000018"),
     reranking_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000019"),
 )
+
 
 # Function to create a default user config
 def create_default_user_config(user_id: str) -> UserConfig:

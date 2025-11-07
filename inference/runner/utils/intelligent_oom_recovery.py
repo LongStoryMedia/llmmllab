@@ -12,6 +12,7 @@ import os
 import json
 import numpy as np
 import threading
+import asyncio
 from typing import Optional, List, Literal
 from pathlib import Path
 import torch
@@ -893,7 +894,7 @@ class IntelligentOOMRecovery:
                 # Use timeout to prevent hanging
 
                 allocation_result = [False]
-                error_result: list[Exception | None] = [None]  # Initialize with None instead of empty list
+                error_results = []
 
                 def allocate_test():
                     try:
@@ -909,7 +910,8 @@ class IntelligentOOMRecovery:
                         torch.cuda.empty_cache()
                         allocation_result[0] = True
                     except Exception as e:
-                        error_result[0] = e
+                        error_results.append(e)
+                        self.logger.error(f"Error during allocation test: {e}")
 
                 # Run allocation test with timeout
                 thread = threading.Thread(target=allocate_test)
@@ -921,10 +923,11 @@ class IntelligentOOMRecovery:
                     self.logger.warning("Memory preallocation test timed out")
                     return False
 
-                if error_result[0]:
-                    self.logger.warning(
-                        f"Memory preallocation test failed: {error_result[0]}"
-                    )
+                if error_results:
+                    for error in error_results:
+                        self.logger.warning(
+                            f"Memory preallocation test failed: {error}"
+                        )
                     return False
 
                 return allocation_result[0]
@@ -1189,8 +1192,10 @@ class IntelligentOOMRecovery:
 
             # Check if crash prevention preallocation test is enabled
             if crash_prevention.enable_preallocation_test:
-                # Test memory preallocation with timeout
-                import asyncio
+                self.logger.debug(
+                    f"Testing memory preallocation for estimated "
+                    f"{estimated_memory_mb:.0f}MB"
+                )
 
                 try:
                     # Run the async test in a sync context

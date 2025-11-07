@@ -397,7 +397,12 @@ class BaseLlamaCppPipeline(BasePipeline):
             )
             try:
                 self._logger.info(
-                    f"🚀 Initializing {self.model.name} (attempt {attempt}): n_ctx={current_params.n_ctx:,}, n_batch={current_params.n_batch}"
+                    f"""🚀 Initializing {self.model.name} (attempt {attempt}): 
+                    n_ctx={current_params.n_ctx:,}, 
+                    n_batch={current_params.n_batch}
+                    n_ubatch={current_params.n_ubatch}
+                    n_gpu_layers={current_params.n_gpu_layers}
+                    """
                 )
                 start_time = time.time()
 

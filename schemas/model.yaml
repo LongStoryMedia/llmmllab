@@ -18,9 +18,6 @@ properties:
   modified_at:
     type: string
     description: Timestamp of when the model was last modified
-  size:
-    type: integer
-    description: Size of the model in bytes
   digest:
     type: string
     description: Hash digest identifying the model version
