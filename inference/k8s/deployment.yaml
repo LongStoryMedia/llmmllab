@@ -62,11 +62,11 @@ spec:
             requests:
               memory: "24Gi"
               cpu: "16"
-              nvidia.com/gpu: "1"
+              nvidia.com/gpu: "3"
             limits:
               memory: "30Gi"
               cpu: "20"
-              nvidia.com/gpu: "1"
+              nvidia.com/gpu: "3"
           volumeMounts:
             - name: ollama-models-volume
               mountPath: /root/.ollama
@@ -202,6 +202,8 @@ spec:
               value: "2"
             - name: NVIDIA_VISIBLE_DEVICES
               value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "compute,utility"
             # Search API keys configuration
             - name: SEARX_HOST
               value: "http://searxng.searxng.svc.cluster.local:8080"

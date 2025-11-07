@@ -232,8 +232,8 @@ const ParameterOptimizationSettings = () => {
                         <InputLabel>Parameter</InputLabel>
                         <Select
                           value={param.parameter_name}
-                          onChange={(e) => handleParameterChange(index, { 
-                            ...param, 
+                          onChange={(e) => handleParameterChange(index, {
+                            ...param,
                             parameter_name: e.target.value as PerformanceParameter['parameter_name']
                           })}
                           label="Parameter"
@@ -255,8 +255,8 @@ const ParameterOptimizationSettings = () => {
                         label="Priority"
                         type="number"
                         value={param.priority}
-                        onChange={(e) => handleParameterChange(index, { 
-                          ...param, 
+                        onChange={(e) => handleParameterChange(index, {
+                          ...param,
                           priority: parseInt(e.target.value) || 1
                         })}
                         inputProps={{ min: 1, max: 10 }}
@@ -268,8 +268,8 @@ const ParameterOptimizationSettings = () => {
                         <InputLabel>Strategy</InputLabel>
                         <Select
                           value={param.tuning_strategy}
-                          onChange={(e) => handleParameterChange(index, { 
-                            ...param, 
+                          onChange={(e) => handleParameterChange(index, {
+                            ...param,
                             tuning_strategy: e.target.value as ParameterTuningStrategy
                           })}
                           label="Strategy"
@@ -301,8 +301,8 @@ const ParameterOptimizationSettings = () => {
                         label="Max Attempts"
                         type="number"
                         value={param.max_search_attempts}
-                        onChange={(e) => handleParameterChange(index, { 
-                          ...param, 
+                        onChange={(e) => handleParameterChange(index, {
+                          ...param,
                           max_search_attempts: parseInt(e.target.value) || 1
                         })}
                         inputProps={{ min: 1, max: 20 }}
@@ -313,8 +313,8 @@ const ParameterOptimizationSettings = () => {
                         label="Floor (Min Value)"
                         type="number"
                         value={param.floor}
-                        onChange={(e) => handleParameterChange(index, { 
-                          ...param, 
+                        onChange={(e) => handleParameterChange(index, {
+                          ...param,
                           floor: parseFloat(e.target.value) || 0
                         })}
                         sx={{ flex: 1 }}
@@ -324,8 +324,8 @@ const ParameterOptimizationSettings = () => {
                         <InputLabel>Operator</InputLabel>
                         <Select
                           value={param.operator}
-                          onChange={(e) => handleParameterChange(index, { 
-                            ...param, 
+                          onChange={(e) => handleParameterChange(index, {
+                            ...param,
                             operator: e.target.value as PerformanceParameter['operator']
                           })}
                           label="Operator"
@@ -342,8 +342,8 @@ const ParameterOptimizationSettings = () => {
                         label="Modifier"
                         type="number"
                         value={param.modifier}
-                        onChange={(e) => handleParameterChange(index, { 
-                          ...param, 
+                        onChange={(e) => handleParameterChange(index, {
+                          ...param,
                           modifier: parseFloat(e.target.value) || 1
                         })}
                         sx={{ width: 150 }}
@@ -353,8 +353,8 @@ const ParameterOptimizationSettings = () => {
                         label="Max Value"
                         type="number"
                         value={param.max_value}
-                        onChange={(e) => handleParameterChange(index, { 
-                          ...param, 
+                        onChange={(e) => handleParameterChange(index, {
+                          ...param,
                           max_value: parseFloat(e.target.value) || 1000
                         })}
                         sx={{ flex: 1 }}
@@ -364,8 +364,8 @@ const ParameterOptimizationSettings = () => {
                 </Paper>
               ))}
 
-              <Button 
-                variant="outlined" 
+              <Button
+                variant="outlined"
                 onClick={handleAddParameter}
                 sx={{ mt: 1 }}
               >

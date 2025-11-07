@@ -921,9 +921,9 @@ class IntelligentOOMRecovery:
                     self.logger.warning("Memory preallocation test timed out")
                     return False
 
-                if len(error_result) > 0 and error_result[0]:
-                    self.logger.error(
-                        f"Error during memory preallocation test: {error_result[0]}"
+                if error_result[0]:
+                    self.logger.warning(
+                        f"Memory preallocation test failed: {error_result[0]}"
                     )
                     return False
 
@@ -961,8 +961,10 @@ class IntelligentOOMRecovery:
         current_params = base_params.model_copy()
 
         for p in optimization_config.parameters:
-            # Check if parameter exists in OptimalParameters
-            param_attr = p.parameter_name
+            # Map batch_size to n_batch for OptimalParameters compatibility
+            param_attr = (
+                "n_batch" if p.parameter_name == "batch_size" else p.parameter_name
+            )
             if hasattr(current_params, param_attr):
                 setattr(
                     current_params,
@@ -971,7 +973,7 @@ class IntelligentOOMRecovery:
                 )
             else:
                 self.logger.warning(
-                    f"Parameter {p.parameter_name} not found in OptimalParameters, skipping"
+                    f"Parameter {p.parameter_name} (mapped to {param_attr}) not found in OptimalParameters, skipping"
                 )
             self.logger.info(f"🔍 Optimizing parameter: {p.parameter_name}")
 
@@ -983,13 +985,7 @@ class IntelligentOOMRecovery:
             )
 
             # Update the parameter
-            param_attr = p.parameter_name
-            if hasattr(current_params, param_attr):
-                setattr(current_params, param_attr, optimized_value)
-            else:
-                self.logger.warning(
-                    f"Unknown parameter {p.parameter_name}, skipping"
-                )
+            setattr(current_params, param_attr, optimized_value)
 
         return current_params
 
@@ -1035,14 +1031,7 @@ class IntelligentOOMRecovery:
     ) -> int:
         """Binary search for optimal parameter value."""
         param_name = param.parameter_name
-        param_attr = param_name
-        
-        # Check if parameter exists in OptimalParameters
-        if not hasattr(params, param_attr):
-            self.logger.warning(f"Parameter {param_name} not found in OptimalParameters")
-            return param.floor
-            
-        start_value = getattr(params, param_attr)
+        start_value = getattr(params, param_name)
         assert isinstance(start_value, int), "Parameter value must be an integer"
         floor_value = param.floor
 
@@ -1067,7 +1056,7 @@ class IntelligentOOMRecovery:
 
             # Test this parameter value
             test_params = params.model_copy()
-            setattr(test_params, param_attr, mid)
+            setattr(test_params, param_name, mid)
 
             if self._test_parameter_configuration(
                 test_params,
@@ -1095,14 +1084,7 @@ class IntelligentOOMRecovery:
     ) -> int:
         """Exponential backoff search for optimal parameter value."""
         param_name = param.parameter_name
-        param_attr = param_name
-        
-        # Check if parameter exists in OptimalParameters
-        if not hasattr(params, param_attr):
-            self.logger.warning(f"Parameter {param_name} not found in OptimalParameters")
-            return param.floor
-            
-        start_value = getattr(params, param_attr)
+        start_value = getattr(params, param_name)
         assert isinstance(start_value, int), "Parameter value must be an integer"
         floor_value = param.floor
 
@@ -1119,7 +1101,7 @@ class IntelligentOOMRecovery:
             test_value = int(current_value * (multiplier**attempts))
 
             test_params = params.model_copy()
-            setattr(test_params, param_attr, test_value)
+            setattr(test_params, param_name, test_value)
 
             if self._test_parameter_configuration(
                 test_params,
@@ -1148,14 +1130,7 @@ class IntelligentOOMRecovery:
     ) -> int:
         """Conservative increment search for optimal parameter value."""
         param_name = param.parameter_name
-        param_attr = param_name
-        
-        # Check if parameter exists in OptimalParameters
-        if not hasattr(params, param_attr):
-            self.logger.warning(f"Parameter {param_name} not found in OptimalParameters")
-            return param.floor
-            
-        start_value = getattr(params, param_attr)
+        start_value = getattr(params, param_name)
         assert isinstance(start_value, int), "Parameter value must be an integer"
         floor_value = param.floor
 
@@ -1179,7 +1154,7 @@ class IntelligentOOMRecovery:
             test_value = current_value + (increment * attempts)
 
             test_params = params.model_copy()
-            setattr(test_params, param_attr, test_value)
+            setattr(test_params, param_name, test_value)
 
             if self._test_parameter_configuration(
                 test_params, config.crash_prevention, model
