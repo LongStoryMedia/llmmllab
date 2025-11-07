@@ -18,7 +18,9 @@ import ModelSelector from '../components/ModelSelector/ModelSelector';
 import { getToken } from '../api';
 import { ModelProfileType } from '../types/ModelProfileType';
 import { ParameterOptimizationConfig } from '../types/ParameterOptimizationConfig';
-import { createDefaultPerformanceParameter } from '../utils/parameterUtils';
+import { PerformanceParameter } from '../types/PerformanceParameter';
+import { ParameterTuningStrategy, ParameterTuningStrategyValues } from '../types/ParameterTuningStrategy';
+import { createDefaultPerformanceParameter, getAllParameterDisplayInfo } from '../utils/parameterUtils';
 
 const getModelProfileTypeName = (type: ModelProfileType): string => {
   switch (type) {
@@ -788,17 +790,6 @@ const ModelProfilesPage = () => {
 
               {editingProfile?.parameter_optimization && (
                 <>
-                  <Alert severity="info" sx={{ mt: 2, mb: 2 }}>
-                    <Typography variant="body2">
-                      <strong>Parameter Optimization Enabled for Profile</strong>
-                    </Typography>
-                    <Typography variant="body2">
-                      This profile uses the new dynamic parameter optimization system. 
-                      Configure detailed settings in the main Parameter Optimization section 
-                      in the Settings page for user-level configuration.
-                    </Typography>
-                  </Alert>
-
                   <FormControlLabel
                     control={
                       <Switch
@@ -818,8 +809,273 @@ const ModelProfilesPage = () => {
                       />
                     }
                     label="Enable Optimization for this Profile"
-                    sx={{ mb: 1, display: 'block' }}
+                    sx={{ mb: 2, display: 'block' }}
                   />
+
+                  <Typography variant="subtitle1" sx={{ mt: 2, mb: 1, fontWeight: 'bold' }}>
+                    Parameters to Optimize
+                  </Typography>
+
+                  {editingProfile?.parameter_optimization?.parameters?.map((param, index) => (
+                    <Paper key={index} sx={{ p: 2, mb: 2, border: '1px solid', borderColor: 'grey.300' }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                        <Typography variant="h6">
+                          {getAllParameterDisplayInfo().find(p => p.value === param.parameter_name)?.label || param.parameter_name}
+                        </Typography>
+                        <IconButton
+                          onClick={() => {
+                            const currentConfig = editingProfile?.parameter_optimization;
+                            if (currentConfig) {
+                              const newParameters = [...currentConfig.parameters];
+                              newParameters.splice(index, 1);
+                              setEditingProfile({
+                                ...editingProfile,
+                                parameter_optimization: {
+                                  ...currentConfig,
+                                  parameters: newParameters
+                                }
+                              });
+                            }
+                          }}
+                          color="error"
+                          size="small"
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </Box>
+
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
+                        <TextField
+                          label="Priority"
+                          type="number"
+                          value={param.priority}
+                          onChange={(e) => {
+                            const currentConfig = editingProfile?.parameter_optimization;
+                            if (currentConfig) {
+                              const newParameters = [...currentConfig.parameters];
+                              newParameters[index] = {
+                                ...param,
+                                priority: Number(e.target.value)
+                              };
+                              setEditingProfile({
+                                ...editingProfile,
+                                parameter_optimization: {
+                                  ...currentConfig,
+                                  parameters: newParameters
+                                }
+                              });
+                            }
+                          }}
+                          fullWidth
+                          inputProps={{ min: 1 }}
+                        />
+                        <FormControl fullWidth>
+                          <InputLabel>Tuning Strategy</InputLabel>
+                          <Select
+                            value={param.tuning_strategy}
+                            onChange={(e) => {
+                              const currentConfig = editingProfile?.parameter_optimization;
+                              if (currentConfig) {
+                                const newParameters = [...currentConfig.parameters];
+                                newParameters[index] = {
+                                  ...param,
+                                  tuning_strategy: e.target.value as ParameterTuningStrategy
+                                };
+                                setEditingProfile({
+                                  ...editingProfile,
+                                  parameter_optimization: {
+                                    ...currentConfig,
+                                    parameters: newParameters
+                                  }
+                                });
+                              }
+                            }}
+                            label="Tuning Strategy"
+                          >
+                            <MenuItem value={ParameterTuningStrategyValues.BINARY_SEARCH}>Binary Search</MenuItem>
+                            <MenuItem value={ParameterTuningStrategyValues.CONSERVATIVE_INCREMENT}>Conservative Increment</MenuItem>
+                            <MenuItem value={ParameterTuningStrategyValues.EXPONENTIAL_BACKOFF}>Exponential Backoff</MenuItem>
+                          </Select>
+                        </FormControl>
+                        <TextField
+                          label="Max Search Attempts"
+                          type="number"
+                          value={param.max_search_attempts}
+                          onChange={(e) => {
+                            const currentConfig = editingProfile?.parameter_optimization;
+                            if (currentConfig) {
+                              const newParameters = [...currentConfig.parameters];
+                              newParameters[index] = {
+                                ...param,
+                                max_search_attempts: Number(e.target.value)
+                              };
+                              setEditingProfile({
+                                ...editingProfile,
+                                parameter_optimization: {
+                                  ...currentConfig,
+                                  parameters: newParameters
+                                }
+                              });
+                            }
+                          }}
+                          fullWidth
+                          inputProps={{ min: 1, max: 50 }}
+                        />
+                        <TextField
+                          label="Floor Value"
+                          type="number"
+                          value={param.floor}
+                          onChange={(e) => {
+                            const currentConfig = editingProfile?.parameter_optimization;
+                            if (currentConfig) {
+                              const newParameters = [...currentConfig.parameters];
+                              newParameters[index] = {
+                                ...param,
+                                floor: Number(e.target.value)
+                              };
+                              setEditingProfile({
+                                ...editingProfile,
+                                parameter_optimization: {
+                                  ...currentConfig,
+                                  parameters: newParameters
+                                }
+                              });
+                            }
+                          }}
+                          fullWidth
+                          inputProps={{ min: 1 }}
+                          helperText="Minimum value (must be >= 1)"
+                        />
+                      </Box>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
+                        <FormControl fullWidth>
+                          <InputLabel>Operator</InputLabel>
+                          <Select
+                            value={param.operator}
+                            onChange={(e) => {
+                              const currentConfig = editingProfile?.parameter_optimization;
+                              if (currentConfig) {
+                                const newParameters = [...currentConfig.parameters];
+                                newParameters[index] = {
+                                  ...param,
+                                  operator: e.target.value as PerformanceParameter['operator']
+                                };
+                                setEditingProfile({
+                                  ...editingProfile,
+                                  parameter_optimization: {
+                                    ...currentConfig,
+                                    parameters: newParameters
+                                  }
+                                });
+                              }
+                            }}
+                            label="Operator"
+                          >
+                            <MenuItem value="+">Add (+)</MenuItem>
+                            <MenuItem value="-">Subtract (-)</MenuItem>
+                            <MenuItem value="*">Multiply (*)</MenuItem>
+                            <MenuItem value="/">Divide (/)</MenuItem>
+                          </Select>
+                        </FormControl>
+                        <TextField
+                          label="Modifier"
+                          type="number"
+                          value={param.modifier}
+                          onChange={(e) => {
+                            const currentConfig = editingProfile?.parameter_optimization;
+                            if (currentConfig) {
+                              const newParameters = [...currentConfig.parameters];
+                              newParameters[index] = {
+                                ...param,
+                                modifier: Number(e.target.value)
+                              };
+                              setEditingProfile({
+                                ...editingProfile,
+                                parameter_optimization: {
+                                  ...currentConfig,
+                                  parameters: newParameters
+                                }
+                              });
+                            }
+                          }}
+                          fullWidth
+                          inputProps={{ min: 0.1, step: 0.1 }}
+                        />
+                        <TextField
+                          label="Max Value"
+                          type="number"
+                          value={param.max_value}
+                          onChange={(e) => {
+                            const currentConfig = editingProfile?.parameter_optimization;
+                            if (currentConfig) {
+                              const newParameters = [...currentConfig.parameters];
+                              newParameters[index] = {
+                                ...param,
+                                max_value: Number(e.target.value)
+                              };
+                              setEditingProfile({
+                                ...editingProfile,
+                                parameter_optimization: {
+                                  ...currentConfig,
+                                  parameters: newParameters
+                                }
+                              });
+                            }
+                          }}
+                          fullWidth
+                          inputProps={{ min: 1 }}
+                        />
+                      </Box>
+                    </Paper>
+                  ))}
+
+                  <Box sx={{ display: 'flex', gap: 2, mt: 2, alignItems: 'center' }}>
+                    <FormControl sx={{ minWidth: 200 }}>
+                      <InputLabel>Add Parameter</InputLabel>
+                      <Select
+                        label="Add Parameter"
+                        onChange={(e) => {
+                          const currentConfig = editingProfile?.parameter_optimization;
+                          if (currentConfig) {
+                            const paramName = e.target.value as PerformanceParameter['parameter_name'];
+                            // Check if parameter already exists
+                            const exists = currentConfig.parameters.some(p => p.parameter_name === paramName);
+                            if (!exists) {
+                              setEditingProfile({
+                                ...editingProfile,
+                                parameter_optimization: {
+                                  ...currentConfig,
+                                  parameters: [
+                                    ...currentConfig.parameters,
+                                    createDefaultPerformanceParameter(paramName)
+                                  ]
+                                }
+                              });
+                            }
+                          }
+                        }}
+                        displayEmpty
+                      >
+                        <MenuItem value="" disabled>
+                          Select parameter to add...
+                        </MenuItem>
+                        {getAllParameterDisplayInfo()
+                          .filter(param => {
+                            // Only show parameters that aren't already added
+                            const currentConfig = editingProfile?.parameter_optimization;
+                            if (!currentConfig) {
+                              return true;
+                            }
+                            return !currentConfig.parameters.some(p => p.parameter_name === param.value);
+                          })
+                          .map((param) => (
+                            <MenuItem key={param.value} value={param.value}>
+                              {param.label} - {param.description}
+                            </MenuItem>
+                          ))}
+                      </Select>
+                    </FormControl>
+                  </Box>
                 </>
               )}
             </AccordionDetails>

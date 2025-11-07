@@ -62,7 +62,7 @@ export const PARAMETER_CONFIGS: ParameterConfig = {
     defaultPriority: 2,
     defaultStrategy: ParameterTuningStrategyValues.BINARY_SEARCH as ParameterTuningStrategy,
     defaultMaxAttempts: 10,
-    defaultFloor: 0,
+    defaultFloor: 1,
     defaultOperator: '+',
     defaultModifier: 10,
     defaultMaxValue: 125
