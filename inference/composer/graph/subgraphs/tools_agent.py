@@ -19,7 +19,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode  # Keep for type hints if needed
 from langgraph.types import Command
 
-from composer.graph.state import WorkflowState, ToolsState
+from composer.graph.state import WorkflowState, ToolsState, assemble_context_messages
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
 from utils.message_conversion import (
@@ -73,12 +73,11 @@ class ToolsAgentSubgraph:
 
             async def __call__(self, state: ToolsState) -> ToolsState:
                 """Execute tools with proper state injection."""
-                messages = state.get("messages", [])
 
-                if not messages:
+                if not state.messages:
                     return state
 
-                last_message = messages[-1]
+                last_message = state.messages[-1]
 
                 # Check if last message has tool calls
                 if not isinstance(last_message, AIMessage) or not has_tool_calls(
@@ -94,11 +93,13 @@ class ToolsAgentSubgraph:
 
                 # Execute each tool call with proper state injection
                 tool_messages = []
+                if not last_message.tool_calls:
+                    return state
 
                 for tool_call in last_message.tool_calls:
                     tool_name = tool_call.get("name")
                     tool_args = tool_call.get("args", {})
-                    tool_call_id = tool_call.get("id", "unknown")
+                    tool_call_id = tool_call.get("id")
 
                     if tool_name in executable_tools:
                         tool = executable_tools[tool_name]
@@ -117,23 +118,20 @@ class ToolsAgentSubgraph:
                             logger.info(
                                 f"🔧 Executing tool '{tool_name}' with full state injection"
                             )
-                            logger.debug(f"Tool state includes: {list(state.keys())}")
-                            logger.debug(
-                                f"User ID in tool state: {state.get('user_id')}"
-                            )
-                            
+
                             # Add timeout to tool execution to prevent hanging
                             import asyncio
-                            tool_timeout = 120  # 2 minutes per tool
-                            
+
                             try:
                                 result = await asyncio.wait_for(
                                     tool.ainvoke({**tool_args, "runtime": runtime}),
-                                    timeout=tool_timeout
+                                    timeout=state.user_config.tool.tool_timeout,
                                 )
                             except asyncio.TimeoutError:
-                                logger.error(f"⏰ Tool '{tool_name}' execution timed out after {tool_timeout} seconds")
-                                result = f"❌ Tool execution timed out after {tool_timeout} seconds"
+                                logger.error(
+                                    f"⏰ Tool '{tool_name}' execution timed out after {state.user_config.tool.tool_timeout} seconds"
+                                )
+                                result = f"❌ Tool execution timed out after {state.user_config.tool.tool_timeout} seconds"
 
                             tool_messages.append(
                                 ToolMessage(
@@ -168,8 +166,8 @@ class ToolsAgentSubgraph:
                         )
 
                 # Return updated state with tool messages
-                updated_messages = messages + tool_messages
-                return {**state, "messages": updated_messages}
+                state.messages.extend(tool_messages)
+                return state
 
         try:
             logger.info("🛠️ Creating custom ToolNode with full state injection")
@@ -201,35 +199,43 @@ class ToolsAgentSubgraph:
             # Custom routing condition for tool calls with safety limits
             def should_continue_to_tools(state: ToolsState) -> str:
                 """Check if we should route to tools or end with safety limits."""
-                messages = state.get("messages", [])
-                if not messages:
+                if not state.messages:
                     return "__end__"
 
                 # Count total interactions to prevent infinite loops
-                total_messages = len(messages)
+                total_messages = len(state.messages)
                 max_messages = 50  # Safety limit
                 if total_messages > max_messages:
-                    logger.warning(f"🛑 Stopping: reached message limit ({total_messages}/{max_messages})")
+                    logger.warning(
+                        f"🛑 Stopping: reached message limit ({total_messages}/{max_messages})"
+                    )
                     return "__end__"
 
                 # Count tool call iterations in recent messages
-                recent_messages = messages[-20:]  # Look at last 20 messages
-                tool_call_count = sum(1 for msg in recent_messages 
-                                    if hasattr(msg, "tool_calls") and getattr(msg, "tool_calls", None))
+                recent_messages = state.messages[-20:]  # Look at last 20 messages
+                tool_call_count = sum(
+                    1
+                    for msg in recent_messages
+                    if hasattr(msg, "tool_calls") and getattr(msg, "tool_calls", None)
+                )
                 max_tool_iterations = 10  # Safety limit
                 if tool_call_count > max_tool_iterations:
-                    logger.warning(f"🛑 Stopping: reached tool call limit ({tool_call_count}/{max_tool_iterations})")
+                    logger.warning(
+                        f"🛑 Stopping: reached tool call limit ({tool_call_count}/{max_tool_iterations})"
+                    )
                     return "__end__"
 
-                last_message = messages[-1]
+                last_message = state.messages[-1]
                 # Check if message has tool calls
                 if hasattr(last_message, "tool_calls") and getattr(
                     last_message, "tool_calls", None
                 ):
                     tool_calls = getattr(last_message, "tool_calls", [])
-                    logger.info(f"🔧 Routing to tools: {len(tool_calls)} tool calls to execute")
+                    logger.info(
+                        f"🔧 Routing to tools: {len(tool_calls)} tool calls to execute"
+                    )
                     return "tools"
-                    
+
                 logger.info("✅ No tool calls found, ending workflow")
                 return "__end__"
 
@@ -316,11 +322,6 @@ class ToolsAgentSubgraph:
 
     async def _chat_agent_node(self, state: ToolsState) -> ToolsState:
         """Simple LangChain agent node."""
-        from langchain_core.messages import AIMessage
-
-        # Get messages from state
-        messages = state["messages"]
-
         try:
             # Get available tools
             tools_dict = self.tool_registry.get_all_executable_tools()
@@ -328,14 +329,14 @@ class ToolsAgentSubgraph:
 
             # Use the ChatAgent's chat completion method
             response = await self.chat_agent.chat_completion(
-                messages=lc_messages_to_messages(messages),
+                messages=lc_messages_to_messages(state.messages),
                 tools=tools_list,
                 stream=False,
             )
 
             # Convert response message to LangChain BaseMessage format
             if response and response.message:
-                state["messages"].append(message_to_lc_message(response.message))
+                state.messages.append(message_to_lc_message(response.message))
 
             # Return updated state following LangChain agent pattern
             return state
@@ -350,32 +351,18 @@ class ToolsAgentSubgraph:
     def transform_to_tools_state(self, main_state: WorkflowState) -> ToolsState:
         """Transform main WorkflowState to minimal ToolsState for agent subgraph."""
         # Get recent messages for agent context and convert to LangChain core messages
-        recent_messages = getattr(main_state, "messages", [])[-10:]
+        assert main_state.user_config
+        assert main_state.user_id
+        assert main_state.conversation_id
+        assert main_state.messages
 
-        # Use the consolidated message conversion utility to convert Message objects to BaseMessage objects
-        langchain_messages = messages_to_lc_messages(recent_messages)
-
-        # Pass full user_config object for tool access (tools need full config objects)
-        user_config = getattr(main_state, "user_config", None)
-
-        # Get user_id with validation
-        user_id = getattr(main_state, "user_id", None)
-        if not user_id:
-            logger.warning(
-                f"WorkflowState missing user_id - this will cause tool failures. "
-                f"user_id={user_id}, conversation_id={getattr(main_state, 'conversation_id', 'missing')}"
-            )
-
-        return {
-            "messages": langchain_messages,
-            "user_id": user_id
-            or "",  # Still use empty string for backward compatibility, but log the issue
-            "conversation_id": getattr(main_state, "conversation_id", 0),
-            "user_config": user_config,
-            "system_config": None,  # Not available in WorkflowState
-            "current_date": getattr(main_state, "current_date", ""),
-            "tool_call_count": 0,
-        }
+        return ToolsState(
+            messages=messages_to_lc_messages(assemble_context_messages(main_state)),
+            user_id=main_state.user_id,
+            conversation_id=main_state.conversation_id,
+            user_config=main_state.user_config,
+            tool_call_count=0,
+        )
 
     def transform_to_main_state(
         self, agent_result: Dict[str, Any], main_state: WorkflowState
@@ -428,17 +415,18 @@ class ToolsAgentSubgraph:
 
             # Execute the agent subgraph with timeout and iteration limit
             import asyncio
-            
+
             # Set timeout for graph execution (5 minutes max)
             timeout_seconds = 300
-            
+
             try:
                 result = await asyncio.wait_for(
-                    self.graph.ainvoke(tools_state), 
-                    timeout=timeout_seconds
+                    self.graph.ainvoke(tools_state), timeout=timeout_seconds
                 )
             except asyncio.TimeoutError:
-                logger.error(f"❌ Agent subgraph execution timed out after {timeout_seconds} seconds")
+                logger.error(
+                    f"❌ Agent subgraph execution timed out after {timeout_seconds} seconds"
+                )
                 return Command(update={})
 
             # Transform results back to main state updates

@@ -117,7 +117,7 @@ class BaseAgent(ABC, Generic[T]):
 
         # Persistent LangChain agent - initialized once and reused for all operations
         self._agent: Optional[CompiledStateGraph] = None
-        
+
         # Track if we have locked a pipeline that needs cleanup
         self._pipeline_locked = False
 
@@ -147,22 +147,30 @@ class BaseAgent(ABC, Generic[T]):
     def cleanup(self) -> None:
         """
         Clean up resources used by this agent, including unlocking any pipeline.
-        
+
         This method should be called when the agent is no longer needed to ensure
         that locked pipelines are properly released for other components to use.
         """
         if self._pipeline_locked:
             try:
-                self.logger.info(f"🔓 Cleaning up agent pipeline for model {self.profile.model_name}")
+                self.logger.info(
+                    f"🔓 Cleaning up agent pipeline for model {self.profile.model_name}"
+                )
                 success = self.pipeline_factory.unlock_pipeline(self.profile)
                 if success:
-                    self.logger.info(f"✅ Successfully unlocked pipeline for {self.profile.model_name}")
+                    self.logger.info(
+                        f"✅ Successfully unlocked pipeline for {self.profile.model_name}"
+                    )
                     self._pipeline_locked = False
                 else:
-                    self.logger.warning(f"⚠️ Failed to unlock pipeline for {self.profile.model_name}")
+                    self.logger.warning(
+                        f"⚠️ Failed to unlock pipeline for {self.profile.model_name}"
+                    )
             except Exception as e:
-                self.logger.error(f"❌ Error during pipeline cleanup for {self.profile.model_name}: {e}")
-        
+                self.logger.error(
+                    f"❌ Error during pipeline cleanup for {self.profile.model_name}: {e}"
+                )
+
         # Reset agent state
         self._agent = None
         self.logger.debug("Agent cleanup completed")
@@ -217,7 +225,7 @@ The current date is {current_date}. While this is likely past your training data
             chat_model = self.pipeline_factory.get_pipeline(
                 self.profile, priority, grammar
             )
-            
+
             # Mark that we have locked a pipeline that needs cleanup
             self._pipeline_locked = True
             self.logger.debug(f"🔒 Locked pipeline for {self.profile.model_name}")

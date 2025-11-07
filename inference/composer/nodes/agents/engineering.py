@@ -171,7 +171,7 @@ class EngineeringAgentNode:
 
             # Cleanup agent resources after completion
             self.agent.cleanup()
-            
+
             return state
 
         except Exception as e:

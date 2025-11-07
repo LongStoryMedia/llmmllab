@@ -10,10 +10,7 @@ from typing import (
     Any,
     AsyncGenerator,
     Dict,
-    Generic,
     Optional,
-    TypeVar,
-    Union,
 )
 from datetime import datetime, timezone
 
@@ -25,10 +22,8 @@ from langchain_core.runnables.schema import StreamEvent, EventData
 
 from utils.logging import llmmllogger
 
-StateT = TypeVar("StateT", bound=Union[Dict[str, Any], BaseModel])
 
-
-class WorkflowExecutor(Generic[StateT]):
+class WorkflowExecutor:
     """
     Generic workflow executor for CompiledStateGraph streaming.
 
@@ -73,7 +68,7 @@ class WorkflowExecutor(Generic[StateT]):
     async def stream_workflow(
         self,
         workflow: CompiledStateGraph,
-        initial_state: StateT,
+        initial_state: BaseModel,
         config: Optional[RunnableConfig] = None,
         thread_id: Optional[str] = None,
         enrich_events: bool = True,
@@ -209,7 +204,7 @@ class WorkflowExecutor(Generic[StateT]):
     async def run_workflow(
         self,
         workflow: CompiledStateGraph,
-        initial_state: Union[StateT, Dict[str, Any]],
+        initial_state: BaseModel,
         config: Optional[RunnableConfig] = None,
         thread_id: Optional[str] = None,
     ) -> Dict[str, Any]:
@@ -227,17 +222,7 @@ class WorkflowExecutor(Generic[StateT]):
         """
         try:
             # Prepare state for execution
-            if isinstance(initial_state, dict):
-                state_dict = initial_state
-            else:
-                if hasattr(initial_state, "model_dump"):
-                    state_dict = initial_state.model_dump()
-                elif hasattr(initial_state, "dict"):
-                    state_dict = initial_state.dict()
-                else:
-                    raise ValueError(
-                        f"State type {type(initial_state)} must be dict or have model_dump/dict method"
-                    )
+            state_dict = initial_state.model_dump()
 
             # Create config if not provided
             if config is None and thread_id is not None:
@@ -275,7 +260,7 @@ def create_executor(
 
 async def stream_workflow(
     workflow: CompiledStateGraph,
-    initial_state: Union[StateT, Dict[str, Any]],
+    initial_state: BaseModel,
     thread_id: Optional[str] = None,
     config: Optional[RunnableConfig] = None,
     logger: Optional[Any] = None,
@@ -309,7 +294,7 @@ async def stream_workflow(
 
 async def run_workflow(
     workflow: CompiledStateGraph,
-    initial_state: Union[StateT, Dict[str, Any]],
+    initial_state: BaseModel,
     thread_id: Optional[str] = None,
     config: Optional[RunnableConfig] = None,
     logger: Optional[Any] = None,

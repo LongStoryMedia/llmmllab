@@ -17,6 +17,9 @@ import { useAuth } from '../auth';
 import ModelSelector from '../components/ModelSelector/ModelSelector';
 import { getToken } from '../api';
 import { ModelProfileType } from '../types/ModelProfileType';
+import { ParameterOptimizationConfig } from '../types/ParameterOptimizationConfig';
+import { PerformanceParameter } from '../types/PerformanceParameter';
+import { ParameterTuningStrategy, ParameterTuningStrategyValues } from '../types/ParameterTuningStrategy';
 
 const getModelProfileTypeName = (type: ModelProfileType): string => {
   switch (type) {
@@ -42,6 +45,49 @@ const getModelProfileTypeName = (type: ModelProfileType): string => {
     default: return 'Unknown';
   }
 };
+
+// Helper function to create default parameter optimization config
+const createDefaultParameterOptimizationConfig = (): ParameterOptimizationConfig => ({
+  enabled: true,
+  parameters: [
+    {
+      parameter_name: 'n_ctx',
+      priority: 1,
+      tuning_strategy: ParameterTuningStrategyValues.BINARY_SEARCH as ParameterTuningStrategy,
+      max_search_attempts: 10,
+      floor: 2048,
+      operator: '*' as PerformanceParameter['operator'],
+      modifier: 2,
+      max_value: 131072
+    },
+    {
+      parameter_name: 'n_gpu_layers',
+      priority: 2,
+      tuning_strategy: ParameterTuningStrategyValues.BINARY_SEARCH as ParameterTuningStrategy,
+      max_search_attempts: 10,
+      floor: 0,
+      operator: '+' as PerformanceParameter['operator'],
+      modifier: 10,
+      max_value: 125
+    },
+    {
+      parameter_name: 'n_batch',
+      priority: 3,
+      tuning_strategy: ParameterTuningStrategyValues.CONSERVATIVE_INCREMENT as ParameterTuningStrategy,
+      max_search_attempts: 5,
+      floor: 32,
+      operator: '*' as PerformanceParameter['operator'],
+      modifier: 2,
+      max_value: 8192
+    }
+  ],
+  crash_prevention: {
+    enable_preallocation_test: true,
+    memory_buffer_mb: 1024,
+    timeout_seconds: 300,
+    enable_graceful_degradation: true
+  }
+});
 
 const emptyProfile: ModelProfile = {
   id: '',
@@ -756,25 +802,7 @@ const ModelProfilesPage = () => {
                       if (e.target.checked) {
                         setEditingProfile({
                           ...editingProfile,
-                          parameter_optimization: {
-                            enabled: true,
-                            // @ts-expect-error ts()
-                            optimization_priority: ['n_ctx', 'n_gpu_layers', 'n_batch', 'n_ubatch'],
-                            parameter_floors: {
-                              n_ctx: 2048,
-                              n_batch: 32,
-                              n_ubatch: 32,
-                              n_gpu_layers: 0
-                            },
-                            search_strategy: 'binary_search',
-                            max_search_attempts: 5,
-                            crash_prevention: {
-                              enable_preallocation_test: true,
-                              memory_buffer_mb: 1024,
-                              timeout_seconds: 300,
-                              enable_graceful_degradation: true
-                            }
-                          }
+                          parameter_optimization: createDefaultParameterOptimizationConfig()
                         });
                       } else {
                         const { parameter_optimization, ...restProfile } = editingProfile!;
@@ -788,10 +816,16 @@ const ModelProfilesPage = () => {
 
               {editingProfile?.parameter_optimization && (
                 <>
-                  {/* Basic Settings */}
-                  <Typography variant="subtitle1" sx={{ mt: 2, mb: 1, fontWeight: 'bold' }}>
-                    Basic Settings
-                  </Typography>
+                  <Alert severity="info" sx={{ mt: 2, mb: 2 }}>
+                    <Typography variant="body2">
+                      <strong>Parameter Optimization Enabled for Profile</strong>
+                    </Typography>
+                    <Typography variant="body2">
+                      This profile uses the new dynamic parameter optimization system. 
+                      Configure detailed settings in the main Parameter Optimization section 
+                      in the Settings page for user-level configuration.
+                    </Typography>
+                  </Alert>
 
                   <FormControlLabel
                     control={
@@ -811,264 +845,8 @@ const ModelProfilesPage = () => {
                         }}
                       />
                     }
-                    label="Enable Optimization"
+                    label="Enable Optimization for this Profile"
                     sx={{ mb: 1, display: 'block' }}
-                  />
-
-                  <FormControl fullWidth margin="normal">
-                    <InputLabel>Search Strategy</InputLabel>
-                    <Select
-                      value={editingProfile?.parameter_optimization?.search_strategy || 'binary_search'}
-                      onChange={(e) => {
-                        const currentConfig = editingProfile?.parameter_optimization;
-                        if (currentConfig !== undefined) {
-                          setEditingProfile({
-                            ...editingProfile,
-                            parameter_optimization: {
-                              ...currentConfig,
-                              search_strategy: e.target.value as 'binary_search' | 'exponential_backoff' | 'conservative_increment'
-                            }
-                          });
-                        }
-                      }}
-                      label="Search Strategy"
-                    >
-                      <MenuItem value="binary_search">Binary Search - Fast, good for finding maximum</MenuItem>
-                      <MenuItem value="exponential_backoff">Exponential Backoff - Safe, conservative</MenuItem>
-                      <MenuItem value="conservative_increment">Conservative Increment - Slow but safe</MenuItem>
-                    </Select>
-                  </FormControl>
-
-                  <TextField
-                    label="Max Search Attempts"
-                    type="number"
-                    value={editingProfile?.parameter_optimization?.max_search_attempts ?? ''}
-                    onChange={(e) => {
-                      const currentConfig = editingProfile?.parameter_optimization;
-                      if (currentConfig !== undefined) {
-                        const value = e.target.value === '' ? undefined : Number(e.target.value);
-                        setEditingProfile({
-                          ...editingProfile,
-                          parameter_optimization: {
-                            ...currentConfig,
-                            max_search_attempts: value || 5
-                          }
-                        });
-                      }
-                    }}
-                    fullWidth margin="normal"
-                    inputProps={{ min: 1, max: 20, step: 1 }}
-                    helperText="Maximum optimization attempts per parameter (1-20)"
-                  />
-
-                  {/* Parameter Floors */}
-                  <Typography variant="subtitle1" sx={{ mt: 3, mb: 1, fontWeight: 'bold' }}>
-                    Minimum Parameter Values
-                  </Typography>
-
-                  <TextField
-                    label="Minimum Context Size (n_ctx)"
-                    type="number"
-                    value={editingProfile?.parameter_optimization?.parameter_floors?.n_ctx ?? ''}
-                    onChange={(e) => {
-                      const currentConfig = editingProfile?.parameter_optimization;
-                      if (currentConfig !== undefined) {
-                        const value = e.target.value === '' ? undefined : Number(e.target.value);
-                        setEditingProfile({
-                          ...editingProfile,
-                          parameter_optimization: {
-                            ...currentConfig,
-                            parameter_floors: {
-                              ...currentConfig.parameter_floors,
-                              n_ctx: value
-                            }
-                          }
-                        });
-                      }
-                    }}
-                    fullWidth margin="normal"
-                    inputProps={{ min: 512, max: 65536, step: 512 }}
-                    helperText="Minimum context window size (512-65536)"
-                  />
-
-                  <TextField
-                    label="Minimum Batch Size (n_batch)"
-                    type="number"
-                    value={editingProfile?.parameter_optimization?.parameter_floors?.n_batch ?? ''}
-                    onChange={(e) => {
-                      const currentConfig = editingProfile?.parameter_optimization;
-                      if (currentConfig !== undefined) {
-                        const value = e.target.value === '' ? undefined : Number(e.target.value);
-                        setEditingProfile({
-                          ...editingProfile,
-                          parameter_optimization: {
-                            ...currentConfig,
-                            parameter_floors: {
-                              ...currentConfig.parameter_floors,
-                              n_batch: value
-                            }
-                          }
-                        });
-                      }
-                    }}
-                    fullWidth margin="normal"
-                    inputProps={{ min: 1, max: 2048, step: 1 }}
-                    helperText="Minimum batch size for processing (1-2048)"
-                  />
-
-                  <TextField
-                    label="Minimum Micro-Batch Size (n_ubatch)"
-                    type="number"
-                    value={editingProfile?.parameter_optimization?.parameter_floors?.n_ubatch ?? ''}
-                    onChange={(e) => {
-                      const currentConfig = editingProfile?.parameter_optimization;
-                      if (currentConfig !== undefined) {
-                        const value = e.target.value === '' ? undefined : Number(e.target.value);
-                        setEditingProfile({
-                          ...editingProfile,
-                          parameter_optimization: {
-                            ...currentConfig,
-                            parameter_floors: {
-                              ...currentConfig.parameter_floors,
-                              n_ubatch: value
-                            }
-                          }
-                        });
-                      }
-                    }}
-                    fullWidth margin="normal"
-                    inputProps={{ min: 1, max: 2048, step: 1 }}
-                    helperText="Minimum micro-batch size (1-2048)"
-                  />
-
-                  <TextField
-                    label="Minimum GPU Layers (n_gpu_layers)"
-                    type="number"
-                    value={editingProfile?.parameter_optimization?.parameter_floors?.n_gpu_layers ?? ''}
-                    onChange={(e) => {
-                      const currentConfig = editingProfile?.parameter_optimization;
-                      if (currentConfig !== undefined) {
-                        const value = e.target.value === '' ? undefined : Number(e.target.value);
-                        setEditingProfile({
-                          ...editingProfile,
-                          parameter_optimization: {
-                            ...currentConfig,
-                            parameter_floors: {
-                              ...currentConfig.parameter_floors,
-                              n_gpu_layers: value
-                            }
-                          }
-                        });
-                      }
-                    }}
-                    fullWidth margin="normal"
-                    inputProps={{ min: 0, max: 200, step: 1 }}
-                    helperText="Minimum GPU layers (0=CPU only, 200+ for full GPU)"
-                  />
-
-                  {/* Crash Prevention */}
-                  <Typography variant="subtitle1" sx={{ mt: 3, mb: 1, fontWeight: 'bold' }}>
-                    Safety & Crash Prevention
-                  </Typography>
-
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={editingProfile?.parameter_optimization?.crash_prevention?.enable_preallocation_test ?? true}
-                        onChange={(e) => {
-                          const currentConfig = editingProfile?.parameter_optimization;
-                          if (currentConfig !== undefined) {
-                            setEditingProfile({
-                              ...editingProfile,
-                              parameter_optimization: {
-                                ...currentConfig,
-                                crash_prevention: {
-                                  ...currentConfig.crash_prevention,
-                                  enable_preallocation_test: e.target.checked
-                                }
-                              }
-                            });
-                          }
-                        }}
-                      />
-                    }
-                    label="Enable Pre-allocation Test"
-                    sx={{ mb: 1, display: 'block' }}
-                  />
-
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={editingProfile?.parameter_optimization?.crash_prevention?.enable_graceful_degradation ?? true}
-                        onChange={(e) => {
-                          const currentConfig = editingProfile?.parameter_optimization;
-                          if (currentConfig !== undefined) {
-                            setEditingProfile({
-                              ...editingProfile,
-                              parameter_optimization: {
-                                ...currentConfig,
-                                crash_prevention: {
-                                  ...currentConfig.crash_prevention,
-                                  enable_graceful_degradation: e.target.checked
-                                }
-                              }
-                            });
-                          }
-                        }}
-                      />
-                    }
-                    label="Enable Graceful Degradation"
-                    sx={{ mb: 1, display: 'block' }}
-                  />
-
-                  <TextField
-                    label="Memory Buffer (MB)"
-                    type="number"
-                    value={editingProfile?.parameter_optimization?.crash_prevention?.memory_buffer_mb ?? ''}
-                    onChange={(e) => {
-                      const currentConfig = editingProfile?.parameter_optimization;
-                      if (currentConfig !== undefined) {
-                        const value = e.target.value === '' ? undefined : Number(e.target.value);
-                        setEditingProfile({
-                          ...editingProfile,
-                          parameter_optimization: {
-                            ...currentConfig,
-                            crash_prevention: {
-                              ...currentConfig.crash_prevention,
-                              memory_buffer_mb: value
-                            }
-                          }
-                        });
-                      }
-                    }}
-                    fullWidth margin="normal"
-                    inputProps={{ min: 100, max: 8192, step: 100 }}
-                    helperText="Memory buffer to reserve (100-8192 MB)"
-                  />
-
-                  <TextField
-                    label="Timeout (seconds)"
-                    type="number"
-                    value={editingProfile?.parameter_optimization?.crash_prevention?.timeout_seconds ?? ''}
-                    onChange={(e) => {
-                      const currentConfig = editingProfile?.parameter_optimization;
-                      if (currentConfig !== undefined) {
-                        const value = e.target.value === '' ? undefined : Number(e.target.value);
-                        setEditingProfile({
-                          ...editingProfile,
-                          parameter_optimization: {
-                            ...currentConfig,
-                            crash_prevention: {
-                              ...currentConfig.crash_prevention,
-                              timeout_seconds: value
-                            }
-                          }
-                        });
-                      }
-                    }}
-                    fullWidth margin="normal"
-                    inputProps={{ min: 30, max: 1800, step: 30 }}
-                    helperText="Initialization timeout (30-1800 seconds)"
                   />
                 </>
               )}

@@ -1,0 +1,8 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ParameterTuningStrategy
+description: Strategy for tuning parameters optimally.
+type: string
+enum:
+  - binary_search
+  - exponential_backoff
+  - conservative_increment

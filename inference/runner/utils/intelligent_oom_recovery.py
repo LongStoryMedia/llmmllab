@@ -11,8 +11,10 @@ sklearn requirement, and model profile integration.
 import os
 import json
 import numpy as np
+import threading
 from typing import Optional, List, Literal
 from pathlib import Path
+import torch
 
 # sklearn is required - no fallbacks
 from sklearn.linear_model import Ridge
@@ -20,18 +22,24 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
 
 from utils.logging import llmmllogger
-from models.model_profile import ModelProfile
-from models.dev_stats import DevStats
-from models.system_gpu_stats import SystemGPUStats
-from models.optimal_parameters import OptimalParameters
-from models.model_configuration_data import ModelConfigurationData
-from models.oom_recovery_attempt_data import OOMRecoveryAttemptData
-from models.prediction_features import PredictionFeatures
-from models.learned_limits import LearnedLimits
-from models.recovery_strategy import RecoveryStrategy
-from models.ml_model_performance import MLModelPerformance
-from models.parameter_optimization_config import ParameterOptimizationConfig
+from models import (
+    Model,
+    ModelProfile,
+    DevStats,
+    SystemGPUStats,
+    OptimalParameters,
+    ModelConfigurationData,
+    OOMRecoveryAttemptData,
+    PredictionFeatures,
+    LearnedLimits,
+    RecoveryStrategy,
+    MLModelPerformance,
+    ParameterOptimizationConfig,
+    PerformanceParameter,
+    CrashPrevention,
+)
 from .hardware_manager import EnhancedHardwareManager
+from runner.utils import hardware_manager
 
 
 class IntelligentOOMRecovery:
@@ -172,11 +180,6 @@ class IntelligentOOMRecovery:
                     f"GPU{gpu.id}({gpu.mem_free:.0f}/{gpu.mem_total:.0f}MB)"
                     for gpu in gpus
                 ]
-            )
-
-            self.logger.info(
-                f"Multi-GPU System: {len(gpus)} GPUs, Total: {total_memory:.0f}MB, "
-                f"Total Available: {total_available_memory:.0f}MB, GPUs: [{gpu_list}]"
             )
 
             return system_stats
@@ -859,8 +862,6 @@ class IntelligentOOMRecovery:
         Returns True if allocation succeeds, False if it would likely cause OOM.
         """
         try:
-            import torch
-            import gc
 
             if not torch.cuda.is_available():
                 self.logger.warning("No CUDA available for memory preallocation test")
@@ -890,11 +891,9 @@ class IntelligentOOMRecovery:
 
             try:
                 # Use timeout to prevent hanging
-                import signal
-                import threading
 
                 allocation_result = [False]
-                error_result = [None]  # type: ignore
+                error_result = []
 
                 def allocate_test():
                     try:
@@ -935,9 +934,7 @@ class IntelligentOOMRecovery:
                 return False
             finally:
                 # Ensure cleanup
-                gc.collect()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+                hardware_manager.clear_memory(aggressive=True)
 
         except Exception as e:
             self.logger.error(f"Memory preallocation test failed: {e}")
@@ -946,8 +943,7 @@ class IntelligentOOMRecovery:
     def optimize_parameters_for_hardware(
         self,
         base_params: OptimalParameters,
-        model_profile: ModelProfile,
-        hardware_manager: EnhancedHardwareManager,
+        model: Model,
         optimization_config: Optional[ParameterOptimizationConfig] = None,
     ) -> OptimalParameters:
         """
@@ -959,127 +955,91 @@ class IntelligentOOMRecovery:
         if not optimization_config or not optimization_config.enabled:
             return base_params
 
-        self.logger.info(
-            f"🎯 Starting parameter optimization with strategy: {optimization_config.search_strategy}"
-        )
+        self.logger.info(f"🎯 Starting parameter optimization")
 
         # Start with base parameters as our working set
         current_params = base_params.model_copy()
 
-        # Apply floors to ensure we don't go below minimums
-        floors = optimization_config.parameter_floors
-        current_params.n_ctx = max(current_params.n_ctx, floors.n_ctx or 2048)
-        current_params.n_batch = max(current_params.n_batch, floors.n_batch or 32)
-        current_params.n_ubatch = max(current_params.n_ubatch, floors.n_ubatch or 32)
-        current_params.n_gpu_layers = max(
-            current_params.n_gpu_layers, floors.n_gpu_layers or 0
-        )
+        for p in optimization_config.parameters:
+            setattr(
+                current_params,
+                p.parameter_name,
+                max(getattr(current_params, p.parameter_name), p.floor),
+            )
+            self.logger.info(f"🔍 Optimizing parameter: {p.parameter_name}")
 
-        # Get system constraints
-        gpu_stats = self.get_system_gpu_stats(hardware_manager)
+            optimized_value = self._optimize_single_parameter(
+                param=p,
+                current_params=current_params,
+                optimization_config=optimization_config,
+                model=model,
+            )
 
-        # Optimize each parameter in priority order
-        for param_name in optimization_config.optimization_priority:
-            if param_name in ["n_ctx", "n_batch", "n_ubatch", "n_gpu_layers"]:
-                self.logger.info(f"🔍 Optimizing parameter: {param_name}")
-
-                optimized_value = self._optimize_single_parameter(
-                    param_name=param_name,
-                    current_params=current_params,
-                    optimization_config=optimization_config,
-                    gpu_stats=gpu_stats,
-                    hardware_manager=hardware_manager,
-                )
-
-                # Update the parameter
-                setattr(current_params, param_name, optimized_value)
-
-                self.logger.info(f"✅ Optimized {param_name}: {optimized_value}")
-
-        self.logger.info(
-            f"🎯 Parameter optimization complete: "
-            f"n_ctx={current_params.n_ctx}, n_batch={current_params.n_batch}, "
-            f"n_ubatch={current_params.n_ubatch}, n_gpu_layers={current_params.n_gpu_layers}"
-        )
+            # Update the parameter
+            setattr(current_params, p.parameter_name, optimized_value)
 
         return current_params
 
     def _optimize_single_parameter(
         self,
-        param_name: str,
+        param: PerformanceParameter,
         current_params: OptimalParameters,
         optimization_config: ParameterOptimizationConfig,
-        gpu_stats,
-        hardware_manager: EnhancedHardwareManager,
+        model: Model,
     ) -> int:
         """
         Optimize a single parameter using the specified search strategy.
         """
-        floors = optimization_config.parameter_floors
-        floor_value = getattr(floors, param_name, 0) or 0
-        current_value = getattr(current_params, param_name)
 
-        if optimization_config.search_strategy == "binary_search":
+        if param.tuning_strategy == "binary_search":
             return self._binary_search_parameter(
-                param_name,
-                current_value,
-                floor_value,
+                param,
                 current_params,
                 optimization_config,
-                gpu_stats,
-                hardware_manager,
+                model,
             )
-        elif optimization_config.search_strategy == "exponential_backoff":
+        elif param.tuning_strategy == "exponential_backoff":
             return self._exponential_backoff_parameter(
-                param_name,
-                current_value,
-                floor_value,
+                param,
                 current_params,
                 optimization_config,
-                gpu_stats,
-                hardware_manager,
+                model,
             )
         else:  # conservative_increment
             return self._conservative_increment_parameter(
-                param_name,
-                current_value,
-                floor_value,
+                param,
                 current_params,
                 optimization_config,
-                gpu_stats,
-                hardware_manager,
+                model,
             )
 
     def _binary_search_parameter(
         self,
-        param_name: str,
-        start_value: int,
-        floor_value: int,
+        param: PerformanceParameter,
         params: OptimalParameters,
         config: ParameterOptimizationConfig,
-        gpu_stats,
-        hardware_manager: EnhancedHardwareManager,
+        model: Model,
     ) -> int:
         """Binary search for optimal parameter value."""
+        param_name = param.parameter_name
+        start_value = getattr(params, param_name)
+        assert isinstance(start_value, int), "Parameter value must be an integer"
+        floor_value = param.floor
 
         # Determine search bounds
         low = max(start_value, floor_value)
-
-        # Set reasonable upper bounds based on parameter type
-        if param_name == "n_ctx":
-            high = min(start_value * 4, 98304)  # Max 96K context (more conservative)
-        elif param_name == "n_batch":
-            high = min(start_value * 8, 2048)  # Max 2K batch
-        elif param_name == "n_ubatch":
-            high = min(start_value * 4, 512)  # Max 512 ubatch
-        elif param_name == "n_gpu_layers":
-            high = min(start_value + 50, 100)  # Reasonable layer limit
-        else:
-            high = start_value * 2
+        if param.operator == "*":
+            high = max(start_value * param.modifier, param.max_value)
+        elif param.operator == "+":
+            high = max(start_value + param.modifier, param.max_value)
+        elif param.operator == "-":
+            high = max(start_value - param.modifier, param.max_value)
+        else:  # "/"
+            high = max(start_value // param.modifier, param.max_value)
 
         best_value = low
         attempts = 0
-        max_attempts = config.max_search_attempts
+        max_attempts = param.max_search_attempts
 
         while low <= high and attempts < max_attempts:
             attempts += 1
@@ -1090,7 +1050,9 @@ class IntelligentOOMRecovery:
             setattr(test_params, param_name, mid)
 
             if self._test_parameter_configuration(
-                test_params, config.crash_prevention, hardware_manager
+                test_params,
+                config.crash_prevention,
+                model,
             ):
                 best_value = mid
                 low = mid + 1  # Try higher values
@@ -1106,20 +1068,21 @@ class IntelligentOOMRecovery:
 
     def _exponential_backoff_parameter(
         self,
-        param_name: str,
-        start_value: int,
-        floor_value: int,
+        param: PerformanceParameter,
         params: OptimalParameters,
         config: ParameterOptimizationConfig,
-        gpu_stats,
-        hardware_manager: EnhancedHardwareManager,
+        model: Model,
     ) -> int:
         """Exponential backoff search for optimal parameter value."""
+        param_name = param.parameter_name
+        start_value = getattr(params, param_name)
+        assert isinstance(start_value, int), "Parameter value must be an integer"
+        floor_value = param.floor
 
         current_value = max(start_value, floor_value)
         best_value = current_value
         attempts = 0
-        max_attempts = config.max_search_attempts
+        max_attempts = param.max_search_attempts
 
         # Try exponentially increasing values
         multiplier = 1.5
@@ -1128,19 +1091,13 @@ class IntelligentOOMRecovery:
             attempts += 1
             test_value = int(current_value * (multiplier**attempts))
 
-            # Apply reasonable limits
-            if param_name == "n_ctx" and test_value > 131072:
-                break
-            elif param_name in ["n_batch", "n_ubatch"] and test_value > 2048:
-                break
-            elif param_name == "n_gpu_layers" and test_value > 100:
-                break
-
             test_params = params.model_copy()
             setattr(test_params, param_name, test_value)
 
             if self._test_parameter_configuration(
-                test_params, config.crash_prevention, hardware_manager
+                test_params,
+                config.crash_prevention,
+                model,
             ):
                 best_value = test_value
                 self.logger.debug(f"✅ {param_name}={test_value} succeeded")
@@ -1157,20 +1114,21 @@ class IntelligentOOMRecovery:
 
     def _conservative_increment_parameter(
         self,
-        param_name: str,
-        start_value: int,
-        floor_value: int,
+        param: PerformanceParameter,
         params: OptimalParameters,
         config: ParameterOptimizationConfig,
-        gpu_stats,
-        hardware_manager: EnhancedHardwareManager,
+        model: Model,
     ) -> int:
         """Conservative increment search for optimal parameter value."""
+        param_name = param.parameter_name
+        start_value = getattr(params, param_name)
+        assert isinstance(start_value, int), "Parameter value must be an integer"
+        floor_value = param.floor
 
         current_value = max(start_value, floor_value)
         best_value = current_value
         attempts = 0
-        max_attempts = config.max_search_attempts
+        max_attempts = param.max_search_attempts
 
         # Determine increment size based on parameter type
         if param_name == "n_ctx":
@@ -1186,19 +1144,11 @@ class IntelligentOOMRecovery:
             attempts += 1
             test_value = current_value + (increment * attempts)
 
-            # Apply reasonable limits based on model size
-            if param_name == "n_ctx" and test_value > 98304:  # Max 96K context (conservative)
-                break
-            elif param_name in ["n_batch", "n_ubatch"] and test_value > 2048:
-                break
-            elif param_name == "n_gpu_layers" and test_value > 100:
-                break
-
             test_params = params.model_copy()
             setattr(test_params, param_name, test_value)
 
             if self._test_parameter_configuration(
-                test_params, config.crash_prevention, hardware_manager
+                test_params, config.crash_prevention, model
             ):
                 best_value = test_value
                 self.logger.debug(f"✅ {param_name}={test_value} succeeded")
@@ -1216,8 +1166,8 @@ class IntelligentOOMRecovery:
     def _test_parameter_configuration(
         self,
         test_params: OptimalParameters,
-        crash_prevention,
-        hardware_manager: EnhancedHardwareManager,
+        crash_prevention: CrashPrevention,
+        model: Model,
     ) -> bool:
         """
         Test if a parameter configuration is viable without full model initialization.
@@ -1226,7 +1176,7 @@ class IntelligentOOMRecovery:
         """
         try:
             # Estimate memory requirements
-            estimated_memory_mb = self.estimate_memory_requirements(test_params)
+            estimated_memory_mb = self.estimate_memory_requirements(test_params, model)
 
             # Check if crash prevention preallocation test is enabled
             if crash_prevention.enable_preallocation_test:
@@ -1291,14 +1241,15 @@ class IntelligentOOMRecovery:
             self.logger.warning(f"Parameter configuration test failed: {e}")
             return False
 
-    def estimate_memory_requirements(self, params: OptimalParameters) -> float:
+    def estimate_memory_requirements(
+        self, params: OptimalParameters, model: Model
+    ) -> float:
         """
         Estimate memory requirements for given parameters.
 
         This is a rough estimation based on typical model memory patterns.
         """
-        # Base model memory (varies by model size, but we'll use a conservative estimate)
-        base_memory_mb = 4000  # Assume ~4GB base model
+        base_memory_mb = model.size / (1024 * 1024)  # Bytes to MB
 
         # Context memory scales with n_ctx
         context_memory_mb = (params.n_ctx * 4 * 2) / (
@@ -1309,7 +1260,9 @@ class IntelligentOOMRecovery:
         batch_memory_mb = (params.n_batch * 512) / (1024 * 1024)  # Rough estimate
 
         # GPU layers reduce CPU memory but increase GPU memory
-        gpu_layer_factor = min(params.n_gpu_layers / 50.0, 1.0)  # Assume 50 layers max
+        gpu_layer_factor = min(
+            params.n_gpu_layers / 100.0, 1.0
+        )  # Assume 100 layers max
 
         total_memory_mb = base_memory_mb + context_memory_mb + batch_memory_mb
 

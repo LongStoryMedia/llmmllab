@@ -1,0 +1,30 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+title: Crash Prevention
+type: object
+description: Settings to prevent container crashes during optimization
+properties:
+  enable_preallocation_test:
+    type: boolean
+    description: Test memory allocation before full initialization
+    default: true
+  memory_buffer_mb:
+    type: integer
+    description: Memory buffer to reserve (MB) to prevent system OOM
+    minimum: 512
+    maximum: 8192
+    default: 1024
+  timeout_seconds:
+    type: integer
+    description: Maximum time to wait for initialization before considering it failed
+    minimum: 30
+    maximum: 300
+    default: 120
+  enable_graceful_degradation:
+    type: boolean
+    description: Fall back to smaller parameters on failure
+    default: true
+required:
+  - enable_preallocation_test
+  - memory_buffer_mb
+  - timeout_seconds
+  - enable_graceful_degradation

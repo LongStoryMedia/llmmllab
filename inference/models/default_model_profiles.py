@@ -10,9 +10,10 @@ from .model_parameters import ModelParameters
 from .model_profile_config import ModelProfileConfig
 from .parameter_optimization_config import (
     ParameterOptimizationConfig,
-    ParameterFloors,
-    CrashPrevention,
+    PerformanceParameter,
+    ParameterTuningStrategy,
 )
+from .crash_prevention import CrashPrevention
 
 # Define profile types as constants (similar to the Go implementation)
 MODEL_PROFILE_TYPE_PRIMARY = 1
@@ -57,6 +58,69 @@ DEFAULT_IMAGE_GENERATION_PROMPT_PROFILE_ID = uuid.UUID(
     "00000000-0000-0000-0000-000000000016"
 )
 DEFAULT_IMAGE_GENERATION_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000017")
+
+# Default parameter optimization configuration for model profiles
+DEFAULT_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
+    enabled=True,
+    parameters=[
+        PerformanceParameter(
+            parameter_name="n_ctx",
+            priority=1,
+            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            max_search_attempts=10,
+            floor=16384,
+            operator="*",
+            modifier=4,
+            max_value=131072,
+        ),
+        PerformanceParameter(
+            parameter_name="n_gpu_layers",
+            priority=2,
+            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            max_search_attempts=10,
+            floor=35,
+            operator="+",
+            modifier=50,
+            max_value=125,
+        ),
+        PerformanceParameter(
+            parameter_name="n_batch",
+            priority=3,
+            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            max_search_attempts=10,
+            floor=32,
+            operator="*",
+            modifier=4,
+            max_value=8192,
+        ),
+        PerformanceParameter(
+            parameter_name="n_ubatch",
+            priority=4,
+            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            max_search_attempts=10,
+            floor=8,
+            operator="*",
+            modifier=8,
+            max_value=8192,
+        ),
+        PerformanceParameter(
+            parameter_name="batch_size",
+            priority=4,
+            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            max_search_attempts=10,
+            floor=8,
+            operator="*",
+            modifier=8,
+            max_value=8192,
+        ),
+    ],
+    crash_prevention=CrashPrevention(
+        enable_preallocation_test=True,
+        memory_buffer_mb=1024,
+        timeout_seconds=120,
+        enable_graceful_degradation=True,
+    ),
+)
 DEFAULT_ENGINEERING_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000018")
 DEFAULT_RERANKING_PROFILE_ID = uuid.UUID("00000000-0000-0000-0000-000000000019")
 
@@ -72,65 +136,6 @@ DEFAULT_ANALYSIS_MODEL = "qwen3-4b-ud-q6-k-xl"
 
 # Parameter optimization configurations for different model classes
 
-# Optimized config for 4B models (good balance of performance and safety)
-ANALYSIS_MODEL_OPTIMIZATION = ParameterOptimizationConfig(
-    enabled=True,
-    optimization_priority=["n_ctx", "n_batch", "n_ubatch"],
-    parameter_floors=ParameterFloors(
-        n_ctx=8192,  # Minimum useful context for analysis
-        n_batch=128,  # Higher minimum batch for 4B models
-        n_ubatch=128,
-        n_gpu_layers=0,  # Allow CPU fallback
-    ),
-    search_strategy="binary_search",
-    max_search_attempts=8,
-    crash_prevention=CrashPrevention(
-        enable_preallocation_test=True,
-        memory_buffer_mb=2048,  # Larger buffer for analysis models
-        timeout_seconds=90,
-        enable_graceful_degradation=True,
-    ),
-)
-
-# Optimized config for 30B models (conservative but effective)
-ENGINEERING_MODEL_OPTIMIZATION = ParameterOptimizationConfig(
-    enabled=True,
-    optimization_priority=["n_ctx", "n_batch"],
-    parameter_floors=ParameterFloors(
-        n_ctx=32768,  # Higher minimum context for engineering tasks
-        n_batch=64,  # Conservative batch for large models
-        n_ubatch=64,
-        n_gpu_layers=0,
-    ),
-    search_strategy="conservative_increment",
-    max_search_attempts=6,
-    crash_prevention=CrashPrevention(
-        enable_preallocation_test=True,
-        memory_buffer_mb=4096,  # Large buffer for 30B models
-        timeout_seconds=150,  # More time for large models
-        enable_graceful_degradation=True,
-    ),
-)
-
-# Optimized config for primary large models (32B+ models - very conservative)
-PRIMARY_MODEL_OPTIMIZATION = ParameterOptimizationConfig(
-    enabled=True,
-    optimization_priority=["n_ctx", "n_batch"],
-    parameter_floors=ParameterFloors(
-        n_ctx=16384,  # Conservative starting context for 32B models
-        n_batch=32,  # Very conservative batch for large models
-        n_ubatch=32,
-        n_gpu_layers=0,
-    ),
-    search_strategy="conservative_increment",
-    max_search_attempts=6,  # Reduced attempts for safety
-    crash_prevention=CrashPrevention(
-        enable_preallocation_test=True,
-        memory_buffer_mb=8192,  # Much larger buffer for 32B VL models
-        timeout_seconds=180,  # Extra time for large models
-        enable_graceful_degradation=True,
-    ),
-)
 
 # Define default model profiles
 DEFAULT_PRIMARY_PROFILE = ModelProfile(
@@ -152,7 +157,7 @@ DEFAULT_PRIMARY_PROFILE = ModelProfile(
         min_p=0.01,
         max_tokens=400000,
         n_parts=-1,
-        batch_size=128,  # Conservative starting batch size for 32B model
+        batch_size=384,  # Conservative starting batch size for 32B model
         stop=["<|im_end|>"],
         think=True,
     ),
@@ -186,10 +191,24 @@ RESPONSE STRUCTURE:
 4. Move on immediately
 
 Avoid circular reasoning, excessive elaboration, or repetitive explanations. Be decisive and concise.""",
-    parameter_optimization=PRIMARY_MODEL_OPTIMIZATION,
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     created_at=datetime.now(),
     updated_at=datetime.now(),
 )
+
+
+# # Set reasonable upper bounds based on parameter type
+# if param_name == "n_ctx":
+#     high = min(start_value * 4, 98304)  # Max 96K context (more conservative)
+# elif param_name == "n_batch":
+#     high = min(start_value * 8, 2048)  # Max 2K batch
+# elif param_name == "n_ubatch":
+#     high = min(start_value * 4, 512)  # Max 512 ubatch
+# elif param_name == "n_gpu_layers":
+#     high = min(start_value + 50, 100)  # Reasonable layer limit
+# else:
+#     high = start_value * 2
+
 
 DEFAULT_SUMMARIZATION_PROFILE = ModelProfile(
     id=DEFAULT_SUMMARIZATION_PROFILE_ID,
@@ -222,9 +241,10 @@ DEFAULT_SUMMARIZATION_PROFILE = ModelProfile(
             "Moreover,",
         ],
         think=False,
-        batch_size=64,
+        batch_size=384,
     ),
     system_prompt="Summarize the conversation so far in a concise paragraph. Include key points and conclusions, but omit redundant details. Be brief and focused.",
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     created_at=datetime.now(),
     updated_at=datetime.now(),
 )
@@ -247,8 +267,10 @@ DEFAULT_MASTER_SUMMARY_PROFILE = ModelProfile(
         top_p=0.9,
         min_p=0.0,
         think=False,
+        batch_size=384,
     ),
     system_prompt="Create a comprehensive summary of the conversation, giving most weight to the most recent points and less to older information.",
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     created_at=datetime.now(),
     updated_at=datetime.now(),
 )
@@ -270,8 +292,10 @@ DEFAULT_BRIEF_SUMMARY_PROFILE = ModelProfile(
         top_k=40,
         top_p=0.9,
         min_p=0.0,
+        batch_size=384,
     ),
     system_prompt="Create a very concise summary of these short messages. Focus only on essential information and be extremely brief.",
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     created_at=datetime.now(),
     updated_at=datetime.now(),
 )
@@ -294,8 +318,10 @@ DEFAULT_KEY_POINTS_PROFILE = ModelProfile(
         top_p=0.6,
         min_p=0.0,
         think=False,
+        batch_size=384,
     ),
     system_prompt="Extract and list the key points from these detailed messages. Identify the main ideas and important details, organizing them in a clear structure.",
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     created_at=datetime.now(),
     updated_at=datetime.now(),
 )
@@ -324,6 +350,7 @@ DEFAULT_SELF_CRITIQUE_PROFILE = ModelProfile(
     "3. Opportunities to make the response more helpful or comprehensive\n"
     "4. Any redundancies or unnecessary content\n"
     "Be concise and focus on actionable feedback that can improve the response.",
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     created_at=datetime.now(),
     updated_at=datetime.now(),
 )
@@ -349,6 +376,7 @@ DEFAULT_IMPROVEMENT_PROFILE = ModelProfile(
     system_prompt="Your task is to improve the original AI response based on the critique provided. "
     "Maintain the overall structure and intent of the original response, but address the issues identified in the critique. "
     "The improved response should be clear, accurate, concise, and directly answer the user's original query.",
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     created_at=datetime.now(),
     updated_at=datetime.now(),
 )
@@ -373,6 +401,7 @@ DEFAULT_MEMORY_RETRIEVAL_PROFILE = ModelProfile(
         think=False,
     ),
     system_prompt="Retrieve relevant information from memory and present it concisely.",
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     created_at=datetime.now(),
     updated_at=datetime.now(),
 )
@@ -404,7 +433,7 @@ DEFAULT_ANALYSIS_PROFILE = ModelProfile(
         think=False,
         batch_size=512,  # Increased from default 256 for better throughput
     ),
-    parameter_optimization=ANALYSIS_MODEL_OPTIMIZATION,
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     system_prompt="Perform an in-depth analysis of the provided text. Identify key themes, patterns, and insights.",
     created_at=datetime.now(),
     updated_at=datetime.now(),
@@ -429,6 +458,7 @@ DEFAULT_RESEARCH_TASK_PROFILE = ModelProfile(
         min_p=0.05,
         think=False,
     ),
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     system_prompt="Generate specific research tasks based on the research goals. Each task should be focused, actionable, and help address the overall research objective.",
     created_at=datetime.now(),
     updated_at=datetime.now(),
@@ -452,6 +482,7 @@ DEFAULT_RESEARCH_PLAN_PROFILE = ModelProfile(
         top_p=0.9,
         min_p=0.0,
     ),
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     system_prompt="Create a detailed research plan that outlines the steps needed to investigate this topic thoroughly. Include specific questions to explore and potential sources of information.",
     created_at=datetime.now(),
     updated_at=datetime.now(),
@@ -475,6 +506,7 @@ DEFAULT_RESEARCH_CONSOLIDATION_PROFILE = ModelProfile(
         top_p=0.9,
         min_p=0.0,
     ),
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     system_prompt="Consolidate the research findings into a coherent summary. Identify common themes, highlight key insights, and note any conflicts or gaps in the information.",
     created_at=datetime.now(),
     updated_at=datetime.now(),
@@ -505,6 +537,7 @@ DEFAULT_RESEARCH_ANALYSIS_PROFILE = ModelProfile(
             "<|end|>",
         ],
     ),
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     system_prompt="Analyze the research findings critically. Evaluate the strength of evidence, identify potential biases, and suggest areas for further investigation.",
     created_at=datetime.now(),
     updated_at=datetime.now(),
@@ -522,6 +555,7 @@ DEFAULT_EMBEDDING_PROFILE = ModelProfile(
         temperature=0.0,  # No randomness for embeddings
         seed=0,
     ),
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     system_prompt="Generate high-quality vector embeddings for the input text.",
     created_at=datetime.now(),
     updated_at=datetime.now(),
@@ -539,6 +573,7 @@ DEFAULT_RERANKING_PROFILE = ModelProfile(
         temperature=0.0,  # No randomness for re-ranking
         seed=0,
     ),
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     system_prompt="Re-rank and deduplicate search results based on relevance to the query.",
     created_at=datetime.now(),
     updated_at=datetime.now(),
@@ -570,6 +605,7 @@ DEFAULT_FORMATTING_PROFILE = ModelProfile(
         ],
         think=False,
     ),
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     system_prompt="Format the provided text according to best practices. Improve structure, organization, and readability while preserving all content.",
     created_at=datetime.now(),
     updated_at=datetime.now(),
@@ -593,6 +629,7 @@ DEFAULT_IMAGE_GENERATION_PROMPT_PROFILE = ModelProfile(
         top_p=0.95,
         min_p=0.05,
     ),
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     system_prompt="Convert the user's image request into a detailed, high-quality prompt for image generation. Include specific details about style, composition, lighting, and content.",
     created_at=datetime.now(),
     updated_at=datetime.now(),
@@ -610,6 +647,7 @@ DEFAULT_IMAGE_GENERATION_PROFILE = ModelProfile(
         temperature=1.0,
         seed=0,
     ),
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     system_prompt="Generate high-quality images based on the provided prompt.",
     created_at=datetime.now(),
     updated_at=datetime.now(),
@@ -641,7 +679,7 @@ DEFAULT_ENGINEERING_PROFILE = ModelProfile(
         ],
         batch_size=384,  # Increased from 256 for better throughput
     ),
-    parameter_optimization=ENGINEERING_MODEL_OPTIMIZATION,
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     system_prompt="You are an expert engineering assistant. When users ask technical questions, provide comprehensive, detailed answers with code examples, best practices, and practical guidance. Always directly answer the specific question asked rather than asking for clarification.",
     created_at=datetime.now(),
     updated_at=datetime.now(),

@@ -17,6 +17,12 @@ from .gpu_config import GPUConfig
 from .user_config import UserConfig
 from .workflow_config import WorkflowConfig
 from .tool_config import ToolConfig
+from .parameter_optimization_config import (
+    ParameterOptimizationConfig,
+    PerformanceParameter,
+    ParameterTuningStrategy,
+)
+from .crash_prevention import CrashPrevention
 from .context_window_config import (
     ContextWindowConfig,
     WindowConfig,
@@ -182,6 +188,69 @@ DEFAULT_CONTEXT_WINDOW_CONFIG = ContextWindowConfig(
     ),
 )
 
+# Default parameter optimization configuration (disabled by default)
+DEFAULT_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
+    enabled=True,
+    parameters=[
+        PerformanceParameter(
+            parameter_name="n_ctx",
+            priority=1,
+            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            max_search_attempts=10,
+            floor=16384,
+            operator="*",
+            modifier=4,
+            max_value=131072,
+        ),
+        PerformanceParameter(
+            parameter_name="n_gpu_layers",
+            priority=2,
+            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            max_search_attempts=10,
+            floor=35,
+            operator="+",
+            modifier=50,
+            max_value=125,
+        ),
+        PerformanceParameter(
+            parameter_name="n_batch",
+            priority=3,
+            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            max_search_attempts=10,
+            floor=32,
+            operator="*",
+            modifier=4,
+            max_value=8192,
+        ),
+        PerformanceParameter(
+            parameter_name="n_ubatch",
+            priority=4,
+            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            max_search_attempts=10,
+            floor=8,
+            operator="*",
+            modifier=8,
+            max_value=8192,
+        ),
+        PerformanceParameter(
+            parameter_name="batch_size",
+            priority=4,
+            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            max_search_attempts=10,
+            floor=8,
+            operator="*",
+            modifier=8,
+            max_value=8192,
+        ),
+    ],
+    crash_prevention=CrashPrevention(
+        enable_preallocation_test=True,
+        memory_buffer_mb=1024,
+        timeout_seconds=120,
+        enable_graceful_degradation=True,
+    ),
+)
+
 
 # Function to create a default user config
 def create_default_user_config(user_id: str) -> UserConfig:
@@ -200,4 +269,5 @@ def create_default_user_config(user_id: str) -> UserConfig:
         workflow=DEFAULT_WORKFLOW_CONFIG,
         tool=DEFAULT_TOOL_CONFIG,
         context_window=DEFAULT_CONTEXT_WINDOW_CONFIG,
+        parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     )

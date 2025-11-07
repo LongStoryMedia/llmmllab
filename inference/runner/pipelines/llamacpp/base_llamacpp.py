@@ -164,11 +164,19 @@ class BaseLlamaCppPipeline(BasePipeline):
         params = self.profile.parameters
         gcfg = resolve_gpu_config(self.profile, self.user_config)
 
+        self._logger.info(
+            f"🔍 DEBUG GPU config resolution: gcfg.gpu_layers={gcfg.gpu_layers}, gcfg={gcfg}"
+        )
+
         base_params = OptimalParameters(
             n_ctx=params.num_ctx or 40960,
             n_batch=params.batch_size or 256,
             n_ubatch=params.batch_size or 256,
             n_gpu_layers=gcfg.gpu_layers or -1,
+        )
+
+        self._logger.info(
+            f"🔍 DEBUG Base params created: n_gpu_layers={base_params.n_gpu_layers}"
         )
 
         # Step 2: Apply parameter optimization if configured
@@ -188,8 +196,7 @@ class BaseLlamaCppPipeline(BasePipeline):
             try:
                 optimized_params = self.oom_recovery.optimize_parameters_for_hardware(
                     base_params=base_params,
-                    model_profile=self.profile,
-                    hardware_manager=self.hardware_manager,
+                    model=self.model,
                     optimization_config=optimization_config,
                 )
                 self._logger.info(
@@ -306,20 +313,18 @@ class BaseLlamaCppPipeline(BasePipeline):
             # Pre-initialization crash prevention checks
             if self.oom_recovery is not None:
                 # Get crash prevention config from profile
-                profile_optimization = getattr(
-                    self.profile, "parameter_optimization", None
-                )
-                crash_prevention = (
-                    getattr(profile_optimization, "crash_prevention", None)
-                    if profile_optimization
-                    else None
-                )
+                profile_optimization = self.profile.parameter_optimization
+                crash_prevention = None
+                if profile_optimization:
+                    crash_prevention = profile_optimization.crash_prevention
+
                 if crash_prevention and crash_prevention.enable_preallocation_test:
                     try:
                         # Estimate memory requirements for current parameters
                         estimated_memory = (
                             self.oom_recovery.estimate_memory_requirements(
-                                current_params
+                                current_params,
+                                self.model,
                             )
                         )
                         buffer_memory = crash_prevention.memory_buffer_mb

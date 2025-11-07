@@ -89,12 +89,6 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
         )
     ]
 
-    # Convert to LangChain core messages for ToolsState
-    langchain_messages = messages_to_lc_messages(test_messages)
-    logger.info(
-        f"📝 Converted {len(test_messages)} messages to {len(langchain_messages)} LangChain messages"
-    )
-
     # Create ToolsAgentSubgraph
     tools_agent_subgraph = ToolsAgentSubgraph(
         registry,
@@ -104,15 +98,13 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
 
     user_config = create_default_user_config(user_id="test_user")
     # Create initial ToolsState
-    tools_state: ToolsState = {
-        "messages": langchain_messages,
-        "user_id": "test_user",
-        "conversation_id": 717,
-        "user_config": user_config,
-        "system_config": None,
-        "current_date": "2025-10-31T00:00:00",
-        "tool_call_count": 0,
-    }
+    tools_state = ToolsState(
+        messages=messages_to_lc_messages(test_messages),
+        user_id="test_user",
+        conversation_id=717,
+        user_config=user_config,
+        tool_call_count=0,
+    )
 
     logger.info("🎯 Starting ToolsAgentSubgraph streaming execution...")
 

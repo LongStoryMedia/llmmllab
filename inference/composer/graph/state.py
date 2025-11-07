@@ -19,6 +19,7 @@ from models import (
     MessageRole,
     TodoItem,
     Tool,
+    ToolConfig,
     WorkflowType,
     UserConfig,
     Summary,
@@ -29,10 +30,8 @@ from models import (
     ToolCall,
 )
 
-from utils.message_conversion import lc_messages_to_messages
 
-
-class ToolsState(TypedDict):
+class ToolsState(BaseModel):
     """
     Minimal state for agent subgraph with chat_agent + tool_node workflow.
 
@@ -49,11 +48,9 @@ class ToolsState(TypedDict):
     conversation_id: int
 
     # User configuration (full object for tool access)
-    user_config: Optional[Any]  # UserConfig object, avoiding circular import
-    system_config: Optional[Dict[str, Any]]
+    user_config: UserConfig
 
     # Current operation tracking
-    current_date: str
     tool_call_count: int
 
 
