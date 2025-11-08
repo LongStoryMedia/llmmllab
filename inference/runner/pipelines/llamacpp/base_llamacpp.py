@@ -47,11 +47,20 @@ from langchain_core.messages.ai import UsageMetadata
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.tools.base import BaseTool
 
-from models import Model, ModelProfile, OptimalParameters, UserConfig
+from models import (
+    GPUConfig,
+    Model,
+    ModelParameters,
+    ModelProfile,
+    OptimalParameters,
+    UserConfig,
+)
 from models.config_utils import (
     resolve_parameter_optimization_config,
     resolve_gpu_config,
 )
+from regex import T
+from runner.utils.model_loader import ModelLoader
 from utils.logging import llmmllogger
 from runner.utils.hardware_manager import hardware_manager
 from runner.utils.intelligent_oom_recovery import IntelligentOOMRecovery
@@ -107,6 +116,7 @@ class BaseLlamaCppPipeline(BasePipeline):
         self.user_config = user_config
         self._bound_tools: List[BaseTool] = kwargs.get("_bound_tools", [])
         self.hardware_manager = hardware_manager
+        self.model_loader = ModelLoader()
 
         # Initialize Resizer for accurate memory calculations
         self.resizer = Resizer()
@@ -268,26 +278,27 @@ class BaseLlamaCppPipeline(BasePipeline):
             n_gpu_layers=gpu_layers_initial,
         )
 
+        optimization_config = resolve_parameter_optimization_config(
+            self.profile, self.user_config
+        )
+
         # Prepare attempt parameter list (profile first, then predicted if recovery available)
         attempt_params_list: List[OptimalParameters] = [original_params]
-        if self.oom_recovery is not None:
-            # Only predict parameters if parameter optimization is enabled in profile
-            optimization_config = resolve_parameter_optimization_config(
-                self.profile, self.user_config
-            )
-            if optimization_config and optimization_config.enabled:
-                try:
-                    predicted = (
-                        self.oom_recovery.predict_optimal_parameters_from_profile(
-                            model=self.model,
-                            model_profile=self.profile,
-                        ).model_copy()
-                    )
-                    attempt_params_list.append(predicted)
-                except Exception as e:
-                    self._logger.warning(
-                        f"OOM recovery prediction failed; continuing with original params only: {e}"
-                    )
+        if (
+            self.oom_recovery is not None
+            and optimization_config
+            and optimization_config.enabled
+        ):
+            try:
+                predicted = self.oom_recovery.predict_optimal_parameters_from_profile(
+                    model=self.model,
+                    model_profile=self.profile,
+                ).model_copy()
+                attempt_params_list.append(predicted)
+            except Exception as e:
+                self._logger.warning(
+                    f"OOM recovery prediction failed; continuing with original params only: {e}"
+                )
 
         # If force_params provided, use them as the starting point (skip optimization)
         if force_params:
@@ -326,10 +337,6 @@ class BaseLlamaCppPipeline(BasePipeline):
                     n_gpu_layers={current_params.n_gpu_layers}
                     """
                 )
-
-        optimization_config = resolve_parameter_optimization_config(
-            self.profile, self.user_config
-        )
         # Get crash prevention config from profile
         crash_prevention = None
         if optimization_config:
@@ -419,6 +426,12 @@ class BaseLlamaCppPipeline(BasePipeline):
                     else llama_cpp.LLAMA_SPLIT_MODE_LAYER
                 )
             )
+
+            draft_model = self._initialize_llama_fixed_draft(
+                current_params=current_params,
+                gcfg=gcfg,
+                params=params,
+            )
             try:
                 self._logger.info(
                     f"""🚀 Initializing {self.model.name} (attempt {attempt}): 
@@ -451,7 +464,7 @@ class BaseLlamaCppPipeline(BasePipeline):
                     n_ubatch=current_params.n_ubatch,
                     n_gpu_layers=current_params.n_gpu_layers,
                     tensor_split=gcfg.tensor_split,
-                    main_gpu=gcfg.main_gpu or 0,
+                    main_gpu=gcfg.main_gpu or 1,
                     split_mode=split_mode,
                     chat_format=self._get_chat_format(),
                     vocab_only=False,
@@ -463,9 +476,9 @@ class BaseLlamaCppPipeline(BasePipeline):
                     top_p=params.top_p or 0.95,
                     top_k=params.top_k or 40,
                     repeat_penalty=params.repeat_penalty or 1.05,
-                    verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "debug",
-                    flash_attn=getattr(params, "flash_attention", True),
-                    logits_all=perplexity_enabled,
+                    verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
+                    flash_attn=True,
+                    logits_all=True,
                     logprobs=1 if perplexity_enabled else 0,
                     embedding=False,
                     pooling_type=llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
@@ -488,11 +501,11 @@ class BaseLlamaCppPipeline(BasePipeline):
                     lora_path=None,
                     numa=llama_cpp.GGML_NUMA_STRATEGY_DISTRIBUTE,
                     chat_handler=handler,  # type: ignore[arg-type]
-                    draft_model=None,  # TODO: support draft models
+                    draft_model=draft_model,  # type: ignore[arg-type]
                     tokenizer=None,
                     f16_kv=True,
-                    type_k=llama_cpp.GGML_TYPE_F16,
-                    type_v=llama_cpp.GGML_TYPE_Q8_0,
+                    # type_k=llama_cpp.GGML_TYPE_F16,
+                    # type_v=llama_cpp.GGML_TYPE_Q8_0,
                     smp_infill=False,
                     use_mmap=True,
                     use_mlock=True,
@@ -611,6 +624,85 @@ class BaseLlamaCppPipeline(BasePipeline):
         raise RuntimeError(
             f"Initialization fell through unexpectedly for {self.model.name}"
         )
+
+    def _initialize_llama_fixed_draft(
+        self,
+        current_params: OptimalParameters,
+        gcfg: GPUConfig,
+        params: ModelParameters,
+    ) -> Optional[llama_cpp.Llama]:
+        """Fixed draft model initialization"""
+
+        draft_model = None
+
+        if self.profile.draft_model:
+            draft_model_id = self.profile.draft_model
+            self._logger.info(f"🎯 Attempting to load draft model: {draft_model_id}")
+
+            try:
+                # Check if draft model exists
+                if draft_model_id not in self.model_loader.get_available_models():
+                    self._logger.warning(
+                        f"Draft model {draft_model_id} not found in available models"
+                    )
+                    return None
+
+                model_instance = self.model_loader.get_model_by_id(draft_model_id)
+                if not model_instance:
+                    self._logger.warning(
+                        f"Could not load draft model instance: {draft_model_id}"
+                    )
+                    return None
+
+                file_path = model_instance.details.gguf_file
+                if not file_path or not os.path.isfile(file_path):
+                    self._logger.warning(f"Draft model file not found: {file_path}")
+                    return None
+
+                self._logger.info(f"📦 Loading draft model from: {file_path}")
+
+                # CRITICAL: Draft model must have EXACT same n_ctx as target model
+                # This prevents the tensor shape mismatch error
+                draft_model = llama_cpp.Llama(
+                    model_path=file_path,
+                    n_ctx=current_params.n_ctx,  # MUST match target model
+                    n_batch=current_params.n_batch,  # Match batch size
+                    n_ubatch=current_params.n_ubatch,  # Match ubatch size
+                    n_gpu_layers=-1,  # Offload all layers to GPU for speed
+                    # GPU configuration - match target model
+                    tensor_split=gcfg.tensor_split,
+                    main_gpu=gcfg.main_gpu or 1,  # Use GPU 1 by default
+                    # Sampling parameters - use lighter settings for draft
+                    temperature=params.temperature or 0.7,
+                    top_p=params.top_p or 0.95,
+                    top_k=params.top_k or 40,
+                    repeat_penalty=params.repeat_penalty or 1.05,
+                    # Performance settings
+                    verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
+                    flash_attn=True,  # Enable flash attention
+                    # Keep these consistent with target model
+                    pooling_type=llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
+                    numa=llama_cpp.GGML_NUMA_STRATEGY_DISTRIBUTE,
+                    f16_kv=True,
+                    # Memory settings
+                    use_mmap=True,
+                    use_mlock=False,  # Don't lock memory for draft model
+                    logits_all=True,
+                )
+
+                self._logger.info(
+                    f"✅ Draft model loaded successfully: {draft_model_id}"
+                )
+                return draft_model
+
+            except Exception as e:
+                self._logger.error(f"❌ Failed to initialize draft model: {e}")
+                self._logger.warning(
+                    "Continuing without draft model (speculative decoding disabled)"
+                )
+                return None
+
+        return None
 
     def _format_messages_for_llama(
         self, messages: List[BaseMessage]
@@ -939,12 +1031,6 @@ class BaseLlamaCppPipeline(BasePipeline):
                     )
                     continue
 
-        # Also clean up <think> tags if present
-        # think_pattern = r"<think>.*?</think>"
-        # cleaned_content = re.sub(
-        #     think_pattern, "", cleaned_content, flags=re.DOTALL
-        # ).strip()
-
         # CRITICAL FIX: Clean up repeated "assistant" tokens that appear after tool calls
         # This prevents the infinite loop issue where models see "assistantassistant" in conversation history
         if tool_calls and cleaned_content:
@@ -1061,6 +1147,13 @@ class BaseLlamaCppPipeline(BasePipeline):
                     completion_tokens=usage.get("completion_tokens", 0),
                 )
 
+                if not self.profile.parameters.think:
+                    # clean up <think> tags if present
+                    think_pattern = r"<think>.*?</think>"
+                    cleaned_content = re.sub(
+                        think_pattern, "", cleaned_content, flags=re.DOTALL
+                    )
+
                 # Create AI message with tool calls
                 message = AIMessage(
                     content=cleaned_content,
@@ -1154,6 +1247,11 @@ class BaseLlamaCppPipeline(BasePipeline):
                                 )
                             yield final_generation_chunk
                             continue
+
+                    if not self.profile.parameters.think:
+                        # clean up <think> tags if present
+                        think_pattern = r"<think>.*?</think>"
+                        content = re.sub(think_pattern, "", content, flags=re.DOTALL)
 
                     # Create regular chunk message
                     chunk_message = AIMessageChunk(

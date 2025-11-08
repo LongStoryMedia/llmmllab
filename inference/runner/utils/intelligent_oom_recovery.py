@@ -167,7 +167,7 @@ class IntelligentOOMRecovery:
 
         # Extract base parameters from model profile with proper defaults
         base_n_ctx = params.num_ctx or 32768
-        
+
         # ✅ CRITICAL FIX: Respect model's training context to avoid waste and crashes
         if model.details.original_ctx and model.details.original_ctx > 0:
             # Never exceed the model's training context - it's wasteful and can cause issues
@@ -175,7 +175,7 @@ class IntelligentOOMRecovery:
             self.logger.info(
                 f"🎯 Limiting context to training size: {base_n_ctx} (model trained on {model.details.original_ctx})"
             )
-        
+
         base_batch_size = params.batch_size or 512
         base_n_ubatch = base_batch_size  # Default n_ubatch = n_batch
 
@@ -350,21 +350,21 @@ class IntelligentOOMRecovery:
         # Create cache key from parameters that affect memory calculation
         cache_key = (
             params.n_ctx,
-            params.n_batch, 
+            params.n_batch,
             params.n_ubatch,
             params.n_gpu_layers,
-            model.id  # Include model ID to handle different models
+            model.id,  # Include model ID to handle different models
         )
-        
+
         # Check if we have cached breakdown for these exact parameters
-        if not hasattr(self, '_breakdown_cache'):
+        if not hasattr(self, "_breakdown_cache"):
             self._breakdown_cache = {}
-            
+
         if cache_key not in self._breakdown_cache:
             self._breakdown_cache[cache_key] = self.resizer.calculate_memory_breakdown(
                 params, model
             )
-            
+
         return self._breakdown_cache[cache_key]
 
     def predict_optimal_parameters_from_profile(
@@ -495,7 +495,7 @@ class IntelligentOOMRecovery:
         elif attempt <= 6:
             # Level 3: Move layers to CPU (max 1/3 of total layers as specified)
             strategy_name = "move_to_cpu"
-            
+
             # Handle the case where original n_gpu_layers was -1 (auto-allocation)
             if original_params.n_gpu_layers == -1:
                 # Get the actual number of layers from model details
@@ -520,11 +520,11 @@ class IntelligentOOMRecovery:
                     max_cpu_layers, (attempt - 4) * 5
                 )  # Progressive movement
                 new_gpu_layers = max(actual_gpu_layers - layers_to_move, 0)
-                
+
                 self.logger.info(
                     f"Moving {layers_to_move} layers to CPU: {actual_gpu_layers} → {new_gpu_layers}"
                 )
-                
+
                 new_params = current_params.model_copy(
                     update={"n_gpu_layers": new_gpu_layers}
                 )
@@ -989,12 +989,12 @@ class IntelligentOOMRecovery:
             return base_params
 
         # Clear any cached breakdowns for fresh calculations
-        if hasattr(self, '_breakdown_cache'):
+        if hasattr(self, "_breakdown_cache"):
             self._breakdown_cache.clear()
 
         gpu_stats = self.get_system_gpu_stats()
         available_memory_mb = gpu_stats.total_available_memory
-        
+
         self.logger.info(
             f"🎯 Starting parameter optimization with {available_memory_mb:.0f}MB available GPU memory"
         )
@@ -1030,7 +1030,7 @@ class IntelligentOOMRecovery:
                     f"Parameter {p.parameter_name} (mapped to {param_attr}) not found in OptimalParameters, skipping"
                 )
                 continue
-                
+
             param_start_time = asyncio.get_event_loop().time()
             self.logger.info(
                 f"🔍 Optimizing parameter {i+1}/{len(optimization_config.parameters)}: {p.parameter_name}"
@@ -1046,9 +1046,9 @@ class IntelligentOOMRecovery:
             # Update the parameter and log the change
             old_value = getattr(current_params, param_attr)
             setattr(current_params, param_attr, optimized_value)
-            
+
             param_duration = asyncio.get_event_loop().time() - param_start_time
-            
+
             try:
                 new_memory_mb = self.estimate_memory_requirements(current_params, model)
                 self.logger.info(
@@ -1062,7 +1062,7 @@ class IntelligentOOMRecovery:
                 )
 
         total_duration = asyncio.get_event_loop().time() - optimization_start_time
-        
+
         try:
             final_memory_mb = self.estimate_memory_requirements(current_params, model)
             self.logger.info(
@@ -1126,7 +1126,7 @@ class IntelligentOOMRecovery:
         # Get system constraints for smarter bounds
         gpu_stats = self.get_system_gpu_stats()
         available_memory_mb = gpu_stats.total_available_memory
-        
+
         # Calculate smart bounds based on hardware constraints
         low, high = self._calculate_smart_bounds(
             param, start_value, floor_value, available_memory_mb, model
@@ -1152,7 +1152,9 @@ class IntelligentOOMRecovery:
             # Early termination: if this is obviously too high, don't even test
             if self._is_obviously_too_high(test_params, available_memory_mb, model):
                 high = mid - 1
-                self.logger.debug(f"⚡ {param_name}={mid} obviously too high, skipping test")
+                self.logger.debug(
+                    f"⚡ {param_name}={mid} obviously too high, skipping test"
+                )
                 continue
 
             if self._test_parameter_configuration(
@@ -1183,10 +1185,10 @@ class IntelligentOOMRecovery:
     ) -> tuple[int, int]:
         """Calculate smart search bounds based on hardware constraints."""
         param_name = param.parameter_name
-        
+
         # Conservative lower bound
         low = max(start_value, floor_value)
-        
+
         # Calculate hardware-constrained upper bound
         if param_name == "n_ctx":
             # Context size is limited by available memory
@@ -1194,19 +1196,19 @@ class IntelligentOOMRecovery:
             max_reasonable_ctx = min(
                 int(available_memory_mb * 0.3 / 0.02),  # Rough KV cache estimation
                 param.max_value,
-                32768  # Reasonable maximum
+                32768,  # Reasonable maximum
             )
             high = max_reasonable_ctx
-            
+
         elif param_name == "n_batch":
             # Batch size affects activation memory
             max_reasonable_batch = min(
-                int(available_memory_mb * 0.1 / 4),  # Rough activation estimation  
+                int(available_memory_mb * 0.1 / 4),  # Rough activation estimation
                 param.max_value,
-                2048  # Reasonable maximum
+                2048,  # Reasonable maximum
             )
             high = max_reasonable_batch
-            
+
         elif param_name == "n_gpu_layers":
             # GPU layers limited by model architecture
             try:
@@ -1214,13 +1216,13 @@ class IntelligentOOMRecovery:
                     OptimalParameters(
                         n_ctx=2048, n_batch=512, n_ubatch=512, n_gpu_layers=-1
                     ),
-                    model
+                    model,
                 )
                 max_layers = breakdown.get("total_layers", 32)
                 high = min(max_layers, param.max_value)
             except Exception:
                 high = min(40, param.max_value)  # Reasonable default
-                
+
         else:
             # Use parameter's configured bounds for other parameters
             if param.operator == "*":
@@ -1231,11 +1233,11 @@ class IntelligentOOMRecovery:
                 high = max(start_value - param.modifier, param.max_value)
             else:  # "/"
                 high = max(start_value // param.modifier, param.max_value)
-        
+
         # Ensure bounds are valid
         high = min(high, param.max_value)
         low = min(low, high)
-        
+
         return low, high
 
     def _is_obviously_too_high(
@@ -1245,10 +1247,10 @@ class IntelligentOOMRecovery:
         try:
             # Get rough memory estimate
             estimated_memory_mb = self.estimate_memory_requirements(test_params, model)
-            
+
             # If estimate is more than 90% of available memory, it's obviously too high
             return estimated_memory_mb > available_memory_mb * 0.9
-            
+
         except Exception:
             return False  # If estimation fails, let the full test decide
 
@@ -1364,11 +1366,13 @@ class IntelligentOOMRecovery:
             # Fast mathematical validation first
             if not self._fast_parameter_validation(test_params, model):
                 return False
-                
+
             # Only run expensive GPU tests if fast validation passes
             if crash_prevention.enable_preallocation_test:
-                return self._run_gpu_preallocation_test(test_params, model, crash_prevention)
-                
+                return self._run_gpu_preallocation_test(
+                    test_params, model, crash_prevention
+                )
+
             return True
 
         except Exception as e:
@@ -1380,17 +1384,17 @@ class IntelligentOOMRecovery:
     ) -> bool:
         """
         Fast mathematical validation without GPU allocation.
-        
+
         Returns False immediately for obviously bad configurations.
         """
         try:
             # Get accurate memory estimate for these specific parameters
             estimated_memory_mb = self.estimate_memory_requirements(test_params, model)
-            
+
             # Check available GPU memory
             gpu_stats = self.get_system_gpu_stats()
             available_memory_mb = gpu_stats.total_available_memory
-            
+
             # Require at least 2GB safety buffer for fast rejection
             if available_memory_mb < estimated_memory_mb + 2048:
                 self.logger.debug(
@@ -1398,22 +1402,28 @@ class IntelligentOOMRecovery:
                     f"available {available_memory_mb:.0f}MB"
                 )
                 return False
-                
+
             # Sanity check parameters
             if test_params.n_ctx < 512 or test_params.n_ctx > 32768:
-                self.logger.debug(f"Fast rejection: n_ctx {test_params.n_ctx} out of reasonable range")
+                self.logger.debug(
+                    f"Fast rejection: n_ctx {test_params.n_ctx} out of reasonable range"
+                )
                 return False
-                
+
             if test_params.n_batch < 1 or test_params.n_batch > 2048:
-                self.logger.debug(f"Fast rejection: n_batch {test_params.n_batch} out of reasonable range")
+                self.logger.debug(
+                    f"Fast rejection: n_batch {test_params.n_batch} out of reasonable range"
+                )
                 return False
-                
+
             if test_params.n_ubatch < 1 or test_params.n_ubatch > test_params.n_batch:
-                self.logger.debug(f"Fast rejection: n_ubatch {test_params.n_ubatch} invalid")
+                self.logger.debug(
+                    f"Fast rejection: n_ubatch {test_params.n_ubatch} invalid"
+                )
                 return False
-                
+
             return True
-            
+
         except Exception as e:
             self.logger.debug(f"Fast validation failed: {e}")
             return False
@@ -1429,7 +1439,7 @@ class IntelligentOOMRecovery:
         """
         try:
             estimated_memory_mb = self.estimate_memory_requirements(test_params, model)
-            
+
             self.logger.debug(
                 f"Running GPU preallocation test for {estimated_memory_mb:.0f}MB"
             )
@@ -1466,7 +1476,7 @@ class IntelligentOOMRecovery:
                 success = False
 
             return success
-            
+
         except Exception as e:
             self.logger.warning(f"GPU preallocation test setup failed: {e}")
             return False

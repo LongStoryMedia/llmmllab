@@ -10,6 +10,7 @@ from asyncpg import Pool
 
 from .cache_storage import cache_storage
 from .userconfig_storage import UserConfigStorage
+from .connection_recovery import init_recovery_manager
 from .conversation_storage import ConversationStorage
 from .message_storage import MessageStorage
 from .image_storage import ImageStorage
@@ -82,6 +83,12 @@ class Storage:
                 f"Database pool created (statement_cache_size={stmt_cache_size})"
             )
 
+            # Initialize connection recovery manager
+            init_recovery_manager(self.pool)
+
+            # Proactively clear any stale connection state after pool creation
+            await self._clear_stale_connection_state()
+
             # Initialize all storage components
             self.user_config = UserConfigStorage(self.pool, get_query)
             self.conversation = ConversationStorage(
@@ -142,6 +149,24 @@ class Storage:
             await self.pool.close()
             self.initialized = False
             logger.info("Database connection pool closed")
+
+    async def _clear_stale_connection_state(self):
+        """Proactively clear any stale connection state on startup."""
+        if not self.pool:
+            return
+            
+        try:
+            logger.info("Clearing stale connection state on startup...")
+            
+            # Get one connection and clear its state
+            async with self.pool.acquire() as conn:
+                await conn.execute("DISCARD ALL;")
+                await conn.reload_schema_state()
+            
+            logger.info("✅ Stale connection state cleared successfully")
+            
+        except Exception as e:
+            logger.warning(f"Failed to clear stale connection state (non-critical): {e}")
 
     def get_service[T](self, service: Optional[T]) -> T:
         """Get a storage service by name"""

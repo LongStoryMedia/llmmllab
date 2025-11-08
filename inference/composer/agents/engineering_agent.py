@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from langchain.tools import BaseTool
 
 from models import (
+    ChatResponse,
     IntentAnalysis,
     Message,
     ModelProfile,
@@ -67,12 +68,11 @@ class EngineeringAgent(BaseAgent[str]):
         self,
         messages: List[Message],
         user_id: str,
-        domain: TechnicalDomain = TechnicalDomain.GENERAL_ENGINEERING,
-        response_format: ResponseFormat = ResponseFormat.DETAILED_ANALYSIS,
+        domain: Optional[TechnicalDomain] = TechnicalDomain.GENERAL_ENGINEERING,
+        response_format: Optional[ResponseFormat] = ResponseFormat.DETAILED_ANALYSIS,
         tools: Optional[List[BaseTool]] = None,
         grammar: Optional[Type[BaseModel]] = None,
-        active_todos: Optional[List[TodoItem]] = None,
-    ) -> str:
+    ) -> ChatResponse:
         """
         Generate technical engineering response using configured engineering model.
 
@@ -98,30 +98,12 @@ class EngineeringAgent(BaseAgent[str]):
             )
 
             # Use BaseAgent's run method with simplified message structure
-            result = await self.run(
+            return await self.run(
                 messages=messages,
                 tools=tools,
                 priority=PipelinePriority.NORMAL,
                 grammar=grammar,
             )
-
-            # Extract response text
-            response_text = (
-                extract_text_from_message(result.message)
-                if result and result.message
-                else ""
-            )
-
-            if not response_text.strip():
-                raise NodeExecutionError("Empty technical response generated")
-
-            self.logger.info(
-                "Generated technical response",
-                user_id=user_id,
-                response_length=len(response_text),
-            )
-
-            return response_text
 
         except Exception as e:
             self.logger.error(

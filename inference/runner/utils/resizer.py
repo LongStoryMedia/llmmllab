@@ -289,16 +289,20 @@ class Resizer:
         # For llama.cpp, activation memory is primarily for the forward pass computation
         # Formula: batch_size * hidden_size * num_layers_on_gpu * bytes_per_activation
         # Using n_ubatch as the effective batch size for memory calculation
-        
+
         # Calculate bytes per activation based on quantization level
         if bits_per_weight >= 16:
             bytes_per_activation = 2  # FP16 activations for high precision models
         elif bits_per_weight >= 8:
-            bytes_per_activation = 2  # Still use FP16 activations for 8-bit models  
+            bytes_per_activation = 2  # Still use FP16 activations for 8-bit models
         else:
-            bytes_per_activation = 1  # Can use lower precision for heavily quantized models
-            
-        activation_bytes = n_ubatch * hidden_size * gpu_layers_to_load * bytes_per_activation
+            bytes_per_activation = (
+                1  # Can use lower precision for heavily quantized models
+            )
+
+        activation_bytes = (
+            n_ubatch * hidden_size * gpu_layers_to_load * bytes_per_activation
+        )
         activation_gb = activation_bytes / (1024**3)
 
         # --- Component 4: Overhead ---
@@ -329,6 +333,7 @@ class Resizer:
 
         # Debug logging for memory breakdown
         from utils.logging import llmmllogger
+
         logger = llmmllogger.bind(component="Resizer")
         logger.debug(
             f"Memory breakdown: model_weights={model_weights_gpu_gb:.2f}GB, "

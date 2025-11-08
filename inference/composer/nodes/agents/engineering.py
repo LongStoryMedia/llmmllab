@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from models import Message, MessageRole, MessageContent, MessageContentType
 
-from composer.graph.state import WorkflowState
+from composer.graph.state import WorkflowState, assemble_context_messages
 from composer.core.errors import NodeExecutionError
 from utils.message_conversion import extract_text_from_message
 from utils.logging import llmmllogger
@@ -65,13 +65,6 @@ class EngineeringAgentNode:
                     Exception("User ID required for engineering responses"),
                 )
 
-            # Extract user query from last message
-            last_message = state.current_user_message
-            user_query = extract_text_from_message(last_message)
-
-            if not user_query.strip():
-                return state
-
             # Debug logging for all intent classification data received
             self.logger.info(
                 f"Engineering node received {len(state.intent_classification)} intent classifications",
@@ -107,67 +100,21 @@ class EngineeringAgentNode:
                     },
                 )
 
-                # Use technical domain and response format from intent analysis if available
-                domain = intent.technical_domain
-                response_format = intent.response_format
-
-                self.logger.info(
-                    "Processing engineering intent",
-                    extra={
-                        "user_id": user_id,
-                        "intent_domain": intent.technical_domain,
-                        "intent_format": intent.response_format,
-                        "has_domain": domain is not None,
-                        "has_format": response_format is not None,
-                    },
-                )
-                self.logger.info(
-                    "Generating engineering response",
-                    extra={
-                        "user_id": user_id,
-                        "domain": domain,
-                        "format": response_format,
-                        "query_length": len(user_query),
-                    },
+                response = await self.agent.generate_technical_response(
+                    messages=assemble_context_messages(state),
+                    user_id=user_id,
+                    domain=intent.technical_domain,
+                    response_format=intent.response_format,
                 )
 
-                # Generate technical response using engineering agent
-                # Note: Engineering agent doesn't typically use tools in current implementation
-                # Build kwargs with only non-None values to use method defaults
-                kwargs = {
-                    "query": user_query,
-                    "user_id": user_id,
-                }
-                if domain is not None:
-                    kwargs["domain"] = domain
-                if response_format is not None:
-                    kwargs["response_format"] = response_format
-
-                response = await self.agent.generate_technical_response(**kwargs)
-
-                # Add engineering response to state messages as AI assistant message
-
-                engineering_response = Message(
-                    role=MessageRole.ASSISTANT,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT, text=response, url=None
-                        )
-                    ],
-                    conversation_id=getattr(state, "conversation_id", None),
-                )
+                if not response or not response.message:
+                    self.logger.warning("Engineering agent returned no response")
+                    continue
 
                 # Add to messages with proper reducer handling
-                state.messages.append(engineering_response)
+                state.messages.append(response.message)
 
-                self.logger.info(
-                    "Engineering response generated successfully",
-                    extra={
-                        "user_id": user_id,
-                        "response_length": len(response),
-                        "domain": domain,
-                    },
-                )
+                self.logger.info("Engineering response generated successfully")
 
             # Cleanup agent resources after completion
             self.agent.cleanup()

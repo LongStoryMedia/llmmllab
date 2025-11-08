@@ -8,9 +8,10 @@ interface ModelCardProps {
   onSelect: (event: SelectChangeEvent) => void;
   name: string;
   label?: string;
+  optional?: boolean;
 }
 
-const ModelSelector: React.FC<ModelCardProps> = ({ onSelect, name, label }) => {
+const ModelSelector: React.FC<ModelCardProps> = ({ onSelect, name, label, optional }) => {
   const { models, isLoading } = useChat();
 
   return (
@@ -29,6 +30,7 @@ const ModelSelector: React.FC<ModelCardProps> = ({ onSelect, name, label }) => {
             onChange={onSelect}
             label={"Model"}
           >
+            {optional && <MenuItem value="">None</MenuItem>}
             {models && models?.map((model) => (
               <MenuItem key={model.name} value={model.id}>
                 {model.name}

@@ -69,7 +69,7 @@ DEFAULT_PRIMARY_PROFILE = ModelProfile(
         stop=["<|im_end|>"],
         think=True,
     ),
-    draft_model="qwen3-vl-2b-thinking",
+    # draft_model="qwen3-vl-2b-thinking",
     system_prompt="""You are a helpful AI assistant designed for unconstrained reasoning and output. 
 
 CRITICAL THINKING GUIDELINES:
