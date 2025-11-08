@@ -154,19 +154,23 @@ class Storage:
         """Proactively clear any stale connection state on startup."""
         if not self.pool:
             return
-            
+
         try:
             logger.info("Clearing stale connection state on startup...")
-            
+            pool = cast(asyncpg.Pool, self.pool)
+
             # Get one connection and clear its state
-            async with self.pool.acquire() as conn:
-                await conn.execute("DISCARD ALL;")
-                await conn.reload_schema_state()
-            
+            async with pool.acquire() as conn:
+                c = cast(asyncpg.Connection, conn)
+                await c.execute("DISCARD ALL;")
+                await c.reload_schema_state()
+
             logger.info("✅ Stale connection state cleared successfully")
-            
+
         except Exception as e:
-            logger.warning(f"Failed to clear stale connection state (non-critical): {e}")
+            logger.warning(
+                f"Failed to clear stale connection state (non-critical): {e}"
+            )
 
     def get_service[T](self, service: Optional[T]) -> T:
         """Get a storage service by name"""
