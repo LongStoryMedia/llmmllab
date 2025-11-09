@@ -280,42 +280,42 @@ class PipelineFactory:
         )
         if model.pipeline == "Qwen3Pipe":
             self.logger.info(
-                f"Creating Qwen pipeline, prefer_langgraph={self.prefer_langgraph}"
+                f"Creating Qwen3 server pipeline, prefer_langgraph={self.prefer_langgraph}"
             )
-            from .pipelines.txt2txt.qwen3moe import (  # pylint: disable=import-outside-toplevel
-                Qwen3Moe,
+            from .pipelines.llamacpp.llamacpp_server_pipeline import (  # pylint: disable=import-outside-toplevel
+                LlamaCppServerPipeline,
             )
 
-            self.logger.info("Attempting to create Qwen3Moe")
+            self.logger.info("Attempting to create LlamaCppServerPipeline for Qwen3")
             try:
-                # Try with expected_return_type first (preferred)
-                pipeline = Qwen3Moe(model, profile, grammar)
+                # Use generic server pipeline instead of model-specific pipeline
+                pipeline = LlamaCppServerPipeline(model, profile, grammar)
             except TypeError as e:
-                self.logger.warning(f"Qwen3Moe creation failed: {e}")
+                self.logger.warning(f"LlamaCppServerPipeline creation failed: {e}")
                 raise
-            self.logger.info("Successfully created Qwen3Moe")
+            self.logger.info("Successfully created LlamaCppServerPipeline for Qwen3")
             return pipeline
 
         if model.pipeline == "Qwen3VLPipeline":
-            from .pipelines.imgtxt2txt.qwen3_vl import (  # pylint: disable=import-outside-toplevel
-                Qwen3VLPipeline,
+            from .pipelines.llamacpp.llamacpp_server_pipeline import (  # pylint: disable=import-outside-toplevel
+                LlamaCppServerPipeline,
             )
 
-            return Qwen3VLPipeline(model, profile, grammar)
+            return LlamaCppServerPipeline(model, profile, grammar)
 
         if model.pipeline == "LlamaChatSummPipe":
-            from .pipelines.txt2txt.llamachatsum import (  # pylint: disable=import-outside-toplevel
-                LlamaChatSummPipe,
+            from .pipelines.llamacpp.llamacpp_server_pipeline import (  # pylint: disable=import-outside-toplevel
+                LlamaCppServerPipeline,
             )
 
-            return LlamaChatSummPipe(model, profile, grammar)
+            return LlamaCppServerPipeline(model, profile, grammar)
 
         if model.pipeline == "OpenAiGptOssPipe":
-            from .pipelines.txt2txt.openai_gpt_oss import (  # pylint: disable=import-outside-toplevel
-                OpenAIGptOssPipeline,
+            from .pipelines.llamacpp.llamacpp_server_pipeline import (  # pylint: disable=import-outside-toplevel
+                LlamaCppServerPipeline,
             )
 
-            return OpenAIGptOssPipeline(model, profile, grammar)
+            return LlamaCppServerPipeline(model, profile, grammar)
 
         raise RuntimeError(f"Unsupported text pipeline type: {model.pipeline}")
 
@@ -326,23 +326,23 @@ class PipelineFactory:
     ) -> Optional[Embeddings]:
         if model.pipeline == "NomicEmbedTextPipe":
             try:
-                from .pipelines.emb.nomic_embeddings import (  # pylint: disable=import-outside-toplevel
-                    NomicEmbeddings,
+                from .pipelines.llamacpp.llamacpp_server_embeddings import (  # pylint: disable=import-outside-toplevel
+                    LlamaCppServerEmbeddings,
                 )
 
-                return NomicEmbeddings(model, profile)
+                return LlamaCppServerEmbeddings(model, profile)
             except Exception as e:
-                self.logger.error(f"Failed to initialize NomicEmbeddings: {e}")
+                self.logger.error(f"Failed to initialize LlamaCppServerEmbeddings: {e}")
                 return None
         if model.pipeline == "Qwen3EmbeddingPipe":
             try:
-                from .pipelines.emb.qwen3_embeddings import (  # pylint: disable=import-outside-toplevel
-                    Qwen3Embeddings,
+                from .pipelines.llamacpp.llamacpp_server_embeddings import (  # pylint: disable=import-outside-toplevel
+                    LlamaCppServerEmbeddings,
                 )
 
-                return Qwen3Embeddings(model, profile)
+                return LlamaCppServerEmbeddings(model, profile)
             except Exception as e:
-                self.logger.error(f"Failed to initialize Qwen3Embeddings: {e}")
+                self.logger.error(f"Failed to initialize LlamaCppServerEmbeddings: {e}")
                 return None
         return None
 
