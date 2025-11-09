@@ -106,11 +106,13 @@ class ToolsAgentSubgraph:
 
                         # Create ToolRuntime with full state - this is the key fix!
                         class ToolRuntimeImpl:
-                            def __init__(self, state_dict, call_id):
-                                self.state = (
-                                    state_dict  # Full ToolsState with user_id, etc.
-                                )
+                            def __init__(self, state_obj, call_id):
+                                self.state = state_obj  # Full ToolsState object (not dict)
                                 self.tool_call_id = call_id
+                            
+                            def get(self, key, default=None):
+                                """Allow dict-like access for legacy compatibility."""
+                                return getattr(self.state, key, default)
 
                         runtime = ToolRuntimeImpl(state, tool_call_id)
 
