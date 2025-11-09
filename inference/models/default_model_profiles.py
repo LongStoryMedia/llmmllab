@@ -36,6 +36,7 @@ MODEL_PROFILE_TYPE_RERANKING = 19
 
 # Default model IDs from models.json
 DEFAULT_TEXT_TO_TEXT_MODEL = "qwen3-vl-32b-thinking"  # Changed to multimodal model
+# DEFAULT_TEXT_TO_TEXT_MODEL = "qwen3-vl-30b-a3b-thinking"  # Changed to multimodal model
 DEFAULT_TEXT_TO_IMAGE_MODEL = "black-forest-labs-flux.1-dev"
 DEFAULT_IMAGE_TO_IMAGE_MODEL = "black-forest-labs-flux.1-kontext-dev"
 DEFAULT_TEXT_TO_EMBEDDINGS_MODEL = "nomic-embed-text-v2"

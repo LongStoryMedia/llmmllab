@@ -3,29 +3,29 @@
 
 from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
-from enum import Enum
+from enum import Enum, StrEnum
 from pydantic import BaseModel, Field, AnyUrl, EmailStr, constr
 
 
-
-class RequiredCapability(str, Enum):
+class RequiredCapability(StrEnum):
     """Types of capabilities that can be required for tool operations"""
-    BASIC_MATH = 'basic_math'
-    TEXT_PROCESSING = 'text_processing'
-    INFORMATION_RETRIEVAL = 'information_retrieval'
-    CONVERSATION_MEMORY = 'conversation_memory'
-    WEB_SEARCH = 'web_search'
-    SUMMARIZATION = 'summarization'
-    REASONING = 'reasoning'
-    GENERAL_KNOWLEDGE = 'general_knowledge'
-    API_INTEGRATION = 'api_integration'
-    ASYNC_PROCESSING = 'async_processing'
-    FILE_MANIPULATION = 'file_manipulation'
-    DATA_PROCESSING = 'data_processing'
-    IMAGE_PROCESSING = 'image_processing'
-    AUDIO_PROCESSING = 'audio_processing'
-    DATABASE_ACCESS = 'database_access'
-    NETWORK_COMMUNICATION = 'network_communication'
-    SCHEDULING = 'scheduling'
-    TEMPORAL_REASONING = 'temporal_reasoning'
-    PERSONALIZATION = 'personalization'
+
+    BASIC_MATH = "basic_math"
+    TEXT_PROCESSING = "text_processing"
+    INFORMATION_RETRIEVAL = "information_retrieval"
+    CONVERSATION_MEMORY = "conversation_memory"
+    WEB_SEARCH = "web_search"
+    SUMMARIZATION = "summarization"
+    REASONING = "reasoning"
+    GENERAL_KNOWLEDGE = "general_knowledge"
+    API_INTEGRATION = "api_integration"
+    ASYNC_PROCESSING = "async_processing"
+    FILE_MANIPULATION = "file_manipulation"
+    DATA_PROCESSING = "data_processing"
+    IMAGE_PROCESSING = "image_processing"
+    AUDIO_PROCESSING = "audio_processing"
+    DATABASE_ACCESS = "database_access"
+    NETWORK_COMMUNICATION = "network_communication"
+    SCHEDULING = "scheduling"
+    TEMPORAL_REASONING = "temporal_reasoning"
+    PERSONALIZATION = "personalization"

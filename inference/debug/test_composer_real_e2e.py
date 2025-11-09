@@ -1682,6 +1682,7 @@ async def main():
 
     # Available models for testing
     available_models = [
+        "qwen3-vl-30b-a3b-thinking",
         "qwen3-vl-32b-thinking-abliterated",  # Primary multimodal model - use this as default
         "qwen3-30b-a3b-q4-k-m",
         "openai-gpt-oss-20b-uncensored-q5_1",

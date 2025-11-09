@@ -41,11 +41,25 @@ RUN python3 -m venv /tmp/build_venv && \
     # Updated to use commit 835e918 with qwen3vl architecture support
     CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86" \
     pip wheel --wheel-dir /opt/wheels git+https://github.com/LongStoryMedia/llama-cpp-python.git@feat/qwen3vl --no-deps -vvv && \
+    # pip wheel --wheel-dir /opt/wheels git+https://github.com/LongStoryMedia/llama-cpp-python.git@feat/b6990 --no-deps -vvv && \
+    # pip wheel --wheel-dir /opt/wheels git+https://github.com/LongStoryMedia/llama-cpp-python.git@feat/decoupled-llama-cpp --no-deps -vvv && \
     # pip wheel --wheel-dir /opt/wheels git+https://github.com/LongStoryMedia/llama-cpp-python.git@feat/b6890 --no-deps -vvv && \
     # pip wheel --wheel-dir /opt/wheels git+https://github.com/LongStoryMedia/llama-cpp-python.git@feature/b6482 --no-deps -vvv && \
     # Clean up immediately to reduce layer size
     deactivate && \
     rm -rf /tmp/build_venv /root/.cache /tmp/*
+
+RUN cd / && git clone https://github.com/ggml-org/llama.cpp.git && \
+    cd llama.cpp && \
+    git checkout tags/b6992 && \
+    git checkout -b llmmll
+
+WORKDIR /llama.cpp
+RUN cmake -B build \
+    -DGGML_CUDA=ON \
+    -DCMAKE_CUDA_ARCHITECTURES="75;86" \
+    -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build build --config Release -j$(nproc)
 
 # Runtime stage - minimal CUDA runtime
 FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
@@ -87,7 +101,8 @@ ENV PYTHONUNBUFFERED=1 \
     GRPC_MAX_CONCURRENT_RPCS=100 \
     GRPC_ENABLE_REFLECTION=true \
     GRPC_SECURITY_ENABLED=false \
-    GRPC_USE_TLS=false
+    GRPC_USE_TLS=false 
+# CMAKE_ARGS="-DLLAMA_CPP_LIB_PATH=/llama.cpp" 
 
 # Install only runtime dependencies (no build tools!)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -105,6 +120,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy only the compiled llama-cpp-python wheel from builder
 COPY --from=builder /opt/wheels /opt/wheels
+COPY --from=builder /llama.cpp /llama.cpp
 
 # Set working directory
 WORKDIR /app
@@ -120,7 +136,7 @@ RUN . ${SHARED_VENV}/bin/activate && \
     # Install llama-cpp-python dependencies first
     pip install --no-cache-dir diskcache>=5.6.1 typing-extensions>=4.5.0 numpy>=1.20.0 jinja2>=2.11.3 && \
     # Install our custom llama-cpp-python from wheels
-    pip install --no-cache-dir --find-links /opt/wheels --no-index llama-cpp-python && \
+    CMAKE_ARGS="-DLLAMA_CPP_LIB_PATH=/llama.cpp" pip install --no-cache-dir --find-links /opt/wheels --no-index llama-cpp-python && \
     # Cleanup wheels and pip cache
     rm -rf /opt/wheels /root/.cache/pip && \
     deactivate

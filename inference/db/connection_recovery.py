@@ -19,35 +19,33 @@ class ConnectionRecoveryManager:
     async def is_stale_oid_error(self, error: Exception) -> bool:
         """Check if the error is caused by a stale OID reference."""
         error_message = str(error).lower()
-        return (
-            "could not open relation with oid" in error_message
-            or "relation with oid" in error_message
-            and "does not exist" in error_message
+        return "could not open relation with oid" in error_message or (
+            "relation with oid" in error_message and "does not exist" in error_message
         )
 
     async def recover_from_stale_oid(self, error: Exception) -> bool:
         """
         Attempt to recover from stale OID errors by refreshing connection pool state.
-        
+
         Returns:
             bool: True if recovery was attempted, False otherwise
         """
         if not await self.is_stale_oid_error(error):
             return False
-            
+
         logger.warning(f"Detected stale OID error: {error}")
         logger.info("Attempting connection pool recovery...")
 
         try:
             # Clear all cached prepared statements and schema state
             await self._flush_pool_connections()
-            
+
             # Test connection after recovery
             await self._test_connection()
-            
+
             logger.info("✅ Connection pool recovery completed successfully")
             return True
-            
+
         except Exception as recovery_error:
             logger.error(f"❌ Connection pool recovery failed: {recovery_error}")
             return False
@@ -57,11 +55,11 @@ class ConnectionRecoveryManager:
         Flush all connections in the pool to clear cached prepared statements and schema state.
         """
         connections = []
-        
+
         try:
             # Acquire all available connections
             max_connections = getattr(self.pool, "_maxsize", 10)
-            
+
             for i in range(max_connections):
                 try:
                     conn = await asyncio.wait_for(self.pool.acquire(), timeout=1.0)
@@ -69,23 +67,23 @@ class ConnectionRecoveryManager:
                 except (asyncio.TimeoutError, Exception):
                     # No more connections available or timeout
                     break
-            
+
             logger.info(f"Acquired {len(connections)} connections for cache flush")
-            
+
             # Flush each connection's cached state
             for i, conn in enumerate(connections):
                 try:
                     # Clear prepared statements cache
                     await conn.execute("DISCARD ALL;")
-                    
-                    # Reload schema state to clear cached OID mappings  
+
+                    # Reload schema state to clear cached OID mappings
                     await conn.reload_schema_state()
-                    
+
                     logger.debug(f"Flushed connection {i+1}/{len(connections)}")
-                    
+
                 except Exception as e:
                     logger.warning(f"Failed to flush connection {i+1}: {e}")
-                    
+
         finally:
             # Release all connections back to the pool
             for conn in connections:
@@ -98,61 +96,61 @@ class ConnectionRecoveryManager:
         """Test that the pool can successfully execute a simple query."""
         async with self.pool.acquire() as conn:
             await conn.fetchrow("SELECT 1 as test")
-            
+
     async def execute_with_recovery(
-        self, 
-        operation: callable, 
-        *args, 
-        max_retries: int = 2,
-        **kwargs
+        self, operation: callable, *args, max_retries: int = 2, **kwargs
     ) -> Any:
         """
         Execute a database operation with automatic recovery from stale OID errors.
-        
+
         Args:
             operation: Async function to execute
-            *args: Arguments for the operation  
+            *args: Arguments for the operation
             max_retries: Maximum number of retry attempts
             **kwargs: Keyword arguments for the operation
-            
+
         Returns:
             The result of the operation
-            
+
         Raises:
             The last exception if all retries fail
         """
         last_exception = None
-        
+
         for attempt in range(max_retries + 1):
             try:
                 return await operation(*args, **kwargs)
-                
+
             except Exception as e:
                 last_exception = e
-                
+
                 # Check if this is a stale OID error that we can recover from
                 if await self.is_stale_oid_error(e):
                     if attempt < max_retries:
                         logger.warning(
                             f"Stale OID error on attempt {attempt + 1}/{max_retries + 1}: {e}"
                         )
-                        
+
                         # Attempt recovery
                         recovery_success = await self.recover_from_stale_oid(e)
-                        
+
                         if recovery_success:
-                            logger.info(f"Retrying operation after recovery (attempt {attempt + 2})")
+                            logger.info(
+                                f"Retrying operation after recovery (attempt {attempt + 2})"
+                            )
                             continue
                         else:
                             logger.error("Recovery failed, will not retry")
                             break
                     else:
-                        logger.error(f"Max retries ({max_retries}) reached for stale OID error")
+                        logger.error(
+                            f"Max retries ({max_retries}) reached for stale OID error"
+                        )
                         break
                 else:
                     # Not a stale OID error, don't retry
                     break
-        
+
         # If we get here, all attempts failed
         raise last_exception
 
@@ -176,7 +174,7 @@ def get_recovery_manager() -> Optional[ConnectionRecoveryManager]:
 async def execute_with_recovery(operation: callable, *args, **kwargs) -> Any:
     """
     Convenience function to execute operations with recovery.
-    
+
     Usage:
         result = await execute_with_recovery(
             lambda: conn.fetchrow("SELECT * FROM users WHERE id = $1", user_id)
@@ -185,5 +183,5 @@ async def execute_with_recovery(operation: callable, *args, **kwargs) -> Any:
     if recovery_manager is None:
         # No recovery manager available, execute directly
         return await operation(*args, **kwargs)
-    
+
     return await recovery_manager.execute_with_recovery(operation, *args, **kwargs)

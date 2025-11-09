@@ -364,6 +364,7 @@ class UserConfigStorage:
     async def get_all_users(self) -> List[dict]:
         # This is an admin operation and doesn't need caching
         try:
+
             async def _get_all_users():
                 async with self.typed_pool.acquire() as conn:
                     rows = await conn.fetch(self.get_query("user.get_all_users"))
@@ -407,7 +408,9 @@ class UserConfigStorage:
                                     logger.warning(
                                         f"Failed to create UserConfig for user {user_id}: {e}"
                                     )
-                                    from server.routers.config import create_default_config
+                                    from server.routers.config import (
+                                        create_default_config,
+                                    )
 
                                     user_dict["config"] = create_default_config(
                                         user_id
@@ -486,6 +489,7 @@ class UserConfigStorage:
         Returns the user's configuration.
         """
         try:
+
             async def _ensure_user():
                 # Create default configuration for this user
                 default_config = create_default_user_config(user_id)
@@ -494,7 +498,9 @@ class UserConfigStorage:
                 async with self.typed_pool.acquire() as conn:
                     # Create user with default config, or update config if user exists but has no config
                     await conn.execute(
-                        self.get_query("user.create_user_with_config"), user_id, config_json
+                        self.get_query("user.create_user_with_config"),
+                        user_id,
+                        config_json,
                     )
 
                     logger.info(f"Ensured user exists with default config: {user_id}")
@@ -515,6 +521,7 @@ class UserConfigStorage:
         Returns None if user doesn't exist or has no config.
         """
         try:
+
             async def _get_config():
                 async with self.typed_pool.acquire() as conn:
                     row = await conn.fetchrow(

@@ -466,9 +466,9 @@ class BaseLlamaCppPipeline(BasePipeline):
                     tensor_split=gcfg.tensor_split,
                     main_gpu=gcfg.main_gpu or 1,
                     split_mode=split_mode,
-                    chat_format=self._get_chat_format(),
-                    vocab_only=False,
-                    kv_overrides=None,
+                    # chat_format=self._get_chat_format(),
+                    # vocab_only=False,
+                    # kv_overrides=None,
                     seed=params.seed or llama_cpp.LLAMA_DEFAULT_SEED,
                     n_threads=self._get_optimal_threads(),
                     n_threads_batch=self._get_optimal_threads(),
@@ -476,12 +476,12 @@ class BaseLlamaCppPipeline(BasePipeline):
                     top_p=params.top_p or 0.95,
                     top_k=params.top_k or 40,
                     repeat_penalty=params.repeat_penalty or 1.05,
-                    verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
-                    flash_attn=True,
-                    logits_all=True,
-                    logprobs=1 if perplexity_enabled else 0,
-                    embedding=False,
-                    pooling_type=llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
+                    verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "debug",
+                    # flash_attn=True,
+                    # logits_all=True,
+                    # logprobs=1 if perplexity_enabled else 0,
+                    # embedding=False,
+                    # pooling_type=llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
                     # rope_scaling_type=llama_cpp.llama_rope_scaling_type.LLAMA_ROPE_SCALING_TYPE_YARN,
                     # rope_freq_base=0.0,
                     # rope_freq_scale=1.0,
@@ -490,25 +490,25 @@ class BaseLlamaCppPipeline(BasePipeline):
                     # yarn_beta_fast=32.0,
                     # yarn_beta_slow=1.0,
                     # yarn_orig_ctx=self.model.details.original_ctx,
-                    offload_kqv=False,
-                    op_offload=None,
-                    swa_full=None,
-                    kv_unified=None,
-                    no_perf=False,
-                    last_n_tokens_size=64,
-                    lora_base=None,
-                    lora_scale=1.0,
-                    lora_path=None,
-                    numa=llama_cpp.GGML_NUMA_STRATEGY_DISTRIBUTE,
+                    # offload_kqv=False,
+                    # op_offload=None,
+                    # swa_full=None,
+                    # kv_unified=None,
+                    # no_perf=False,
+                    # last_n_tokens_size=64,
+                    # lora_base=None,
+                    # lora_scale=1.0,
+                    # lora_path=None,
+                    # numa=llama_cpp.GGML_NUMA_STRATEGY_DISTRIBUTE,
                     chat_handler=handler,  # type: ignore[arg-type]
-                    draft_model=draft_model,  # type: ignore[arg-type]
-                    tokenizer=None,
-                    f16_kv=True,
-                    # type_k=llama_cpp.GGML_TYPE_F16,
-                    # type_v=llama_cpp.GGML_TYPE_Q8_0,
-                    smp_infill=False,
-                    use_mmap=True,
-                    use_mlock=True,
+                    # draft_model=draft_model,  # type: ignore[arg-type]
+                    # tokenizer=None,
+                    # f16_kv=True,
+                    # # type_k=llama_cpp.GGML_TYPE_F16,
+                    # # type_v=llama_cpp.GGML_TYPE_Q8_0,
+                    # smp_infill=False,
+                    # use_mmap=True,
+                    # use_mlock=True,
                 )
 
                 # Clear the timeout alarm
@@ -688,6 +688,7 @@ class BaseLlamaCppPipeline(BasePipeline):
                     use_mmap=True,
                     use_mlock=False,  # Don't lock memory for draft model
                     logits_all=True,
+                    handler=self.chat_handler,
                 )
 
                 self._logger.info(
@@ -1085,7 +1086,7 @@ class BaseLlamaCppPipeline(BasePipeline):
             f"llama-cpp-python kwargs: stream={stream}, stop={self.profile.parameters.stop or stop}, tools={converted_tools is not None}, response_format={response_format is not None}, grammar={grammar is not None}"
         )
         kwargs = {
-            "messages": llama_messages,  # type: ignore
+            "messages": llama_messages,
             "temperature": self.profile.parameters.temperature or 0.7,
             "top_p": self.profile.parameters.top_p or 0.95,
             "top_k": self.profile.parameters.top_k or 40,
