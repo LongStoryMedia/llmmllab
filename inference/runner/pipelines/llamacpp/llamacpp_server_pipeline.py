@@ -217,16 +217,28 @@ class LlamaCppServerManager:
                 args = self._build_server_args()
                 
                 self._logger.info(f"Starting llama.cpp server on port {self.port}")
+                self._logger.debug(f"Command: {' '.join(args)}")
                 
-                # Start the process
+                # Start the process with complete stream isolation to prevent hanging
                 self.process = subprocess.Popen(
                     args,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,  # Don't capture stdout - prevents hanging
+                    stderr=subprocess.DEVNULL,  # Don't capture stderr either - prevents hanging on large model output
                     text=True,
-                    bufsize=1,
-                    universal_newlines=True
+                    bufsize=0,  # Unbuffered
+                    start_new_session=True      # Prevent signal interference
                 )
+                
+                # Give the process a moment to start
+                time.sleep(2)
+                
+                # Check if process started successfully
+                if self.process.poll() is not None:
+                    # Process already exited
+                    self._logger.error("Process failed to start - exited immediately")
+                    return False
+                
+                self._logger.info(f"Process started with PID {self.process.pid}, waiting for server readiness...")
                 
                 # Wait for server to be ready
                 if self._wait_for_server():
@@ -249,11 +261,7 @@ class LlamaCppServerManager:
         while time.time() - start_time < self._startup_timeout:
             # Check if process is still alive
             if self.process and self.process.poll() is not None:
-                try:
-                    stdout, stderr = self.process.communicate(timeout=1)
-                    self._logger.error(f"Server process died. stdout: {stdout}, stderr: {stderr}")
-                except subprocess.TimeoutExpired:
-                    self._logger.error("Server process died")
+                self._logger.error("Server process died unexpectedly")
                 return False
             
             try:
