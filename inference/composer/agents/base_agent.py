@@ -229,15 +229,22 @@ The current date is {current_date}. While this is likely past your training data
             system_prompt += "If the user asks for current events or recent information, use the web_search tool to find up-to-date information."
 
         # Get or reuse persistent pipeline to prevent multiple server instances
+        agent_id = f"{id(self):x}"
+        self.logger.debug(f"🔍 Agent {agent_id} checking pipeline state - current: {self._pipeline is not None}, profile: {self.profile.model_name}, priority: {priority}")
         if self._pipeline is None:
+            self.logger.debug(f"🔧 Agent {agent_id} creating new pipeline for {self.profile.model_name}")
+            
+            # CRITICAL: Only create pipeline once per agent instance, ignore all subsequent parameter variations
+            # This prevents duplicate server creation caused by different priority/grammar combinations
+            # All subsequent calls will reuse the same pipeline regardless of parameters
             self._pipeline = self.pipeline_factory.get_pipeline(
-                self.profile, priority, grammar
+                self.profile, PipelinePriority.MEDIUM, None  # Use consistent priority, no grammar variations
             )
             # Mark that we have locked a pipeline that needs cleanup
             self._pipeline_locked = True
-            self.logger.debug(f"🔒 Locked new pipeline for {self.profile.model_name}")
+            self.logger.debug(f"🔒 Agent {agent_id} locked new pipeline for {self.profile.model_name}")
         else:
-            self.logger.debug(f"🔄 Reusing existing pipeline for {self.profile.model_name}")
+            self.logger.debug(f"🔄 Agent {agent_id} reusing existing pipeline for {self.profile.model_name} (ignoring parameter variations)")
 
         llm = cast(BaseChatModel, self._pipeline)
         agent = create_agent(
