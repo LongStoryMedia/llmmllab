@@ -357,6 +357,11 @@ class ToolsAgentSubgraph:
             if response and response.message:
                 state.messages.append(message_to_lc_message(response.message))
 
+            # Inject the agent's pipeline into state for tools to reuse
+            if self.chat_agent.current_pipeline and not state.shared_pipeline:
+                state.shared_pipeline = self.chat_agent.current_pipeline
+                logger.debug("💾 Injected shared pipeline into state for tool reuse")
+
             # Return updated state following LangChain agent pattern
             return state
 

@@ -67,19 +67,26 @@ async def summarization(
 
         # Use LLM pipeline for proper summarization
         try:
-            # Get model profile for summarization
-            model_profile = await get_model_profile(
-                user_id,
-                ModelProfileType.PrimarySummary,
-            )
-
             # Create summarization prompt
             summary_prompt = f"Please provide a concise summary of the following content:\n\n{content}"
 
-            # Get pipeline and generate summary
-            pipeline = pipeline_factory.get_pipeline(
-                model_profile, PipelinePriority.NORMAL
-            )
+            # Try to use shared pipeline first to avoid creating duplicate servers
+            pipeline = None
+            if hasattr(state, 'shared_pipeline') and state.shared_pipeline:
+                pipeline = state.shared_pipeline
+                logger.debug("🔄 Using shared pipeline for summarization")
+            else:
+                # Fallback to creating new pipeline if shared one not available
+                logger.warning("⚠️ No shared pipeline available, creating new one for summarization")
+                # Get model profile for summarization
+                model_profile = await get_model_profile(
+                    user_id,
+                    ModelProfileType.PrimarySummary,
+                )
+                pipeline = pipeline_factory.get_pipeline(
+                    model_profile, PipelinePriority.NORMAL
+                )
+
             llm = cast(BaseChatModel, pipeline)
             # Since run_pipeline is not available, use the pipeline directly
             # This is a simplified approach that should work with the pipeline

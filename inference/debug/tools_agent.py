@@ -104,6 +104,7 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
         conversation_id=717,
         user_config=user_config,
         tool_call_count=0,
+        shared_pipeline=None,  # Will be set by chat agent during execution
     )
 
     logger.info("🎯 Starting ToolsAgentSubgraph streaming execution...")

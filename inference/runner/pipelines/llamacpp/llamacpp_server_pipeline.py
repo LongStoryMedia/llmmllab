@@ -480,16 +480,6 @@ class LlamaCppServerPipeline(BasePipeline):
                     content,
                     flags=re.DOTALL,
                 )
-            elif "thinking" in self.model.name.lower() and not kwargs.get(
-                "show_thinking", False
-            ):
-                # Auto-filter for thinking models unless explicitly requested
-                content = re.sub(
-                    r"<think>.*?</think>",
-                    "[Thinking content filtered]",
-                    content,
-                    flags=re.DOTALL,
-                )
 
             # Parse tool calls from content (llama.cpp generates <tool_call> tags)
             self._logger.debug(
@@ -519,9 +509,6 @@ class LlamaCppServerPipeline(BasePipeline):
                 langchain_tool_calls = []
                 for tc in response.choices[0].message.tool_calls:
                     try:
-                        # Parse arguments from JSON string
-                        import json
-
                         args = {}
                         if tc.function.arguments:
                             args = json.loads(tc.function.arguments)

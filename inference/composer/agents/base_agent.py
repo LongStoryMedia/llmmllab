@@ -115,8 +115,8 @@ class BaseAgent(ABC, Generic[T]):
         # Additional metadata for debugging and tracking
         self._execution_context: Dict[str, Any] = {}
 
-        # Persistent LangChain agent - initialized once and reused for all operations
-        self._agent: Optional[CompiledStateGraph] = None
+        # Persistent pipeline reference - prevents garbage collection
+        self._pipeline: Optional[BaseChatModel | Embeddings] = None
 
         # Track if we have locked a pipeline that needs cleanup
         self._pipeline_locked = False
@@ -171,8 +171,8 @@ class BaseAgent(ABC, Generic[T]):
                     f"❌ Error during pipeline cleanup for {self.profile.model_name}: {e}"
                 )
 
-        # Reset agent state
-        self._agent = None
+        # Reset pipeline state
+        self._pipeline = None  # Release pipeline reference 
         self.logger.debug("Agent cleanup completed")
 
     def _get_or_create_agent(
@@ -181,9 +181,13 @@ class BaseAgent(ABC, Generic[T]):
         tools: Optional[List[BaseTool]] = None,
         priority: PipelinePriority = PipelinePriority.MEDIUM,
         grammar: Optional[type[BaseModel]] = None,
-    ) -> CompiledStateGraph[AgentState, Any, Any]:
+    ):
         """
         Get the persistent agent or create it if it doesn't exist.
+
+        For performance and server reuse, we cache the pipeline but not the agent,
+        since agent configuration (system prompt, tools, grammar) varies by call.
+        The pipeline (LLM server) should be reused across different agent configurations.
 
         Args:
             llm: The language model to use
@@ -192,54 +196,64 @@ class BaseAgent(ABC, Generic[T]):
             grammar: Grammar constraints for structured output
 
         Returns:
-            The persistent LangChain agent
+            The LangChain agent (recreated each time for different configs)
         """
-        if self._agent is None:
-            self.logger.debug("Creating persistent LangChain agent")
-            # Get the model configuration from pipeline factory
+        # Always create new agent for different configurations, but reuse pipeline
+        # This allows different system prompts, tools, and grammars while maintaining server reuse
+        
+        self.logger.debug("Creating LangChain agent (pipeline will be reused)")
+        # Get the model configuration from pipeline factory
 
-            if tools:
-                system_prompt += (
-                    "\n\nYou have access to the following tools:\n"
-                    + "\n".join(
-                        [f"- {tool.name}: {tool.description}" for tool in tools]
-                    )
-                    + "\n\nUse them wisely to assist the user.\n\n"
-                    + """TOOL CALLING FORMAT:
+        if tools:
+            system_prompt += (
+                "\n\nYou have access to the following tools:\n"
+                + "\n".join(
+                    [f"- {tool.name}: {tool.description}" for tool in tools]
+                )
+                + "\n\nUse them wisely to assist the user.\n\n"
+                + """TOOL CALLING FORMAT:
 When you need to call a tool, you MUST use this EXACT JSON format wrapped in <tool_call> tags:
 <tool_call>{"name": "tool_name", "arguments": "{\"param\": \"value\"}"}</tool_call>
 NEVER fabricate or hallucinate tool results. ALWAYS call the actual tool when you need information.
 The arguments field MUST be a JSON string (double-quoted), not a JSON object.
 """
-                )
+            )
 
-            current_date = datetime.datetime.now().strftime("%Y-%m-%d")
+        current_date = datetime.datetime.now().strftime("%Y-%m-%d")
 
-            system_prompt += f"""
+        system_prompt += f"""
 TEMPORAL CONTEXT:
 The current date is {current_date}. While this is likely past your training data, you can use this information to provide better responses. If the user asks for the date or time, respond with this date.
 """
-            if "web_search" in (tool.name for tool in (tools or [])):
-                system_prompt += "If the user asks for current events or recent information, use the web_search tool to find up-to-date information."
+        if "web_search" in (tool.name for tool in (tools or [])):
+            system_prompt += "If the user asks for current events or recent information, use the web_search tool to find up-to-date information."
 
-            chat_model = self.pipeline_factory.get_pipeline(
+        # Get or reuse persistent pipeline to prevent multiple server instances
+        if self._pipeline is None:
+            self._pipeline = self.pipeline_factory.get_pipeline(
                 self.profile, priority, grammar
             )
-
             # Mark that we have locked a pipeline that needs cleanup
             self._pipeline_locked = True
-            self.logger.debug(f"🔒 Locked pipeline for {self.profile.model_name}")
+            self.logger.debug(f"🔒 Locked new pipeline for {self.profile.model_name}")
+        else:
+            self.logger.debug(f"🔄 Reusing existing pipeline for {self.profile.model_name}")
 
-            llm = cast(BaseChatModel, chat_model)
-            self._agent = create_agent(
-                model=llm,
-                tools=tools or [],
-                system_prompt=system_prompt,
-                response_format=ProviderStrategy(grammar) if grammar else None,
-                name=self._node_metadata.node_name,
-            )
+        llm = cast(BaseChatModel, self._pipeline)
+        agent = create_agent(
+            model=llm,
+            tools=tools or [],
+            system_prompt=system_prompt,
+            response_format=ProviderStrategy(grammar) if grammar else None,
+            name=self._node_metadata.node_name,
+        )
 
-        return self._agent
+        return agent
+
+    @property
+    def current_pipeline(self) -> Optional[Any]:
+        """Get the current pipeline instance if available."""
+        return self._pipeline
 
     def _log_operation_start(self, operation: str, **kwargs) -> None:
         """
