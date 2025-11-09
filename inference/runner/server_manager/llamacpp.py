@@ -161,6 +161,9 @@ class LlamaCppServerManager(BaseServerManager):
         # Disable web UI for server mode
         args.extend(["--no-webui"])
 
+        # Enable JSON schema support for tools (required for tool calling)
+        args.extend(["--jinja"])
+
         # Add logging configuration
         if os.getenv("LOG_LEVEL", "WARNING").lower() == "debug":
             args.extend(["--verbose"])

@@ -11,6 +11,7 @@ Simple architecture:
 4. No custom logic - let LangChain handle everything
 """
 
+import json
 from typing import Dict, Any, List
 
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, BaseMessage
@@ -97,9 +98,23 @@ class ToolsAgentSubgraph:
                     return state
 
                 for tool_call in last_message.tool_calls:
-                    tool_name = tool_call.get("name")
-                    tool_args = tool_call.get("args", {})
-                    tool_call_id = tool_call.get("id")
+                    # Handle both dictionary and object formats from OpenAI
+                    if hasattr(tool_call, 'function'):
+                        # OpenAI object format (ChatCompletionMessageFunctionToolCall)
+                        tool_name = tool_call.function.name
+                        tool_args = json.loads(tool_call.function.arguments) if tool_call.function.arguments else {}
+                        tool_call_id = tool_call.id
+                    elif isinstance(tool_call, dict):
+                        # Dictionary format
+                        tool_name = tool_call.get("name") or tool_call.get("function", {}).get("name")
+                        tool_args = tool_call.get("args", {})
+                        if not tool_args and "function" in tool_call:
+                            args_str = tool_call["function"].get("arguments", "{}")
+                            tool_args = json.loads(args_str) if args_str else {}
+                        tool_call_id = tool_call.get("id")
+                    else:
+                        logger.warning(f"Unknown tool call format: {type(tool_call)}")
+                        continue
 
                     if tool_name in executable_tools:
                         tool = executable_tools[tool_name]

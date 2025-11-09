@@ -11,6 +11,7 @@ Features:
 - Better memory management and OOM recovery
 - Support for all llama.cpp server features
 """
+
 import re
 import json
 import os
@@ -36,6 +37,7 @@ from models import (
     UserConfig,
 )
 from utils.logging import llmmllogger
+from utils.tool_call_types import LangChainToolCall
 from runner.pipelines.base import BasePipeline
 from runner.server_manager import LlamaCppServerManager
 from openai import OpenAI
@@ -62,13 +64,18 @@ class LlamaCppServerPipeline(BasePipeline):
         **kwargs,
     ):
         super().__init__(model=model, profile=profile, grammar=grammar, **kwargs)
-        self.server_manager: Optional[LlamaCppServerManager] = None
         self.openai_client: Optional[OpenAI] = None
         self._server_started = False
         self._bound_tools = kwargs.get("_bound_tools", None)
         self.user_config = kwargs.get("user_config", None)
         self._logger = llmmllogger.bind(
             component=self.__class__.__name__, model=model.name
+        )
+        # Create server manager with new architecture
+        self.server_manager = LlamaCppServerManager(
+            model=self.model,
+            profile=self.profile,
+            user_config=self.user_config,
         )
 
         # Initialize server once, just like the old approach loaded llama_instance once
@@ -80,12 +87,6 @@ class LlamaCppServerPipeline(BasePipeline):
         Server stays running for the lifetime of this pipeline instance.
         """
         try:
-            # Create server manager with new architecture
-            self.server_manager = LlamaCppServerManager(
-                model=self.model, 
-                profile=self.profile, 
-                user_config=self.user_config
-            )
 
             # Start the server ONCE - model loads here and stays in memory
             logger.info(
@@ -136,7 +137,7 @@ class LlamaCppServerPipeline(BasePipeline):
         try:
             # Use the new base URL without hardcoded /v1
             base_url = self.server_manager.get_api_endpoint("")  # Get base /v1 endpoint
-            
+
             self.openai_client = OpenAI(
                 base_url=base_url,
                 api_key="dummy",  # llama.cpp server doesn't require real API key
@@ -151,10 +152,10 @@ class LlamaCppServerPipeline(BasePipeline):
             raise
 
     def _build_openai_request_params(
-        self, 
-        messages: List[BaseMessage], 
+        self,
+        messages: List[BaseMessage],
         stop: Optional[List[str]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> Dict[str, Any]:
         """Build OpenAI-compatible request parameters from model profile and user config."""
         params = {
@@ -169,7 +170,10 @@ class LlamaCppServerPipeline(BasePipeline):
         # Temperature from profile or kwargs
         if kwargs.get("temperature") is not None:
             params["temperature"] = kwargs["temperature"]
-        elif hasattr(self.profile.parameters, "temperature") and self.profile.parameters.temperature is not None:
+        elif (
+            hasattr(self.profile.parameters, "temperature")
+            and self.profile.parameters.temperature is not None
+        ):
             params["temperature"] = self.profile.parameters.temperature
 
         # Max tokens - use OpenAI's preferred parameter names
@@ -178,7 +182,7 @@ class LlamaCppServerPipeline(BasePipeline):
             max_tokens = self.profile.parameters.max_tokens
         if max_tokens is None and hasattr(self.profile.parameters, "n_predict"):
             max_tokens = self.profile.parameters.n_predict
-        
+
         if max_tokens is not None:
             # Use max_completion_tokens for newer OpenAI API compatibility
             params["max_completion_tokens"] = max_tokens
@@ -186,24 +190,36 @@ class LlamaCppServerPipeline(BasePipeline):
         # Top-p sampling
         if kwargs.get("top_p") is not None:
             params["top_p"] = kwargs["top_p"]
-        elif hasattr(self.profile.parameters, "top_p") and self.profile.parameters.top_p is not None:
+        elif (
+            hasattr(self.profile.parameters, "top_p")
+            and self.profile.parameters.top_p is not None
+        ):
             params["top_p"] = self.profile.parameters.top_p
 
         # Frequency and presence penalties
         if kwargs.get("frequency_penalty") is not None:
             params["frequency_penalty"] = kwargs["frequency_penalty"]
-        elif hasattr(self.profile.parameters, "frequency_penalty") and self.profile.parameters.frequency_penalty is not None:
+        elif (
+            hasattr(self.profile.parameters, "frequency_penalty")
+            and self.profile.parameters.frequency_penalty is not None
+        ):
             params["frequency_penalty"] = self.profile.parameters.frequency_penalty
 
         if kwargs.get("presence_penalty") is not None:
             params["presence_penalty"] = kwargs["presence_penalty"]
-        elif hasattr(self.profile.parameters, "presence_penalty") and self.profile.parameters.presence_penalty is not None:
+        elif (
+            hasattr(self.profile.parameters, "presence_penalty")
+            and self.profile.parameters.presence_penalty is not None
+        ):
             params["presence_penalty"] = self.profile.parameters.presence_penalty
 
         # Seed for reproducibility
         if kwargs.get("seed") is not None:
             params["seed"] = kwargs["seed"]
-        elif hasattr(self.profile.parameters, "seed") and self.profile.parameters.seed is not None:
+        elif (
+            hasattr(self.profile.parameters, "seed")
+            and self.profile.parameters.seed is not None
+        ):
             params["seed"] = self.profile.parameters.seed
 
         # Tools and tool choice
@@ -211,28 +227,52 @@ class LlamaCppServerPipeline(BasePipeline):
             # Convert LangChain tools to OpenAI format
             openai_tools = []
             for tool in self._bound_tools:
-                tool_def = {
-                    "type": "function",
-                    "function": {
-                        "name": tool.name,
-                        "description": tool.description,
+                try:
+                    tool_def = {
+                        "type": "function",
+                        "function": {
+                            "name": tool.name,
+                            "description": tool.description,
+                        },
                     }
-                }
-                # Add parameters schema if available
-                if hasattr(tool, "args_schema") and tool.args_schema:
-                    tool_def["function"]["parameters"] = tool.args_schema.model_json_schema()
-                
-                openai_tools.append(tool_def)
-            
-            params["tools"] = openai_tools
-            
+                    # Add parameters schema if available
+                    if hasattr(tool, "args_schema") and tool.args_schema:
+                        try:
+                            tool_def["function"][
+                                "parameters"
+                            ] = tool.args_schema.model_json_schema()
+                        except Exception as schema_error:
+                            self._logger.warning(
+                                f"Failed to serialize schema for tool '{tool.name}': {schema_error}"
+                            )
+                            # Create a simple fallback schema
+                            tool_def["function"]["parameters"] = {
+                                "type": "object",
+                                "properties": {},
+                                "required": [],
+                            }
+
+                    openai_tools.append(tool_def)
+
+                except Exception as tool_error:
+                    self._logger.error(
+                        f"Failed to convert tool '{tool.name}' to OpenAI format: {tool_error}"
+                    )
+                    continue
+
+            if openai_tools:
+                params["tools"] = openai_tools
+
             # Set tool choice if specified
             tool_choice = kwargs.get("tool_choice")
             if tool_choice:
                 params["tool_choice"] = tool_choice
             elif len(openai_tools) == 1:
                 # If only one tool, auto-select it
-                params["tool_choice"] = {"type": "function", "function": {"name": openai_tools[0]["function"]["name"]}}
+                params["tool_choice"] = {
+                    "type": "function",
+                    "function": {"name": openai_tools[0]["function"]["name"]},
+                }
 
         # Streaming
         if kwargs.get("stream") is not None:
@@ -240,13 +280,19 @@ class LlamaCppServerPipeline(BasePipeline):
 
         # Additional llama.cpp specific parameters
         extra_body = {}
-        
+
         # Top-k sampling
-        if hasattr(self.profile.parameters, "top_k") and self.profile.parameters.top_k is not None:
+        if (
+            hasattr(self.profile.parameters, "top_k")
+            and self.profile.parameters.top_k is not None
+        ):
             extra_body["top_k"] = self.profile.parameters.top_k
 
         # Repetition penalty
-        if hasattr(self.profile.parameters, "repeat_penalty") and self.profile.parameters.repeat_penalty is not None:
+        if (
+            hasattr(self.profile.parameters, "repeat_penalty")
+            and self.profile.parameters.repeat_penalty is not None
+        ):
             extra_body["repeat_penalty"] = self.profile.parameters.repeat_penalty
 
         # Grammar constraints
@@ -259,7 +305,10 @@ class LlamaCppServerPipeline(BasePipeline):
                 self._logger.warning(f"Failed to convert grammar to schema: {e}")
 
         # Thinking model support - detect if we should enable thinking
-        if hasattr(self.profile.parameters, "think") and self.profile.parameters.think is not None:
+        if (
+            hasattr(self.profile.parameters, "think")
+            and self.profile.parameters.think is not None
+        ):
             extra_body["think"] = self.profile.parameters.think
         elif "thinking" in self.model.name.lower():
             # Auto-enable for thinking models
@@ -279,40 +328,94 @@ class LlamaCppServerPipeline(BasePipeline):
 
         # Add system message if present in profile
         if self.profile.system_prompt:
-            openai_messages.append({
-                "role": "system",
-                "content": self.profile.system_prompt
-            })
+            openai_messages.append(
+                {"role": "system", "content": self.profile.system_prompt}
+            )
 
         # Convert conversation messages
         for msg in messages:
             if isinstance(msg, HumanMessage):
-                openai_messages.append({
-                    "role": "user",
-                    "content": msg.content
-                })
+                openai_messages.append({"role": "user", "content": msg.content})
             elif isinstance(msg, AIMessage):
-                ai_msg = {
-                    "role": "assistant",
-                    "content": msg.content
-                }
+                ai_msg = {"role": "assistant", "content": msg.content}
                 # Add tool calls if present
                 if hasattr(msg, "tool_calls") and msg.tool_calls:
                     ai_msg["tool_calls"] = msg.tool_calls
                 openai_messages.append(ai_msg)
             elif isinstance(msg, SystemMessage):
-                openai_messages.append({
-                    "role": "system", 
-                    "content": msg.content
-                })
+                openai_messages.append({"role": "system", "content": msg.content})
             elif isinstance(msg, ToolMessage):
-                openai_messages.append({
-                    "role": "tool",
-                    "content": msg.content,
-                    "tool_call_id": getattr(msg, "tool_call_id", "unknown")
-                })
+                openai_messages.append(
+                    {
+                        "role": "tool",
+                        "content": msg.content,
+                        "tool_call_id": getattr(msg, "tool_call_id", "unknown"),
+                    }
+                )
 
         return openai_messages
+
+    def _parse_tool_calls_from_content(
+        self, content: str
+    ) -> tuple[str, List[LangChainToolCall]]:
+        """
+        Parse tool calls from LlamaCpp text output and clean content.
+
+        Handles XML-wrapped format:
+            <tool_call>{"name": "func", "arguments": {...}}</tool_call>
+
+        Returns:
+            Tuple of (cleaned_content, tool_calls_list)
+        """
+        tool_calls: List[LangChainToolCall] = []
+        cleaned_content = content
+
+        # Try XML-wrapped format with generic tags
+        tool_call_pattern = (
+            r"<(?:tool|function)[-_]call>\s*(\{.*?\})\s*</(?:tool|function)[-_]call>"
+        )
+
+        matches = re.finditer(tool_call_pattern, content, re.DOTALL | re.IGNORECASE)
+
+        for match in matches:
+            try:
+                # Parse the JSON inside the tool_call tags
+                json_str = match.group(1).strip()
+                tool_data = json.loads(json_str)
+
+                # Handle both regular and Hermes-style arguments
+                arguments = tool_data.get("arguments", {})
+
+                # If arguments is a string (Hermes format), parse it as JSON
+                if isinstance(arguments, str):
+                    try:
+                        arguments = json.loads(arguments)
+                    except json.JSONDecodeError:
+                        self._logger.warning(
+                            f"Failed to parse arguments string as JSON: {arguments}"
+                        )
+                        arguments = {}
+
+                # Convert to LangChain flat format
+                tool_call = LangChainToolCall(
+                    id=f"call_{len(tool_calls)}",  # Generate ID
+                    name=tool_data.get("name", ""),
+                    args=arguments,
+                    type="tool_call",
+                )
+
+                tool_calls.append(tool_call)
+
+                # Remove this tool call from content
+                cleaned_content = cleaned_content.replace(match.group(0), "").strip()
+
+            except (json.JSONDecodeError, KeyError) as e:
+                self._logger.warning(
+                    f"Failed to parse XML tool call: {e}, content: {match.group(1)}"
+                )
+                continue
+
+        return cleaned_content, tool_calls
 
     def _calculate_usage_metadata(
         self, prompt_tokens: int, completion_tokens: int
@@ -341,10 +444,7 @@ class LlamaCppServerPipeline(BasePipeline):
         try:
             # Build comprehensive request parameters
             request_params = self._build_openai_request_params(
-                messages=messages,
-                stop=stop,
-                stream=False,
-                **kwargs
+                messages=messages, stop=stop, stream=False, **kwargs
             )
 
             # Make the request
@@ -352,21 +452,110 @@ class LlamaCppServerPipeline(BasePipeline):
 
             # Extract content and handle thinking models
             content = response.choices[0].message.content or ""
-            
+
+            # Debug: Log response structure
+            self._logger.debug(
+                f"🔍 Response message attributes: {dir(response.choices[0].message)}"
+            )
+            if hasattr(response.choices[0].message, "tool_calls"):
+                tool_calls = response.choices[0].message.tool_calls
+                self._logger.info(
+                    f"🔧 OpenAI response has {len(tool_calls) if tool_calls else 0} tool_calls"
+                )
+                if tool_calls:
+                    for i, tc in enumerate(tool_calls):
+                        self._logger.debug(f"🔧 Tool call {i}: {type(tc)} - {tc}")
+            else:
+                self._logger.debug(f"🔍 No tool_calls attribute in OpenAI response")
+
             # Handle thinking model output - filter <think> tags if needed
-            if hasattr(self.profile.parameters, "think") and not self.profile.parameters.think:
+            if (
+                hasattr(self.profile.parameters, "think")
+                and not self.profile.parameters.think
+            ):
                 # Remove thinking content if think=False
-                content = re.sub(r'<think>.*?</think>', '[Thinking content filtered]', content, flags=re.DOTALL)
-            elif "thinking" in self.model.name.lower() and not kwargs.get("show_thinking", False):
+                content = re.sub(
+                    r"<think>.*?</think>",
+                    "[Thinking content filtered]",
+                    content,
+                    flags=re.DOTALL,
+                )
+            elif "thinking" in self.model.name.lower() and not kwargs.get(
+                "show_thinking", False
+            ):
                 # Auto-filter for thinking models unless explicitly requested
-                content = re.sub(r'<think>.*?</think>', '[Thinking content filtered]', content, flags=re.DOTALL)
+                content = re.sub(
+                    r"<think>.*?</think>",
+                    "[Thinking content filtered]",
+                    content,
+                    flags=re.DOTALL,
+                )
 
-            # Create AI message
-            ai_message = AIMessage(content=content)
+            # Parse tool calls from content (llama.cpp generates <tool_call> tags)
+            self._logger.debug(
+                f"🔍 Parsing content for tool calls. Content length: {len(content)}"
+            )
+            self._logger.debug(f"🔍 Content preview (first 500 chars): {content[:500]}")
+            cleaned_content, parsed_tool_calls = self._parse_tool_calls_from_content(
+                content
+            )
 
-            # Handle tool calls if present
-            if hasattr(response.choices[0].message, "tool_calls") and response.choices[0].message.tool_calls:
-                ai_message.tool_calls = response.choices[0].message.tool_calls
+            if parsed_tool_calls:
+                self._logger.info(
+                    f"🔧 Found {len(parsed_tool_calls)} tool calls in content"
+                )
+            else:
+                self._logger.debug(f"🔍 No tool calls found in content")
+
+            # Create AI message with cleaned content
+            ai_message = AIMessage(content=cleaned_content)
+
+            # Handle tool calls - check both OpenAI format and parsed format
+            if (
+                hasattr(response.choices[0].message, "tool_calls")
+                and response.choices[0].message.tool_calls
+            ):
+                # Convert OpenAI format tool calls to LangChain format
+                langchain_tool_calls = []
+                for tc in response.choices[0].message.tool_calls:
+                    try:
+                        # Parse arguments from JSON string
+                        import json
+
+                        args = {}
+                        if tc.function.arguments:
+                            args = json.loads(tc.function.arguments)
+
+                        # Convert to LangChain dictionary format
+                        langchain_tool_call = {
+                            "name": tc.function.name,
+                            "args": args,
+                            "id": tc.id,
+                            "type": "function",
+                        }
+                        langchain_tool_calls.append(langchain_tool_call)
+
+                        self._logger.debug(
+                            f"🔧 Converted tool call: {langchain_tool_call}"
+                        )
+
+                    except Exception as convert_error:
+                        self._logger.warning(
+                            f"Failed to convert tool call {tc}: {convert_error}"
+                        )
+
+                if langchain_tool_calls:
+                    ai_message.tool_calls = langchain_tool_calls
+                    self._logger.info(
+                        f"🔧 Converted {len(langchain_tool_calls)} OpenAI tool calls to LangChain format"
+                    )
+
+            elif parsed_tool_calls:
+                # Use parsed tool calls from content
+                ai_message.tool_calls = parsed_tool_calls
+                self._logger.info(
+                    f"🔧 Parsed {len(parsed_tool_calls)} tool calls from content"
+                )
 
             # Calculate usage metadata
             usage = response.usage
@@ -382,10 +571,12 @@ class LlamaCppServerPipeline(BasePipeline):
                     "model": response.model,
                     "usage": usage_metadata,
                     "finish_reason": response.choices[0].finish_reason,
-                }
+                },
             )
 
-            return ChatResult(generations=[generation], llm_output={"model": response.model})
+            return ChatResult(
+                generations=[generation], llm_output={"model": response.model}
+            )
 
         except Exception as e:
             self._logger.error(f"Generation failed: {e}")
@@ -408,10 +599,7 @@ class LlamaCppServerPipeline(BasePipeline):
         try:
             # Build comprehensive request parameters for streaming
             request_params = self._build_openai_request_params(
-                messages=messages,
-                stop=stop,
-                stream=True,
-                **kwargs
+                messages=messages, stop=stop, stream=True, **kwargs
             )
 
             # Make streaming request
@@ -424,7 +612,7 @@ class LlamaCppServerPipeline(BasePipeline):
 
                 delta = chunk.choices[0].delta
                 content = delta.content or ""
-                
+
                 # Accumulate content for thinking model processing
                 accumulated_content += content
 
@@ -442,15 +630,21 @@ class LlamaCppServerPipeline(BasePipeline):
                     generation_info={
                         "model": chunk.model,
                         "finish_reason": chunk.choices[0].finish_reason,
-                    }
+                    },
                 )
 
                 yield generation_chunk
 
             # Post-process accumulated content for thinking models (if needed)
             if accumulated_content and (
-                (hasattr(self.profile.parameters, "think") and not self.profile.parameters.think) or
-                ("thinking" in self.model.name.lower() and not kwargs.get("show_thinking", False))
+                (
+                    hasattr(self.profile.parameters, "think")
+                    and not self.profile.parameters.think
+                )
+                or (
+                    "thinking" in self.model.name.lower()
+                    and not kwargs.get("show_thinking", False)
+                )
             ):
                 # For streaming, we could send a final chunk with filtered content
                 # but typically streaming preserves the raw output

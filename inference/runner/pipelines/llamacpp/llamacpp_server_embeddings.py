@@ -22,7 +22,7 @@ logger = llmmllogger.bind(component="LlamaCppServerEmbeddings")
 class LlamaCppServerEmbeddings(Embeddings):
     """
     LangChain embeddings implementation using llama.cpp server.
-    
+
     Uses the new LlamaCppServerManager for consistent server management.
     """
 
@@ -36,21 +36,25 @@ class LlamaCppServerEmbeddings(Embeddings):
         self.model = model
         self.profile = profile
         self.user_config = user_config
-        self._logger = llmmllogger.bind(component=self.__class__.__name__, model=model.name)
-        
+        self._logger = llmmllogger.bind(
+            component=self.__class__.__name__, model=model.name
+        )
+
         # Use the new server manager architecture
         self.server_manager = LlamaCppServerManager(
             model=model,
-            profile=profile, 
+            profile=profile,
             user_config=user_config,
-            is_embedding=True  # Enable embedding mode
+            is_embedding=True,  # Enable embedding mode
         )
-        
+
         # Start persistent server for embeddings
         success = self.server_manager.start()
         if not success:
-            raise RuntimeError(f"Failed to start embedding server for model {model.name}")
-            
+            raise RuntimeError(
+                f"Failed to start embedding server for model {model.name}"
+            )
+
         self._logger.info(f"Embedding server ready for model {model.name}")
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
@@ -61,21 +65,21 @@ class LlamaCppServerEmbeddings(Embeddings):
         try:
             # Use the flexible endpoint system
             embeddings_url = self.server_manager.get_api_endpoint("/embeddings")
-            
+
             response = requests.post(
                 embeddings_url,
                 json={
                     "input": texts,
                     "model": "local-model",
-                    "encoding_format": "float"
+                    "encoding_format": "float",
                 },
                 timeout=30,
             )
             response.raise_for_status()
-            
+
             data = response.json()
             embeddings = [item["embedding"] for item in data["data"]]
-            
+
             self._logger.debug(f"Generated embeddings for {len(texts)} documents")
             return embeddings
 
@@ -91,21 +95,21 @@ class LlamaCppServerEmbeddings(Embeddings):
         try:
             # Use the flexible endpoint system
             embeddings_url = self.server_manager.get_api_endpoint("/embeddings")
-            
+
             response = requests.post(
                 embeddings_url,
                 json={
                     "input": [text],  # Wrap single text in list
                     "model": "local-model",
-                    "encoding_format": "float"
+                    "encoding_format": "float",
                 },
                 timeout=30,
             )
             response.raise_for_status()
-            
+
             data = response.json()
             embedding = data["data"][0]["embedding"]
-            
+
             self._logger.debug(f"Generated embedding for query: {text[:50]}...")
             return embedding
 

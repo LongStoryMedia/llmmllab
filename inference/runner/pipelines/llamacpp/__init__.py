@@ -8,8 +8,8 @@ from .llamacpp_server_embeddings import LlamaCppServerEmbeddings
 from .utils import calculate_optimal_gpu_layers
 
 __all__ = [
-    "BaseLlamaCppPipeline", 
+    "BaseLlamaCppPipeline",
     "LlamaCppServerPipeline",
-    "LlamaCppServerEmbeddings", 
-    "calculate_optimal_gpu_layers"
+    "LlamaCppServerEmbeddings",
+    "calculate_optimal_gpu_layers",
 ]
