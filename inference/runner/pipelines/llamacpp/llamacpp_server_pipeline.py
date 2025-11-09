@@ -68,9 +68,7 @@ class LlamaCppServerManager:
         self.server_url = f"http://localhost:{self.port}/v1"
         self._lock = threading.Lock()
         self._shutdown_event = threading.Event()
-        self._startup_timeout = (
-            300  # seconds - increased for very large models like 30B
-        )
+        self._startup_timeout = 30
 
     def _find_available_port(self, start_port: int = 8001) -> int:
         """Find an available port starting from start_port."""
@@ -156,7 +154,7 @@ class LlamaCppServerManager:
         ):
             args.extend(["--n-cpu-moe", str(params.n_cpu_moe)])
         else:
-            # Default to 5 for MoE models like in your working example
+            # Default to 5 for MoE models
             args.extend(["--n-cpu-moe", "5"])
 
         # NUMA distribution like your working example
@@ -629,12 +627,15 @@ class LlamaCppServerPipeline(BasePipeline):
                 choice = response.choices[0]
                 if choice.message and choice.message.content:
                     content = choice.message.content
-                    
+
                     # Handle thinking models - remove <think> tags if thinking is disabled
-                    if not getattr(self.profile.parameters, 'think', False):
+                    if not getattr(self.profile.parameters, "think", False):
                         import re
+
                         think_pattern = r"<think>.*?</think>"
-                        content = re.sub(think_pattern, "", content, flags=re.DOTALL).strip()
+                        content = re.sub(
+                            think_pattern, "", content, flags=re.DOTALL
+                        ).strip()
 
             # Extract usage information
             prompt_tokens = response.usage.prompt_tokens if response.usage else 0
@@ -711,27 +712,36 @@ class LlamaCppServerPipeline(BasePipeline):
                         # For streaming, we need to handle thinking tags carefully
                         # Only yield content if thinking is enabled or if it's outside thinking tags
                         should_yield = True
-                        if not getattr(self.profile.parameters, 'think', False):
+                        if not getattr(self.profile.parameters, "think", False):
                             # Check if we're currently inside thinking tags
                             import re
+
                             # Simple heuristic: if chunk contains opening think tag, start filtering
                             # This is not perfect but works for most cases in streaming
-                            if "<think>" in chunk_content or "</think>" in chunk_content:
+                            if (
+                                "<think>" in chunk_content
+                                or "</think>" in chunk_content
+                            ):
                                 # For streaming, we'll handle thinking filter at the end
                                 # This prevents partial filtering issues
                                 pass
-                            
+
                         ai_chunk = AIMessageChunk(content=chunk_content)
                         yield ChatGenerationChunk(message=ai_chunk)
 
             # Handle thinking tags in final accumulated content if needed
-            if not getattr(self.profile.parameters, 'think', False):
+            if not getattr(self.profile.parameters, "think", False):
                 import re
+
                 think_pattern = r"<think>.*?</think>"
-                filtered_content = re.sub(think_pattern, "", total_content, flags=re.DOTALL).strip()
+                filtered_content = re.sub(
+                    think_pattern, "", total_content, flags=re.DOTALL
+                ).strip()
                 if filtered_content != total_content:
                     # If thinking content was filtered, yield a correction chunk
-                    correction_chunk = AIMessageChunk(content=f"\n[Thinking content filtered]")
+                    correction_chunk = AIMessageChunk(
+                        content=f"\n[Thinking content filtered]"
+                    )
                     yield ChatGenerationChunk(message=correction_chunk)
 
             # Yield final chunk with usage metadata

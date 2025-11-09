@@ -104,17 +104,19 @@ class ToolsAgentSubgraph:
                     if tool_name in executable_tools:
                         tool = executable_tools[tool_name]
 
-                        # Create ToolRuntime with full state - this is the key fix!
-                        class ToolRuntimeImpl:
-                            def __init__(self, state_obj, call_id):
-                                self.state = state_obj  # Full ToolsState object (not dict)
-                                self.tool_call_id = call_id
-                            
-                            def get(self, key, default=None):
-                                """Allow dict-like access for legacy compatibility."""
-                                return getattr(self.state, key, default)
-
-                        runtime = ToolRuntimeImpl(state, tool_call_id)
+                        # Create proper ToolRuntime instance
+                        from langchain.tools import ToolRuntime
+                        from langchain_core.runnables.config import RunnableConfig
+                        
+                        # Create minimal runtime - we mainly need state and tool_call_id
+                        runtime = ToolRuntime(
+                            state=state,  # ToolsState object
+                            context={},  # Empty context for now
+                            config=RunnableConfig(),  # Empty config 
+                            stream_writer=None,  # Not needed for our tools
+                            tool_call_id=tool_call_id,
+                            store=None  # Not needed for our tools
+                        )
 
                         try:
                             logger.info(
