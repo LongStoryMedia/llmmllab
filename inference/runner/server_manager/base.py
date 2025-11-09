@@ -1,0 +1,188 @@
+"""
+Base ServerManager - Common functionality for any server process management.
+
+This provides a foundation for managing server processes regardless of the
+underlying implementation (llama.cpp, vLLM, etc.).
+"""
+
+import socket
+import subprocess
+import threading
+import time
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import requests
+
+from models import Model, ModelProfile, UserConfig
+from utils.logging import llmmllogger
+
+
+class BaseServerManager(ABC):
+    """Abstract base class for managing server processes."""
+
+    def __init__(
+        self,
+        model: Model,
+        profile: ModelProfile,
+        user_config: Optional[UserConfig] = None,
+        port: Optional[int] = None,
+        startup_timeout: int = 30,
+    ):
+        self.model = model
+        self.profile = profile
+        self.user_config = user_config
+        self._logger = llmmllogger.bind(
+            component=self.__class__.__name__, model=model.name
+        )
+        self.process: Optional[subprocess.Popen] = None
+        self.port: int = port or self._find_available_port()
+        self.server_url = f"http://localhost:{self.port}"  # No /v1 suffix
+        self._lock = threading.Lock()
+        self._shutdown_event = threading.Event()
+        self.startup_timeout = startup_timeout
+
+    def _find_available_port(self, start_port: int = 8001) -> int:
+        """Find an available port starting from start_port."""
+        for port in range(start_port, start_port + 100):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind(("localhost", port))
+                    return port
+                except OSError:
+                    continue
+        raise RuntimeError("No available ports found")
+
+    @abstractmethod
+    def _build_server_args(self) -> List[str]:
+        """Build command line arguments for the server."""
+        pass
+
+    @abstractmethod
+    def get_api_endpoint(self, path: str) -> str:
+        """Get the full URL for a specific API endpoint."""
+        pass
+
+    def start(self) -> bool:
+        """Start the server process."""
+        with self._lock:
+            if self.process and self.process.poll() is None:
+                self._logger.info(f"Server already running on port {self.port}")
+                return True
+
+            try:
+                args = self._build_server_args()
+                
+                self._logger.info(f"Starting server on port {self.port}")
+                self._logger.debug(f"Command: {' '.join(args)}")
+                
+                # Start the process with output redirected to prevent hanging
+                self.process = subprocess.Popen(
+                    args,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    text=True
+                )
+                
+                # Log PID
+                self._logger.info(f"Process started with PID {self.process.pid}, waiting for server readiness...")
+                
+                # Wait for server to be ready
+                if self._wait_for_server():
+                    self._logger.info(f"Server started successfully on port {self.port}")
+                    return True
+                else:
+                    self._logger.error("Server failed to start within timeout - cleaning up")
+                    # Force cleanup of failed startup
+                    try:
+                        self.stop()
+                    except Exception as cleanup_error:
+                        self._logger.error(f"Error during cleanup: {cleanup_error}")
+                    return False
+                    
+            except Exception as e:
+                self._logger.error(f"Failed to start server: {e}")
+                return False
+
+    def _wait_for_server(self) -> bool:
+        """Wait for server to become ready."""
+        health_endpoint = self.get_api_endpoint("/health")
+        
+        start_time = time.time()
+        while time.time() - start_time < self.startup_timeout:
+            # Check if process is still alive
+            if self.process and self.process.poll() is not None:
+                self._logger.error(f"Server process died unexpectedly (exit code: {self.process.returncode})")
+                return False
+            
+            try:
+                response = requests.get(health_endpoint, timeout=3)  # Increased timeout to 3 seconds
+                if response.status_code == 200:
+                    self._logger.info(f"Server and model ready - /health responding {response.status_code}")
+                    return True
+                else:
+                    # For some servers, 503 might indicate "still loading"
+                    if response.status_code == 503:
+                        self._logger.debug(f"Model still loading - /health returns 503: {response.text}")
+                    else:
+                        self._logger.debug(f"Health check returned {response.status_code}: {response.text}")
+            except requests.exceptions.RequestException:
+                pass  # Server not ready yet
+                
+            time.sleep(1.5)  # Slightly longer sleep interval
+        
+        # If we get here, timeout was reached - ensure process cleanup
+        self._logger.error(f"Server startup timed out after {self.startup_timeout} seconds")
+        return False
+
+    def stop(self) -> bool:
+        """Stop the server process."""
+        with self._lock:
+            if not self.process:
+                return True
+                
+            try:
+                self._logger.info(f"Stopping server on port {self.port}")
+                
+                # Send SIGTERM for graceful shutdown
+                self.process.terminate()
+                
+                # Wait for graceful shutdown
+                try:
+                    self.process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    self._logger.warning("Server didn't shut down gracefully, force killing")
+                    self.process.kill()
+                    self.process.wait()
+                
+                self.process = None
+                self._logger.info("Server stopped successfully")
+                return True
+                
+            except Exception as e:
+                self._logger.error(f"Error stopping server: {e}")
+                return False
+
+    def is_running(self) -> bool:
+        """Check if server is running and responsive."""
+        if not self.process or self.process.poll() is not None:
+            return False
+            
+        try:
+            health_endpoint = self.get_api_endpoint("/health")
+            response = requests.get(health_endpoint, timeout=2)
+            return response.status_code == 200
+        except requests.exceptions.RequestException:
+            return False
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get server performance statistics."""
+        try:
+            metrics_endpoint = self.get_api_endpoint("/metrics")
+            response = requests.get(metrics_endpoint, timeout=2)
+            if response.status_code == 200:
+                return response.json()
+        except Exception:
+            pass
+        return {}

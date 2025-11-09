@@ -2,292 +2,137 @@
 LlamaCppServerEmbeddings - Direct llama.cpp server embedding integration.
 
 This replaces llama-cpp-python for embeddings using the llama.cpp server's
-native /v1/embeddings endpoint.
+native /v1/embeddings endpoint with the new server manager architecture.
 """
 
-import asyncio
-import logging
-import os
-import subprocess
-import time
-import threading
 from typing import List, Optional
+import asyncio
 
 import requests
 from langchain_core.embeddings import Embeddings
 
 from models import Model, ModelProfile, UserConfig
 from utils.logging import llmmllogger
+from runner.server_manager import LlamaCppServerManager
 
 
-class LlamaCppEmbeddingServerManager:
-    """Specialized server manager for embedding models."""
-    
-    def __init__(self, model: Model, profile: ModelProfile, user_config: Optional[UserConfig] = None):
-        self.model = model
-        self.profile = profile
-        self.user_config = user_config
-        self._logger = llmmllogger.bind(component=self.__class__.__name__, model=model.name)
-        self.process: Optional[subprocess.Popen] = None
-        self.port: int = self._find_available_port()
-        self.server_url = f"http://localhost:{self.port}/v1"
-        self._startup_timeout = 60  # seconds
-        
-    def _find_available_port(self, start_port: int = 8001) -> int:
-        """Find an available port starting from start_port."""
-        import socket
-        
-        for port in range(start_port, start_port + 100):
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                try:
-                    s.bind(('localhost', port))
-                    return port
-                except OSError:
-                    continue
-        raise RuntimeError("No available ports found")
-    
-    def _get_gguf_path(self) -> str:
-        """Return resolved GGUF file path for model."""
-        details = getattr(self.model, "details", None)
-        if details and hasattr(details, "gguf_file") and details.gguf_file:
-            return details.gguf_file
-        return self.model.model
-    
-    def _build_server_args(self) -> List[str]:
-        """Build command line arguments for llama.cpp server with embedding support."""
-        gguf_path = self._get_gguf_path()
-        
-        args = [
-            "/llama.cpp/build/bin/llama-server",
-            "--model", gguf_path,
-            "--host", "127.0.0.1",
-            "--port", str(self.port),
-            "--threads", str(os.cpu_count() or 4),
-            "--ctx-size", "512",  # Smaller context for embeddings
-            "--batch-size", "256",
-            "--embeddings",  # Enable embeddings mode
-            "--pooling", "mean",  # Use mean pooling
-            "--no-webui",  # Disable web UI for server mode
-        ]
-        
-        # Add debug logging if enabled
-        if os.getenv("LOG_LEVEL", "WARNING").lower() == "debug":
-            args.extend(["--verbose"])
-        
-        self._logger.info(f"Embedding server args: {' '.join(args)}")
-        return args
-    
-    def start(self) -> bool:
-        """Start the llama.cpp server process in embedding mode."""
-        if self.process and self.process.poll() is None:
-            self._logger.info(f"Embedding server already running on port {self.port}")
-            return True
-        
-        try:
-            args = self._build_server_args()
-            
-            self._logger.info(f"Starting llama.cpp embedding server on port {self.port}")
-            
-            # Start the process
-            self.process = subprocess.Popen(
-                args,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,
-                universal_newlines=True
-            )
-            
-            # Wait for server to be ready
-            if self._wait_for_server():
-                self._logger.info(f"Embedding server started successfully on port {self.port}")
-                return True
-            else:
-                self._logger.error("Embedding server failed to start within timeout")
-                self.stop()
-                return False
-                
-        except Exception as e:
-            self._logger.error(f"Failed to start embedding server: {e}")
-            return False
-    
-    def _wait_for_server(self) -> bool:
-        """Wait for server to become ready."""
-        start_time = time.time()
-        while time.time() - start_time < self._startup_timeout:
-            try:
-                response = requests.get(f"http://localhost:{self.port}/health", timeout=2)
-                if response.status_code == 200:
-                    return True
-            except requests.exceptions.RequestException:
-                pass
-            
-            if self.process and self.process.poll() is not None:
-                stdout, stderr = self.process.communicate(timeout=1)
-                self._logger.error(f"Server process died. stdout: {stdout}, stderr: {stderr}")
-                return False
-                
-            time.sleep(0.5)
-        
-        return False
-    
-    def stop(self) -> bool:
-        """Stop the llama.cpp server process."""
-        if not self.process:
-            return True
-            
-        try:
-            self._logger.info(f"Stopping embedding server on port {self.port}")
-            
-            # Send SIGTERM for graceful shutdown
-            self.process.terminate()
-            
-            # Wait for graceful shutdown
-            try:
-                self.process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                self._logger.warning("Embedding server didn't shut down gracefully, force killing")
-                self.process.kill()
-                self.process.wait()
-            
-            self.process = None
-            self._logger.info("Embedding server stopped successfully")
-            return True
-            
-        except Exception as e:
-            self._logger.error(f"Error stopping embedding server: {e}")
-            return False
-    
-    def is_running(self) -> bool:
-        """Check if server is running and responsive."""
-        if not self.process or self.process.poll() is not None:
-            return False
-            
-        try:
-            response = requests.get(f"http://localhost:{self.port}/health", timeout=2)
-            return response.status_code == 200
-        except:
-            return False
-    
-    def get_stats(self) -> dict:
-        """Get server performance statistics."""
-        try:
-            response = requests.get(f"http://localhost:{self.port}/metrics", timeout=2)
-            if response.status_code == 200:
-                return response.json()
-        except:
-            pass
-        return {}
+logger = llmmllogger.bind(component="LlamaCppServerEmbeddings")
 
 
 class LlamaCppServerEmbeddings(Embeddings):
     """
-    LlamaCpp Server embeddings using direct server management.
+    LangChain embeddings implementation using llama.cpp server.
     
-    Features:
-    - Direct llama.cpp server /v1/embeddings endpoint
-    - Proper OpenAI-compatible API interface 
-    - All pooling types supported
-    - Better memory management than llama-cpp-python
+    Uses the new LlamaCppServerManager for consistent server management.
     """
 
-    def __init__(self, model: Model, profile: ModelProfile, user_config: Optional[UserConfig] = None):
-        """Initialize server-based embeddings."""
+    def __init__(
+        self,
+        model: Model,
+        profile: ModelProfile,
+        user_config: Optional[UserConfig] = None,
+    ):
+        """Initialize embeddings with persistent server."""
         self.model = model
         self.profile = profile
         self.user_config = user_config
         self._logger = llmmllogger.bind(component=self.__class__.__name__, model=model.name)
         
-        # Initialize server manager
-        self.server_manager = LlamaCppEmbeddingServerManager(model, profile, user_config)
+        # Use the new server manager architecture
+        self.server_manager = LlamaCppServerManager(
+            model=model,
+            profile=profile, 
+            user_config=user_config,
+            is_embedding=True  # Enable embedding mode
+        )
         
-        # Start the server with embedding support
-        if not self.server_manager.start():
-            raise RuntimeError(f"Failed to start llama.cpp embedding server for model {model.name}")
-        
-        self._logger.info(f"Embeddings server started on {self.server_manager.server_url}")
+        # Start persistent server for embeddings
+        success = self.server_manager.start()
+        if not success:
+            raise RuntimeError(f"Failed to start embedding server for model {model.name}")
+            
+        self._logger.info(f"Embedding server ready for model {model.name}")
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        """Embed search documents."""
-        return self._embed_texts(texts, prefix="search_document: ")
+        """Embed a list of document texts."""
+        if not texts:
+            return []
+
+        try:
+            # Use the flexible endpoint system
+            embeddings_url = self.server_manager.get_api_endpoint("/embeddings")
+            
+            response = requests.post(
+                embeddings_url,
+                json={
+                    "input": texts,
+                    "model": "local-model",
+                    "encoding_format": "float"
+                },
+                timeout=30,
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            embeddings = [item["embedding"] for item in data["data"]]
+            
+            self._logger.debug(f"Generated embeddings for {len(texts)} documents")
+            return embeddings
+
+        except Exception as e:
+            self._logger.error(f"Failed to generate document embeddings: {e}")
+            raise
 
     def embed_query(self, text: str) -> List[float]:
-        """Embed a query."""
-        embeddings = self._embed_texts([text], prefix="search_query: ")
-        return embeddings[0] if embeddings else []
+        """Embed a single query text."""
+        if not text:
+            return []
+
+        try:
+            # Use the flexible endpoint system
+            embeddings_url = self.server_manager.get_api_endpoint("/embeddings")
+            
+            response = requests.post(
+                embeddings_url,
+                json={
+                    "input": [text],  # Wrap single text in list
+                    "model": "local-model",
+                    "encoding_format": "float"
+                },
+                timeout=30,
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            embedding = data["data"][0]["embedding"]
+            
+            self._logger.debug(f"Generated embedding for query: {text[:50]}...")
+            return embedding
+
+        except Exception as e:
+            self._logger.error(f"Failed to generate query embedding: {e}")
+            raise
 
     async def aembed_documents(self, texts: List[str]) -> List[List[float]]:
-        """Async version of embed_documents."""
+        """Asynchronously embed a list of document texts."""
         return await asyncio.get_event_loop().run_in_executor(
             None, self.embed_documents, texts
         )
 
     async def aembed_query(self, text: str) -> List[float]:
-        """Async version of embed_query."""
+        """Asynchronously embed a single query text."""
         return await asyncio.get_event_loop().run_in_executor(
             None, self.embed_query, text
         )
-
-    def _embed_texts(self, texts: List[str], prefix: str = "") -> List[List[float]]:
-        """Internal method to embed texts using server API."""
-        if not self.server_manager.is_running():
-            raise RuntimeError("llama.cpp embedding server is not running")
-
-        try:
-            # Prepare the request data
-            processed_texts = [f"{prefix}{text}" for text in texts]
-            
-            request_data = {
-                "input": processed_texts,
-                "model": "text-embedding",  # Placeholder - server ignores this
-                "encoding_format": "float"
-            }
-            
-            # Make request to server
-            response = requests.post(
-                f"{self.server_manager.server_url}/embeddings",
-                json=request_data,
-                timeout=30.0,
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if response.status_code != 200:
-                raise RuntimeError(f"Embedding request failed with status {response.status_code}: {response.text}")
-            
-            # Parse response
-            response_data = response.json()
-            
-            # Extract embeddings from response
-            embeddings = []
-            for item in response_data.get("data", []):
-                embedding = item.get("embedding", [])
-                embeddings.append(embedding)
-            
-            if len(embeddings) != len(texts):
-                raise RuntimeError(f"Expected {len(texts)} embeddings, got {len(embeddings)}")
-            
-            self._logger.debug(f"Generated {len(embeddings)} embeddings")
-            return embeddings
-            
-        except requests.RequestException as e:
-            self._logger.error(f"Request to embedding server failed: {e}")
-            raise RuntimeError(f"Embedding request failed: {e}")
-        except Exception as e:
-            self._logger.error(f"Embedding generation failed: {e}")
-            raise
-
-    def get_stats(self) -> dict:
-        """Get server performance statistics."""
-        return self.server_manager.get_stats()
 
     def close(self):
         """Clean up server resources."""
         try:
             if self.server_manager:
                 self.server_manager.stop()
-            self._logger.info("LlamaCppServerEmbeddings closed successfully")
+                self._logger.info("Embedding server stopped successfully")
         except Exception as e:
-            self._logger.error(f"Error closing embeddings: {e}")
+            self._logger.error(f"Error stopping embedding server: {e}")
 
     def __del__(self):
         """Cleanup on deletion."""
