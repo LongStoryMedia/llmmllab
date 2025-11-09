@@ -242,7 +242,7 @@ class LlamaCppServerManager:
                 return False
     
     def _wait_for_server(self) -> bool:
-        """Wait for server to become ready."""
+        """Wait for server to become ready AND model to finish loading."""
         import requests
         
         start_time = time.time()
@@ -257,17 +257,26 @@ class LlamaCppServerManager:
                 return False
             
             try:
-                # Try /v1/models endpoint instead of /health - this is standard OpenAI API endpoint
-                response = requests.get(f"http://localhost:{self.port}/v1/models", timeout=2)
+                # Use /health endpoint - returns 503 while loading, 200 when model is fully ready
+                response = requests.get(f"http://localhost:{self.port}/health", timeout=2)
                 if response.status_code == 200:
-                    self._logger.info("Server ready - /v1/models responding")
+                    self._logger.info("Server and model ready - /health responding 200")
                     return True
+                elif response.status_code == 503:
+                    # Check if we can get the loading message
+                    try:
+                        error_info = response.json()
+                        message = error_info.get("error", {}).get("message", "loading")
+                        self._logger.debug(f"Model still loading - /health returns 503: {message}")
+                    except:
+                        self._logger.debug("Model still loading - /health returns 503")
+                    # Continue waiting, server/model is still loading
             except requests.exceptions.RequestException as e:
                 self._logger.debug(f"Server not ready yet: {e}")
                 
-            time.sleep(0.5)
+            time.sleep(1.0)  # Check every second since model loading can take time
         
-        self._logger.error(f"Server failed to start within {self._startup_timeout} seconds")
+        self._logger.error(f"Server/model failed to load within {self._startup_timeout} seconds")
         return False
     
     def stop(self) -> bool:
@@ -305,7 +314,7 @@ class LlamaCppServerManager:
             
         try:
             import requests
-            response = requests.get(f"http://localhost:{self.port}/v1/models", timeout=2)
+            response = requests.get(f"http://localhost:{self.port}/health", timeout=2)
             return response.status_code == 200
         except requests.exceptions.RequestException:
             return False
