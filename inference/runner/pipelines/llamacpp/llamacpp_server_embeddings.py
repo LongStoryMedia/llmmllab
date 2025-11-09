@@ -67,8 +67,12 @@ class LlamaCppEmbeddingServerManager:
             "--batch-size", "256",
             "--embeddings",  # Enable embeddings mode
             "--pooling", "mean",  # Use mean pooling
-            "--log-format", "json",
+            "--no-webui",  # Disable web UI for server mode
         ]
+        
+        # Add debug logging if enabled
+        if os.getenv("LOG_LEVEL", "WARNING").lower() == "debug":
+            args.extend(["--verbose"])
         
         self._logger.info(f"Embedding server args: {' '.join(args)}")
         return args

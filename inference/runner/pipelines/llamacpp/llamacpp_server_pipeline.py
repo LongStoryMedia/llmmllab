@@ -60,6 +60,7 @@ from runner.utils.hardware_manager import hardware_manager
 from runner.utils.intelligent_oom_recovery import IntelligentOOMRecovery
 from runner.utils.resizer import Resizer
 from runner.pipelines.base import BasePipeline
+from openai import OpenAI
 
 
 class LlamaCppServerManager:
@@ -75,7 +76,7 @@ class LlamaCppServerManager:
         self.server_url = f"http://localhost:{self.port}/v1"
         self._lock = threading.Lock()
         self._shutdown_event = threading.Event()
-        self._startup_timeout = 60  # seconds
+        self._startup_timeout = 300  # seconds - increased for very large models like 30B
         
     def _find_available_port(self, start_port: int = 8001) -> int:
         """Find an available port starting from start_port."""
@@ -114,35 +115,45 @@ class LlamaCppServerManager:
         
         # Core performance parameters
         args.extend(["--threads", str(os.cpu_count() or 4)])  # Use system CPU count
-        args.extend(["--ctx-size", str(params.num_ctx or 40960)])
+        args.extend(["-c", str(params.num_ctx or 90000)])  # Use short form like your working example with larger context
         args.extend(["--batch-size", str(params.batch_size or 256)])
-        args.extend(["--ubatch-size", str(params.batch_size or 256)])
+        args.extend(["-ub", str(params.batch_size or 256)])  # Use short form like working example
         
         # GPU configuration
         args.extend(["--n-gpu-layers", str(gcfg.gpu_layers if gcfg.gpu_layers is not None else -1)])
         
-        # Main GPU selection
+        # Main GPU selection - use short form like your working example
         if gcfg.main_gpu is not None and gcfg.main_gpu >= 0:
-            args.extend(["--main-gpu", str(gcfg.main_gpu)])
+            args.extend(["-mg", str(gcfg.main_gpu)])
+        else:
+            # Default to GPU 1 for large models like in your working example
+            args.extend(["-mg", "1"])
         
-        # Tensor split configuration
+        # Tensor split configuration - use short form like your working example
         if gcfg.tensor_split:
             tensor_split_str = ",".join(map(str, gcfg.tensor_split))
-            args.extend(["--tensor-split", tensor_split_str])
+            args.extend(["-ts", tensor_split_str])
         
-        # Split mode configuration
+        # Split mode configuration - use short form
         if hasattr(gcfg, 'split_mode') and gcfg.split_mode:
-            args.extend(["--split-mode", str(gcfg.split_mode)])
+            args.extend(["-sm", str(gcfg.split_mode)])
         
-        # Flash attention - use parameter from ModelParameters if available
-        if hasattr(params, 'flash_attention') and params.flash_attention is not None:
-            args.extend(["--flash-attn", "on" if params.flash_attention else "off"])
-        else:
-            args.extend(["--flash-attn", "on"])  # Default to on
+        # Main GPU configuration - use short form like your working example
+        if gcfg.main_gpu is not None and gcfg.main_gpu >= 0:
+            args.extend(["-mg", str(gcfg.main_gpu)])
         
         # MoE (Mixture of Experts) configuration - this parameter exists in ModelParameters
         if hasattr(params, 'n_cpu_moe') and params.n_cpu_moe is not None and params.n_cpu_moe > 0:
             args.extend(["--n-cpu-moe", str(params.n_cpu_moe)])
+        else:
+            # Default to 5 for MoE models like in your working example
+            args.extend(["--n-cpu-moe", "5"])
+        
+        # NUMA distribution like your working example
+        args.extend(["--numa", "distribute"])
+        
+        # KV offload disable like your working example (-nkvo)
+        args.extend(["-nkvo"])
         
         # Multimodal support - this is critical for vision models
         mmproj_path = None
@@ -236,20 +247,27 @@ class LlamaCppServerManager:
         
         start_time = time.time()
         while time.time() - start_time < self._startup_timeout:
-            try:
-                response = requests.get(f"http://localhost:{self.port}/health", timeout=2)
-                if response.status_code == 200:
-                    return True
-            except requests.exceptions.RequestException:
-                pass
-            
+            # Check if process is still alive
             if self.process and self.process.poll() is not None:
-                stdout, stderr = self.process.communicate(timeout=1)
-                self._logger.error(f"Server process died. stdout: {stdout}, stderr: {stderr}")
+                try:
+                    stdout, stderr = self.process.communicate(timeout=1)
+                    self._logger.error(f"Server process died. stdout: {stdout}, stderr: {stderr}")
+                except subprocess.TimeoutExpired:
+                    self._logger.error("Server process died")
                 return False
+            
+            try:
+                # Try /v1/models endpoint instead of /health - this is standard OpenAI API endpoint
+                response = requests.get(f"http://localhost:{self.port}/v1/models", timeout=2)
+                if response.status_code == 200:
+                    self._logger.info("Server ready - /v1/models responding")
+                    return True
+            except requests.exceptions.RequestException as e:
+                self._logger.debug(f"Server not ready yet: {e}")
                 
             time.sleep(0.5)
         
+        self._logger.error(f"Server failed to start within {self._startup_timeout} seconds")
         return False
     
     def stop(self) -> bool:
@@ -287,9 +305,9 @@ class LlamaCppServerManager:
             
         try:
             import requests
-            response = requests.get(f"http://localhost:{self.port}/health", timeout=2)
+            response = requests.get(f"http://localhost:{self.port}/v1/models", timeout=2)
             return response.status_code == 200
-        except:
+        except requests.exceptions.RequestException:
             return False
     
     def get_stats(self) -> Dict[str, Any]:
@@ -304,60 +322,75 @@ class LlamaCppServerManager:
         return {}
 
 
+logger = llmmllogger.bind(component="LlamaCppServerPipeline")
+
+
 class LlamaCppServerPipeline(BasePipeline):
     """
-    Pipeline using llama.cpp server with OpenAI-compatible interface.
+    llama.cpp server-based pipeline with persistent server management.
     
-    Replaces llama-cpp-python with direct server management for better:
-    - Performance and compatibility
-    - Memory management
-    - Feature support (multimodal, tool calling, etc.)
-    - Debugging and monitoring
+    Behaves like the old llama-cpp-python approach:
+    - Server starts once during initialization (like loading llama_instance)
+    - Server stays running and model stays loaded for fast reuse
+    - Server shuts down when pipeline is destroyed
     """
 
-    class Config:
-        """Pydantic configuration."""
-        arbitrary_types_allowed = True
-        extra = "allow"
-
-    def __init__(
-        self,
-        model: Model,
-        profile: ModelProfile,
-        grammar: Optional[Type[BaseModel]] = None,
-        user_config: Optional[UserConfig] = None,
-        **kwargs,
-    ):
-        """Initialize LlamaCpp server pipeline."""
-        super().__init__(model=model, profile=profile, grammar=grammar, user_config=user_config, **kwargs)
-        
+    def __init__(self, model: Model, profile: ModelProfile, grammar: Optional[Type[BaseModel]] = None, **kwargs):
+        super().__init__(model=model, profile=profile, grammar=grammar, **kwargs)
+        self.server_manager: Optional[LlamaCppServerManager] = None
+        self.openai_client: Optional[OpenAI] = None
+        self._server_started = False
+        self._bound_tools = kwargs.get('_bound_tools', None)
+        self.user_config = kwargs.get('user_config', None)
         self._logger = llmmllogger.bind(component=self.__class__.__name__, model=model.name)
-        self.grammar = grammar
-        self.user_config = user_config
-        self._bound_tools: List[BaseTool] = kwargs.get("_bound_tools", [])
         
-        # Initialize server manager
-        self.server_manager = LlamaCppServerManager(model, profile, user_config)
-        
-        # Initialize OpenAI client (will connect to our server)
-        self.openai_client: Optional[ChatOpenAI] = None
-        
-        # Performance monitoring
-        self.hardware_manager = hardware_manager
-        self.resizer = Resizer()
-        
-        # OOM recovery (optional)
-        self.use_intelligent_oom = (
-            os.getenv("ENABLE_INTELLIGENT_OOM_RECOVERY", "false").lower() == "true"
-        )
-        self.oom_recovery = IntelligentOOMRecovery() if self.use_intelligent_oom else None
-        
-        # Start the server
-        if not self.server_manager.start():
-            raise RuntimeError(f"Failed to start llama.cpp server for model {model.name}")
-        
-        # Initialize OpenAI client
-        self._initialize_openai_client()
+        # Initialize server once, just like the old approach loaded llama_instance once
+        self._initialize_persistent_server()
+
+    def _initialize_persistent_server(self):
+        """
+        Initialize persistent llama.cpp server (equivalent to old llama_instance initialization).
+        Server stays running for the lifetime of this pipeline instance.
+        """
+        try:
+            # Create server manager
+            self.server_manager = LlamaCppServerManager(
+                model=self.model,
+                profile=self.profile,
+                user_config=self.user_config
+            )
+            
+            # Start the server ONCE - model loads here and stays in memory
+            logger.info(f"Loading model {self.model.name} into persistent server...",
+                       component="LlamaCppServerPipeline", model=self.model.name)
+            
+            success = self.server_manager.start()  # Fixed: was start_server()
+            if not success:
+                raise RuntimeError(f"Failed to start persistent server for model {self.model.name}")
+            
+            self._server_started = True
+            
+            # Initialize OpenAI client to communicate with persistent server
+            base_url = f"http://127.0.0.1:{self.server_manager.port}/v1"
+            self.openai_client = OpenAI(
+                base_url=base_url,
+                api_key="dummy",  # llama.cpp server doesn't require real API key
+                **self._get_client_params()
+            )
+            
+            logger.info(f"Persistent server ready at {base_url} - model loaded and cached",
+                       component="LlamaCppServerPipeline", model=self.model.name)
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize persistent server: {e}")
+            raise
+
+    def _get_client_params(self) -> Dict[str, Any]:
+        """Get parameters for OpenAI client initialization."""
+        return {
+            "timeout": 300.0,  # 5 minutes timeout for long generations
+            "max_retries": 3,
+        }
 
     @property
     def _llm_type(self) -> str:
@@ -479,21 +512,30 @@ class LlamaCppServerPipeline(BasePipeline):
                     "json_schema": schema
                 }
             
-            # Bind tools if available
-            client = self.openai_client
-            if self._bound_tools:
-                client = self.openai_client.bind_tools(self._bound_tools)
+            # Bind tools if available (for chat completions that support tools)
+            # Note: llama.cpp server tool support may be limited
             
-            # Generate response
-            response = client.invoke(openai_messages, **generation_kwargs)
+            # Prepare OpenAI chat completion parameters
+            completion_params = {
+                "model": "local-model",  # llama.cpp server accepts any model name
+                "messages": openai_messages,
+                "stream": False,
+                **generation_kwargs
+            }
+            
+            # Generate response using OpenAI client
+            response = self.openai_client.chat.completions.create(**completion_params)
             
             # Extract content and usage
-            content = str(response.content) if response.content else ""
+            content = ""
+            if response.choices and len(response.choices) > 0:
+                choice = response.choices[0]
+                if choice.message and choice.message.content:
+                    content = choice.message.content
             
-            # Get server stats for usage calculation (approximate)
-            stats = self.server_manager.get_stats()
-            prompt_tokens = stats.get("tokens_input", 0)
-            completion_tokens = stats.get("tokens_output", 0)
+            # Extract usage information
+            prompt_tokens = response.usage.prompt_tokens if response.usage else 0
+            completion_tokens = response.usage.completion_tokens if response.usage else 0
             
             usage_metadata = self._calculate_usage_metadata(prompt_tokens, completion_tokens)
             
@@ -540,21 +582,25 @@ class LlamaCppServerPipeline(BasePipeline):
                     "json_schema": schema
                 }
             
-            # Bind tools if available
-            client = self.openai_client
-            if self._bound_tools:
-                client = self.openai_client.bind_tools(self._bound_tools)
+            # Prepare streaming parameters
+            completion_params = {
+                "model": "local-model",
+                "messages": openai_messages,
+                "stream": True,
+                **generation_kwargs
+            }
             
             # Stream response
             total_content = ""
-            for chunk in client.stream(openai_messages, **generation_kwargs):
-                if hasattr(chunk, 'content') and chunk.content:
-                    chunk_content = str(chunk.content)
-                    total_content += chunk_content
-                    
-                    ai_chunk = AIMessageChunk(content=chunk_content)
-                    
-                    yield ChatGenerationChunk(message=ai_chunk)
+            for chunk in self.openai_client.chat.completions.create(**completion_params):
+                if chunk.choices and len(chunk.choices) > 0:
+                    choice = chunk.choices[0]
+                    if choice.delta and choice.delta.content:
+                        chunk_content = choice.delta.content
+                        total_content += chunk_content
+                        
+                        ai_chunk = AIMessageChunk(content=chunk_content)
+                        yield ChatGenerationChunk(message=ai_chunk)
             
             # Yield final chunk with usage metadata
             stats = self.server_manager.get_stats()
