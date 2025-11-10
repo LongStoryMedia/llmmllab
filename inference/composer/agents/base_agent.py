@@ -216,13 +216,8 @@ class BaseAgent(ABC, Generic[T]):
             system_prompt += (
                 "\n\nYou have access to the following tools:\n"
                 + "\n".join([f"- {tool.name}: {tool.description}" for tool in tools])
-                + "\n\nUse them wisely to assist the user.\n\n"
-                + """TOOL CALLING FORMAT:
-When you need to call a tool, you MUST use this EXACT JSON format wrapped in <tool_call> tags:
-<tool_call>{"name": "tool_name", "arguments": "{\"param\": \"value\"}"}</tool_call>
-NEVER fabricate or hallucinate tool results. ALWAYS call the actual tool when you need information.
-The arguments field MUST be a JSON string (double-quoted), not a JSON object.
-"""
+                + "\n\nUse them wisely to assist the user. When you need information that requires a tool, call the appropriate tool to get current, accurate data. Never fabricate or hallucinate tool results."
+                + "\n\nTOOL CALLING FORMAT:\nWhen you need to call a tool, you MUST use this EXACT JSON format wrapped in <tool_call> tags:\n<tool_call>{\"name\": \"tool_name\", \"arguments\": \"{\\\"param\\\": \\\"value\\\"}\"}</tool_call>\nNEVER fabricate or hallucinate tool results. ALWAYS call the actual tool when you need information.\nThe arguments field MUST be a JSON string (double-quoted), not a JSON object."
             )
 
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
