@@ -74,10 +74,13 @@ async def summarization(
             pipeline = None
             if hasattr(state, 'shared_pipeline') and state.shared_pipeline:
                 pipeline = state.shared_pipeline
-                logger.debug("🔄 Using shared pipeline for summarization")
+                logger.info("🔄 Using shared pipeline for summarization")
             else:
                 # Fallback to creating new pipeline if shared one not available
-                logger.warning("⚠️ No shared pipeline available, creating new one for summarization")
+                import traceback
+                call_stack = traceback.extract_stack()[-3:-1]
+                call_info = " → ".join([f"{frame.filename.split('/')[-1]}:{frame.lineno}" for frame in call_stack])
+                logger.warning(f"⚠️ No shared pipeline available, creating new one for summarization (called from {call_info})")
                 # Get model profile for summarization
                 model_profile = await get_model_profile(
                     user_id,

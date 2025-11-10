@@ -97,20 +97,22 @@ def extract_tool_calls_from_streaming_chunks(
     Returns:
         List of ToolCall objects found in chunks
     """
-    logger.debug(f"🔍 extract_tool_calls_from_streaming_chunks called with {len(chunks)} chunks")
-    
+    logger.debug(
+        f"🔍 extract_tool_calls_from_streaming_chunks called with {len(chunks)} chunks"
+    )
+
     tool_calls = []
 
     for i, chunk in enumerate(chunks):
         try:
             logger.debug(f"🔍 Processing chunk {i}: type={type(chunk)}")
-            
+
             # Check if chunk has tool_calls attribute
-            if hasattr(chunk, 'tool_calls') and chunk.tool_calls:
+            if hasattr(chunk, "tool_calls") and chunk.tool_calls:
                 logger.debug(f"🔍 Chunk {i} has {len(chunk.tool_calls)} tool_calls")
                 for j, tc in enumerate(chunk.tool_calls):
                     logger.debug(f"🔍 Tool call {j}: type={type(tc)}")
-            
+
             # Look for tool call data in various chunk formats
             extracted = extract_tool_calls_as_models(chunk)
             if extracted:
@@ -125,7 +127,9 @@ def extract_tool_calls_from_streaming_chunks(
                 chunk_type=type(chunk).__name__,
             )
 
-    logger.debug(f"🔍 extract_tool_calls_from_streaming_chunks returning {len(tool_calls)} total tool calls")
+    logger.debug(
+        f"🔍 extract_tool_calls_from_streaming_chunks returning {len(tool_calls)} total tool calls"
+    )
     return tool_calls
 
 

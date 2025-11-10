@@ -12,14 +12,14 @@ Simple architecture:
 """
 
 import json
+import asyncio
 from typing import Dict, Any, List
 
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, BaseMessage
-from langchain.tools import BaseTool
+from langchain_core.messages import AIMessage, ToolMessage, BaseMessage
+from langchain_core.runnables.config import RunnableConfig
+from langchain.tools import ToolRuntime
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolNode  # Keep for type hints if needed
 from langgraph.types import Command
-
 from composer.graph.state import WorkflowState, ToolsState, assemble_context_messages
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
@@ -27,7 +27,6 @@ from utils.message_conversion import (
     messages_to_lc_messages,
     message_to_lc_message,
     lc_messages_to_messages,
-    lc_message_to_message,
 )
 from utils.tool_call_types import (
     LangChainToolCall,
@@ -99,14 +98,20 @@ class ToolsAgentSubgraph:
 
                 for tool_call in last_message.tool_calls:
                     # Handle both dictionary and object formats from OpenAI
-                    if hasattr(tool_call, 'function'):
+                    if hasattr(tool_call, "function"):
                         # OpenAI object format (ChatCompletionMessageFunctionToolCall)
                         tool_name = tool_call.function.name
-                        tool_args = json.loads(tool_call.function.arguments) if tool_call.function.arguments else {}
+                        tool_args = (
+                            json.loads(tool_call.function.arguments)
+                            if tool_call.function.arguments
+                            else {}
+                        )
                         tool_call_id = tool_call.id
                     elif isinstance(tool_call, dict):
                         # Dictionary format
-                        tool_name = tool_call.get("name") or tool_call.get("function", {}).get("name")
+                        tool_name = tool_call.get("name") or tool_call.get(
+                            "function", {}
+                        ).get("name")
                         tool_args = tool_call.get("args", {})
                         if not tool_args and "function" in tool_call:
                             args_str = tool_call["function"].get("arguments", "{}")
@@ -120,26 +125,21 @@ class ToolsAgentSubgraph:
                         tool = executable_tools[tool_name]
 
                         # Create proper ToolRuntime instance
-                        from langchain.tools import ToolRuntime
-                        from langchain_core.runnables.config import RunnableConfig
-                        
+
                         # Create minimal runtime - we mainly need state and tool_call_id
                         runtime = ToolRuntime(
                             state=state,  # ToolsState object
                             context={},  # Empty context for now
-                            config=RunnableConfig(),  # Empty config 
+                            config=RunnableConfig(),  # Empty config
                             stream_writer=None,  # Not needed for our tools
                             tool_call_id=tool_call_id,
-                            store=None  # Not needed for our tools
+                            store=None,  # Not needed for our tools
                         )
 
                         try:
                             logger.info(
                                 f"🔧 Executing tool '{tool_name}' with full state injection"
                             )
-
-                            # Add timeout to tool execution to prevent hanging
-                            import asyncio
 
                             try:
                                 result = await asyncio.wait_for(

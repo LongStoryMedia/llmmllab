@@ -25,7 +25,7 @@ def create_test_model() -> Model:
     """Create a test model configuration."""
     return Model(
         id="test-model",
-        name="Test Model", 
+        name="Test Model",
         model="/models/qwen3-4b/qwen3-4b-ud-q6-k-xl.gguf",  # Assuming this exists
         task="TextToText",
         modified_at="2025-11-08",
@@ -39,7 +39,7 @@ def create_test_model() -> Model:
             parameter_size="4B",
             original_ctx=40960,  # Required field
         ),
-        provider="llama_cpp"
+        provider="llama_cpp",
     )
 
 
@@ -59,35 +59,35 @@ def create_test_profile() -> ModelProfile:
             batch_size=256,
         ),
         system_prompt="You are a helpful AI assistant.",
-        type=1
+        type=1,
     )
 
 
 def test_pipeline_initialization():
     """Test that the pipeline initializes correctly."""
     logger.info("Testing pipeline initialization...")
-    
+
     model = create_test_model()
     profile = create_test_profile()
-    
+
     try:
         # Initialize pipeline
         pipeline = LlamaCppServerPipeline(model, profile)
         logger.info("✅ Pipeline initialized successfully")
-        
+
         # Check that server is running
         if pipeline.server_manager.is_running():
             logger.info("✅ Server is running and responsive")
         else:
             logger.error("❌ Server is not running")
             return False
-        
+
         # Clean up
         pipeline.close()
         logger.info("✅ Pipeline closed successfully")
-        
+
         return True
-        
+
     except Exception as e:
         logger.error(f"❌ Pipeline initialization failed: {e}")
         return False
@@ -96,20 +96,20 @@ def test_pipeline_initialization():
 def test_simple_generation():
     """Test basic text generation."""
     logger.info("Testing simple text generation...")
-    
+
     model = create_test_model()
     profile = create_test_profile()
-    
+
     try:
         # Initialize pipeline
         pipeline = LlamaCppServerPipeline(model, profile)
-        
+
         # Test generation
         from langchain_core.messages import HumanMessage
-        
+
         messages = [HumanMessage(content="What is 2+2?")]
         result = pipeline._generate(messages)
-        
+
         if result and result.generations:
             response = result.generations[0].message.content
             logger.info(f"✅ Generation successful: {response[:100]}...")
@@ -117,13 +117,13 @@ def test_simple_generation():
             logger.error("❌ No response generated")
             pipeline.close()
             return False
-        
+
         # Clean up
         pipeline.close()
         logger.info("✅ Generation test completed successfully")
-        
+
         return True
-        
+
     except Exception as e:
         logger.error(f"❌ Generation test failed: {e}")
         return False
@@ -132,24 +132,24 @@ def test_simple_generation():
 def test_streaming():
     """Test streaming generation."""
     logger.info("Testing streaming generation...")
-    
+
     model = create_test_model()
     profile = create_test_profile()
-    
+
     try:
         # Initialize pipeline
         pipeline = LlamaCppServerPipeline(model, profile)
-        
+
         # Test streaming
         from langchain_core.messages import HumanMessage
-        
+
         messages = [HumanMessage(content="Count from 1 to 5:")]
-        
+
         chunks = []
         for chunk in pipeline._stream(messages):
             if chunk and chunk.message and chunk.message.content:
                 chunks.append(chunk.message.content)
-        
+
         if chunks:
             full_response = "".join(chunks)
             logger.info(f"✅ Streaming successful: {full_response[:100]}...")
@@ -157,13 +157,13 @@ def test_streaming():
             logger.error("❌ No streaming chunks received")
             pipeline.close()
             return False
-        
+
         # Clean up
         pipeline.close()
         logger.info("✅ Streaming test completed successfully")
-        
+
         return True
-        
+
     except Exception as e:
         logger.error(f"❌ Streaming test failed: {e}")
         return False
@@ -172,13 +172,13 @@ def test_streaming():
 def main():
     """Run all tests."""
     logger.info("🚀 Starting LlamaCppServerPipeline tests...")
-    
+
     tests = [
         test_pipeline_initialization,
         test_simple_generation,
         test_streaming,
     ]
-    
+
     results = []
     for test in tests:
         try:
@@ -187,13 +187,13 @@ def main():
         except Exception as e:
             logger.error(f"Test {test.__name__} crashed: {e}")
             results.append(False)
-    
+
     # Summary
     passed = sum(results)
     total = len(results)
-    
+
     logger.info(f"\n📊 Test Results: {passed}/{total} tests passed")
-    
+
     if passed == total:
         logger.info("🎉 All tests passed! Server pipeline is working correctly.")
         return 0

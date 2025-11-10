@@ -14,7 +14,6 @@ Features:
 
 import re
 import json
-import os
 from typing import Any, Dict, List, Optional, Type, Iterator
 
 from langchain_core.callbacks import CallbackManagerForLLMRun
@@ -34,7 +33,6 @@ from pydantic import BaseModel
 from models import (
     Model,
     ModelProfile,
-    UserConfig,
 )
 from utils.logging import llmmllogger
 from utils.tool_call_types import LangChainToolCall
@@ -63,14 +61,25 @@ class LlamaCppServerPipeline(BasePipeline):
         grammar: Optional[Type[BaseModel]] = None,
         **kwargs,
     ):
-        super().__init__(model=model, profile=profile, grammar=grammar, **kwargs)
-        self.openai_client: Optional[OpenAI] = None
-        self._server_started = False
-        self._bound_tools = kwargs.get("_bound_tools", None)
+        # DEBUG: Add detailed instance creation logging
+        import traceback
+
+        call_stack = traceback.extract_stack()[-4:-1]
+        call_info = " → ".join(
+            [f"{frame.filename.split('/')[-1]}:{frame.lineno}" for frame in call_stack]
+        )
+
+        super().__init__(model, profile, grammar, **kwargs)
         self.user_config = kwargs.get("user_config", None)
         self._logger = llmmllogger.bind(
             component=self.__class__.__name__, model=model.name
         )
+
+        # Log each instance creation with stack trace
+        self._logger.info(
+            f"🏗️ Creating LlamaCppServerPipeline instance #{id(self):x} for {model.name} (called from {call_info})"
+        )
+
         # Create server manager with new architecture
         self.server_manager = LlamaCppServerManager(
             model=self.model,
@@ -81,12 +90,35 @@ class LlamaCppServerPipeline(BasePipeline):
         # Initialize server once, just like the old approach loaded llama_instance once
         self._initialize_persistent_server()
 
+        # Initialize additional attributes after server startup
+        super().__init__(model=model, profile=profile, grammar=grammar, **kwargs)
+        self.openai_client: Optional[OpenAI] = None
+        self._server_started = False
+        self._bound_tools = (kwargs.get("_bound_tools", []) or []) + (
+            kwargs.get("tools", []) or []
+        )
+        self._tool_choice = kwargs.get("tool_choice", None)  # Initialize tool choice attribute
+
     def _initialize_persistent_server(self):
         """
         Initialize persistent llama.cpp server (equivalent to old llama_instance initialization).
         Server stays running for the lifetime of this pipeline instance.
         """
         try:
+            # DEBUG: Add call stack logging to track multiple calls
+            import traceback
+
+            call_stack = traceback.extract_stack()[-4:-1]
+            call_info = " → ".join(
+                [
+                    f"{frame.filename.split('/')[-1]}:{frame.lineno}"
+                    for frame in call_stack
+                ]
+            )
+
+            self._logger.info(
+                f"🚀 _initialize_persistent_server() called for instance #{id(self):x} (called from {call_info})"
+            )
 
             # Start the server ONCE - model loads here and stays in memory
             logger.info(
@@ -644,15 +676,23 @@ class LlamaCppServerPipeline(BasePipeline):
     def bind_tools(
         self, tools: List[BaseTool], *, tool_choice: str | None = None, **kwargs: Any
     ) -> "LlamaCppServerPipeline":
-        """Bind tools to this pipeline."""
-        return LlamaCppServerPipeline(
-            model=self.model,
-            profile=self.profile,
-            grammar=self.grammar,
-            user_config=self.user_config,
-            _bound_tools=tools,
-            **kwargs,
+        """Bind tools to this pipeline WITHOUT creating a new server instance."""
+        # CRITICAL: Do NOT create a new pipeline instance - reuse the existing server!
+        # Creating a new instance would start another server, causing duplicate servers.
+        self._logger.info(
+            f"🔗 Binding {len(tools)} tools to EXISTING pipeline instance #{id(self):x} for {self.model.name}"
         )
+
+        # Store tools on the existing instance instead of creating a new one
+        self._bound_tools += tools
+        self._tool_choice = tool_choice
+
+        # Apply any additional kwargs to the existing instance
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+        # Return the same instance with tools bound
+        return self
 
     def get_stats(self) -> Dict[str, Any]:
         """Get performance statistics from server."""

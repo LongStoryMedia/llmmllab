@@ -98,16 +98,28 @@ class LocalPipelineCacheManager:
         grammar: Optional[Type[BaseModel]] = None,
     ) -> BaseChatModel | Embeddings:
         model_id = model.id or model.model
+        
+        # DEBUG: Add detailed logging
+        import traceback
+        call_stack = traceback.extract_stack()[-4:-2]  
+        call_info = " → ".join([f"{frame.filename.split('/')[-1]}:{frame.lineno}" for frame in call_stack])
+        
         with self._lock:
             entry = self._cache.get(model_id)
             if entry and entry.is_alive():
+                self.logger.debug(f"🎯 Cache HIT for {model_id} (called from {call_info})")
                 entry.touch()
                 pipe = entry.pipeline
                 if pipe:
                     return pipe
             elif entry:
+                self.logger.debug(f"🗑️ Cache STALE for {model_id}, removing (called from {call_info})")
                 self._cache.pop(model_id, None)
+            else:
+                self.logger.debug(f"❌ Cache MISS for {model_id} (called from {call_info})")
 
+        self.logger.info(f"🔧 Creating NEW pipeline for {model_id} (called from {call_info})")
+        
         required = self.estimate_memory(model, profile)
         if not self._ensure_memory(required, exclude=model_id):
             raise RuntimeError(
@@ -120,6 +132,7 @@ class LocalPipelineCacheManager:
 
         with self._lock:
             self._cache[model_id] = _PipelineCacheEntry(pipeline, priority)
+            self.logger.debug(f"💾 Cached NEW pipeline for {model_id}")
 
         hardware_manager.update_all_memory_stats()
         return pipeline
@@ -277,9 +290,9 @@ class LocalPipelineCacheManager:
                 model_size = int(params * bpp)
             except Exception:  # noqa: BLE001
                 pass
-        if model_size == 0 and getattr(model, "size", 0):
-            if model.size < 100 * 1024 * 1024 * 1024:
-                model_size = model.size
+        if model_size == 0 and hasattr(model, 'size'):
+            if getattr(model, 'size', 0) < 100 * 1024 * 1024 * 1024:
+                model_size = getattr(model, 'size', 0)
         if model_size == 0:
             task = str(getattr(model, "task", "TextToText"))
             if task.endswith("TextToEmbeddings"):

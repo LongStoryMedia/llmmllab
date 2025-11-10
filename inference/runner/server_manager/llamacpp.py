@@ -30,9 +30,11 @@ class LlamaCppServerManager(BaseServerManager):
         # Resolve startup timeout from config - use longer timeout for large models
         poc = resolve_parameter_optimization_config(profile, user_config)
         startup_timeout = (
-            poc.startup_timeout if poc and hasattr(poc, "startup_timeout") else 120  # Increased from 30 to 120 seconds
+            poc.startup_timeout
+            if poc and hasattr(poc, "startup_timeout")
+            else 120  # Increased from 30 to 120 seconds
         )
-        
+
         super().__init__(
             model=model,
             profile=profile,
@@ -60,42 +62,53 @@ class LlamaCppServerManager(BaseServerManager):
     def _build_server_args(self) -> List[str]:
         """Build command line arguments for llama.cpp server."""
         gguf_path = self.get_gguf_path()
-        
+
         # Base command
         args = [
             "/llama.cpp/build/bin/llama-server",
-            "--model", gguf_path,
-            "--host", "127.0.0.1",
-            "--port", str(self.port),
+            "--model",
+            gguf_path,
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(self.port),
         ]
-        
+
         # Add embedding-specific flags early
         if self.is_embedding:
-            args.extend([
-                "--threads", str(os.cpu_count() or 4),
-                "--ctx-size", "512",  # Smaller context for embeddings
-                "--batch-size", "256",
-                "--embeddings",  # Enable embeddings mode
-                "--pooling", "mean",  # Use mean pooling
-                "--no-webui",  # Disable web UI
-            ])
-            
+            args.extend(
+                [
+                    "--threads",
+                    str(os.cpu_count() or 4),
+                    "--ctx-size",
+                    "4096",  # Smaller context for embeddings
+                    "--batch-size",
+                    "1024",
+                    "--embeddings",  # Enable embeddings mode
+                    "--pooling",
+                    "mean",  # Use mean pooling
+                    "--no-webui",  # Disable web UI
+                ]
+            )
+
             # Add debug logging if enabled
-            if os.getenv("LOG_LEVEL", "WARNING").lower() == "debug":
+            if os.getenv("LOG_LEVEL", "WARNING").lower() == "trace":
                 args.extend(["--verbose"])
-            
+
             self._logger.info(f"Embedding server args: {' '.join(args)}")
             return args
-        
+
         # For non-embedding servers, build full configuration
         params = self.profile.parameters
         gcfg = resolve_gpu_config(self.profile, self.user_config)
 
         # Add standard server features
-        args.extend([
-            "--cont-batching",
-            "--metrics",
-        ])
+        args.extend(
+            [
+                "--cont-batching",
+                "--metrics",
+            ]
+        )
 
         # Core performance parameters
         args.extend(["--threads", str(os.cpu_count() or 4)])
@@ -104,10 +117,12 @@ class LlamaCppServerManager(BaseServerManager):
         args.extend(["-ub", str(params.batch_size or 256)])
 
         # GPU configuration
-        args.extend([
-            "--n-gpu-layers",
-            str(gcfg.gpu_layers if gcfg.gpu_layers is not None else -1),
-        ])
+        args.extend(
+            [
+                "--n-gpu-layers",
+                str(gcfg.gpu_layers if gcfg.gpu_layers is not None else -1),
+            ]
+        )
 
         # Main GPU selection
         if gcfg.main_gpu is not None and gcfg.main_gpu >= 0:
@@ -199,5 +214,5 @@ class LlamaCppServerManager(BaseServerManager):
                 possible_mmproj = model_dir / "mmproj-model-f16.gguf"
                 if possible_mmproj.exists():
                     return str(possible_mmproj)
-        
+
         return None

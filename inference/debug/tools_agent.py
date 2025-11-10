@@ -31,17 +31,30 @@ TEST_IMAGE_URL = (
 
 
 def get_profile(model_id: str) -> ModelProfile:
-    model_name = DEFAULT_TEXT_TO_TEXT_MODEL
+    """
+    Get the correct model profile for the specified model ID.
+
+    This ensures we use the complete profile with compatible mmproj and other settings,
+    rather than just changing the model_name on a mismatched profile.
+    """
+    # First try to find an exact profile match for the requested model
+    for profile_name, profile in DEFAULT_PROFILES.items():
+        if getattr(profile, "model_name", None) == model_id:
+            logger.info(
+                f"📋 Found exact profile match '{profile_name}' for model {model_id}"
+            )
+            return profile
+
+    # If no exact match, use primary profile with original model for safety
+    # This ensures compatible mmproj and other model-specific settings
     profile = DEFAULT_PROFILES.get("primary")
-    if getattr(profile, "model_name", None) != model_name:
-        for _, p in DEFAULT_PROFILES.items():
-            if getattr(p, "model_name", None) == model_name:
-                profile = p
-                break
     if profile is None:
-        print(f"[error] No default model profile found for {model_name}")
+        print(f"[error] No primary profile found")
         sys.exit(1)
-    profile.model_name = model_id
+    if profile.model_name != model_id:
+        logger.warning(
+            f"⚠️ No exact profile match for {model_id}, using primary profile with original model {profile.model_name}"
+        )
     return profile
 
 
@@ -210,6 +223,14 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
 
         traceback.print_exc()
         raise
+
+    finally:
+        # CRITICAL: Clean up agent to prevent memory leaks
+        try:
+            agent.cleanup()
+            logger.info("✅ Agent cleanup completed - pipelines unlocked")
+        except Exception as e:
+            logger.error(f"❌ Agent cleanup failed: {e}")
 
     print("\n[debug] Completed ToolsAgentSubgraph test without immediate crash")
 

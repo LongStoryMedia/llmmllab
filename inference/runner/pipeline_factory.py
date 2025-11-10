@@ -66,11 +66,28 @@ class PipelineFactory:
         if not model:
             raise RuntimeError(f"Model with ID '{model_id}' not found.")
 
+        # DEBUG: Add provider detection logging
+        provider = getattr(model, "provider", None)
+        import traceback
+
+        call_stack = traceback.extract_stack()[-3:-1]
+        call_info = " → ".join(
+            [f"{frame.filename.split('/')[-1]}:{frame.lineno}" for frame in call_stack]
+        )
+
+        self.logger.info(
+            f"🔍 get_pipeline() called for {model_id}, provider={provider}, from: {call_info}"
+        )
+
         # Local providers -> managed cached path with automatic locking
-        if getattr(model, "provider", None) in {
+        if provider in {
             ModelProvider.LLAMA_CPP,
             ModelProvider.STABLE_DIFFUSION_CPP,
         }:
+            self.logger.info(
+                f"📦 Using LOCAL cached path for {model_id} (provider: {provider})"
+            )
+
             # Use a factory function that handles coordination internally
             def create_with_coordination(
                 m: Model, p: ModelProfile, g: Optional[Type[BaseModel]] = grammar
@@ -99,13 +116,16 @@ class PipelineFactory:
             return pipeline
 
         # Remote / API providers -> create transient each call, no caching or locking needed
+        self.logger.info(
+            f"🌐 Using REMOTE non-cached path for {model_id} (provider: {provider})"
+        )
         pipeline = self.create_pipeline(model, profile)
         if not pipeline:
             raise RuntimeError(
-                f"Failed to create pipeline for model '{model.name}' (provider: {getattr(model, 'provider', 'unknown')})"
+                f"Failed to create pipeline for model '{model.name}' (provider: {provider})"
             )
         self.logger.debug(
-            f"Created transient pipeline for remote provider {getattr(model, 'provider', 'unknown')} ({model.name})"
+            f"Created transient pipeline for remote provider {provider} ({model.name})"
         )
         return pipeline
 
@@ -238,17 +258,45 @@ class PipelineFactory:
             An instance of BaseChatModel or Embeddings
         """
         try:
-            self.logger.info(f"Creating pipeline for {model.name} (task: {model.task})")
+            # DEBUG: Add detailed pipeline creation logging
+            import traceback
+
+            call_stack = traceback.extract_stack()[-4:-1]
+            call_info = " → ".join(
+                [
+                    f"{frame.filename.split('/')[-1]}:{frame.lineno}"
+                    for frame in call_stack
+                ]
+            )
+
+            self.logger.info(
+                f"🚀 create_pipeline() called for model={model.name}, task={model.task}, pipeline={getattr(model, 'pipeline', 'unknown')}, from: {call_info}"
+            )
 
             if model.task == ModelTask.TEXTTOTEXT:
+                self.logger.info(
+                    f"🎯 Routing to _create_text_pipeline for {model.name}"
+                )
                 return self._create_text_pipeline(model, profile, grammar)
             if model.task == ModelTask.VISIONTEXTTOTEXT:
+                self.logger.info(
+                    f"🎯 Routing to _create_text_pipeline for vision model {model.name}"
+                )
                 return self._create_text_pipeline(model, profile, grammar)
             if model.task == ModelTask.TEXTTOEMBEDDINGS:
+                self.logger.info(
+                    f"🎯 Routing to _create_embedding_pipeline for {model.name}"
+                )
                 return self._create_embedding_pipeline(model, profile)
             if model.task == ModelTask.TEXTTOIMAGE:
+                self.logger.info(
+                    f"🎯 Routing to _create_image_pipeline for {model.name}"
+                )
                 return self._create_image_pipeline(model, profile)
             if model.task == ModelTask.IMAGETOIMAGE:
+                self.logger.info(
+                    f"🎯 Routing to _create_image_to_image_pipeline for {model.name}"
+                )
                 return self._create_image_to_image_pipeline(model, profile)
             self.logger.error(f"Unsupported task type: {model.task}")
             raise RuntimeError(f"Unsupported task type: {model.task}")
@@ -279,9 +327,7 @@ class PipelineFactory:
             f"Creating text pipeline for model: {model.name}, pipeline: {model.pipeline}"
         )
         if model.pipeline == "Qwen3Pipe":
-            self.logger.info(
-                f"Creating Qwen3 server pipeline, prefer_langgraph={self.prefer_langgraph}"
-            )
+            self.logger.info(f"🔧 Creating Qwen3Pipe for {model.name}")
             from .pipelines.llamacpp.llamacpp_server_pipeline import (  # pylint: disable=import-outside-toplevel
                 LlamaCppServerPipeline,
             )
@@ -297,6 +343,7 @@ class PipelineFactory:
             return pipeline
 
         if model.pipeline == "Qwen3VLPipeline":
+            self.logger.info(f"🔧 Creating Qwen3VLPipeline for {model.name}")
             from .pipelines.llamacpp.llamacpp_server_pipeline import (  # pylint: disable=import-outside-toplevel
                 LlamaCppServerPipeline,
             )
@@ -304,6 +351,7 @@ class PipelineFactory:
             return LlamaCppServerPipeline(model, profile, grammar)
 
         if model.pipeline == "LlamaChatSummPipe":
+            self.logger.info(f"🔧 Creating LlamaChatSummPipe for {model.name}")
             from .pipelines.llamacpp.llamacpp_server_pipeline import (  # pylint: disable=import-outside-toplevel
                 LlamaCppServerPipeline,
             )
@@ -311,6 +359,7 @@ class PipelineFactory:
             return LlamaCppServerPipeline(model, profile, grammar)
 
         if model.pipeline == "OpenAiGptOssPipe":
+            self.logger.info(f"🔧 Creating OpenAiGptOssPipe for {model.name}")
             from .pipelines.llamacpp.llamacpp_server_pipeline import (  # pylint: disable=import-outside-toplevel
                 LlamaCppServerPipeline,
             )

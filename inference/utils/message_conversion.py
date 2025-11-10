@@ -6,7 +6,7 @@ and provide a single source of truth for message format conversion.
 """
 
 import json
-from json import tool
+import re
 from typing import List, Optional, Union, Dict, Any
 from datetime import datetime, timezone
 
@@ -38,14 +38,13 @@ MessageInput = Union[str, Message, List[Union[str, Message]], List[str], List[Me
 
 def message_to_lc_message(message: Message) -> BaseMessage:
     """Convert a Message object to a LangChain BaseMessage, preserving multimodal content."""
-    
+
     # Import here to avoid circular imports
-    import re
+
     import json
 
     # Convert Message.content to the multimodal format that LangChain expects
     content_data = convert_message_content_to_langchain_format(message.content)
-    tool_calls = extract_tool_calls_from_message_content(message.content)
 
     # For assistant messages, also parse XML tool calls from text content
     parsed_tool_calls = []
@@ -53,9 +52,11 @@ def message_to_lc_message(message: Message) -> BaseMessage:
         # Extract XML-wrapped tool calls from text content
         if isinstance(content_data, str):
             # Parse <tool_call>{"name": "func", "arguments": {...}}</tool_call> format
-            tool_call_pattern = r'<tool_call>\s*({[^}]*(?:{[^}]*}[^}]*)*})\s*</tool_call>'
+            tool_call_pattern = (
+                r"<tool_call>\s*({[^}]*(?:{[^}]*}[^}]*)*})\s*</tool_call>"
+            )
             matches = re.findall(tool_call_pattern, content_data, re.DOTALL)
-            
+
             for match in matches:
                 try:
                     tool_call_data = json.loads(match)
@@ -66,30 +67,38 @@ def message_to_lc_message(message: Message) -> BaseMessage:
                             try:
                                 args = json.loads(args)
                             except json.JSONDecodeError:
-                                logger.warning(f"Failed to parse arguments string: {args}")
+                                logger.warning(
+                                    f"Failed to parse arguments string: {args}"
+                                )
                                 args = {}
-                        
+
                         # Convert to LangChain tool call format
                         lc_tool_call = {
                             "name": tool_call_data["name"],
                             "args": args,
-                            "id": f"call_{tool_call_data['name']}_{len(parsed_tool_calls)}"
+                            "id": f"call_{tool_call_data['name']}_{len(parsed_tool_calls)}",
                         }
                         parsed_tool_calls.append(lc_tool_call)
-                        logger.info(f"🔧 Parsed tool call: {tool_call_data['name']} with args: {args}")
+                        logger.info(
+                            f"🔧 Parsed tool call: {tool_call_data['name']} with args: {args}"
+                        )
                 except json.JSONDecodeError as e:
                     logger.warning(f"Failed to parse tool call JSON: {e}")
-            
+
             # Remove tool call XML from content to clean it up
-            content_data = re.sub(tool_call_pattern, '', content_data, flags=re.DOTALL).strip()
+            content_data = re.sub(
+                tool_call_pattern, "", content_data, flags=re.DOTALL
+            ).strip()
 
         # Create AIMessage with parsed tool calls
         ai_message = AIMessage(content=content_data)
         if parsed_tool_calls:
             ai_message.tool_calls = parsed_tool_calls
-            logger.info(f"🔧 AIMessage created with {len(parsed_tool_calls)} tool calls")
+            logger.info(
+                f"🔧 AIMessage created with {len(parsed_tool_calls)} tool calls"
+            )
         return ai_message
-        
+
     elif message.role == MessageRole.USER:
         return HumanMessage(content=content_data)
     elif message.role == MessageRole.SYSTEM:

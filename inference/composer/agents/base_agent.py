@@ -172,8 +172,16 @@ class BaseAgent(ABC, Generic[T]):
                 )
 
         # Reset pipeline state
-        self._pipeline = None  # Release pipeline reference 
+        self._pipeline = None  # Release pipeline reference
         self.logger.debug("Agent cleanup completed")
+
+    def __del__(self):
+        """Automatic cleanup when agent is garbage collected."""
+        try:
+            self.cleanup()
+        except Exception:
+            # Silently ignore cleanup errors during destruction
+            pass
 
     def _get_or_create_agent(
         self,
@@ -200,16 +208,14 @@ class BaseAgent(ABC, Generic[T]):
         """
         # Always create new agent for different configurations, but reuse pipeline
         # This allows different system prompts, tools, and grammars while maintaining server reuse
-        
+
         self.logger.debug("Creating LangChain agent (pipeline will be reused)")
         # Get the model configuration from pipeline factory
 
         if tools:
             system_prompt += (
                 "\n\nYou have access to the following tools:\n"
-                + "\n".join(
-                    [f"- {tool.name}: {tool.description}" for tool in tools]
-                )
+                + "\n".join([f"- {tool.name}: {tool.description}" for tool in tools])
                 + "\n\nUse them wisely to assist the user.\n\n"
                 + """TOOL CALLING FORMAT:
 When you need to call a tool, you MUST use this EXACT JSON format wrapped in <tool_call> tags:
@@ -230,21 +236,38 @@ The current date is {current_date}. While this is likely past your training data
 
         # Get or reuse persistent pipeline to prevent multiple server instances
         agent_id = f"{id(self):x}"
-        self.logger.debug(f"🔍 Agent {agent_id} checking pipeline state - current: {self._pipeline is not None}, profile: {self.profile.model_name}, priority: {priority}")
+        import traceback
+
+        call_stack = traceback.extract_stack()[-3:-1]  # Get 2 levels of call stack
+        call_info = " → ".join(
+            [f"{frame.filename.split('/')[-1]}:{frame.lineno}" for frame in call_stack]
+        )
+
+        self.logger.debug(
+            f"🔍 Agent {agent_id} checking pipeline state - current: {self._pipeline is not None}, profile: {self.profile.model_name}, priority: {priority}, called from: {call_info}"
+        )
         if self._pipeline is None:
-            self.logger.debug(f"🔧 Agent {agent_id} creating new pipeline for {self.profile.model_name}")
-            
+            self.logger.debug(
+                f"🔧 Agent {agent_id} creating new pipeline for {self.profile.model_name} (call #{len(call_stack)} from {call_info})"
+            )
+
             # CRITICAL: Only create pipeline once per agent instance, ignore all subsequent parameter variations
             # This prevents duplicate server creation caused by different priority/grammar combinations
             # All subsequent calls will reuse the same pipeline regardless of parameters
             self._pipeline = self.pipeline_factory.get_pipeline(
-                self.profile, PipelinePriority.MEDIUM, None  # Use consistent priority, no grammar variations
+                self.profile,
+                PipelinePriority.MEDIUM,
+                None,  # Use consistent priority, no grammar variations
             )
             # Mark that we have locked a pipeline that needs cleanup
             self._pipeline_locked = True
-            self.logger.debug(f"🔒 Agent {agent_id} locked new pipeline for {self.profile.model_name}")
+            self.logger.debug(
+                f"🔒 Agent {agent_id} locked new pipeline for {self.profile.model_name} (total calls to _get_or_create_agent)"
+            )
         else:
-            self.logger.debug(f"🔄 Agent {agent_id} reusing existing pipeline for {self.profile.model_name} (ignoring parameter variations)")
+            self.logger.debug(
+                f"🔄 Agent {agent_id} reusing existing pipeline for {self.profile.model_name} (ignoring parameter variations) from {call_info}"
+            )
 
         llm = cast(BaseChatModel, self._pipeline)
         agent = create_agent(

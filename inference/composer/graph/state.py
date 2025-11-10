@@ -54,7 +54,9 @@ class ToolsState(BaseModel):
     tool_call_count: int
 
     # Shared pipeline for tools to prevent duplicate server instances
-    shared_pipeline: Optional[Any] = Field(default=None, description="Pipeline instance for tools to reuse")
+    shared_pipeline: Optional[Any] = Field(
+        default=None, description="Pipeline instance for tools to reuse"
+    )
 
 
 class WorkflowState(BaseModel):
