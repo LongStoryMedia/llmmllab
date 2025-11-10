@@ -90,7 +90,7 @@ class LangChainChatOpenAIPipeline:
             # Extract model parameters from profile
             params = self._build_chat_model_params()
 
-            # Create ChatOpenAI instance
+            # Create ChatOpenAI instance with debug logging
             self.chat_model = ChatOpenAI(
                 base_url=base_url,
                 api_key=lambda: "dummy",  # Use callable to satisfy type requirements
@@ -100,11 +100,68 @@ class LangChainChatOpenAIPipeline:
                 **params,
             )
 
+            # Add HTTP debugging by wrapping the client
+            self._add_http_debugging()
+
             self._logger.info(f"ChatOpenAI initialized with base_url: {base_url}")
 
         except Exception as e:
             self._logger.error(f"Failed to initialize ChatOpenAI: {e}")
             raise
+
+    def _add_http_debugging(self):
+        """Add comprehensive HTTP request/response debugging."""
+        try:
+            # Store original client methods
+            original_request = self.chat_model.client.request
+            
+            async def debug_request(method: str, url: str, **kwargs):
+                """Debug wrapper for HTTP requests."""
+                self._logger.info(f"🌐 HTTP {method.upper()} {url}")
+                self._logger.info(f"🌐 Request kwargs keys: {list(kwargs.keys())}")
+                
+                # Log the complete request data
+                if 'json' in kwargs:
+                    import json
+                    json_data = kwargs['json']
+                    self._logger.info(f"🌐 Request JSON: {json.dumps(json_data, indent=2)}")
+                
+                if 'headers' in kwargs:
+                    self._logger.info(f"🌐 Request headers: {kwargs['headers']}")
+                
+                # Make the actual request
+                try:
+                    response = await original_request(method, url, **kwargs)
+                    
+                    # Log the response
+                    self._logger.info(f"🌐 Response status: {response.status_code}")
+                    self._logger.info(f"🌐 Response headers: {dict(response.headers)}")
+                    
+                    # Try to capture response body for debugging
+                    try:
+                        if hasattr(response, 'json'):
+                            response_json = response.json()
+                            self._logger.info(f"🌐 Response JSON: {json.dumps(response_json, indent=2)}")
+                        elif hasattr(response, 'text'):
+                            response_text = response.text
+                            self._logger.info(f"🌐 Response text (first 500 chars): {response_text[:500]}")
+                    except Exception as parse_error:
+                        self._logger.warning(f"🌐 Could not parse response body: {parse_error}")
+                    
+                    return response
+                    
+                except Exception as e:
+                    self._logger.error(f"🌐 HTTP request failed: {e}")
+                    raise
+            
+            # Monkey patch the request method
+            self.chat_model.client.request = debug_request
+            
+            self._logger.info("🌐 HTTP debugging enabled for ChatOpenAI client")
+            
+        except Exception as e:
+            self._logger.warning(f"🌐 Failed to add HTTP debugging: {e}")
+            # Don't fail initialization if debugging setup fails
 
     def _build_chat_model_params(self) -> Dict[str, Any]:
         """Build ChatOpenAI parameters from model profile."""

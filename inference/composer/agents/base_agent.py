@@ -313,6 +313,17 @@ The current date is {current_date}. While this is likely past your training data
 
         return enhanced_prompt
 
+    async def ensure_pipeline_created(self):
+        """Ensure pipeline is created without running a full completion."""
+        if not self._pipeline:
+            # Trigger pipeline creation by calling _get_or_create_agent
+            self._get_or_create_agent(
+                system_prompt="",  # Minimal system prompt
+                tools=None,
+                priority=PipelinePriority.MEDIUM,
+                grammar=None
+            )
+
     @property
     def current_pipeline(self) -> Optional[Any]:
         """Get the current pipeline instance if available."""

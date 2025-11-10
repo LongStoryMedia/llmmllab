@@ -141,12 +141,12 @@ class ToolsAgentSubgraph:
                 tool_calls = extract_tool_calls_from_langchain_message(last_message)
                 
                 # Debug logging
-                logger.info(f"🔍 Routing debug: message type={type(last_message)}, content preview={str(last_message.content)[:100] if hasattr(last_message, 'content') else 'no content'}")
-                logger.info(f"🔍 Routing debug: extracted {len(tool_calls)} tool calls")
-                logger.info(f"🔍 Routing debug: tool_calls list = {tool_calls}")
-                logger.info(f"🔍 Routing debug: bool(tool_calls) = {bool(tool_calls)}")
+                logger.debug(f"🔍 Routing debug: message type={type(last_message)}, content preview={str(last_message.content)[:100] if hasattr(last_message, 'content') else 'no content'}")
+                logger.debug(f"🔍 Routing debug: extracted {len(tool_calls)} tool calls")
+                logger.debug(f"🔍 Routing debug: tool_calls list = {tool_calls}")
+                logger.debug(f"🔍 Routing debug: bool(tool_calls) = {bool(tool_calls)}")
                 for i, tc in enumerate(tool_calls):
-                    logger.info(f"🔍 Tool call {i}: name={getattr(tc, 'name', 'unknown')}, success={getattr(tc, 'success', 'unknown')}")
+                    logger.debug(f"🔍 Tool call {i}: name={getattr(tc, 'name', 'unknown')}, success={getattr(tc, 'success', 'unknown')}")
                 
                 if tool_calls:
                     logger.info(
@@ -157,11 +157,11 @@ class ToolsAgentSubgraph:
                     logger.warning(f"❌ Tool calls list failed boolean check: len={len(tool_calls)}, type={type(tool_calls)}, repr={repr(tool_calls)}")
                     
                     # DEBUG: Check the raw message attributes for debugging
-                    if hasattr(last_message, 'additional_kwargs'):
+                    if hasattr(last_message, "additional_kwargs"):
                         logger.info(f"� Debug additional_kwargs: {last_message.additional_kwargs}")
-                    if hasattr(last_message, 'tool_calls'):
+                    if hasattr(last_message, "tool_calls") and isinstance(last_message, AIMessage):
                         logger.info(f"🔍 Debug tool_calls attribute: {last_message.tool_calls}")
-                    if hasattr(last_message, 'response_metadata'):
+                    if hasattr(last_message, "response_metadata"):
                         logger.info(f"🔍 Debug response_metadata: {last_message.response_metadata}")
                     
                     logger.info("✅ No tool calls found, ending workflow")
@@ -283,8 +283,14 @@ class ToolsAgentSubgraph:
                 )
                 messages_for_completion.append(final_instruction)
 
-            # Try ChatOpenAI direct approach first (for LangChain ChatOpenAI pipelines)
+            # Ensure chat agent has a pipeline by calling ensure_pipeline_created first
+            await self.chat_agent.ensure_pipeline_created()
+            
+            # Now check for ChatOpenAI capability
             pipeline = self.chat_agent.current_pipeline
+            logger.info(f"🔍 ChatOpenAI check: pipeline={pipeline}, type={type(pipeline)}")
+            logger.info(f"🔍 ChatOpenAI check: has_get_chat_model={hasattr(pipeline, 'get_chat_model') if pipeline else 'No pipeline'}")
+            
             if pipeline and hasattr(pipeline, 'get_chat_model'):
                 try:
                     logger.info("🚀 Using direct ChatOpenAI approach for tool calling")
@@ -296,7 +302,41 @@ class ToolsAgentSubgraph:
                         chat_model = chat_model.bind_tools(tools_list)
                     
                     # Invoke ChatOpenAI directly - this handles tool calling natively
+                    logger.info("📤 About to invoke ChatOpenAI with tool calling...")
+                    logger.info(f"📤 Input messages count: {len(messages_for_completion)}")
+                    for i, msg in enumerate(messages_for_completion):
+                        logger.info(f"📤 Input message {i}: type={type(msg).__name__}, content_preview={str(getattr(msg, 'content', ''))[:100]}")
+                    
                     response_message = await chat_model.ainvoke(messages_for_completion)
+                    
+                    # COMPREHENSIVE response debugging
+                    logger.info("📨 ChatOpenAI Response Analysis:")
+                    logger.info(f"📨 Response type: {type(response_message)}")
+                    logger.info(f"📨 Response dir: {[attr for attr in dir(response_message) if not attr.startswith('_')]}")
+                    
+                    # Check all possible attributes
+                    for attr in ['content', 'tool_calls', 'additional_kwargs', 'response_metadata', 'usage_metadata']:
+                        if hasattr(response_message, attr):
+                            value = getattr(response_message, attr)
+                            logger.info(f"📨 Response.{attr}: {value}")
+                        else:
+                            logger.info(f"📨 Response.{attr}: NOT PRESENT")
+                    
+                    # Special focus on tool_calls
+                    if hasattr(response_message, 'tool_calls'):
+                        tool_calls = getattr(response_message, 'tool_calls')
+                        logger.info(f"📨 tool_calls type: {type(tool_calls)}")
+                        logger.info(f"📨 tool_calls length: {len(tool_calls) if tool_calls else 'None'}")
+                        if tool_calls:
+                            for i, tc in enumerate(tool_calls):
+                                logger.info(f"📨 tool_call {i}: type={type(tc)}, value={tc}")
+                    
+                    # Check for any function calling indicators in content
+                    content = getattr(response_message, 'content', '')
+                    if content and ('function' in content.lower() or 'tool' in content.lower() or '{' in content):
+                        logger.info(f"📨 Content might contain function calls: {content}")
+                    
+                    logger.info(f"📨 Full response object: {response_message}")
                     
                     # Add response to state
                     state.messages.append(response_message)
