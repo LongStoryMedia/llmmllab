@@ -102,11 +102,14 @@ class LlamaCppServerManager(BaseServerManager):
         params = self.profile.parameters
         gcfg = resolve_gpu_config(self.profile, self.user_config)
 
-        # Add standard server features
+        # Add standard server features with performance optimizations
         args.extend(
             [
                 "--cont-batching",
                 "--metrics",
+                "--no-warmup",  # Skip warmup for faster startup
+                "--cache-type-k", "f16",  # Use f16 for KV cache
+                "--cache-type-v", "f16",  # Use f16 for KV cache
             ]
         )
 
