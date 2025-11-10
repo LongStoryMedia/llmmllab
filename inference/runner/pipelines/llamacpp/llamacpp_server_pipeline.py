@@ -278,20 +278,6 @@ class LlamaCppServerPipeline(BasePipeline):
             for msg in messages
         )
         
-        # Debug: Log tool call history detection
-        if has_tool_calls_in_history:
-            tool_call_names = set()
-            for msg in messages:
-                if isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls:
-                    for tc in msg.tool_calls:
-                        if hasattr(tc, 'name'):
-                            tool_call_names.add(tc.name)
-                        elif isinstance(tc, dict) and 'name' in tc:
-                            tool_call_names.add(tc['name'])
-                        elif hasattr(tc, 'function') and hasattr(tc.function, 'name'):
-                            tool_call_names.add(tc.function.name)
-            self._logger.info(f"🔍 Found tool calls in history: {tool_call_names}, current tools: {[t.name for t in tools_to_include]}")
-        
         # Include tools if we have tools to include OR if history contains tool calls
         if tools_to_include or has_tool_calls_in_history:
             # Convert LangChain tools to OpenAI format
@@ -487,9 +473,28 @@ class LlamaCppServerPipeline(BasePipeline):
                 openai_messages.append({"role": "user", "content": msg.content})
             elif isinstance(msg, AIMessage):
                 ai_msg = {"role": "assistant", "content": msg.content}
-                # Add tool calls if present
+                # Add tool calls if present - convert from LangChain to OpenAI format
                 if hasattr(msg, "tool_calls") and msg.tool_calls:
-                    ai_msg["tool_calls"] = msg.tool_calls
+                    openai_tool_calls = []
+                    for tc in msg.tool_calls:
+                        # Convert LangChain tool call format to OpenAI format
+                        if isinstance(tc, dict):
+                            # LangChain format: {"name": "tool", "args": {...}, "id": "...", "type": "function"}
+                            openai_tool_call = {
+                                "id": tc.get("id", "unknown"),
+                                "type": "function",
+                                "function": {
+                                    "name": tc.get("name", "unknown"),
+                                    "arguments": json.dumps(tc.get("args", {})) if tc.get("args") else "{}"
+                                }
+                            }
+                            openai_tool_calls.append(openai_tool_call)
+                        else:
+                            # Already in OpenAI format or other format - pass through
+                            openai_tool_calls.append(tc)
+                    
+                    ai_msg["tool_calls"] = openai_tool_calls
+                    self._logger.debug(f"🔄 Converted {len(openai_tool_calls)} tool calls to OpenAI format")
                 openai_messages.append(ai_msg)
             elif isinstance(msg, SystemMessage):
                 openai_messages.append({"role": "system", "content": msg.content})
