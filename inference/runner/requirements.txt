@@ -19,5 +19,4 @@ openai-harmony==0.0.4
 nvsmi==0.4.2
 scikit-learn==1.7.2
 nvidia-ml-py==12.560.30
-psutil==5.9.8  # For process management in server pipeline
-requests==2.31.0  # For server health checks
+requests>=2.32.0  # For server health checks

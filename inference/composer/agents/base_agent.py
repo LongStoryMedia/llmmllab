@@ -476,31 +476,68 @@ The current date is {current_date}. While this is likely past your training data
 
             # Convert messages to LangChain format
             normalized_messages = messages_to_lc_messages(convo)
-            npt = {"messages": normalized_messages}
 
-            # Stream agent execution with recursion limit
+            # Handle different agent types for streaming
             chunk_count = 0
-            async for chunk in agent.astream(
-                npt, stream_mode="messages", subgraphs=True  # type: ignore
-            ):
-                msg_chunk = {}
-                metadata = {}
+            
+            # Check if this is a ChatOpenAI model (direct LangChain integration)
+            if hasattr(agent, '_llm_type') or hasattr(agent, 'model_name'):
+                # Direct ChatOpenAI streaming - use async generator methods
+                self.logger.debug("Using ChatOpenAI streaming")
+                try:
+                    # For ChatOpenAI, use agenerate with streaming
+                    from langchain_core.messages import HumanMessage, AIMessage
+                    from langchain_core.language_models import BaseChatModel
+                    
+                    # Cast to BaseChatModel for proper typing
+                    chat_model = cast(BaseChatModel, agent)
+                    
+                    # Simple non-streaming approach for now since streaming API differs
+                    response = await chat_model.ainvoke(normalized_messages)
+                    if isinstance(response, BaseMessage):
+                        msg = lc_message_to_message(response)
+                        chat_chunk = ChatResponse(done=False, message=msg)
+                        chat_chunk.channels = self._node_metadata.model_dump()
+                        chunk_count += 1
+                        yield chat_chunk
+                except Exception as e:
+                    self.logger.warning(f"ChatOpenAI streaming failed: {e}, using fallback")
+                    # Fallback to non-streaming
+                    chat_model = cast(BaseChatModel, agent)
+                    response = await chat_model.ainvoke(normalized_messages)
+                    if isinstance(response, BaseMessage):
+                        msg = lc_message_to_message(response)
+                        chat_chunk = ChatResponse(done=False, message=msg)
+                        chat_chunk.channels = self._node_metadata.model_dump()
+                        chunk_count += 1
+                        yield chat_chunk
+            else:
+                # Traditional LangGraph agent streaming
+                self.logger.debug("Using traditional LangGraph agent streaming")
+                npt = {"messages": normalized_messages}
+                
+                # Stream agent execution with recursion limit
+                async for chunk in agent.astream(
+                    npt, stream_mode="messages", subgraphs=True  # type: ignore
+                ):
+                    msg_chunk = {}
+                    metadata = {}
 
-                self.logger.debug(f"Processing streaming chunk: {chunk}")
+                    self.logger.debug(f"Processing streaming chunk: {chunk}")
 
-                # stream_mode "messages" returns AIMessageChunk objects with metadata
-                if isinstance(chunk, tuple) and len(chunk) >= 2:
-                    msg_chunk, metadata = chunk
-                elif isinstance(chunk, BaseMessage):
-                    msg_chunk = chunk
+                    # stream_mode "messages" returns AIMessageChunk objects with metadata
+                    if isinstance(chunk, tuple) and len(chunk) >= 2:
+                        msg_chunk, metadata = chunk
+                    elif isinstance(chunk, BaseMessage):
+                        msg_chunk = chunk
 
-                if isinstance(msg_chunk, BaseMessage):
-                    msg = lc_message_to_message(msg_chunk)
+                    if isinstance(msg_chunk, BaseMessage):
+                        msg = lc_message_to_message(msg_chunk)
 
-                    chat_chunk = ChatResponse(done=False, message=msg)
-                    chat_chunk.channels = self._node_metadata.model_dump()
-                    chunk_count += 1
-                    yield chat_chunk
+                        chat_chunk = ChatResponse(done=False, message=msg)
+                        chat_chunk.channels = self._node_metadata.model_dump()
+                        chunk_count += 1
+                        yield chat_chunk
 
             # Yield end chunk with node metadata
             yield create_streaming_chunk(
@@ -569,12 +606,28 @@ The current date is {current_date}. While this is likely past your training data
             normalized_messages = messages_to_lc_messages(convo)
 
             # Execute agent with normalized messages
-            result = await agent.ainvoke(
-                {"messages": normalized_messages}  # type: ignore
-            )
+            # Handle different agent types
+            if hasattr(agent, '_llm_type') or hasattr(agent, 'model_name'):
+                # Direct ChatOpenAI execution
+                from langchain_core.language_models import BaseChatModel
+                chat_model = cast(BaseChatModel, agent)
+                result = await chat_model.ainvoke(normalized_messages)
+            else:
+                # Traditional LangGraph agent execution
+                result = await agent.ainvoke(normalized_messages)  # type: ignore
 
             # Convert agent result to ChatResponse
-            last_message = result["messages"][-1]
+            # Handle different result formats based on agent type
+            if isinstance(result, BaseMessage):
+                # Direct ChatOpenAI response (AIMessage)
+                last_message = result
+            elif isinstance(result, dict) and "messages" in result:
+                # Traditional LangGraph agent response
+                last_message = result["messages"][-1]
+            else:
+                # Fallback - assume result is the message itself
+                last_message = result
+            
             assert isinstance(last_message, BaseMessage)
             msg = lc_message_to_message(last_message)
             response = ChatResponse(

@@ -135,18 +135,37 @@ class ToolsAgentSubgraph:
                     return "__end__"
 
                 last_message = state.messages[-1]
-                # Check if message has tool calls
-                if hasattr(last_message, "tool_calls") and getattr(
-                    last_message, "tool_calls", None
-                ):
-                    tool_calls = getattr(last_message, "tool_calls", [])
+                logger.info(f"🔍 State has {len(state.messages)} messages, checking last message (idx {len(state.messages)-1})")
+                # Check if message has tool calls using our extraction utility
+                from utils.tool_call_extraction import extract_tool_calls_from_langchain_message
+                tool_calls = extract_tool_calls_from_langchain_message(last_message)
+                
+                # Debug logging
+                logger.info(f"🔍 Routing debug: message type={type(last_message)}, content preview={str(last_message.content)[:100] if hasattr(last_message, 'content') else 'no content'}")
+                logger.info(f"🔍 Routing debug: extracted {len(tool_calls)} tool calls")
+                logger.info(f"🔍 Routing debug: tool_calls list = {tool_calls}")
+                logger.info(f"🔍 Routing debug: bool(tool_calls) = {bool(tool_calls)}")
+                for i, tc in enumerate(tool_calls):
+                    logger.info(f"🔍 Tool call {i}: name={getattr(tc, 'name', 'unknown')}, success={getattr(tc, 'success', 'unknown')}")
+                
+                if tool_calls:
                     logger.info(
                         f"🔧 Routing to tools: {len(tool_calls)} tool calls to execute"
                     )
                     return "tools"
-
-                logger.info("✅ No tool calls found, ending workflow")
-                return "__end__"
+                else:
+                    logger.warning(f"❌ Tool calls list failed boolean check: len={len(tool_calls)}, type={type(tool_calls)}, repr={repr(tool_calls)}")
+                    
+                    # DEBUG: Check the raw message attributes for debugging
+                    if hasattr(last_message, 'additional_kwargs'):
+                        logger.info(f"� Debug additional_kwargs: {last_message.additional_kwargs}")
+                    if hasattr(last_message, 'tool_calls'):
+                        logger.info(f"🔍 Debug tool_calls attribute: {last_message.tool_calls}")
+                    if hasattr(last_message, 'response_metadata'):
+                        logger.info(f"🔍 Debug response_metadata: {last_message.response_metadata}")
+                    
+                    logger.info("✅ No tool calls found, ending workflow")
+                    return "__end__"
 
             builder.add_conditional_edges(
                 "chat_agent",
@@ -265,10 +284,11 @@ class ToolsAgentSubgraph:
                 messages_for_completion.append(final_instruction)
 
             # Try ChatOpenAI direct approach first (for LangChain ChatOpenAI pipelines)
-            if hasattr(self.chat_agent, '_pipeline') and hasattr(self.chat_agent._pipeline, 'get_chat_model'):
+            pipeline = self.chat_agent.current_pipeline
+            if pipeline and hasattr(pipeline, 'get_chat_model'):
                 try:
                     logger.info("🚀 Using direct ChatOpenAI approach for tool calling")
-                    chat_model = self.chat_agent._pipeline.get_chat_model()  # type: ignore
+                    chat_model = pipeline.get_chat_model()  # type: ignore
                     
                     # Bind tools to ChatOpenAI if available
                     if tools_list:
@@ -314,6 +334,15 @@ class ToolsAgentSubgraph:
 
         except Exception as e:
             logger.error(f"Error in chat agent node: {e}")
+                        # DEBUG: Add detailed pipeline creation logging
+            import traceback
+
+            call_stack = traceback.extract_stack()
+            call_info = " → ".join(
+                [f"{frame.filename}:{frame.lineno}\n" for frame in call_stack]
+            )
+
+            logger.error(f"Pipeline creation call stack: {call_info}")
             # Fallback: return state unchanged
             return state
 

@@ -3,7 +3,6 @@ Production-ready pipeline factory with weakref caching, background cleanup, and
 modern/legacy pipeline selection. Replaces the previous garbled version.
 """
 
-import logging
 import threading
 from typing import Dict, Optional, Type, Union
 from contextlib import contextmanager
@@ -18,6 +17,7 @@ from models import (
     ModelTask,
     PipelinePriority,
 )
+from utils.logging import llmmllogger
 from .pipeline_cache import LocalPipelineCacheManager
 from .utils.model_loader import ModelLoader
 
@@ -33,7 +33,7 @@ class PipelineFactory:
     """
 
     def __init__(self, models_map: Dict[str, Model]):
-        self.logger = logging.getLogger(__name__)
+        self.logger = llmmllogger.bind(component="PipelineFactory")
 
         # Initialize attributes that were removed but are still used
         self._available_models: Dict[str, Model] = ModelLoader().get_available_models()
@@ -303,7 +303,15 @@ class PipelineFactory:
         except Exception as e:
             self.logger.error(f"Error creating pipeline for {model.name}: {e}")
 
-            # Log specific error types for better debugging
+            # DEBUG: Add detailed pipeline creation logging
+            import traceback
+
+            call_stack = traceback.extract_stack()
+            call_info = " → ".join(
+                [f"{frame.filename}:{frame.lineno}\n" for frame in call_stack]
+            )
+
+            self.logger.error(f"Pipeline creation call stack: {call_info}")
             if "unknown model architecture" in str(e):
                 self.logger.error(
                     f"Model {model.name} uses unsupported architecture - consider updating llama.cpp or using a different model"
