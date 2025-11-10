@@ -87,17 +87,18 @@ class LlamaCppServerPipeline(BasePipeline):
             user_config=self.user_config,
         )
 
-        # Initialize server once, just like the old approach loaded llama_instance once
-        self._initialize_persistent_server()
-
-        # Initialize additional attributes after server startup
-        super().__init__(model=model, profile=profile, grammar=grammar, **kwargs)
+        # Initialize attributes before server startup
         self.openai_client: Optional[OpenAI] = None
         self._server_started = False
         self._bound_tools = (kwargs.get("_bound_tools", []) or []) + (
             kwargs.get("tools", []) or []
         )
-        self._tool_choice = kwargs.get("tool_choice", None)  # Initialize tool choice attribute
+        self._tool_choice = kwargs.get(
+            "tool_choice", None
+        )  # Initialize tool choice attribute
+
+        # Initialize server once, just like the old approach loaded llama_instance once
+        self._initialize_persistent_server()
 
     def _initialize_persistent_server(self):
         """

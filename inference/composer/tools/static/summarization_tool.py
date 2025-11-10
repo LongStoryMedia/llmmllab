@@ -54,7 +54,6 @@ async def summarization(
     try:
         # Access state and tool_call_id through runtime
         state = runtime.state
-        tool_call_id = runtime.tool_call_id
 
         # Validate input content
         if not content.strip():
@@ -72,15 +71,23 @@ async def summarization(
 
             # Try to use shared pipeline first to avoid creating duplicate servers
             pipeline = None
-            if hasattr(state, 'shared_pipeline') and state.shared_pipeline:
+            if hasattr(state, "shared_pipeline") and state.shared_pipeline:
                 pipeline = state.shared_pipeline
                 logger.info("🔄 Using shared pipeline for summarization")
             else:
                 # Fallback to creating new pipeline if shared one not available
                 import traceback
+
                 call_stack = traceback.extract_stack()[-3:-1]
-                call_info = " → ".join([f"{frame.filename.split('/')[-1]}:{frame.lineno}" for frame in call_stack])
-                logger.warning(f"⚠️ No shared pipeline available, creating new one for summarization (called from {call_info})")
+                call_info = " → ".join(
+                    [
+                        f"{frame.filename.split('/')[-1]}:{frame.lineno}"
+                        for frame in call_stack
+                    ]
+                )
+                logger.warning(
+                    f"⚠️ No shared pipeline available, creating new one for summarization (called from {call_info})"
+                )
                 # Get model profile for summarization
                 model_profile = await get_model_profile(
                     user_id,
@@ -97,17 +104,6 @@ async def summarization(
             summary_text = extract_text_from_message(result) if result else ""
 
             if summary_text:
-                # Create response message for the conversation
-                response_message = json.dumps(
-                    {
-                        "status": "success",
-                        "summary": summary_text,
-                        "original_length": len(content),
-                        "summary_length": len(summary_text),
-                    },
-                    indent=2,
-                )
-
                 logger.info(
                     "Summarization completed successfully",
                     original_length=len(content),
