@@ -4,7 +4,7 @@ Removes complex embedding/semantic matching in favor of straightforward tool man
 """
 
 import asyncio
-from typing import Dict, List, Optional, Any, TYPE_CHECKING
+from typing import Dict, List, Optional, Any
 
 from structlog.typing import FilteringBoundLogger
 
@@ -15,13 +15,10 @@ from utils.logging import llmmllogger
 from composer.tools.static import (
     memory_retrieval,
     summarization,
-    get_current_date,
     web_search,
     read_web_content,
 )
-
-if TYPE_CHECKING:
-    from runner import PipelineFactory
+from runner import PipelineFactory
 
 
 class ToolRegistry:
@@ -32,7 +29,7 @@ class ToolRegistry:
 
     logger: FilteringBoundLogger
 
-    def __init__(self, pipeline_factory: "PipelineFactory"):
+    def __init__(self, pipeline_factory: PipelineFactory):
         # Static tool classes for instantiation
         self.static_tools: Dict[str, type[BaseTool]] = {}
         # Dynamic tool instances for reuse (tool_id -> Tool)
