@@ -527,14 +527,17 @@ The current date is {current_date}. While this is likely past your training data
 
             # Use persistent agent - creates once and reuses for state continuity
             agent = self._get_or_create_agent(system_prompt, tools, priority, grammar)
-
+            
+            if agent is None:
+                self.logger.error("🚨 Agent is None after _get_or_create_agent call!")
+                raise ValueError("Agent creation failed - agent is None")
+                
             # Convert messages to LangChain format
             normalized_messages = messages_to_lc_messages(convo)
+            
             # Execute agent with normalized messages
             result = await agent.ainvoke(
-                {"messages": normalized_messages},  # type: ignore
-                grammar=grammar,
-                tools=tools,
+                {"messages": normalized_messages}  # type: ignore
             )
 
             # Convert agent result to ChatResponse

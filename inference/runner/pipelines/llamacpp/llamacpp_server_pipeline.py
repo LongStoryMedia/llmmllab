@@ -268,22 +268,96 @@ class LlamaCppServerPipeline(BasePipeline):
                             "description": tool.description,
                         },
                     }
-                    # Add parameters schema if available
+                    
+                    # Generate proper parameter schema for llama.cpp function calling
                     if hasattr(tool, "args_schema") and tool.args_schema:
                         try:
-                            tool_def["function"][
-                                "parameters"
-                            ] = tool.args_schema.model_json_schema()
+                            # Get the full schema
+                            full_schema = tool.args_schema.model_json_schema()
+                            
+                            # Filter out ToolRuntime and other non-user parameters
+                            if "properties" in full_schema:
+                                filtered_properties = {}
+                                required = []
+                                
+                                for param_name, param_schema in full_schema["properties"].items():
+                                    # Skip runtime parameters that aren't user-facing
+                                    if param_name not in ["runtime"]:
+                                        filtered_properties[param_name] = param_schema
+                                        # Check if required in original schema
+                                        if param_name in full_schema.get("required", []):
+                                            required.append(param_name)
+                                
+                                tool_def["function"]["parameters"] = {
+                                    "type": "object",
+                                    "properties": filtered_properties,
+                                    "required": required,
+                                }
+                            else:
+                                # Fallback to empty schema if no properties found
+                                tool_def["function"]["parameters"] = {
+                                    "type": "object",
+                                    "properties": {},
+                                    "required": [],
+                                }
+                                
                         except Exception as schema_error:
                             self._logger.warning(
                                 f"Failed to serialize schema for tool '{tool.name}': {schema_error}"
                             )
-                            # Create a simple fallback schema
-                            tool_def["function"]["parameters"] = {
-                                "type": "object",
-                                "properties": {},
-                                "required": [],
-                            }
+                            
+                            # Create manual schemas for our known tools
+                            if tool.name == "web_search":
+                                tool_def["function"]["parameters"] = {
+                                    "type": "object",
+                                    "properties": {
+                                        "query": {
+                                            "type": "string",
+                                            "description": "The search query to execute"
+                                        }
+                                    },
+                                    "required": ["query"]
+                                }
+                            elif tool.name == "memory_retrieval":
+                                tool_def["function"]["parameters"] = {
+                                    "type": "object",
+                                    "properties": {
+                                        "query": {
+                                            "type": "string", 
+                                            "description": "The search query to execute for memory retrieval"
+                                        }
+                                    },
+                                    "required": ["query"]
+                                }
+                            elif tool.name == "read_web_content":
+                                tool_def["function"]["parameters"] = {
+                                    "type": "object",
+                                    "properties": {
+                                        "url": {
+                                            "type": "string",
+                                            "description": "The URL to read content from (must be http:// or https://)"
+                                        }
+                                    },
+                                    "required": ["url"]
+                                }
+                            elif tool.name == "summarization":
+                                tool_def["function"]["parameters"] = {
+                                    "type": "object", 
+                                    "properties": {
+                                        "content": {
+                                            "type": "string",
+                                            "description": "The text content to summarize"
+                                        }
+                                    },
+                                    "required": ["content"]
+                                }
+                            else:
+                                # Final fallback
+                                tool_def["function"]["parameters"] = {
+                                    "type": "object",
+                                    "properties": {},
+                                    "required": [],
+                                }
 
                     openai_tools.append(tool_def)
 
@@ -674,25 +748,31 @@ class LlamaCppServerPipeline(BasePipeline):
             self._logger.error(f"Streaming failed: {e}")
             raise
 
-    def bind_tools(
-        self, tools: List[BaseTool], *, tool_choice: str | None = None, **kwargs: Any
-    ) -> "LlamaCppServerPipeline":
-        """Bind tools to this pipeline WITHOUT creating a new server instance."""
-        # CRITICAL: Do NOT create a new pipeline instance - reuse the existing server!
-        # Creating a new instance would start another server, causing duplicate servers.
+    def bind_tools(self, tools: List[Any], **kwargs: Any) -> "LlamaCppServerPipeline":
+        """Bind tools to this pipeline instance for function calling."""
+        if not isinstance(tools, list):
+            tools = [tools]
+        
+        # Log this operation for tracking
         self._logger.info(
             f"🔗 Binding {len(tools)} tools to EXISTING pipeline instance #{id(self):x} for {self.model.name}"
         )
-
-        # Store tools on the existing instance instead of creating a new one
-        self._bound_tools += tools
-        self._tool_choice = tool_choice
-
-        # Apply any additional kwargs to the existing instance
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-
-        # Return the same instance with tools bound
+        
+        # Prevent duplicate tool bindings by storing unique tools only
+        if self._bound_tools:
+            # Get existing tool names to avoid duplicates
+            existing_tool_names = {tool.name for tool in self._bound_tools}
+            new_tools = [tool for tool in tools if tool.name not in existing_tool_names]
+            if new_tools:
+                self._logger.debug(f"Adding {len(new_tools)} new tools, skipping {len(tools) - len(new_tools)} duplicates")
+                self._bound_tools.extend(new_tools)
+            else:
+                self._logger.debug(f"All {len(tools)} tools already bound, skipping duplicates")
+        else:
+            # First binding - store all tools
+            self._bound_tools = tools
+            
+        # Return self to follow LangChain convention
         return self
 
     def get_stats(self) -> Dict[str, Any]:

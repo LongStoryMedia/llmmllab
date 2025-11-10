@@ -17,8 +17,8 @@ from typing import Dict, Any, List
 
 from langchain_core.messages import AIMessage, ToolMessage, BaseMessage
 from langchain_core.runnables.config import RunnableConfig
-from langchain.tools import ToolRuntime
 from langgraph.graph import StateGraph, START, END
+from langgraph.prebuilt import ToolNode
 from langgraph.types import Command
 from composer.graph.state import WorkflowState, ToolsState, assemble_context_messages
 from composer.agents.chat_agent import ChatAgent
@@ -58,149 +58,39 @@ class ToolsAgentSubgraph:
 
     def _create_tool_node(self):
         """
-        Create custom ToolNode with proper state injection for ToolRuntime.
-
-        LangChain's standard ToolNode doesn't pass the full state to ToolRuntime,
-        causing tools like memory_retrieval to fail with "Missing user_id in state".
-        This custom implementation ensures proper state injection.
+        Create standard LangChain ToolNode with automatic ToolRuntime injection.
+        
+        LangChain's standard ToolNode automatically injects ToolRuntime into tools
+        that have runtime parameters, which is the correct pattern according to docs.
         """
-
-        class StateInjectedToolNode:
-            """Custom ToolNode that properly injects full state into ToolRuntime."""
-
-            def __init__(self, tool_registry: ToolRegistry):
-                self.tool_registry = tool_registry
-
-            async def __call__(self, state: ToolsState) -> ToolsState:
-                """Execute tools with proper state injection."""
-
-                if not state.messages:
-                    return state
-
-                last_message = state.messages[-1]
-
-                # Check if last message has tool calls
-                if not isinstance(last_message, AIMessage) or not has_tool_calls(
-                    last_message
-                ):
-                    return state
-
-                # Get executable tools
-                executable_tools = self.tool_registry.get_all_executable_tools()
-                if not executable_tools:
-                    logger.warning("No executable tools available")
-                    return state
-
-                # Execute each tool call with proper state injection
-                tool_messages = []
-                if not last_message.tool_calls:
-                    return state
-
-                for tool_call in last_message.tool_calls:
-                    # Handle both dictionary and object formats from OpenAI
-                    if hasattr(tool_call, "function"):
-                        # OpenAI object format (ChatCompletionMessageFunctionToolCall)
-                        tool_name = tool_call.function.name
-                        tool_args = (
-                            json.loads(tool_call.function.arguments)
-                            if tool_call.function.arguments
-                            else {}
-                        )
-                        tool_call_id = tool_call.id
-                    elif isinstance(tool_call, dict):
-                        # Dictionary format
-                        tool_name = tool_call.get("name") or tool_call.get(
-                            "function", {}
-                        ).get("name")
-                        tool_args = tool_call.get("args", {})
-                        if not tool_args and "function" in tool_call:
-                            args_str = tool_call["function"].get("arguments", "{}")
-                            tool_args = json.loads(args_str) if args_str else {}
-                        tool_call_id = tool_call.get("id")
-                    else:
-                        logger.warning(f"Unknown tool call format: {type(tool_call)}")
-                        continue
-
-                    if tool_name in executable_tools:
-                        tool = executable_tools[tool_name]
-
-                        # Create proper ToolRuntime instance
-
-                        # Create minimal runtime - we mainly need state and tool_call_id
-                        runtime = ToolRuntime(
-                            state=state,  # ToolsState object
-                            context={},  # Empty context for now
-                            config=RunnableConfig(),  # Empty config
-                            stream_writer=None,  # Not needed for our tools
-                            tool_call_id=tool_call_id,
-                            store=None,  # Not needed for our tools
-                        )
-
-                        try:
-                            logger.info(
-                                f"🔧 Executing tool '{tool_name}' with full state injection"
-                            )
-
-                            try:
-                                result = await asyncio.wait_for(
-                                    tool.ainvoke({**tool_args, "runtime": runtime}),
-                                    timeout=state.user_config.tool.tool_timeout,
-                                )
-                            except asyncio.TimeoutError:
-                                logger.error(
-                                    f"⏰ Tool '{tool_name}' execution timed out after {state.user_config.tool.tool_timeout} seconds"
-                                )
-                                result = f"❌ Tool execution timed out after {state.user_config.tool.tool_timeout} seconds"
-
-                            tool_messages.append(
-                                ToolMessage(
-                                    content=str(result),
-                                    tool_call_id=tool_call_id,
-                                    name=tool_name,
-                                )
-                            )
-
-                            logger.info(f"🔧 Tool '{tool_name}' executed successfully")
-
-                        except Exception as e:
-                            logger.error(
-                                f"Tool '{tool_name}' execution failed: {e}",
-                                exc_info=True,
-                            )
-                            tool_messages.append(
-                                ToolMessage(
-                                    content=f"❌ Tool execution failed: {str(e)}",
-                                    tool_call_id=tool_call_id,
-                                    name=tool_name,
-                                )
-                            )
-                    else:
-                        logger.warning(f"Tool '{tool_name}' not found in registry")
-                        tool_messages.append(
-                            ToolMessage(
-                                content=f"❌ Tool '{tool_name}' not available",
-                                tool_call_id=tool_call_id,
-                                name=tool_name or "unknown",
-                            )
-                        )
-
-                # Return updated state with tool messages
-                state.messages.extend(tool_messages)
-                return state
-
         try:
-            logger.info("🛠️ Creating custom ToolNode with full state injection")
-            return StateInjectedToolNode(self.tool_registry)
-
+            # Get executable tools from registry
+            executable_tools = self.tool_registry.get_all_executable_tools()
+            if not executable_tools:
+                logger.warning("No executable tools available for ToolNode")
+                
+                # Return minimal fallback node
+                class EmptyToolNode:
+                    async def __call__(self, state):
+                        return state
+                return EmptyToolNode()
+            
+            # Create list of tools for ToolNode
+            tools_list = list(executable_tools.values())
+            
+            logger.info(f"�️ Creating standard LangChain ToolNode with {len(tools_list)} tools")
+            
+            # Use LangChain's standard ToolNode which handles ToolRuntime injection automatically
+            return ToolNode(tools_list)
+            
         except Exception as e:
-            logger.error(f"Failed to create custom ToolNode: {e}")
-
-            # Return a minimal fallback
-            class EmptyToolNode:
-                async def __call__(self, state: ToolsState) -> ToolsState:
+            logger.error(f"Failed to create ToolNode: {e}")
+            
+            # Return minimal fallback
+            class ToolNodeFallback:
+                async def __call__(self, state):
                     return state
-
-            return EmptyToolNode()
+            return ToolNodeFallback()
 
     def _build_graph(self) -> None:
         """Build simple agent following LangChain quickstart pattern."""
