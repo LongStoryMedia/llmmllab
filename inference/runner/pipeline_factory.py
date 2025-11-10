@@ -326,29 +326,45 @@ class PipelineFactory:
         self.logger.info(
             f"Creating text pipeline for model: {model.name}, pipeline: {model.pipeline}"
         )
-        if model.pipeline == "Qwen3Pipe":
-            self.logger.info(f"🔧 Creating Qwen3Pipe for {model.name}")
-            from .pipelines.llamacpp.llamacpp_server_pipeline import (  # pylint: disable=import-outside-toplevel
-                LlamaCppServerPipeline,
-            )
+        if model.pipeline == "Qwen3Pipe" or model.pipeline == "Qwen3VLPipeline":
+            self.logger.info(f"🔧 Creating Qwen3/Qwen3VL pipeline for {model.name}")
 
-            self.logger.info("Attempting to create LlamaCppServerPipeline for Qwen3")
+            # Try LangChain-based pipeline first for better tool calling support
             try:
-                # Use generic server pipeline instead of model-specific pipeline
-                pipeline = LlamaCppServerPipeline(model, profile, grammar)
-            except TypeError as e:
-                self.logger.warning(f"LlamaCppServerPipeline creation failed: {e}")
-                raise
-            self.logger.info("Successfully created LlamaCppServerPipeline for Qwen3")
-            return pipeline
+                from .pipelines.llamacpp.langchain_chatopenai_pipeline import (  # pylint: disable=import-outside-toplevel
+                    LangChainChatOpenAIPipeline,
+                )
 
-        if model.pipeline == "Qwen3VLPipeline":
-            self.logger.info(f"🔧 Creating Qwen3VLPipeline for {model.name}")
-            from .pipelines.llamacpp.llamacpp_server_pipeline import (  # pylint: disable=import-outside-toplevel
-                LlamaCppServerPipeline,
-            )
+                self.logger.info(
+                    "Attempting to create LangChainChatOpenAIPipeline for Qwen3"
+                )
+                pipeline = LangChainChatOpenAIPipeline(model, profile, grammar)
+                self.logger.info(
+                    "Successfully created LangChainChatOpenAIPipeline for Qwen3"
+                )
+                return pipeline
+            except Exception as langchain_error:
+                self.logger.warning(
+                    f"LangChainChatOpenAIPipeline creation failed: {langchain_error}"
+                )
 
-            return LlamaCppServerPipeline(model, profile, grammar)
+                # Fallback to original pipeline
+                from .pipelines.llamacpp.llamacpp_server_pipeline import (  # pylint: disable=import-outside-toplevel
+                    LlamaCppServerPipeline,
+                )
+
+                self.logger.info("Falling back to LlamaCppServerPipeline for Qwen3")
+                try:
+                    pipeline = LlamaCppServerPipeline(model, profile, grammar)
+                    self.logger.info(
+                        "Successfully created fallback LlamaCppServerPipeline for Qwen3"
+                    )
+                    return pipeline
+                except TypeError as e:
+                    self.logger.error(
+                        f"Both pipeline types failed for {model.name}: {e}"
+                    )
+                    raise
 
         if model.pipeline == "LlamaChatSummPipe":
             self.logger.info(f"🔧 Creating LlamaChatSummPipe for {model.name}")

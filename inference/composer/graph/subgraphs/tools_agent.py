@@ -230,7 +230,7 @@ class ToolsAgentSubgraph:
         return messages
 
     async def _chat_agent_node(self, state: ToolsState) -> ToolsState:
-        """Simple LangChain agent node with enhanced tool result handling."""
+        """Enhanced chat agent node with LangChain ChatOpenAI integration."""
         try:
             # Get available tools
             tools_dict = self.tool_registry.get_all_executable_tools()
@@ -264,7 +264,36 @@ class ToolsAgentSubgraph:
                 )
                 messages_for_completion.append(final_instruction)
 
-            # Use the ChatAgent's chat completion method
+            # Try ChatOpenAI direct approach first (for LangChain ChatOpenAI pipelines)
+            if hasattr(self.chat_agent, '_pipeline') and hasattr(self.chat_agent._pipeline, 'get_chat_model'):
+                try:
+                    logger.info("🚀 Using direct ChatOpenAI approach for tool calling")
+                    chat_model = self.chat_agent._pipeline.get_chat_model()  # type: ignore
+                    
+                    # Bind tools to ChatOpenAI if available
+                    if tools_list:
+                        logger.info(f"🔧 Binding {len(tools_list)} tools to ChatOpenAI")
+                        chat_model = chat_model.bind_tools(tools_list)
+                    
+                    # Invoke ChatOpenAI directly - this handles tool calling natively
+                    response_message = await chat_model.ainvoke(messages_for_completion)
+                    
+                    # Add response to state
+                    state.messages.append(response_message)
+                    
+                    # Inject the agent's pipeline into state for tools to reuse
+                    if self.chat_agent.current_pipeline and not state.shared_pipeline:
+                        state.shared_pipeline = self.chat_agent.current_pipeline
+                        logger.debug("💾 Injected shared pipeline into state for tool reuse")
+                    
+                    logger.info("✅ ChatOpenAI tool calling successful")
+                    return state
+                
+                except Exception as e:
+                    logger.warning(f"ChatOpenAI direct approach failed: {e}, falling back to traditional method")
+
+            # Fallback to traditional chat completion approach
+            logger.info("🔄 Using traditional chat completion approach")
             response = await self.chat_agent.chat_completion(
                 messages=lc_messages_to_messages(messages_for_completion),
                 tools=tools_list,

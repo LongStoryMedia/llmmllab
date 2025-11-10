@@ -65,9 +65,9 @@ from utils.logging import llmmllogger
 logger = llmmllogger.bind(component="app")
 
 # # Enable auth bypass for testing
-# os.environ["DISABLE_AUTH"] = "true"
+os.environ["DISABLE_AUTH"] = "true"
 # # Set test user ID to match existing conversation owner
-# os.environ["TEST_USER_ID"] = "CgNsc20SBGxkYXA"
+os.environ["TEST_USER_ID"] = "CgNsc20SBGxkYXA"
 
 # Create required directories if they don't exist
 os.makedirs(IMAGE_DIR, exist_ok=True)

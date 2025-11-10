@@ -108,8 +108,10 @@ class LlamaCppServerManager(BaseServerManager):
                 "--cont-batching",
                 "--metrics",
                 "--no-warmup",  # Skip warmup for faster startup
-                "--cache-type-k", "f16",  # Use f16 for KV cache
-                "--cache-type-v", "f16",  # Use f16 for KV cache
+                "--cache-type-k",
+                "f16",  # Use f16 for KV cache
+                "--cache-type-v",
+                "f16",  # Use f16 for KV cache
             ]
         )
 

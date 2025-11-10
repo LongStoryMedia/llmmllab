@@ -198,36 +198,26 @@ class BaseAgent(ABC, Generic[T]):
         The pipeline (LLM server) should be reused across different agent configurations.
 
         Args:
-            llm: The language model to use
-            tools: List of tools to bind to the agent
             system_prompt: System prompt for the agent
+            tools: List of tools to bind to the agent
+            priority: Pipeline priority
             grammar: Grammar constraints for structured output
 
         Returns:
-            The LangChain agent (recreated each time for different configs)
+            The LangChain agent or ChatOpenAI model (depending on pipeline type)
         """
         # Always create new agent for different configurations, but reuse pipeline
         # This allows different system prompts, tools, and grammars while maintaining server reuse
 
         self.logger.debug("Creating LangChain agent (pipeline will be reused)")
+
         # Get the model configuration from pipeline factory
-
-        if tools:
-            system_prompt += (
-                "\n\nYou have access to the following tools:\n"
-                + "\n".join([f"- {tool.name}: {tool.description}" for tool in tools])
-                + "\n\nUse them wisely to assist the user. When you need information that requires a tool, call the appropriate tool to get current, accurate data. Never fabricate or hallucinate tool results."
-                + "\n\nTOOL CALLING FORMAT:\nWhen you need to call a tool, you MUST use this EXACT JSON format wrapped in <tool_call> tags:\n<tool_call>{\"name\": \"tool_name\", \"arguments\": \"{\\\"param\\\": \\\"value\\\"}\"}</tool_call>\nNEVER fabricate or hallucinate tool results. ALWAYS call the actual tool when you need information.\nThe arguments field MUST be a JSON string (double-quoted), not a JSON object."
-            )
-
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
 
-        system_prompt += f"""
-TEMPORAL CONTEXT:
-The current date is {current_date}. While this is likely past your training data, you can use this information to provide better responses. If the user asks for the date or time, respond with this date.
-"""
-        if "web_search" in (tool.name for tool in (tools or [])):
-            system_prompt += "If the user asks for current events or recent information, use the web_search tool to find up-to-date information."
+        # Add tool instructions and temporal context
+        enhanced_system_prompt = self._build_enhanced_system_prompt(
+            system_prompt, tools, current_date
+        )
 
         # Get or reuse persistent pipeline to prevent multiple server instances
         agent_id = f"{id(self):x}"
@@ -257,23 +247,71 @@ The current date is {current_date}. While this is likely past your training data
             # Mark that we have locked a pipeline that needs cleanup
             self._pipeline_locked = True
             self.logger.debug(
-                f"🔒 Agent {agent_id} locked new pipeline for {self.profile.model_name} (total calls to _get_or_create_agent)"
+                f"🔒 Agent {agent_id} locked new pipeline for {self.profile.model_name}"
             )
         else:
             self.logger.debug(
                 f"🔄 Agent {agent_id} reusing existing pipeline for {self.profile.model_name} (ignoring parameter variations) from {call_info}"
             )
 
+        # Check if this is a LangChain ChatOpenAI pipeline
+        if hasattr(self._pipeline, "get_chat_model") and callable(
+            getattr(self._pipeline, "get_chat_model")
+        ):
+            # Use LangChain ChatOpenAI directly for tool calling
+            self.logger.info("🚀 Using LangChain ChatOpenAI pipeline for tool calling")
+            try:
+                chat_model = self._pipeline.get_chat_model()  # type: ignore
+
+                # Bind tools using LangChain's built-in method if tools provided
+                if tools:
+                    self.logger.info(
+                        f"🔧 Binding {len(tools)} tools to ChatOpenAI model"
+                    )
+                    chat_model = chat_model.bind_tools(tools)
+
+                # Return the ChatOpenAI model directly - this handles tool calling natively
+                return chat_model
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to use ChatOpenAI pipeline: {e}, falling back to traditional agent"
+                )
+
+        # Fallback to traditional agent creation for non-ChatOpenAI pipelines
+        self.logger.info("🔄 Using traditional agent creation for pipeline")
         llm = cast(BaseChatModel, self._pipeline)
         agent = create_agent(
             model=llm,
             tools=tools or [],
-            system_prompt=system_prompt,
+            system_prompt=enhanced_system_prompt,
             response_format=ProviderStrategy(grammar) if grammar else None,
             name=self._node_metadata.node_name,
         )
 
         return agent
+
+    def _build_enhanced_system_prompt(
+        self, system_prompt: str, tools: Optional[List[BaseTool]], current_date: str
+    ) -> str:
+        """Build enhanced system prompt with tool instructions and temporal context."""
+        enhanced_prompt = system_prompt
+
+        if tools:
+            enhanced_prompt += (
+                "\n\nYou have access to the following tools:\n"
+                + "\n".join([f"- {tool.name}: {tool.description}" for tool in tools])
+                + "\n\nUse them wisely to assist the user. When you need information that requires a tool, call the appropriate tool to get current, accurate data. Never fabricate or hallucinate tool results."
+                + '\n\nTOOL CALLING FORMAT:\nWhen you need to call a tool, you MUST use this EXACT JSON format wrapped in <tool_call> tags:\n<tool_call>{"name": "tool_name", "arguments": "{\\"param\\": \\"value\\"}"}</tool_call>\nNEVER fabricate or hallucinate tool results. ALWAYS call the actual tool when you need information.\nThe arguments field MUST be a JSON string (double-quoted), not a JSON object.'
+            )
+
+        enhanced_prompt += f"""
+TEMPORAL CONTEXT:
+The current date is {current_date}. While this is likely past your training data, you can use this information to provide better responses. If the user asks for the date or time, respond with this date.
+"""
+        if "web_search" in (tool.name for tool in (tools or [])):
+            enhanced_prompt += "If the user asks for current events or recent information, use the web_search tool to find up-to-date information."
+
+        return enhanced_prompt
 
     @property
     def current_pipeline(self) -> Optional[Any]:
@@ -522,14 +560,14 @@ The current date is {current_date}. While this is likely past your training data
 
             # Use persistent agent - creates once and reuses for state continuity
             agent = self._get_or_create_agent(system_prompt, tools, priority, grammar)
-            
+
             if agent is None:
                 self.logger.error("🚨 Agent is None after _get_or_create_agent call!")
                 raise ValueError("Agent creation failed - agent is None")
-                
+
             # Convert messages to LangChain format
             normalized_messages = messages_to_lc_messages(convo)
-            
+
             # Execute agent with normalized messages
             result = await agent.ainvoke(
                 {"messages": normalized_messages}  # type: ignore
