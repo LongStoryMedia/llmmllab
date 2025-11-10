@@ -230,15 +230,43 @@ class ToolsAgentSubgraph:
         return messages
 
     async def _chat_agent_node(self, state: ToolsState) -> ToolsState:
-        """Simple LangChain agent node."""
+        """Simple LangChain agent node with enhanced tool result handling."""
         try:
             # Get available tools
             tools_dict = self.tool_registry.get_all_executable_tools()
             tools_list = list(tools_dict.values()) if tools_dict else None
 
+            # Check if we have tool results in conversation that should be used for final answer
+            has_tool_results = any(
+                hasattr(msg, 'type') and getattr(msg, 'type', '') == 'tool'
+                for msg in state.messages[-10:]  # Check recent messages
+            )
+            
+            # Count recent failed tool calls to detect when model should stop calling tools
+            recent_tool_errors = sum(
+                1 for msg in state.messages[-5:]
+                if hasattr(msg, 'content') and 'Error:' in str(getattr(msg, 'content', ''))
+            )
+            
+            # Modify messages to include explicit instruction if model should provide final answer
+            messages_for_completion = state.messages.copy()
+            if has_tool_results and recent_tool_errors >= 2:
+                # Add instruction to use existing tool results instead of calling more tools
+                from langchain_core.messages import SystemMessage
+                final_instruction = SystemMessage(
+                    content=(
+                        "IMPORTANT: You have already gathered information from tools. "
+                        "Some recent tool calls failed, but you have previous successful tool results. "
+                        "Based on the information you already have from successful tool calls, "
+                        "provide a direct, helpful answer to the user's question. "
+                        "DO NOT make any more tool calls. Use the information you already gathered."
+                    )
+                )
+                messages_for_completion.append(final_instruction)
+
             # Use the ChatAgent's chat completion method
             response = await self.chat_agent.chat_completion(
-                messages=lc_messages_to_messages(state.messages),
+                messages=lc_messages_to_messages(messages_for_completion),
                 tools=tools_list,
                 stream=False,
             )

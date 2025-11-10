@@ -132,10 +132,16 @@ computational_requirements (choose one per intent): [ {" | ".join(intnt_schema['
 technical_domain (set for ENGINEERING workflows): [ {" | ".join(intnt_schema['$defs']['TechnicalDomain']['enum'])} ]
 response_format (set for ENGINEERING workflows): [ {" | ".join(intnt_schema['$defs']['ResponseFormat']['enum'])} ]
 
-required_capabilities (functionality needed - choose many, one, or none):
+required_capabilities (HIGH-LEVEL functionality needed - choose from THESE EXACT VALUES ONLY):
 {", ".join(intnt_schema['$defs']['RequiredCapability']['enum'])}
-required_capabilities can be empty if none apply. It is usually empty for simple queries.
-DO NOT invent capabilities or requirements - only use those listed above.
+
+CRITICAL: required_capabilities are HIGH-LEVEL capabilities, NOT tool names.
+- For web content reading use: "web_search" NOT "read_web_content"
+- For memory searches use: "conversation_memory" NOT "memory_retrieval"  
+- For content summarization use: "summarization" NOT any specific tool name
+- DO NOT use tool names like: read_web_content, memory_retrieval, etc.
+- required_capabilities can be empty if none apply. It is usually empty for simple queries.
+- ONLY use the exact capability names listed above - NO OTHER VALUES ALLOWED.
 
 {available_tools_context}
 

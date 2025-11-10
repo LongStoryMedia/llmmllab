@@ -15,7 +15,7 @@ def test_ui_chat_request():
     """Test the exact request the UI makes and show the exact response."""
 
     # Exact same request format as UI
-    url = "http://192.168.0.122:8000/v1/chat/completions"  # Use external IP directly
+    url = "http://192.168.0.71:8000/v1/chat/completions"  # Use external IP directly
 
     # Headers exactly as UI sends them - add auth header to bypass authentication
     headers = {
