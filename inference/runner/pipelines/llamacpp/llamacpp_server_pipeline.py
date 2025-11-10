@@ -255,11 +255,48 @@ class LlamaCppServerPipeline(BasePipeline):
         ):
             params["seed"] = self.profile.parameters.seed
 
-        # Tools and tool choice
+        # Tools and tool choice - include tools if bound OR if conversation contains tool calls
+        tools_to_include = []
+        
+        # Always include bound tools if available
         if self._bound_tools:
+            tools_to_include.extend(self._bound_tools)
+        
+        # Also check for tools passed in current request (for new tool calls)
+        current_tools = kwargs.get("tools", [])
+        if current_tools:
+            # Add any new tools not already in bound tools
+            existing_tool_names = {tool.name for tool in tools_to_include}
+            for tool in current_tools:
+                if tool.name not in existing_tool_names:
+                    tools_to_include.append(tool)
+        
+        # Check if conversation history contains tool calls (requires tool definitions for parsing)
+        has_tool_calls_in_history = any(
+            (isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls) or
+            isinstance(msg, ToolMessage)
+            for msg in messages
+        )
+        
+        # Debug: Log tool call history detection
+        if has_tool_calls_in_history:
+            tool_call_names = set()
+            for msg in messages:
+                if isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        if hasattr(tc, 'name'):
+                            tool_call_names.add(tc.name)
+                        elif isinstance(tc, dict) and 'name' in tc:
+                            tool_call_names.add(tc['name'])
+                        elif hasattr(tc, 'function') and hasattr(tc.function, 'name'):
+                            tool_call_names.add(tc.function.name)
+            self._logger.info(f"🔍 Found tool calls in history: {tool_call_names}, current tools: {[t.name for t in tools_to_include]}")
+        
+        # Include tools if we have tools to include OR if history contains tool calls
+        if tools_to_include or has_tool_calls_in_history:
             # Convert LangChain tools to OpenAI format
             openai_tools = []
-            for tool in self._bound_tools:
+            for tool in tools_to_include:
                 try:
                     tool_def = {
                         "type": "function",
@@ -367,19 +404,24 @@ class LlamaCppServerPipeline(BasePipeline):
                     )
                     continue
 
+            # Add tools to params if we have any
             if openai_tools:
                 params["tools"] = openai_tools
 
-            # Set tool choice if specified
-            tool_choice = kwargs.get("tool_choice")
-            if tool_choice:
-                params["tool_choice"] = tool_choice
-            elif len(openai_tools) == 1:
-                # If only one tool, auto-select it
-                params["tool_choice"] = {
-                    "type": "function",
-                    "function": {"name": openai_tools[0]["function"]["name"]},
-                }
+                # Set tool choice if specified
+                tool_choice = kwargs.get("tool_choice")
+                if tool_choice:
+                    params["tool_choice"] = tool_choice
+                elif len(openai_tools) == 1:
+                    # If only one tool, auto-select it
+                    params["tool_choice"] = {
+                        "type": "function",
+                        "function": {"name": openai_tools[0]["function"]["name"]},
+                    }
+            elif has_tool_calls_in_history:
+                # If we have tool calls in history but no current tools, 
+                # provide empty tools list to prevent parsing errors
+                params["tools"] = []
 
         # Streaming
         if kwargs.get("stream") is not None:
