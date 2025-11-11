@@ -1,5 +1,6 @@
 """Test ToolsAgentSubgraph as main graph with LlamaCpp pipeline."""
 
+from email import message
 import os
 import sys
 from typing import List, Optional
@@ -21,6 +22,7 @@ from composer.tools.registry import ToolRegistry
 from composer.graph.subgraphs import ToolsAgentSubgraph
 from composer.graph.state import ToolsState
 from composer import execute_workflow
+from sympy import false
 from utils.message_conversion import messages_to_lc_messages
 from utils.logging import llmmllogger, serialize_event_data
 
@@ -136,87 +138,63 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
 
         message_count = 0
 
+        processing = False
+
         # Stream the graph execution
         async for chunk in execute_workflow(
             initial_state=tools_state,
             workflow=tools_agent_subgraph.graph,
         ):
-            # print(f"📦 Received chunk: {serialize_event_data(chunk)}")
+            data = chunk.get("data", {})
+            event = chunk.get("event", "unknown")
+            chunk = data.get("chunk")
+            output = data.get("output", {})
 
-            # Handle different chunk formats from LangGraph
-            for node_name, node_output in chunk.items():
+            message_count += 1
+
+            if processing:
+                continue  # Skip until current tool call processing is done
+
+            if chunk and event.endswith("_stream"):
+                if isinstance(chunk, dict):
+                    # Print text chunks directly
+                    content = chunk.get("content") or chunk.get("reasoning_content")
+                    if content:
+                        print(content, end="", flush=True)
+                    else:
+                        tcc = chunk.get("tool_call_chunk", "")
+                        if tcc:
+                            processing = True
+                            print("\n" + "=" * 80)
+                            print(
+                                "Building tool call...",
+                            )
+                            print("=" * 80)
+                elif isinstance(chunk, BaseMessage):
+                    # Print message content
+                    for content in chunk.content:
+                        print(str(content), end="", flush=True)
+                    for rc in getattr(chunk, "reasoning_content", ""):
+                        print(str(rc), end="", flush=True)
+
+            if event.endswith("_model_end") and isinstance(output, dict):
+                processing = False
+                rm = output.get("response_metadata", {})
+                reason = rm.get("reason", "no reason provided")
+                print("\n" + "=" * 80)
                 print(
-                    f"🔄 Processing node '{node_name}' with output keys: {node_output}"
+                    f"Finished segment due to {reason}",
                 )
-
-                if node_name in ["chat_agent", "tools"] and isinstance(
-                    node_output, dict
-                ):
-                    messages = node_output.get("messages", [])
-                    print(f"📬 Node '{node_name}' has {len(messages)} messages")
-
-                    for msg_idx, msg in enumerate(messages):
-                        message_count += 1
-                        msg_type = getattr(msg, "type", type(msg).__name__)
-                        content = getattr(msg, "content", "")
-                        tool_calls = getattr(msg, "tool_calls", [])
-
-                        print(
-                            f"\n🔄 [{node_name}] Message {message_count} (idx {msg_idx}) [{msg_type}]:"
-                        )
-                        print(
-                            f"   Raw message: {type(msg)} with content length: {len(str(content))}"
-                        )
-
-                        # Always show content if it exists, regardless of previous content
-                        if content:
-                            # Handle different content formats
-                            if isinstance(content, str):
-                                print(f"📝 Content ({len(content)} chars):")
-                                print(f"   {content}")
-                            elif isinstance(content, list):
-                                print(f"📝 Content List ({len(content)} items):")
-                                for i, item in enumerate(content):
-                                    if isinstance(item, dict) and "text" in item:
-                                        text = item["text"]
-                                        print(f"   Item {i+1}: {text}")
-                                    else:
-                                        print(f"   Item {i+1}: {item}")
-                            else:
-                                print(f"📝 Content ({len(str(content))} chars):")
-                                print(f"   {content}")
-                            print("   " + "-" * 50)
-                        else:
-                            print(f"📝 No content in this message")
-
-                        # Handle tool calls
-                        if tool_calls:
-                            print(f"🛠️ Tool calls: {len(tool_calls)} calls")
-                            for j, tc in enumerate(tool_calls):
-                                if isinstance(tc, dict):
-                                    tool_name = tc.get("name", "unknown")
-                                    tool_args = tc.get("args", {})
-                                    print(
-                                        f"  {j+1}. Calling {tool_name} with args: {tool_args}"
-                                    )
-                                else:
-                                    tool_name = getattr(tc, "name", "unknown")
-                                    tool_args = getattr(tc, "args", {})
-                                    print(
-                                        f"  {j+1}. Calling {tool_name} with args: {tool_args}"
-                                    )
-                        else:
-                            print(f"🛠️ No tool calls in this message")
-
-                        # Show additional message attributes for debugging
-                        print(f"🔍 Debug - Message attributes:")
-                        for attr in ["id", "additional_kwargs", "response_metadata"]:
-                            if hasattr(msg, attr):
-                                attr_value = getattr(msg, attr)
-                                print(f"   {attr}: {attr_value}")
-
-                        print(flush=True)
-
+                if reason == "tool_calls":
+                    tc = output.get("tool_calls", [])
+                    for t in tc:
+                        tname = t.get("name", "unknown_tool")
+                        targs = t.get("args", {})
+                        print("\n" + "-" * 40)
+                        print(f"Tool Call: {tname}")
+                        print(f"Arguments: {serialize_event_data(targs)}")
+                        print("-" * 40)
+                print("=" * 80)
         print("\n" + "=" * 80)
         print(f"✅ STREAMING COMPLETE - Total message events: {message_count}")
         print("=" * 80)

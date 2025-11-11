@@ -10,14 +10,14 @@ from typing import Any, Dict, Iterator, List, Optional, Type
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.messages import BaseMessage, AIMessageChunk
 from langchain_core.outputs import ChatResult, ChatGenerationChunk
-from langchain_openai import ChatOpenAI
 from langchain_core.tools import BaseTool
+from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
 from models import Model, ModelProfile
 from runner.pipelines.base import BasePipeline
 from runner.server_manager import LlamaCppServerManager
-from utils.logging import llmmllogger
+from utils.logging import llmmllogger, serialize_event_data
 
 
 logger = llmmllogger.bind(component="LangChainChatOpenAIPipeline")
@@ -41,6 +41,7 @@ class ReasoningCaptureChatOpenAI(ChatOpenAI):
         base_generation_info: dict | None,
     ) -> ChatGenerationChunk | None:
         """Override to capture reasoning_content from delta responses."""
+        # logger.debug(serialize_event_data(chunk))
         # Get the standard generation chunk first
         generation_chunk = super()._convert_chunk_to_generation_chunk(
             chunk, default_chunk_class, base_generation_info
@@ -59,11 +60,6 @@ class ReasoningCaptureChatOpenAI(ChatOpenAI):
             if reasoning_content and isinstance(
                 generation_chunk.message, AIMessageChunk
             ):
-                # Log that we captured reasoning content
-                logger.info(
-                    f"🧠 Captured reasoning content: {reasoning_content[:50]}..."
-                )
-
                 # Create enhanced chunk with reasoning content
                 enhanced_message: ReasoningAwareAIMessageChunk = generation_chunk.message  # type: ignore[assignment]
                 enhanced_message.reasoning_content = reasoning_content
@@ -182,12 +178,11 @@ class LangChainChatOpenAIPipeline(BasePipeline):
         if hasattr(profile_params, "top_p") and profile_params.top_p is not None:
             params["top_p"] = profile_params.top_p
 
-        # Note: Skip 'seed' parameter when using responses API as it's not supported
-        # The responses API is more limited in parameter support
+        # Only add parameters that actually exist on ModelParameters
+        # Skip frequency_penalty, presence_penalty, n_predict, etc. if not available
+
         if hasattr(profile_params, "seed") and profile_params.seed is not None:
-            # Only add seed for regular chat completions, not responses API
-            # We'll handle this via model_kwargs filtering in the ChatOpenAI init
-            pass
+            params["seed"] = profile_params.seed
 
         return params
 

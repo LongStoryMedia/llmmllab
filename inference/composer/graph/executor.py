@@ -9,6 +9,7 @@ from ComposerService into a generic, reusable component.
 from typing import (
     Any,
     AsyncGenerator,
+    AsyncIterator,
     Dict,
     Optional,
 )
@@ -18,7 +19,7 @@ from pydantic import BaseModel
 
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.runnables.config import RunnableConfig
-from langchain_core.runnables.schema import StreamEvent, EventData
+from langchain_core.runnables.schema import StreamEvent, EventData, StandardStreamEvent
 
 from utils.logging import llmmllogger
 
@@ -73,7 +74,7 @@ class WorkflowExecutor:
         thread_id: Optional[str] = None,
         enrich_events: bool = True,
         context_name: Optional[str] = None,
-    ) -> AsyncGenerator[Dict[str, Any] | StreamEvent, None]:
+    ) -> AsyncIterator[StreamEvent]:
         """
         Execute a compiled workflow with streaming output.
 
@@ -134,7 +135,14 @@ class WorkflowExecutor:
             self.logger.error(
                 "Workflow execution failed", extra={"error": str(e)}, exc_info=True
             )
-            yield {"event": "workflow_error", "data": {"error": str(e)}}
+            exevt: StandardStreamEvent = {
+                "event": "workflow_error",
+                "data": {"error": e},
+                "run_id": thread_id if thread_id else "unknown",
+                "parent_ids": [],
+                "name": "workflow_execution",
+            }
+            yield exevt
 
     def _enrich_event(self, event: StreamEvent, context_name: str) -> StreamEvent:
         """
@@ -200,45 +208,6 @@ class WorkflowExecutor:
 
         return event
 
-    async def run_workflow(
-        self,
-        workflow: CompiledStateGraph,
-        initial_state: BaseModel,
-        config: Optional[RunnableConfig] = None,
-        thread_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Execute a compiled workflow in batch mode (non-streaming).
-
-        Args:
-            workflow: CompiledStateGraph to execute
-            initial_state: Initial state for workflow execution
-            config: Optional RunnableConfig
-            thread_id: Thread ID for checkpointing
-
-        Returns:
-            Dict[str, Any]: Final workflow result
-        """
-        try:
-            # Prepare state for execution
-            state_dict = initial_state.model_dump()
-
-            # Create config if not provided
-            if config is None and thread_id is not None:
-                config = self.create_thread_config(thread_id)
-
-            # Execute workflow and return final result
-            result = await workflow.ainvoke(state_dict, config=config)
-            return result
-
-        except Exception as e:
-            self.logger.error(
-                "Batch workflow execution failed",
-                extra={"error": str(e)},
-                exc_info=True,
-            )
-            raise
-
 
 # Convenience factory functions
 def create_executor(
@@ -264,7 +233,7 @@ async def stream_workflow(
     config: Optional[RunnableConfig] = None,
     logger: Optional[Any] = None,
     context: str = "workflow_stream",
-) -> AsyncGenerator[StreamEvent | Dict[str, Any], None]:
+) -> AsyncIterator[StreamEvent]:
     """
     Convenience function for streaming workflow execution.
 
@@ -289,33 +258,3 @@ async def stream_workflow(
         context_name=context,
     ):
         yield event
-
-
-async def run_workflow(
-    initial_state: BaseModel,
-    workflow: CompiledStateGraph,
-    thread_id: Optional[str] = None,
-    config: Optional[RunnableConfig] = None,
-    logger: Optional[Any] = None,
-) -> Dict[str, Any]:
-    """
-    Convenience function for batch workflow execution.
-
-    Args:
-        workflow: CompiledStateGraph to execute
-        initial_state: Initial state for workflow execution
-        thread_id: Thread ID for checkpointing
-        config: Optional RunnableConfig
-        logger: Optional logger instance
-
-    Returns:
-        Dict[str, Any]: Final workflow result
-    """
-    executor = create_executor(logger=logger)
-
-    return await executor.run_workflow(
-        workflow=workflow,
-        initial_state=initial_state,
-        config=config,
-        thread_id=thread_id,
-    )

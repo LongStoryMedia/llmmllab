@@ -20,7 +20,7 @@ Architectural Role:
 - Maintains Protocol-based decoupling requirements
 """
 
-from typing import Any, AsyncGenerator, Dict, List, Optional, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 from langchain_core.runnables.schema import StreamEvent
 
@@ -30,7 +30,7 @@ from pydantic import BaseModel
 from utils.logging import llmmllogger
 
 from .core.service import CompiledStateGraph, ComposerService
-from .graph.executor import run_workflow, stream_workflow
+from .graph.executor import stream_workflow
 
 # Global service instance
 _composer_service: Optional[ComposerService] = None
@@ -118,8 +118,9 @@ async def create_initial_state(
 
 
 async def execute_workflow(
-    initial_state: BaseModel, workflow: CompiledStateGraph, stream: bool = True
-) -> AsyncGenerator[Union[StreamEvent, Dict[str, Any]], None]:
+    initial_state: BaseModel,
+    workflow: CompiledStateGraph,
+) -> AsyncIterator[StreamEvent]:
     """
     Execute a compiled workflow with the given initial state.
 
@@ -131,11 +132,8 @@ async def execute_workflow(
     Yields:
         Dict containing workflow events (tokens, state updates, etc.)
     """
-    if stream:
-        async for event in stream_workflow(initial_state, workflow):
-            yield event
-    else:
-        yield await run_workflow(initial_state, workflow)
+    async for event in stream_workflow(initial_state, workflow):
+        yield event
 
 
 # Convenience exports for direct usage

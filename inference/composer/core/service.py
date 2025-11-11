@@ -10,12 +10,10 @@ Configuration Management:
 - No configuration merging logic should exist in service layer components
 """
 
-import asyncio
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import Dict, Optional
 from datetime import datetime, timezone
 
 from langgraph.graph.state import CompiledStateGraph
-from langchain_core.runnables.config import RunnableConfig
 
 from models import (
     Message,
@@ -30,10 +28,6 @@ from composer.graph.builder import GraphBuilder
 from composer.graph.cache import WorkflowCache
 from composer.graph.executor import WorkflowExecutor
 from utils.logging import llmmllogger
-
-
-if TYPE_CHECKING:
-    from composer.graph.builder import GraphBuilder
 
 
 class ComposerService:
@@ -212,47 +206,6 @@ class ComposerService:
         )
 
         return state
-
-    async def execute_workflow(
-        self,
-        workflow: CompiledStateGraph,
-        initial_state: WorkflowState,
-        stream: bool = True,
-    ):
-        """
-        Execute a compiled workflow with the given initial state.
-
-        Supports both streaming and batch execution modes.
-        Now uses the generic WorkflowExecutor for consistent behavior.
-        """
-        # Create thread ID for checkpointing
-        thread_id = f"thread_{initial_state.user_id}_{initial_state.conversation_id}"
-
-        if stream:
-            # Use generic streaming executor
-            async for event in self.executor.stream_workflow(
-                workflow=workflow,
-                initial_state=initial_state,
-                thread_id=thread_id,
-                context_name="composer_service",
-            ):
-                yield event
-        else:
-            # Use batch execution mode
-            try:
-                result = await self.executor.run_workflow(
-                    workflow=workflow,
-                    initial_state=initial_state,
-                    thread_id=thread_id,
-                )
-                yield {"event": "workflow_complete", "data": result}
-            except Exception as e:
-                self.logger.error(
-                    "Batch workflow execution failed",
-                    extra={"error": str(e)},
-                    exc_info=True,
-                )
-                yield {"event": "workflow_error", "data": {"error": str(e)}}
 
     async def shutdown(self):
         """Clean up resources on service shutdown."""
