@@ -2,43 +2,21 @@
 Base pipeline class for processing data in a structured manner.
 """
 
-import json
-import multiprocessing
+from abc import ABC, abstractmethod
 import os
-import re
-import time
+from typing import Iterator, Optional, Type
 
-from typing import Optional, List, Any, Dict, Iterator, Type, Tuple, cast
-
+from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.messages import BaseMessage
+from langchain_core.outputs import ChatResult, ChatGenerationChunk
 from pydantic import BaseModel
-import llama_cpp
-from llama_cpp import llama_grammar
-from llama_cpp.llama_types import CreateChatCompletionResponse
-from llama_cpp.llama_chat_format import LlamaChatCompletionHandler
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.callbacks import CallbackManagerForLLMRun
-from langchain_core.messages import (
-    BaseMessage,
-    AIMessage,
-    AIMessageChunk,
-    HumanMessage,
-    SystemMessage,
-    ToolMessage,
-    ToolCall as LangChainToolCall,
-)
-from langchain_core.messages.ai import UsageMetadata
-from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
-from langchain_core.tools.base import BaseTool
 
-from models import Model, ModelProfile, OptimalParameters
-from models.default_configs import DEFAULT_GPU_CONFIG
-from utils.logging import llmmllogger
-from runner.utils.hardware_manager import hardware_manager
-from runner.utils.intelligent_oom_recovery import IntelligentOOMRecovery
+from models import Model, ModelProfile
 
 
-class BasePipeline(BaseChatModel):
+class BasePipeline(BaseChatModel, ABC):
     """
     Custom BaseChatModel implementation using llama-cpp-python directly.
 
@@ -65,7 +43,6 @@ class BasePipeline(BaseChatModel):
         model: Model,
         profile: ModelProfile,
         grammar: Optional[Type[BaseModel]],
-        **kwargs,
     ):
         """Base LlamaCpp pipeline implementation.
 
@@ -76,4 +53,44 @@ class BasePipeline(BaseChatModel):
         """
 
         # Pass the required fields to the parent constructor for Pydantic validation
-        super().__init__(model=model, profile=profile, grammar=grammar, **kwargs)  # type: ignore
+        super().__init__(
+            name=model.name,
+            verbose=os.getenv("LOG_LEVEL", "warning").lower() == "debug",
+            output_version="v1",
+            tags=[
+                model.task.value,
+                model.provider.value,
+            ],
+            metadata={
+                "model_id": model.id,
+                "profile_id": profile.id,
+                "grammar": grammar.__name__ if grammar else None,
+            },
+        )
+
+    @abstractmethod
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs
+    ) -> ChatResult:
+        """Generate chat completions given input messages."""
+        pass
+
+    @abstractmethod
+    def _stream(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs
+    ) -> Iterator[ChatGenerationChunk]:
+        """Stream chat completions given input messages."""
+        pass
+
+    @abstractmethod
+    def bind_tools(self, tools: list[BaseModel]) -> BaseChatModel:
+        """Bind tools to the pipeline for tool calling support."""
+        pass

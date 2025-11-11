@@ -25,7 +25,6 @@ from utils.tool_call_extraction import (
     extract_tool_calls_from_langchain_message,
     has_tool_calls_in_langchain_message,
     extract_tool_calls_from_streaming_chunks,
-    extract_tool_calls_from_message_content,
     create_tool_call_message_content,
 )
 from utils.message_conversion import lc_messages_to_messages

@@ -121,6 +121,8 @@ class BaseAgent(ABC, Generic[T]):
         # Track if we have locked a pipeline that needs cleanup
         self._pipeline_locked = False
 
+        self.agent_id = f"{id(self):x}"
+
         self.logger.debug(
             f"Initialized {component}",
             node_name=node_metadata.node_name,
@@ -183,6 +185,30 @@ class BaseAgent(ABC, Generic[T]):
             # Silently ignore cleanup errors during destruction
             pass
 
+    def get_pipeline(
+        self,
+        priority: PipelinePriority = PipelinePriority.MEDIUM,
+        grammar: Optional[type[BaseModel]] = None,
+    ) -> Optional[BaseChatModel | Embeddings]:
+        """
+        Get the current pipeline instance if available.
+
+        Returns:
+            The current pipeline instance or None if not created.
+        """
+        if self._pipeline is None:
+            self._pipeline = self.pipeline_factory.get_pipeline(
+                self.profile,
+                priority,
+                grammar,
+            )
+            # Mark that we have locked a pipeline that needs cleanup
+            self._pipeline_locked = True
+            self.logger.debug(
+                f"🔒 Agent {self.agent_id} locked new pipeline for {self.profile.model_name}"
+            )
+        return self._pipeline
+
     def _get_or_create_agent(
         self,
         system_prompt,
@@ -219,67 +245,14 @@ class BaseAgent(ABC, Generic[T]):
             system_prompt, tools, current_date
         )
 
-        # Get or reuse persistent pipeline to prevent multiple server instances
-        agent_id = f"{id(self):x}"
-        import traceback
-
-        call_stack = traceback.extract_stack()[-3:-1]  # Get 2 levels of call stack
-        call_info = " → ".join(
-            [f"{frame.filename.split('/')[-1]}:{frame.lineno}" for frame in call_stack]
-        )
-
-        self.logger.debug(
-            f"🔍 Agent {agent_id} checking pipeline state - current: {self._pipeline is not None}, profile: {self.profile.model_name}, priority: {priority}, called from: {call_info}"
-        )
-        if self._pipeline is None:
-            self.logger.debug(
-                f"🔧 Agent {agent_id} creating new pipeline for {self.profile.model_name} (call #{len(call_stack)} from {call_info})"
-            )
-
-            # CRITICAL: Only create pipeline once per agent instance, ignore all subsequent parameter variations
-            # This prevents duplicate server creation caused by different priority/grammar combinations
-            # All subsequent calls will reuse the same pipeline regardless of parameters
-            self._pipeline = self.pipeline_factory.get_pipeline(
-                self.profile,
-                PipelinePriority.MEDIUM,
-                None,  # Use consistent priority, no grammar variations
-            )
-            # Mark that we have locked a pipeline that needs cleanup
-            self._pipeline_locked = True
-            self.logger.debug(
-                f"🔒 Agent {agent_id} locked new pipeline for {self.profile.model_name}"
-            )
-        else:
-            self.logger.debug(
-                f"🔄 Agent {agent_id} reusing existing pipeline for {self.profile.model_name} (ignoring parameter variations) from {call_info}"
-            )
-
-        # Check if this is a LangChain ChatOpenAI pipeline
-        if hasattr(self._pipeline, "get_chat_model") and callable(
-            getattr(self._pipeline, "get_chat_model")
-        ):
-            # Use LangChain ChatOpenAI directly for tool calling
-            self.logger.info("🚀 Using LangChain ChatOpenAI pipeline for tool calling")
-            try:
-                chat_model = self._pipeline.get_chat_model()  # type: ignore
-
-                # Bind tools using LangChain's built-in method if tools provided
-                if tools:
-                    self.logger.info(
-                        f"🔧 Binding {len(tools)} tools to ChatOpenAI model"
-                    )
-                    chat_model = chat_model.bind_tools(tools)
-
-                # Return the ChatOpenAI model directly - this handles tool calling natively
-                return chat_model
-            except Exception as e:
-                self.logger.warning(
-                    f"Failed to use ChatOpenAI pipeline: {e}, falling back to traditional agent"
-                )
+        pipeline = self.get_pipeline(priority, grammar)
+        if pipeline is None:
+            self.logger.error("🚨 Pipeline is None after get_pipeline call!")
+            raise ValueError("Pipeline creation failed - pipeline is None")
 
         # Fallback to traditional agent creation for non-ChatOpenAI pipelines
         self.logger.info("🔄 Using traditional agent creation for pipeline")
-        llm = cast(BaseChatModel, self._pipeline)
+        llm = cast(BaseChatModel, pipeline)
         agent = create_agent(
             model=llm,
             tools=tools or [],
@@ -312,17 +285,6 @@ The current date is {current_date}. While this is likely past your training data
             enhanced_prompt += "If the user asks for current events or recent information, use the web_search tool to find up-to-date information."
 
         return enhanced_prompt
-
-    async def ensure_pipeline_created(self):
-        """Ensure pipeline is created without running a full completion."""
-        if not self._pipeline:
-            # Trigger pipeline creation by calling _get_or_create_agent
-            self._get_or_create_agent(
-                system_prompt="",  # Minimal system prompt
-                tools=None,
-                priority=PipelinePriority.MEDIUM,
-                grammar=None
-            )
 
     @property
     def current_pipeline(self) -> Optional[Any]:
@@ -490,65 +452,32 @@ The current date is {current_date}. While this is likely past your training data
 
             # Handle different agent types for streaming
             chunk_count = 0
-            
-            # Check if this is a ChatOpenAI model (direct LangChain integration)
-            if hasattr(agent, '_llm_type') or hasattr(agent, 'model_name'):
-                # Direct ChatOpenAI streaming - use async generator methods
-                self.logger.debug("Using ChatOpenAI streaming")
-                try:
-                    # For ChatOpenAI, use agenerate with streaming
-                    from langchain_core.messages import HumanMessage, AIMessage
-                    from langchain_core.language_models import BaseChatModel
-                    
-                    # Cast to BaseChatModel for proper typing
-                    chat_model = cast(BaseChatModel, agent)
-                    
-                    # Simple non-streaming approach for now since streaming API differs
-                    response = await chat_model.ainvoke(normalized_messages)
-                    if isinstance(response, BaseMessage):
-                        msg = lc_message_to_message(response)
-                        chat_chunk = ChatResponse(done=False, message=msg)
-                        chat_chunk.channels = self._node_metadata.model_dump()
-                        chunk_count += 1
-                        yield chat_chunk
-                except Exception as e:
-                    self.logger.warning(f"ChatOpenAI streaming failed: {e}, using fallback")
-                    # Fallback to non-streaming
-                    chat_model = cast(BaseChatModel, agent)
-                    response = await chat_model.ainvoke(normalized_messages)
-                    if isinstance(response, BaseMessage):
-                        msg = lc_message_to_message(response)
-                        chat_chunk = ChatResponse(done=False, message=msg)
-                        chat_chunk.channels = self._node_metadata.model_dump()
-                        chunk_count += 1
-                        yield chat_chunk
-            else:
-                # Traditional LangGraph agent streaming
-                self.logger.debug("Using traditional LangGraph agent streaming")
-                npt = {"messages": normalized_messages}
-                
-                # Stream agent execution with recursion limit
-                async for chunk in agent.astream(
-                    npt, stream_mode="messages", subgraphs=True  # type: ignore
-                ):
-                    msg_chunk = {}
-                    metadata = {}
 
-                    self.logger.debug(f"Processing streaming chunk: {chunk}")
+            npt = {"messages": normalized_messages}
 
-                    # stream_mode "messages" returns AIMessageChunk objects with metadata
-                    if isinstance(chunk, tuple) and len(chunk) >= 2:
-                        msg_chunk, metadata = chunk
-                    elif isinstance(chunk, BaseMessage):
-                        msg_chunk = chunk
+            # Stream agent execution with recursion limit
+            async for chunk in agent.astream(
+                npt, stream_mode="messages", subgraphs=True  # type: ignore
+            ):
+                msg_chunk = {}
+                metadata = {}
 
-                    if isinstance(msg_chunk, BaseMessage):
-                        msg = lc_message_to_message(msg_chunk)
+                self.logger.debug(f"Processing streaming chunk: {chunk}")
 
-                        chat_chunk = ChatResponse(done=False, message=msg)
-                        chat_chunk.channels = self._node_metadata.model_dump()
-                        chunk_count += 1
-                        yield chat_chunk
+                # stream_mode "messages" returns AIMessageChunk objects with metadata
+                if isinstance(chunk, tuple) and len(chunk) >= 2:
+                    msg_chunk, metadata = chunk
+                elif isinstance(chunk, BaseMessage):
+                    msg_chunk = chunk
+
+                if isinstance(msg_chunk, BaseMessage):
+                    msg = lc_message_to_message(msg_chunk)
+
+                    chat_chunk = ChatResponse(done=False, message=msg)
+                    chat_chunk.channels = self._node_metadata.model_dump()
+                    chat_chunk.channels.update(metadata)
+                    chunk_count += 1
+                    yield chat_chunk
 
             # Yield end chunk with node metadata
             yield create_streaming_chunk(
@@ -615,17 +544,7 @@ The current date is {current_date}. While this is likely past your training data
 
             # Convert messages to LangChain format
             normalized_messages = messages_to_lc_messages(convo)
-
-            # Execute agent with normalized messages
-            # Handle different agent types
-            if hasattr(agent, '_llm_type') or hasattr(agent, 'model_name'):
-                # Direct ChatOpenAI execution
-                from langchain_core.language_models import BaseChatModel
-                chat_model = cast(BaseChatModel, agent)
-                result = await chat_model.ainvoke(normalized_messages)
-            else:
-                # Traditional LangGraph agent execution
-                result = await agent.ainvoke(normalized_messages)  # type: ignore
+            result = await agent.ainvoke(normalized_messages)  # type: ignore
 
             # Convert agent result to ChatResponse
             # Handle different result formats based on agent type
@@ -638,7 +557,7 @@ The current date is {current_date}. While this is likely past your training data
             else:
                 # Fallback - assume result is the message itself
                 last_message = result
-            
+
             assert isinstance(last_message, BaseMessage)
             msg = lc_message_to_message(last_message)
             response = ChatResponse(

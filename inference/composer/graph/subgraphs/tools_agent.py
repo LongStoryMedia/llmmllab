@@ -14,20 +14,27 @@ Standard architecture:
 import asyncio
 from typing import Dict, Any
 
-from langchain_core.messages import BaseMessage
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import StateGraph, START
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.types import Command
 from composer.graph.state import WorkflowState, ToolsState, assemble_context_messages
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
+from models import Message, PipelinePriority
 from utils.message_conversion import (
-    messages_to_lc_messages,
     lc_messages_to_messages,
 )
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="ToolsAgentSubgraph")
+
+
+def should_continue_tool_calls(message: Message) -> bool:
+    """Determine if the agent should continue making tool calls based on the message."""
+    # Example logic: continue if there are tool calls remaining
+    if hasattr(message, "tool_calls") and message.tool_calls:
+        return True
+    return False
 
 
 class ToolsAgentSubgraph:
@@ -54,7 +61,7 @@ class ToolsAgentSubgraph:
             # Get tools for ToolNode
             tools_dict = self.tool_registry.get_all_executable_tools()
             tools_list = list(tools_dict.values()) if tools_dict else []
-            
+
             logger.info(f"🔧 Building standard agent with {len(tools_list)} tools")
 
             # Standard StateGraph following LangChain pattern
@@ -74,7 +81,7 @@ class ToolsAgentSubgraph:
                     tools_condition,  # Standard LangChain routing
                 )
                 builder.add_edge("tools", "agent")
-            
+
             # Start with agent
             builder.add_edge(START, "agent")
 
@@ -90,44 +97,31 @@ class ToolsAgentSubgraph:
     async def _agent_node(self, state: ToolsState) -> ToolsState:
         """Standard agent node using ChatOpenAI with bound tools."""
         try:
-            # Ensure pipeline is created
-            await self.chat_agent.ensure_pipeline_created()
-            
-            # Get ChatOpenAI from pipeline
-            pipeline = self.chat_agent.current_pipeline
-            if not (pipeline and hasattr(pipeline, 'get_chat_model')):
-                logger.error("Pipeline does not support ChatOpenAI")
-                return state
-                
-            chat_model = pipeline.get_chat_model()
-            
             # Get tools and bind them to ChatOpenAI
             tools_dict = self.tool_registry.get_all_executable_tools()
             tools_list = list(tools_dict.values()) if tools_dict else []
-            
-            if tools_list:
-                logger.info(f"🔧 Binding {len(tools_list)} tools to ChatOpenAI")
-                chat_model = chat_model.bind_tools(tools_list)
-            
-            # Use messages as-is - bind_tools() handles tool calling format automatically
-            messages = list(state.messages)
-            
             # Invoke ChatOpenAI - this handles tool calling automatically
             logger.info("📤 Invoking ChatOpenAI with standard LangChain pattern")
-            response = await chat_model.ainvoke(messages)
-            
+            response = await self.chat_agent.run(
+                state.messages,
+                tools=tools_list,
+                priority=PipelinePriority.HIGH,
+            )
+
             logger.info(f"📨 ChatOpenAI response: {type(response)}")
-            if hasattr(response, 'tool_calls') and response.tool_calls:
-                logger.info(f"🔧 Generated {len(response.tool_calls)} tool calls")
-            
-            # Add response to messages
-            state.messages.append(response)
-            
+            if response.message:
+                if response.message.tool_calls:
+                    logger.info(
+                        f"🔧 Generated {len(response.message.tool_calls)} tool calls"
+                    )
+                # Add response to messages
+                state.messages.append(response.message)
+
             # Inject shared pipeline for tool reuse
             if self.chat_agent.current_pipeline and not state.shared_pipeline:
                 state.shared_pipeline = self.chat_agent.current_pipeline
                 logger.debug("💾 Injected shared pipeline into state")
-            
+
             return state
 
         except Exception as e:
@@ -142,7 +136,7 @@ class ToolsAgentSubgraph:
         assert main_state.messages
 
         return ToolsState(
-            messages=messages_to_lc_messages(assemble_context_messages(main_state)),
+            messages=assemble_context_messages(main_state),
             user_id=main_state.user_id,
             conversation_id=main_state.conversation_id,
             user_config=main_state.user_config,
@@ -175,7 +169,9 @@ class ToolsAgentSubgraph:
                         message_obj.conversation_id = getattr(
                             main_state, "conversation_id", None
                         )
-                        logger.info(f"🔄 Created Message with role='{message_obj.role}'")
+                        logger.info(
+                            f"🔄 Created Message with role='{message_obj.role}'"
+                        )
                         new_messages.append(message_obj)
 
             if new_messages:
@@ -201,17 +197,23 @@ class ToolsAgentSubgraph:
                     self.graph.ainvoke(tools_state), timeout=timeout_seconds
                 )
             except asyncio.TimeoutError:
-                logger.error(f"❌ Agent subgraph execution timed out after {timeout_seconds} seconds")
+                logger.error(
+                    f"❌ Agent subgraph execution timed out after {timeout_seconds} seconds"
+                )
                 return Command(update={})
 
             # Transform results back to main state updates
-            logger.info(f"🔄 Agent subgraph completed with {len(result.get('messages', []))} messages")
+            logger.info(
+                f"🔄 Agent subgraph completed with {len(result.get('messages', []))} messages"
+            )
             updates = self.transform_to_main_state(result, main_state)
 
             logger.info(f"🔄 Agent subgraph returning {len(updates)} state updates")
             if "messages" in updates:
-                logger.info(f"🔄 Returning {len(updates['messages']) - len(main_state.messages)} new messages")
-            
+                logger.info(
+                    f"🔄 Returning {len(updates['messages']) - len(main_state.messages)} new messages"
+                )
+
             return Command(update=updates)
 
         except Exception as e:

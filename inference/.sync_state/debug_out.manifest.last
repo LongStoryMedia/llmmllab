@@ -9,6 +9,7 @@
 ./composer_llm_output_qwen3_vl_30b_a3b_thinking_20251110_215523.txt
 ./composer_llm_output_qwen3_vl_30b_a3b_thinking_20251110_221712.txt
 ./composer_llm_output_qwen3_vl_30b_a3b_thinking_20251110_223108.txt
+./composer_llm_output_qwen3_vl_30b_a3b_thinking_20251110_230207.txt
 ./composer_test_20251110_032108.json
 ./composer_test_20251110_041035.json
 ./composer_test_20251110_044441.json
@@ -20,6 +21,7 @@
 ./composer_test_20251110_220046.json
 ./composer_test_20251110_222302.json
 ./composer_test_20251110_223310.json
+./composer_test_20251110_230531.json
 ./workflow_graph_20251110_031852.md
 ./workflow_graph_20251110_040640.md
 ./workflow_graph_20251110_044029.md
@@ -31,3 +33,4 @@
 ./workflow_graph_20251110_215526.md
 ./workflow_graph_20251110_221715.md
 ./workflow_graph_20251110_223111.md
+./workflow_graph_20251110_230211.md

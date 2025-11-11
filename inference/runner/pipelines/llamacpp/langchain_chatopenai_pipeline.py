@@ -5,12 +5,17 @@ This provides a simple adapter that creates a ChatOpenAI instance connected
 to our llama.cpp server and exposes it for use with composer agents.
 """
 
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, Iterator, List, Optional, Type
+from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.messages import BaseMessage
+from langchain_core.outputs import ChatResult, ChatGenerationChunk
+from langchain_core.runnables.base import Runnable
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel
 
 from models import Model, ModelProfile, UserConfig
+from runner.pipelines.base import BasePipeline
 from runner.server_manager import LlamaCppServerManager
 from utils.logging import llmmllogger
 
@@ -18,7 +23,7 @@ from utils.logging import llmmllogger
 logger = llmmllogger.bind(component="LangChainChatOpenAIPipeline")
 
 
-class LangChainChatOpenAIPipeline:
+class LangChainChatOpenAIPipeline(BasePipeline):
     """
     Simple adapter that creates a ChatOpenAI instance connected to llama.cpp server.
 
@@ -33,10 +38,7 @@ class LangChainChatOpenAIPipeline:
         grammar: Optional[Type[BaseModel]] = None,
         **kwargs,
     ):
-        self.model = model
-        self.profile = profile
-        self.grammar = grammar
-
+        super().__init__(model, profile, grammar)
         self.user_config = kwargs.get("user_config", None)
         self._logger = llmmllogger.bind(
             component=self.__class__.__name__, model=model.name
@@ -100,68 +102,11 @@ class LangChainChatOpenAIPipeline:
                 **params,
             )
 
-            # Add HTTP debugging by wrapping the client
-            self._add_http_debugging()
-
             self._logger.info(f"ChatOpenAI initialized with base_url: {base_url}")
 
         except Exception as e:
             self._logger.error(f"Failed to initialize ChatOpenAI: {e}")
             raise
-
-    def _add_http_debugging(self):
-        """Add comprehensive HTTP request/response debugging."""
-        try:
-            # Store original client methods
-            original_request = self.chat_model.client.request
-            
-            async def debug_request(method: str, url: str, **kwargs):
-                """Debug wrapper for HTTP requests."""
-                self._logger.info(f"🌐 HTTP {method.upper()} {url}")
-                self._logger.info(f"🌐 Request kwargs keys: {list(kwargs.keys())}")
-                
-                # Log the complete request data
-                if 'json' in kwargs:
-                    import json
-                    json_data = kwargs['json']
-                    self._logger.info(f"🌐 Request JSON: {json.dumps(json_data, indent=2)}")
-                
-                if 'headers' in kwargs:
-                    self._logger.info(f"🌐 Request headers: {kwargs['headers']}")
-                
-                # Make the actual request
-                try:
-                    response = await original_request(method, url, **kwargs)
-                    
-                    # Log the response
-                    self._logger.info(f"🌐 Response status: {response.status_code}")
-                    self._logger.info(f"🌐 Response headers: {dict(response.headers)}")
-                    
-                    # Try to capture response body for debugging
-                    try:
-                        if hasattr(response, 'json'):
-                            response_json = response.json()
-                            self._logger.info(f"🌐 Response JSON: {json.dumps(response_json, indent=2)}")
-                        elif hasattr(response, 'text'):
-                            response_text = response.text
-                            self._logger.info(f"🌐 Response text (first 500 chars): {response_text[:500]}")
-                    except Exception as parse_error:
-                        self._logger.warning(f"🌐 Could not parse response body: {parse_error}")
-                    
-                    return response
-                    
-                except Exception as e:
-                    self._logger.error(f"🌐 HTTP request failed: {e}")
-                    raise
-            
-            # Monkey patch the request method
-            self.chat_model.client.request = debug_request
-            
-            self._logger.info("🌐 HTTP debugging enabled for ChatOpenAI client")
-            
-        except Exception as e:
-            self._logger.warning(f"🌐 Failed to add HTTP debugging: {e}")
-            # Don't fail initialization if debugging setup fails
 
     def _build_chat_model_params(self) -> Dict[str, Any]:
         """Build ChatOpenAI parameters from model profile."""
@@ -224,3 +169,44 @@ class LangChainChatOpenAIPipeline:
             "server_port": self.server_manager.port,
             "pipeline_type": "langchain_chatopenai",
         }
+
+    def _generate(
+        self,
+        messages: List[BaseMessage],
+        stop: List[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs,
+    ) -> ChatResult:
+        """Generate chat completions given input messages."""
+        if not self.chat_model:
+            raise RuntimeError("ChatOpenAI not initialized")
+
+        return self.chat_model._generate(
+            messages=messages,
+            stop=stop,
+            run_manager=run_manager,
+            **kwargs,
+        )
+
+    def _stream(
+        self,
+        messages: List[BaseMessage],
+        stop: List[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs,
+    ) -> Iterator[ChatGenerationChunk]:
+        """Stream chat completions given input messages."""
+        if not self.chat_model:
+            raise RuntimeError("ChatOpenAI not initialized")
+
+        return self.chat_model._stream(
+            messages=messages,
+            stop=stop,
+            run_manager=run_manager,
+            **kwargs,
+        )
+
+    def bind_tools(self, tools: list[BaseTool]):
+        if not self.chat_model:
+            raise RuntimeError("ChatOpenAI not initialized")
+        return self.chat_model.bind_tools(tools)

@@ -5,6 +5,7 @@ This is the centralized state schema that acts as the common interface
 
 import operator
 from typing import List, Dict, Any, Optional, Annotated, Set, Union
+from runner.pipelines.base import BasePipeline
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
 
@@ -41,7 +42,7 @@ class ToolsState(BaseModel):
     """
 
     # Message thread for agent conversation (using LangChain core messages for proper serialization)
-    messages: Annotated[List[BaseMessage], add_messages]
+    messages: Annotated[List[Message], add_messages]
 
     # Essential context for tool operations
     user_id: str
@@ -54,7 +55,7 @@ class ToolsState(BaseModel):
     tool_call_count: int
 
     # Shared pipeline for tools to prevent duplicate server instances
-    shared_pipeline: Optional[Any] = Field(
+    shared_pipeline: Optional[BasePipeline] = Field(
         default=None, description="Pipeline instance for tools to reuse"
     )
 
