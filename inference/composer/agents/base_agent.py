@@ -236,15 +236,6 @@ class BaseAgent(ABC, Generic[T]):
         # This allows different system prompts, tools, and grammars while maintaining server reuse
 
         self.logger.debug("Creating LangChain agent (pipeline will be reused)")
-
-        # Get the model configuration from pipeline factory
-        current_date = datetime.datetime.now().strftime("%Y-%m-%d")
-
-        # Add tool instructions and temporal context
-        enhanced_system_prompt = self._build_enhanced_system_prompt(
-            system_prompt, tools, current_date
-        )
-
         pipeline = self.get_pipeline(priority, grammar)
         if pipeline is None:
             self.logger.error("🚨 Pipeline is None after get_pipeline call!")
@@ -256,35 +247,24 @@ class BaseAgent(ABC, Generic[T]):
         agent = create_agent(
             model=llm,
             tools=tools or [],
-            system_prompt=enhanced_system_prompt,
+            system_prompt=system_prompt,
             response_format=ProviderStrategy(grammar) if grammar else None,
             name=self._node_metadata.node_name,
         )
 
         return agent
 
-    def _build_enhanced_system_prompt(
-        self, system_prompt: str, tools: Optional[List[BaseTool]], current_date: str
-    ) -> str:
-        """Build enhanced system prompt with tool instructions and temporal context."""
-        enhanced_prompt = system_prompt
+    # def _build_enhanced_system_prompt(
+    #     self, system_prompt: str, tools: Optional[List[BaseTool]], current_date: str
+    # ) -> str:
+    #     """Build enhanced system prompt with tool instructions and temporal context."""
+    #     enhanced_prompt = system_prompt
 
-        if tools:
-            enhanced_prompt += (
-                "\n\nYou have access to the following tools:\n"
-                + "\n".join([f"- {tool.name}: {tool.description}" for tool in tools])
-                + "\n\nUse them wisely to assist the user. When you need information that requires a tool, call the appropriate tool to get current, accurate data. Never fabricate or hallucinate tool results."
-                + '\n\nTOOL CALLING FORMAT:\nWhen you need to call a tool, you MUST use this EXACT JSON format wrapped in <tool_call> tags:\n<tool_call>{"name": "tool_name", "arguments": "{\\"param\\": \\"value\\"}"}</tool_call>\nNEVER fabricate or hallucinate tool results. ALWAYS call the actual tool when you need information.\nThe arguments field MUST be a JSON string (double-quoted), not a JSON object.'
-            )
+    #     enhanced_prompt +=
+    #     if "web_search" in (tool.name for tool in (tools or [])):
+    #         enhanced_prompt += "If the user asks for current events or recent information, use the web_search tool to find up-to-date information."
 
-        enhanced_prompt += f"""
-TEMPORAL CONTEXT:
-The current date is {current_date}. While this is likely past your training data, you can use this information to provide better responses. If the user asks for the date or time, respond with this date.
-"""
-        if "web_search" in (tool.name for tool in (tools or [])):
-            enhanced_prompt += "If the user asks for current events or recent information, use the web_search tool to find up-to-date information."
-
-        return enhanced_prompt
+    #     return enhanced_prompt
 
     @property
     def current_pipeline(self) -> Optional[Any]:
@@ -402,6 +382,12 @@ The current date is {current_date}. While this is likely past your training data
             else:
                 convo.append(msg)
 
+        current_date = datetime.datetime.now().strftime("%Y-%m-%d")
+        system_prompt += f"""
+TEMPORAL CONTEXT:
+The current date is {current_date}. While this is likely past your training data, you can use this information to provide better responses. If the user asks for the date or time, respond with this date.
+"""
+
         return system_prompt, convo
 
     async def stream(
@@ -461,8 +447,6 @@ The current date is {current_date}. While this is likely past your training data
             ):
                 msg_chunk = {}
                 metadata = {}
-
-                self.logger.debug(f"Processing streaming chunk: {chunk}")
 
                 # stream_mode "messages" returns AIMessageChunk objects with metadata
                 if isinstance(chunk, tuple) and len(chunk) >= 2:

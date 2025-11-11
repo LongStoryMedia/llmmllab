@@ -104,8 +104,15 @@ class ToolsAgentSubgraph:
             tools_list = list(tools_dict.values()) if tools_dict else []
             # Invoke ChatOpenAI - this handles tool calling automatically
             logger.info("📤 Invoking ChatOpenAI with standard LangChain pattern")
+            # async for chunk in self.chat_agent.stream(
+            #     lc_messages_to_messages(state.messages),
+            #     tools=tools_list,
+            #     priority=PipelinePriority.HIGH,
+            # ):
+            #     logger.debug(f"📥 Agent Received chunk: {chunk.model_dump_json()}")
+
             response = await self.chat_agent.run(
-                lc_messages_to_messages(state.messages),
+                messages=lc_messages_to_messages(state.messages),
                 tools=tools_list,
                 priority=PipelinePriority.HIGH,
             )

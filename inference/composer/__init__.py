@@ -26,9 +26,11 @@ from langchain_core.runnables.schema import StreamEvent
 
 from models import Message, WorkflowType
 
+from pydantic import BaseModel
 from utils.logging import llmmllogger
 
 from .core.service import CompiledStateGraph, ComposerService
+from .graph.executor import run_workflow, stream_workflow
 
 # Global service instance
 _composer_service: Optional[ComposerService] = None
@@ -116,7 +118,7 @@ async def create_initial_state(
 
 
 async def execute_workflow(
-    workflow, initial_state, stream: bool = True
+    initial_state: BaseModel, workflow: CompiledStateGraph, stream: bool = True
 ) -> AsyncGenerator[Union[StreamEvent, Dict[str, Any]], None]:
     """
     Execute a compiled workflow with the given initial state.
@@ -129,9 +131,11 @@ async def execute_workflow(
     Yields:
         Dict containing workflow events (tokens, state updates, etc.)
     """
-    service = await get_or_init_composer_service()
-    async for event in service.execute_workflow(workflow, initial_state, stream):
-        yield event
+    if stream:
+        async for event in stream_workflow(initial_state, workflow):
+            yield event
+    else:
+        yield await run_workflow(initial_state, workflow)
 
 
 # Convenience exports for direct usage

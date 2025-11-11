@@ -118,8 +118,6 @@ class WorkflowExecutor:
                             event, context_name or self.default_context
                         )
 
-                    yield event
-
                 except Exception as e:
                     self.logger.warning(
                         "Error enriching workflow event",
@@ -128,8 +126,9 @@ class WorkflowExecutor:
                             "event_type": event.get("event", "unknown"),
                         },
                     )
-                    # On any enrichment error, still yield original event to avoid stream disruption
-                    yield event
+
+                # self.logger.debug(f"Workflow event: {event}")
+                yield event
 
         except Exception as e:
             self.logger.error(
@@ -259,8 +258,8 @@ def create_executor(
 
 
 async def stream_workflow(
-    workflow: CompiledStateGraph,
     initial_state: BaseModel,
+    workflow: CompiledStateGraph,
     thread_id: Optional[str] = None,
     config: Optional[RunnableConfig] = None,
     logger: Optional[Any] = None,
@@ -293,8 +292,8 @@ async def stream_workflow(
 
 
 async def run_workflow(
-    workflow: CompiledStateGraph,
     initial_state: BaseModel,
+    workflow: CompiledStateGraph,
     thread_id: Optional[str] = None,
     config: Optional[RunnableConfig] = None,
     logger: Optional[Any] = None,

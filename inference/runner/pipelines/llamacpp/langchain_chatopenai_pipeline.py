@@ -5,6 +5,7 @@ This provides a simple adapter that creates a ChatOpenAI instance connected
 to our llama.cpp server and exposes it for use with composer agents.
 """
 
+import json
 from typing import Any, Dict, Iterator, List, Optional, Type
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.messages import BaseMessage
@@ -99,6 +100,7 @@ class LangChainChatOpenAIPipeline(BasePipeline):
                 model="local-model",  # Standard llama.cpp model name
                 max_retries=3,
                 timeout=self.server_manager.startup_timeout,
+                use_responses_api=True,
                 **params,
             )
 
@@ -181,6 +183,10 @@ class LangChainChatOpenAIPipeline(BasePipeline):
         if not self.chat_model:
             raise RuntimeError("ChatOpenAI not initialized")
 
+        self._logger.debug(
+            f"Generating with messages: {json.dumps([m.model_dump() for m in messages], indent=4)}"
+        )
+
         return self.chat_model._generate(
             messages=messages,
             stop=stop,
@@ -198,6 +204,10 @@ class LangChainChatOpenAIPipeline(BasePipeline):
         """Stream chat completions given input messages."""
         if not self.chat_model:
             raise RuntimeError("ChatOpenAI not initialized")
+
+        self._logger.debug(
+            f"Streaming with messages: {json.dumps([m.model_dump() for m in messages], indent=4)}"
+        )
 
         return self.chat_model._stream(
             messages=messages,

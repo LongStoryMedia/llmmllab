@@ -20,8 +20,9 @@ from composer.agents import ChatAgent
 from composer.tools.registry import ToolRegistry
 from composer.graph.subgraphs import ToolsAgentSubgraph
 from composer.graph.state import ToolsState
+from composer import execute_workflow
 from utils.message_conversion import messages_to_lc_messages
-from utils.logging import llmmllogger
+from utils.logging import llmmllogger, serialize_event_data
 
 logger = llmmllogger.bind(component="test_tools_agent_subgraph")
 
@@ -136,16 +137,21 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
         message_count = 0
 
         # Stream the graph execution
-        async for chunk in tools_agent_subgraph.graph.astream(tools_state):
-            print(f"📦 Received chunk: {chunk}")
+        async for chunk in execute_workflow(
+            initial_state=tools_state,
+            workflow=tools_agent_subgraph.graph,
+        ):
+            # print(f"📦 Received chunk: {serialize_event_data(chunk)}")
 
             # Handle different chunk formats from LangGraph
             for node_name, node_output in chunk.items():
                 print(
-                    f"🔄 Processing node '{node_name}' with output keys: {list(node_output.keys())}"
+                    f"🔄 Processing node '{node_name}' with output keys: {node_output}"
                 )
 
-                if node_name in ["chat_agent", "tools"]:
+                if node_name in ["chat_agent", "tools"] and isinstance(
+                    node_output, dict
+                ):
                     messages = node_output.get("messages", [])
                     print(f"📬 Node '{node_name}' has {len(messages)} messages")
 
