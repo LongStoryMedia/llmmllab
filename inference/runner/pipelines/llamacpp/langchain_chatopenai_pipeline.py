@@ -206,7 +206,8 @@ class LangChainChatOpenAIPipeline(BasePipeline):
             **kwargs,
         )
 
-    def bind_tools(self, tools: list[BaseTool]):
+    def bind_tools(self, tools: list[BaseTool], **kwargs):
+        """Bind tools to the chat model with support for additional parameters like tool_choice."""
         if not self.chat_model:
             raise RuntimeError("ChatOpenAI not initialized")
-        return self.chat_model.bind_tools(tools)
+        return self.chat_model.bind_tools(tools, **kwargs)

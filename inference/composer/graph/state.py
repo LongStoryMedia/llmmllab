@@ -41,8 +41,8 @@ class ToolsState(BaseModel):
     tool_node until completion, then returns results via Command.
     """
 
-    # Message thread for agent conversation (using LangChain core messages for proper serialization)
-    messages: Annotated[List[Message], add_messages]
+    # Message thread for agent conversation (using LangChain BaseMessage for LangGraph compatibility)
+    messages: Annotated[List[BaseMessage], add_messages]
 
     # Essential context for tool operations
     user_id: str

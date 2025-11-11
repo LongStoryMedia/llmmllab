@@ -66,6 +66,9 @@ class BasePipeline(BaseChatModel, ABC):
                 "profile_id": profile.id,
                 "grammar": grammar.__name__ if grammar else None,
             },
+            model=model,  # type: ignore
+            profile=profile,  # type: ignore
+            grammar=grammar,  # type: ignore
         )
 
     @abstractmethod
@@ -91,6 +94,6 @@ class BasePipeline(BaseChatModel, ABC):
         pass
 
     @abstractmethod
-    def bind_tools(self, tools: list[BaseModel]) -> BaseChatModel:
+    def bind_tools(self, tools: list[BaseModel], **kwargs) -> BaseChatModel:
         """Bind tools to the pipeline for tool calling support."""
         pass

@@ -544,7 +544,7 @@ The current date is {current_date}. While this is likely past your training data
 
             # Convert messages to LangChain format
             normalized_messages = messages_to_lc_messages(convo)
-            result = await agent.ainvoke(normalized_messages)  # type: ignore
+            result = await agent.ainvoke({"messages": normalized_messages})  # type: ignore
 
             # Convert agent result to ChatResponse
             # Handle different result formats based on agent type
