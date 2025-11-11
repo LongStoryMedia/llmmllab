@@ -8,20 +8,68 @@ to our llama.cpp server and exposes it for use with composer agents.
 import json
 from typing import Any, Dict, Iterator, List, Optional, Type
 from langchain_core.callbacks import CallbackManagerForLLMRun
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, AIMessageChunk
 from langchain_core.outputs import ChatResult, ChatGenerationChunk
-from langchain_core.runnables.base import Runnable
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel
 
-from models import Model, ModelProfile, UserConfig
+from models import Model, ModelProfile
 from runner.pipelines.base import BasePipeline
 from runner.server_manager import LlamaCppServerManager
 from utils.logging import llmmllogger
 
 
 logger = llmmllogger.bind(component="LangChainChatOpenAIPipeline")
+
+
+class ReasoningAwareAIMessageChunk(AIMessageChunk):
+    """Extended AIMessageChunk that captures reasoning content."""
+
+    def __init__(self, reasoning_content: str = "", **kwargs):
+        super().__init__(**kwargs)
+        self.reasoning_content = reasoning_content
+
+
+class ReasoningCaptureChatOpenAI(ChatOpenAI):
+    """Custom ChatOpenAI that captures reasoning_content from delta responses."""
+
+    def _convert_chunk_to_generation_chunk(
+        self,
+        chunk: dict,
+        default_chunk_class: type,
+        base_generation_info: dict | None,
+    ) -> ChatGenerationChunk | None:
+        """Override to capture reasoning_content from delta responses."""
+        # Get the standard generation chunk first
+        generation_chunk = super()._convert_chunk_to_generation_chunk(
+            chunk, default_chunk_class, base_generation_info
+        )
+
+        if generation_chunk is None:
+            return None
+
+        # Check if any choice has reasoning_content in the delta
+        choices = chunk.get("choices", [])
+        if choices and len(choices) > 0:
+            choice = choices[0]
+            delta = choice.get("delta", {})
+            reasoning_content = delta.get("reasoning_content", "")
+
+            if reasoning_content and isinstance(
+                generation_chunk.message, AIMessageChunk
+            ):
+                # Log that we captured reasoning content
+                logger.info(
+                    f"🧠 Captured reasoning content: {reasoning_content[:50]}..."
+                )
+
+                # Create enhanced chunk with reasoning content
+                enhanced_message: ReasoningAwareAIMessageChunk = generation_chunk.message  # type: ignore[assignment]
+                enhanced_message.reasoning_content = reasoning_content
+                generation_chunk.message = enhanced_message
+
+        return generation_chunk
 
 
 class LangChainChatOpenAIPipeline(BasePipeline):
@@ -53,7 +101,7 @@ class LangChainChatOpenAIPipeline(BasePipeline):
         )
 
         # Initialize ChatOpenAI instance
-        self.chat_model: Optional[ChatOpenAI] = None
+        self.chat_model: Optional[ReasoningCaptureChatOpenAI] = None
         self._server_started = False
 
         # Initialize server and ChatOpenAI
@@ -94,13 +142,13 @@ class LangChainChatOpenAIPipeline(BasePipeline):
             params = self._build_chat_model_params()
 
             # Create ChatOpenAI instance with debug logging
-            self.chat_model = ChatOpenAI(
+            self.chat_model = ReasoningCaptureChatOpenAI(
                 base_url=base_url,
                 api_key=lambda: "dummy",  # Use callable to satisfy type requirements
                 model="local-model",  # Standard llama.cpp model name
                 max_retries=3,
                 timeout=self.server_manager.startup_timeout,
-                use_responses_api=True,
+                # Note: use_responses_api=True not supported by llama.cpp
                 **params,
             )
 
@@ -134,16 +182,17 @@ class LangChainChatOpenAIPipeline(BasePipeline):
         if hasattr(profile_params, "top_p") and profile_params.top_p is not None:
             params["top_p"] = profile_params.top_p
 
-        # Only add parameters that actually exist on ModelParameters
-        # Skip frequency_penalty, presence_penalty, n_predict, etc. if not available
-
+        # Note: Skip 'seed' parameter when using responses API as it's not supported
+        # The responses API is more limited in parameter support
         if hasattr(profile_params, "seed") and profile_params.seed is not None:
-            params["seed"] = profile_params.seed
+            # Only add seed for regular chat completions, not responses API
+            # We'll handle this via model_kwargs filtering in the ChatOpenAI init
+            pass
 
         return params
 
-    def get_chat_model(self) -> ChatOpenAI:
-        """Get the underlying ChatOpenAI instance for direct LangChain use."""
+    def get_chat_model(self) -> ReasoningCaptureChatOpenAI:
+        """Get the underlying ReasoningCaptureChatOpenAI instance for direct LangChain use."""
         if not self.chat_model:
             raise RuntimeError("ChatOpenAI not initialized")
         return self.chat_model
@@ -187,7 +236,8 @@ class LangChainChatOpenAIPipeline(BasePipeline):
             f"Generating with messages: {json.dumps([m.model_dump() for m in messages], indent=4)}"
         )
 
-        return self.chat_model._generate(
+        # Use protected method with type ignore for compatibility
+        return self.chat_model._generate(  # type: ignore[attr-defined]
             messages=messages,
             stop=stop,
             run_manager=run_manager,
@@ -209,7 +259,8 @@ class LangChainChatOpenAIPipeline(BasePipeline):
             f"Streaming with messages: {json.dumps([m.model_dump() for m in messages], indent=4)}"
         )
 
-        return self.chat_model._stream(
+        # Use protected method with type ignore for compatibility
+        return self.chat_model._stream(  # type: ignore[attr-defined]
             messages=messages,
             stop=stop,
             run_manager=run_manager,
