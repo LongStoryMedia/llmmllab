@@ -422,16 +422,16 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
 
         # Split mode configuration
         if hasattr(gcfg, "split_mode") and gcfg.split_mode:
-            # Convert string split modes to integer values
-            split_mode_mapping = {
-                "layer": 1,  # LLAMA_SPLIT_MODE_LAYER
-                "row": 2,    # LLAMA_SPLIT_MODE_ROW
-            }
+            # Pass string split modes directly to llama.cpp
             if isinstance(gcfg.split_mode, str):
-                split_mode = split_mode_mapping.get(gcfg.split_mode.lower(), 1)
+                config["split_mode"] = gcfg.split_mode.lower()
             else:
-                split_mode = gcfg.split_mode
-            config["split_mode"] = split_mode
+                # Convert legacy integer values to strings
+                split_mode_mapping = {
+                    1: "layer",  # LLAMA_SPLIT_MODE_LAYER
+                    2: "row",    # LLAMA_SPLIT_MODE_ROW
+                }
+                config["split_mode"] = split_mode_mapping.get(gcfg.split_mode, "layer")
 
         # MoE (Mixture of Experts) configuration
         if (
