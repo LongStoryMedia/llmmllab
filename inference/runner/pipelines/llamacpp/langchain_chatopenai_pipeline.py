@@ -38,7 +38,7 @@ class ReasoningAwareAIMessageChunk(AIMessageChunk):
         self.reasoning_content = reasoning_content
 
 
-class ReasoningCaptureChatOpenAI(ChatOpenAI):
+class ReasoningChatOpenAI(ChatOpenAI):
     """Custom ChatOpenAI that captures reasoning_content from delta responses."""
 
     def _convert_chunk_to_generation_chunk(
@@ -104,7 +104,7 @@ class LangChainChatOpenAIPipeline(BasePipeline):
         )
 
         # Initialize ChatOpenAI instance
-        self.chat_model: Optional[ReasoningCaptureChatOpenAI] = None
+        self.chat_model: Optional[ReasoningChatOpenAI] = None
         self._server_started = False
 
         # Initialize server and ChatOpenAI
@@ -145,7 +145,7 @@ class LangChainChatOpenAIPipeline(BasePipeline):
             # params = self._build_chat_model_params()
 
             # Create ChatOpenAI instance with debug logging
-            self.chat_model = ReasoningCaptureChatOpenAI(
+            self.chat_model = ReasoningChatOpenAI(
                 base_url=base_url,
                 api_key=lambda: "dummy",  # Use callable to satisfy type requirements
                 model="local-model",  # Standard llama.cpp model name
@@ -170,7 +170,7 @@ class LangChainChatOpenAIPipeline(BasePipeline):
             self._logger.error(f"Failed to initialize ChatOpenAI: {e}")
             raise
 
-    def get_chat_model(self) -> ReasoningCaptureChatOpenAI:
+    def get_chat_model(self) -> ReasoningChatOpenAI:
         """Get the underlying ReasoningCaptureChatOpenAI instance for direct LangChain use."""
         if not self.chat_model:
             raise RuntimeError("ChatOpenAI not initialized")

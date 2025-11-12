@@ -58,8 +58,10 @@ async def read_web_content(url: str) -> str:
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=30)
         ) as session:
-            async with session.get(url, headers=headers) as response:
-                if response.status != 200:
+            async with session.get(
+                url, headers=headers, allow_redirects=True
+            ) as response:
+                if response.status >= 400:
                     return f"Error: HTTP {response.status} when accessing {url}"
 
                 # Check content type

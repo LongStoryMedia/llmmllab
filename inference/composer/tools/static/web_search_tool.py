@@ -30,9 +30,10 @@ Available Engines (see https://docs.searxng.org/dev/engines/index.html):
 - And many more specialized engines
 """
 
+from calendar import c
 import json
 import os
-from typing import Annotated, Optional
+from typing import Annotated, List, Literal, Optional
 
 from langchain_core.tools import tool
 from langchain.tools import ToolRuntime
@@ -61,9 +62,27 @@ except ModuleNotFoundError:  # pragma: no cover - environment variability
 class SearxNG:
     """Wrapper for Searx Search API using WebSearchConfig."""
 
-    def __init__(self, web_config: WebSearchConfig):
+    def __init__(
+        self,
+        web_config: WebSearchConfig,
+        categories: List[
+            Literal[
+                "general",
+                "news",
+                "science",
+                "it",
+                "shopping",
+                "images",
+                "videos",
+                "music",
+                "files",
+                "social",
+            ]
+        ],
+    ):
         self.web_config = web_config
         self.searx_host = web_config.searx_host or os.getenv("SEARX_HOST", "")
+        self.categories = categories or list[str](web_config.categories)
 
         # Build SearxSearchWrapper parameters directly from WebSearchConfig
         params = {
@@ -83,13 +102,31 @@ class SearxNG:
             k=web_config.max_results,
             params=params,
             headers=headers,
-            categories=list[str](web_config.categories),
+            categories=self.categories,  # type: ignore
         )
         self.logger = llmmllogger.logger
 
         self.logger.debug(f"SearxNG initialized with engines: {web_config.engines}")
 
-    async def search(self, query: str, max_results: int) -> SearchResult:
+    async def search(
+        self,
+        query: str,
+        max_results: int,
+        categories: List[
+            Literal[
+                "general",
+                "news",
+                "science",
+                "it",
+                "shopping",
+                "images",
+                "videos",
+                "music",
+                "files",
+                "social",
+            ]
+        ] = [],
+    ) -> SearchResult:
         """Execute search using Searx Search API."""
         results = []
         error = None
@@ -107,6 +144,7 @@ class SearxNG:
                 query=query,
                 num_results=max_results,
                 engines=None,  # Use configured engines
+                categories=categories,  # type: ignore
             )
 
             # Convert structured results to our format
@@ -158,6 +196,23 @@ class SearxNG:
 async def web_search(
     query: Annotated[str, "The search query to execute"],
     num_results: Annotated[Optional[int], "Number of search results to return"] = None,
+    categories: Annotated[
+        List[
+            Literal[
+                "general",
+                "news",
+                "science",
+                "it",
+                "shopping",
+                "images",
+                "videos",
+                "music",
+                "files",
+                "social",
+            ]
+        ],
+        "Search categories to include",
+    ] = [],
 ) -> str:
     """
     Search the web for information and automatically add results to workflow state.
@@ -235,7 +290,7 @@ async def web_search(
             num_results = DEFAULT_WEB_SEARCH_CONFIG.max_results
 
         # Use SearxNG provider with WebSearchConfig
-        provider = SearxNG(web_config=web_config)
+        provider = SearxNG(web_config=web_config, categories=categories)
         search_result = await provider.search(query, num_results)
         if search_result and search_result.contents:
             # Format results for display with more substantial content
