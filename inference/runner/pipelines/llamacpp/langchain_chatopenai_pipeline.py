@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from models import Model, ModelProfile, ModelProfileType
 from runner.pipelines.base import BasePipeline
 from runner.server_manager import LlamaCppServerManager
-from utils.logging import llmmllogger, serialize_event_data
+from utils.logging import llmmllogger
 
 # Suppress verbose HTTP logging from OpenAI client unless in TRACE mode
 if os.getenv("LOG_LEVEL", "INFO").upper() != "TRACE":

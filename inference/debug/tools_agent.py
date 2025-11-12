@@ -164,82 +164,39 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
             if processing:
                 continue  # Skip until current tool call processing is done
 
-            if chunk and event.endswith("_stream"):
-                if isinstance(chunk, dict):
-                    # Print text chunks directly
-                    content = chunk.get("content") or chunk.get("reasoning_content")
-                    if content:
-                        print(content, end="", flush=True)
-                    else:
-                        tcc = chunk.get("tool_call_chunk", "")
-                        if tcc:
-                            processing = True
-                            print("\n" + "=" * 80)
-                            print(
-                                "Building tool call...",
-                            )
-                            print("=" * 80)
-                elif isinstance(chunk, BaseMessage):
-                    # Print message content
-                    for content in chunk.content:
-                        print(str(content), end="", flush=True)
-                    for rc in getattr(chunk, "reasoning_content", ""):
-                        print(str(rc), end="", flush=True)
+            if chunk and event.endswith("_stream") and isinstance(chunk, BaseMessage):
+                # Print message content
+                for content in chunk.content:
+                    print(str(content), end="", flush=True)
+                for rc in getattr(chunk, "reasoning_content", ""):
+                    print(str(rc), end="", flush=True)
 
-            if event.endswith("_model_end"):
-                processing = False
-                if isinstance(output, dict):
-                    rm = output.get("response_metadata", {})
-                    reason = rm.get("reason", "no reason provided")
-                    print("\n" + "=" * 80)
-                    print(
-                        f"Finished segment due to {reason}",
-                    )
-                    if reason == "tool_calls":
-                        tc = output.get("tool_calls", [])
-                        for t in tc:
-                            tname = t.get("name", "unknown_tool")
-                            targs = t.get("args", {})
-                            print("\n" + "-" * 40)
-                            print(f"Tool Call: {tname}")
-                            print(f"Arguments: {serialize_event_data(targs)}")
-                            print("-" * 40)
-                    print("=" * 80)
-                elif isinstance(output, AIMessage):
-                    md = output.response_metadata
-                    reason = md.get("reason", "no reason provided")
-                    print("\n" + "=" * 80)
-                    print("\n" + "=" * 80)
-                    print(
-                        f"Finished segment due to {reason}",
-                    )
-                    if reason == "tool_calls":
-                        tc = output.tool_calls
-                        for t in tc:
-                            tname = t.get("name", "unknown_tool")
-                            targs = t.get("args", {})
-                            print("\n" + "-" * 40)
-                            print(f"Tool Call: {tname}")
-                            print(f"Arguments: {serialize_event_data(targs)}")
-                            print("-" * 40)
-                    print("=" * 80)
+            if event.endswith("_model_end") and isinstance(output, AIMessage):
+                md = output.response_metadata
+                reason = md.get("reason", "no reason provided")
+                print("\n" + "=" * 80)
+                print("\n" + "=" * 80)
+                print(
+                    f"Finished segment due to {reason}",
+                )
+                if reason == "tool_calls":
+                    tc = output.tool_calls
+                    for t in tc:
+                        tname = t.get("name", "unknown_tool")
+                        targs = t.get("args", {})
+                        print("\n" + "-" * 40)
+                        print(f"Tool Call: {tname}")
+                        print(f"Arguments: {serialize_event_data(targs)}")
+                        print("-" * 40)
+                print("=" * 80)
 
-            if event.endswith("_tool_end"):
-                processing = False
-                if isinstance(output, dict):
-                    print("\n" + "=" * 80)
-                    print(
-                        f"RESULTS of {output.get('name', 'unknown_tool')} tool execution",
-                    )
-                    print(output.get("content", ""))
-                    print("=" * 80)
-                elif isinstance(output, ToolMessage):
-                    print("\n" + "=" * 80)
-                    print(
-                        f"RESULTS {output.name} of tool execution",
-                    )
-                    print(output.content)
-                    print("=" * 80)
+            if event.endswith("_tool_end") and isinstance(output, ToolMessage):
+                print("\n" + "=" * 80)
+                print(
+                    f"RESULTS {output.name} of tool execution",
+                )
+                print(output.content)
+                print("=" * 80)
 
         end = datetime.datetime.now(datetime.timezone.utc)
         total_time = (end - timestamp).total_seconds()
@@ -265,10 +222,6 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
             logger.info("✅ Agent cleanup completed - pipelines unlocked")
         except Exception as e:
             logger.error(f"❌ Agent cleanup failed: {e}")
-
-    timestamp = datetime.datetime.now(datetime.timezone.utc)
-    total_time = (timestamp - timestamp).total_seconds()
-    logger.info(f"⏱️ Total test duration: {total_time:.2f} seconds")
 
     # print("\n[debug] Completed ToolsAgentSubgraph test without immediate crash")
 
