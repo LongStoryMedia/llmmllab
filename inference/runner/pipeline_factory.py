@@ -258,27 +258,10 @@ class PipelineFactory:
             An instance of BaseChatModel or Embeddings
         """
         try:
-            # DEBUG: Add detailed pipeline creation logging
-            import traceback
-
-            call_stack = traceback.extract_stack()[-4:-1]
-            call_info = " → ".join(
-                [
-                    f"{frame.filename.split('/')[-1]}:{frame.lineno}"
-                    for frame in call_stack
-                ]
-            )
-
-            self.logger.info(
-                f"🚀 create_pipeline() called for model={model.name}, task={model.task}, pipeline={getattr(model, 'pipeline', 'unknown')}, from: {call_info}"
-            )
-
-            if model.task == ModelTask.TEXTTOTEXT:
-                self.logger.info(
-                    f"🎯 Routing to _create_text_pipeline for {model.name}"
-                )
-                return self._create_text_pipeline(model, profile, grammar)
-            if model.task == ModelTask.VISIONTEXTTOTEXT:
+            if (
+                model.task == ModelTask.TEXTTOTEXT
+                or model.task == ModelTask.VISIONTEXTTOTEXT
+            ):
                 self.logger.info(
                     f"🎯 Routing to _create_text_pipeline for vision model {model.name}"
                 )
@@ -334,90 +317,23 @@ class PipelineFactory:
         self.logger.info(
             f"Creating text pipeline for model: {model.name}, pipeline: {model.pipeline}"
         )
-        if model.pipeline == "Qwen3Pipe" or model.pipeline == "Qwen3VLPipeline":
-            self.logger.info(f"🔧 Creating Qwen3/Qwen3VL pipeline for {model.name}")
 
-            # Try LangChain-based pipeline first for better tool calling support
-            try:
-                from .pipelines.llamacpp.langchain_chatopenai_pipeline import (  # pylint: disable=import-outside-toplevel
-                    LangChainChatOpenAIPipeline,
-                )
+        from .pipelines.llamacpp.chat import (  # pylint: disable=import-outside-toplevel
+            ChatLlamaCppPipeline,
+        )
 
-                self.logger.info(
-                    "Attempting to create LangChainChatOpenAIPipeline for Qwen3"
-                )
-                pipeline = LangChainChatOpenAIPipeline(model, profile, grammar)
-                self.logger.info(
-                    "Successfully created LangChainChatOpenAIPipeline for Qwen3"
-                )
-                return pipeline
-            except Exception as langchain_error:
-                self.logger.warning(
-                    f"LangChainChatOpenAIPipeline creation failed: {langchain_error}"
-                )
-
-                # Fallback to original pipeline
-                from .pipelines.llamacpp.llamacpp_server_pipeline import (  # pylint: disable=import-outside-toplevel
-                    LlamaCppServerPipeline,
-                )
-
-                self.logger.info("Falling back to LlamaCppServerPipeline for Qwen3")
-                try:
-                    pipeline = LlamaCppServerPipeline(model, profile, grammar)
-                    self.logger.info(
-                        "Successfully created fallback LlamaCppServerPipeline for Qwen3"
-                    )
-                    return pipeline
-                except TypeError as e:
-                    self.logger.error(
-                        f"Both pipeline types failed for {model.name}: {e}"
-                    )
-                    raise
-
-        if model.pipeline == "LlamaChatSummPipe":
-            self.logger.info(f"🔧 Creating LlamaChatSummPipe for {model.name}")
-            from .pipelines.llamacpp.llamacpp_server_pipeline import (  # pylint: disable=import-outside-toplevel
-                LlamaCppServerPipeline,
-            )
-
-            return LlamaCppServerPipeline(model, profile, grammar)
-
-        if model.pipeline == "OpenAiGptOssPipe":
-            self.logger.info(f"🔧 Creating OpenAiGptOssPipe for {model.name}")
-            from .pipelines.llamacpp.llamacpp_server_pipeline import (  # pylint: disable=import-outside-toplevel
-                LlamaCppServerPipeline,
-            )
-
-            return LlamaCppServerPipeline(model, profile, grammar)
-
-        raise RuntimeError(f"Unsupported text pipeline type: {model.pipeline}")
+        return ChatLlamaCppPipeline(model, profile, grammar)
 
     def _create_embedding_pipeline(
         self,
         model: Model,
         profile: ModelProfile,
     ) -> Optional[Embeddings]:
-        if model.pipeline == "NomicEmbedTextPipe":
-            try:
-                from .pipelines.llamacpp.llamacpp_server_embeddings import (  # pylint: disable=import-outside-toplevel
-                    LlamaCppServerEmbeddings,
-                )
+        from .pipelines.llamacpp.embed import (  # pylint: disable=import-outside-toplevel
+            EmbedLlamaCppPipeline,
+        )
 
-                return LlamaCppServerEmbeddings(model, profile)
-            except Exception as e:
-                self.logger.error(f"Failed to initialize LlamaCppServerEmbeddings: {e}")
-                return None
-        if model.pipeline == "Qwen3EmbeddingPipe":
-            try:
-                from .pipelines.llamacpp.llamacpp_server_embeddings import (  # pylint: disable=import-outside-toplevel
-                    LlamaCppServerEmbeddings,
-                )
-
-                return LlamaCppServerEmbeddings(model, profile)
-            except Exception as e:
-                self.logger.error(f"Failed to initialize LlamaCppServerEmbeddings: {e}")
-                return None
-        return None
+        return EmbedLlamaCppPipeline(model, profile)
 
     def _create_image_pipeline(
         self,

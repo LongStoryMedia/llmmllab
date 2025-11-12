@@ -19,7 +19,7 @@ from runner.server_manager import LlamaCppServerManager
 logger = llmmllogger.bind(component="LlamaCppServerEmbeddings")
 
 
-class LlamaCppServerEmbeddings(Embeddings):
+class EmbedLlamaCppPipeline(Embeddings):
     """
     LangChain embeddings implementation using llama.cpp server.
 
@@ -146,4 +146,4 @@ class LlamaCppServerEmbeddings(Embeddings):
             pass  # Ignore errors during cleanup
 
 
-__all__ = ["LlamaCppServerEmbeddings"]
+__all__ = ["EmbedLlamaCppPipeline"]

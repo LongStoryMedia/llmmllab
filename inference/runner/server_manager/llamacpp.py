@@ -2,6 +2,7 @@
 LlamaCppServerManager - Specialized server manager for llama.cpp servers.
 
 This extends the base ServerManager with llama.cpp-specific functionality.
+Now uses structured argument building via argparse for cleaner flag management.
 """
 
 import os
@@ -9,12 +10,9 @@ from pathlib import Path
 from typing import List, Optional
 
 from models import Model, ModelProfile, UserConfig
-from models.config_utils import (
-    resolve_gpu_config,
-    resolve_parameter_optimization_config,
-)
+from models.config_utils import resolve_parameter_optimization_config
 from runner.server_manager.base import BaseServerManager
-from runner.utils.model_loader import ModelLoader
+from runner.server_manager.argument_builder import create_argument_builder
 
 
 class LlamaCppServerManager(BaseServerManager):
@@ -51,150 +49,24 @@ class LlamaCppServerManager(BaseServerManager):
         else:
             return f"{self.server_url}/v1{path}"
 
-    def get_gguf_path(self) -> str:
-        """Return resolved GGUF file path for model."""
-        details = getattr(self.model, "details", None)
-        if details and hasattr(details, "gguf_file") and details.gguf_file:
-            return details.gguf_file
-        return self.model.model
-
     def _build_server_args(self) -> List[str]:
-        """Build command line arguments for llama.cpp server."""
-        gguf_path = self.get_gguf_path()
-
-        # Base command
-        args = [
-            "/llama.cpp/build/bin/llama-server",
-            "--model",
-            gguf_path,
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(self.port),
-        ]
-
-        # Add embedding-specific flags early
-        if self.is_embedding:
-            args.extend(
-                [
-                    "--threads",
-                    str(os.cpu_count() or 4),
-                    "--ctx-size",
-                    "4096",  # Smaller context for embeddings
-                    "--batch-size",
-                    "1024",
-                    "--embeddings",  # Enable embeddings mode
-                    "--pooling",
-                    "mean",  # Use mean pooling
-                    "--no-webui",  # Disable web UI
-                ]
+        """Build command line arguments for llama.cpp server using argparse-based builder."""
+        try:
+            # Create argument builder for llamacpp
+            builder = create_argument_builder(
+                server_type="llamacpp",
+                model=self.model,
+                profile=self.profile,
+                user_config=self.user_config,
+                port=self.port,
+                is_embedding=self.is_embedding,
             )
 
-            # Add debug logging if enabled
-            if os.getenv("LOG_LEVEL", "WARNING").lower() == "trace":
-                args.extend(["--verbose"])
-
-            self._logger.info(f"Embedding server args: {' '.join(args)}")
+            # Build and return arguments
+            args = builder.build_args()
+            self._logger.info(f"Server args: {' '.join(args)}")
             return args
 
-        # For non-embedding servers, build full configuration
-        params = self.profile.parameters
-        gcfg = resolve_gpu_config(self.profile, self.user_config)
-
-        # Add standard server features with performance optimizations
-        args.extend(
-            [
-                "--cont-batching",
-                "--metrics",
-                "--no-warmup",  # Skip warmup for faster startup
-                "--cache-type-k",
-                "f16",  # Use f16 for KV cache
-                "--cache-type-v",
-                "f16",  # Use f16 for KV cache
-            ]
-        )
-
-        # Core performance parameters
-        args.extend(["--threads", str(os.cpu_count() or 4)])
-        args.extend(["-c", str(params.num_ctx or 90000)])
-        args.extend(["--batch-size", str(params.batch_size or 256)])
-        args.extend(["-ub", str(params.batch_size or 256)])
-
-        # GPU configuration
-        args.extend(
-            [
-                "--n-gpu-layers",
-                str(gcfg.gpu_layers if gcfg.gpu_layers is not None else -1),
-            ]
-        )
-
-        # Main GPU selection
-        if gcfg.main_gpu is not None and gcfg.main_gpu >= 0:
-            args.extend(["-mg", str(gcfg.main_gpu)])
-        else:
-            args.extend(["-mg", "1"])  # Default to GPU 1 for large models
-
-        # Tensor split configuration
-        if gcfg.tensor_split:
-            tensor_split_str = ",".join(map(str, gcfg.tensor_split))
-            args.extend(["-ts", tensor_split_str])
-
-        # Split mode configuration
-        if hasattr(gcfg, "split_mode") and gcfg.split_mode:
-            args.extend(["-sm", str(gcfg.split_mode)])
-
-        # MoE (Mixture of Experts) configuration
-        if (
-            hasattr(params, "n_cpu_moe")
-            and params.n_cpu_moe is not None
-            and params.n_cpu_moe > 0
-        ):
-            args.extend(["--n-cpu-moe", str(params.n_cpu_moe)])
-        else:
-            args.extend(["--n-cpu-moe", "5"])  # Default for MoE models
-
-        # NUMA distribution
-        args.extend(["--numa", "distribute"])
-
-        # KV offload disable
-        args.extend(["-nkvo"])
-
-        # Multimodal support - critical for vision models
-        mmproj_path = self.model.details.clip_model_path
-        if mmproj_path and Path(mmproj_path).exists():
-            args.extend(["--mmproj", mmproj_path])
-            self._logger.info(f"Using multimodal projector: {mmproj_path}")
-        elif "vl" in self.model.name.lower() or "vision" in self.model.name.lower():
-            self._logger.warning(
-                f"Vision model detected but no mmproj file found for {self.model.name}"
-            )
-
-        # Draft model support for speculative decoding
-        if hasattr(self.profile, "draft_model") and self.profile.draft_model:
-            if mmproj_path and Path(mmproj_path).exists():
-                self._logger.warning(
-                    f"Draft models are not supported with multimodal models. Ignoring draft model for {self.model.name}"
-                )
-            else:
-                ml = ModelLoader()
-                dm = ml.get_model_by_id(self.profile.draft_model)
-                draft_gguf = dm.details.gguf_file if dm and dm.details else None
-                if draft_gguf:
-                    args.extend(["--model-draft", str(draft_gguf)])
-
-        # Additional GPU optimizations
-        if hasattr(gcfg, "offload_kqv") and not gcfg.offload_kqv:
-            args.extend(["--no-kv-offload"])
-
-        # Disable web UI for server mode
-        args.extend(["--no-webui"])
-
-        # Enable JSON schema support for tools (required for tool calling)
-        args.extend(["--jinja"])
-
-        # Add logging configuration
-        if os.getenv("LOG_LEVEL", "WARNING").lower() == "trace":
-            args.extend(["--verbose"])
-
-        self._logger.info(f"Server args: {' '.join(args)}")
-        return args
+        except Exception as e:
+            self._logger.error(f"Failed to build server arguments: {e}")
+            raise

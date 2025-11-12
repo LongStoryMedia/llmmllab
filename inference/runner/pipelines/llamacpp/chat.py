@@ -75,7 +75,7 @@ class ReasoningChatOpenAI(ChatOpenAI):
         return generation_chunk
 
 
-class LangChainChatOpenAIPipeline(BasePipeline):
+class ChatLlamaCppPipeline(BasePipeline):
     """
     Simple adapter that creates a ChatOpenAI instance connected to llama.cpp server.
 
