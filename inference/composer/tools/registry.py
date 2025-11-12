@@ -55,10 +55,10 @@ class ToolRegistry:
             # Add function-based tools that are already decorated with @tool
             # ToolRuntime handles parameter injection automatically - no schema filtering needed
             tools_to_add = {
-                "memory_retrieval": memory_retrieval,
+                # "memory_retrieval": memory_retrieval,
                 "web_search": web_search,
                 "read_web_content": read_web_content,
-                "summarization": summarization,
+                # "summarization": summarization,
                 # "get_current_date": get_current_date,
             }
 

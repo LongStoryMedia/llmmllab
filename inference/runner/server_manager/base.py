@@ -66,14 +66,24 @@ class BaseServerManager(ABC):
         with self._lock:
             # DEBUG: Add detailed server start logging
             import traceback
+
             call_stack = traceback.extract_stack()[-4:-1]
-            call_info = " → ".join([f"{frame.filename.split('/')[-1]}:{frame.lineno}" for frame in call_stack])
-            
+            call_info = " → ".join(
+                [
+                    f"{frame.filename.split('/')[-1]}:{frame.lineno}"
+                    for frame in call_stack
+                ]
+            )
+
             if self.process and self.process.poll() is None:
-                self._logger.info(f"🔄 Server already running on port {self.port} (called from {call_info})")
+                self._logger.info(
+                    f"🔄 Server already running on port {self.port} (called from {call_info})"
+                )
                 return True
 
-            self._logger.info(f"🌟 Starting NEW server on port {self.port} (called from {call_info})")
+            self._logger.info(
+                f"🌟 Starting NEW server on port {self.port} (called from {call_info})"
+            )
 
             try:
                 args = self._build_server_args()
@@ -86,6 +96,7 @@ class BaseServerManager(ABC):
                     args,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
+                    stdin=subprocess.DEVNULL,
                     text=True,
                 )
 

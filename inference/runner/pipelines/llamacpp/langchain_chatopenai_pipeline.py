@@ -6,6 +6,8 @@ to our llama.cpp server and exposes it for use with composer agents.
 """
 
 import json
+import logging
+import os
 from typing import Any, Dict, Iterator, List, Optional, Type
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.messages import BaseMessage, AIMessageChunk
@@ -14,11 +16,16 @@ from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
-from models import Model, ModelProfile
+from models import Model, ModelProfile, ModelProfileType
 from runner.pipelines.base import BasePipeline
 from runner.server_manager import LlamaCppServerManager
 from utils.logging import llmmllogger, serialize_event_data
 
+# Suppress verbose HTTP logging from OpenAI client unless in TRACE mode
+if os.getenv("LOG_LEVEL", "INFO").upper() != "TRACE":
+    logging.getLogger("openai").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 logger = llmmllogger.bind(component="LangChainChatOpenAIPipeline")
 
@@ -135,7 +142,7 @@ class LangChainChatOpenAIPipeline(BasePipeline):
             base_url = self.server_manager.get_api_endpoint("")  # Gets /v1 endpoint
 
             # Extract model parameters from profile
-            params = self._build_chat_model_params()
+            # params = self._build_chat_model_params()
 
             # Create ChatOpenAI instance with debug logging
             self.chat_model = ReasoningCaptureChatOpenAI(
@@ -144,8 +151,17 @@ class LangChainChatOpenAIPipeline(BasePipeline):
                 model="local-model",  # Standard llama.cpp model name
                 max_retries=3,
                 timeout=self.server_manager.startup_timeout,
-                # Note: use_responses_api=True not supported by llama.cpp
-                **params,
+                temperature=self.profile.parameters.temperature or 0.7,
+                max_completion_tokens=self.profile.parameters.max_tokens or 10240,
+                top_p=self.profile.parameters.top_p or 0.9,
+                seed=self.profile.parameters.seed or 42,
+                verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
+                reasoning_effort=self.profile.parameters.reasoning_effort or "minimal",
+                metadata={
+                    "model_profile": self.profile.name,
+                    "task": ModelProfileType(self.profile.type).name,
+                },
+                streaming=True,
             )
 
             self._logger.info(f"ChatOpenAI initialized with base_url: {base_url}")
@@ -153,38 +169,6 @@ class LangChainChatOpenAIPipeline(BasePipeline):
         except Exception as e:
             self._logger.error(f"Failed to initialize ChatOpenAI: {e}")
             raise
-
-    def _build_chat_model_params(self) -> Dict[str, Any]:
-        """Build ChatOpenAI parameters from model profile."""
-        params = {}
-
-        profile_params = self.profile.parameters
-        if not profile_params:
-            return params
-
-        # Map profile parameters to ChatOpenAI parameters
-        if (
-            hasattr(profile_params, "temperature")
-            and profile_params.temperature is not None
-        ):
-            params["temperature"] = profile_params.temperature
-
-        if (
-            hasattr(profile_params, "max_tokens")
-            and profile_params.max_tokens is not None
-        ):
-            params["max_tokens"] = profile_params.max_tokens
-
-        if hasattr(profile_params, "top_p") and profile_params.top_p is not None:
-            params["top_p"] = profile_params.top_p
-
-        # Only add parameters that actually exist on ModelParameters
-        # Skip frequency_penalty, presence_penalty, n_predict, etc. if not available
-
-        if hasattr(profile_params, "seed") and profile_params.seed is not None:
-            params["seed"] = profile_params.seed
-
-        return params
 
     def get_chat_model(self) -> ReasoningCaptureChatOpenAI:
         """Get the underlying ReasoningCaptureChatOpenAI instance for direct LangChain use."""

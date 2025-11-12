@@ -1,11 +1,19 @@
 """Test ToolsAgentSubgraph as main graph with LlamaCpp pipeline."""
 
+import datetime
 from email import message
 import os
 import sys
 from typing import List, Optional
+from unittest.mock import Base
 
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
+from langchain_core.messages import (
+    HumanMessage,
+    SystemMessage,
+    AIMessage,
+    BaseMessage,
+    ToolMessage,
+)
 from models import (
     Message,
     MessageContent,
@@ -41,12 +49,12 @@ def get_profile(model_id: str) -> ModelProfile:
     rather than just changing the model_name on a mismatched profile.
     """
     # First try to find an exact profile match for the requested model
-    for profile_name, profile in DEFAULT_PROFILES.items():
-        if getattr(profile, "model_name", None) == model_id:
-            logger.info(
-                f"📋 Found exact profile match '{profile_name}' for model {model_id}"
-            )
-            return profile
+    # for profile_name, profile in DEFAULT_PROFILES.items():
+    #     if getattr(profile, "model_name", None) == model_id:
+    #         logger.info(
+    #             f"📋 Found exact profile match '{profile_name}' for model {model_id}"
+    #         )
+    #         return profile
 
     # If no exact match, use primary profile with original model for safety
     # This ensures compatible mmproj and other model-specific settings
@@ -54,16 +62,17 @@ def get_profile(model_id: str) -> ModelProfile:
     if profile is None:
         print(f"[error] No primary profile found")
         sys.exit(1)
-    if profile.model_name != model_id:
-        logger.warning(
-            f"⚠️ No exact profile match for {model_id}, using primary profile with original model {profile.model_name}"
-        )
+    # if profile.model_name != model_id:
+    #     logger.warning(
+    #         f"⚠️ No exact profile match for {model_id}, using primary profile with original model {profile.model_name}"
+    #     )
     return profile
 
 
 async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
     # Ensure verbose logging minimal unless TRACE requested
     os.environ.setdefault("LOG_LEVEL", "INFO")
+    timestamp = datetime.datetime.now(datetime.timezone.utc)
 
     logger.info("🚀 Starting ToolsAgentSubgraph test")
 
@@ -177,26 +186,67 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
                     for rc in getattr(chunk, "reasoning_content", ""):
                         print(str(rc), end="", flush=True)
 
-            if event.endswith("_model_end") and isinstance(output, dict):
+            if event.endswith("_model_end"):
                 processing = False
-                rm = output.get("response_metadata", {})
-                reason = rm.get("reason", "no reason provided")
-                print("\n" + "=" * 80)
-                print(
-                    f"Finished segment due to {reason}",
-                )
-                if reason == "tool_calls":
-                    tc = output.get("tool_calls", [])
-                    for t in tc:
-                        tname = t.get("name", "unknown_tool")
-                        targs = t.get("args", {})
-                        print("\n" + "-" * 40)
-                        print(f"Tool Call: {tname}")
-                        print(f"Arguments: {serialize_event_data(targs)}")
-                        print("-" * 40)
-                print("=" * 80)
+                if isinstance(output, dict):
+                    rm = output.get("response_metadata", {})
+                    reason = rm.get("reason", "no reason provided")
+                    print("\n" + "=" * 80)
+                    print(
+                        f"Finished segment due to {reason}",
+                    )
+                    if reason == "tool_calls":
+                        tc = output.get("tool_calls", [])
+                        for t in tc:
+                            tname = t.get("name", "unknown_tool")
+                            targs = t.get("args", {})
+                            print("\n" + "-" * 40)
+                            print(f"Tool Call: {tname}")
+                            print(f"Arguments: {serialize_event_data(targs)}")
+                            print("-" * 40)
+                    print("=" * 80)
+                elif isinstance(output, AIMessage):
+                    md = output.response_metadata
+                    reason = md.get("reason", "no reason provided")
+                    print("\n" + "=" * 80)
+                    print("\n" + "=" * 80)
+                    print(
+                        f"Finished segment due to {reason}",
+                    )
+                    if reason == "tool_calls":
+                        tc = output.tool_calls
+                        for t in tc:
+                            tname = t.get("name", "unknown_tool")
+                            targs = t.get("args", {})
+                            print("\n" + "-" * 40)
+                            print(f"Tool Call: {tname}")
+                            print(f"Arguments: {serialize_event_data(targs)}")
+                            print("-" * 40)
+                    print("=" * 80)
+
+            if event.endswith("_tool_end"):
+                processing = False
+                if isinstance(output, dict):
+                    print("\n" + "=" * 80)
+                    print(
+                        f"RESULTS of {output.get('name', 'unknown_tool')} tool execution",
+                    )
+                    print(output.get("content", ""))
+                    print("=" * 80)
+                elif isinstance(output, ToolMessage):
+                    print("\n" + "=" * 80)
+                    print(
+                        f"RESULTS {output.name} of tool execution",
+                    )
+                    print(output.content)
+                    print("=" * 80)
+
+        end = datetime.datetime.now(datetime.timezone.utc)
+        total_time = (end - timestamp).total_seconds()
         print("\n" + "=" * 80)
-        print(f"✅ STREAMING COMPLETE - Total message events: {message_count}")
+        print(
+            f"✅ STREAMING COMPLETE - Total message events: {message_count}\nTotal time: {total_time:.2f} seconds"
+        )
         print("=" * 80)
 
         logger.info("🎉 Streaming test completed successfully")
@@ -216,7 +266,11 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
         except Exception as e:
             logger.error(f"❌ Agent cleanup failed: {e}")
 
-    print("\n[debug] Completed ToolsAgentSubgraph test without immediate crash")
+    timestamp = datetime.datetime.now(datetime.timezone.utc)
+    total_time = (timestamp - timestamp).total_seconds()
+    logger.info(f"⏱️ Total test duration: {total_time:.2f} seconds")
+
+    # print("\n[debug] Completed ToolsAgentSubgraph test without immediate crash")
 
 
 if __name__ == "__main__":

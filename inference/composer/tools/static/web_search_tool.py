@@ -32,7 +32,7 @@ Available Engines (see https://docs.searxng.org/dev/engines/index.html):
 
 import json
 import os
-from typing import Annotated
+from typing import Annotated, Optional
 
 from langchain_core.tools import tool
 from langchain.tools import ToolRuntime
@@ -156,7 +156,8 @@ class SearxNG:
 # Single web search tool using simplified signature for testing
 @tool
 async def web_search(
-    query: str,
+    query: Annotated[str, "The search query to execute"],
+    num_results: Annotated[Optional[int], "Number of search results to return"] = None,
 ) -> str:
     """
     Search the web for information and automatically add results to workflow state.
@@ -167,6 +168,7 @@ async def web_search(
 
     Args:
         query: The search query to execute
+        num_results: Number of search results to return (overrides user config if provided)
 
     Returns:
         Search results with titles, URLs, content snippets, and relevance scores
@@ -226,12 +228,15 @@ async def web_search(
         # For testing without ToolRuntime - use default config
         # TODO: Implement proper LangGraph agent context to support ToolRuntime
         web_config = DEFAULT_WEB_SEARCH_CONFIG
-        logger.debug("Using default web search config - ToolRuntime temporarily removed for testing")
+        logger.debug(
+            "Using default web search config - ToolRuntime temporarily removed for testing"
+        )
+        if not num_results:
+            num_results = DEFAULT_WEB_SEARCH_CONFIG.max_results
 
         # Use SearxNG provider with WebSearchConfig
         provider = SearxNG(web_config=web_config)
-        search_result = await provider.search(query, web_config.max_results)
-
+        search_result = await provider.search(query, num_results)
         if search_result and search_result.contents:
             # Format results for display with more substantial content
             formatted_results = []

@@ -36,6 +36,7 @@ MODEL_PROFILE_TYPE_RERANKING = 19
 
 # Default model IDs from models.json
 DEFAULT_TEXT_TO_TEXT_MODEL = "qwen3-vl-30b-a3b-thinking"  # Changed to 30B A3B model
+DEFAULT_TEXT_ONLY_MODEL = "qwen3-30b-a3b"  # Full 32B model
 # DEFAULT_TEXT_TO_TEXT_MODEL = "qwen3-vl-30b-a3b-thinking"  # Old 32B model (has mmproj segfault)
 DEFAULT_TEXT_TO_IMAGE_MODEL = "black-forest-labs-flux.1-dev"
 DEFAULT_IMAGE_TO_IMAGE_MODEL = "black-forest-labs-flux.1-kontext-dev"
@@ -55,7 +56,7 @@ DEFAULT_PRIMARY_PROFILE = ModelProfile(
     description="Primary model profile for general chat and reasoning.",
     model_name=DEFAULT_TEXT_TO_TEXT_MODEL,
     parameters=ModelParameters(
-        num_ctx=65536,  # More conservative starting point for 32B model
+        num_ctx=40960,  # More conservative starting point for 32B model
         repeat_last_n=-1,
         repeat_penalty=1.1,
         temperature=0.6,
@@ -66,11 +67,11 @@ DEFAULT_PRIMARY_PROFILE = ModelProfile(
         min_p=0.01,
         max_tokens=400000,
         n_parts=-1,
-        batch_size=128,  # Conservative starting batch size for 32B model
+        batch_size=4096,  # Conservative starting batch size for 32B model
         stop=["<|im_end|>"],
         think=True,
     ),
-    # draft_model="qwen3-vl-2b-thinking",
+    draft_model=DEFAULT_ANALYSIS_MODEL,
     system_prompt="""You are a helpful AI assistant designed for unconstrained reasoning and output. 
 
 CRITICAL THINKING GUIDELINES:

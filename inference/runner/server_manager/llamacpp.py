@@ -14,6 +14,7 @@ from models.config_utils import (
     resolve_parameter_optimization_config,
 )
 from runner.server_manager.base import BaseServerManager
+from runner.utils.model_loader import ModelLoader
 
 
 class LlamaCppServerManager(BaseServerManager):
@@ -28,12 +29,10 @@ class LlamaCppServerManager(BaseServerManager):
         is_embedding: bool = False,
     ):
         # Resolve startup timeout from config - use longer timeout for large models
+        startup_timeout = 120
         poc = resolve_parameter_optimization_config(profile, user_config)
-        startup_timeout = (
-            poc.startup_timeout
-            if poc and hasattr(poc, "startup_timeout")
-            else 120  # Increased from 30 to 120 seconds
-        )
+        if poc and poc.enabled and poc.crash_prevention is not None:
+            startup_timeout = poc.crash_prevention.timeout_seconds or 120
 
         super().__init__(
             model=model,
@@ -161,7 +160,7 @@ class LlamaCppServerManager(BaseServerManager):
         args.extend(["-nkvo"])
 
         # Multimodal support - critical for vision models
-        mmproj_path = self._get_multimodal_projector_path(gguf_path)
+        mmproj_path = self.model.details.clip_model_path
         if mmproj_path and Path(mmproj_path).exists():
             args.extend(["--mmproj", mmproj_path])
             self._logger.info(f"Using multimodal projector: {mmproj_path}")
@@ -172,7 +171,16 @@ class LlamaCppServerManager(BaseServerManager):
 
         # Draft model support for speculative decoding
         if hasattr(self.profile, "draft_model") and self.profile.draft_model:
-            args.extend(["--model-draft", str(self.profile.draft_model)])
+            if mmproj_path and Path(mmproj_path).exists():
+                self._logger.warning(
+                    f"Draft models are not supported with multimodal models. Ignoring draft model for {self.model.name}"
+                )
+            else:
+                ml = ModelLoader()
+                dm = ml.get_model_by_id(self.profile.draft_model)
+                draft_gguf = dm.details.gguf_file if dm and dm.details else None
+                if draft_gguf:
+                    args.extend(["--model-draft", str(draft_gguf)])
 
         # Additional GPU optimizations
         if hasattr(gcfg, "offload_kqv") and not gcfg.offload_kqv:
@@ -185,39 +193,8 @@ class LlamaCppServerManager(BaseServerManager):
         args.extend(["--jinja"])
 
         # Add logging configuration
-        if os.getenv("LOG_LEVEL", "WARNING").lower() == "debug":
+        if os.getenv("LOG_LEVEL", "WARNING").lower() == "trace":
             args.extend(["--verbose"])
 
         self._logger.info(f"Server args: {' '.join(args)}")
         return args
-
-    def _get_multimodal_projector_path(self, gguf_path: str) -> Optional[str]:
-        """Find multimodal projector file for vision models."""
-        # Check various possible locations for mmproj file
-        if (
-            hasattr(self.model.details, "clip_model_path")
-            and self.model.details.clip_model_path
-        ):
-            return self.model.details.clip_model_path
-        elif (
-            hasattr(self.model.details, "mmproj_path")
-            and self.model.details.mmproj_path
-        ):
-            return self.model.details.mmproj_path
-        elif (
-            hasattr(self.model.details, "parent_model")
-            and self.model.details.parent_model
-            and "qwen" in self.model.details.parent_model.lower()
-        ):
-            # For Qwen models, try to find mmproj in same directory as model
-            model_dir = Path(gguf_path).parent
-            possible_mmproj = model_dir / "mmproj.gguf"
-            if possible_mmproj.exists():
-                return str(possible_mmproj)
-            else:
-                # Try alternative naming patterns
-                possible_mmproj = model_dir / "mmproj-model-f16.gguf"
-                if possible_mmproj.exists():
-                    return str(possible_mmproj)
-
-        return None

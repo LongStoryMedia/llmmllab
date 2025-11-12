@@ -6,32 +6,20 @@ It's designed to fetch and extract readable text content from web pages.
 """
 
 import asyncio
-import re
-from typing import Annotated
+import aiohttp
+from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 
 from langchain_core.tools import tool
 from langchain.tools import ToolRuntime
-from composer.graph.state import WorkflowState
 from utils.logging import llmmllogger
 
-try:
-    import aiohttp
-    import aiofiles
-    from bs4 import BeautifulSoup
-
-    DEPENDENCIES_AVAILABLE = True
-except ImportError:
-    DEPENDENCIES_AVAILABLE = False
 
 logger = llmmllogger.logger.bind(component="WebReader")
 
 
 @tool
-async def read_web_content(
-    url: str,
-    runtime: ToolRuntime,
-) -> str:
+async def read_web_content(url: str) -> str:
     """
     Read and extract text content from a web page URL.
 
@@ -44,10 +32,6 @@ async def read_web_content(
     Returns:
         Clean text content from the web page, or error message if fetch fails
     """
-
-    if not DEPENDENCIES_AVAILABLE:
-        return "Error: Required dependencies (aiohttp, beautifulsoup4) are not available for web content reading."
-
     # Validate URL
     try:
         parsed_url = urlparse(url)

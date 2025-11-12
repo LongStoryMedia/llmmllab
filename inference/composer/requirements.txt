@@ -23,6 +23,7 @@ structlog==25.4.0
 httpx==0.28.1
 websockets==15.0.1
 aiohttp==3.12.15
+beautifulsoup4==4.14.2
 
 # Utilities
 tenacity==9.1.2
