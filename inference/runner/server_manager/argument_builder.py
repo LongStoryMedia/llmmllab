@@ -9,10 +9,10 @@ import argparse
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from models import Model, ModelProfile, UserConfig
-from models.config_utils import resolve_gpu_config, resolve_parameter_optimization_config
+from models.config_utils import resolve_gpu_config
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="ArgumentBuilder")
