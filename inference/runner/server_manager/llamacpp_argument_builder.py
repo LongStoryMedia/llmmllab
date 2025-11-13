@@ -84,7 +84,7 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
                 "threads": os.cpu_count() or 4,
                 "ctx_size": 4096,  # Smaller context for embeddings
                 "batch_size": 1024,
-                "embeddings": True,
+                "embedding": True,  # Singular 'embedding' to match llama.cpp flag
                 "pooling": "mean",
                 "no_webui": True,
             }
