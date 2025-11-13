@@ -148,20 +148,21 @@ class BaseAgent(ABC, Generic[T]):
 
     def cleanup(self) -> None:
         """
-        Clean up resources used by this agent, including unlocking any pipeline.
-
-        This method should be called when the agent is no longer needed to ensure
-        that locked pipelines are properly released for other components to use.
+        Clean up resources used by this agent.
+        
+        Only unlocks pipeline but does NOT force it out of cache, allowing
+        other components to reuse it. The pipeline remains cached based on
+        the intelligent eviction strategy in LocalPipelineCacheManager.
         """
         if self._pipeline_locked:
             try:
                 self.logger.info(
-                    f"🔓 Cleaning up agent pipeline for model {self.profile.model_name}"
+                    f"🔓 Unlocking agent pipeline for model {self.profile.model_name} (keeping in cache for reuse)"
                 )
                 success = self.pipeline_factory.unlock_pipeline(self.profile)
                 if success:
                     self.logger.info(
-                        f"✅ Successfully unlocked pipeline for {self.profile.model_name}"
+                        f"✅ Successfully unlocked pipeline for {self.profile.model_name} - available for reuse"
                     )
                     self._pipeline_locked = False
                 else:
@@ -170,12 +171,12 @@ class BaseAgent(ABC, Generic[T]):
                     )
             except Exception as e:
                 self.logger.error(
-                    f"❌ Error during pipeline cleanup for {self.profile.model_name}: {e}"
+                    f"❌ Error during pipeline unlock for {self.profile.model_name}: {e}"
                 )
 
-        # Reset pipeline state
-        self._pipeline = None  # Release pipeline reference
-        self.logger.debug("Agent cleanup completed")
+        # Keep pipeline reference for potential reuse within same agent
+        # Only clear it when agent is truly destroyed
+        self.logger.debug("Agent cleanup completed - pipeline remains cached for reuse")
 
     def __del__(self):
         """Automatic cleanup when agent is garbage collected."""

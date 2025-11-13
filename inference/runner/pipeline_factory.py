@@ -4,7 +4,7 @@ modern/legacy pipeline selection. Replaces the previous garbled version.
 """
 
 import threading
-from typing import Dict, Optional, Type, Union
+from typing import Dict, Optional, Type, Union, Any
 from contextlib import contextmanager
 
 from langchain_core.language_models import BaseChatModel
@@ -131,9 +131,10 @@ class PipelineFactory:
 
     def unlock_pipeline(self, profile: ModelProfile) -> bool:
         """
-        Unlock a pipeline that was obtained with get_pipeline_safely().
+        Unlock a pipeline that was obtained with get_pipeline().
 
-        Only needed if using get_pipeline_safely() instead of the context manager.
+        The pipeline remains cached and available for reuse by other components.
+        Only removes the exclusive lock, does not evict from cache.
         """
         model_id = profile.model_name
         model = self._get_model_by_id(model_id)
@@ -144,6 +145,35 @@ class PipelineFactory:
             return self.local_cache.unlock_pipeline(model_id)
 
         return True  # Remote pipelines don't need unlocking
+
+    def set_pipeline_persistent(self, profile: ModelProfile, persistent: bool = True) -> bool:
+        """Mark a pipeline as persistent to prevent eviction unless absolutely necessary."""
+        model_id = profile.model_name
+        model = self._get_model_by_id(model_id)
+        if not model:
+            return False
+
+        if self.local_cache.is_local(model):
+            return self.local_cache.set_persistent(model_id, persistent)
+
+        return True  # Remote pipelines are always transient
+
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get detailed cache statistics for monitoring."""
+        return self.local_cache.get_cache_info()
+
+    def force_evict_pipeline(self, profile: ModelProfile) -> bool:
+        """Force eviction of a specific pipeline from cache."""
+        model_id = profile.model_name
+        model = self._get_model_by_id(model_id)
+        if not model:
+            return False
+
+        if self.local_cache.is_local(model):
+            self.local_cache.clear_cache(model_id)
+            return True
+
+        return False
 
     def get_embedding_pipeline(
         self,

@@ -24,10 +24,11 @@ from .utils.hardware_manager import hardware_manager
 class _PipelineCacheEntry:
 
     def __init__(
-        self, pipeline: BaseChatModel | Embeddings, priority: PipelinePriority
+        self, pipeline: BaseChatModel | Embeddings, priority: PipelinePriority, estimated_memory: float = 0
     ):
         self._ref = weakref.ref(pipeline)
         self.priority = priority
+        self.estimated_memory = estimated_memory  # Store memory estimate for eviction decisions
         self.creation_time = time.time()
         self.last_accessed = self.creation_time
         self.access_count = 1
@@ -56,13 +57,35 @@ class _PipelineCacheEntry:
         self._use_count = max(0, self._use_count - 1)
         self.in_use = self._use_count > 0
 
-    def eviction_score(self, now: float) -> float:
+    def eviction_score(self, now: float, estimated_memory: float = 0) -> float:
+        """Calculate eviction score - higher score = keep longer, lower score = evict first."""
+        # Age penalty (older = more likely to evict)
         age_penalty = (now - self.last_accessed) / 3600.0
-        score = (
-            float(self.priority.value)
-            - age_penalty
-            + min(self.access_count / 10.0, 2.0)
-        )
+        
+        # Priority bonus (higher priority = keep longer)
+        priority_bonus = float(self.priority.value) * 2.0
+        
+        # Access frequency bonus (more used = keep longer) 
+        access_bonus = min(self.access_count / 5.0, 3.0)
+        
+        # Memory efficiency bonus (smaller models get bonus to stay)
+        # Small models (< 2GB) get significant bonus, large models (> 10GB) get penalty
+        if estimated_memory > 0:
+            if estimated_memory < 2 * 1024**3:  # < 2GB (embeddings, small models)
+                memory_bonus = 5.0  # Strong preference to keep small models
+                # Extra tiny bonus for very small models to break ties
+                if estimated_memory < 1 * 1024**3:  # < 1GB
+                    memory_bonus += 0.1
+            elif estimated_memory < 5 * 1024**3:  # < 5GB (medium models)
+                memory_bonus = 2.0
+            elif estimated_memory < 10 * 1024**3:  # < 10GB (large models)
+                memory_bonus = 0.0
+            else:  # >= 10GB (very large models)
+                memory_bonus = -2.0  # Slight penalty for very large models
+        else:
+            memory_bonus = 0.0
+            
+        score = priority_bonus + access_bonus + memory_bonus - age_penalty
         return score
 
 
@@ -131,8 +154,13 @@ class LocalPipelineCacheManager:
             raise RuntimeError(f"Failed to create pipeline for {model.name}")
 
         with self._lock:
-            self._cache[model_id] = _PipelineCacheEntry(pipeline, priority)
+            self._cache[model_id] = _PipelineCacheEntry(pipeline, priority, required)
             self.logger.debug(f"💾 Cached NEW pipeline for {model_id}")
+
+        # Auto-mark small models (likely embeddings) as persistent
+        if required < 2 * 1024 * 1024 * 1024:  # < 2GB
+            self.set_persistent(model_id, True)
+            self.logger.info(f"🔒 Auto-marked small model {model_id} as persistent")
 
         hardware_manager.update_all_memory_stats()
         return pipeline
@@ -150,14 +178,44 @@ class LocalPipelineCacheManager:
         )
 
     def clear_expired(self) -> None:
+        """Clear expired entries using intelligent timeout based on pipeline characteristics."""
         now = time.time()
         expired: List[str] = []
         with self._lock:
             for mid, entry in self._cache.items():
-                if (
-                    now - entry.last_accessed
-                ) > self._cache_timeout or not entry.is_alive():
+                if not entry.is_alive():
                     expired.append(mid)
+                    continue
+                    
+                # Calculate dynamic timeout based on pipeline characteristics
+                base_timeout = self._cache_timeout
+                
+                # Small models get much longer timeout (they're cheap to keep)
+                if entry.estimated_memory < 2 * 1024 * 1024 * 1024:  # < 2GB
+                    timeout_multiplier = 10.0  # 10x longer timeout for small models
+                elif entry.estimated_memory < 5 * 1024 * 1024 * 1024:  # < 5GB 
+                    timeout_multiplier = 3.0   # 3x longer for medium models
+                else:
+                    timeout_multiplier = 1.0   # Standard timeout for large models
+                
+                # High priority models get longer timeout
+                if entry.priority.value >= 4:  # HIGH or URGENT priority
+                    timeout_multiplier *= 2.0
+                    
+                # Frequently accessed models get longer timeout
+                if entry.access_count > 5:
+                    timeout_multiplier *= 1.5
+                
+                dynamic_timeout = base_timeout * timeout_multiplier
+                
+                if (now - entry.last_accessed) > dynamic_timeout:
+                    self.logger.debug(
+                        f"Expiring {mid} after {dynamic_timeout:.0f}s timeout "
+                        f"(base: {base_timeout}s, multiplier: {timeout_multiplier:.1f}x, "
+                        f"mem: {entry.estimated_memory/1e9:.2f}GB, priority: {entry.priority.name})"
+                    )
+                    expired.append(mid)
+                    
             for mid in expired:
                 removed = self._cache.pop(mid, None)
                 if removed and removed.pipeline:
@@ -182,6 +240,7 @@ class LocalPipelineCacheManager:
                         "last_accessed": e.last_accessed,
                         "in_use": e.in_use,
                         "use_count": e._use_count,
+                        "estimated_memory_gb": e.estimated_memory / 1e9 if e.estimated_memory else 0,
                     }
                     for mid, e in alive.items()
                 },
@@ -223,6 +282,50 @@ class LocalPipelineCacheManager:
                 self.logger.debug(f"🔓 Unlocked pipeline {model_id}")
                 return True
         return False
+
+    def set_persistent(self, model_id: str, persistent: bool = True) -> bool:
+        """Mark a pipeline as persistent (should avoid eviction unless absolutely necessary)."""
+        with self._lock:
+            entry = self._cache.get(model_id)
+            if entry and entry.is_alive():
+                # For persistent pipelines, significantly boost their eviction score
+                if persistent:
+                    # Set very high access count to make it less likely to be evicted
+                    entry.access_count = max(entry.access_count, 1000)
+                    # Update last accessed to prevent timeout
+                    entry.touch()
+                    self.logger.info(f"🔒 Marked pipeline {model_id} as persistent")
+                else:
+                    # Reset to normal access pattern
+                    entry.access_count = min(entry.access_count, 10)
+                    self.logger.info(f"🔓 Removed persistent marking from pipeline {model_id}")
+                return True
+        return False
+
+    def get_cache_info(self) -> Dict[str, Any]:
+        """Get detailed cache information for monitoring and debugging."""
+        with self._lock:
+            alive = {mid: e for mid, e in self._cache.items() if e.is_alive()}
+            total_memory = sum(e.estimated_memory for e in alive.values())
+            small_models = {mid: e for mid, e in alive.items() if e.estimated_memory < 2 * 1024**3}
+            large_models = {mid: e for mid, e in alive.items() if e.estimated_memory >= 10 * 1024**3}
+            
+            return {
+                "total_models": len(alive),
+                "total_memory_gb": total_memory / 1e9,
+                "small_models": {
+                    "count": len(small_models),
+                    "memory_gb": sum(e.estimated_memory for e in small_models.values()) / 1e9,
+                    "models": list(small_models.keys())
+                },
+                "large_models": {
+                    "count": len(large_models), 
+                    "memory_gb": sum(e.estimated_memory for e in large_models.values()) / 1e9,
+                    "models": list(large_models.keys())
+                },
+                "locked_models": [mid for mid, e in alive.items() if e.in_use],
+                "high_priority_models": [mid for mid, e in alive.items() if e.priority.value >= 4]
+            }
 
     @contextmanager
     def pipeline_in_use(self, model_id: str) -> Generator[bool, None, None]:
@@ -327,26 +430,43 @@ class LocalPipelineCacheManager:
         return total
 
     def _ensure_memory(self, required: float, exclude: Optional[str]) -> bool:
-        """Ensure sufficient memory is available, with aggressive upfront eviction for large models."""
-        # For large models (>10GB), be proactive and clear cache immediately
-        large_model = required > 10 * 1024 * 1024 * 1024  # 10GB threshold
+        """Ensure sufficient memory is available, with intelligent eviction based on size and priority."""
+        
+        # Check if we already have enough memory - avoid unnecessary eviction
+        if hardware_manager.check_memory_available(required):
+            self.logger.debug(f"✅ Sufficient memory available ({required/1e9:.2f}GB), no eviction needed")
+            return True
+            
+        self.logger.info(f"🔍 Need {required/1e9:.2f}GB, checking eviction candidates")
+        
+        # For very large models (>15GB), be more aggressive about clearing space
+        large_model = required > 15 * 1024 * 1024 * 1024  # 15GB threshold
         if large_model:
             self.logger.info(
-                f"🚀 Large model detected ({required/1e9:.2f}GB), proactively clearing cache"
+                f"🚀 Very large model detected ({required/1e9:.2f}GB), using aggressive eviction"
             )
-            # Clear ALL other models immediately for large models, except those in use
+            # Clear most models immediately for very large models, except small ones and those in use
             with self._lock:
-                evict_targets = [
-                    mid
-                    for mid, entry in self._cache.items()
-                    if mid != exclude and not entry.in_use
-                ]
-                locked_targets = [
-                    mid
-                    for mid, entry in self._cache.items()
-                    if mid != exclude and entry.in_use
-                ]
+                evict_targets = []
+                keep_targets = []
+                locked_targets = []
+                
+                for mid, entry in self._cache.items():
+                    if mid == exclude:
+                        continue
+                    if entry.in_use:
+                        locked_targets.append(mid)
+                        continue
+                    # Keep small models (< 3GB) even for large model loads
+                    if entry.estimated_memory < 3 * 1024 * 1024 * 1024:  # 3GB threshold
+                        keep_targets.append((mid, entry.estimated_memory / 1e9))
+                        continue
+                    evict_targets.append(mid)
 
+            if keep_targets:
+                self.logger.info(
+                    f"🛡️ Keeping {len(keep_targets)} small models: {[(mid, f'{mem:.2f}GB') for mid, mem in keep_targets]}"
+                )
             if locked_targets:
                 self.logger.warning(
                     f"⚠️ Cannot evict {len(locked_targets)} models currently in use: {locked_targets}"
@@ -354,7 +474,7 @@ class LocalPipelineCacheManager:
 
             if evict_targets:
                 self.logger.info(
-                    f"🧹 Proactively evicting {len(evict_targets)} models: {evict_targets}"
+                    f"🧹 Aggressively evicting {len(evict_targets)} large models: {evict_targets}"
                 )
                 for mid in evict_targets:
                     with self._lock:
@@ -362,65 +482,111 @@ class LocalPipelineCacheManager:
                     if removed and removed.pipeline:
                         self._cleanup_pipeline(removed.pipeline)
 
-                # Aggressive memory clear after eviction with nuclear clearing for effective GPU memory freeing
+                # Aggressive memory clear after eviction
                 hardware_manager.clear_memory(aggressive=True, nuclear=True)
-                self.logger.info(
-                    "🧹 Completed proactive cache clearing for large model"
-                )
+                self.logger.info("🧹 Completed aggressive cache clearing for very large model")
 
         # Check if we now have enough memory
         if hardware_manager.check_memory_available(required):
             return True
 
-        # If still not enough, continue with standard eviction
         self.logger.info(
-            f"Memory still low after proactive clearing; attempting additional eviction (need {required/1e9:.2f}GB)"
+            f"💡 Memory still needed after initial clearing, using intelligent eviction (need {required/1e9:.2f}GB)"
         )
 
-        # Step 1: Clear dead entries
+        # Step 1: Clear dead entries first
         with self._lock:
             dead = [mid for mid, e in self._cache.items() if not e.is_alive()]
             for mid in dead:
                 self._cache.pop(mid, None)
-        hardware_manager.clear_memory(aggressive=False)
-        if hardware_manager.check_memory_available(required):
-            return True
+        
+        if dead:
+            self.logger.debug(f"🗑️ Cleared {len(dead)} dead entries")
+            hardware_manager.clear_memory(aggressive=False)
+            if hardware_manager.check_memory_available(required):
+                return True
 
-        # Step 2: Progressive eviction by priority
+        # Step 2: Intelligent eviction by enhanced scoring
         now = time.time()
         with self._lock:
-            candidates = [
-                (mid, e, e.eviction_score(now))
-                for mid, e in self._cache.items()
-                if e.is_alive() and mid != exclude and not e.in_use
-            ]
-            locked_pipelines = [
-                mid
-                for mid, e in self._cache.items()
-                if e.is_alive() and mid != exclude and e.in_use
-            ]
+            candidates = []
+            protected = []
+            locked_pipelines = []
+            
+            for mid, entry in self._cache.items():
+                if not entry.is_alive() or mid == exclude:
+                    continue
+                    
+                if entry.in_use:
+                    locked_pipelines.append((mid, entry.estimated_memory / 1e9))
+                    continue
+                
+                eviction_score = entry.eviction_score(now, entry.estimated_memory)
+                
+                # Protect small, high-value pipelines from eviction unless absolutely necessary
+                if (entry.estimated_memory < 1.5 * 1024 * 1024 * 1024 and  # < 1.5GB
+                    entry.priority.value >= 3 and  # Medium priority or higher  
+                    entry.access_count > 2):  # Used multiple times
+                    protected.append((mid, entry.estimated_memory / 1e9, eviction_score))
+                    continue
+                    
+                candidates.append((mid, entry, eviction_score, entry.estimated_memory / 1e9))
 
+        if protected:
+            self.logger.info(
+                f"🛡️ Protected {len(protected)} small/valuable models from eviction: {[(mid, f'{mem:.2f}GB', f'score:{score:.1f}') for mid, mem, score in protected]}"
+            )
         if locked_pipelines:
             self.logger.warning(
-                f"⚠️ Skipping {len(locked_pipelines)} locked pipelines during eviction: {locked_pipelines}"
+                f"⚠️ Skipping {len(locked_pipelines)} locked pipelines during eviction: {[(mid, f'{mem:.2f}GB') for mid, mem in locked_pipelines]}"
             )
 
-        candidates.sort(key=lambda x: (x[2], x[1].priority, x[1].last_accessed))
+        # Sort candidates by eviction score (lowest score = evict first)
+        candidates.sort(key=lambda x: x[2])  # Sort by eviction score
 
-        # Standard eviction - one at a time (only unlocked pipelines)
-        for mid, _, score in candidates:
+        # Progressive eviction - start with lowest scoring models
+        for mid, entry, score, mem_gb in candidates:
+            self.logger.info(
+                f"🎯 Evicting {mid} (score: {score:.2f}, mem: {mem_gb:.2f}GB, priority: {entry.priority.name})"
+            )
             with self._lock:
                 removed = self._cache.pop(mid, None)
             if removed and removed.pipeline:
                 self._cleanup_pipeline(removed.pipeline)
             hardware_manager.clear_memory(aggressive=True, nuclear=True)
+            
             if hardware_manager.check_memory_available(required):
-                self.logger.info(
-                    f"Freed memory after evicting {mid} (score {score:.2f}); proceeding"
-                )
+                self.logger.info(f"✅ Memory freed after evicting {mid}, proceeding")
                 return True
 
-        return hardware_manager.check_memory_available(required)
+        # If we still don't have enough memory, consider evicting protected models as last resort
+        if protected and not hardware_manager.check_memory_available(required):
+            self.logger.warning(
+                f"⚠️ Still insufficient memory, considering evicting protected models as last resort"
+            )
+            # Sort protected by score and evict the lowest scoring ones
+            protected.sort(key=lambda x: x[2])  # Sort by eviction score
+            
+            for mid, mem_gb, score in protected[:2]:  # Only evict up to 2 protected models
+                self.logger.warning(
+                    f"🚨 Last resort: evicting protected model {mid} (score: {score:.2f}, mem: {mem_gb:.2f}GB)"
+                )
+                with self._lock:
+                    removed = self._cache.pop(mid, None)
+                if removed and removed.pipeline:
+                    self._cleanup_pipeline(removed.pipeline)
+                hardware_manager.clear_memory(aggressive=True, nuclear=True)
+                
+                if hardware_manager.check_memory_available(required):
+                    self.logger.info(f"✅ Memory freed after protected eviction of {mid}")
+                    return True
+
+        final_available = hardware_manager.check_memory_available(required)
+        if not final_available:
+            self.logger.error(
+                f"❌ Could not free sufficient memory for {required/1e9:.2f}GB model after all eviction attempts"
+            )
+        return final_available
 
     # ---- Background cleanup ----
     def _start_cleanup_thread(self) -> None:
