@@ -22,8 +22,6 @@ import os
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
-from pydantic import BaseModel
-
 from langchain_core.messages import BaseMessage, AIMessage, ToolMessage
 
 from utils.logging import llmmllogger, serialize_event_data
@@ -161,8 +159,6 @@ class ComposerRealEndToEndTester:
                     f.write(str(data))
 
                 f.write(f"\n{'='*60}\n")
-
-            logger.info(f"📝 Captured detailed data: {section} - {title}")
         except Exception as e:
             logger.warning(f"⚠️  Failed to write detailed data to file: {e}")
 
@@ -620,12 +616,12 @@ class ComposerRealEndToEndTester:
 
             # Step 3: Execute workflow with streaming
             logger.info("   🎼 Step 3: Executing workflow with streaming...")
-            
+
             print("\n" + "=" * 80)
             print("STREAMING COMPOSER WORKFLOW EXECUTION")
             print("=" * 80)
             print()
-            
+
             start_time_main = time.time()
             response_chunks = []
             tool_calls_detected = False
@@ -633,14 +629,11 @@ class ComposerRealEndToEndTester:
 
             # Capture workflow events and detailed data
             event_count = 0
-            tool_events = []
-            model_events = []
-            processing = False
             start_time = datetime.now(timezone.utc)
 
             async for event in execute_workflow(initial_state, workflow):
                 event_count += 1
-                
+
                 data = event.get("data", {})
                 event_type = event.get("event", "unknown")
                 chunk = data.get("chunk")
@@ -654,16 +647,22 @@ class ComposerRealEndToEndTester:
                 )
 
                 # Simple event handling matching tools_agent.py pattern
-                if chunk and event_type.endswith("_stream") and isinstance(chunk, BaseMessage):
+                if (
+                    chunk
+                    and event_type.endswith("_stream")
+                    and isinstance(chunk, BaseMessage)
+                ):
                     # Capture streaming content
                     for content in chunk.content:
                         full_response += str(content)
-                        response_chunks.append({
-                            "type": "stream",
-                            "content": str(content),
-                            "timestamp": time.time(),
-                        })
-                        # Also print for console visibility  
+                        response_chunks.append(
+                            {
+                                "type": "stream",
+                                "content": str(content),
+                                "timestamp": time.time(),
+                            }
+                        )
+                        # Also print for console visibility
                         print(str(content), end="", flush=True)
                     for rc in getattr(chunk, "reasoning_content", ""):
                         full_response += str(rc)
@@ -673,7 +672,10 @@ class ComposerRealEndToEndTester:
                     self._write_detailed_data(
                         section="STREAMING",
                         title=f"Stream Chunk ({len(chunk.content)} parts)",
-                        data={"content": chunk.content, "reasoning": getattr(chunk, "reasoning_content", [])},
+                        data={
+                            "content": chunk.content,
+                            "reasoning": getattr(chunk, "reasoning_content", []),
+                        },
                         description="Streaming content from model",
                     )
 
@@ -682,7 +684,8 @@ class ComposerRealEndToEndTester:
                     reason = md.get("reason", "no reason provided")
                     print("\n" + "=" * 80)
                     print(f"Finished segment due to {reason}")
-                    
+                    print(serialize_event_data(md))
+
                     # Write complete model output to file
                     self._write_detailed_data(
                         section="MODEL_OUTPUT",
@@ -695,7 +698,7 @@ class ComposerRealEndToEndTester:
                         },
                         description="Complete response from the LLM",
                     )
-                    
+
                     if reason == "tool_calls":
                         tool_calls_detected = True
                         tc = output.tool_calls
@@ -706,7 +709,7 @@ class ComposerRealEndToEndTester:
                             print(f"Tool Call: {tname}")
                             print(f"Arguments: {serialize_event_data(targs)}")
                             print("-" * 40)
-                            
+
                             # Write tool call data to file
                             self._write_detailed_data(
                                 section="TOOL_EXECUTION",
@@ -722,7 +725,7 @@ class ComposerRealEndToEndTester:
                     print(f"RESULTS {output.name} of tool execution")
                     print(output.content)
                     print("=" * 80)
-                    
+
                     # Write tool result to file
                     self._write_detailed_data(
                         section="TOOL_RESULTS",
@@ -733,7 +736,7 @@ class ComposerRealEndToEndTester:
 
             end = datetime.now(timezone.utc)
             total_time = (end - start_time).total_seconds()
-            
+
             print("\n" + "=" * 80)
             print(
                 f"✅ STREAMING COMPLETE - Total events: {event_count}\nTotal time: {total_time:.2f} seconds"
@@ -777,9 +780,7 @@ class ComposerRealEndToEndTester:
                     created_at=datetime.now(timezone.utc),
                 )
 
-                assistant_message_id = await storage.message.add_message(
-                    assistant_message
-                )
+                await storage.message.add_message(assistant_message)
 
                 # Capture LLM response
                 self._write_llm_response(
