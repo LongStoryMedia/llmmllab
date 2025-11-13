@@ -254,15 +254,25 @@ class DynamicFlagParser:
         if not takes_value or any(word in desc_lower for word in ['enable', 'disable', 'default: false', 'default: true']):
             return {'type': None, 'action': 'store_true'}
         
+        # String flags based on value type indicators (highest priority)
+        if value_type and value_type.upper() in [
+            'FNAME', 'FILE', 'PATH', 'URL', 'HOST', 'TOKEN', 'KEY', 'STRING', 
+            'SCHEMA', 'SAMPLERS', 'PROMPT', 'GRAMMAR', 'BIAS', 'SEQUENCE',
+            'JINJA_TEMPLATE', 'JINJA_TEMPLATE_FILE', 'FORMAT', 'PREFIX',
+            'TYPE', 'SEED', 'SCALE', 'INDEX', 'SIMILARITY', 'M', 'LO-HI',
+            '<0|1>', '<0...100>', '<DEV1'  # Special patterns
+        ]:
+            return {'type': str, 'action': 'store'}
+        
         # Integer flags based on value type indicator
         if value_type == 'N' or any(word in desc_lower for word in ['number', 'size', 'count', 'threads', 'layers', 'index', 'port', 'timeout']):
             return {'type': int, 'action': 'store'}
             
-        # Float flags
-        if any(word in desc_lower for word in ['temperature', 'factor', 'probability', 'threshold', 'scale', 'penalty', 'learning rate', 'ratio']):
+        # Float flags - be more specific to avoid false positives
+        if value_type == 'P' or any(word in desc_lower for word in ['temperature', 'probability', 'factor', 'threshold', 'penalty', 'learning rate', 'ratio']):
             return {'type': float, 'action': 'store'}
         
-        # String flags (default)
+        # String flags (default for value-taking flags)
         return {'type': str, 'action': 'store'}
     
     def build_parser(self, base_parser: argparse.ArgumentParser) -> None:
