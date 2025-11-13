@@ -51,3 +51,13 @@ Traceback (most recent call last):
              ^^^^^^^^^^^^^^^^^^^^^^^
 AttributeError: 'dict' object has no attribute 'parameters'
 ```
+
+### - [ ] Hold Pipelines in Cache for as long as possible
+
+right now, pipelines are used, then shutdown and removed from memory after every completion. I'd like pipelines to remain in memory for as long as possible.
+
+the factors that should be considered are both size and priority. an embedding pipeline, for example, while not the highest priority, is very small, and could likely remain loaded in memory indefinitely. The primary pipeline, by contrast, is high priority, however it would save the most memory if it were purged from cache.
+
+pipelines should only ever be purged if there is definitely not enough memory to load the current pipeline.
+
+help me establish a system for this.

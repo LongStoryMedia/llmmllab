@@ -10,7 +10,6 @@ import argparse
 import re
 import subprocess
 from typing import Any, Dict, List, Optional
-
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="DynamicFlagParser")
@@ -112,8 +111,29 @@ class DynamicFlagParser:
             long_flags = []
             value_type = None
 
-            # Split on comma first, then parse each part
-            flag_parts = [f.strip() for f in flag_spec.split(",") if f.strip()]
+            # Split on comma but respect braces - don't split commas inside {}
+            flag_parts = []
+            current_part = ""
+            brace_depth = 0
+            
+            for char in flag_spec:
+                if char == '{':
+                    brace_depth += 1
+                    current_part += char
+                elif char == '}':
+                    brace_depth -= 1
+                    current_part += char
+                elif char == ',' and brace_depth == 0:
+                    # Only split on comma if we're not inside braces
+                    if current_part.strip():
+                        flag_parts.append(current_part.strip())
+                    current_part = ""
+                else:
+                    current_part += char
+            
+            # Add the last part
+            if current_part.strip():
+                flag_parts.append(current_part.strip())
 
             for part in flag_parts:
                 part = part.strip()
@@ -140,7 +160,10 @@ class DynamicFlagParser:
                 # Check for value type after flag name
                 if len(tokens) > 1:
                     potential_value_type = tokens[1]
-                    if potential_value_type.upper() in [
+                    # Check for choice patterns like {none,layer,row} 
+                    if potential_value_type.startswith("{") and potential_value_type.endswith("}"):
+                        value_type = potential_value_type
+                    elif potential_value_type.upper() in [
                         "N",
                         "TYPE",
                         "SEED",
@@ -237,6 +260,10 @@ class DynamicFlagParser:
         # Boolean flags (no value) - only for flags that actually don't take values
         if not takes_value:
             return {"type": None, "action": "store_true"}
+
+        # Choice patterns like {none,layer,row} - treat as string
+        if value_type and value_type.startswith("{") and value_type.endswith("}"):
+            return {"type": str, "action": "store"}
 
         # String flags based on value type indicators (highest priority)
         if value_type and value_type.upper() in [
