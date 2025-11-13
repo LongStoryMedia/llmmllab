@@ -210,9 +210,9 @@ class DynamicFlagParser:
                 
                 # Validate flag name format - must be proper flag format
                 # Short flags: -x (single letter after dash)  
-                # Long flags: --word (word characters, hyphens, underscores after --)
+                # Long flags: --word (word characters, hyphens, underscores, dots after --)
                 if flag_name.startswith('--'):
-                    if not re.match(r'^--[a-zA-Z][a-zA-Z0-9_-]*$', flag_name):
+                    if not re.match(r'^--[a-zA-Z][a-zA-Z0-9_.-]*$', flag_name):
                         continue  # Skip malformed long flags like --threads)
                 elif flag_name.startswith('-'):
                     if not re.match(r'^-[a-zA-Z][a-zA-Z0-9]*$', flag_name):
