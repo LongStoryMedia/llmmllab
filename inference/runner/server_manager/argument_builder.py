@@ -250,8 +250,8 @@ class DynamicFlagParser:
         """Infer argument type from description and value requirement."""
         desc_lower = description.lower()
         
-        # Boolean flags (no value)
-        if not takes_value or any(word in desc_lower for word in ['enable', 'disable', 'default: false', 'default: true']):
+        # Boolean flags (no value) - only for flags that actually don't take values
+        if not takes_value:
             return {'type': None, 'action': 'store_true'}
         
         # String flags based on value type indicators (highest priority)
@@ -268,8 +268,12 @@ class DynamicFlagParser:
         if value_type == 'N' or any(word in desc_lower for word in ['number', 'size', 'count', 'threads', 'layers', 'index', 'port', 'timeout']):
             return {'type': int, 'action': 'store'}
             
-        # Float flags - be more specific to avoid false positives
-        if value_type == 'P' or any(word in desc_lower for word in ['temperature', 'probability', 'factor', 'threshold', 'penalty', 'learning rate', 'ratio']):
+        # Float flags - be more specific to avoid false positives but include sampling parameters
+        if (value_type == 'P' or 
+            any(word in desc_lower for word in [
+                'temperature', 'probability', 'factor', 'threshold', 'penalty', 
+                'learning rate', 'ratio', 'sampling', 'typical', 'multiplier'
+            ])):
             return {'type': float, 'action': 'store'}
         
         # String flags (default for value-taking flags)
