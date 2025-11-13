@@ -115,22 +115,22 @@ class DynamicFlagParser:
             flag_parts = []
             current_part = ""
             brace_depth = 0
-            
+
             for char in flag_spec:
-                if char == '{':
+                if char == "{":
                     brace_depth += 1
                     current_part += char
-                elif char == '}':
+                elif char == "}":
                     brace_depth -= 1
                     current_part += char
-                elif char == ',' and brace_depth == 0:
+                elif char == "," and brace_depth == 0:
                     # Only split on comma if we're not inside braces
                     if current_part.strip():
                         flag_parts.append(current_part.strip())
                     current_part = ""
                 else:
                     current_part += char
-            
+
             # Add the last part
             if current_part.strip():
                 flag_parts.append(current_part.strip())
@@ -160,8 +160,10 @@ class DynamicFlagParser:
                 # Check for value type after flag name
                 if len(tokens) > 1:
                     potential_value_type = tokens[1]
-                    # Check for choice patterns like {none,layer,row} 
-                    if potential_value_type.startswith("{") and potential_value_type.endswith("}"):
+                    # Check for choice patterns like {none,layer,row}
+                    if potential_value_type.startswith(
+                        "{"
+                    ) and potential_value_type.endswith("}"):
                         value_type = potential_value_type
                     elif potential_value_type.upper() in [
                         "N",
