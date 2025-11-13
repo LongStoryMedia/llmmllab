@@ -145,11 +145,17 @@ class DynamicFlagParser:
         lines = help_output.split('\n')
         
         for line in lines:
+            original_line = line
             line = line.strip()
             
             # Skip empty lines, section headers, and non-flag lines
-            # Use regex to match actual flags: start with 1-2 dashes + alphabetic character
-            if not line or line.startswith('-----') or not re.match(r'^-{1,2}[a-zA-Z]', line):
+            # Only accept lines that start with flags at the beginning (no indentation)
+            # and have proper flag format: -x or --xxx followed by space, comma, or end
+            if (not line or 
+                line.startswith('-----') or 
+                original_line.startswith(' ') or  # Skip indented lines (descriptions)
+                original_line.startswith('\t') or  # Skip tab-indented lines
+                not re.match(r'^-{1,2}[a-zA-Z]', line)):
                 continue
             
             # Parse flag line - format is typically:
@@ -201,6 +207,18 @@ class DynamicFlagParser:
                     continue
                     
                 flag_name = tokens[0]
+                
+                # Validate flag name format - must be proper flag format
+                # Short flags: -x (single letter after dash)  
+                # Long flags: --word (word characters, hyphens, underscores after --)
+                if flag_name.startswith('--'):
+                    if not re.match(r'^--[a-zA-Z][a-zA-Z0-9_-]*$', flag_name):
+                        continue  # Skip malformed long flags like --threads)
+                elif flag_name.startswith('-'):
+                    if not re.match(r'^-[a-zA-Z][a-zA-Z0-9]*$', flag_name):
+                        continue  # Skip malformed short flags
+                else:
+                    continue  # Skip anything that doesn't start with - or --
                 
                 # Check for value type after flag name
                 if len(tokens) > 1:
