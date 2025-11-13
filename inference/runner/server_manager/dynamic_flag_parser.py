@@ -211,7 +211,19 @@ class DynamicFlagParser:
             # Enhance value type detection from description
             if not takes_value:
                 desc_lower = description.lower()
+                # Check for patterns that indicate boolean flags (overrides other patterns)
                 if any(
+                    pattern in desc_lower
+                    for pattern in [
+                        "(default: disabled)",
+                        "(default: enabled)", 
+                        "enable ",
+                        "disable ",
+                        "restrict to only",
+                    ]
+                ):
+                    takes_value = False
+                elif any(
                     pattern in desc_lower
                     for pattern in [
                         "number of",
