@@ -23,7 +23,7 @@ class TestDynamicFlagParser(unittest.TestCase):
         self.assertEqual(self.parser.executable_path, self.executable_path)
         self.assertIsNone(self.parser.parsed_flags)
 
-    @patch('subprocess.run')
+    @patch('runner.server_manager.dynamic_flag_parser.subprocess.run')
     def test_get_help_output_success(self, mock_run):
         """Test successful help output retrieval."""
         mock_result = MagicMock()
@@ -38,10 +38,11 @@ class TestDynamicFlagParser(unittest.TestCase):
             [self.executable_path, "--help"],
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=30,
+            check=True
         )
 
-    @patch('subprocess.run')
+    @patch('runner.server_manager.dynamic_flag_parser.subprocess.run')
     def test_get_help_output_failure(self, mock_run):
         """Test help output retrieval failure."""
         mock_run.side_effect = subprocess.TimeoutExpired("cmd", 30)

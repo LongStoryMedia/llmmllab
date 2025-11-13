@@ -1,0 +1,210 @@
+"""
+Llama.cpp Argument Builder - Specific implementation for llama.cpp servers.
+
+This module provides the concrete implementation for building arguments
+for llama.cpp servers with dynamic flag discovery and model-specific
+configuration.
+"""
+
+import os
+from pathlib import Path
+from typing import Any, Dict
+
+from .base_argument_builder import BaseArgumentBuilder
+from .dynamic_flag_parser import DynamicFlagParser
+from models.config_utils import resolve_gpu_config
+from utils.logging import llmmllogger
+
+logger = llmmllogger.bind(component="LlamaCppArgumentBuilder")
+
+
+class LlamaCppArgumentBuilder(BaseArgumentBuilder):
+    """Argument builder for llama.cpp servers with dynamic flag discovery."""
+
+    def _get_executable_path(self) -> str:
+        """Return the path to llama.cpp server executable."""
+        return "/llama.cpp/build/bin/llama-server"
+
+    def _setup_parser(self) -> None:
+        """Setup llama.cpp specific argument parser with dynamically discovered flags."""
+        self._parser = self._create_parser("llama.cpp server arguments")
+
+        # Add common arguments first
+        self._add_common_args()
+
+        # Use dynamic flag parser to discover and add all available flags
+        dynamic_parser = DynamicFlagParser(self._get_executable_path())
+        dynamic_parser.build_parser(self._parser)
+
+        # Build the arguments based on configuration if model is available
+        if hasattr(self, "model") and self.model:
+            self._build_configuration()
+
+    def _build_configuration(self) -> None:
+        """Build the argument configuration based on model and profile."""
+        config = {}
+
+        # Get GGUF path
+        gguf_path = self._get_gguf_path()
+        config["model"] = gguf_path
+
+        # Basic server config
+        config["host"] = "127.0.0.1"
+        config["port"] = self.port
+
+        if self.is_embedding:
+            self._build_embedding_config(config)
+        else:
+            self._build_inference_config(config)
+
+        # Parse the configuration into arguments
+        # We create a fake argument list and parse it
+        fake_args = []
+        for key, value in config.items():
+            if value is None:
+                continue
+
+            flag = f"--{key.replace('_', '-')}"
+            if isinstance(value, bool):
+                if value:
+                    fake_args.append(flag)
+            elif isinstance(value, (list, tuple)):
+                if value:
+                    fake_args.extend([flag, ",".join(map(str, value))])
+            else:
+                fake_args.extend([flag, str(value)])
+
+        self._args = self._parser.parse_args(fake_args)
+
+    def _build_embedding_config(self, config: Dict[str, Any]) -> None:
+        """Build configuration for embedding servers."""
+        config.update(
+            {
+                "threads": os.cpu_count() or 4,
+                "ctx_size": 4096,  # Smaller context for embeddings
+                "batch_size": 1024,
+                "embeddings": True,
+                "pooling": "mean",
+                "no_webui": True,
+            }
+        )
+
+        # Add debug logging if enabled
+        if os.getenv("LOG_LEVEL", "WARNING").lower() == "trace":
+            config["verbose"] = True
+
+    def _build_inference_config(self, config: Dict[str, Any]) -> None:
+        """Build configuration for inference servers."""
+        params = self.profile.parameters
+        gcfg = resolve_gpu_config(self.profile, self.user_config)
+
+        # Standard server features with performance optimizations
+        config.update(
+            {
+                "cont_batching": True,
+                "metrics": True,
+                "no_warmup": True,  # Skip warmup for faster startup
+                "cache_type_k": "f16",  # Use f16 for KV cache
+                "cache_type_v": "f16",  # Use f16 for KV cache
+            }
+        )
+
+        # Core performance parameters
+        config.update(
+            {
+                "threads": os.cpu_count() or 4,
+                "ctx_size": params.num_ctx or 90000,
+                "batch_size": params.batch_size or 256,
+                "ubatch_size": params.batch_size or 256,
+            }
+        )
+
+        # GPU configuration
+        config["n_gpu_layers"] = gcfg.gpu_layers if gcfg.gpu_layers is not None else -1
+
+        # Main GPU selection
+        if gcfg.main_gpu is not None and gcfg.main_gpu >= 0:
+            config["main_gpu"] = gcfg.main_gpu
+        else:
+            config["main_gpu"] = 1  # Default to GPU 1 for large models
+
+        # Tensor split configuration
+        if gcfg.tensor_split:
+            config["tensor_split"] = ",".join(map(str, gcfg.tensor_split))
+
+        # Split mode configuration
+        if hasattr(gcfg, "split_mode") and gcfg.split_mode:
+            # Pass string split modes directly to llama.cpp
+            if isinstance(gcfg.split_mode, str):
+                config["split_mode"] = gcfg.split_mode.lower()
+            else:
+                # Convert legacy integer values to strings
+                split_mode_mapping = {
+                    1: "layer",  # LLAMA_SPLIT_MODE_LAYER
+                    2: "row",  # LLAMA_SPLIT_MODE_ROW
+                }
+                config["split_mode"] = split_mode_mapping.get(gcfg.split_mode, "layer")
+
+        # MoE (Mixture of Experts) configuration
+        if (
+            hasattr(params, "n_cpu_moe")
+            and params.n_cpu_moe is not None
+            and params.n_cpu_moe > 0
+        ):
+            config["n_cpu_moe"] = params.n_cpu_moe
+        else:
+            config["n_cpu_moe"] = 5  # Default for MoE models
+
+        # NUMA distribution
+        config["numa"] = "distribute"
+
+        # KV offload disable
+        config["no_kv_offload"] = True
+
+        # Multimodal support - critical for vision models
+        mmproj_path = self.model.details.clip_model_path
+        if mmproj_path and Path(mmproj_path).exists():
+            config["mmproj"] = mmproj_path
+            logger.info(f"Using multimodal projector: {mmproj_path}")
+        elif "vl" in self.model.name.lower() or "vision" in self.model.name.lower():
+            logger.warning(
+                f"Vision model detected but no mmproj file found for {self.model.name}"
+            )
+
+        # Draft model support for speculative decoding
+        if hasattr(self.profile, "draft_model") and self.profile.draft_model:
+            if mmproj_path and Path(mmproj_path).exists():
+                logger.warning(
+                    f"Draft models are not supported with multimodal models. Ignoring draft model for {self.model.name}"
+                )
+            else:
+                from runner.utils.model_loader import ModelLoader
+
+                ml = ModelLoader()
+                dm = ml.get_model_by_id(self.profile.draft_model)
+                draft_gguf = dm.details.gguf_file if dm and dm.details else None
+                if draft_gguf:
+                    config["model_draft"] = str(draft_gguf)
+
+        # Additional GPU optimizations
+        if hasattr(gcfg, "offload_kqv") and not gcfg.offload_kqv:
+            config["no_kv_offload"] = True
+
+        # Enable JSON schema support for tools (required for tool calling)
+        config.update(
+            {
+                "jinja": True,
+                "no_webui": True,
+            }
+        )
+
+        # Add logging configuration
+        if os.getenv("LOG_LEVEL", "WARNING").lower() == "trace":
+            config["verbose"] = True
+
+    def _get_gguf_path(self) -> str:
+        """Return resolved GGUF file path for model."""
+        details = getattr(self.model, "details", None)
+        if details and hasattr(details, "gguf_file") and details.gguf_file:
+            return details.gguf_file
+        return self.model.model
