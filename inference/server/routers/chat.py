@@ -8,19 +8,19 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 """
 
 import json
-from typing import AsyncGenerator, Any, Dict, List, cast
+from typing import AsyncGenerator, Any, List, cast
 from typing_extensions import TypedDict
-from pydantic import BaseModel
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.runnables.schema import StandardStreamEvent
+from langchain_core.messages import BaseMessage, AIMessage, ToolMessage
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from server.middleware.auth import get_request_id, get_user_id, is_admin
 from server.config import logger  # Import logger from config
-from server.streaming_response_state import StreamingResponseState
+from server.streaming_response_state import StreamingResponseState, StreamingState
 from db import storage  # Import database storage
 from models import (
     MessageRole,
@@ -36,6 +36,7 @@ from utils.logging import serialize_event_data  # Import logging utility
 
 # Import composer interface and streaming state management
 import composer
+from runner import ReasoningAwareAIMessageChunk
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -104,6 +105,42 @@ async def store_structured_response_data(
         )
 
 
+def handle_streaming_chunk(
+    evt: StandardStreamEvent,
+) -> tuple[str, MessageContentType]:
+    """Handle a single chunk from ReasoningAwareAIMessageChunk and return serialized ChatResponse."""
+    event_data = evt.get("data", {})
+    event_type = evt.get("event", "unknown")
+    chunk = event_data.get("chunk")
+    output = event_data.get("output", {})
+    if not isinstance(chunk, BaseMessage):
+        raise ValueError(f"Expected chunk to be BaseMessage, got {type(chunk)}")
+
+    c = ""
+    t = MessageContentType.TEXT
+
+    if chunk.content:
+        if isinstance(chunk, ToolMessage):
+            t = MessageContentType.TOOL_CALL
+            # TODO: What to do with tool call content?
+
+        if isinstance(chunk.content, str):
+            c = chunk.content
+        else:
+            c = "".join(
+                [
+                    str(content)
+                    for content in chunk.content
+                    if isinstance(content, (str, bytes))
+                ]
+            )
+    elif isinstance(chunk, ReasoningAwareAIMessageChunk) and chunk.reasoning_content:
+        t = MessageContentType.THINKING
+        c += chunk.reasoning_content
+
+    return c, t
+
+
 @router.post("/completions", response_model=ChatResponse)
 async def chat_completion(
     msg: Message,
@@ -166,27 +203,79 @@ async def chat_completion(
                     }
                 )
 
-                async for event in workflow.astream_events(
-                    initial_state,
-                    config=config,
-                    version="v2",
-                ):
+                analyses_buffer = ""  # Buffer for analyses content
+                thoughts_buffer = ""  # Buffer for thoughts content
+                tool_calls_buffer = ""  # Buffer for tool calls content
+                message_buffer = ""  # Buffer for message content
+                tool_results_buffer = ""  # Buffer for tool results content
+
+                async for event in composer.execute_workflow(initial_state, workflow):
                     evt = cast(StandardStreamEvent, event)
                     events.append(evt)
-                    event_type = evt.get("event", "")
-                    event_data = evt.get("data", {})
+                    event_data = event.get("data", {})
+                    event_type = event.get("event", "unknown")
+                    chunk = event_data.get("chunk")
+                    output = event_data.get("output", {})
 
-                    # logger.debug(
-                    #     f"{event_type}: {serialize_event_data(event_data)}"
-                    # )  # For logging purposes
-
-                    # Process streaming events for immediate response
                     if (
                         event_type == "on_chat_model_stream"
                         or event_type == "on_llm_stream"
                     ):
-                        # Handle streaming tokens
-                        chunk = event_data.get("chunk")
+
+                        txt, kind = handle_streaming_chunk(evt)
+                        res = ChatResponse(
+                            done=False,
+                            message=Message(
+                                role=MessageRole.ASSISTANT,
+                                content=[],
+                                thoughts=[],
+                                analyses=[],
+                                tool_calls=[],
+                            ),
+                        )
+                        assert res.message is not None
+                        assert res.message.content is not None
+                        assert res.message.thoughts is not None
+                        assert res.message.analyses is not None
+                        assert res.message.tool_calls is not None
+
+                        if (
+                            kind == MessageContentType.TOOL_CALL
+                        ):  # handle output on "_end" event
+                            tool_calls_buffer += txt
+                            continue
+                        if kind == MessageContentType.ANALYSIS:
+                            analyses_buffer += txt  # handle output on "_end" event
+                            continue
+
+                        if kind == MessageContentType.TEXT:
+                            res.message.content = [MessageContent(type=kind, text=txt)]
+                            message_buffer += txt
+                        elif kind == MessageContentType.THINKING:
+                            res.message.thoughts = [Thought(text=txt)]
+                            thoughts_buffer += txt
+
+                        yield f"{res.model_dump_json(exclude_none=True)}\n"
+
+                        # Handle content - ensure both are lists before concatenating
+                        content_list = (
+                            chunk.content
+                            if isinstance(chunk.content, list)
+                            else [chunk.content] if chunk.content else []
+                        )
+                        reasoning_list = (
+                            [chunk.reasoning_content]
+                            if isinstance(chunk.reasoning_content, str)
+                            else (
+                                chunk.reasoning_content
+                                if chunk.reasoning_content
+                                else []
+                            )
+                        )
+
+                        for content in content_list + reasoning_list:
+                            # TODO: Handle other content types if needed
+                            chat_response = streaming_state.process_chunk(str(content))
                         if chunk:
                             # Extract content from chunk
                             if hasattr(chunk, "content"):

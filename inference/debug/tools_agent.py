@@ -24,7 +24,7 @@ from models import (
 )
 from models.default_model_profiles import DEFAULT_TEXT_TO_TEXT_MODEL, DEFAULT_PROFILES
 from models.default_configs import create_default_user_config
-from runner.pipeline_factory import pipeline_factory
+from runner import pipeline_factory, ReasoningAwareAIMessageChunk
 from composer.agents import ChatAgent
 from composer.tools.registry import ToolRegistry
 from composer.graph.subgraphs import ToolsAgentSubgraph
@@ -164,17 +164,19 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
             if processing:
                 continue  # Skip until current tool call processing is done
 
-            if chunk and event.endswith("_stream") and isinstance(chunk, BaseMessage):
-                # Print message content
-                for content in chunk.content:
-                    print(str(content), end="", flush=True)
-                for rc in getattr(chunk, "reasoning_content", ""):
-                    print(str(rc), end="", flush=True)
+            if chunk and event.endswith("_stream"):
+                if isinstance(chunk, AIMessage):
+                    # Print message content
+                    for content in chunk.content:
+                        print(str(content), end="", flush=True)
+                    for rc in getattr(chunk, "reasoning_content", ""):
+                        print(str(rc), end="", flush=True)
+                else:
+                    print(f"NON AI CHUNK: {serialize_event_data(chunk)}")
 
             if event.endswith("_model_end") and isinstance(output, AIMessage):
                 md = output.response_metadata
                 reason = md.get("reason", "no reason provided")
-                print("\n" + "=" * 80)
                 print("\n" + "=" * 80)
                 print(
                     f"Finished segment due to {reason}",

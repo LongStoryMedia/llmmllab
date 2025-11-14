@@ -537,9 +537,19 @@ class LocalPipelineCacheManager:
     def _calculate_corrected_memory_breakdown(
         self, params: ModelParameters, model: Model
     ) -> dict:
-        """Calculate memory breakdown using corrected formulas that match real-world llama.cpp usage."""
-        from runner.utils.memory_estimation import calculate_corrected_memory_breakdown
-        return calculate_corrected_memory_breakdown(params, model)
+        """Calculate memory breakdown using Resizer."""
+        optimal_params = self._convert_model_parameters_to_optimal(params)
+        breakdown = self._resizer.calculate_memory_breakdown(optimal_params, model)
+        return {
+            "model_weights_gb": breakdown["model_weights_gpu_gb"],
+            "kv_cache_gb": breakdown["kv_cache_gb"],
+            "activation_gb": breakdown["activation_gb"],
+            "overhead_gb": breakdown["overhead_gb"],
+            "clip_model_gb": breakdown["clip_model_gb"],
+            "total_gb": breakdown["total_gpu_gb"],
+            "kv_efficiency": 1.0,  # Not used in breakdown
+            "gpu_layers": breakdown["gpu_layers_loaded"],
+        }
 
     def _ensure_memory(self, required: float, exclude: Optional[str]) -> bool:
         """Ensure sufficient memory is available, with intelligent eviction based on size and priority."""
