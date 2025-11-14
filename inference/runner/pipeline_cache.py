@@ -16,7 +16,15 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel
 
-from models import Model, ModelProfile, ModelProvider, PipelinePriority, UserConfig, OptimalParameters, ModelParameters
+from models import (
+    Model,
+    ModelProfile,
+    ModelProvider,
+    PipelinePriority,
+    UserConfig,
+    OptimalParameters,
+    ModelParameters,
+)
 from utils.logging import llmmllogger
 from .utils.hardware_manager import hardware_manager
 from .utils.resizer import Resizer
@@ -112,23 +120,29 @@ class LocalPipelineCacheManager:
         self._cache_timeout = cache_timeout
         self.logger = llmmllogger.logger.bind(component="LocalPipelineCacheManager")
         self._cleanup_thread: Optional[threading.Thread] = None
-        
+
         # Initialize the resizer and OOM recovery components
         self._resizer = Resizer()
         try:
             # Use a local directory for development, /app for production
             import os
+
             if os.path.exists("/app"):
                 self._oom_recovery = IntelligentOOMRecovery()
             else:
                 # Development environment - use local directory
                 import tempfile
-                local_data_dir = os.path.join(tempfile.gettempdir(), "oom_recovery_data")
+
+                local_data_dir = os.path.join(
+                    tempfile.gettempdir(), "oom_recovery_data"
+                )
                 self._oom_recovery = IntelligentOOMRecovery(data_dir=local_data_dir)
         except Exception as e:
-            self.logger.warning(f"Failed to initialize OOM recovery: {e}, disabling graceful degradation")
+            self.logger.warning(
+                f"Failed to initialize OOM recovery: {e}, disabling graceful degradation"
+            )
             self._oom_recovery = None
-        
+
         self._start_cleanup_thread()
 
     # ---- Public API ----
@@ -159,78 +173,49 @@ class LocalPipelineCacheManager:
                 if pipe:
                     return pipe
             self._cache.pop(model_id, None)
-        
+
         required = self.estimate_memory(model, profile)
-        
+
         # Check if graceful degradation is enabled and try OOM recovery if needed
         if not self._ensure_memory(required, exclude=model_id):
             # Check if we should try intelligent OOM recovery
-            if (user_config and 
-                user_config.parameter_optimization and 
-                user_config.parameter_optimization.crash_prevention and 
-                user_config.parameter_optimization.crash_prevention.enable_graceful_degradation and
-                self._oom_recovery is not None):
-                
+            if (
+                user_config
+                and user_config.parameter_optimization
+                and user_config.parameter_optimization.crash_prevention
+                and user_config.parameter_optimization.crash_prevention.enable_graceful_degradation
+                and self._oom_recovery is not None
+            ):
+
                 self.logger.info(
                     f"🔄 Insufficient memory for {model.name} ({required/1e9:.2f}GB), "
                     f"attempting graceful degradation via OOM recovery"
                 )
-                
+
                 try:
                     # Use OOM recovery to get optimized parameters for the current hardware
-                    optimized_params = self._oom_recovery.predict_optimal_parameters_from_profile(model, profile)
-                    
-                    # Update the profile with optimized parameters
-                    optimized_profile = ModelProfile(
-                        id=profile.id,
-                        user_id=profile.user_id,
-                        name=profile.name,
-                        description=profile.description,
-                        model_name=profile.model_name,
-                        system_prompt=profile.system_prompt,
-                        created_at=profile.created_at,
-                        updated_at=profile.updated_at,
-                        model_version=profile.model_version,
-                        type=profile.type,  # Copy the type from original profile
-                        image_settings=profile.image_settings,
-                        circuit_breaker=profile.circuit_breaker,
-                        gpu_config=profile.gpu_config,
-                        parameter_optimization=profile.parameter_optimization,
-                        draft_model=profile.draft_model,
-                        parameters=ModelParameters(
-                            num_ctx=optimized_params.n_ctx,
-                            batch_size=optimized_params.n_batch,
-                            # Copy other parameters from original profile
-                            repeat_last_n=profile.parameters.repeat_last_n,
-                            repeat_penalty=profile.parameters.repeat_penalty,
-                            temperature=profile.parameters.temperature,
-                            seed=profile.parameters.seed,
-                            stop=profile.parameters.stop,
-                            num_predict=profile.parameters.num_predict,
-                            top_k=profile.parameters.top_k,
-                            top_p=profile.parameters.top_p,
-                            min_p=profile.parameters.min_p,
-                            think=profile.parameters.think,
-                            max_tokens=profile.parameters.max_tokens,
-                            n_parts=profile.parameters.n_parts,
-                            n_cpu_moe=profile.parameters.n_cpu_moe,
-                            reasoning_effort=profile.parameters.reasoning_effort,
-                            flash_attention=profile.parameters.flash_attention,
+                    optimized_params = (
+                        self._oom_recovery.predict_optimal_parameters_from_profile(
+                            model, profile
                         )
                     )
-                    
+
+                    for param, value in optimized_params.model_dump().items():
+                        setattr(profile.parameters, param, value)
+
                     # Re-estimate memory with optimized parameters
-                    optimized_required = self.estimate_memory(model, optimized_profile)
-                    
+                    optimized_required = self.estimate_memory(model, profile)
+
                     self.logger.info(
                         f"🎯 OOM recovery optimized memory requirement from {required/1e9:.2f}GB to {optimized_required/1e9:.2f}GB"
                     )
-                    
+
                     # Try again with optimized parameters
                     if self._ensure_memory(optimized_required, exclude=model_id):
-                        profile = optimized_profile  # Use optimized profile
                         required = optimized_required
-                        self.logger.info("✅ OOM recovery successful, proceeding with optimized parameters")
+                        self.logger.info(
+                            "✅ OOM recovery successful, proceeding with optimized parameters"
+                        )
                     else:
                         self.logger.error(
                             "❌ OOM recovery failed - still insufficient memory even after optimization"
@@ -238,7 +223,7 @@ class LocalPipelineCacheManager:
                         raise RuntimeError(
                             f"Insufficient memory for local model {model.name}: need {optimized_required/1e9:.2f}GB even after optimization"
                         )
-                        
+
                 except Exception as e:
                     self.logger.error(f"❌ OOM recovery failed with error: {e}")
                     raise RuntimeError(
@@ -470,19 +455,31 @@ class LocalPipelineCacheManager:
         return count
 
     # ---- Internals ----
-    def _convert_model_parameters_to_optimal(self, model_params: ModelParameters) -> OptimalParameters:
+    def _convert_model_parameters_to_optimal(
+        self, model_params: ModelParameters
+    ) -> OptimalParameters:
         """Convert ModelParameters to OptimalParameters for use with Resizer."""
+        # Apply reasonable defaults and log warnings for extreme values
+        context_size = model_params.num_ctx or 4096
+        batch_size = model_params.batch_size or 512
+
+        # Log warning for extremely large context sizes that might cause issues
+        if context_size > 65536:  # 64K tokens
+            self.logger.warning(
+                f"⚠️ Very large context size ({context_size:,}) may cause high memory usage"
+            )
+
         return OptimalParameters(
-            n_ctx=model_params.num_ctx or 4096,  # Default context size
-            n_batch=model_params.batch_size or 512,  # Default batch size
+            n_ctx=context_size,
+            n_batch=batch_size,
             n_ubatch=128,  # Default micro-batch size (not in ModelParameters)
             n_gpu_layers=-1,  # Default to all layers on GPU (not in ModelParameters)
         )
-    
+
     def estimate_memory(
         self, model: Model, profile: Optional["ModelProfile"] = None
     ) -> float:
-        """Estimate memory usage using the Resizer class for accurate calculations."""
+        """Estimate memory usage using corrected formulas that match real-world llama.cpp usage."""
         if not profile or not profile.parameters:
             # Fallback to simple estimation if no profile provided
             base = 512 * 1024 * 1024  # 512MB base
@@ -494,7 +491,7 @@ class LocalPipelineCacheManager:
                     model_size = 1 * 1024 * 1024 * 1024  # 1GB
                 else:
                     model_size = 4 * 1024 * 1024 * 1024  # 4GB
-            
+
             total = base + model_size + (model_size * 0.2)  # 20% context overhead
             self.logger.debug(
                 f"Basic memory estimate for {model.name}: {total/1e9:.2f}GB "
@@ -503,38 +500,46 @@ class LocalPipelineCacheManager:
             return total
 
         try:
-            # Convert ModelParameters to OptimalParameters for Resizer
-            optimal_params = self._convert_model_parameters_to_optimal(profile.parameters)
-            
-            # Use Resizer for accurate memory breakdown
-            memory_breakdown = self._resizer.calculate_memory_breakdown(optimal_params, model)
-            
-            # Total GPU memory is the primary estimate
-            total_memory = memory_breakdown["total_gpu_gb"] * 1024 * 1024 * 1024  # Convert to bytes
-            
+            # Use corrected memory estimation based on real-world data
+            memory_breakdown = self._calculate_corrected_memory_breakdown(
+                profile.parameters, model
+            )
+
+            # Total GPU memory estimate
+            total_memory = (
+                memory_breakdown["total_gb"] * 1024 * 1024 * 1024
+            )  # Convert to bytes
+
             self.logger.debug(
-                f"Resizer memory estimate for {model.name}: {total_memory/1e9:.2f}GB "
-                f"(model: {memory_breakdown['model_weights_gpu_gb']:.2f}GB, "
+                f"Corrected memory estimate for {model.name}: {total_memory/1e9:.2f}GB "
+                f"(model: {memory_breakdown['model_weights_gb']:.2f}GB, "
                 f"kv_cache: {memory_breakdown['kv_cache_gb']:.2f}GB, "
                 f"activation: {memory_breakdown['activation_gb']:.2f}GB, "
                 f"overhead: {memory_breakdown['overhead_gb']:.2f}GB)"
             )
-            
+
             return total_memory
-            
+
         except Exception as e:
             self.logger.warning(
-                f"Failed to use Resizer for memory estimation: {e}, falling back to basic estimation"
+                f"Failed to use corrected memory estimation: {e}, falling back to basic estimation"
             )
             # Fallback to basic estimation
             model_size = getattr(model, "size", 4 * 1024 * 1024 * 1024)
             context_mem = model_size * 0.3  # 30% for context
             total = model_size + context_mem + (512 * 1024 * 1024)  # Add 512MB overhead
-            
+
             self.logger.debug(
                 f"Fallback memory estimate for {model.name}: {total/1e9:.2f}GB"
             )
             return total
+
+    def _calculate_corrected_memory_breakdown(
+        self, params: ModelParameters, model: Model
+    ) -> dict:
+        """Calculate memory breakdown using corrected formulas that match real-world llama.cpp usage."""
+        from runner.utils.memory_estimation import calculate_corrected_memory_breakdown
+        return calculate_corrected_memory_breakdown(params, model)
 
     def _ensure_memory(self, required: float, exclude: Optional[str]) -> bool:
         """Ensure sufficient memory is available, with intelligent eviction based on size and priority."""

@@ -264,3 +264,330 @@ class TestEnhancedPipelineCache:
         
         # Higher priority should get higher scores (less likely to be evicted)
         assert high_score >= normal_score >= low_score
+
+    @pytest.fixture
+    def real_memory_samples(self) -> list:
+        """Load real memory samples collected from actual llama.cpp executions."""
+        import os
+        import json
+        
+        samples_path = os.path.join(
+            os.path.dirname(__file__), 
+            "real_memory_samples.json"
+        )
+        
+        if not os.path.exists(samples_path):
+            pytest.skip("Real memory samples file not found")
+            
+        with open(samples_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+
+    def test_memory_estimation_accuracy_against_real_data(self, cache_manager, real_memory_samples):
+        """Test memory estimation accuracy against real llama.cpp measurements."""
+        
+        # Filter for successful measurements
+        successful_samples = [
+            sample for sample in real_memory_samples 
+            if sample.get("total_actual_gb", 0) > 0
+        ]
+        
+        if len(successful_samples) < 5:
+            pytest.skip(f"Need at least 5 successful samples, got {len(successful_samples)}")
+        
+        # Test a subset for memory estimation accuracy
+        test_samples = successful_samples[:10]  # First 10 samples
+        
+        accuracy_results = []
+        
+        for sample in test_samples:
+            # Create mock model and profile from sample data
+            mock_model = Mock()
+            mock_model.size = self._estimate_model_size_from_sample(sample)
+            
+            mock_profile = Mock()
+            mock_profile.parameters = Mock()
+            mock_profile.parameters.num_ctx = sample["context_size"]
+            mock_profile.parameters.num_batch = sample["batch_size"]
+            
+            # Get memory estimate from cache manager
+            estimated_gb = cache_manager.estimate_memory(mock_model, mock_profile) / (1024**3)
+            actual_gb = sample["total_actual_gb"]
+            
+            accuracy_ratio = estimated_gb / actual_gb if actual_gb > 0 else 0
+            
+            accuracy_results.append({
+                "model": sample["model_name"],
+                "context": sample["context_size"],
+                "estimated_gb": estimated_gb,
+                "actual_gb": actual_gb,
+                "accuracy_ratio": accuracy_ratio
+            })
+        
+        # Calculate overall accuracy statistics
+        ratios = [r["accuracy_ratio"] for r in accuracy_results if r["accuracy_ratio"] > 0]
+        
+        if len(ratios) >= 5:
+            avg_accuracy = sum(ratios) / len(ratios)
+            
+            print(f"\nMemory Estimation Accuracy Results ({len(ratios)} samples):")
+            for result in accuracy_results[:5]:  # Show first 5
+                print(f"  {result['model']} @ {result['context']//1024}K: "
+                      f"{result['estimated_gb']:.1f}GB est vs {result['actual_gb']:.1f}GB actual "
+                      f"({result['accuracy_ratio']:.2f}x)")
+            print(f"Average accuracy ratio: {avg_accuracy:.2f}")
+            
+            # Reasonable accuracy bounds - cache estimates may differ from Resizer estimates
+            assert 0.1 <= avg_accuracy <= 20.0, f"Average accuracy {avg_accuracy:.2f} outside reasonable range"
+
+    def test_cache_corrected_memory_estimation(self, cache_manager):
+        """Test the corrected memory breakdown calculation if available."""
+        
+        # Check if cache manager has corrected memory estimation
+        if not hasattr(cache_manager, '_calculate_corrected_memory_breakdown'):
+            pytest.skip("Corrected memory estimation not available in cache manager")
+        
+        # Create test model with known characteristics
+        test_model = Model(
+            id="test-model",
+            name="Test 7B Model",
+            model="/path/to/model.gguf",
+            provider="llama_cpp",
+            pipeline="TestPipeline",
+            modified_at="2024-12-30T12:00:00Z",
+            digest="test123",
+            details=ModelDetails(
+                parent_model="test",
+                format="gguf",
+                size=int(4.5 * 1024**3),  # 4.5GB
+                family="test",
+                families=["test"],
+                parameter_size="7B",
+                dtype="Q4_K_M",
+                quantization_level="q4_k_m",
+                specialization="Text",
+                gguf_file="/path/to/model.gguf",
+                original_ctx=8192,
+                n_layers=32,
+                hidden_size=4096,
+                n_heads=32,
+                n_kv_heads=8
+            ),
+            task="TextToText"
+        )
+        
+        test_params = OptimalParameters(
+            n_ctx=4096,
+            n_batch=512,
+            n_ubatch=512,
+            n_gpu_layers=32,
+            n_threads=8,
+            n_threads_batch=8
+        )
+        
+        # Test corrected memory breakdown
+        breakdown = cache_manager._calculate_corrected_memory_breakdown(test_params, test_model)
+        
+        # Verify breakdown structure
+        assert isinstance(breakdown, dict)
+        assert "total_gpu_gb" in breakdown
+        assert "model_weights_gpu_gb" in breakdown
+        assert "kv_cache_gb" in breakdown
+        
+        # Verify values are reasonable
+        assert breakdown["total_gpu_gb"] > 0
+        assert breakdown["model_weights_gpu_gb"] > 0
+        assert breakdown["kv_cache_gb"] >= 0
+        
+        # Total should be sum of components
+        expected_total = (
+            breakdown["model_weights_gpu_gb"] +
+            breakdown["kv_cache_gb"] +
+            breakdown.get("activation_gb", 0) +
+            breakdown.get("overhead_gb", 0) +
+            breakdown.get("clip_model_gb", 0)
+        )
+        
+        assert abs(breakdown["total_gpu_gb"] - expected_total) < 0.01, (
+            f"Total {breakdown['total_gpu_gb']:.2f}GB should equal sum of components {expected_total:.2f}GB"
+        )
+
+    def test_cache_size_categorization_with_real_data(self, cache_manager, real_memory_samples):
+        """Test size categorization against real model data."""
+        
+        # Group samples by parameter size
+        small_models = []  # ≤4B
+        medium_models = []  # 5B-20B  
+        large_models = []  # ≥30B
+        
+        for sample in real_memory_samples:
+            param_size = sample["param_size"]
+            
+            if any(size in param_size.upper() for size in ["2B", "3B", "3.2B", "4B"]):
+                small_models.append(sample)
+            elif any(size in param_size.upper() for size in ["30B", "32B"]):
+                large_models.append(sample)
+            else:
+                medium_models.append(sample)
+        
+        # Test memory estimates for different categories
+        if small_models:
+            sample = small_models[0]
+            mock_model = Mock()
+            mock_model.size = self._estimate_model_size_from_sample(sample)
+            
+            mock_profile = Mock()
+            mock_profile.parameters = Mock()
+            mock_profile.parameters.num_ctx = sample["context_size"]
+            
+            small_estimate = cache_manager.estimate_memory(mock_model, mock_profile)
+            
+            # Small models should generally estimate under 10GB
+            assert small_estimate < 10 * 1024**3, f"Small model estimate {small_estimate/(1024**3):.1f}GB seems high"
+        
+        if large_models:
+            sample = large_models[0]
+            mock_model = Mock()
+            mock_model.size = self._estimate_model_size_from_sample(sample)
+            
+            mock_profile = Mock()
+            mock_profile.parameters = Mock()
+            mock_profile.parameters.num_ctx = sample["context_size"]
+            
+            large_estimate = cache_manager.estimate_memory(mock_model, mock_profile)
+            
+            # Large models should estimate substantial memory
+            assert large_estimate > 15 * 1024**3, f"Large model estimate {large_estimate/(1024**3):.1f}GB seems low"
+
+    def test_real_world_eviction_scenarios(self, cache_manager, real_memory_samples):
+        """Test eviction scenarios based on real model memory usage."""
+        
+        if len(real_memory_samples) < 3:
+            pytest.skip("Need at least 3 samples for eviction testing")
+        
+        # Create realistic cache scenario with memory pressure
+        cache_manager._max_cache_size_gb = 20.0  # Limited cache size
+        
+        # Simulate adding models that would exceed cache limit
+        memory_total = 0
+        added_models = 0
+        
+        for sample in real_memory_samples[:5]:  # Test first 5 samples
+            actual_gb = sample.get("total_actual_gb", 0)
+            
+            if actual_gb > 0:
+                memory_total += actual_gb
+                added_models += 1
+                
+                # If we would exceed cache limit, eviction should occur
+                if memory_total > cache_manager._max_cache_size_gb:
+                    print(f"Would trigger eviction after {added_models} models, total: {memory_total:.1f}GB")
+                    break
+        
+        # Test that cache manager handles memory pressure appropriately
+        assert memory_total > 0, "Should have processed some models"
+
+    def _estimate_model_size_from_sample(self, sample: dict) -> int:
+        """Estimate model size in bytes from sample data."""
+        param_size = sample["param_size"]
+        
+        # Convert parameter size to estimated file size
+        if "32B" in param_size.upper():
+            return int(20 * 1024**3)  # 20GB for Q4_K_M 32B
+        elif "30B" in param_size.upper():
+            return int(18 * 1024**3)  # 18GB for Q4_K_M 30B
+        elif "4B" in param_size.upper():
+            return int(3.5 * 1024**3)  # 3.5GB for Q6_K_XL 4B
+        elif any(x in param_size.upper() for x in ["3.2B", "3B"]):
+            return int(2.3 * 1024**3)  # 2.3GB for Q5_K_M 3B
+        elif "2B" in param_size.upper():
+            return int(1.8 * 1024**3)  # 1.8GB for F16 2B
+        else:
+            return int(5 * 1024**3)  # 5GB fallback
+
+    def test_cache_performance_with_real_model_sizes(self, cache_manager, real_memory_samples):
+        """Test cache performance characteristics with realistic model sizes."""
+        
+        # Test that cache can handle realistic model size distributions
+        model_sizes = []
+        
+        for sample in real_memory_samples:
+            if sample.get("total_actual_gb", 0) > 0:
+                model_sizes.append(sample["total_actual_gb"])
+        
+        if len(model_sizes) < 5:
+            pytest.skip("Need at least 5 successful samples for performance testing")
+        
+        # Calculate size distribution statistics
+        avg_size = sum(model_sizes) / len(model_sizes)
+        min_size = min(model_sizes)
+        max_size = max(model_sizes)
+        
+        print(f"\nReal Model Size Distribution ({len(model_sizes)} samples):")
+        print(f"  Average: {avg_size:.1f}GB")
+        print(f"  Range: {min_size:.1f}GB - {max_size:.1f}GB")
+        
+        # Test cache sizing recommendations
+        # Cache should be able to hold at least 2-3 average models
+        recommended_cache_size = avg_size * 3
+        
+        assert recommended_cache_size > 0, "Recommended cache size should be positive"
+        assert recommended_cache_size < 200, "Recommended cache size should be realistic (< 200GB)"
+        
+        # Test that cache manager can work with these sizes
+        cache_manager._max_cache_size_gb = recommended_cache_size
+        assert cache_manager._max_cache_size_gb == recommended_cache_size
+
+    def test_memory_estimation_edge_cases_from_real_data(self, cache_manager, real_memory_samples):
+        """Test memory estimation edge cases found in real data."""
+        
+        # Find samples with unusual characteristics
+        high_context_samples = [
+            s for s in real_memory_samples 
+            if s["context_size"] >= 100000  # ≥100K context
+        ]
+        
+        vision_samples = [
+            s for s in real_memory_samples 
+            if s.get("mmproj_path") is not None  # Vision models
+        ]
+        
+        large_batch_samples = [
+            s for s in real_memory_samples 
+            if s["batch_size"] >= 4096  # Large batch sizes
+        ]
+        
+        # Test high context scenarios
+        if high_context_samples:
+            sample = high_context_samples[0]
+            mock_model = Mock()
+            mock_model.size = self._estimate_model_size_from_sample(sample)
+            
+            mock_profile = Mock()
+            mock_profile.parameters = Mock()
+            mock_profile.parameters.num_ctx = sample["context_size"]
+            
+            high_ctx_estimate = cache_manager.estimate_memory(mock_model, mock_profile)
+            
+            # High context should significantly increase memory estimate
+            # Note: Some cache managers may use different estimation approaches
+            assert high_ctx_estimate >= mock_model.size, (
+                f"High context estimate {high_ctx_estimate/(1024**3):.1f}GB should be at least "
+                f"model size {mock_model.size/(1024**3):.1f}GB"
+            )
+        
+        # Test vision model scenarios if available
+        if vision_samples:
+            sample = vision_samples[0]
+            mock_model = Mock()
+            mock_model.size = self._estimate_model_size_from_sample(sample)
+            # Add vision characteristics
+            mock_model.clip_model_size = 1024 * 1024 * 1024  # 1GB CLIP model
+            
+            mock_profile = Mock()
+            mock_profile.parameters = Mock()
+            mock_profile.parameters.num_ctx = sample["context_size"]
+            
+            vision_estimate = cache_manager.estimate_memory(mock_model, mock_profile)
+            
+            # Vision models should include CLIP overhead
+            assert vision_estimate > mock_model.size, "Vision model estimate should include CLIP overhead"

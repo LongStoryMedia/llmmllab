@@ -346,7 +346,7 @@ class IntelligentOOMRecovery:
     def _get_breakdown(
         self, params: OptimalParameters, model: Model
     ) -> MemoryBreakdown:
-        """Get memory breakdown using Resizer with proper caching."""
+        """Get memory breakdown using corrected memory estimation with proper caching."""
         # Create cache key from parameters that affect memory calculation
         cache_key = (
             params.n_ctx,
@@ -361,9 +361,16 @@ class IntelligentOOMRecovery:
             self._breakdown_cache = {}
 
         if cache_key not in self._breakdown_cache:
-            self._breakdown_cache[cache_key] = self.resizer.calculate_memory_breakdown(
-                params, model
+            # Import corrected estimation utility
+            from runner.utils.memory_estimation import (
+                calculate_corrected_memory_breakdown,
+                convert_to_memory_breakdown
             )
+            
+            # Use OptimalParameters directly - it has the required attributes
+            # The corrected estimation function uses getattr() so missing attributes are handled gracefully
+            breakdown_dict = calculate_corrected_memory_breakdown(params, model)
+            self._breakdown_cache[cache_key] = convert_to_memory_breakdown(breakdown_dict)
 
         return self._breakdown_cache[cache_key]
 

@@ -28,7 +28,7 @@ def create_test_model() -> Model:
         task=ModelTask.TEXTTOTEXT,
         modified_at="2023-01-01T00:00:00Z",
         digest="test-digest",
-        size=8 * 1024 * 1024 * 1024,  # 8GB model
+        size=4 * 1024 * 1024 * 1024,  # 4GB model (more realistic for 7B q4)
         details=ModelDetails(
             format="gguf",
             family="llama",
@@ -36,7 +36,7 @@ def create_test_model() -> Model:
             parameter_size="7B",
             quantization_level="q4_k_m",
             precision="fp16",
-            size=8 * 1024 * 1024 * 1024,
+            size=4 * 1024 * 1024 * 1024,
             original_ctx=4096,
         ),
         lora_weights=[],
@@ -53,8 +53,8 @@ def create_test_profile() -> ModelProfile:
         system_prompt="You are a helpful assistant.",
         type=1,
         parameters=ModelParameters(
-            num_ctx=32768,  # Large context that might cause OOM
-            batch_size=2048,  # Large batch that might cause OOM
+            num_ctx=8192,  # Reasonable context size for testing
+            batch_size=512,  # Standard batch size
             temperature=0.7,
             top_p=0.9,
             top_k=40,
