@@ -198,20 +198,12 @@ class ToolsAgentSubgraph:
             # Transform to agent state
             tools_state = self.transform_to_tools_state(main_state)
 
-            # Execute the agent subgraph with extended timeout
-            timeout_seconds = 600  # Increased from 300 to 600 seconds
+            # Execute the agent subgraph without timeout constraints
             logger.info("🔄 Executing agent subgraph with ainvoke")
 
             try:
-                result = await asyncio.wait_for(
-                    self.graph.ainvoke(tools_state), timeout=timeout_seconds
-                )
+                result = await self.graph.ainvoke(tools_state)
                 logger.info("🔄 Agent subgraph ainvoke completed successfully")
-            except asyncio.TimeoutError:
-                logger.error(
-                    f"❌ Agent subgraph execution timed out after {timeout_seconds} seconds"
-                )
-                return Command(update={})
             except Exception as e:
                 logger.error(f"❌ Agent subgraph ainvoke execution failed: {e}")
                 return Command(update={})
