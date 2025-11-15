@@ -60,6 +60,7 @@ class PipelineFactory:
         profile: ModelProfile,
         priority: PipelinePriority = PipelinePriority.NORMAL,
         grammar: Optional[Type[BaseModel]] = None,
+        metadata: Optional[dict] = {},
     ) -> Union[BaseChatModel, Embeddings]:
         model_id = profile.model_name
         model = self._get_model_by_id(model_id)
@@ -90,12 +91,20 @@ class PipelineFactory:
 
             # Use a factory function that handles coordination internally
             def create_with_coordination(
-                m: Model, p: ModelProfile, g: Optional[Type[BaseModel]] = grammar
+                m: Model,
+                p: ModelProfile,
+                g: Optional[Type[BaseModel]] = grammar,
+                metadata: Optional[dict] = {},
             ) -> Optional[Union[BaseChatModel, Embeddings]]:
-                return self.create_pipeline(m, p, g)
+                return self.create_pipeline(m, p, g, metadata)
 
             pipeline = self.local_cache.get_or_create(
-                model, profile, priority, create_with_coordination, grammar
+                model,
+                profile,
+                priority,
+                create_with_coordination,
+                grammar,
+                metadata=metadata,
             )
             if not pipeline:
                 raise RuntimeError(
@@ -146,7 +155,9 @@ class PipelineFactory:
 
         return True  # Remote pipelines don't need unlocking
 
-    def set_pipeline_persistent(self, profile: ModelProfile, persistent: bool = True) -> bool:
+    def set_pipeline_persistent(
+        self, profile: ModelProfile, persistent: bool = True
+    ) -> bool:
         """Mark a pipeline as persistent to prevent eviction unless absolutely necessary."""
         model_id = profile.model_name
         model = self._get_model_by_id(model_id)
@@ -179,6 +190,7 @@ class PipelineFactory:
         self,
         profile: ModelProfile,
         priority: PipelinePriority = PipelinePriority.NORMAL,
+        metadata: Optional[dict] = None,
     ) -> Embeddings:
         """Get specifically an embedding pipeline with proper typing."""
         model_id = profile.model_name
@@ -199,13 +211,16 @@ class PipelineFactory:
         }:
 
             def create_embedding_fn(
-                m: Model, p: ModelProfile, _g: Optional[Type[BaseModel]] = None
+                m: Model,
+                p: ModelProfile,
+                _g: Optional[Type[BaseModel]] = None,
+                metadata: Optional[dict] = None,
             ) -> Optional[Embeddings]:
                 # _g unused: embeddings creation does not use grammar
-                return self._create_embedding_pipeline(m, p)
+                return self._create_embedding_pipeline(m, p, metadata=metadata)
 
             pipeline = self.local_cache.get_or_create(
-                model, profile, priority, create_embedding_fn, None
+                model, profile, priority, create_embedding_fn, None, metadata=metadata
             )
             if not pipeline:
                 raise RuntimeError(
@@ -278,6 +293,7 @@ class PipelineFactory:
         model: Model,
         profile: ModelProfile,
         grammar: Optional[Type[BaseModel]] = None,
+        metadata: Optional[dict] = {},
     ) -> Optional[Union[BaseChatModel, Embeddings]]:
         """
         Create a pipeline instance based on model task and pipeline type.
@@ -295,22 +311,22 @@ class PipelineFactory:
                 self.logger.info(
                     f"🎯 Routing to _create_text_pipeline for vision model {model.name}"
                 )
-                return self._create_text_pipeline(model, profile, grammar)
+                return self._create_text_pipeline(model, profile, grammar, metadata)
             if model.task == ModelTask.TEXTTOEMBEDDINGS:
                 self.logger.info(
                     f"🎯 Routing to _create_embedding_pipeline for {model.name}"
                 )
-                return self._create_embedding_pipeline(model, profile)
+                return self._create_embedding_pipeline(model, profile, metadata)
             if model.task == ModelTask.TEXTTOIMAGE:
                 self.logger.info(
                     f"🎯 Routing to _create_image_pipeline for {model.name}"
                 )
-                return self._create_image_pipeline(model, profile)
+                return self._create_image_pipeline(model, profile, metadata)
             if model.task == ModelTask.IMAGETOIMAGE:
                 self.logger.info(
                     f"🎯 Routing to _create_image_to_image_pipeline for {model.name}"
                 )
-                return self._create_image_to_image_pipeline(model, profile)
+                return self._create_image_to_image_pipeline(model, profile, metadata)
             self.logger.error(f"Unsupported task type: {model.task}")
             raise RuntimeError(f"Unsupported task type: {model.task}")
         except Exception as e:
@@ -343,6 +359,7 @@ class PipelineFactory:
         model: Model,
         profile: ModelProfile,
         grammar: Optional[Type[BaseModel]] = None,
+        metadata: Optional[dict] = {},
     ) -> BaseChatModel:
         self.logger.info(
             f"Creating text pipeline for model: {model.name}, pipeline: {model.pipeline}"
@@ -352,23 +369,25 @@ class PipelineFactory:
             ChatLlamaCppPipeline,
         )
 
-        return ChatLlamaCppPipeline(model, profile, grammar)
+        return ChatLlamaCppPipeline(model, profile, grammar, metadata)
 
     def _create_embedding_pipeline(
         self,
         model: Model,
         profile: ModelProfile,
+        metadata: Optional[dict] = {},
     ) -> Optional[Embeddings]:
         from .pipelines.llamacpp.embed import (  # pylint: disable=import-outside-toplevel
             EmbedLlamaCppPipeline,
         )
 
-        return EmbedLlamaCppPipeline(model, profile)
+        return EmbedLlamaCppPipeline(model, profile, metadata=metadata)
 
     def _create_image_pipeline(
         self,
         model: Model,
         profile: ModelProfile,
+        metadata: Optional[dict] = {},
     ) -> Optional[BaseChatModel]:
         if model.pipeline == "FluxPipeline":
             try:
@@ -388,6 +407,7 @@ class PipelineFactory:
         self,
         model: Model,
         profile: ModelProfile,
+        metadata: Optional[dict] = {},
     ) -> Optional[BaseChatModel]:
         if model.pipeline == "FluxKontextPipeline":
             try:

@@ -281,19 +281,21 @@ class Resizer:
         # --- Component 2: KV Cache ---
         gqa_factor = n_kv_heads / n_heads if n_heads > 0 else 1
         bytes_per_token_per_layer = hidden_size * gqa_factor * 2 * 2
-        
+
         # Apply efficiency factors based on real-world measurements
         # The original formula significantly overestimates KV cache usage
         if model_size_b >= 30:
             kv_efficiency = 0.15  # Large models much more efficient
         elif model_size_b >= 13:
-            kv_efficiency = 0.4   # Medium models
+            kv_efficiency = 0.4  # Medium models
         elif model_size_b <= 4:
-            kv_efficiency = 0.8   # Small models closer to theoretical
+            kv_efficiency = 0.8  # Small models closer to theoretical
         else:
-            kv_efficiency = 0.5   # Default for 7B models
-            
-        kv_cache_bytes = gpu_layers_to_load * n_ctx * bytes_per_token_per_layer * kv_efficiency
+            kv_efficiency = 0.5  # Default for 7B models
+
+        kv_cache_bytes = (
+            gpu_layers_to_load * n_ctx * bytes_per_token_per_layer * kv_efficiency
+        )
         kv_cache_gb = kv_cache_bytes / (1024**3)
 
         # --- Component 3: Activation/Compute Buffer ---

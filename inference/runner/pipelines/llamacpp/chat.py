@@ -88,9 +88,10 @@ class ChatLlamaCppPipeline(BasePipeline):
         model: Model,
         profile: ModelProfile,
         grammar: Optional[Type[BaseModel]] = None,
+        metadata: Optional[dict] = {},
         **kwargs,
     ):
-        super().__init__(model, profile, grammar)
+        super().__init__(model, profile, grammar, metadata)
         self.user_config = kwargs.get("user_config", None)
         self._logger = llmmllogger.bind(
             component=self.__class__.__name__, model=model.name
@@ -195,7 +196,6 @@ class ChatLlamaCppPipeline(BasePipeline):
     def _identifying_params(self) -> Dict[str, Any]:
         return {
             "model_name": self.model.name,
-            "model_path": self.server_manager.get_gguf_path(),
             "server_port": self.server_manager.port,
             "pipeline_type": "langchain_chatopenai",
         }

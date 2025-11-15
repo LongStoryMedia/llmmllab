@@ -149,7 +149,7 @@ class BaseAgent(ABC, Generic[T]):
     def cleanup(self) -> None:
         """
         Clean up resources used by this agent.
-        
+
         Only unlocks pipeline but does NOT force it out of cache, allowing
         other components to reuse it. The pipeline remains cached based on
         the intelligent eviction strategy in LocalPipelineCacheManager.
@@ -202,6 +202,7 @@ class BaseAgent(ABC, Generic[T]):
                 self.profile,
                 priority,
                 grammar,
+                self._node_metadata.model_dump(),
             )
             # Mark that we have locked a pipeline that needs cleanup
             self._pipeline_locked = True

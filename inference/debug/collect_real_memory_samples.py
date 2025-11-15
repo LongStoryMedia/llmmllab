@@ -302,7 +302,7 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                     print("✅ Server force-killed")
             except Exception as shutdown_error:
                 print(f"⚠️  Error during server shutdown: {shutdown_error}")
-            
+
             # Additional cleanup - kill any remaining llama-server processes
             try:
                 result = subprocess.run(
@@ -330,11 +330,13 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
 
             # Wait for complete cleanup and verify
             time.sleep(4)
-            
+
             # Verify cleanup with memory check
             try:
                 final_memory = self._get_baseline_memory()
-                print(f"🔍 Post-cleanup memory: GPU0={final_memory[0]:.0f}MB, GPU1={final_memory[1]:.0f}MB, GPU2={final_memory[2]:.0f}MB")
+                print(
+                    f"🔍 Post-cleanup memory: GPU0={final_memory[0]:.0f}MB, GPU1={final_memory[1]:.0f}MB, GPU2={final_memory[2]:.0f}MB"
+                )
             except:
                 print("⚠️  Could not verify final memory state")
 
@@ -404,7 +406,7 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 model_name="Llama 3.2 3B",
                 param_size="3.2B",
                 gguf_path="/models/llama-chat-summary/llama-chat-summary-3.2-3b-q5_k_m.gguf",
-                context_size=4096,   # 4K
+                context_size=4096,  # 4K
                 batch_size=512,
                 gpu_layers=35,
                 notes="3.2B baseline 4K context",
@@ -414,7 +416,7 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 model_name="Llama 3.2 3B",
                 param_size="3.2B",
                 gguf_path="/models/llama-chat-summary/llama-chat-summary-3.2-3b-q5_k_m.gguf",
-                context_size=8192,   # 8K
+                context_size=8192,  # 8K
                 batch_size=512,
                 gpu_layers=35,
                 notes="3.2B baseline 8K context",
@@ -439,7 +441,6 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 gpu_layers=35,
                 notes="3.2B large 32K context",
             ),
-            
             # Large contexts for 3.2B
             TestConfiguration(
                 model_id="llama-chat-summary-3_2-3b",
@@ -456,12 +457,11 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 model_name="Llama 3.2 3B",
                 param_size="3.2B",
                 gguf_path="/models/llama-chat-summary/llama-chat-summary-3.2-3b-q5_k_m.gguf",
-                context_size=131072, # 128K
+                context_size=131072,  # 128K
                 batch_size=256,
                 gpu_layers=20,
                 notes="3.2B extreme 128K context",
             ),
-            
             # Batch size variations for 3.2B
             TestConfiguration(
                 model_id="llama-chat-summary-3_2-3b",
@@ -469,7 +469,7 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 param_size="3.2B",
                 gguf_path="/models/llama-chat-summary/llama-chat-summary-3.2-3b-q5_k_m.gguf",
                 context_size=8192,
-                batch_size=128,      # Very small batch
+                batch_size=128,  # Very small batch
                 gpu_layers=35,
                 notes="3.2B tiny batch 128",
             ),
@@ -479,7 +479,7 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 param_size="3.2B",
                 gguf_path="/models/llama-chat-summary/llama-chat-summary-3.2-3b-q5_k_m.gguf",
                 context_size=8192,
-                batch_size=1024,     # Large batch
+                batch_size=1024,  # Large batch
                 gpu_layers=35,
                 notes="3.2B large batch 1024",
             ),
@@ -489,11 +489,10 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 param_size="3.2B",
                 gguf_path="/models/llama-chat-summary/llama-chat-summary-3.2-3b-q5_k_m.gguf",
                 context_size=8192,
-                batch_size=2048,     # Very large batch
+                batch_size=2048,  # Very large batch
                 gpu_layers=25,
                 notes="3.2B huge batch 2048",
             ),
-            
             # GPU layer variations for 3.2B
             TestConfiguration(
                 model_id="llama-chat-summary-3_2-3b",
@@ -502,7 +501,7 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 gguf_path="/models/llama-chat-summary/llama-chat-summary-3.2-3b-q5_k_m.gguf",
                 context_size=8192,
                 batch_size=512,
-                gpu_layers=10,       # Few GPU layers
+                gpu_layers=10,  # Few GPU layers
                 notes="3.2B few GPU layers 10",
             ),
             TestConfiguration(
@@ -512,17 +511,16 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 gguf_path="/models/llama-chat-summary/llama-chat-summary-3.2-3b-q5_k_m.gguf",
                 context_size=8192,
                 batch_size=512,
-                gpu_layers=50,       # Many GPU layers
+                gpu_layers=50,  # Many GPU layers
                 notes="3.2B many GPU layers 50",
             ),
-            
             # === MEDIUM MODEL TESTS (4B Qwen3) ===
             TestConfiguration(
                 model_id="qwen3-4b",
                 model_name="Qwen3-4B",
                 param_size="4B",
                 gguf_path="/models/qwen3-4b/qwen3-4b-ud-q6-k-xl.gguf",
-                context_size=4096,   # 4K
+                context_size=4096,  # 4K
                 batch_size=512,
                 gpu_layers=25,
                 notes="4B baseline 4K context",
@@ -532,7 +530,7 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 model_name="Qwen3-4B",
                 param_size="4B",
                 gguf_path="/models/qwen3-4b/qwen3-4b-ud-q6-k-xl.gguf",
-                context_size=8192,   # 8K
+                context_size=8192,  # 8K
                 batch_size=512,
                 gpu_layers=25,
                 notes="4B baseline 8K context",
@@ -563,7 +561,7 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 param_size="4B",
                 gguf_path="/models/qwen3-4b/qwen3-4b-ud-q6-k-xl.gguf",
                 context_size=8192,
-                batch_size=1024,     # Large batch
+                batch_size=1024,  # Large batch
                 gpu_layers=35,
                 notes="4B large batch 1024",
             ),
@@ -573,18 +571,17 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 param_size="4B",
                 gguf_path="/models/qwen3-4b/qwen3-4b-ud-q6-k-xl.gguf",
                 context_size=8192,
-                batch_size=256,      # Small batch
+                batch_size=256,  # Small batch
                 gpu_layers=35,
                 notes="4B small batch 256",
             ),
-            
             # === VISION MODEL TESTS (2B with mmproj) ===
             TestConfiguration(
                 model_id="qwen3-vl-2b-thinking",
                 model_name="Qwen3-VL-2B",
                 param_size="2B",
                 gguf_path="/models/qwen3-vl-2b/qwen3-vl-2b-thinking-abliterated.gguf",
-                context_size=4096,   # 4K
+                context_size=4096,  # 4K
                 batch_size=512,
                 gpu_layers=25,
                 mmproj_path="/models/qwen3-vl-2b/mmproj.gguf",
@@ -595,7 +592,7 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 model_name="Qwen3-VL-2B",
                 param_size="2B",
                 gguf_path="/models/qwen3-vl-2b/qwen3-vl-2b-thinking-abliterated.gguf",
-                context_size=8192,   # 8K
+                context_size=8192,  # 8K
                 batch_size=512,
                 gpu_layers=25,
                 mmproj_path="/models/qwen3-vl-2b/mmproj.gguf",
@@ -618,19 +615,18 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 param_size="2B",
                 gguf_path="/models/qwen3-vl-2b/qwen3-vl-2b-thinking-abliterated.gguf",
                 context_size=8192,
-                batch_size=1024,     # Large batch
+                batch_size=1024,  # Large batch
                 gpu_layers=35,
                 mmproj_path="/models/qwen3-vl-2b/mmproj.gguf",
                 notes="VL-2B with mmproj large batch",
             ),
-            
             # === EXTREME CONTEXT TESTS (estimation validation) ===
             TestConfiguration(
                 model_id="llama-chat-summary-3_2-3b",
                 model_name="Llama 3.2 3B",
                 param_size="3.2B",
                 gguf_path="/models/llama-chat-summary/llama-chat-summary-3.2-3b-q5_k_m.gguf",
-                context_size=262144, # 256K
+                context_size=262144,  # 256K
                 batch_size=256,
                 gpu_layers=20,
                 notes="3.2B extreme 256K context",
@@ -640,7 +636,7 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 model_name="Llama 3.2 3B",
                 param_size="3.2B",
                 gguf_path="/models/llama-chat-summary/llama-chat-summary-3.2-3b-q5_k_m.gguf",
-                context_size=524288, # 512K
+                context_size=524288,  # 512K
                 batch_size=128,
                 gpu_layers=15,
                 notes="3.2B massive 512K context",
@@ -650,12 +646,11 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 model_name="Llama 3.2 3B",
                 param_size="3.2B",
                 gguf_path="/models/llama-chat-summary/llama-chat-summary-3.2-3b-q5_k_m.gguf",
-                context_size=1048576,# 1M
+                context_size=1048576,  # 1M
                 batch_size=64,
                 gpu_layers=10,
                 notes="3.2B ultimate 1M context",
             ),
-            
             # === MIXED PARAMETER STRESS TESTS ===
             TestConfiguration(
                 model_id="qwen3-4b",
@@ -663,7 +658,7 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 param_size="4B",
                 gguf_path="/models/qwen3-4b/qwen3-4b-ud-q6-k-xl.gguf",
                 context_size=65536,  # 64K
-                batch_size=128,      # Small batch for large context
+                batch_size=128,  # Small batch for large context
                 gpu_layers=20,
                 notes="4B stress test 64K + small batch",
             ),
@@ -674,7 +669,7 @@ print(f"ESTIMATE_GB:{{estimated_bytes / (1024**3):.3f}}")
                 gguf_path="/models/qwen3-vl-2b/qwen3-vl-2b-thinking-abliterated.gguf",
                 context_size=32768,  # 32K
                 batch_size=256,
-                gpu_layers=15,       # Fewer layers
+                gpu_layers=15,  # Fewer layers
                 mmproj_path="/models/qwen3-vl-2b/mmproj.gguf",
                 notes="VL-2B stress test 32K + fewer layers",
             ),

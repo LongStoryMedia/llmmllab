@@ -26,19 +26,12 @@ def is_langchain_tool_call(obj: Any) -> bool:
     """Check if an object is a LangChain tool call (request)."""
     # Handle dictionary format (LangChain native)
     if isinstance(obj, dict):
-        return (
-            "name" in obj
-            and "args" in obj
-            and isinstance(obj.get("args"), dict)
-        )
-    
+        return "name" in obj and "args" in obj and isinstance(obj.get("args"), dict)
+
     # Handle OpenAI ChatCompletionMessageFunctionToolCall format
-    if hasattr(obj, 'function') and hasattr(obj, 'id'):
-        return (
-            hasattr(obj.function, 'name')
-            and hasattr(obj.function, 'arguments')
-        )
-    
+    if hasattr(obj, "function") and hasattr(obj, "id"):
+        return hasattr(obj.function, "name") and hasattr(obj.function, "arguments")
+
     return False
 
 
@@ -73,41 +66,35 @@ def extract_tool_call_requests(message: BaseMessage) -> List[LangChainToolCall]:
     Returns:
         List of validated LangChain tool call requests
     """
-    if not has_tool_calls(message):
-        return []
-
     # Type narrowing - we know it has tool_calls at this point
     if isinstance(message, AIMessage) and message.tool_calls:
         requests = []
         for tc in message.tool_calls:
             if not is_langchain_tool_call(tc):
                 continue
-                
+
             # Handle dictionary format (LangChain native)
             if isinstance(tc, dict):
                 requests.append(
-                    LangChainToolCall(
-                        name=tc["name"], 
-                        args=tc["args"], 
-                        id=tc.get("id")
-                    )
+                    LangChainToolCall(name=tc["name"], args=tc["args"], id=tc.get("id"))
                 )
             # Handle OpenAI ChatCompletionMessageFunctionToolCall format
-            elif hasattr(tc, 'function') and hasattr(tc, 'id'):
+            elif hasattr(tc, "function") and hasattr(tc, "id"):
                 import json
+
                 try:
-                    args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                    args = (
+                        json.loads(tc.function.arguments)
+                        if tc.function.arguments
+                        else {}
+                    )
                 except json.JSONDecodeError:
                     args = {}
-                    
+
                 requests.append(
-                    LangChainToolCall(
-                        name=tc.function.name,
-                        args=args,
-                        id=tc.id
-                    )
+                    LangChainToolCall(name=tc.function.name, args=args, id=tc.id)
                 )
-        
+
         return requests
 
     return []

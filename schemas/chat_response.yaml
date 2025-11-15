@@ -26,12 +26,15 @@ properties:
     description: Specific indicator of how or why the generation finished
     enum:
       - "stop"
+      - "complete"
       - "length"
       - "error"
       - "load"
       - "unload"
       - "timeout"
       - "cancel"
+      - "tool_call"
+      - "unknown"
   total_duration:
     type: number
     description: Total time taken for the entire generation process in milliseconds

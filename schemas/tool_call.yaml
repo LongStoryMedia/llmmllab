@@ -27,7 +27,7 @@ properties:
     type: string
     description: "Error message if execution failed"
   execution_time_ms:
-    type: number
+    type: integer
     minimum: 0
     description: "Execution time in milliseconds"
   resource_usage:

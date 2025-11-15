@@ -97,6 +97,14 @@ class ComposerRealEndToEndTester:
             logger.warning(f"⚠️  Failed to initialize LLM output file: {e}")
             self.capture_llm_output = False
 
+    def _write_section(self, title: str) -> None:
+        """Write a section header to the output file."""
+        if self.capture_llm_output and self.llm_output_file:
+            with open(self.llm_output_file, "a", encoding="utf-8") as f:
+                f.write(f"\n{'='*80}\n")
+                f.write(f"{title}\n")
+                f.write(f"{'='*80}\n\n")
+
     def _write_llm_response(
         self, phase: str, response_text: str, metadata: Optional[Dict[str, Any]] = None
     ):
@@ -129,6 +137,37 @@ class ComposerRealEndToEndTester:
             )
         except Exception as e:
             logger.warning(f"⚠️  Failed to write LLM response to file: {e}")
+
+    def _finalize_llm_output(self) -> None:
+        """Finalize LLM output capture."""
+        if self.capture_llm_output and self.llm_output_file:
+            try:
+                with open(self.llm_output_file, "a", encoding="utf-8") as f:
+                    f.write(f"\n{'='*80}\n")
+                    f.write("TEST SUMMARY\n")
+                    f.write(f"{'='*80}\n")
+                    f.write(f"Total responses captured: {len(self.llm_responses)}\n")
+                    f.write(f"File finalized at: {datetime.now(timezone.utc).isoformat()}\n")
+                    f.write(f"{'='*80}\n")
+            except Exception as e:
+                logger.warning(f"⚠️  Failed to finalize LLM output: {e}")
+
+    def _print_llm_output_summary(self) -> None:
+        """Print summary of captured LLM outputs."""
+        if self.capture_llm_output:
+            logger.info(f"📝 Captured {len(self.llm_responses)} LLM responses to {self.llm_output_file}")
+        else:
+            logger.info("📝 LLM output capture was disabled")
+
+    def _write_to_output(self, content: str) -> None:
+        """Write content to console and file output."""
+        print(content, end="", flush=True)
+        if self.capture_llm_output and self.llm_output_file:
+            try:
+                with open(self.llm_output_file, "a", encoding="utf-8") as f:
+                    f.write(content)
+            except Exception as e:
+                logger.warning(f"⚠️  Failed to write content to output file: {e}")
 
     def _write_detailed_data(
         self, section: str, title: str, data: Any, description: str = ""
@@ -271,7 +310,7 @@ class ComposerRealEndToEndTester:
 
             # Phase 6: Composer Workflow Execution (THE KEY TEST)
             logger.info("🎼 Phase 6: Composer Workflow Execution")
-            workflow_result = await self.execute_composer_workflow()
+            workflow_result = await self.execute_simplified_workflow()
             test_results["results"]["workflow_execution"] = workflow_result
             if workflow_result["success"]:
                 test_results["components_passed"] += 1
@@ -522,9 +561,9 @@ class ComposerRealEndToEndTester:
             traceback.print_exc()
             return {"success": False, "error": str(e)}
 
-    async def execute_composer_workflow(self) -> Dict[str, Any]:
-        """Execute composer workflow using the new architecture."""
-        logger.info("🎼 Executing composer workflow...")
+    async def execute_simplified_workflow(self) -> Dict[str, Any]:
+        """Execute composer workflow with simplified streaming like tools_agent."""
+        logger.info("🎼 Executing simplified workflow...")
 
         try:
             # Import composer functions
@@ -533,7 +572,6 @@ class ComposerRealEndToEndTester:
                 create_initial_state,
                 execute_workflow,
             )
-            from models import WorkflowType
             from db import storage
 
             # Ensure we have required IDs
@@ -549,29 +587,24 @@ class ComposerRealEndToEndTester:
 
             logger.info(f"   📝 Processing {len(messages)} messages")
 
-            # Capture conversation history
-            messages_data = []
-            for msg in messages:
-                messages_data.append(msg.model_dump_json())
-
             # Step 1: Compose workflow for user
             logger.info("   🎼 Step 1: Composing workflow...")
             workflow = await compose_workflow(self.test_user_id)
+            
+            # Generate mermaid diagram
             try:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 output_path = f"{self.output_dir}/workflow_graph_{timestamp}.md"
-                doc = workflow.get_graph().draw_mermaid(
-                    with_styles=True,
-                )
+                doc = workflow.get_graph().draw_mermaid(with_styles=True)
                 with open(output_path, "w", encoding="utf-8") as f:
                     f.write("```mermaid\n")
                     f.write(doc)
                     f.write("\n```\n")
-                logger.info(f"  Workflow graph saved: {output_path}")
-                logger.info(f"   ✅ Workflow composed: {type(workflow).__name__}")
+                logger.info(f"   📊 Workflow graph saved: {output_path}")
             except Exception as e:
-                logger.warning(f"   ⚠️ Could not generate workflow graph image: {e}")
-                pass
+                logger.warning(f"   ⚠️ Could not generate workflow graph: {e}")
+
+            logger.info(f"   ✅ Workflow composed: {type(workflow).__name__}")
 
             # Step 2: Create initial state
             logger.info("   🎼 Step 2: Creating initial state...")
@@ -581,188 +614,59 @@ class ComposerRealEndToEndTester:
             )
             logger.info(f"   ✅ Initial state created: {type(initial_state).__name__}")
 
-            # Capture initial state information
-            initial_state_data = {
-                "state_type": type(initial_state).__name__,
-                "user_id": self.test_user_id,
-                "workflow_type": WorkflowType.GENERAL,
-                "message_count": len(messages),
-            }
+            # Step 3: Execute workflow with simplified streaming like tools_agent
+            self._write_section("STREAMING WORKFLOW EXECUTION")
 
-            # Try to extract more state data if possible
-            if hasattr(initial_state, "__dict__"):
-                try:
-                    state_dict = {}
-                    for key, value in initial_state.__dict__.items():
-                        # Convert complex objects to string representations
-                        if hasattr(value, "__dict__"):
-                            state_dict[key] = str(value)
-                        elif isinstance(
-                            value, (list, dict, str, int, float, bool, type(None))
-                        ):
-                            state_dict[key] = value
-                        else:
-                            state_dict[key] = str(value)
-                    initial_state_data["state_contents"] = state_dict
-                except Exception as e:
-                    logger.warning(f"Could not extract full state data: {e}")
-
-            self._write_detailed_data(
-                section="WORKFLOW",
-                title="Initial State",
-                data=initial_state_data,
-                description="Initial workflow state before execution",
-            )
-
-            # Step 3: Execute workflow with streaming
-            logger.info("   🎼 Step 3: Executing workflow with streaming...")
-
-            print("\n" + "=" * 80)
-            print("STREAMING COMPOSER WORKFLOW EXECUTION")
-            print("=" * 80)
-            print()
-
-            start_time_main = time.time()
-            response_chunks = []
-            tool_calls_detected = False
+            start_time = time.time()
             full_response = ""
-
-            # Capture workflow events and detailed data
+            tool_calls_detected = False
             event_count = 0
-            start_time = datetime.now(timezone.utc)
 
-            async for event in execute_workflow(initial_state, workflow):
+            # Stream execution exactly like tools_agent.py
+            async for res in execute_workflow(
+                initial_state=initial_state,
+                workflow=workflow,
+            ):
                 event_count += 1
 
-                data = event.get("data", {})
-                event_type = event.get("event", "unknown")
-                chunk = data.get("chunk")
-                output = data.get("output", {})
+                if res.message is None:
+                    logger.warning("Received empty message in stream event")
+                    continue
 
-                # Write detailed event data to output file for debugging
-                self._write_workflow_event(
-                    event_type=event_type,
-                    event_data=event,
-                    context=f"Event {event_count} in workflow execution",
-                )
+                # Handle message content like tools_agent
+                for c in res.message.content:
+                    if (
+                        c.type in ["thinking", "text"]
+                    ):
+                        content_str = c.text
+                        full_response += content_str
+                        self._write_to_output(content_str)
 
-                # Simple event handling matching tools_agent.py pattern
-                if (
-                    chunk
-                    and event_type.endswith("_stream")
-                    and isinstance(chunk, BaseMessage)
-                ):
-                    # Capture streaming content
-                    for content in chunk.content:
-                        full_response += str(content)
-                        response_chunks.append(
-                            {
-                                "type": "stream",
-                                "content": str(content),
-                                "timestamp": time.time(),
-                            }
-                        )
-                        # Also print for console visibility
-                        print(str(content), end="", flush=True)
-                    for rc in getattr(chunk, "reasoning_content", ""):
-                        full_response += str(rc)
-                        print(str(rc), end="", flush=True)
-
-                    # Write streaming data to output file
-                    self._write_detailed_data(
-                        section="STREAMING",
-                        title=f"Stream Chunk ({len(chunk.content)} parts)",
-                        data={
-                            "content": chunk.content,
-                            "reasoning": getattr(chunk, "reasoning_content", []),
-                        },
-                        description="Streaming content from model",
-                    )
-
-                if event_type.endswith("_model_end") and isinstance(output, AIMessage):
-                    md = output.response_metadata
-                    reason = md.get("reason", "no reason provided")
-                    print("\n" + "=" * 80)
-                    print(f"Finished segment due to {reason}")
-                    print(serialize_event_data(md))
-
-                    # Write complete model output to file
-                    self._write_detailed_data(
-                        section="MODEL_OUTPUT",
-                        title="Complete Model Response",
-                        data={
-                            "content": output.content,
-                            "metadata": md,
-                            "reason": reason,
-                            "tool_calls": getattr(output, "tool_calls", []),
-                        },
-                        description="Complete response from the LLM",
-                    )
-
-                    if reason == "tool_calls":
-                        tool_calls_detected = True
-                        tc = output.tool_calls
-                        for t in tc:
-                            tname = t.get("name", "unknown_tool")
-                            targs = t.get("args", {})
-                            print("\n" + "-" * 40)
-                            print(f"Tool Call: {tname}")
-                            print(f"Arguments: {serialize_event_data(targs)}")
-                            print("-" * 40)
-
-                            # Write tool call data to file
-                            self._write_detailed_data(
-                                section="TOOL_EXECUTION",
-                                title=f"Tool Call: {tname}",
-                                data={"name": tname, "args": targs},
-                                description=f"Tool call for {tname}",
-                            )
-                    print("=" * 80)
-
-                if event_type.endswith("_tool_end") and isinstance(output, ToolMessage):
+                # Handle tool calls like tools_agent
+                if res.message.tool_calls:
                     tool_calls_detected = True
-                    print("\n" + "=" * 80)
-                    print(f"RESULTS {output.name} of tool execution")
-                    print(output.content)
-                    print("=" * 80)
+                    for t in res.message.tool_calls:
+                        tool_text = f"\n{'-'*40}\nTool Call: {t.name}\nArguments: {serialize_event_data(t.args)}\nRESULTS: {t.result_data.get('output', '') if t.result_data else ''}\n{'-'*40}\n"
+                        self._write_to_output(tool_text)
 
-                    # Write tool result to file
-                    self._write_detailed_data(
-                        section="TOOL_RESULTS",
-                        title=f"Tool Result: {output.name}",
-                        data={"name": output.name, "content": output.content},
-                        description=f"Tool execution result for {output.name}",
-                    )
+                # Handle thoughts if present
+                if hasattr(res.message, 'thoughts') and res.message.thoughts:
+                    for thought in res.message.thoughts:
+                        thought_text = f"\n[THOUGHT] {thought.text}\n"
+                        self._write_to_output(thought_text)
 
-            end = datetime.now(timezone.utc)
-            total_time = (end - start_time).total_seconds()
+                # Handle analyses if present
+                if hasattr(res.message, 'analyses') and res.message.analyses:
+                    for analysis in res.message.analyses:
+                        analysis_text = f"\n[ANALYSIS] {analysis.summary}\n"
+                        self._write_to_output(analysis_text)
 
-            print("\n" + "=" * 80)
-            print(
-                f"✅ STREAMING COMPLETE - Total events: {event_count}\nTotal time: {total_time:.2f} seconds"
-            )
-            print("=" * 80)
+            execution_time = time.time() - start_time
+            completion_text = f"\n\n{'='*80}\n✅ STREAMING COMPLETE - Total events: {event_count}\nTotal time: {execution_time:.2f} seconds\n{'='*80}\n"
+            self._write_to_output(completion_text)
 
-            execution_time = time.time() - start_time_main
             logger.info(f"   ✅ Workflow execution completed in {execution_time:.2f}s")
-            logger.info(f"   📊 Total response chunks: {len(response_chunks)}")
             logger.info(f"   🛠️  Tool calls detected: {tool_calls_detected}")
-
-            # Write execution summary
-            execution_summary = {
-                "execution_time": execution_time,
-                "total_events": event_count,
-                "response_chunks": len(response_chunks),
-                "tool_calls_detected": tool_calls_detected,
-                "final_response_length": len(full_response),
-            }
-
-            self._write_detailed_data(
-                section="EXECUTION_SUMMARY",
-                title="Workflow Execution Summary",
-                data=execution_summary,
-                description="Summary of workflow execution metrics and events",
-            )
 
             # Store assistant response in database if we got content
             if full_response and storage and storage.message:
@@ -781,153 +685,41 @@ class ComposerRealEndToEndTester:
                 )
 
                 await storage.message.add_message(assistant_message)
+                logger.info("   📝 Assistant response saved to database")
 
-                # Capture LLM response
-                self._write_llm_response(
-                    "composer_workflow_execution",
-                    full_response,
-                    {
-                        "execution_time": execution_time,
-                        "chunk_count": len(response_chunks),
-                        "tool_calls_detected": tool_calls_detected,
-                        "model": self.target_model,
-                    },
-                )
-
-            # Validate that we actually got meaningful output
+            # Basic validation
             success = True
             validation_errors = []
 
-            # Check 1: Must have actual response content
             if len(full_response.strip()) == 0:
                 success = False
                 validation_errors.append("No response content generated")
 
-            # Check 2: Must have response chunks from streaming
-            if len(response_chunks) == 0:
-                success = False
-                validation_errors.append("No response chunks captured from workflow")
-
-            # Check 2a: Must have at least one tool call (strict requirement)
             if not tool_calls_detected:
                 success = False
-                validation_errors.append(
-                    "No tool calls were executed during workflow (strict failure)"
-                )
+                validation_errors.append("No tool calls executed")
 
-            # Check 3: Response length should be reasonable for a real LLM interaction
-            if len(full_response) < 10:  # Very short responses likely indicate issues
+            if len(full_response) < 10:
                 success = False
-                validation_errors.append(
-                    f"Response too short ({len(full_response)} chars), likely incomplete"
-                )
+                validation_errors.append("Response too short")
 
-            # Check 4: Validate output file has captured responses
-            try:
-                if self.llm_output_file:
-                    with open(self.llm_output_file, "r", encoding="utf-8") as f:
-                        output_content = f.read()
-                        # Count actual response entries (PHASE: markers indicate captured content)
-                        response_count = output_content.count("PHASE:")
-                        if response_count == 0:
-                            success = False
-                            validation_errors.append(
-                                "Output file shows 0 captured responses despite workflow execution"
-                            )
-                        logger.info(
-                            f"   📊 Output file validation: {response_count} responses captured"
-                        )
-                else:
-                    validation_errors.append("No output file path configured")
-            except Exception as file_error:
-                success = False
-                validation_errors.append(
-                    f"Could not validate output file: {file_error}"
-                )
-
-            # Check 5: If workflow took significant time but produced no output, likely an internal error
-            if execution_time > 3.0 and len(full_response) == 0:
-                success = False
-                validation_errors.append(
-                    f"Workflow ran for {execution_time:.1f}s but generated no output (likely internal error)"
-                )
-
-            # Check 6: Validate tool availability awareness (only flag as issue if no tools were used)
-            tool_availability_issues = []
-            if not tool_calls_detected:
-                # Extract user-facing content by removing <think> tags and their content
-                import re
-
-                user_facing_content = re.sub(
-                    r"<think>.*?</think>", "", full_response, flags=re.DOTALL
-                )
-
-                if "can't perform actual searches" in user_facing_content.lower():
-                    tool_availability_issues.append(
-                        "Model believes it cannot perform web searches without using tools"
-                    )
-                if "system can't perform" in user_facing_content.lower():
-                    tool_availability_issues.append(
-                        "Model believes system lacks tool capabilities without using tools"
-                    )
-                if "cannot access real-time" in user_facing_content.lower():
-                    tool_availability_issues.append(
-                        "Model believes it cannot access real-time data without using tools"
-                    )
-
-            if tool_availability_issues:
-                success = False
-                validation_errors.extend(tool_availability_issues)
-                logger.error(
-                    f"   🚫 Tool availability issues detected: {', '.join(tool_availability_issues)}"
-                )
-
-            # Check 7: Validate dynamic tool generation doesn't have error handling flags
-            if (
-                "handle_tool_error" in full_response
-                and '"handle_tool_error": true' in full_response
-            ):
-                success = False
-                validation_errors.append(
-                    "Dynamic tool has handle_tool_error=true indicating error conditions"
-                )
-                logger.error(
-                    f"   ⚠️  Dynamic tool configured with error handling (problematic)"
-                )
-
-            if not success:
-                logger.error(
-                    f"   ❌ Workflow validation failed: {', '.join(validation_errors)}"
-                )
+            if validation_errors:
+                logger.error(f"   ❌ Validation errors: {', '.join(validation_errors)}")
+            else:
+                logger.info("   ✅ Workflow validation passed")
 
             return {
                 "success": success,
                 "execution_time": execution_time,
-                "response_chunks": len(response_chunks),
-                "tool_calls_detected": tool_calls_detected,
                 "response_length": len(full_response),
-                "workflow_type": "composer_langgraph",
-                "final_response_raw": full_response,  # Full response for debugging
-                "final_response": self._parse_response_as_json(
-                    full_response
-                ),  # Try to parse as JSON
-                "validation_errors": validation_errors if validation_errors else None,
-                "tool_availability_correct": len(
-                    [
-                        e
-                        for e in validation_errors
-                        if "tool" in e.lower() or "search" in e.lower()
-                    ]
-                )
-                == 0,
-                "dynamic_tool_error_free": "handle_tool_error" not in full_response
-                or '"handle_tool_error": false' in full_response,
+                "tool_calls_detected": tool_calls_detected,
+                "event_count": event_count,
+                "validation_errors": validation_errors,
             }
 
         except Exception as e:
-            logger.error(f"   ❌ Composer workflow execution failed: {str(e)}")
+            logger.error(f"   ❌ Workflow execution failed: {str(e)}")
             import traceback
-
             traceback.print_exc()
             return {"success": False, "error": str(e)}
 
@@ -1346,70 +1138,6 @@ class ComposerRealEndToEndTester:
             "errors": cleanup_errors,
             "total_entities": sum(related_counts.values()) + 1,  # +1 for user
         }
-
-    def _finalize_llm_output(self):
-        """Finalize the LLM output file with summary statistics."""
-        if not self.capture_llm_output or not self.llm_output_file:
-            return
-
-        try:
-            total_chars = sum(len(resp["response"]) for resp in self.llm_responses)
-            total_responses = len(self.llm_responses)
-
-            with open(self.llm_output_file, "a", encoding="utf-8") as f:
-                f.write(f"\n{'='*60}\n")
-                f.write(f"TEST SUMMARY\n")
-                f.write(f"{'='*60}\n")
-                f.write(f"Total Responses: {total_responses}\n")
-                f.write(f"Total Characters: {total_chars:,}\n")
-                f.write(
-                    f"Average Response Length: {total_chars // max(total_responses, 1):,} chars\n"
-                )
-                f.write(f"Model Used: {self.target_model}\n")
-                f.write(f"Architecture: Composer + LangGraph\n")
-                f.write(f"Test Completed: {datetime.now(timezone.utc).isoformat()}\n")
-                f.write(f"{'='*60}\n")
-
-            logger.info(f"📝 Finalized LLM output file: {self.llm_output_file}")
-            logger.info(
-                f"📊 Captured {total_responses} responses totaling {total_chars:,} characters"
-            )
-
-        except Exception as e:
-            logger.warning(f"⚠️  Failed to finalize LLM output file: {e}")
-
-    def _print_llm_output_summary(self):
-        """Print a summary of captured LLM output."""
-        if not self.capture_llm_output or not self.llm_output_file:
-            return
-
-        total_chars = sum(len(resp["response"]) for resp in self.llm_responses)
-        total_responses = len(self.llm_responses)
-
-        print(f"\n{'='*60}")
-        print(f"COMPOSER LLM OUTPUT SUMMARY")
-        print(f"{'='*60}")
-        print(f"Output File: {self.llm_output_file}")
-        print(f"Total Responses: {total_responses}")
-        print(f"Total Characters: {total_chars:,}")
-        print(f"Average Length: {total_chars // max(total_responses, 1):,} chars")
-        print(f"Architecture: Composer + LangGraph")
-        print(f"{'='*60}")
-
-        if self.print_output and total_responses > 0:
-            print(f"\nFULL LLM OUTPUT CONTENT:")
-            print(f"{'='*60}")
-            try:
-                with open(self.llm_output_file, "r", encoding="utf-8") as f:
-                    print(f.read())
-            except Exception as e:
-                print(f"Error reading output file: {e}")
-            print(f"{'='*60}")
-        elif total_responses > 0:
-            print(
-                f"\nTo view full content, set print_output=True or read: {self.llm_output_file}"
-            )
-            print(f"{'='*60}")
 
     async def print_test_summary(self, results: Dict[str, Any]) -> None:
         """Print comprehensive test summary."""

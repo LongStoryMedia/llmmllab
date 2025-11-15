@@ -31,6 +31,7 @@ class EmbedLlamaCppPipeline(Embeddings):
         model: Model,
         profile: ModelProfile,
         user_config: Optional[UserConfig] = None,
+        metadata: Optional[dict] = {},
     ):
         """Initialize embeddings with persistent server."""
         self.model = model

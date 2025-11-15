@@ -6,12 +6,16 @@ across different graph types and state models, extracting the streaming logic
 from ComposerService into a generic, reusable component.
 """
 
+import json
+from enum import StrEnum
 from typing import (
     Any,
     AsyncGenerator,
     AsyncIterator,
     Dict,
+    List,
     Optional,
+    cast,
 )
 from datetime import datetime, timezone
 
@@ -20,8 +24,31 @@ from pydantic import BaseModel
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.runnables.schema import StreamEvent, EventData, StandardStreamEvent
+from langchain_core.messages import BaseMessage, AIMessage, ToolMessage
 
+from models import (
+    IntentAnalysis,
+    MessageContentType,
+    MessageRole,
+    Message,
+    MessageContent,
+    ChatResponse,
+    ModelProfileType,
+    Thought,
+    ToolCall,
+)
+
+from runner.pipelines.llamacpp.chat import ReasoningAwareAIMessageChunk
 from utils.logging import llmmllogger
+
+
+class StreamingState(StrEnum):
+    """Enum for streaming workflow execution states."""
+
+    THINKING = "thinking"
+    EXECUTING = "executing"
+    RESPONDING = "responding"
+    ANALYZING = "analyzing"
 
 
 class WorkflowExecutor:
@@ -74,7 +101,7 @@ class WorkflowExecutor:
         thread_id: Optional[str] = None,
         enrich_events: bool = True,
         context_name: Optional[str] = None,
-    ) -> AsyncIterator[StreamEvent]:
+    ) -> AsyncIterator[ChatResponse]:
         """
         Execute a compiled workflow with streaming output.
 
@@ -92,6 +119,7 @@ class WorkflowExecutor:
         Yields:
             Dict[str, Any]: Stream events from workflow execution
         """
+        start_time = datetime.now(timezone.utc)
         try:
             # Prepare state for execution
             if isinstance(initial_state, dict):
@@ -108,6 +136,14 @@ class WorkflowExecutor:
             # Create config if not provided
             if config is None and thread_id is not None:
                 config = self.create_thread_config(thread_id)
+
+            state: StreamingState = StreamingState.RESPONDING
+            analyses_buffer = ""
+            tool_calls_timer: Dict[str, Dict[str, datetime]] = {}
+            tool_calls: Dict[str, ToolCall] = {}
+            thoughts: Dict[str, Thought] = {}
+            analyses: Dict[str, IntentAnalysis] = {}
+            message_contents: Dict[str, MessageContent] = {}
 
             # Stream workflow events
             async for event in workflow.astream_events(
@@ -128,21 +164,195 @@ class WorkflowExecutor:
                         },
                     )
 
-                # self.logger.debug(f"Workflow event: {event}")
-                yield event
+                data = event.get("data", {})
+                event_type = event.get("event", "unknown")
+                chunk = data.get("chunk")
+                output = data.get("output", {})
+                event_name = event.get("name", "unknown")
+                run_id = event.get("run_id", "unknown")
+                new_state = state
+
+                res = ChatResponse(
+                    message=Message(
+                        role=MessageRole.ASSISTANT,
+                        content=[],
+                        thoughts=[],
+                        tool_calls=[],
+                        analyses=[],
+                    )
+                )
+
+                # make linter happy
+                assert res.message
+                assert res.message.content is not None
+                assert res.message.tool_calls is not None
+                assert res.message.analyses is not None
+                assert res.message.thoughts is not None
+
+                if event_type == "on_chat_model_start" or event_type == "on_llm_start":
+                    md = event.get("metadata", {})
+                    task = md.get("task", "Primary")
+                    if task == ModelProfileType.Analysis.name:
+                        new_state = StreamingState.ANALYZING
+
+                elif event_type == "on_chat_model_end" or event_type == "on_llm_end":
+                    if state == StreamingState.ANALYZING:
+                        analysis_dict = json.loads(analyses_buffer)
+                        analyses[run_id] = IntentAnalysis(**analysis_dict)
+                        analyses_buffer = ""
+                elif (
+                    event_type == "on_chat_model_stream"
+                    or event_type == "on_llm_stream"
+                ) and isinstance(chunk, AIMessage):
+                    if state == StreamingState.ANALYZING:
+                        for content in self._parse_content(chunk.content):
+                            res.message.content.append(
+                                MessageContent(
+                                    type=MessageContentType.ANALYSIS, text=content
+                                )
+                            )
+                            analyses_buffer += content
+                    if hasattr(chunk, "reasoning_content"):
+                        new_state = StreamingState.THINKING
+                        reasoning_chunk = cast(ReasoningAwareAIMessageChunk, chunk)
+                        res.message.thoughts.append(
+                            Thought(text=reasoning_chunk.reasoning_content)
+                        )
+                        res.message.content.append(
+                            MessageContent(
+                                type=MessageContentType.THINKING,
+                                text=reasoning_chunk.reasoning_content,
+                            )
+                        )
+                    if chunk.content is not None:
+                        new_state = StreamingState.RESPONDING
+                        for content in self._parse_content(chunk.content):
+                            res.message.content.append(
+                                MessageContent(
+                                    type=MessageContentType.TEXT, text=content
+                                )
+                            )
+
+                elif (
+                    event_type.endswith("_model_end") or event_type.endswith("_llm_end")
+                ) and isinstance(output, AIMessage):
+                    md = output.response_metadata or {}
+                    reason = md.get("finish_reason") or "unknown"
+                    res.done = True
+                    res.finish_reason = reason  # type: ignore
+
+                elif event_type.endswith("_tool_start"):
+                    self.logger.info(
+                        "Tool call started",
+                        extra={"tool_name": event_name, "run_id": run_id},
+                    )
+                    tool_calls_timer[run_id] = {"start": datetime.now(timezone.utc)}
+                    tool_calls[run_id] = ToolCall(
+                        name=event_name,
+                        args=data.get("input", {}),
+                        execution_id=run_id,
+                    )
+                elif event_type.endswith("_tool_end") and isinstance(
+                    output, ToolMessage
+                ):
+                    end_time = datetime.now(timezone.utc)
+                    start_time_tc = tool_calls_timer.get(run_id, {}).get("start")
+                    duration_ms = int(
+                        (end_time - start_time_tc).total_seconds() * 1000
+                        if start_time_tc
+                        else 0
+                    )
+
+                    tool_call = tool_calls.get(run_id)
+                    if tool_call is None:
+                        self.logger.warning(
+                            "Tool call end event without matching start",
+                            extra={"run_id": run_id, "tool_name": event_name},
+                        )
+                        tool_call = ToolCall(
+                            name=event_name,
+                            args=data.get("input", {}),
+                            execution_id=run_id,
+                        )
+                    tool_call.success = True
+                    tool_call.result_data = output.model_dump()
+                    tool_call.execution_time_ms = duration_ms
+                    tool_call.execution_id = run_id
+                    tool_calls[run_id] = tool_call
+                    res.message.content.append(
+                        MessageContent(
+                            type=MessageContentType.TOOL_RESULT,
+                            text=str(output.content) or "",
+                        )
+                    )
+                    res.message.tool_calls.append(tool_call)
+
+                if new_state != state:
+                    if state == StreamingState.THINKING:
+                        thoughts[run_id] = Thought(text=thoughts_buffer)
+                        thoughts_buffer = ""
+                    elif state == StreamingState.ANALYZING:
+                        analysis_dict = json.loads(analyses_buffer)
+                        analyses[run_id] = IntentAnalysis(**analysis_dict)
+                        analyses_buffer = ""
+                    state = new_state
+
+                yield res
 
         except Exception as e:
             self.logger.error(
                 "Workflow execution failed", extra={"error": str(e)}, exc_info=True
             )
-            exevt: StandardStreamEvent = {
-                "event": "workflow_error",
-                "data": {"error": e},
-                "run_id": thread_id if thread_id else "unknown",
-                "parent_ids": [],
-                "name": "workflow_execution",
-            }
-            yield exevt
+            end_time = datetime.now(timezone.utc)
+            total_duration = (end_time - start_time).total_seconds() * 1000.0
+            yield ChatResponse(
+                message=Message(
+                    role=MessageRole.ASSISTANT,
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT,
+                            text="Sorry, I could not complete your request.",
+                        )
+                    ],
+                ),
+                done=True,
+                finish_reason="error",
+                total_duration=total_duration,
+            )
+
+        yield ChatResponse(
+            message=Message(
+                role=MessageRole.ASSISTANT,
+                content=[
+                    MessageContent(
+                        type=MessageContentType.TEXT,
+                        text="",
+                    )
+                ],
+                thoughts=list(thoughts.values()),
+                tool_calls=list(tool_calls.values()),
+                analyses=list(analyses.values()),
+            ),
+            done=True,
+            finish_reason="complete",
+            total_duration=(datetime.now(timezone.utc) - start_time).total_seconds()
+            * 1000.0,
+        )
+
+    def _parse_content(self, content: str | List[str | Dict[str, Any]]) -> List[str]:
+        """
+        Parse message content into a list of strings.
+
+        Args:
+            content: Content which can be a string or list of strings/dicts
+
+        Returns:
+            List[str]: Parsed list of string content
+        """
+        if isinstance(content, str):
+            return [content]
+        else:
+            return [str(c) for c in content]
 
     def _enrich_event(self, event: StreamEvent, context_name: str) -> StreamEvent:
         """
@@ -233,7 +443,7 @@ async def stream_workflow(
     config: Optional[RunnableConfig] = None,
     logger: Optional[Any] = None,
     context: str = "workflow_stream",
-) -> AsyncIterator[StreamEvent]:
+) -> AsyncIterator[ChatResponse]:
     """
     Convenience function for streaming workflow execution.
 

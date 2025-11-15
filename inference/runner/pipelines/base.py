@@ -43,6 +43,7 @@ class BasePipeline(BaseChatModel, ABC):
         model: Model,
         profile: ModelProfile,
         grammar: Optional[Type[BaseModel]],
+        metadata: Optional[dict] = {},
     ):
         """Base LlamaCpp pipeline implementation.
 
@@ -64,7 +65,8 @@ class BasePipeline(BaseChatModel, ABC):
             metadata={
                 "model_id": model.id,
                 "profile_id": profile.id,
-                "grammar": grammar.__name__ if grammar else None,
+                "grammar": grammar.__name__ if grammar else "None",
+                **(metadata or {}),
             },
             model=model,  # type: ignore
             profile=profile,  # type: ignore

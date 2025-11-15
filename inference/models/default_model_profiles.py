@@ -67,7 +67,7 @@ DEFAULT_PRIMARY_PROFILE = ModelProfile(
         min_p=0.01,
         max_tokens=500000,
         n_parts=-1,
-        batch_size=4096,  # Conservative starting batch size for 32B model
+        batch_size=8192,  # Conservative starting batch size for 32B model
         stop=["<|im_end|>"],
         think=True,
     ),

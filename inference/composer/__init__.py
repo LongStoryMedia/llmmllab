@@ -24,7 +24,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 from langchain_core.runnables.schema import StreamEvent
 
-from models import Message, WorkflowType
+from models import Message, WorkflowType, ChatResponse
 
 from pydantic import BaseModel
 from utils.logging import llmmllogger
@@ -120,7 +120,7 @@ async def create_initial_state(
 async def execute_workflow(
     initial_state: BaseModel,
     workflow: CompiledStateGraph,
-) -> AsyncIterator[StreamEvent]:
+) -> AsyncIterator[ChatResponse]:
     """
     Execute a compiled workflow with the given initial state.
 

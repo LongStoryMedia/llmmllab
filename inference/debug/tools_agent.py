@@ -102,7 +102,7 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
         MessageContent(
             type=MessageContentType.TEXT,
             text=query
-            or "What do you see in this image? Please describe it briefly, then search the web for similar images and provide links to at least two relevant sources.",
+            or "What do you see in this image? Please describe it briefly, then search the web for similar images and provide links to at least two relevant sources. Also, find 3 recent news articles related to the content of the image and provide a brief summary of each along with their links, titles, and publication dates.",
         )
     )
 
@@ -145,68 +145,31 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
         print("=" * 80)
         print()
 
-        message_count = 0
-
-        processing = False
-
         # Stream the graph execution
-        async for chunk in execute_workflow(
+        async for res in execute_workflow(
             initial_state=tools_state,
             workflow=tools_agent_subgraph.graph,
         ):
-            data = chunk.get("data", {})
-            event = chunk.get("event", "unknown")
-            chunk = data.get("chunk")
-            output = data.get("output", {})
+            if res.message is None:
+                logger.warning("Received empty message in stream event")
+                continue
 
-            message_count += 1
+            for c in res.message.content:
+                if (
+                    c.type == MessageContentType.THINKING
+                    or c.type == MessageContentType.TEXT
+                ):
+                    print(c.text, end="", flush=True)
 
-            if processing:
-                continue  # Skip until current tool call processing is done
-
-            if chunk and event.endswith("_stream"):
-                if isinstance(chunk, AIMessage):
-                    # Print message content
-                    for content in chunk.content:
-                        print(str(content), end="", flush=True)
-                    for rc in getattr(chunk, "reasoning_content", ""):
-                        print(str(rc), end="", flush=True)
-                else:
-                    print(f"NON AI CHUNK: {serialize_event_data(chunk)}")
-
-            if event.endswith("_model_end") and isinstance(output, AIMessage):
-                md = output.response_metadata
-                reason = md.get("reason", "no reason provided")
-                print("\n" + "=" * 80)
-                print(
-                    f"Finished segment due to {reason}",
-                )
-                if reason == "tool_calls":
-                    tc = output.tool_calls
-                    for t in tc:
-                        tname = t.get("name", "unknown_tool")
-                        targs = t.get("args", {})
-                        print("\n" + "-" * 40)
-                        print(f"Tool Call: {tname}")
-                        print(f"Arguments: {serialize_event_data(targs)}")
-                        print("-" * 40)
-                print("=" * 80)
-
-            if event.endswith("_tool_end") and isinstance(output, ToolMessage):
-                print("\n" + "=" * 80)
-                print(
-                    f"RESULTS {output.name} of tool execution",
-                )
-                print(output.content)
-                print("=" * 80)
-
-        end = datetime.datetime.now(datetime.timezone.utc)
-        total_time = (end - timestamp).total_seconds()
-        print("\n" + "=" * 80)
-        print(
-            f"✅ STREAMING COMPLETE - Total message events: {message_count}\nTotal time: {total_time:.2f} seconds"
-        )
-        print("=" * 80)
+            if res.message.tool_calls:
+                for t in res.message.tool_calls:
+                    print("\n" + "-" * 40)
+                    print(f"Tool Call: {t.name}")
+                    print(f"Arguments: {serialize_event_data(t.args)}")
+                    print(
+                        f"RESULTS: {t.result_data.get('output', '') if t.result_data else ''}"
+                    )
+                    print("-" * 40)
 
         logger.info("🎉 Streaming test completed successfully")
 

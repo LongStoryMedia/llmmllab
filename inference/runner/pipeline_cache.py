@@ -158,11 +158,12 @@ class LocalPipelineCacheManager:
         profile: ModelProfile,
         priority: PipelinePriority,
         create_fn: Callable[
-            [Model, ModelProfile, Optional[Type[BaseModel]]],
+            [Model, ModelProfile, Optional[Type[BaseModel]], Optional[dict]],
             Optional[BaseChatModel | Embeddings],
         ],
         grammar: Optional[Type[BaseModel]] = None,
         user_config: Optional[UserConfig] = None,
+        metadata: Optional[dict] = {},
     ) -> BaseChatModel | Embeddings:
         model_id = model.id or model.model
         with self._lock:
@@ -235,7 +236,7 @@ class LocalPipelineCacheManager:
                     f"Insufficient memory for local model {model.name}: need {required/1e9:.2f}GB"
                 )
 
-        pipeline = create_fn(model, profile, grammar)
+        pipeline = create_fn(model, profile, grammar, metadata)
         if not pipeline:
             raise RuntimeError(f"Failed to create pipeline for {model.name}")
 
