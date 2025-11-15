@@ -5,7 +5,8 @@ This package contains specialized subgraphs that provide isolated execution
 environments for specific task types with minimal state overhead.
 """
 
-from .tools_agent import ToolsAgentSubgraph, ToolsState
+from .tools_agent import ToolsAgentSubgraph
+from composer.graph.state import ToolsState
 from .planning_intent import PlanningIntentSubgraph, PlanningIntentState
 
 __all__ = [
