@@ -591,16 +591,29 @@ class ComposerRealEndToEndTester:
             logger.info("   🎼 Step 1: Composing workflow...")
             workflow = await compose_workflow(self.test_user_id)
             
-            # Generate mermaid diagram
+            # Generate mermaid diagram and set as output file
             try:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 output_path = f"{self.output_dir}/workflow_graph_{timestamp}.md"
+                
+                # Set this as our LLM output file for consolidated output
+                if self.capture_llm_output:
+                    self.llm_output_file = output_path
+                
                 doc = workflow.get_graph().draw_mermaid(with_styles=True)
                 with open(output_path, "w", encoding="utf-8") as f:
+                    f.write("# Composer E2E Test Results\n\n")
+                    f.write(f"**Test started at:** {datetime.now(timezone.utc).isoformat()}\n")
+                    f.write(f"**Target Model:** {self.target_model or 'auto-detect'}\n")
+                    f.write(f"**User ID:** {self.test_user_id}\n\n")
+                    f.write("## Workflow Graph\n\n")
                     f.write("```mermaid\n")
                     f.write(doc)
-                    f.write("\n```\n")
+                    f.write("\n```\n\n")
+                    f.write("## LLM Execution Output\n\n")
                 logger.info(f"   📊 Workflow graph saved: {output_path}")
+                if self.capture_llm_output:
+                    logger.info(f"   📝 LLM output will be captured to: {output_path}")
             except Exception as e:
                 logger.warning(f"   ⚠️ Could not generate workflow graph: {e}")
 
@@ -633,14 +646,16 @@ class ComposerRealEndToEndTester:
                     logger.warning("Received empty message in stream event")
                     continue
 
-                # Handle message content like tools_agent
+                # Handle message content like tools_agent (filter out [THOUGHT] content)
                 for c in res.message.content:
                     if (
                         c.type in ["thinking", "text"]
                     ):
                         content_str = c.text
-                        full_response += content_str
-                        self._write_to_output(content_str)
+                        # Filter out [THOUGHT] content for clean output
+                        if not content_str.startswith("[THOUGHT]"):
+                            full_response += content_str
+                            self._write_to_output(content_str)
 
                 # Handle tool calls like tools_agent
                 if res.message.tool_calls:
@@ -649,11 +664,7 @@ class ComposerRealEndToEndTester:
                         tool_text = f"\n{'-'*40}\nTool Call: {t.name}\nArguments: {serialize_event_data(t.args)}\nRESULTS: {t.result_data.get('output', '') if t.result_data else ''}\n{'-'*40}\n"
                         self._write_to_output(tool_text)
 
-                # Handle thoughts if present
-                if hasattr(res.message, 'thoughts') and res.message.thoughts:
-                    for thought in res.message.thoughts:
-                        thought_text = f"\n[THOUGHT] {thought.text}\n"
-                        self._write_to_output(thought_text)
+                # Skip thoughts - we only want clean content output
 
                 # Handle analyses if present
                 if hasattr(res.message, 'analyses') and res.message.analyses:
