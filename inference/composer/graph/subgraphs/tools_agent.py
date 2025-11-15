@@ -198,35 +198,22 @@ class ToolsAgentSubgraph:
             # Transform to agent state
             tools_state = self.transform_to_tools_state(main_state)
 
-            # Use streaming execution instead of ainvoke to prevent connection timeouts
-            logger.info("🔄 Executing agent subgraph with streaming to prevent timeouts")
-            
-            result = None
+            # Execute the agent subgraph with extended timeout
+            timeout_seconds = 600  # Increased from 300 to 600 seconds
+            logger.info("🔄 Executing agent subgraph with ainvoke")
+
             try:
-                # Use the same execution method as tools_agent.py
-                from composer import execute_workflow
-                
-                async for stream_result in execute_workflow(
-                    initial_state=tools_state,
-                    workflow=self.graph,
-                ):
-                    # We only need the final result, not the streaming updates
-                    if hasattr(stream_result, 'done') and stream_result.done:
-                        # Convert ChatResponse to expected format
-                        result = {
-                            "messages": []
-                        }
-                        if stream_result.message:
-                            result["messages"] = [message_to_lc_message(stream_result.message)]
-                        break
-                        
-                # Fallback if no final result received through streaming
-                if result is None:
-                    logger.warning("No final result from streaming execution, using fallback")
-                    result = {"messages": []}
-                        
+                result = await asyncio.wait_for(
+                    self.graph.ainvoke(tools_state), timeout=timeout_seconds
+                )
+                logger.info("🔄 Agent subgraph ainvoke completed successfully")
+            except asyncio.TimeoutError:
+                logger.error(
+                    f"❌ Agent subgraph execution timed out after {timeout_seconds} seconds"
+                )
+                return Command(update={})
             except Exception as e:
-                logger.error(f"❌ Agent subgraph streaming execution failed: {e}")
+                logger.error(f"❌ Agent subgraph ainvoke execution failed: {e}")
                 return Command(update={})
 
             # Transform results back to main state updates
