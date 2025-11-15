@@ -160,7 +160,9 @@ def lc_message_to_message(
         logger.error(f"Role: {role}, Content: {content}")
         raise
 
-    logger.debug(f"Converted LC message to Message: role={msg.role}, content_count={len(msg.content)}")
+    logger.debug(
+        f"Converted LC message to Message: role={msg.role}, content_count={len(msg.content)}"
+    )
 
     return msg
 
@@ -236,7 +238,9 @@ def convert_lc_message_content_to_message_format(
                             )
                         )
                     except Exception as e:
-                        logger.warning(f"Failed to create TOOL_CALL MessageContent: {e}")
+                        logger.warning(
+                            f"Failed to create TOOL_CALL MessageContent: {e}"
+                        )
                 if item.get("type") == "text":
                     try:
                         content.append(
@@ -268,7 +272,9 @@ def convert_lc_message_content_to_message_format(
                             )
                         )
                     except Exception as e:
-                        logger.warning(f"Failed to create fallback TEXT MessageContent: {e}")
+                        logger.warning(
+                            f"Failed to create fallback TEXT MessageContent: {e}"
+                        )
             else:
                 # String content item
                 try:
@@ -293,7 +299,7 @@ def convert_lc_message_content_to_message_format(
             logger.error(f"Failed to create simple text MessageContent: {e}")
             # Fallback to empty list if all else fails
             content = []
-    
+
     # Ensure we always return at least one content item
     if not content:
         logger.warning("No content items created, adding empty text content")
@@ -304,7 +310,7 @@ def convert_lc_message_content_to_message_format(
                 url=None,
             )
         ]
-    
+
     return content
 
 

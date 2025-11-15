@@ -102,7 +102,7 @@ class PlanningIntentSubgraph:
         self.classifier_agent.cleanup()
 
         return {
-            "intent_analyses": intent_analyses,
+            "intent_classification": intent_analyses,
             "complexity_score": complexity_score,
         }
 

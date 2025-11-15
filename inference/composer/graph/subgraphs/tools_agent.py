@@ -15,7 +15,7 @@ from typing import Optional
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.types import Command
-from composer.graph import WorkflowState, assemble_context_messages, WorkflowExecutor
+from composer.graph import WorkflowState, assemble_context_messages
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
 from models import ChatResponse, Message, PipelinePriority
@@ -154,7 +154,6 @@ class ToolsAgentSubgraph:
     async def execute(
         self,
         state: WorkflowState,
-        executor: WorkflowExecutor,
     ) -> Command:
         """Execute the agent subgraph and return Command with state updates."""
         try:
@@ -163,13 +162,7 @@ class ToolsAgentSubgraph:
                 return Command(update={})
 
             # Execute the agent subgraph directly with WorkflowState
-            async for event in executor.stream_workflow(
-                initial_state=state,
-                workflow=self.graph,
-            ):
-                if event.done and event.finish_reason == "completed":
-                    # State was already updated in _agent_node, no need for additional updates
-                    break
+            result = await self.graph.ainvoke(state)
 
             # Return empty update since state was mutated directly
             logger.info("🔄 Agent subgraph completed")

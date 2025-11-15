@@ -89,7 +89,8 @@ class ToolCollectionNode:
             )
 
         except Exception as e:
-            self.logger.error(f"Tool collection failed: {e}")
+            self.logger.error(f"Tool collection failed: {e}", exc_info=True)
+            raise
 
         return state
 

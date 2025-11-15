@@ -48,16 +48,16 @@ class AnalysisStorage:
             # Use provided connection or acquire a new one
             if conn is None:
                 async with self.typed_pool.acquire() as connection:
-                    return await self._add_analysis(intent_analysis, connection)
+                    return await self._add_analysis(intent_analysis, connection, created_at)
             else:
-                return await self._add_analysis(intent_analysis, conn)
+                return await self._add_analysis(intent_analysis, conn, created_at)
 
         except Exception as e:
             self.logger.error(f"Error adding analysis for message {message_id}: {e}")
             return None
 
     async def _add_analysis(
-        self, intent_analysis: IntentAnalysis, conn: TypedConnection
+        self, intent_analysis: IntentAnalysis, conn: TypedConnection, created_at: Optional[datetime] = None
     ) -> Optional[int]:
         """
         Internal method to add analysis using a specific connection.
@@ -118,6 +118,7 @@ class AnalysisStorage:
             intent_analysis.requires_custom_tools,  # $11
             intent_analysis.tool_complexity_score,  # $12
             computational_requirements_json,  # $13
+            created_at,  # $14
         )
 
         if row:

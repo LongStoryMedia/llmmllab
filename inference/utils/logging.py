@@ -42,7 +42,7 @@ def serialize_event_data(
             try:
                 # For BaseModel objects, get the dict and recursively process it
                 # Use mode='json' to ensure enums are properly serialized as string values
-                model_dict = obj.model_dump(exclude_none=True, mode='json')
+                model_dict = obj.model_dump(exclude_none=True, mode="json")
                 return _serialize_recursive(model_dict, depth + 1)
             except Exception as e:
                 return f"<BaseModel_error:{str(e)}>"
