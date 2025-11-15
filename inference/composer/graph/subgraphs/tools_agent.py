@@ -12,7 +12,7 @@ Standard architecture:
 """
 
 from typing import Optional
-from langgraph.graph import StateGraph, START
+from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.types import Command
 from composer.graph import WorkflowState, assemble_context_messages, WorkflowExecutor
@@ -27,12 +27,18 @@ from utils.logging import llmmllogger, serialize_event_data
 logger = llmmllogger.bind(component="ToolsAgentSubgraph")
 
 
-def should_continue_tool_calls(message: Message) -> bool:
-    """Determine if the agent should continue making tool calls based on the message."""
-    # Example logic: continue if there are tool calls remaining
-    if hasattr(message, "tool_calls") and message.tool_calls:
-        return True
-    return False
+def should_continue_tool_calls(state: WorkflowState) -> str:
+    """Determine if the agent should continue making tool calls based on the last message."""
+    # Get the last message from state
+    if not state.messages:
+        return "end"
+    
+    last_message = state.messages[-1]
+    
+    # Check if the last message has tool calls
+    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        return "tools"
+    return "end"
 
 
 class ToolsAgentSubgraph:
@@ -76,7 +82,11 @@ class ToolsAgentSubgraph:
                 # Standard conditional routing using LangChain's tools_condition
                 builder.add_conditional_edges(
                     "agent",
-                    should_continue_tool_calls,  # Standard LangChain routing
+                    should_continue_tool_calls,
+                    {
+                        "tools": "tools",
+                        "end": END
+                    }
                 )
                 builder.add_edge("tools", "agent")
 
