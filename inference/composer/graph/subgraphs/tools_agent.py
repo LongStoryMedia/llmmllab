@@ -111,11 +111,27 @@ class ToolsAgentSubgraph:
 
             logger.info(f"📨 ChatOpenAI response: {type(response)}")
             logger.debug(f"Response content: {serialize_event_data(response)}")
+            
             if response.message:
                 if response.message.tool_calls:
                     logger.info(
                         f"🔧 Generated {len(response.message.tool_calls)} tool calls"
                     )
+                
+                # Validate the Message object before adding to state
+                if not hasattr(response.message, 'role') or not response.message.role:
+                    logger.error("Message missing role field")
+                    return state
+                if not hasattr(response.message, 'content') or not response.message.content:
+                    logger.error("Message missing content field")
+                    return state
+                
+                # Set conversation_id if missing
+                if not response.message.conversation_id and hasattr(state, 'conversation_id'):
+                    response.message.conversation_id = state.conversation_id
+                
+                logger.debug(f"Adding message to state: role={response.message.role}, content_count={len(response.message.content)}")
+                
                 # Convert our Message back to LangChain format and add to state
                 state.messages.append(response.message)
 
@@ -142,29 +158,12 @@ class ToolsAgentSubgraph:
                 workflow=self.graph,
             ):
                 if event.done and event.finish_reason == "completed":
-                    # Validate that event.message is a proper Message object
-                    if hasattr(event, 'message') and event.message:
-                        if isinstance(event.message, Message):
-                            state.messages.append(event.message)
-                            logger.debug(f"Added Message to state: role={event.message.role}")
-                        else:
-                            logger.warning(f"event.message is not a Message object, got: {type(event.message)}")
-                            # Try to convert if it's a dict
-                            if isinstance(event.message, dict):
-                                try:
-                                    from models import Message as MessageModel
-                                    message = MessageModel(**event.message)
-                                    state.messages.append(message)
-                                    logger.debug(f"Converted dict to Message and added to state")
-                                except Exception as e:
-                                    logger.error(f"Failed to convert dict to Message: {e}")
-                            else:
-                                logger.error(f"Cannot handle event.message of type: {type(event.message)}")
+                    # State was already updated in _agent_node, no need for additional updates
                     break
 
-            # Return updated messages from the result
+            # Return empty update since state was mutated directly
             logger.info("🔄 Agent subgraph completed")
-            return Command(update=state)
+            return Command(update={})
 
         except Exception as e:
             logger.error(f"Agent subgraph execution failed: {e}", exc_info=True)
