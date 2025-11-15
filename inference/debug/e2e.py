@@ -671,6 +671,8 @@ class ComposerRealEndToEndTester:
             res_txt = ""
             # Store assistant response in database if we got content
             if full_response and full_response.message:
+                # Ensure conversation_id is set on the response message
+                full_response.message.conversation_id = self.test_conversation_id
                 await storage.message.add_message(full_response.message)
                 logger.info("   📝 Assistant response saved to database")
                 for c in full_response.message.content:
