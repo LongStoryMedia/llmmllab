@@ -34,7 +34,7 @@ from models import (
     Message,
 )
 from runner import PipelineFactory
-from utils.logging import llmmllogger
+from utils.logging import llmmllogger, serialize_event_data
 from utils.response import create_streaming_chunk, create_error_response
 from utils.message_conversion import (
     normalize_message_input,
@@ -387,7 +387,12 @@ class BaseAgent(ABC, Generic[T]):
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
         system_prompt += f"""
 TEMPORAL CONTEXT:
-The current date is {current_date}. While this is likely past your training data, you can use this information to provide better responses. If the user asks for the date or time, respond with this date.
+The current date is {current_date}. 
+While this is likely past your training data, you can use this information to provide better responses. If the user asks for the date or time, respond with this date.
+
+TOOL USE:
+If you intend to use any tools, ensure you follow the tool usage guidelines provided in the system prompt.
+If there are not results from tool usage, you must attempt to call the tool again as it is likely that the format is incorrect.
 """
 
         return system_prompt, convo
@@ -545,11 +550,15 @@ The current date is {current_date}. While this is likely past your training data
                 last_message = result
 
             assert isinstance(last_message, BaseMessage)
+            self.logger.debug(
+                f"Agent run result ({type(last_message)}): {serialize_event_data(last_message)}"
+            )
             msg = lc_message_to_message(last_message)
             response = ChatResponse(
                 done=True,
                 message=msg,
             )
+
             response.channels = self._node_metadata.model_dump()
             return response
 

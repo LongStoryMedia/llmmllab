@@ -140,11 +140,11 @@ class WorkflowExecutor:
 
             state: StreamingState = StreamingState.RESPONDING
             analyses_buffer = ""
+            contents_buffer = ""
             tool_calls_timer: Dict[str, Dict[str, datetime]] = {}
             tool_calls: Dict[str, ToolCall] = {}
             thoughts: Dict[str, Thought] = {}
             analyses: Dict[str, IntentAnalysis] = {}
-            message_contents: Dict[str, MessageContent] = {}
 
             # Stream workflow events
             async for event in workflow.astream_events(
@@ -213,11 +213,6 @@ class WorkflowExecutor:
                 ) and isinstance(chunk, AIMessage):
                     if state == StreamingState.ANALYZING:
                         for content in self._parse_content(chunk.content):
-                            res.message.content.append(
-                                MessageContent(
-                                    type=MessageContentType.ANALYSIS, text=content
-                                )
-                            )
                             analyses_buffer += content
                     if hasattr(chunk, "reasoning_content"):
                         new_state = StreamingState.THINKING
@@ -239,10 +234,15 @@ class WorkflowExecutor:
                                     type=MessageContentType.TEXT, text=content
                                 )
                             )
+                            contents_buffer += content
 
                 elif (
                     event_type.endswith("_model_end") or event_type.endswith("_llm_end")
                 ) and isinstance(output, AIMessage):
+                    self.logger.debug(
+                        "Model output received",
+                        extra={"output_content": str(output.content)},
+                    )
                     md = output.response_metadata or {}
                     reason = md.get("finish_reason") or "unknown"
                     res.done = True
@@ -327,6 +327,7 @@ class WorkflowExecutor:
                 total_duration=total_duration,
             )
 
+        self.logger.info("Workflow execution completed. Producing final output.")
         yield ChatResponse(
             message=Message(
                 role=MessageRole.ASSISTANT,

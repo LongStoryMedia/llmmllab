@@ -5,13 +5,6 @@ import os
 import sys
 from typing import List, Optional
 
-from langchain_core.messages import (
-    HumanMessage,
-    SystemMessage,
-    AIMessage,
-    BaseMessage,
-    ToolMessage,
-)
 from models import (
     Message,
     MessageContent,
@@ -165,6 +158,13 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
                         f"RESULTS: {t.result_data.get('output', '') if t.result_data else ''}"
                     )
                     print("-" * 40)
+
+            if res.done and res.finish_reason == "completed":
+                print("\n\n" + "=" * 80)
+                print(
+                    f"TOOLS AGENT SUBGRAPH EXECUTION COMPLETED: {serialize_event_data(res)}"
+                )
+                print("=" * 80 + "\n")
 
         logger.info("🎉 Streaming test completed successfully")
 

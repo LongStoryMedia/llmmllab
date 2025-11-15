@@ -240,7 +240,11 @@ class PlanningIntentSubgraph:
         complexity_score = state.complexity_score or 3
 
         generated_todos = await self._generate_todos_from_intent(
-            intent_analyses, messages, user_id or "", conversation_id or 0, complexity_score
+            intent_analyses,
+            messages,
+            user_id or "",
+            conversation_id or 0,
+            complexity_score,
         )
 
         logger.info(f"� Intent: Generated {len(generated_todos)} todos")
@@ -418,12 +422,22 @@ class PlanningIntentSubgraph:
 
             # Return the updated state fields
             logger.info("🔍 Intent: Analysis completed")
-            return Command(update={
-                "intent_classification": result.get("intent_classification", main_state.intent_classification),
-                "generated_todos": result.get("generated_todos", main_state.generated_todos),
-                "complexity_score": result.get("complexity_score", main_state.complexity_score),
-            })
+            return Command(
+                update={
+                    "intent_classification": result.get(
+                        "intent_classification", main_state.intent_classification
+                    ),
+                    "generated_todos": result.get(
+                        "generated_todos", main_state.generated_todos
+                    ),
+                    "complexity_score": result.get(
+                        "complexity_score", main_state.complexity_score
+                    ),
+                }
+            )
 
         except Exception as e:
-            logger.error(f"Intent analysis subgraph execution failed: {e}", exc_info=True)
+            logger.error(
+                f"Intent analysis subgraph execution failed: {e}", exc_info=True
+            )
             return Command(update={})

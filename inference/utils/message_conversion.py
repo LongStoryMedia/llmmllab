@@ -24,7 +24,7 @@ from models import (
     MessageContent,
     MessageContentType,
 )
-from .logging import llmmllogger
+from .logging import llmmllogger, serialize_event_data
 from .tool_call_types import is_langchain_tool_call
 from .tool_call_extraction import (
     extract_tool_calls_from_message_content,
@@ -114,12 +114,13 @@ def message_to_lc_message(message: Message) -> BaseMessage:
 
 
 def lc_message_to_message(
-    base_message: BaseMessage, conversation_id: Optional[int] = None
+    base_message: BaseMessage,
+    conversation_id: Optional[int] = None,
 ) -> Message:
     """Convert a LangChain BaseMessage to a Message object."""
 
     # Determine role based on message type
-    if isinstance(base_message, AIMessage):
+    if isinstance(base_message, (AIMessage)):
         role = MessageRole.ASSISTANT
     elif isinstance(base_message, HumanMessage):
         role = MessageRole.USER
@@ -135,13 +136,33 @@ def lc_message_to_message(
     content = convert_lc_message_content_to_message_format(base_message.content)
     tool_calls = extract_tool_calls_from_langchain_message(base_message)
 
-    return Message(
-        role=role,
-        content=content,
-        conversation_id=conversation_id,
-        created_at=datetime.now(timezone.utc),
-        tool_calls=tool_calls,
-    )
+    # Validate that content is not empty - ensure at least empty text content
+    if not content:
+        content = [
+            MessageContent(
+                type=MessageContentType.TEXT,
+                text="",
+                url=None,
+            )
+        ]
+
+    # Create message with explicit field validation
+    try:
+        msg = Message(
+            role=role,
+            content=content,
+            conversation_id=conversation_id,
+            created_at=datetime.now(timezone.utc),
+            tool_calls=tool_calls,
+        )
+    except Exception as e:
+        logger.error(f"Failed to create Message object: {e}")
+        logger.error(f"Role: {role}, Content: {content}")
+        raise
+
+    logger.debug(f"Converted LC message to Message: role={msg.role}, content_count={len(msg.content)}")
+
+    return msg
 
 
 def messages_to_lc_messages(messages: List[Message]) -> List[BaseMessage]:
@@ -206,52 +227,84 @@ def convert_lc_message_content_to_message_format(
         for item in lc_content:
             if isinstance(item, dict):
                 if is_langchain_tool_call(item.get("content", {})):
-                    content.append(
-                        MessageContent(
-                            type=MessageContentType.TOOL_CALL,
-                            text=json.dumps(item.get("content", {})),
-                            url=None,
+                    try:
+                        content.append(
+                            MessageContent(
+                                type=MessageContentType.TOOL_CALL,
+                                text=json.dumps(item.get("content", {})),
+                                url=None,
+                            )
                         )
-                    )
+                    except Exception as e:
+                        logger.warning(f"Failed to create TOOL_CALL MessageContent: {e}")
                 if item.get("type") == "text":
-                    content.append(
-                        MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=item.get("text", ""),
-                            url=None,
+                    try:
+                        content.append(
+                            MessageContent(
+                                type=MessageContentType.TEXT,
+                                text=item.get("text", ""),
+                                url=None,
+                            )
                         )
-                    )
+                    except Exception as e:
+                        logger.warning(f"Failed to create TEXT MessageContent: {e}")
                 elif item.get("type") == "image_url":
-                    content.append(
-                        MessageContent(
-                            type=MessageContentType.IMAGE,
-                            text=None,
-                            url=item.get("image_url", {}).get("url", ""),
+                    try:
+                        content.append(
+                            MessageContent(
+                                type=MessageContentType.IMAGE,
+                                text=None,
+                                url=item.get("image_url", {}).get("url", ""),
+                            )
                         )
-                    )
+                    except Exception as e:
+                        logger.warning(f"Failed to create IMAGE MessageContent: {e}")
                 else:
                     # Unknown content type, treat as text
+                    try:
+                        content.append(
+                            MessageContent(
+                                type=MessageContentType.TEXT, text=str(item), url=None
+                            )
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to create fallback TEXT MessageContent: {e}")
+            else:
+                # String content item
+                try:
                     content.append(
                         MessageContent(
                             type=MessageContentType.TEXT, text=str(item), url=None
                         )
                     )
-            else:
-                # String content item
-                content.append(
-                    MessageContent(
-                        type=MessageContentType.TEXT, text=str(item), url=None
-                    )
-                )
+                except Exception as e:
+                    logger.warning(f"Failed to create string MessageContent: {e}")
     else:
         # Simple string content
+        try:
+            content = [
+                MessageContent(
+                    type=MessageContentType.TEXT,
+                    text=str(lc_content) if lc_content else "",
+                    url=None,
+                )
+            ]
+        except Exception as e:
+            logger.error(f"Failed to create simple text MessageContent: {e}")
+            # Fallback to empty list if all else fails
+            content = []
+    
+    # Ensure we always return at least one content item
+    if not content:
+        logger.warning("No content items created, adding empty text content")
         content = [
             MessageContent(
                 type=MessageContentType.TEXT,
-                text=str(lc_content) if lc_content else "",
+                text="",
                 url=None,
             )
         ]
+    
     return content
 
 

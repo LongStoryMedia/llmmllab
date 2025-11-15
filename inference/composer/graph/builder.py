@@ -383,7 +383,6 @@ class GraphBuilder:
             workflow.add_node("chat_summary", chat_summary_node)
             workflow.add_node("search_summary", search_summary_node)
 
-            # Create tools agent subgraph that shares WorkflowState
             tools_agent_subgraph = ToolsAgentSubgraph(
                 tool_registry=tool_registry,
                 chat_agent=primary_agent,
@@ -393,10 +392,16 @@ class GraphBuilder:
                 classifier_agent=classifier_agent
             )
 
-            # Add subgraph directly as node (shared state schema)
-            workflow.add_node("tools_agent", tools_agent_subgraph.graph)
-            
-            # Create wrapper for intent subgraph (different state schema)
+            # Create wrapper for subgraph execution
+            async def tools_agent_node(state: WorkflowState) -> WorkflowState:
+                """Execute the intelligent tools agent subgraph and return updated state."""
+                command = await tools_agent_subgraph.execute(state)
+                if command and command.update:
+                    for key, value in command.update.items():
+                        setattr(state, key, value)
+                return state
+
+            # Create wrapper for intent subgraph
             async def intent_analysis_node(state: WorkflowState) -> WorkflowState:
                 """Execute the intent analysis subgraph and return updated state."""
                 command = await intent_analysis_subgraph.execute(state)
@@ -404,7 +409,8 @@ class GraphBuilder:
                     for key, value in command.update.items():
                         setattr(state, key, value)
                 return state
-                
+
+            workflow.add_node("tools_agent", tools_agent_node)
             workflow.add_node("intent_analysis", intent_analysis_node)
 
             # Build a logical workflow graph structure:
