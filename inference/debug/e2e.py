@@ -19,12 +19,26 @@ import time
 import uuid
 import json
 import os
+import traceback
+import argparse
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 from langchain_core.messages import BaseMessage, AIMessage, ToolMessage
 
 from utils.logging import llmmllogger, serialize_event_data
+from models.message import Message
+from models.message_role import MessageRole
+from models.message_content import MessageContent, MessageContentType
+from models.conversation import Conversation
+from db import storage
+from composer import (
+    compose_workflow,
+    create_initial_state,
+    execute_workflow,
+    initialize_composer,
+    get_composer_service
+)
 
 # Configure logging
 logger = llmmllogger.bind(component="composer_e2e_test")
@@ -147,7 +161,9 @@ class ComposerRealEndToEndTester:
                     f.write("TEST SUMMARY\n")
                     f.write(f"{'='*80}\n")
                     f.write(f"Total responses captured: {len(self.llm_responses)}\n")
-                    f.write(f"File finalized at: {datetime.now(timezone.utc).isoformat()}\n")
+                    f.write(
+                        f"File finalized at: {datetime.now(timezone.utc).isoformat()}\n"
+                    )
                     f.write(f"{'='*80}\n")
             except Exception as e:
                 logger.warning(f"⚠️  Failed to finalize LLM output: {e}")
@@ -155,7 +171,9 @@ class ComposerRealEndToEndTester:
     def _print_llm_output_summary(self) -> None:
         """Print summary of captured LLM outputs."""
         if self.capture_llm_output:
-            logger.info(f"📝 Captured {len(self.llm_responses)} LLM responses to {self.llm_output_file}")
+            logger.info(
+                f"📝 Captured {len(self.llm_responses)} LLM responses to {self.llm_output_file}"
+            )
         else:
             logger.info("📝 LLM output capture was disabled")
 
@@ -293,7 +311,7 @@ class ComposerRealEndToEndTester:
             # (user creation and config retrieval are part of the conversation flow)
             user_profile_result = {
                 "success": conversation_result["success"],
-                "model_name": "qwen3-30b-a3b-q4-k-m",  # Set the expected model name
+                "model_name": self.target_model,
             }
             test_results["results"]["user_profile_creation"] = user_profile_result
             if user_profile_result["success"]:
@@ -310,7 +328,7 @@ class ComposerRealEndToEndTester:
 
             # Phase 6: Composer Workflow Execution (THE KEY TEST)
             logger.info("🎼 Phase 6: Composer Workflow Execution")
-            workflow_result = await self.execute_simplified_workflow()
+            workflow_result = await self.execute_workflow()
             test_results["results"]["workflow_execution"] = workflow_result
             if workflow_result["success"]:
                 test_results["components_passed"] += 1
@@ -333,9 +351,7 @@ class ComposerRealEndToEndTester:
         except Exception as e:
             logger.error(f"❌ Test execution failed: {str(e)}")
             test_results["error"] = str(e)
-            import traceback
-
-            traceback.print_exc()
+            logger.error(f"Test execution traceback: {traceback.format_exc()}")
 
         finally:
             # Always attempt cleanup - but track as a component that can fail the test
@@ -379,7 +395,6 @@ class ComposerRealEndToEndTester:
 
         try:
             # Initialize real database connection
-            from db import storage
 
             # Build connection string from environment variables
             db_host = os.getenv("DB_HOST", "localhost")
@@ -416,8 +431,6 @@ class ComposerRealEndToEndTester:
 
         try:
             # Import and initialize composer
-            from composer import initialize_composer, get_composer_service
-
             await initialize_composer()
             logger.info("   ✅ Composer service initialized")
 
@@ -433,9 +446,7 @@ class ComposerRealEndToEndTester:
 
         except Exception as e:
             logger.error(f"   ❌ Composer initialization failed: {str(e)}")
-            import traceback
-
-            traceback.print_exc()
+            logger.error(f"Composer initialization traceback: {traceback.format_exc()}")
             return {"success": False, "error": str(e)}
 
     async def create_real_conversation(self) -> Dict[str, Any]:
@@ -443,8 +454,6 @@ class ComposerRealEndToEndTester:
         logger.info("💬 Creating real conversation...")
 
         try:
-            from db import storage
-
             # Ensure storage is available
             if not storage or not storage.pool or not storage.conversation:
                 raise RuntimeError("Storage components not available")
@@ -458,8 +467,6 @@ class ComposerRealEndToEndTester:
             logger.info(f"   ✅ Ensured user exists: {self.test_user_id}")
 
             # Create real conversation
-            from models.conversation import Conversation
-            from datetime import datetime
 
             test_conversation = Conversation(
                 id=0,  # Will be set by database
@@ -483,9 +490,7 @@ class ComposerRealEndToEndTester:
 
         except Exception as e:
             logger.error(f"   ❌ Conversation creation failed: {str(e)}")
-            import traceback
-
-            traceback.print_exc()
+            logger.error(f"Conversation creation traceback: {traceback.format_exc()}")
             return {"success": False, "error": str(e)}
 
     async def create_real_message_with_tools(
@@ -497,10 +502,6 @@ class ComposerRealEndToEndTester:
         logger.info("📝 Creating real message with tool context...")
 
         try:
-            from db import storage
-            from models.message import Message
-            from models.message_role import MessageRole
-            from models.message_content import MessageContent, MessageContentType
 
             # Ensure storage is available
             if not storage or not storage.message:
@@ -556,23 +557,15 @@ class ComposerRealEndToEndTester:
 
         except Exception as e:
             logger.error(f"   ❌ Message creation failed: {str(e)}")
-            import traceback
-
-            traceback.print_exc()
+            logger.error(f"Message creation traceback: {traceback.format_exc()}")
             return {"success": False, "error": str(e)}
 
-    async def execute_simplified_workflow(self) -> Dict[str, Any]:
+    async def execute_workflow(self) -> Dict[str, Any]:
         """Execute composer workflow with simplified streaming like tools_agent."""
         logger.info("🎼 Executing simplified workflow...")
 
         try:
             # Import composer functions
-            from composer import (
-                compose_workflow,
-                create_initial_state,
-                execute_workflow,
-            )
-            from db import storage
 
             # Ensure we have required IDs
             if not self.test_conversation_id or not storage or not storage.message:
@@ -590,20 +583,22 @@ class ComposerRealEndToEndTester:
             # Step 1: Compose workflow for user
             logger.info("   🎼 Step 1: Composing workflow...")
             workflow = await compose_workflow(self.test_user_id)
-            
+
             # Generate mermaid diagram and set as output file
             try:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 output_path = f"{self.output_dir}/workflow_graph_{timestamp}.md"
-                
+
                 # Set this as our LLM output file for consolidated output
                 if self.capture_llm_output:
                     self.llm_output_file = output_path
-                
+
                 doc = workflow.get_graph().draw_mermaid(with_styles=True)
                 with open(output_path, "w", encoding="utf-8") as f:
                     f.write("# Composer E2E Test Results\n\n")
-                    f.write(f"**Test started at:** {datetime.now(timezone.utc).isoformat()}\n")
+                    f.write(
+                        f"**Test started at:** {datetime.now(timezone.utc).isoformat()}\n"
+                    )
                     f.write(f"**Target Model:** {self.target_model or 'auto-detect'}\n")
                     f.write(f"**User ID:** {self.test_user_id}\n\n")
                     f.write("## Workflow Graph\n\n")
@@ -628,7 +623,7 @@ class ComposerRealEndToEndTester:
             logger.info(f"   ✅ Initial state created: {type(initial_state).__name__}")
 
             # Step 3: Execute workflow with simplified streaming like tools_agent
-            self._write_section("STREAMING WORKFLOW EXECUTION")
+            self._write_section("## STREAMING WORKFLOW EXECUTION")
 
             start_time = time.time()
             full_response = ""
@@ -646,31 +641,21 @@ class ComposerRealEndToEndTester:
                     logger.warning("Received empty message in stream event")
                     continue
 
-                # Handle message content like tools_agent (filter out [THOUGHT] content)
-                for c in res.message.content:
-                    if (
-                        c.type in ["thinking", "text"]
-                    ):
-                        content_str = c.text
-                        # Filter out [THOUGHT] content for clean output
-                        if not content_str.startswith("[THOUGHT]"):
-                            full_response += content_str
-                            self._write_to_output(content_str)
-
                 # Handle tool calls like tools_agent
                 if res.message.tool_calls:
                     tool_calls_detected = True
                     for t in res.message.tool_calls:
                         tool_text = f"\n{'-'*40}\nTool Call: {t.name}\nArguments: {serialize_event_data(t.args)}\nRESULTS: {t.result_data.get('output', '') if t.result_data else ''}\n{'-'*40}\n"
                         self._write_to_output(tool_text)
+                # Handle message content like tools_agent (filter out [THOUGHT] content)
+                for c in res.message.content:
+                    if c.type == MessageContentType.ANALYSIS:
+                        self._write_to_output(f"\n[ANALYSIS]: {c.text}\n")
+                    if c.type in [MessageContentType.TEXT, MessageContentType.THINKING]:
+                        content_str = c.text
+                        self._write_to_output(content_str)
 
                 # Skip thoughts - we only want clean content output
-
-                # Handle analyses if present
-                if hasattr(res.message, 'analyses') and res.message.analyses:
-                    for analysis in res.message.analyses:
-                        analysis_text = f"\n[ANALYSIS] {analysis.summary}\n"
-                        self._write_to_output(analysis_text)
 
             execution_time = time.time() - start_time
             completion_text = f"\n\n{'='*80}\n✅ STREAMING COMPLETE - Total events: {event_count}\nTotal time: {execution_time:.2f} seconds\n{'='*80}\n"
@@ -681,9 +666,6 @@ class ComposerRealEndToEndTester:
 
             # Store assistant response in database if we got content
             if full_response and storage and storage.message:
-                from models.message import Message
-                from models.message_role import MessageRole
-                from models.message_content import MessageContent, MessageContentType
 
                 assistant_message = Message(
                     id=None,
@@ -730,8 +712,7 @@ class ComposerRealEndToEndTester:
 
         except Exception as e:
             logger.error(f"   ❌ Workflow execution failed: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Workflow execution traceback: {traceback.format_exc()}")
             return {"success": False, "error": str(e)}
 
     async def validate_real_outputs(self) -> Dict[str, Any]:
@@ -739,8 +720,6 @@ class ComposerRealEndToEndTester:
         logger.info("✅ Validating real outputs...")
 
         try:
-            from db import storage
-
             # Ensure we have required components
             if (
                 not storage
@@ -914,8 +893,6 @@ class ComposerRealEndToEndTester:
         cleanup_errors = []
 
         try:
-            from db import storage
-
             # Ensure we have storage available
             if not storage or not storage.pool:
                 logger.warning("   ⚠️  Storage not available for cleanup")
@@ -1253,8 +1230,6 @@ class ComposerRealEndToEndTester:
 
 async def main():
     """Main test execution function."""
-    import argparse
-
     logger.info("🧪 Starting Composer Real End-to-End Pipeline Tests")
 
     parser = argparse.ArgumentParser()
@@ -1304,9 +1279,7 @@ async def main():
 
         except Exception as e:
             logger.error(f"❌ Test execution failed for {model}: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.error(f"Test execution traceback: {traceback.format_exc()}")
             return 1
 
     logger.info("🏁 Composer architecture testing completed successfully!")
@@ -1322,7 +1295,5 @@ if __name__ == "__main__":
         exit(1)
     except Exception as e:
         logger.error(f"❌ Unexpected error: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error(f"Unexpected error traceback: {traceback.format_exc()}")
         exit(1)
