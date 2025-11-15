@@ -18,41 +18,25 @@ Memory & Persistence:
 """
 
 from typing import Dict, List, Any, Optional
-from typing_extensions import TypedDict, Annotated
-
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
-from langgraph.graph.message import add_messages
 
 from models import (
     IntentAnalysis,
     WorkflowType,
     ComplexityLevel,
     TodoItem,
-    Tool,
+    Message,
 )
-from composer.graph.state import WorkflowState, assemble_context_messages
+from composer.graph.state import WorkflowState
 from composer.agents.classifier_agent import ClassifierAgent
-from utils.message_conversion import extract_text_from_message
+from utils.message_conversion import extract_text_from_message, lc_message_to_message
 from utils.logging import llmmllogger
-from utils.message_conversion import messages_to_lc_messages, lc_message_to_message
 
 
 logger = llmmllogger.bind(component="PlanningIntentSubgraph")
-
-
-class PlanningIntentState(TypedDict):
-    """Simplified state for intent analysis with stronger typing."""
-
-    messages: Annotated[List[BaseMessage], add_messages]
-    user_id: str
-    conversation_id: int
-    static_tools: List[Tool]
-    intent_analyses: List[IntentAnalysis]
-    generated_todos: List[TodoItem]
-    complexity_score: int
 
 
 class PlanningIntentSubgraph:
@@ -73,7 +57,7 @@ class PlanningIntentSubgraph:
     def _build_graph(self) -> None:
         """Build simplified intent analysis subgraph using LangGraph patterns."""
         try:
-            builder = StateGraph(PlanningIntentState)
+            builder = StateGraph(WorkflowState)
 
             # Simplified two-step approach
             builder.add_node("analyze_intent", self._analyze_intent_step)
@@ -91,22 +75,16 @@ class PlanningIntentSubgraph:
             logger.error(f"Failed to build intent analysis subgraph: {e}")
             raise
 
-    async def _analyze_intent_step(self, state: PlanningIntentState) -> Dict[str, Any]:
+    async def _analyze_intent_step(self, state: WorkflowState) -> Dict[str, Any]:
         """Analyze intent and estimate complexity in one step."""
         logger.info("🔍 Intent: Analyzing messages for intent and complexity")
 
-        messages = state.get("messages", [])
-        static_tools = state.get("static_tools", [])
-
-        # Convert to LangChain messages for classifier
-        langchain_messages = []
-        for msg in messages:
-            if isinstance(msg, (HumanMessage, AIMessage)):
-                langchain_messages.append(msg)
+        messages = state.messages
+        static_tools = state.static_tools
 
         # Use classifier agent to analyze intent (no streaming output to prevent leakage)
         intent_analyses = await self.classifier_agent.analyze(
-            messages=langchain_messages,
+            messages=messages,
             available_static_tools=static_tools,
         )
 
@@ -129,7 +107,7 @@ class PlanningIntentSubgraph:
         }
 
     def _calculate_complexity_score(
-        self, messages: List[BaseMessage], intent_analyses: List[IntentAnalysis]
+        self, messages: List[Message], intent_analyses: List[IntentAnalysis]
     ) -> int:
         """Calculate complexity score based on messages and intent analysis."""
         complexity_score = 3  # Base complexity
@@ -139,9 +117,7 @@ class PlanningIntentSubgraph:
 
         if messages:
             last_message = messages[-1]
-            content = extract_text_from_message(
-                lc_message_to_message(last_message)
-            ).lower()
+            content = extract_text_from_message(last_message).lower()
 
             # Keyword-based complexity indicators
             technical_keywords = [
@@ -200,7 +176,7 @@ class PlanningIntentSubgraph:
         return min(complexity_score, 10)  # Cap at 10
 
     async def _store_intent_analyses(
-        self, intent_analyses: List[IntentAnalysis], state: PlanningIntentState
+        self, intent_analyses: List[IntentAnalysis], state: WorkflowState
     ) -> None:
         """Store intent analyses in the database separately from message content."""
         try:
@@ -212,8 +188,8 @@ class PlanningIntentSubgraph:
                 )
                 return
 
-            messages = state.get("messages", [])
-            conversation_id = state.get("conversation_id")
+            messages = state.messages
+            conversation_id = state.conversation_id
 
             if not messages or not conversation_id:
                 logger.warning(
@@ -253,18 +229,18 @@ class PlanningIntentSubgraph:
         except Exception as e:
             logger.error(f"Failed to store intent analyses: {e}")
 
-    async def _generate_todos_step(self, state: PlanningIntentState) -> Dict[str, Any]:
+    async def _generate_todos_step(self, state: WorkflowState) -> Dict[str, Any]:
         """Generate todos based on intent analysis."""
         logger.info("� Intent: Generating todos from intent analysis")
 
-        intent_analyses = state.get("intent_analyses", [])
-        messages = state.get("messages", [])
-        user_id = state.get("user_id")
-        conversation_id = state.get("conversation_id")
-        complexity_score = state.get("complexity_score", 3)
+        intent_analyses = state.intent_classification
+        messages = state.messages
+        user_id = state.user_id
+        conversation_id = state.conversation_id
+        complexity_score = state.complexity_score or 3
 
         generated_todos = await self._generate_todos_from_intent(
-            intent_analyses, messages, user_id, conversation_id, complexity_score
+            intent_analyses, messages, user_id or "", conversation_id or 0, complexity_score
         )
 
         logger.info(f"� Intent: Generated {len(generated_todos)} todos")
@@ -276,7 +252,7 @@ class PlanningIntentSubgraph:
     async def _generate_todos_from_intent(
         self,
         intent_analyses: List[IntentAnalysis],
-        messages: List[BaseMessage],
+        messages: List[Message],
         user_id: str,
         conversation_id: int,
         complexity_score: int,
@@ -430,79 +406,24 @@ class PlanningIntentSubgraph:
         else:
             return " ".join(words[:3])
 
-    def transform_to_planning_state(
-        self, main_state: WorkflowState
-    ) -> PlanningIntentState:
-        """Transform main WorkflowState to PlanningIntentState with proper typing."""
-        langchain_messages = messages_to_lc_messages(
-            assemble_context_messages(main_state)
-        )
-
-        # Get static tools with proper typing
-        static_tools: List[Tool] = getattr(main_state, "static_tools", [])
-
-        # Get existing todos with proper typing
-        existing_todos: List[TodoItem] = getattr(main_state, "generated_todos", [])
-
-        return {
-            "messages": langchain_messages,
-            "user_id": getattr(main_state, "user_id", ""),
-            "conversation_id": getattr(main_state, "conversation_id", 0),
-            "static_tools": static_tools,
-            "intent_analyses": [],
-            "generated_todos": existing_todos,
-            "complexity_score": getattr(main_state, "complexity_score", 3),
-        }
-
-    def transform_to_main_state(
-        self, planning_result: Dict[str, Any], main_state: WorkflowState
-    ) -> Dict[str, Any]:
-        """Transform planning results back to main WorkflowState updates with proper typing."""
-        updates: Dict[str, Any] = {}
-
-        if planning_result.get("intent_analyses"):
-            # Extend the intent classification list
-            current_analyses: List[IntentAnalysis] = getattr(
-                main_state, "intent_classification", []
-            )
-            updates["intent_classification"] = (
-                current_analyses + planning_result["intent_analyses"]
-            )
-
-        # Include generated todos in the main state with proper typing
-        if planning_result.get("generated_todos"):
-            generated_todos: List[TodoItem] = planning_result["generated_todos"]
-            updates["generated_todos"] = generated_todos
-
-        # Include complexity score
-        if planning_result.get("complexity_score"):
-            updates["complexity_score"] = planning_result["complexity_score"]
-
-        return updates
-
     async def execute(self, main_state: WorkflowState) -> Command:
         """Execute the simplified intent analysis subgraph."""
         try:
             if not self.graph:
-                logger.error("Intent analysis subgraph not initialized")
+                logger.error("Planning intent subgraph not initialized")
                 return Command(update={})
 
-            # Transform to planning state
-            planning_state = self.transform_to_planning_state(main_state)
+            # Execute the intent analysis subgraph directly with WorkflowState
+            result = await self.graph.ainvoke(main_state)
 
-            # Execute simplified subgraph with reasonable recursion limit
-            result = await self.graph.ainvoke(
-                planning_state, config={"recursion_limit": 5}
-            )
-
-            # Transform results back
-            updates = self.transform_to_main_state(result, main_state)
-
-            logger.info(f"🔍 Intent: Analysis completed with {len(updates)} updates")
-            return Command(update=updates)
+            # Return the updated state fields
+            logger.info("🔍 Intent: Analysis completed")
+            return Command(update={
+                "intent_classification": result.get("intent_classification", main_state.intent_classification),
+                "generated_todos": result.get("generated_todos", main_state.generated_todos),
+                "complexity_score": result.get("complexity_score", main_state.complexity_score),
+            })
 
         except Exception as e:
-            logger.error(
-                f"Intent analysis subgraph execution failed: {e}", exc_info=True
-            )
+            logger.error(f"Intent analysis subgraph execution failed: {e}", exc_info=True)
             return Command(update={})

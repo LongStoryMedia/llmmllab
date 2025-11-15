@@ -1,11 +1,9 @@
 """Test ToolsAgentSubgraph as main graph with LlamaCpp pipeline."""
 
 import datetime
-from email import message
 import os
 import sys
 from typing import List, Optional
-from unittest.mock import Base
 
 from langchain_core.messages import (
     HumanMessage,
@@ -28,9 +26,8 @@ from runner import pipeline_factory, ReasoningAwareAIMessageChunk
 from composer.agents import ChatAgent
 from composer.tools.registry import ToolRegistry
 from composer.graph.subgraphs import ToolsAgentSubgraph
-from composer.graph.state import ToolsState
+from composer.graph.state import WorkflowState
 from composer import execute_workflow
-from sympy import false
 from utils.message_conversion import messages_to_lc_messages
 from utils.logging import llmmllogger, serialize_event_data
 
@@ -122,14 +119,12 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
     logger.info("🤖 ToolsAgentSubgraph initialized")
 
     user_config = create_default_user_config(user_id="test_user")
-    # Create initial ToolsState
-    tools_state = ToolsState(
-        messages=messages_to_lc_messages(test_messages),
+    # Create initial WorkflowState
+    workflow_state = WorkflowState(
+        messages=test_messages,
         user_id="test_user",
         conversation_id=717,
         user_config=user_config,
-        tool_call_count=0,
-        shared_pipeline=None,  # Will be set by chat agent during execution
     )
 
     logger.info("🎯 Starting ToolsAgentSubgraph streaming execution...")
@@ -147,7 +142,7 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
 
         # Stream the graph execution
         async for res in execute_workflow(
-            initial_state=tools_state,
+            initial_state=workflow_state,
             workflow=tools_agent_subgraph.graph,
         ):
             if res.message is None:

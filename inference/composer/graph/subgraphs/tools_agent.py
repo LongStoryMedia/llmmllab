@@ -11,23 +11,26 @@ Standard architecture:
 4. No manual extraction or conversion - LangChain handles everything
 """
 
-import asyncio
-from typing import Dict, Any
-
 from langgraph.graph import StateGraph, START
 from langgraph.prebuilt import ToolNode, tools_condition
-from composer.graph.state import WorkflowState, assemble_context_messages
+from langgraph.types import Command
+from langgraph.graph.message import add_messages
+from langchain_core.messages import BaseMessage
+from typing_extensions import TypedDict
+from typing import Annotated, List
+from composer.graph.state import WorkflowState
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
 from models import Message, PipelinePriority
-from utils.message_conversion import (
-    lc_messages_to_messages,
-    message_to_lc_message,
-    messages_to_lc_messages,
-)
+from utils.message_conversion import messages_to_lc_messages, lc_messages_to_messages, message_to_lc_message
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="ToolsAgentSubgraph")
+
+
+class ToolsAgentState(TypedDict):
+    """Minimal state for LangChain ToolNode compatibility."""
+    messages: Annotated[List[BaseMessage], add_messages]
 
 
 def should_continue_tool_calls(message: Message) -> bool:
@@ -66,7 +69,7 @@ class ToolsAgentSubgraph:
             logger.info(f"🔧 Building standard agent with {len(tools_list)} tools")
 
             # Standard StateGraph following LangChain pattern
-            builder = StateGraph(WorkflowState)
+            builder = StateGraph(ToolsAgentState)
 
             # Add agent node that uses ChatOpenAI with bound tools
             builder.add_node("agent", self._agent_node)
@@ -95,7 +98,7 @@ class ToolsAgentSubgraph:
             logger.error(f"Failed to build standard agent subgraph: {e}")
             raise
 
-    async def _agent_node(self, state: WorkflowState) -> WorkflowState:
+    async def _agent_node(self, state: ToolsAgentState) -> ToolsAgentState:
         """Standard agent node using ChatOpenAI with bound tools."""
         try:
             # Get tools and bind them to ChatOpenAI
@@ -103,9 +106,12 @@ class ToolsAgentSubgraph:
             tools_list = list(tools_dict.values()) if tools_dict else []
             # Invoke ChatOpenAI - this handles tool calling automatically
             logger.info("📤 Invoking ChatOpenAI with standard LangChain pattern")
-            
+
+            # Convert LangChain messages to our Message format for the chat agent
+            our_messages = lc_messages_to_messages(state["messages"])
+
             response = await self.chat_agent.run(
-                messages=state.messages,  # state.messages is already List[Message]
+                messages=our_messages,
                 tools=tools_list,
                 priority=PipelinePriority.HIGH,
             )
@@ -116,10 +122,9 @@ class ToolsAgentSubgraph:
                     logger.info(
                         f"🔧 Generated {len(response.message.tool_calls)} tool calls"
                     )
-                # Add response to messages - append to WorkflowState.messages list
-                if not state.messages:
-                    state.messages = []
-                state.messages.append(response.message)
+                # Convert our Message back to LangChain format and add to state
+                lc_message = message_to_lc_message(response.message)
+                state["messages"].append(lc_message)
 
             return state
 
@@ -127,4 +132,27 @@ class ToolsAgentSubgraph:
             logger.error(f"Agent node error: {e}", exc_info=True)
             return state
 
+    async def execute(self, main_state: WorkflowState) -> Command:
+        """Execute the agent subgraph and return Command with state updates."""
+        try:
+            if not self.graph:
+                logger.error("Agent subgraph not initialized")
+                return Command(update={})
 
+            # Convert WorkflowState.messages to LangChain format for the subgraph
+            lc_messages = messages_to_lc_messages(main_state.messages)
+            tools_state = ToolsAgentState(messages=lc_messages)
+
+            # Execute the agent subgraph with LangChain-compatible state
+            result = await self.graph.ainvoke(tools_state)
+
+            # Convert result back to our Message format
+            result_messages = lc_messages_to_messages(result["messages"])
+
+            # Return updated messages from the result
+            logger.info("🔄 Agent subgraph completed")
+            return Command(update={"messages": result_messages})
+
+        except Exception as e:
+            logger.error(f"Agent subgraph execution failed: {e}", exc_info=True)
+            return Command(update={})
