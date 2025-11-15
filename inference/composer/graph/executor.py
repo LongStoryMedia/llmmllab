@@ -8,6 +8,7 @@ from ComposerService into a generic, reusable component.
 
 import json
 from enum import StrEnum
+from re import M
 from typing import (
     Any,
     AsyncGenerator,
@@ -194,11 +195,17 @@ class WorkflowExecutor:
                     task = md.get("task", "Primary")
                     if task == ModelProfileType.Analysis.name:
                         new_state = StreamingState.ANALYZING
-
                 elif event_type == "on_chat_model_end" or event_type == "on_llm_end":
                     if state == StreamingState.ANALYZING:
                         analysis_dict = json.loads(analyses_buffer)
-                        analyses[run_id] = IntentAnalysis(**analysis_dict)
+                        analysis = IntentAnalysis(**analysis_dict)
+                        analyses[run_id] = analysis
+                        res.message.content.append(
+                            MessageContent(
+                                type=MessageContentType.ANALYSIS, text=analyses_buffer
+                            )
+                        )
+                        res.message.analyses.append(analysis)
                         analyses_buffer = ""
                 elif (
                     event_type == "on_chat_model_stream"

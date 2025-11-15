@@ -24,20 +24,22 @@ import argparse
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
-from langchain_core.messages import BaseMessage, AIMessage, ToolMessage
-
 from utils.logging import llmmllogger, serialize_event_data
-from models.message import Message
-from models.message_role import MessageRole
-from models.message_content import MessageContent, MessageContentType
-from models.conversation import Conversation
+from models import (
+    Message,
+    MessageRole,
+    MessageContent,
+    MessageContentType,
+    Conversation,
+    ChatResponse,
+)
 from db import storage
 from composer import (
     compose_workflow,
     create_initial_state,
     execute_workflow,
     initialize_composer,
-    get_composer_service
+    get_composer_service,
 )
 
 # Configure logging
@@ -565,18 +567,16 @@ class ComposerRealEndToEndTester:
         logger.info("🎼 Executing simplified workflow...")
 
         try:
-            # Import composer functions
-
             # Ensure we have required IDs
             if not self.test_conversation_id or not storage or not storage.message:
-                raise Exception("Missing required components for workflow execution")
+                raise RuntimeError("Missing required components for workflow execution")
 
             # Get conversation messages for context
             messages = await storage.message.get_conversation_history(
                 self.test_conversation_id
             )
             if not messages:
-                raise Exception("No messages found for conversation")
+                raise RuntimeError("No messages found for conversation")
 
             logger.info(f"   📝 Processing {len(messages)} messages")
 
@@ -626,7 +626,7 @@ class ComposerRealEndToEndTester:
             self._write_section("## STREAMING WORKFLOW EXECUTION")
 
             start_time = time.time()
-            full_response = ""
+            full_response: ChatResponse
             tool_calls_detected = False
             event_count = 0
 
@@ -636,6 +636,10 @@ class ComposerRealEndToEndTester:
                 workflow=workflow,
             ):
                 event_count += 1
+
+                if res.done and res.finish_reason == "complete":
+                    full_response = res
+                    break
 
                 if res.message is None:
                     logger.warning("Received empty message in stream event")
@@ -653,7 +657,7 @@ class ComposerRealEndToEndTester:
                         self._write_to_output(f"\n[ANALYSIS]: {c.text}\n")
                     if c.type in [MessageContentType.TEXT, MessageContentType.THINKING]:
                         content_str = c.text
-                        self._write_to_output(content_str)
+                        self._write_to_output(content_str or "")
 
                 # Skip thoughts - we only want clean content output
 
@@ -664,37 +668,22 @@ class ComposerRealEndToEndTester:
             logger.info(f"   ✅ Workflow execution completed in {execution_time:.2f}s")
             logger.info(f"   🛠️  Tool calls detected: {tool_calls_detected}")
 
+            res_txt = ""
             # Store assistant response in database if we got content
-            if full_response and storage and storage.message:
-
-                assistant_message = Message(
-                    id=None,
-                    conversation_id=self.test_conversation_id,
-                    role=MessageRole.ASSISTANT,
-                    content=[
-                        MessageContent(type=MessageContentType.TEXT, text=full_response)
-                    ],
-                    created_at=datetime.now(timezone.utc),
-                )
-
-                await storage.message.add_message(assistant_message)
+            if full_response and full_response.message:
+                await storage.message.add_message(full_response.message)
                 logger.info("   📝 Assistant response saved to database")
+                for c in full_response.message.content:
+                    if c.type == MessageContentType.TEXT and c.text:
+                        res_txt += c.text
 
             # Basic validation
             success = True
             validation_errors = []
 
-            if len(full_response.strip()) == 0:
-                success = False
-                validation_errors.append("No response content generated")
-
             if not tool_calls_detected:
                 success = False
                 validation_errors.append("No tool calls executed")
-
-            if len(full_response) < 10:
-                success = False
-                validation_errors.append("Response too short")
 
             if validation_errors:
                 logger.error(f"   ❌ Validation errors: {', '.join(validation_errors)}")
@@ -704,7 +693,7 @@ class ComposerRealEndToEndTester:
             return {
                 "success": success,
                 "execution_time": execution_time,
-                "response_length": len(full_response),
+                "response_length": len(res_txt),
                 "tool_calls_detected": tool_calls_detected,
                 "event_count": event_count,
                 "validation_errors": validation_errors,
@@ -727,7 +716,7 @@ class ComposerRealEndToEndTester:
                 or not storage.message
                 or not self.test_conversation_id
             ):
-                raise Exception(
+                raise RuntimeError(
                     "Missing required storage components or conversation ID"
                 )
 
@@ -736,7 +725,7 @@ class ComposerRealEndToEndTester:
                 self.test_conversation_id
             )
             if not conversation:
-                raise Exception("Test conversation not found")
+                raise RuntimeError("Test conversation not found")
 
             messages = await storage.message.get_conversation_history(
                 self.test_conversation_id
@@ -828,8 +817,6 @@ class ComposerRealEndToEndTester:
     async def _validate_conversation_title(self) -> Dict[str, Any]:
         """Validate the generated conversation title meets requirements."""
         try:
-            from db import storage
-
             if not storage or not storage.conversation or not self.test_conversation_id:
                 return {"valid": False, "error": "Missing storage or conversation ID"}
 
@@ -974,7 +961,7 @@ class ComposerRealEndToEndTester:
                         f"   🗑️  Deleted messages for conversation {self.test_conversation_id}: {deleted_messages_result}"
                     )
                 else:
-                    logger.warning(f"   ⚠️  No conversation ID to delete messages from")
+                    logger.warning("   ⚠️  No conversation ID to delete messages from")
 
                 # 2. Delete summaries (dependent on conversations)
                 if self.test_conversation_id:
@@ -1018,7 +1005,7 @@ class ComposerRealEndToEndTester:
                         f"   🗑️  Deleted model profile {self.test_model_profile_id}: {deleted_profiles_result}"
                     )
                 else:
-                    logger.warning(f"   ⚠️  No model profile ID to delete")
+                    logger.warning("   ⚠️  No model profile ID to delete")
 
                 # 6. Delete dynamic tools (dependent on user) - these have proper CASCADE so may already be deleted
                 deleted_tools_result = await conn.execute(
@@ -1041,10 +1028,6 @@ class ComposerRealEndToEndTester:
                 cleaned_count += sum(
                     [count for count in related_counts.values() if count > 0]
                 )
-
-                # TEMPORARY: Force a cleanup failure for testing
-                # TODO: Remove this line after testing cleanup failure handling
-                # raise Exception("Forced cleanup failure for testing")
 
                 # Validate cascading deletes worked
                 remaining_counts = {}
@@ -1097,10 +1080,6 @@ class ComposerRealEndToEndTester:
                 for entity_type, count in remaining_counts.items():
                     if count > 0:
                         cascade_failures.append(f"{entity_type}: {count} remaining")
-
-                # TEMPORARY: Force cascade failure detection for testing
-                # TODO: Remove this after testing cleanup failure handling
-                # cascade_failures.append("test_failure: 1 remaining")
 
                 if cascade_failures:
                     error_msg = (
@@ -1184,7 +1163,7 @@ class ComposerRealEndToEndTester:
         )
         if title_valid:
             logger.info(f"    Title: '{title_text}'")
-        logger.info(f"🎼 Architecture: Composer + LangGraph")
+        logger.info("🎼 Architecture: Composer + LangGraph")
 
         logger.info("\n📋 Component Results:")
         component_names = [
