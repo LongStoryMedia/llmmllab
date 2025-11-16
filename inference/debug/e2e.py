@@ -49,12 +49,7 @@ logger = llmmllogger.bind(component="composer_e2e_test")
 class ComposerRealEndToEndTester:
     """Real end-to-end test using composer architecture."""
 
-    def __init__(
-        self,
-        target_model: Optional[str] = None,
-        capture_llm_output: bool = True,
-        print_output: bool = False,
-    ):
+    def __init__(self, target_model: Optional[str] = None):
         """Initialize composer-based pipeline tester."""
         self.test_user_id = f"test_composer_user_{uuid.uuid4().hex[:8]}"
         self.test_model_profile_id = uuid.uuid4()
@@ -63,9 +58,6 @@ class ComposerRealEndToEndTester:
         self.storage = None  # Will be initialized with infrastructure
 
         # LLM output capture configuration
-        self.capture_llm_output = capture_llm_output
-        self.print_output = print_output
-        self.llm_output_file = None
         self.output_dir = "debug/out"
         self.llm_responses = []  # Store all LLM responses for analysis
 
@@ -79,13 +71,6 @@ class ComposerRealEndToEndTester:
 
         self.target_model = target_model or available_models[0]
         self.available_models = available_models
-
-        # Initialize LLM output file if capture is enabled
-        if self.capture_llm_output:
-            self._initialize_llm_output_file()
-
-    def _initialize_llm_output_file(self):
-        """Initialize the file for capturing LLM-generated text."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         model_safe = (
             self.target_model.replace("/", "_").replace("-", "_").replace(":", "_")
@@ -95,10 +80,9 @@ class ComposerRealEndToEndTester:
         os.makedirs(self.output_dir, exist_ok=True)
 
         self.llm_output_file = (
-            f"{self.output_dir}/composer_llm_output_{model_safe}_{timestamp}.txt"
+            f"{self.output_dir}/e2e_workflow_{model_safe}_{timestamp}.md"
         )
 
-        # Create the file with header
         try:
             with open(self.llm_output_file, "w", encoding="utf-8") as f:
                 f.write("Composer LLM Output Capture - Real End-to-End Test\n")
@@ -111,23 +95,16 @@ class ComposerRealEndToEndTester:
             logger.info(f"📝 LLM output will be captured to: {self.llm_output_file}")
         except Exception as e:
             logger.warning(f"⚠️  Failed to initialize LLM output file: {e}")
-            self.capture_llm_output = False
 
     def _write_section(self, title: str) -> None:
         """Write a section header to the output file."""
-        if self.capture_llm_output and self.llm_output_file:
-            with open(self.llm_output_file, "a", encoding="utf-8") as f:
-                f.write(f"\n{'='*80}\n")
-                f.write(f"{title}\n")
-                f.write(f"{'='*80}\n\n")
+        with open(self.llm_output_file, "a", encoding="utf-8") as f:
+            f.write(f"## {title}\n\n")
 
     def _write_llm_response(
         self, phase: str, response_text: str, metadata: Optional[Dict[str, Any]] = None
     ):
         """Write LLM response to file with phase information."""
-        if not self.capture_llm_output or not self.llm_output_file:
-            return
-
         try:
             with open(self.llm_output_file, "a", encoding="utf-8") as f:
                 f.write(f"\n{'='*60}\n")
@@ -156,46 +133,32 @@ class ComposerRealEndToEndTester:
 
     def _finalize_llm_output(self) -> None:
         """Finalize LLM output capture."""
-        if self.capture_llm_output and self.llm_output_file:
-            try:
-                with open(self.llm_output_file, "a", encoding="utf-8") as f:
-                    f.write(f"\n{'='*80}\n")
-                    f.write("TEST SUMMARY\n")
-                    f.write(f"{'='*80}\n")
-                    f.write(f"Total responses captured: {len(self.llm_responses)}\n")
-                    f.write(
-                        f"File finalized at: {datetime.now(timezone.utc).isoformat()}\n"
-                    )
-                    f.write(f"{'='*80}\n")
-            except Exception as e:
-                logger.warning(f"⚠️  Failed to finalize LLM output: {e}")
-
-    def _print_llm_output_summary(self) -> None:
-        """Print summary of captured LLM outputs."""
-        if self.capture_llm_output:
-            logger.info(
-                f"📝 Captured {len(self.llm_responses)} LLM responses to {self.llm_output_file}"
-            )
-        else:
-            logger.info("📝 LLM output capture was disabled")
+        try:
+            with open(self.llm_output_file, "a", encoding="utf-8") as f:
+                f.write(f"\n{'='*80}\n")
+                f.write("TEST SUMMARY\n")
+                f.write(f"{'='*80}\n")
+                f.write(f"Total responses captured: {len(self.llm_responses)}\n")
+                f.write(
+                    f"File finalized at: {datetime.now(timezone.utc).isoformat()}\n"
+                )
+                f.write(f"{'='*80}\n")
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to finalize LLM output: {e}")
 
     def _write_to_output(self, content: str) -> None:
         """Write content to console and file output."""
         print(content, end="", flush=True)
-        if self.capture_llm_output and self.llm_output_file:
-            try:
-                with open(self.llm_output_file, "a", encoding="utf-8") as f:
-                    f.write(content)
-            except Exception as e:
-                logger.warning(f"⚠️  Failed to write content to output file: {e}")
+        try:
+            with open(self.llm_output_file, "a", encoding="utf-8") as f:
+                f.write(content)
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to write content to output file: {e}")
 
     def _write_detailed_data(
         self, section: str, title: str, data: Any, description: str = ""
     ):
         """Write detailed data (prompts, tools, messages, etc.) to output file."""
-        if not self.capture_llm_output or not self.llm_output_file:
-            return
-
         try:
             with open(self.llm_output_file, "a", encoding="utf-8") as f:
                 f.write(f"\n{'='*60}\n")
@@ -222,12 +185,12 @@ class ComposerRealEndToEndTester:
             logger.warning(f"⚠️  Failed to write detailed data to file: {e}")
 
     def _write_workflow_event(
-        self, event_type: str, event_data: Any, context: str = ""
+        self,
+        event_type: str,
+        event_data: Any,
+        context: str = "",
     ):
         """Write workflow event data to output file for debugging."""
-        if not self.capture_llm_output or not self.llm_output_file:
-            return
-
         try:
             with open(self.llm_output_file, "a", encoding="utf-8") as f:
                 f.write(f"\n{'='*60}\n")
@@ -268,7 +231,9 @@ class ComposerRealEndToEndTester:
             return response_text
 
     async def run_full_test(
-        self, query: Optional[str] = "", image: Optional[str] = None
+        self,
+        query: Optional[str] = "",
+        image: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Run complete composer-based end-to-end pipeline test."""
         logger.info("🚀 Starting Composer Real End-to-End Pipeline Test")
@@ -387,17 +352,13 @@ class ComposerRealEndToEndTester:
 
         # Print comprehensive results
         await self.print_test_summary(test_results)
-        self._print_llm_output_summary()
 
         return test_results
 
     async def setup_real_infrastructure(self) -> Dict[str, Any]:
         """Set up real infrastructure components."""
         logger.info("🏗️  Setting up real infrastructure...")
-
         try:
-            # Initialize real database connection
-
             # Build connection string from environment variables
             db_host = os.getenv("DB_HOST", "localhost")
             db_port = os.getenv("DB_PORT", "5432")
@@ -586,15 +547,8 @@ class ComposerRealEndToEndTester:
 
             # Generate mermaid diagram and set as output file
             try:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                output_path = f"{self.output_dir}/workflow_graph_{timestamp}.md"
-
-                # Set this as our LLM output file for consolidated output
-                if self.capture_llm_output:
-                    self.llm_output_file = output_path
-
                 doc = workflow.get_graph().draw_mermaid(with_styles=True)
-                with open(output_path, "w", encoding="utf-8") as f:
+                with open(self.llm_output_file, "w", encoding="utf-8") as f:
                     f.write("# Composer E2E Test Results\n\n")
                     f.write(
                         f"**Test started at:** {datetime.now(timezone.utc).isoformat()}\n"
@@ -606,9 +560,7 @@ class ComposerRealEndToEndTester:
                     f.write(doc)
                     f.write("\n```\n\n")
                     f.write("## LLM Execution Output\n\n")
-                logger.info(f"   📊 Workflow graph saved: {output_path}")
-                if self.capture_llm_output:
-                    logger.info(f"   📝 LLM output will be captured to: {output_path}")
+                logger.info(f"   📊 Workflow graph saved: {self.llm_output_file}")
             except Exception as e:
                 logger.warning(f"   ⚠️ Could not generate workflow graph: {e}")
 
@@ -1242,11 +1194,7 @@ async def main():
 
     for model in models_to_test:
         logger.info(f"🧪 Testing composer architecture with model: {model}")
-        tester = ComposerRealEndToEndTester(
-            target_model=model,
-            capture_llm_output=not args.no_capture,
-            print_output=args.print_output,
-        )
+        tester = ComposerRealEndToEndTester(target_model=model)
 
         # Run the test
         try:

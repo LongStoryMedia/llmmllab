@@ -17,11 +17,14 @@ Memory & Persistence:
 - State restoration automatic when parent workflow resumes
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, TYPE_CHECKING
 from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
+
+if TYPE_CHECKING:
+    from composer.graph.executor import WorkflowExecutor
 
 from models import (
     IntentAnalysis,
@@ -210,11 +213,33 @@ class PlanningIntentSubgraph:
                 )
                 return
 
+            logger.debug(f"Found user message ID {user_message_id} for intent analysis storage")
+
+            # Verify the message exists in the database before storing analysis
+            # Only check if storage is properly initialized to avoid errors
+            if hasattr(storage, 'message') and storage.message:
+                try:
+                    existing_message = await storage.get_service(storage.message).get_message(user_message_id)
+                    if not existing_message:
+                        logger.error(f"Message {user_message_id} not found in database - cannot store intent analysis")
+                        return
+                    logger.debug(f"Verified message {user_message_id} exists in database")
+                except Exception as e:
+                    logger.error(f"Error verifying message {user_message_id} exists: {e}")
+                    # Don't return here - continue with storage attempt in case it's a transient issue
+                    pass
+            else:
+                logger.warning("Message storage not available for verification - proceeding with intent analysis storage")
+
             # Store each intent analysis
             for intent_analysis in intent_analyses:
                 try:
+                    # Set the message_id on the IntentAnalysis object before storing
+                    intent_analysis.message_id = user_message_id
+                    
                     analysis_id = await storage.analysis.add_analysis(
-                        message_id=user_message_id, intent_analysis=intent_analysis
+                        message_id=user_message_id, 
+                        intent_analysis=intent_analysis
                     )
                     if analysis_id:
                         logger.debug(f"Stored intent analysis with ID: {analysis_id}")
@@ -410,31 +435,30 @@ class PlanningIntentSubgraph:
         else:
             return " ".join(words[:3])
 
-    async def execute(self, main_state: WorkflowState) -> Command:
+    async def execute(
+        self,
+        state: WorkflowState,
+        executor: "WorkflowExecutor",
+    ) -> Command:
         """Execute the simplified intent analysis subgraph."""
         try:
             if not self.graph:
                 logger.error("Planning intent subgraph not initialized")
                 return Command(update={})
 
-            # Execute the intent analysis subgraph directly with WorkflowState
-            result = await self.graph.ainvoke(main_state)
+            # Execute subgraph directly using ainvoke for proper state handling
+            final_state_dict = await self.graph.ainvoke(state)
+            
+            # Extract the key fields from the final state that need to be updated
+            update_dict = {
+                "intent_classification": final_state_dict.get("intent_classification", []),
+                "generated_todos": final_state_dict.get("generated_todos", []),
+                "complexity_score": final_state_dict.get("complexity_score", 3),
+            }
 
-            # Return the updated state fields
-            logger.info("🔍 Intent: Analysis completed")
-            return Command(
-                update={
-                    "intent_classification": result.get(
-                        "intent_classification", main_state.intent_classification
-                    ),
-                    "generated_todos": result.get(
-                        "generated_todos", main_state.generated_todos
-                    ),
-                    "complexity_score": result.get(
-                        "complexity_score", main_state.complexity_score
-                    ),
-                }
-            )
+            # Return updated messages from the result
+            logger.info("🔄 Planning and Intent completed")
+            return Command(update=update_dict)
 
         except Exception as e:
             logger.error(

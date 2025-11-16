@@ -52,6 +52,8 @@ from composer.graph.state import WorkflowState
 from composer.graph.subgraphs import ToolsAgentSubgraph
 from composer.graph.subgraphs import PlanningIntentSubgraph
 
+from .executor import WorkflowExecutor
+
 # Checkpoint integration handled through CheckpointStorage service
 
 if TYPE_CHECKING:
@@ -392,10 +394,12 @@ class GraphBuilder:
                 classifier_agent=classifier_agent
             )
 
+            executor = WorkflowExecutor()
+
             # Create wrapper for subgraph execution
             async def tools_agent_node(state: WorkflowState) -> WorkflowState:
                 """Execute the intelligent tools agent subgraph and return updated state."""
-                command = await tools_agent_subgraph.execute(state)
+                command = await tools_agent_subgraph.execute(state, executor=executor)
                 if command and command.update:
                     for key, value in command.update.items():
                         setattr(state, key, value)
@@ -404,8 +408,9 @@ class GraphBuilder:
             # Create wrapper for intent subgraph
             async def intent_analysis_node(state: WorkflowState) -> WorkflowState:
                 """Execute the intent analysis subgraph and return updated state."""
-                command = await intent_analysis_subgraph.execute(state)
+                command = await intent_analysis_subgraph.execute(state, executor=executor)
                 if command and command.update:
+                    # command.update is a dict, not a WorkflowState, so we can call .items()
                     for key, value in command.update.items():
                         setattr(state, key, value)
                 return state

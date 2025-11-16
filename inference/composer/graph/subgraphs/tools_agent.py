@@ -15,7 +15,7 @@ from typing import Optional
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.types import Command
-from composer.graph import WorkflowState, assemble_context_messages
+from composer.graph import WorkflowState, assemble_context_messages, WorkflowExecutor
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
 from models import ChatResponse, Message, PipelinePriority
@@ -32,9 +32,9 @@ def should_continue_tool_calls(state: WorkflowState) -> str:
     # Get the last message from state
     if not state.messages:
         return "end"
-    
+
     last_message = state.messages[-1]
-    
+
     # Check if the last message has tool calls
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
         return "tools"
@@ -81,12 +81,7 @@ class ToolsAgentSubgraph:
 
                 # Standard conditional routing using LangChain's tools_condition
                 builder.add_conditional_edges(
-                    "agent",
-                    should_continue_tool_calls,
-                    {
-                        "tools": "tools",
-                        "end": END
-                    }
+                    "agent", should_continue_tool_calls, {"tools": "tools", "end": END}
                 )
                 builder.add_edge("tools", "agent")
 
@@ -121,27 +116,12 @@ class ToolsAgentSubgraph:
 
             logger.info(f"📨 ChatOpenAI response: {type(response)}")
             logger.debug(f"Response content: {serialize_event_data(response)}")
-            
+
             if response.message:
                 if response.message.tool_calls:
                     logger.info(
                         f"🔧 Generated {len(response.message.tool_calls)} tool calls"
                     )
-                
-                # Validate the Message object before adding to state
-                if not hasattr(response.message, 'role') or not response.message.role:
-                    logger.error("Message missing role field")
-                    return state
-                if not hasattr(response.message, 'content') or not response.message.content:
-                    logger.error("Message missing content field")
-                    return state
-                
-                # Set conversation_id if missing
-                if not response.message.conversation_id and hasattr(state, 'conversation_id'):
-                    response.message.conversation_id = state.conversation_id
-                
-                logger.debug(f"Adding message to state: role={response.message.role}, content_count={len(response.message.content)}")
-                
                 # Convert our Message back to LangChain format and add to state
                 state.messages.append(response.message)
 
@@ -154,6 +134,7 @@ class ToolsAgentSubgraph:
     async def execute(
         self,
         state: WorkflowState,
+        executor: WorkflowExecutor,
     ) -> Command:
         """Execute the agent subgraph and return Command with state updates."""
         try:
@@ -162,11 +143,17 @@ class ToolsAgentSubgraph:
                 return Command(update={})
 
             # Execute the agent subgraph directly with WorkflowState
-            result = await self.graph.ainvoke(state)
+            async for event in executor.stream_workflow(
+                initial_state=state,
+                workflow=self.graph,
+            ):
+                if event.done and event.finish_reason == "completed":
+                    state.messages.append(event.message)
+                    break
 
-            # Return empty update since state was mutated directly
+            # Return updated messages from the result
             logger.info("🔄 Agent subgraph completed")
-            return Command(update={})
+            return Command(update={"messages": state.messages})
 
         except Exception as e:
             logger.error(f"Agent subgraph execution failed: {e}", exc_info=True)
