@@ -112,7 +112,7 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
                 tool_descriptions.append(f"- {tool.name}: {tool.description}")
 
             available_tools_context = f"""
-/no_think
+{"/no_think" if not self.profile.parameters.think else ""}
 Available Static Tools ({len(available_static_tools)} total):
 {chr(10).join(tool_descriptions)}
 {f"... and {len(available_static_tools) - 10} more tools" if len(available_static_tools) > 10 else ""}
@@ -168,9 +168,19 @@ IMPORTANT: Return JSON that is valid against this schema:
 
 If multiple intents are needed, include additional objects in the intents array.
 """
-        msgs = []
-        msgs.extend(messages[:-1])  # All but last message
-        msgs.append(analysis_prompt)
+        msgs = messages[:-1]  # All but last message
+        msgs = [
+            Message(
+                content=[
+                    MessageContent(
+                        text=analysis_prompt,
+                        type=MessageContentType.TEXT,
+                    )
+                ],
+                role=MessageRole.USER,
+            )
+        ]
+
         result = await self.run(
             messages=msgs,
             tools=None,

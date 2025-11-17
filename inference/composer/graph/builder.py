@@ -399,16 +399,17 @@ class GraphBuilder:
             # Create wrapper for subgraph execution
             async def tools_agent_node(state: WorkflowState) -> WorkflowState:
                 """Execute the intelligent tools agent subgraph and return updated state."""
-                command = await tools_agent_subgraph.execute(state, executor=executor)
-                if command and command.update:
-                    for key, value in command.update.items():
-                        setattr(state, key, value)
+                res = await tools_agent_subgraph.execute(state, executor=executor)
+                if res and res.message:
+                    state.messages.append(res.message)
                 return state
 
             # Create wrapper for intent subgraph
             async def intent_analysis_node(state: WorkflowState) -> WorkflowState:
                 """Execute the intent analysis subgraph and return updated state."""
-                command = await intent_analysis_subgraph.execute(state, executor=executor)
+                command = await intent_analysis_subgraph.execute(
+                    state, executor=executor
+                )
                 if command and command.update:
                     # command.update is a dict, not a WorkflowState, so we can call .items()
                     for key, value in command.update.items():

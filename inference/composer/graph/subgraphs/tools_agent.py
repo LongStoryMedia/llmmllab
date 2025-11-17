@@ -135,12 +135,12 @@ class ToolsAgentSubgraph:
         self,
         state: WorkflowState,
         executor: WorkflowExecutor,
-    ) -> Command:
+    ) -> ChatResponse:
         """Execute the agent subgraph and return Command with state updates."""
         try:
             if not self.graph:
                 logger.error("Agent subgraph not initialized")
-                return Command(update={})
+                return ChatResponse(message=None)
 
             # Execute the agent subgraph directly with WorkflowState
             async for event in executor.stream_workflow(
@@ -148,13 +148,11 @@ class ToolsAgentSubgraph:
                 workflow=self.graph,
             ):
                 if event.done and event.finish_reason == "completed":
-                    state.messages.append(event.message)
-                    break
+                    return event
 
-            # Return updated messages from the result
-            logger.info("🔄 Agent subgraph completed")
-            return Command(update={"messages": state.messages})
+            return ChatResponse(message=None)
 
+            # return Command(update={"messages": state.messages})
         except Exception as e:
             logger.error(f"Agent subgraph execution failed: {e}", exc_info=True)
-            return Command(update={})
+            return ChatResponse(message=None)

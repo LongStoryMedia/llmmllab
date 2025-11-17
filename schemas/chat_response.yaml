@@ -65,3 +65,8 @@ properties:
     description: OBSERVER role messages that should be displayed as temporary floating notifications
     items:
       type: string
+  todos:
+    type: array
+    description: List of TODO items extracted from the response
+    items:
+      $ref: todo_item.yaml

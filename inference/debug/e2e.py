@@ -601,7 +601,7 @@ class ComposerRealEndToEndTester:
                 if res.message.tool_calls:
                     tool_calls_detected = True
                     for t in res.message.tool_calls:
-                        tool_text = f"\n{'-'*40}\nTool Call: {t.name}\nArguments: {serialize_event_data(t.args)}\nRESULTS: {t.result_data.get('output', '') if t.result_data else ''}\n{'-'*40}\n"
+                        tool_text = f"\n{'-'*40}\nTool Call: {t.name}\nArguments: {serialize_event_data(t.args)}\nRESULTS: {serialize_event_data(t.result_data)}\n{'-'*40}\n"
                         self._write_to_output(tool_text)
                 # Handle message content like tools_agent (filter out [THOUGHT] content)
                 for c in res.message.content:

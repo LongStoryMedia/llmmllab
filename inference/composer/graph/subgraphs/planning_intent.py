@@ -28,12 +28,15 @@ if TYPE_CHECKING:
 
 from models import (
     IntentAnalysis,
+    MessageContent,
+    MessageContentType,
+    MessageRole,
     WorkflowType,
     ComplexityLevel,
     TodoItem,
     Message,
 )
-from composer.graph.state import WorkflowState
+from composer.graph.state import WorkflowState, assemble_context_messages
 from composer.agents.classifier_agent import ClassifierAgent
 from utils.message_conversion import extract_text_from_message, lc_message_to_message
 from utils.logging import llmmllogger
@@ -78,105 +81,30 @@ class PlanningIntentSubgraph:
             logger.error(f"Failed to build intent analysis subgraph: {e}")
             raise
 
-    async def _analyze_intent_step(self, state: WorkflowState) -> Dict[str, Any]:
+    async def _analyze_intent_step(self, state: WorkflowState) -> WorkflowState:
         """Analyze intent and estimate complexity in one step."""
         logger.info("🔍 Intent: Analyzing messages for intent and complexity")
-
-        messages = state.messages
         static_tools = state.static_tools
 
-        # Use classifier agent to analyze intent (no streaming output to prevent leakage)
+        # Use classifier agent to analyze intent
         intent_analyses = await self.classifier_agent.analyze(
-            messages=messages,
+            messages=assemble_context_messages(state),
             available_static_tools=static_tools,
         )
 
         # Store intent analyses in database separately from message content
         await self._store_intent_analyses(intent_analyses, state)
 
-        # Calculate complexity score based on analysis results
-        complexity_score = self._calculate_complexity_score(messages, intent_analyses)
-
         logger.info(
-            f"🔍 Intent: Completed analysis with {len(intent_analyses)} intents, complexity: {complexity_score}"
+            f"🔍 Intent: Completed analysis with {len(intent_analyses)} intents"
         )
 
         # Cleanup classifier agent resources after analysis completion
         self.classifier_agent.cleanup()
 
-        return {
-            "intent_classification": intent_analyses,
-            "complexity_score": complexity_score,
-        }
+        state.intent_classification = intent_analyses
 
-    def _calculate_complexity_score(
-        self, messages: List[Message], intent_analyses: List[IntentAnalysis]
-    ) -> int:
-        """Calculate complexity score based on messages and intent analysis."""
-        complexity_score = 3  # Base complexity
-
-        # Message-based complexity
-        complexity_score += min(len(messages), 5)  # More messages = more complexity
-
-        if messages:
-            last_message = messages[-1]
-            content = extract_text_from_message(last_message).lower()
-
-            # Keyword-based complexity indicators
-            technical_keywords = [
-                "algorithm",
-                "implementation",
-                "code",
-                "debug",
-                "error",
-                "api",
-                "database",
-            ]
-            research_keywords = [
-                "research",
-                "analyze",
-                "compare",
-                "investigate",
-                "study",
-                "review",
-            ]
-            creative_keywords = [
-                "create",
-                "design",
-                "generate",
-                "write",
-                "compose",
-                "draft",
-            ]
-
-            if any(kw in content for kw in technical_keywords):
-                complexity_score += 3
-            elif any(kw in content for kw in research_keywords):
-                complexity_score += 2
-            elif any(kw in content for kw in creative_keywords):
-                complexity_score += 1
-
-            # Length-based complexity
-            if len(content) > 500:
-                complexity_score += 2
-            elif len(content) > 200:
-                complexity_score += 1
-
-        # Intent analysis-based complexity
-        for intent in intent_analyses:
-            if hasattr(intent, "complexity_level"):
-                if intent.complexity_level == ComplexityLevel.COMPLEX:
-                    complexity_score += 2
-                elif intent.complexity_level == ComplexityLevel.MODERATE:
-                    complexity_score += 1
-
-            if (
-                hasattr(intent, "requires_custom_tools")
-                and intent.requires_custom_tools
-            ):
-                complexity_score += 2
-
-        return min(complexity_score, 10)  # Cap at 10
+        return state
 
     async def _store_intent_analyses(
         self, intent_analyses: List[IntentAnalysis], state: WorkflowState
@@ -213,33 +141,45 @@ class PlanningIntentSubgraph:
                 )
                 return
 
-            logger.debug(f"Found user message ID {user_message_id} for intent analysis storage")
+            logger.debug(
+                f"Found user message ID {user_message_id} for intent analysis storage"
+            )
 
             # Verify the message exists in the database before storing analysis
             # Only check if storage is properly initialized to avoid errors
-            if hasattr(storage, 'message') and storage.message:
+            if hasattr(storage, "message") and storage.message:
                 try:
-                    existing_message = await storage.get_service(storage.message).get_message(user_message_id)
+                    existing_message = await storage.get_service(
+                        storage.message
+                    ).get_message(user_message_id)
                     if not existing_message:
-                        logger.error(f"Message {user_message_id} not found in database - cannot store intent analysis")
+                        logger.error(
+                            f"Message {user_message_id} not found in database - cannot store intent analysis"
+                        )
                         return
-                    logger.debug(f"Verified message {user_message_id} exists in database")
+                    logger.debug(
+                        f"Verified message {user_message_id} exists in database"
+                    )
                 except Exception as e:
-                    logger.error(f"Error verifying message {user_message_id} exists: {e}")
+                    logger.error(
+                        f"Error verifying message {user_message_id} exists: {e}"
+                    )
                     # Don't return here - continue with storage attempt in case it's a transient issue
                     pass
             else:
-                logger.warning("Message storage not available for verification - proceeding with intent analysis storage")
+                logger.warning(
+                    "Message storage not available for verification - proceeding with intent analysis storage"
+                )
 
             # Store each intent analysis
             for intent_analysis in intent_analyses:
                 try:
                     # Set the message_id on the IntentAnalysis object before storing
                     intent_analysis.message_id = user_message_id
-                    
+
                     analysis_id = await storage.analysis.add_analysis(
-                        message_id=user_message_id, 
-                        intent_analysis=intent_analysis
+                        message_id=user_message_id,
+                        intent_analysis=intent_analysis,
                     )
                     if analysis_id:
                         logger.debug(f"Stored intent analysis with ID: {analysis_id}")
@@ -254,43 +194,16 @@ class PlanningIntentSubgraph:
         except Exception as e:
             logger.error(f"Failed to store intent analyses: {e}")
 
-    async def _generate_todos_step(self, state: WorkflowState) -> Dict[str, Any]:
-        """Generate todos based on intent analysis."""
-        logger.info("� Intent: Generating todos from intent analysis")
-
-        intent_analyses = state.intent_classification
-        messages = state.messages
-        user_id = state.user_id
-        conversation_id = state.conversation_id
-        complexity_score = state.complexity_score or 3
-
-        generated_todos = await self._generate_todos_from_intent(
-            intent_analyses,
-            messages,
-            user_id or "",
-            conversation_id or 0,
-            complexity_score,
-        )
-
-        logger.info(f"� Intent: Generated {len(generated_todos)} todos")
-
-        return {
-            "generated_todos": generated_todos,
-        }
-
-    async def _generate_todos_from_intent(
-        self,
-        intent_analyses: List[IntentAnalysis],
-        messages: List[Message],
-        user_id: str,
-        conversation_id: int,
-        complexity_score: int,
-    ) -> List[TodoItem]:
+    async def _generate_todos_step(self, state: WorkflowState) -> WorkflowState:
         """Generate todos automatically based on intent analysis with proper typing."""
         logger.info("📝 Intent: Generating todos from intent analysis")
 
-        if not intent_analyses or not user_id:
-            return []
+        if (
+            not state.intent_classification
+            or not state.user_id
+            or not state.conversation_id
+        ):
+            return state
 
         generated_todos: List[TodoItem] = []
 
@@ -300,12 +213,12 @@ class PlanningIntentSubgraph:
 
             if not storage.initialized or not storage.todo:
                 logger.warning("Storage not initialized, skipping todo generation")
-                return []
+                return state
 
             # Get the latest user message for context
             user_message = ""
-            if messages:
-                for msg in reversed(messages):
+            if state.messages:
+                for msg in reversed(state.messages):
                     if isinstance(msg, HumanMessage):
                         user_message = extract_text_from_message(
                             lc_message_to_message(msg)
@@ -313,9 +226,12 @@ class PlanningIntentSubgraph:
                         break
 
             # Generate todos based on intent analysis - simplified approach
-            for intent in intent_analyses:
+            for intent in state.intent_classification:
                 todo_item = await self._create_todo_for_intent(
-                    intent, user_message, user_id, conversation_id, complexity_score
+                    intent,
+                    user_message,
+                    state.user_id,
+                    state.conversation_id,
                 )
                 if todo_item:
                     generated_todos.append(todo_item)
@@ -323,11 +239,14 @@ class PlanningIntentSubgraph:
             logger.info(
                 f"📝 Intent: Generated {len(generated_todos)} todos from intent analysis"
             )
-            return generated_todos
+
+            state.generated_todos = generated_todos
+
+            return state
 
         except Exception as e:
             logger.error(f"Failed to generate todos from intent: {e}")
-            return []
+            return state
 
     async def _create_todo_for_intent(
         self,
@@ -335,7 +254,6 @@ class PlanningIntentSubgraph:
         user_message: str,
         user_id: str,
         conversation_id: int,
-        complexity_score: int,
     ) -> Optional[TodoItem]:
         """Create a single todo based on intent analysis using simplified logic."""
         try:
@@ -344,20 +262,15 @@ class PlanningIntentSubgraph:
             # Determine priority based on complexity and urgency indicators
             priority = "medium"  # default
 
-            if complexity_score >= 8 or (
-                hasattr(intent, "complexity_level")
-                and intent.complexity_level == ComplexityLevel.COMPLEX
-            ):
+            if intent.complexity_level == ComplexityLevel.COMPLEX:
                 priority = "high"
-            elif any(
+
+            if any(
                 word in user_message.lower()
                 for word in ["urgent", "asap", "immediately", "quickly"]
             ):
                 priority = "urgent"
-            elif complexity_score <= 3 or (
-                hasattr(intent, "complexity_level")
-                and intent.complexity_level == ComplexityLevel.SIMPLE
-            ):
+            elif intent.complexity_level == ComplexityLevel.SIMPLE:
                 priority = "low"
 
             # Create title based on workflow type
@@ -369,27 +282,36 @@ class PlanningIntentSubgraph:
                 WorkflowType.PLANNING: "Plan",
             }.get(intent.workflow_type, "Work on")
 
-            topic = self._extract_topic(user_message)
-            title = f"{workflow_action}: {topic}"
-
             # Create description
-            description = (
-                f"Complete {intent.workflow_type.value} task: {user_message[:200]}..."
-            )
+            description = f"Complete {intent.workflow_type.value} {workflow_action} task: {user_message[:200]}..."
             if (
                 hasattr(intent, "requires_custom_tools")
                 and intent.requires_custom_tools
             ):
                 description += " (Requires custom tools)"
 
+            title = await self.classifier_agent.generate_title(
+                [
+                    Message(
+                        role=MessageRole.USER,
+                        content=[
+                            MessageContent(
+                                type=MessageContentType.TEXT,
+                                text=description,
+                            )
+                        ],
+                    )
+                ]
+            )
+
             # Create TodoItem
             todo_item = TodoItem(
                 user_id=user_id,
                 conversation_id=conversation_id,
-                title=title,
                 description=description,
                 status="not-started",
                 priority=priority,
+                title=title,
             )
 
             # Store in database and return the saved item
@@ -399,41 +321,6 @@ class PlanningIntentSubgraph:
         except Exception as e:
             logger.error(f"Failed to create todo for intent: {e}")
             return None
-
-    def _extract_topic(self, message: str) -> str:
-        """Extract a concise topic from the user message for todo titles."""
-        # Simple topic extraction - take first meaningful part of message
-        words = message.split()
-        if len(words) <= 5:
-            return message
-
-        # Look for key topic indicators
-        topic_words = []
-        skip_words = {
-            "please",
-            "can",
-            "you",
-            "help",
-            "me",
-            "with",
-            "i",
-            "need",
-            "want",
-            "would",
-            "like",
-        }
-
-        for word in words[:10]:  # Look at first 10 words
-            clean_word = word.lower().strip(".,!?")
-            if clean_word not in skip_words and len(clean_word) > 2:
-                topic_words.append(word)
-                if len(topic_words) >= 3:
-                    break
-
-        if topic_words:
-            return " ".join(topic_words)
-        else:
-            return " ".join(words[:3])
 
     async def execute(
         self,
@@ -448,10 +335,12 @@ class PlanningIntentSubgraph:
 
             # Execute subgraph directly using ainvoke for proper state handling
             final_state_dict = await self.graph.ainvoke(state)
-            
+
             # Extract the key fields from the final state that need to be updated
             update_dict = {
-                "intent_classification": final_state_dict.get("intent_classification", []),
+                "intent_classification": final_state_dict.get(
+                    "intent_classification", []
+                ),
                 "generated_todos": final_state_dict.get("generated_todos", []),
                 "complexity_score": final_state_dict.get("complexity_score", 3),
             }

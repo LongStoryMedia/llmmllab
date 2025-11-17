@@ -25,7 +25,7 @@ Usage in LangGraph workflows:
 from langchain_core.tools import tool
 from langchain.tools import ToolRuntime
 
-from composer.graph.state import ToolsState
+from composer.graph.state import WorkflowState
 from runner import pipeline_factory
 from db import storage
 from models import ModelProfileType

@@ -5,12 +5,7 @@ This is the centralized state schema that acts as the common interface
 
 import operator
 from typing import List, Dict, Any, Optional, Annotated, Set, Union
-from runner.pipelines.base import BasePipeline
-from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
-
-from langchain_core.messages import BaseMessage
-from langgraph.graph.message import add_messages
 
 from models import (
     Memory,
@@ -20,7 +15,6 @@ from models import (
     MessageRole,
     TodoItem,
     Tool,
-    ToolConfig,
     WorkflowType,
     UserConfig,
     Summary,
@@ -30,34 +24,6 @@ from models import (
     NodeMetadata,
     ToolCall,
 )
-
-
-class ToolsState(BaseModel):
-    """
-    Minimal state for agent subgraph with chat_agent + tool_node workflow.
-
-    Contains only essential data for the agent to operate efficiently while
-    minimizing context window usage. The agent cycles between chat_agent and
-    tool_node until completion, then returns results via Command.
-    """
-
-    # Message thread for agent conversation (using LangChain BaseMessage for LangGraph compatibility)
-    messages: Annotated[List[BaseMessage], add_messages]
-
-    # Essential context for tool operations
-    user_id: str
-    conversation_id: int
-
-    # User configuration (full object for tool access)
-    user_config: UserConfig
-
-    # Current operation tracking
-    tool_call_count: int
-
-    # Shared pipeline for tools to prevent duplicate server instances
-    shared_pipeline: Optional[BasePipeline] = Field(
-        default=None, description="Pipeline instance for tools to reuse"
-    )
 
 
 class WorkflowState(BaseModel):
@@ -181,12 +147,6 @@ class WorkflowState(BaseModel):
         description="Ranked retrieval results from the most recent retrieval operation",
     )
 
-    # Routing and execution control fields (referenced by builder.py)
-    next_node: Annotated[Optional[str], lambda x, y: y if y is not None else x] = Field(
-        default=None,
-        description="Next node name for Command-based deterministic routing",
-    )
-
     # Memory retrieval results
     retrieved_memories: Annotated[List[Memory], operator.add] = Field(
         default_factory=list,
@@ -206,10 +166,6 @@ class WorkflowState(BaseModel):
 
     search_syntheses: Annotated[List[SearchTopicSynthesis], operator.add] = Field(
         default_factory=list, description="Syntheses of web search results"
-    )
-
-    search_query: Annotated[Optional[str], lambda x, y: y if y is not None else x] = (
-        Field(default=None, description="Search query used for web search")
     )
 
     selected_workflows: Annotated[
@@ -235,27 +191,6 @@ class WorkflowState(BaseModel):
         Optional[UserConfig], lambda x, y: y if y is not None else x
     ] = Field(
         default=None, description="User configuration for this workflow execution"
-    )
-
-    workflow_type: Annotated[
-        Optional[WorkflowType], lambda x, y: y if y is not None else x
-    ] = Field(
-        default=None,
-        description="Type of workflow: CHAT, RESEARCH, MULTI_AGENT, CREATIVE",
-    )
-
-    # Circuit breaker and error tracking
-    error_details: Annotated[List[str], operator.add] = Field(
-        default_factory=list,
-        description="Error details for circuit breaker and recovery",
-    )
-
-    # Node execution metadata tracking
-    node_metadata: Annotated[
-        Dict[str, NodeMetadata], lambda x, y: {**x, **y} if x and y else y or x or {}
-    ] = Field(
-        default_factory=dict,
-        description="Strongly typed metadata from node executions keyed by node_id",
     )
 
     # Generated todos from planning middleware
