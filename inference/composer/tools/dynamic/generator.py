@@ -18,6 +18,27 @@ from .security import ToolSecurityValidator
 logger = llmmllogger.bind(component="dynamic_tool_generator")
 
 
+def build_dynamic_tool_code(name: str, description: str, args_schema: Any) -> str:
+    """Generate structured dynamic tool code from spec using central builder.
+
+    Provides a single place to construct the executable function body, avoiding ad-hoc
+    inline stub generation scattered across the codebase.
+    The initial implementation intentionally raises NotImplementedError to require
+    explicit logic insertion by future refinement stages or human review.
+    """
+    doc_args_schema = args_schema if isinstance(args_schema, str) else str(args_schema)
+    return (
+        f"async def {name}(**kwargs):\n"
+        f"    \"\"\"Dynamic tool generated from specification.\n"
+        f"    Name: {name}\n"
+        f"    Description: {description}\n"
+        f"    Args Schema: {doc_args_schema}\n"
+        f"    Replace this function body with the real implementation.\n"
+        f"    \"\"\"\n"
+        f"    raise NotImplementedError(\"Dynamic tool '{name}' not implemented yet\")\n"
+    )
+
+
 class DynamicToolRunner(BaseTool):
     """Dynamically generated tool that can execute custom code"""
 
@@ -37,7 +58,10 @@ class DynamicToolRunner(BaseTool):
         )
 
     def _run(
-        self, run_manager: Optional[CallbackManagerForToolRun] = None, **kwargs
+        self,
+        *args,
+        run_manager: Optional[CallbackManagerForToolRun] = None,
+        **kwargs,
     ) -> str:
         """Execute the dynamic tool"""
         try:
