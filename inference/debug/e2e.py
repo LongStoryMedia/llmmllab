@@ -24,6 +24,7 @@ import argparse
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
+from pydantic import NonNegativeInt
 from utils.logging import llmmllogger, serialize_event_data
 from models import (
     Message,
@@ -32,6 +33,7 @@ from models import (
     MessageContentType,
     Conversation,
     ChatResponse,
+    GenerationState,
 )
 from db import storage
 from composer import (
@@ -107,13 +109,16 @@ class ComposerRealEndToEndTester:
         """Write LLM response to file with phase information."""
         try:
             with open(self.llm_output_file, "a", encoding="utf-8") as f:
-                f.write(f"\n{'='*60}\n")
-                f.write(f"PHASE: {phase}\n")
-                f.write(f"TIMESTAMP: {datetime.now(timezone.utc).isoformat()}\n")
+            # Ensure we have required IDs
+            if not self.test_conversation_id or not storage or not storage.message:
+                raise RuntimeError("Missing required components for workflow execution")
                 if metadata:
                     f.write(f"METADATA: {json.dumps(metadata, indent=2)}\n")
                 f.write(f"{'='*60}\n")
                 f.write(f"{response_text}\n")
+            )
+            if not messages:
+                raise RuntimeError("No messages found for conversation")
 
             # Also store in memory for analysis
             self.llm_responses.append(
@@ -473,7 +478,13 @@ class ComposerRealEndToEndTester:
             # Create a multimodal message for testing vision capabilities
             query_text = (
                 query
-                or """Look at this image and describe what you see. What colors are visible, and what might this represent? Also, please search the web for information about the latest developments in multimodal AI models that can process both text and images together."""
+                or """
+Look at this image and describe what you see. What colors are visible, and what might this represent? 
+Then, see if you can find any similar images to this one online.
+Look up some news articles related to the content of the image as well.
+Also, please search the web for information about the latest developments in multimodal AI models that can process both text and images together.
+Which advances would best aid in understanding images like this one?
+"""
             )
 
             content_list = []
@@ -530,13 +541,33 @@ class ComposerRealEndToEndTester:
         try:
             # Ensure we have required IDs
             if not self.test_conversation_id or not storage or not storage.message:
-                raise RuntimeError("Missing required components for workflow execution")
+            async for res in execute_workflow(
 
             # Get conversation messages for context
             messages = await storage.message.get_conversation_history(
                 self.test_conversation_id
+                # Capture last state for later validation (todos, etc.)
+                try:
+                    self._last_state = res.state  # type: ignore[attr-defined]
+                except Exception:
+                    pass
             )
-            if not messages:
+            # Append todos if available in final state
+            todos_md = ""
+            try:
+                if hasattr(self, "_last_state") and getattr(self._last_state, "generated_todos", None):
+                    todos = getattr(self._last_state, "generated_todos") or []
+                    if todos:
+                        todos_md_lines = ["\n### Captured Todos\n", "| # | Title | Status | Priority |", "|---|-------|--------|----------|"]
+                        for i, td in enumerate(todos, 1):
+                            todos_md_lines.append(f"| {i} | {td.title} | {td.status} | {td.priority} |")
+                        todos_md = "\n".join(todos_md_lines) + "\n"
+            except Exception as todo_err:
+                logger.warning(f"Todo formatting failed: {todo_err}")
+
+            completion_text = f"\n\n---\n\n**Streaming Complete**  \
+Events: {event_count}  \
+Duration: {execution_time:.2f}s\n" + todos_md + "\n---\n"
                 raise RuntimeError("No messages found for conversation")
 
             logger.info(f"   📝 Processing {len(messages)} messages")
@@ -588,6 +619,11 @@ class ComposerRealEndToEndTester:
                 workflow=workflow,
             ):
                 event_count += 1
+                # Capture latest workflow state for todos extraction later
+                try:
+                    self._last_state = res.state  # type: ignore[attr-defined]
+                except Exception:
+                    pass
 
                 if res.done and res.finish_reason == "complete":
                     full_response = res
@@ -597,24 +633,61 @@ class ComposerRealEndToEndTester:
                     logger.warning("Received empty message in stream event")
                     continue
 
+                if res.state != res.prev_state:
+                    if res.prev_state == GenerationState.THINKING:
+                        self._write_to_output(
+                            "_\n\n",
+                        )
+                    if res.prev_state == GenerationState.ANALYSING:
+                        self._write_to_output(
+                            "\n```\n",
+                        )
+                    if res.state == GenerationState.RESPONDING:
+                        self._write_to_output(
+                            "##### Content:\n\n",
+                        )
+                    if res.state == GenerationState.THINKING:
+                        self._write_to_output(
+                            "\n##### Thought:\n\n_",
+                        )
+                    if res.state == GenerationState.ANALYSING:
+                        self._write_to_output(
+                            "\n##### [ANALYSIS]: \n\n ```json\n",
+                        )
+
                 # Handle tool calls like tools_agent
                 if res.message.tool_calls:
                     tool_calls_detected = True
                     for t in res.message.tool_calls:
-                        tool_text = f"\n{'-'*40}\nTool Call: {t.name}\nArguments: {serialize_event_data(t.args)}\nRESULTS: {serialize_event_data(t.result_data)}\n{'-'*40}\n"
-                        self._write_to_output(tool_text)
+                        self._write_to_output(
+                            f"\n{'-'*40}\n#### Tool Call: {t.name}\n\nArguments: {serialize_event_data(t.args)}\n\nRESULTS:\n{t.result_data.get("content") if t.result_data else ''}\n{'-'*40}\n",
+                        )
                 # Handle message content like tools_agent (filter out [THOUGHT] content)
                 for c in res.message.content:
                     if c.type == MessageContentType.ANALYSIS:
-                        self._write_to_output(f"\n[ANALYSIS]: {c.text}\n")
-                    if c.type in [MessageContentType.TEXT, MessageContentType.THINKING]:
-                        content_str = c.text
-                        self._write_to_output(content_str or "")
+
+                        self._write_to_output(c.text or "")
+                    if c.type == MessageContentType.THINKING:
+                        self._write_to_output(c.text or "")
+                    if c.type == MessageContentType.TEXT:
+                        self._write_to_output(c.text or "")
 
                 # Skip thoughts - we only want clean content output
 
             execution_time = time.time() - start_time
-            completion_text = f"\n\n{'='*80}\n✅ STREAMING COMPLETE - Total events: {event_count}\nTotal time: {execution_time:.2f} seconds\n{'='*80}\n"
+            todos_md = ""
+            try:
+                if hasattr(self, "_last_state") and getattr(self._last_state, "generated_todos", None):
+                    todos = getattr(self._last_state, "generated_todos") or []
+                    if todos:
+                        lines = ["\n### Captured Todos\n", "| # | Title | Status | Priority |", "|---|-------|--------|----------|"]
+                        for i, td in enumerate(todos, 1):
+                            lines.append(f"| {i} | {td.title} | {td.status} | {td.priority} |")
+                        todos_md = "\n".join(lines) + "\n"
+            except Exception as todo_err:
+                logger.warning(f"Todo markdown generation failed: {todo_err}")
+
+            completion_text = f"\n\n{'='*80}\n✅ STREAMING COMPLETE - Total events: {event_count}\nTotal time: {execution_time:.2f} seconds\n{'='*80}\n" + todos_md
             self._write_to_output(completion_text)
 
             logger.info(f"   ✅ Workflow execution completed in {execution_time:.2f}s")

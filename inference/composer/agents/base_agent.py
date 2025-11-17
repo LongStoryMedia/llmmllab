@@ -382,6 +382,7 @@ While this is likely past your training data, you can use this information to pr
 TOOL USE:
 If you intend to use any tools, ensure you follow the tool usage guidelines provided in the system prompt.
 If there are not results from tool usage, you must attempt to call the tool again as it is likely that the format is incorrect.
+Do not make up results - always use tools to get accurate information, or organize a way to obtain them.
 """
 
         return system_prompt, convo
@@ -429,10 +430,59 @@ If there are not results from tool usage, you must attempt to call the tool agai
 
             # Convert messages to LangChain format
             normalized_messages = messages_to_lc_messages(convo)
-            self.logger.debug(
-                f"Running agent with {len(normalized_messages)} messages: {serialize_event_data(normalized_messages)}"
-            )
-            result = await agent.ainvoke({"messages": normalized_messages})  # type: ignore
+
+            # Heuristic: if TodoListMiddleware attached and initial user request appears multi-step
+            # and agent state has produced no todos yet, proactively seed a todo list.
+            # We cannot access internal agent state before first invoke; instead perform a priming
+            # write_todos tool call followed by normal invocation if heuristic passes.
+            seeded_todos = None
+            if self.middleware:
+                try:
+                    text_parts = []
+                    for m in convo:
+                        if m.role == MessageRole.USER and m.content:
+                            text_parts.append(extract_text_from_message(m))
+                    user_text = " \n".join(text_parts).strip().lower()
+                    multi_step_indicators = [" and ", " then ", " also ", " next ", " step", "steps", "tasks", ","]
+                    indicator_hits = sum(1 for kw in multi_step_indicators if kw in user_text)
+                    long_enough = len(user_text.split()) > 25
+                    if indicator_hits >= 2 or (indicator_hits >= 1 and long_enough):
+                        # Build initial todo seed (simple split by conjunctions/periods)
+                        # Basic extraction: break into clauses separated by 'and', 'then', 'also'
+                        import re
+                        clauses = re.split(r"(?:\band\b|\bthen\b|\balso\b|\.)", user_text)
+                        tasks = [c.strip() for c in clauses if len(c.strip().split()) >= 3][:6]
+                        if tasks:
+                            seeded_todos = [
+                                {"content": t[:140], "status": "in_progress" if i == 0 else "pending"}
+                                for i, t in enumerate(tasks)
+                            ]
+                            self.logger.info(
+                                f"🌱 Seeding initial todo list with {len(seeded_todos)} tasks via heuristic"
+                            )
+                except Exception as seed_err:
+                    self.logger.warning(f"Failed todo seeding heuristic: {seed_err}")
+
+            if seeded_todos:
+                # Perform priming call including write_todos tool command state update by passing a ToolMessage pattern
+                try:
+                    # LangChain agent expects messages array; we include original user messages then a tool command state
+                    priming_result = await agent.ainvoke({"messages": normalized_messages, "todos": seeded_todos})  # type: ignore
+                    # Merge any returned todos with seed (will be re-parsed below)
+                    if isinstance(priming_result, dict) and priming_result.get("todos"):
+                        self.logger.info(
+                            f"✅ Priming write_todos produced {len(priming_result['todos'])} todos"
+                        )
+                        result = priming_result
+                    else:
+                        result = priming_result
+                except Exception as priming_err:
+                    self.logger.warning(
+                        f"Priming write_todos failed; continuing without seed: {priming_err}"
+                    )
+                    result = await agent.ainvoke({"messages": normalized_messages})  # type: ignore
+            else:
+                result = await agent.ainvoke({"messages": normalized_messages})  # type: ignore
 
             # Extract messages and middleware state (todos) from result
             todos_raw = None
@@ -452,7 +502,12 @@ If there are not results from tool usage, you must attempt to call the tool agai
                 f"Agent run result ({type(last_message)}): {serialize_event_data(last_message)}"
             )
             msg = lc_message_to_message(last_message)
-            if grammar and isinstance(grammar, IntentsResponse) and msg.content and msg.content[0].text:
+            if (
+                grammar
+                and isinstance(grammar, IntentsResponse)
+                and msg.content
+                and msg.content[0].text
+            ):
                 msg.analyses = parse_structured_output(
                     msg.content[0].text, IntentsResponse
                 ).intents
@@ -466,7 +521,12 @@ If there are not results from tool usage, you must attempt to call the tool agai
                 for t in todos_raw:
                     if not isinstance(t, dict):
                         continue
-                    content = t.get("content") or t.get("task") or t.get("description") or "Untitled Task"
+                    content = (
+                        t.get("content")
+                        or t.get("task")
+                        or t.get("description")
+                        or "Untitled Task"
+                    )
                     status_raw = t.get("status", "pending")
                     # Map middleware statuses to internal statuses
                     status_map = {

@@ -49,7 +49,6 @@ from composer.tools.registry import ToolRegistry
 
 from composer.graph.state import WorkflowState, assemble_context_messages
 from composer.graph.subgraphs import ToolsAgentSubgraph
-from composer.graph.subgraphs import PlanningIntentSubgraph
 
 
 # Checkpoint integration handled through CheckpointStorage service
@@ -269,6 +268,7 @@ class GraphBuilder:
 
             # Create agents with injected dependencies
             from langchain.agents.middleware import TodoListMiddleware
+
             todo_middleware = TodoListMiddleware()
 
             primary_agent = ChatAgent(
@@ -395,11 +395,12 @@ class GraphBuilder:
             assert tools_agent_subgraph.graph is not None
             workflow.add_node("tools_agent", tools_agent_subgraph.graph)
 
-            intent_analysis_subgraph = PlanningIntentSubgraph(
-                classifier_agent=classifier_agent
-            )
-            assert intent_analysis_subgraph.graph is not None
-            workflow.add_node("intent_analysis", intent_analysis_subgraph.graph)
+            # Intent planning disabled: TodoListMiddleware supersedes manual intent planning todos
+            # intent_analysis_subgraph = PlanningIntentSubgraph(
+            #     classifier_agent=classifier_agent
+            # )
+            # assert intent_analysis_subgraph.graph is not None
+            # workflow.add_node("intent_analysis", intent_analysis_subgraph.graph)
 
             async def context_node(state: WorkflowState) -> WorkflowState:
                 """Execute the context assembly subgraph and return updated state."""
@@ -416,10 +417,9 @@ class GraphBuilder:
             # 2. Static tool loading -> Intent Analysis (classifier can now see available tools)
             workflow.add_edge("static_tool_loading", "context_assembly")
 
-            workflow.add_edge("context_assembly", "intent_analysis")
-
-            # 3. Intent Analysis -> Tool collection (filters static tools + creates dynamic tools)
-            workflow.add_edge("intent_analysis", "tool_collection")
+            # Skip intent_analysis; route directly to tool_collection
+            workflow.add_edge("context_assembly", "tool_collection")
+            # Direct tool collection to composer
             workflow.add_edge("tool_collection", "tool_composer")
 
             # 4. Tool composer -> Router for workflow selection
