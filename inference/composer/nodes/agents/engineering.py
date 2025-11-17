@@ -101,7 +101,7 @@ class EngineeringAgentNode:
                 )
 
                 response = await self.agent.generate_technical_response(
-                    messages=assemble_context_messages(state),
+                    messages=state.messages,
                     user_id=user_id,
                     domain=intent.technical_domain,
                     response_format=intent.response_format,

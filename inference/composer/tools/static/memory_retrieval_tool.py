@@ -58,7 +58,6 @@ async def memory_retrieval(
     try:
         # Access state and tool_call_id through runtime
         state = runtime.state
-        tool_call_id = runtime.tool_call_id
 
         # Get user_config from tool runtime state
         if state.get("user_config") and hasattr(state["user_config"], "memory"):

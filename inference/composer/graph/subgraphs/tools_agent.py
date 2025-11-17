@@ -11,17 +11,13 @@ Standard architecture:
 4. No manual extraction or conversion - LangChain handles everything
 """
 
-from typing import Optional
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.prebuilt import ToolNode
 from langgraph.types import Command
-from composer.graph import WorkflowState, assemble_context_messages, WorkflowExecutor
+from composer.graph import WorkflowState, WorkflowExecutor
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
-from models import ChatResponse, Message, PipelinePriority
-from utils.message_conversion import (
-    message_to_lc_message,
-)
+from models import ChatResponse, PipelinePriority
 from utils.logging import llmmllogger, serialize_event_data
 
 logger = llmmllogger.bind(component="ToolsAgentSubgraph")
@@ -106,10 +102,8 @@ class ToolsAgentSubgraph:
             # Invoke ChatOpenAI - this handles tool calling automatically
             logger.info("📤 Invoking ChatOpenAI with standard LangChain pattern")
 
-            # Convert LangChain messages to our Message format for the chat agent
-
             response = await self.chat_agent.run(
-                messages=assemble_context_messages(state),
+                messages=state.messages,
                 tools=tools_list,
                 priority=PipelinePriority.HIGH,
             )
@@ -130,29 +124,3 @@ class ToolsAgentSubgraph:
         except Exception as e:
             logger.error(f"Agent node error: {e}", exc_info=True)
             return state
-
-    async def execute(
-        self,
-        state: WorkflowState,
-        executor: WorkflowExecutor,
-    ) -> ChatResponse:
-        """Execute the agent subgraph and return Command with state updates."""
-        try:
-            if not self.graph:
-                logger.error("Agent subgraph not initialized")
-                return ChatResponse(message=None)
-
-            # Execute the agent subgraph directly with WorkflowState
-            async for event in executor.stream_workflow(
-                initial_state=state,
-                workflow=self.graph,
-            ):
-                if event.done and event.finish_reason == "completed":
-                    return event
-
-            return ChatResponse(message=None)
-
-            # return Command(update={"messages": state.messages})
-        except Exception as e:
-            logger.error(f"Agent subgraph execution failed: {e}", exc_info=True)
-            return ChatResponse(message=None)

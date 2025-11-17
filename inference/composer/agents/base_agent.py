@@ -243,8 +243,6 @@ class BaseAgent(ABC, Generic[T]):
             self.logger.error("🚨 Pipeline is None after get_pipeline call!")
             raise ValueError("Pipeline creation failed - pipeline is None")
 
-        # Fallback to traditional agent creation for non-ChatOpenAI pipelines
-        self.logger.info("🔄 Using traditional agent creation for pipeline")
         llm = cast(BaseChatModel, pipeline)
         agent = create_agent(
             model=llm,
@@ -255,18 +253,6 @@ class BaseAgent(ABC, Generic[T]):
         )
 
         return agent
-
-    # def _build_enhanced_system_prompt(
-    #     self, system_prompt: str, tools: Optional[List[BaseTool]], current_date: str
-    # ) -> str:
-    #     """Build enhanced system prompt with tool instructions and temporal context."""
-    #     enhanced_prompt = system_prompt
-
-    #     enhanced_prompt +=
-    #     if "web_search" in (tool.name for tool in (tools or [])):
-    #         enhanced_prompt += "If the user asks for current events or recent information, use the web_search tool to find up-to-date information."
-
-    #     return enhanced_prompt
 
     @property
     def current_pipeline(self) -> Optional[Any]:
@@ -450,7 +436,9 @@ If there are not results from tool usage, you must attempt to call the tool agai
 
             # Stream agent execution with recursion limit
             async for chunk in agent.astream(
-                npt, stream_mode="messages", subgraphs=True  # type: ignore
+                npt,  # type: ignore
+                stream_mode="messages",
+                subgraphs=True,
             ):
                 msg_chunk = {}
                 metadata = {}
@@ -535,6 +523,9 @@ If there are not results from tool usage, you must attempt to call the tool agai
 
             # Convert messages to LangChain format
             normalized_messages = messages_to_lc_messages(convo)
+            self.logger.debug(
+                f"Running agent with {len(normalized_messages)} messages: {serialize_event_data(normalized_messages)}"
+            )
             result = await agent.ainvoke({"messages": normalized_messages})  # type: ignore
 
             # Convert agent result to ChatResponse

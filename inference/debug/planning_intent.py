@@ -74,7 +74,11 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
     classifier_agent = ClassifierAgent(
         pipeline_factory,
         profile,
-        NodeMetadata(node_name="debug_classifier", node_id="debug_classifier_001", node_type="debug"),
+        NodeMetadata(
+            node_name="debug_classifier",
+            node_id="debug_classifier_001",
+            node_type="debug",
+        ),
     )
 
     logger.info("🤖 ClassifierAgent initialized for planning intent")
@@ -108,10 +112,15 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
     # Initialize database for intent analysis storage
     try:
         from db import storage
-        await storage.initialize('postgresql://lsm:@psql.psql.svc.cluster.local:5432/llmmll')
+
+        await storage.initialize(
+            "postgresql://lsm:@psql.psql.svc.cluster.local:5432/llmmll"
+        )
         logger.info("💾 Database initialized for intent analysis storage")
     except Exception as e:
-        logger.warning(f"Database initialization failed: {e} - continuing without storage")
+        logger.warning(
+            f"Database initialization failed: {e} - continuing without storage"
+        )
 
     user_config = create_default_user_config(user_id="test_user")
     # Create initial WorkflowState
@@ -137,12 +146,15 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
 
         # Execute the graph directly using ainvoke since this subgraph doesn't stream
         final_state = await planning_intent_subgraph.graph.ainvoke(workflow_state)
-        
+
         print("🔍 INTENT ANALYSIS RESULTS:")
         print("-" * 40)
-        
+
         # Check both the final_state object and its attributes
-        if hasattr(final_state, 'intent_classification') and final_state.intent_classification:
+        if (
+            hasattr(final_state, "intent_classification")
+            and final_state.intent_classification
+        ):
             for i, intent in enumerate(final_state.intent_classification):
                 print(f"\nIntent Analysis {i+1}:")
                 print(f"  Workflow Type: {intent.workflow_type}")
@@ -155,11 +167,15 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
                 print(f"  Domain Specificity: {intent.domain_specificity}")
                 print(f"  Reusability Potential: {intent.reusability_potential}")
                 print(f"  Response Format: {intent.response_format}")
-                print(f"  Required Capabilities: {[cap.value for cap in intent.required_capabilities]}")
-                print(f"  Computational Requirements: {intent.computational_requirements.value}")
-        elif isinstance(final_state, dict) and 'intent_classification' in final_state:
+                print(
+                    f"  Required Capabilities: {[cap.value for cap in intent.required_capabilities]}"
+                )
+                print(
+                    f"  Computational Requirements: {intent.computational_requirements.value}"
+                )
+        elif isinstance(final_state, dict) and "intent_classification" in final_state:
             # Handle case where final_state is a dict
-            intents = final_state['intent_classification']
+            intents = final_state["intent_classification"]
             if intents:
                 for i, intent in enumerate(intents):
                     print(f"\nIntent Analysis {i+1}:")
@@ -173,27 +189,33 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
                     print(f"  Domain Specificity: {intent.domain_specificity}")
                     print(f"  Reusability Potential: {intent.reusability_potential}")
                     print(f"  Response Format: {intent.response_format}")
-                    print(f"  Required Capabilities: {[cap.value for cap in intent.required_capabilities]}")
-                    print(f"  Computational Requirements: {intent.computational_requirements.value}")
+                    print(
+                        f"  Required Capabilities: {[cap.value for cap in intent.required_capabilities]}"
+                    )
+                    print(
+                        f"  Computational Requirements: {intent.computational_requirements.value}"
+                    )
             else:
                 print("No intent classification results found in dict")
         else:
-            print(f"No intent classification results found. State type: {type(final_state)}")
-            if hasattr(final_state, '__dict__'):
+            print(
+                f"No intent classification results found. State type: {type(final_state)}"
+            )
+            if hasattr(final_state, "__dict__"):
                 print(f"Available attributes: {list(final_state.__dict__.keys())}")
             elif isinstance(final_state, dict):
                 print(f"Available keys: {list(final_state.keys())}")
-            
+
         print("\n📝 TODO GENERATION RESULTS:")
         print("-" * 40)
-        
+
         # Check todos in both formats
         todos = None
-        if hasattr(final_state, 'generated_todos'):
+        if hasattr(final_state, "generated_todos"):
             todos = final_state.generated_todos
-        elif isinstance(final_state, dict) and 'generated_todos' in final_state:
-            todos = final_state['generated_todos']
-            
+        elif isinstance(final_state, dict) and "generated_todos" in final_state:
+            todos = final_state["generated_todos"]
+
         if todos:
             for i, todo in enumerate(todos):
                 print(f"\nTodo {i+1}:")

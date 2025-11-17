@@ -175,22 +175,18 @@ class WorkflowState(BaseModel):
     )
 
     # Additional context fields
-    user_id: Annotated[Optional[str], lambda x, y: y if y is not None else x] = Field(
-        default=None, description="User identifier for personalization"
-    )
-
-    conversation_id: Annotated[
-        Optional[int], lambda x, y: y if y is not None else x
-    ] = Field(
-        default=None,
+    conversation_id: Annotated[int, lambda x, y: y if y is not None else x] = Field(
+        ...,
         description="Conversation identifier for memory and context management",
     )
 
+    user_id: Annotated[str, lambda x, y: y if y is not None else x] = Field(
+        ..., description="User identifier for personalization"
+    )
+
     # User configuration - centralized to eliminate database fetch duplication
-    user_config: Annotated[
-        Optional[UserConfig], lambda x, y: y if y is not None else x
-    ] = Field(
-        default=None, description="User configuration for this workflow execution"
+    user_config: Annotated[UserConfig, lambda x, y: y if y is not None else x] = Field(
+        ..., description="User configuration for this workflow execution"
     )
 
     # Generated todos from planning middleware

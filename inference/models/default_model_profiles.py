@@ -326,7 +326,7 @@ DEFAULT_ANALYSIS_PROFILE = ModelProfile(
     description="Profile for detailed analysis of text with optimized parameters.",
     model_name=DEFAULT_ANALYSIS_MODEL,
     parameters=ModelParameters(
-        num_ctx=65536,  # Increased from 40960 for better analysis capacity
+        num_ctx=40960,
         repeat_last_n=-1,
         repeat_penalty=1.05,
         temperature=0.7,
@@ -335,7 +335,7 @@ DEFAULT_ANALYSIS_PROFILE = ModelProfile(
         top_k=20,
         top_p=0.8,
         min_p=0.0,
-        max_tokens=16384,
+        max_tokens=200,
         n_parts=-1,
         stop=[
             "<|im_end|>",
@@ -343,7 +343,7 @@ DEFAULT_ANALYSIS_PROFILE = ModelProfile(
             "<|end|>",
         ],
         think=False,
-        batch_size=512,  # Increased from default 256 for better throughput
+        batch_size=8192,
     ),
     parameter_optimization=None,  # Disabled by default - users can enable manually
     system_prompt="Perform an in-depth analysis of the provided text. Identify key themes, patterns, and insights.",

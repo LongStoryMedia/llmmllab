@@ -20,6 +20,8 @@ from models import Model, ModelProfile, ModelProfileType
 from runner.pipelines.base import BasePipeline
 from runner.server_manager import LlamaCppServerManager
 from utils.logging import llmmllogger
+import threading
+import subprocess
 
 # Suppress verbose HTTP logging from OpenAI client unless in TRACE mode
 if os.getenv("LOG_LEVEL", "INFO").upper() != "TRACE":
@@ -118,6 +120,41 @@ class ChatLlamaCppPipeline(BasePipeline):
 
             # Start the llama.cpp server
             success = self.server_manager.start()
+            # Start background monitoring of stderr/stdout
+
+            def monitor_output():
+                """Monitor stderr/stdout in background until process terminates."""
+                if self.server_manager.process:
+                    try:
+                        # Read stdout and stderr until process ends
+                        while self.server_manager.process.poll() is None:
+                            # Read available stdout
+                            if self.server_manager.process.stdout:
+                                stdout_line = (
+                                    self.server_manager.process.stdout.readline()
+                                )
+                                if stdout_line:
+                                    self._logger.debug(
+                                        f"Server stdout: {stdout_line.strip()}"
+                                    )
+
+                            # Read available stderr
+                            if self.server_manager.process.stderr:
+                                stderr_line = (
+                                    self.server_manager.process.stderr.readline()
+                                )
+                                if stderr_line:
+                                    self._logger.warning(
+                                        f"Server stderr: {stderr_line.strip()}"
+                                    )
+
+                    except Exception as e:
+                        self._logger.error(f"Error monitoring server output: {e}")
+
+            # Start monitoring thread
+            if self.server_manager.process:
+                monitor_thread = threading.Thread(target=monitor_output, daemon=True)
+                monitor_thread.start()
             if not success:
                 raise RuntimeError(
                     f"Failed to start server for model {self.model.name}"

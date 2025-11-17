@@ -48,7 +48,7 @@ from composer.nodes.agents.engineering import EngineeringAgentNode
 from composer.nodes.summary import ConsolidationNode, SearchSummaryNode
 from composer.tools.registry import ToolRegistry
 
-from composer.graph.state import WorkflowState
+from composer.graph.state import WorkflowState, assemble_context_messages
 from composer.graph.subgraphs import ToolsAgentSubgraph
 from composer.graph.subgraphs import PlanningIntentSubgraph
 
@@ -389,35 +389,21 @@ class GraphBuilder:
                 tool_registry=tool_registry,
                 chat_agent=primary_agent,
             )
+            assert tools_agent_subgraph.graph is not None
+            workflow.add_node("tools_agent", tools_agent_subgraph.graph)
 
             intent_analysis_subgraph = PlanningIntentSubgraph(
                 classifier_agent=classifier_agent
             )
+            assert intent_analysis_subgraph.graph is not None
+            workflow.add_node("intent_analysis", intent_analysis_subgraph.graph)
 
-            executor = WorkflowExecutor()
-
-            # Create wrapper for subgraph execution
-            async def tools_agent_node(state: WorkflowState) -> WorkflowState:
-                """Execute the intelligent tools agent subgraph and return updated state."""
-                res = await tools_agent_subgraph.execute(state, executor=executor)
-                if res and res.message:
-                    state.messages.append(res.message)
+            async def context_node(state: WorkflowState) -> WorkflowState:
+                """Execute the context assembly subgraph and return updated state."""
+                state.messages = assemble_context_messages(state)
                 return state
 
-            # Create wrapper for intent subgraph
-            async def intent_analysis_node(state: WorkflowState) -> WorkflowState:
-                """Execute the intent analysis subgraph and return updated state."""
-                command = await intent_analysis_subgraph.execute(
-                    state, executor=executor
-                )
-                if command and command.update:
-                    # command.update is a dict, not a WorkflowState, so we can call .items()
-                    for key, value in command.update.items():
-                        setattr(state, key, value)
-                return state
-
-            workflow.add_node("tools_agent", tools_agent_node)
-            workflow.add_node("intent_analysis", intent_analysis_node)
+            workflow.add_node("context_assembly", context_node)
 
             # Build a logical workflow graph structure:
             # 1. Start -> Static tool loading (loads static tools + previous dynamic tools)
@@ -425,7 +411,9 @@ class GraphBuilder:
             workflow.add_edge("memory_search", "static_tool_loading")
 
             # 2. Static tool loading -> Intent Analysis (classifier can now see available tools)
-            workflow.add_edge("static_tool_loading", "intent_analysis")
+            workflow.add_edge("static_tool_loading", "context_assembly")
+
+            workflow.add_edge("context_assembly", "intent_analysis")
 
             # 3. Intent Analysis -> Tool collection (filters static tools + creates dynamic tools)
             workflow.add_edge("intent_analysis", "tool_collection")

@@ -4,7 +4,7 @@ Uses ChatAgent for LLM chat completions within workflow execution.
 """
 
 # No additional model imports needed
-from composer.graph.state import WorkflowState, assemble_context_messages
+from composer.graph.state import WorkflowState
 from composer.core.errors import NodeExecutionError
 from composer.agents.chat_agent import ChatAgent
 from runner import PipelineFactory
@@ -58,25 +58,19 @@ class ChatNode:
 
             if not state.user_config:
                 raise NodeExecutionError("User config required for chat execution")
-            # Assemble context messages
-            context_messages = assemble_context_messages(state)
-            if not context_messages:
-                raise NodeExecutionError(
-                    "No context messages available for chat completion"
-                )
 
             self.logger.info(
                 "Executing chat completion",
                 user_id=state.user_id,
                 conversation_id=state.conversation_id,
-                message_count=len(context_messages),
+                message_count=len(state.messages),
                 tool_count=len(state.available_tools) if state.available_tools else 0,
                 streaming=True,
             )
 
             # Execute chat completion with conversion
             assistant_message = await self.agent.chat_completion_with_conversion(
-                messages=context_messages,
+                messages=state.messages,
                 tools=(
                     self.tool_registry.convert_tools_to_langchain(state.available_tools)
                     if self.tool_registry and state.available_tools

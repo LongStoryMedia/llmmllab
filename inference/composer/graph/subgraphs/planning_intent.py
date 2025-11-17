@@ -17,28 +17,29 @@ Memory & Persistence:
 - State restoration automatic when parent workflow resumes
 """
 
-from typing import Dict, List, Any, Optional, TYPE_CHECKING
-from langchain_core.messages import HumanMessage
+from typing import Annotated, List, Optional
+
+from pydantic import BaseModel, Field
+
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
-if TYPE_CHECKING:
-    from composer.graph.executor import WorkflowExecutor
-
 from models import (
+    ChatResponse,
     IntentAnalysis,
     MessageContent,
     MessageContentType,
     MessageRole,
+    Tool,
     WorkflowType,
     ComplexityLevel,
     TodoItem,
     Message,
 )
-from composer.graph.state import WorkflowState, assemble_context_messages
+from composer.graph import WorkflowExecutor, WorkflowState
 from composer.agents.classifier_agent import ClassifierAgent
-from utils.message_conversion import extract_text_from_message, lc_message_to_message
+from utils.message_conversion import extract_text_from_message
 from utils.logging import llmmllogger
 
 
@@ -88,7 +89,7 @@ class PlanningIntentSubgraph:
 
         # Use classifier agent to analyze intent
         intent_analyses = await self.classifier_agent.analyze(
-            messages=assemble_context_messages(state),
+            messages=state.messages,
             available_static_tools=static_tools,
         )
 
@@ -107,7 +108,9 @@ class PlanningIntentSubgraph:
         return state
 
     async def _store_intent_analyses(
-        self, intent_analyses: List[IntentAnalysis], state: WorkflowState
+        self,
+        intent_analyses: List[IntentAnalysis],
+        state: WorkflowState,
     ) -> None:
         """Store intent analyses in the database separately from message content."""
         try:
@@ -198,14 +201,8 @@ class PlanningIntentSubgraph:
         """Generate todos automatically based on intent analysis with proper typing."""
         logger.info("📝 Intent: Generating todos from intent analysis")
 
-        if (
-            not state.intent_classification
-            or not state.user_id
-            or not state.conversation_id
-        ):
+        if not state.intent_classification or not state.current_user_message:
             return state
-
-        generated_todos: List[TodoItem] = []
 
         try:
             # Import storage here to avoid circular imports
@@ -215,32 +212,22 @@ class PlanningIntentSubgraph:
                 logger.warning("Storage not initialized, skipping todo generation")
                 return state
 
-            # Get the latest user message for context
-            user_message = ""
-            if state.messages:
-                for msg in reversed(state.messages):
-                    if isinstance(msg, HumanMessage):
-                        user_message = extract_text_from_message(
-                            lc_message_to_message(msg)
-                        )
-                        break
-
             # Generate todos based on intent analysis - simplified approach
             for intent in state.intent_classification:
                 todo_item = await self._create_todo_for_intent(
                     intent,
-                    user_message,
+                    extract_text_from_message(state.current_user_message),
                     state.user_id,
                     state.conversation_id,
                 )
                 if todo_item:
-                    generated_todos.append(todo_item)
+                    state.generated_todos.append(todo_item)
 
             logger.info(
-                f"📝 Intent: Generated {len(generated_todos)} todos from intent analysis"
+                f"📝 Intent: Generated {len(state.generated_todos)} todos from intent analysis"
             )
 
-            state.generated_todos = generated_todos
+            state.generated_todos
 
             return state
 
@@ -321,36 +308,3 @@ class PlanningIntentSubgraph:
         except Exception as e:
             logger.error(f"Failed to create todo for intent: {e}")
             return None
-
-    async def execute(
-        self,
-        state: WorkflowState,
-        executor: "WorkflowExecutor",
-    ) -> Command:
-        """Execute the simplified intent analysis subgraph."""
-        try:
-            if not self.graph:
-                logger.error("Planning intent subgraph not initialized")
-                return Command(update={})
-
-            # Execute subgraph directly using ainvoke for proper state handling
-            final_state_dict = await self.graph.ainvoke(state)
-
-            # Extract the key fields from the final state that need to be updated
-            update_dict = {
-                "intent_classification": final_state_dict.get(
-                    "intent_classification", []
-                ),
-                "generated_todos": final_state_dict.get("generated_todos", []),
-                "complexity_score": final_state_dict.get("complexity_score", 3),
-            }
-
-            # Return updated messages from the result
-            logger.info("🔄 Planning and Intent completed")
-            return Command(update=update_dict)
-
-        except Exception as e:
-            logger.error(
-                f"Intent analysis subgraph execution failed: {e}", exc_info=True
-            )
-            return Command(update={})
