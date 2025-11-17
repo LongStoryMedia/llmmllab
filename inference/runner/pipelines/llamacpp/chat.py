@@ -23,11 +23,11 @@ from utils.logging import llmmllogger
 import threading
 import subprocess
 
-# Suppress verbose HTTP logging from OpenAI client unless in TRACE mode
-if os.getenv("LOG_LEVEL", "INFO").upper() != "TRACE":
-    logging.getLogger("openai").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
+# Enable HTTP logging for debugging
+
+logging.getLogger("openai").setLevel(logging.DEBUG)
+logging.getLogger("httpx").setLevel(logging.DEBUG)
+logging.getLogger("httpcore").setLevel(logging.DEBUG)
 
 logger = llmmllogger.bind(component="LangChainChatOpenAIPipeline")
 
@@ -120,41 +120,6 @@ class ChatLlamaCppPipeline(BasePipeline):
 
             # Start the llama.cpp server
             success = self.server_manager.start()
-            # Start background monitoring of stderr/stdout
-
-            def monitor_output():
-                """Monitor stderr/stdout in background until process terminates."""
-                if self.server_manager.process:
-                    try:
-                        # Read stdout and stderr until process ends
-                        while self.server_manager.process.poll() is None:
-                            # Read available stdout
-                            if self.server_manager.process.stdout:
-                                stdout_line = (
-                                    self.server_manager.process.stdout.readline()
-                                )
-                                if stdout_line:
-                                    self._logger.debug(
-                                        f"Server stdout: {stdout_line.strip()}"
-                                    )
-
-                            # Read available stderr
-                            if self.server_manager.process.stderr:
-                                stderr_line = (
-                                    self.server_manager.process.stderr.readline()
-                                )
-                                if stderr_line:
-                                    self._logger.warning(
-                                        f"Server stderr: {stderr_line.strip()}"
-                                    )
-
-                    except Exception as e:
-                        self._logger.error(f"Error monitoring server output: {e}")
-
-            # Start monitoring thread
-            if self.server_manager.process:
-                monitor_thread = threading.Thread(target=monitor_output, daemon=True)
-                monitor_thread.start()
             if not success:
                 raise RuntimeError(
                     f"Failed to start server for model {self.model.name}"
@@ -199,7 +164,6 @@ class ChatLlamaCppPipeline(BasePipeline):
                     "model_profile": self.profile.name,
                     "task": ModelProfileType(self.profile.type).name,
                 },
-                streaming=True,
             )
 
             self._logger.info(f"ChatOpenAI initialized with base_url: {base_url}")

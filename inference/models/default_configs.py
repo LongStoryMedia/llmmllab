@@ -135,7 +135,7 @@ DEFAULT_GPU_CONFIG = GPUConfig(
     main_gpu_device_id=None,
     tensor_split=None,
     tensor_split_devices=None,
-    split_mode="layer",
+    split_mode="row",
     offload_kqv=True,
 )
 
