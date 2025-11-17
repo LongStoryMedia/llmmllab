@@ -13,10 +13,9 @@ from langchain.tools import BaseTool
 from models import Tool
 from utils.logging import llmmllogger
 from composer.tools.static import (
-    memory_retrieval,
-    summarization,
     web_search,
     read_web_content,
+    create_dynamic_tool,
 )
 from runner import PipelineFactory
 
@@ -60,6 +59,7 @@ class ToolRegistry:
                 "read_web_content": read_web_content,
                 # "summarization": summarization,
                 # "get_current_date": get_current_date,
+                "create_dynamic_tool": create_dynamic_tool,
             }
 
             self.executable_tools.update(tools_to_add)
@@ -156,7 +156,7 @@ class ToolRegistry:
 
         except Exception as e:
             self.logger.error(
-                f"Failed to create tool instance",
+                "Failed to create tool instance",
                 tool_class=str(tool_cls),
                 user_id=user_id,
                 error=str(e),

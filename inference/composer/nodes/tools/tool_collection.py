@@ -8,8 +8,6 @@ from typing import List
 from models import Tool, IntentAnalysis
 from composer.graph.state import WorkflowState
 from composer.tools.registry import ToolRegistry
-from composer.agents.engineering_agent import EngineeringAgent
-from utils import extract_text_from_message
 from utils.logging import llmmllogger
 
 
@@ -22,10 +20,8 @@ class ToolCollectionNode:
     def __init__(
         self,
         tool_registry: ToolRegistry,
-        engineering_agent: EngineeringAgent,
     ):
         self.tool_registry = tool_registry
-        self.engineering_agent = engineering_agent
         self.logger = llmmllogger.logger.bind(component="ToolCollectionNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
@@ -34,23 +30,19 @@ class ToolCollectionNode:
         """
         try:
             assert state.user_id
-            assert state.intent_classification
+            # assert state.intent_classification
             assert state.current_user_message
             assert state.user_config
 
             self.logger.info(
                 "Collecting tools for workflow",
                 user_id=state.user_id,
-                intent_count=len(state.intent_classification),
             )
 
             # Step 1: Filter pre-loaded static tools based on intent
             # Static tools should already be loaded by StaticToolLoadingNode
             available_static_tools = state.static_tools or []
-            static_tools = await self._collect_static_tools(
-                state.intent_classification,
-                available_static_tools,
-            )
+            static_tools = await self._collect_static_tools(available_static_tools)
 
             self.logger.info(
                 "Static tools collected",
@@ -59,33 +51,17 @@ class ToolCollectionNode:
                 static_tool_names=[tool.name for tool in static_tools],
             )
 
-            # Step 2: Decide if dynamic tools are needed and create them
-            dynamic_tools = await self._collect_dynamic_tools(
-                user_query=extract_text_from_message(state.current_user_message),
-                user_id=state.user_id,
-                intents=state.intent_classification,
-                static_tools=static_tools,
-                user_config=state.user_config,
-            )
-
-            # Step 3: Update state with collected tools
-            # Note: static_tools were already loaded by StaticToolLoadingNode
-            # We only need to add dynamic_tools to available_tools and update static_tools with filtered set
-
-            # Update static tools with filtered set (removing unneeded tools)
+            # Dynamic tool generation removed; agent can invoke create_dynamic_tool itself.
             state.static_tools = static_tools
-            state.dynamic_tools = dynamic_tools
-
-            # Clear available_tools and rebuild with filtered static tools + new dynamic tools
-            all_tools = static_tools + dynamic_tools
-            state.available_tools = all_tools
+            state.dynamic_tools = []
+            state.available_tools = list(static_tools)
 
             self.logger.info(
-                "Tool collection completed",
+                "Tool collection completed (static only)",
                 user_id=state.user_id,
-                total_tools=len(all_tools),
+                total_tools=len(static_tools),
                 static_tools=len(static_tools),
-                dynamic_tools=len(dynamic_tools),
+                dynamic_tools=0,
             )
 
         except Exception as e:
@@ -96,7 +72,6 @@ class ToolCollectionNode:
 
     async def _collect_static_tools(
         self,
-        intents: List[IntentAnalysis],
         available_static_tools: List[Tool],
     ) -> List[Tool]:
         """
@@ -107,18 +82,7 @@ class ToolCollectionNode:
             # Apply intent-based filtering to pre-loaded static tools
             static_tools = []
             for tool in available_static_tools:
-                if self._should_include_static_tool(tool, intents):
-                    static_tools.append(tool)
-
-            # If no tools match intent filtering, fall back to basic tools for simple requests
-            if not static_tools and self._needs_basic_tools(intents):
-                # Include basic tools for simple requests
-                basic_tool_names = {"web_search", "memory_search", "basic_math"}
-                static_tools = [
-                    tool
-                    for tool in available_static_tools
-                    if getattr(tool, "name", "").lower() in basic_tool_names
-                ]
+                static_tools.append(tool)
 
             return static_tools
 
@@ -126,107 +90,7 @@ class ToolCollectionNode:
             self.logger.error(f"Static tool collection failed: {e}")
             return []
 
-    async def _collect_dynamic_tools(
-        self,
-        user_query: str,
-        user_id: str,
-        intents: List[IntentAnalysis],
-        static_tools: List[Tool],
-        user_config,
-    ) -> List[Tool]:
-        """
-        Decide if dynamic tools are needed and create them using the engineering agent.
-        """
-        try:
-            # Check if dynamic tool generation is enabled
-            if not self._should_generate_dynamic_tools(intents, user_config):
-                self.logger.info(
-                    "Dynamic tool generation disabled or not needed",
-                    user_id=user_id,
-                )
-                return []
-
-            self.logger.info(
-                "Generating dynamic tools",
-                user_id=user_id,
-            )
-
-            # Use engineering agent to generate dynamic tool specifications
-            dynamic_tool_specs = (
-                await self.engineering_agent.generate_dynamic_tool_specification(
-                    user_query=user_query,
-                    user_id=user_id,
-                    intents=intents,
-                    static_tools=static_tools,
-                )
-            )
-
-            # Convert DynamicTool specs to generic Tool instances for workflow state
-            dynamic_tools = []
-            for dt_spec in dynamic_tool_specs:
-                tool = Tool(
-                    name=dt_spec.name,
-                    description=dt_spec.description,
-                    args_schema=dt_spec.args_schema,
-                    return_direct=dt_spec.return_direct,
-                    tags=dt_spec.tags,
-                    metadata=dt_spec.metadata,
-                    handle_tool_error=dt_spec.handle_tool_error,
-                    handle_validation_error=dt_spec.handle_validation_error,
-                    response_format=dt_spec.response_format,
-                )
-                dynamic_tools.append(tool)
-
-                # Register with tool registry for potential future reuse
-                await self.tool_registry.register_dynamic_tool_instance(
-                    tool_id=f"{user_id}_{dt_spec.name}",
-                    tool_instance=tool,
-                    user_id=user_id,
-                )
-
-            return dynamic_tools
-
-        except Exception as e:
-            self.logger.error(f"Dynamic tool collection failed: {e}")
-            return []
-
-    def _should_generate_dynamic_tools(
-        self, intents: List[IntentAnalysis], user_config
-    ) -> bool:
-        """
-        Determine if dynamic tools should be generated based on intent and user configuration.
-        Uses only existing IntentAnalysis properties for decision making.
-        """
-        # Check user configuration
-        if (
-            user_config
-            and user_config.tool
-            and not user_config.tool.enable_tool_generation
-        ):
-            return False
-
-        # Check if any intent explicitly requires custom tools
-        for intent in intents:
-            # Check if custom tools are explicitly required
-            if intent.requires_custom_tools:
-                return True
-
-            # Check if high complexity and tool requirement suggest dynamic tools needed
-            if (
-                intent.requires_tools
-                and intent.complexity_level.value in ["COMPLEX", "SPECIALIZED"]
-                and intent.tool_complexity_score > 0.7
-            ):
-                return True
-
-            # Check if domain specificity and computational requirements suggest custom tools
-            if (
-                intent.domain_specificity > 0.8
-                and intent.computational_requirements.value in ["HIGH", "INTENSIVE"]
-            ):
-                return True
-
-        return False
+    # Dynamic tool generation removed; agent now uses create_dynamic_tool directly.
 
     def _should_include_static_tool(
         self,
