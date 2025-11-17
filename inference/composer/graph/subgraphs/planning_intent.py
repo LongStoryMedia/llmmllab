@@ -17,29 +17,26 @@ Memory & Persistence:
 - State restoration automatic when parent workflow resumes
 """
 
-from typing import Annotated, List, Optional
+from typing import List, Optional
 
-from pydantic import BaseModel, Field
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.types import Command
+
 
 from models import (
-    ChatResponse,
     IntentAnalysis,
     MessageContent,
     MessageContentType,
     MessageRole,
-    Tool,
     WorkflowType,
     ComplexityLevel,
     TodoItem,
     Message,
 )
-from composer.graph import WorkflowExecutor, WorkflowState
+from composer.graph import WorkflowState
 from composer.agents.classifier_agent import ClassifierAgent
-from utils.message_conversion import extract_text_from_message
+# Removed extract_text_from_message; TodoListMiddleware handles extraction
 from utils.logging import llmmllogger
 
 
@@ -47,12 +44,12 @@ logger = llmmllogger.bind(component="PlanningIntentSubgraph")
 
 
 class PlanningIntentSubgraph:
-    """
-    Simplified intent analysis subgraph using LangGraph best practices.
+    """Intent analysis subgraph integrating LangChain TodoListMiddleware.
 
-    Direct approach:
-    1. Analyze intent and complexity in one step
-    2. Generate todos based on analysis results
+    Replaces custom todo generation with built-in middleware that extracts
+    actionable todo items directly from model outputs. This eliminates the
+    need for manual _generate_todos_step logic and leverages standardized
+    parsing and state management.
     """
 
     def __init__(self, classifier_agent: ClassifierAgent):
@@ -66,14 +63,11 @@ class PlanningIntentSubgraph:
         try:
             builder = StateGraph(WorkflowState)
 
-            # Simplified two-step approach
+            # Single analyze step; Todo extraction handled via middleware at agent level
             builder.add_node("analyze_intent", self._analyze_intent_step)
-            builder.add_node("generate_todos", self._generate_todos_step)
 
-            # Simple linear flow
             builder.add_edge(START, "analyze_intent")
-            builder.add_edge("analyze_intent", "generate_todos")
-            builder.add_edge("generate_todos", END)
+            builder.add_edge("analyze_intent", END)
 
             self.graph = builder.compile()
             logger.info("Intent analysis subgraph built successfully")
@@ -168,7 +162,7 @@ class PlanningIntentSubgraph:
                         f"Error verifying message {user_message_id} exists: {e}"
                     )
                     # Don't return here - continue with storage attempt in case it's a transient issue
-                    pass
+                    # Swallow verification errors; middleware continues
             else:
                 logger.warning(
                     "Message storage not available for verification - proceeding with intent analysis storage"
@@ -197,43 +191,7 @@ class PlanningIntentSubgraph:
         except Exception as e:
             logger.error(f"Failed to store intent analyses: {e}")
 
-    async def _generate_todos_step(self, state: WorkflowState) -> WorkflowState:
-        """Generate todos automatically based on intent analysis with proper typing."""
-        logger.info("📝 Intent: Generating todos from intent analysis")
-
-        if not state.intent_classification or not state.current_user_message:
-            return state
-
-        try:
-            # Import storage here to avoid circular imports
-            from db import storage
-
-            if not storage.initialized or not storage.todo:
-                logger.warning("Storage not initialized, skipping todo generation")
-                return state
-
-            # Generate todos based on intent analysis - simplified approach
-            for intent in state.intent_classification:
-                todo_item = await self._create_todo_for_intent(
-                    intent,
-                    extract_text_from_message(state.current_user_message),
-                    state.user_id,
-                    state.conversation_id,
-                )
-                if todo_item:
-                    state.generated_todos.append(todo_item)
-
-            logger.info(
-                f"📝 Intent: Generated {len(state.generated_todos)} todos from intent analysis"
-            )
-
-            state.generated_todos
-
-            return state
-
-        except Exception as e:
-            logger.error(f"Failed to generate todos from intent: {e}")
-            return state
+    # Removed _generate_todos_step: todo extraction now handled by TodoListMiddleware
 
     async def _create_todo_for_intent(
         self,
