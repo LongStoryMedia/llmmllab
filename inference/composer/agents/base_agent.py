@@ -431,63 +431,16 @@ Do not make up results - always use tools to get accurate information, or organi
             # Convert messages to LangChain format
             normalized_messages = messages_to_lc_messages(convo)
 
-            # Heuristic: if TodoListMiddleware attached and initial user request appears multi-step
-            # and agent state has produced no todos yet, proactively seed a todo list.
-            # We cannot access internal agent state before first invoke; instead perform a priming
-            # write_todos tool call followed by normal invocation if heuristic passes.
-            seeded_todos = None
-            if self.middleware:
-                try:
-                    text_parts = []
-                    for m in convo:
-                        if m.role == MessageRole.USER and m.content:
-                            text_parts.append(extract_text_from_message(m))
-                    user_text = " \n".join(text_parts).strip().lower()
-                    multi_step_indicators = [" and ", " then ", " also ", " next ", " step", "steps", "tasks", ","]
-                    indicator_hits = sum(1 for kw in multi_step_indicators if kw in user_text)
-                    long_enough = len(user_text.split()) > 25
-                    if indicator_hits >= 2 or (indicator_hits >= 1 and long_enough):
-                        # Build initial todo seed (simple split by conjunctions/periods)
-                        # Basic extraction: break into clauses separated by 'and', 'then', 'also'
-                        import re
-                        clauses = re.split(r"(?:\band\b|\bthen\b|\balso\b|\.)", user_text)
-                        tasks = [c.strip() for c in clauses if len(c.strip().split()) >= 3][:6]
-                        if tasks:
-                            seeded_todos = [
-                                {"content": t[:140], "status": "in_progress" if i == 0 else "pending"}
-                                for i, t in enumerate(tasks)
-                            ]
-                            self.logger.info(
-                                f"🌱 Seeding initial todo list with {len(seeded_todos)} tasks via heuristic"
-                            )
-                except Exception as seed_err:
-                    self.logger.warning(f"Failed todo seeding heuristic: {seed_err}")
-
-            if seeded_todos:
-                # Perform priming call including write_todos tool command state update by passing a ToolMessage pattern
-                try:
-                    # LangChain agent expects messages array; we include original user messages then a tool command state
-                    priming_result = await agent.ainvoke({"messages": normalized_messages, "todos": seeded_todos})  # type: ignore
-                    # Merge any returned todos with seed (will be re-parsed below)
-                    if isinstance(priming_result, dict) and priming_result.get("todos"):
-                        self.logger.info(
-                            f"✅ Priming write_todos produced {len(priming_result['todos'])} todos"
-                        )
-                        result = priming_result
-                    else:
-                        result = priming_result
-                except Exception as priming_err:
-                    self.logger.warning(
-                        f"Priming write_todos failed; continuing without seed: {priming_err}"
-                    )
-                    result = await agent.ainvoke({"messages": normalized_messages})  # type: ignore
-            else:
-                result = await agent.ainvoke({"messages": normalized_messages})  # type: ignore
+            result = await agent.ainvoke({"messages": normalized_messages})  # type: ignore
 
             # Extract messages and middleware state (todos) from result
             todos_raw = None
             if isinstance(result, dict):
                 todos_raw = result.get("todos")
+                if todos_raw:
+                    self.logger.info(f"🧾 write_todos captured: {len(todos_raw)} items")
+                else:
+                    self.logger.info("🧾 No write_todos entries returned in agent state")
 
             # Convert agent result to ChatResponse
             if isinstance(result, BaseMessage):
