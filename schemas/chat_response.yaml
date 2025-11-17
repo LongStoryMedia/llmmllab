@@ -56,10 +56,15 @@ properties:
   processing:
     type: string
     description: Optional responses generated during message processing
-  channels:
-    type: object
-    description: Additional structured channels extracted from the response (tool calls, status, etc.)
-    additionalProperties: true
+  state:
+    $ref: generation_state.yaml
+    description: Optional state information from the model
+  prev_state:
+    $ref: generation_state.yaml
+    description: Previous state information from the model before the current generation
+  metadata:
+    $ref: node_metadata.yaml
+    description: Additional metadata about the response
   observer_messages:
     type: array
     description: OBSERVER role messages that should be displayed as temporary floating notifications

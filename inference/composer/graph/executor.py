@@ -37,19 +37,11 @@ from models import (
     ModelProfileType,
     Thought,
     ToolCall,
+    GenerationState,
 )
 
 from runner.pipelines.llamacpp.chat import ReasoningAwareAIMessageChunk
 from utils.logging import llmmllogger
-
-
-class StreamingState(StrEnum):
-    """Enum for streaming workflow execution states."""
-
-    THINKING = "thinking"
-    EXECUTING = "executing"
-    RESPONDING = "responding"
-    ANALYZING = "analyzing"
 
 
 class WorkflowExecutor:
@@ -138,7 +130,8 @@ class WorkflowExecutor:
             if config is None and thread_id is not None:
                 config = self.create_thread_config(thread_id)
 
-            state: StreamingState = StreamingState.RESPONDING
+            state: GenerationState = GenerationState.RESPONDING
+            prev_state: GenerationState = state
             analyses_buffer = ""
             contents_buffer = ""
             tool_calls_timer: Dict[str, Dict[str, datetime]] = {}
@@ -180,7 +173,9 @@ class WorkflowExecutor:
                         thoughts=[],
                         tool_calls=[],
                         analyses=[],
-                    )
+                    ),
+                    state=state,
+                    prev_state=prev_state,
                 )
 
                 # make linter happy
@@ -194,9 +189,9 @@ class WorkflowExecutor:
                     md = event.get("metadata", {})
                     task = md.get("task", "Primary")
                     if task == ModelProfileType.Analysis.name:
-                        new_state = StreamingState.ANALYZING
+                        new_state = GenerationState.ANALYSING
                 elif event_type == "on_chat_model_end" or event_type == "on_llm_end":
-                    if state == StreamingState.ANALYZING:
+                    if state == GenerationState.ANALYSING:
                         analysis_dict = json.loads(analyses_buffer)
                         analysis = IntentAnalysis(**analysis_dict)
                         analyses[run_id] = analysis
@@ -211,11 +206,11 @@ class WorkflowExecutor:
                     event_type == "on_chat_model_stream"
                     or event_type == "on_llm_stream"
                 ) and isinstance(chunk, AIMessage):
-                    if state == StreamingState.ANALYZING:
+                    if state == GenerationState.ANALYSING:
                         for content in self._parse_content(chunk.content):
                             analyses_buffer += content
                     if hasattr(chunk, "reasoning_content"):
-                        new_state = StreamingState.THINKING
+                        new_state = GenerationState.THINKING
                         reasoning_chunk = cast(ReasoningAwareAIMessageChunk, chunk)
                         res.message.thoughts.append(
                             Thought(text=reasoning_chunk.reasoning_content)
@@ -227,7 +222,7 @@ class WorkflowExecutor:
                             )
                         )
                     if chunk.content is not None:
-                        new_state = StreamingState.RESPONDING
+                        new_state = GenerationState.RESPONDING
                         for content in self._parse_content(chunk.content):
                             res.message.content.append(
                                 MessageContent(
@@ -295,13 +290,14 @@ class WorkflowExecutor:
                     res.message.tool_calls.append(tool_call)
 
                 if new_state != state:
-                    if state == StreamingState.THINKING:
+                    if state == GenerationState.THINKING:
                         thoughts[run_id] = Thought(text=thoughts_buffer)
                         thoughts_buffer = ""
-                    elif state == StreamingState.ANALYZING:
+                    elif state == GenerationState.ANALYSING:
                         analysis_dict = json.loads(analyses_buffer)
                         analyses[run_id] = IntentAnalysis(**analysis_dict)
                         analyses_buffer = ""
+                    prev_state = state
                     state = new_state
 
                 yield res

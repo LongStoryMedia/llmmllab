@@ -29,6 +29,7 @@ try:
     from . import execution_state
     from . import generate_req
     from . import generate_response
+    from . import generation_state
     from . import gpu_config
     from . import image_generation_config
     from . import image_generation_request
@@ -154,6 +155,7 @@ __all__ = [
     'execution_state',
     'generate_req',
     'generate_response',
+    'generation_state',
     'gpu_config',
     'image_generation_config',
     'image_generation_request',
@@ -273,6 +275,7 @@ __all__ = [
     'ExecutionState',
     'GenerateReq',
     'GenerateResponse',
+    'GenerationState',
     'GPUConfig',
     'ImageGenerationConfig',
     'ImageGenerateRequest',
@@ -447,6 +450,9 @@ from .generate_req import (
 )
 from .generate_response import (
     GenerateResponse,
+)
+from .generation_state import (
+    GenerationState,
 )
 from .gpu_config import (
     GPUConfig,

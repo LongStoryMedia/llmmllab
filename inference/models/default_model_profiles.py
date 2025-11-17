@@ -68,7 +68,7 @@ DEFAULT_PRIMARY_PROFILE = ModelProfile(
         max_tokens=500000,
         n_parts=-1,
         # batch_size=8192,
-        batch_size=4096,
+        batch_size=2048,
         stop=["<|im_end|>"],
         think=True,
     ),

@@ -24,13 +24,10 @@ from models import (
     Tool,
 )
 from composer.core.errors import IntentAnalysisError
-from utils.message_conversion import (
-    extract_text_from_message,
-    messages_to_lc_messages,
-    normalize_message_input,
-)
+from utils.message_conversion import extract_text_from_message
 from utils.grammar_generator import parse_structured_output
 from .base_agent import BaseAgent
+from .grammar_responses import IntentsResponse, TitleResponse
 
 if TYPE_CHECKING:
     from runner import PipelineFactory
@@ -93,10 +90,7 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
             str: LLM response (should be grammar-constrained JSON)
         """
 
-        class _Intnts(BaseModel):
-            intents: List[IntentAnalysis]
-
-        intnt_schema = _Intnts.model_json_schema()
+        intnt_schema = IntentsResponse.model_json_schema()
 
         # Extract text content from the last message using the utility function
         user_query = extract_text_from_message(messages[-1]) if messages else ""
@@ -185,7 +179,7 @@ If multiple intents are needed, include additional objects in the intents array.
             messages=msgs,
             tools=None,
             priority=PipelinePriority.HIGH,
-            grammar=_Intnts,
+            grammar=IntentsResponse,
         )
 
         txt = (
@@ -196,7 +190,7 @@ If multiple intents are needed, include additional objects in the intents array.
         if not txt.strip():
             raise IntentAnalysisError("Empty intent analysis response")
 
-        intents = parse_structured_output(txt, _Intnts)
+        intents = parse_structured_output(txt, IntentsResponse)
         return intents.intents
 
     async def generate_title(
@@ -216,9 +210,6 @@ If multiple intents are needed, include additional objects in the intents array.
         Raises:
             IntentAnalysisError: When title generation fails
         """
-
-        class _TitleResponse(BaseModel):
-            title: str
 
         try:
             # Extract text from all messages for context
@@ -250,7 +241,7 @@ Title:"""
                 title_prompt,
                 tools=None,
                 priority=PipelinePriority.MEDIUM,
-                grammar=_TitleResponse,
+                grammar=TitleResponse,
             )
 
             txt = (
@@ -261,7 +252,7 @@ Title:"""
             if not txt.strip():
                 raise IntentAnalysisError("Empty intent analysis response")
 
-            intents = parse_structured_output(txt, _TitleResponse)
+            intents = parse_structured_output(txt, TitleResponse)
             return intents.title
 
         except Exception as e:

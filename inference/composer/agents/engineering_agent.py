@@ -301,20 +301,18 @@ Code Solution:"""
         self,
         user_query: str,
         user_id: str,
-        intents: List[IntentAnalysis],  # IntentAnalysis type
-        static_tools: List[Tool],  # List[Tool] type
-    ) -> List[DynamicTool]:  # Optional[DynamicTool] type
+        static_tools: List[Tool],
+    ) -> List[DynamicTool]:
         """
-        Generate dynamic tool specification based on user query and intent analysis.
+        Generate dynamic tool specification based on user query.
 
         Args:
             user_query: The user's query/request
             user_id: User identifier
-            intent: Intent analysis containing workflow type, complexity, etc.
             static_tools: List of available static tools
 
         Returns:
-            DynamicTool specification if needed, None if existing tools are sufficient
+            A list of DynamicTool specifications.
         """
         dynamic_tools = []
         try:
@@ -324,66 +322,57 @@ Code Solution:"""
                 has_static_tools=bool(static_tools),
             )
 
-            for intent in intents:
-                self.logger.info(
-                    "Processing intent for dynamic tool generation",
-                    workflow_type=intent.workflow_type,
-                    complexity_level=intent.complexity_level,
-                )
+            # Create prompt for dynamic tool generation
+            prompt = await self._create_tool_generation_prompt(
+                user_query=user_query,
+                static_tools=static_tools,
+            )
 
-                # Create prompt for dynamic tool generation
-                prompt = await self._create_tool_generation_prompt(
-                    user_query=user_query,
-                    intent=intent,
-                    static_tools=static_tools,
-                )
+            # Use BaseAgent's run method to get LLM response
+            result = await self.run(
+                messages=[prompt],
+                priority=PipelinePriority.NORMAL,
+                grammar=DynamicTool,
+            )
 
-                # Use BaseAgent's run method to get LLM response
-                result = await self.run(
-                    messages=[prompt],
-                    priority=PipelinePriority.NORMAL,
-                    grammar=DynamicTool,
-                )
+            # Extract response text
+            response_text = (
+                extract_text_from_message(result.message)
+                if result and result.message
+                else ""
+            )
 
-                # Extract response text
-                response_text = (
-                    extract_text_from_message(result.message)
-                    if result and result.message
-                    else ""
-                )
+            if not response_text.strip():
+                self.logger.warning("Empty response from dynamic tool generation")
+                return []
 
-                if not response_text.strip():
-                    self.logger.warning("Empty response from dynamic tool generation")
-                    continue
-
-                # Parse response and check if we should skip tool creation
-                try:
-                    parsed_response = json.loads(response_text)
-                    if parsed_response.get("name") == NON_TOOL_NAME:
-                        self.logger.info(
-                            "Skipping dynamic tool creation",
-                            reason="Existing tools sufficient",
-                        )
-                        continue
-
-                    dt = DynamicTool(**parsed_response)
-
-                    # Ensure user_id is set for persistence
-                    if not dt.user_id:
-                        dt.user_id = user_id  # type: ignore
-
-                    dynamic_tools.append(dt)
-
-                    # Persist the dynamic tool
-                    await self.tool_storage.create_tool(dt)
-
+            # Parse response and check if we should skip tool creation
+            try:
+                parsed_response = json.loads(response_text)
+                if parsed_response.get("name") == NON_TOOL_NAME:
                     self.logger.info(
-                        "Dynamic tool specification generated successfully",
-                        tool_name=dt.name,
+                        "Skipping dynamic tool creation",
+                        reason="Existing tools sufficient",
                     )
-                except (json.JSONDecodeError, KeyError, TypeError) as e:
-                    self.logger.error(f"Failed to parse dynamic tool response: {e}")
-                    continue
+                    return []
+
+                dt = DynamicTool(**parsed_response)
+
+                # Ensure user_id is set for persistence
+                if not dt.user_id:
+                    dt.user_id = user_id  # type: ignore
+
+                dynamic_tools.append(dt)
+
+                # Persist the dynamic tool
+                await self.tool_storage.create_tool(dt)
+
+                self.logger.info(
+                    "Dynamic tool specification generated successfully",
+                    tool_name=dt.name,
+                )
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                self.logger.error(f"Failed to parse dynamic tool response: {e}")
 
             return dynamic_tools
 
@@ -399,7 +388,6 @@ Code Solution:"""
     async def _create_tool_generation_prompt(
         self,
         user_query: str,
-        intent: IntentAnalysis,
         static_tools: List[Tool],
     ) -> str:
         """Create prompt for dynamic tool generation."""
@@ -419,9 +407,6 @@ Code Solution:"""
         prompt = f"""As a Tool Engineering Specialist, analyze the user's request and determine if a dynamic tool is needed beyond the available static tools.
 
 User Query: {user_query}
-Primary Intent: {intent.workflow_type}
-Complexity Level: {intent.complexity_level}
-Required Capabilities: {[str(cap) for cap in intent.required_capabilities]}
 
 Available Static Tools: {static_tool_names}
 
@@ -432,7 +417,7 @@ CRITICAL ANALYSIS: Before creating any tool, determine if the user's request can
 
 If a dynamic tool is genuinely needed, create a tool specification that:
 1. Addresses specific capability gaps not covered by static tools
-2. Is tailored to the user's query and intent
+2. Is tailored to the user's query
 3. Has clear input/output schema definitions
 4. Uses real, functional implementation (no fake APIs)
 5. Considers security and validation requirements

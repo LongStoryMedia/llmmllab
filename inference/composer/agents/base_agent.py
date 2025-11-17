@@ -434,13 +434,15 @@ Do not make up results - always use tools to get accurate information, or organi
             result = await agent.ainvoke({"messages": normalized_messages})  # type: ignore
 
             # Extract messages and middleware state (todos) from result
-            todos_raw = None
+            tdr = None
             if isinstance(result, dict):
-                todos_raw = result.get("todos")
-                if todos_raw:
-                    self.logger.info(f"🧾 write_todos captured: {len(todos_raw)} items")
+                tdr = result.get("todos")
+                if tdr:
+                    self.logger.info(f"🧾 write_todos captured: {len(tdr)} items")
                 else:
-                    self.logger.info("🧾 No write_todos entries returned in agent state")
+                    self.logger.info(
+                        "🧾 No write_todos entries returned in agent state"
+                    )
 
             # Convert agent result to ChatResponse
             if isinstance(result, BaseMessage):
@@ -468,10 +470,10 @@ Do not make up results - always use tools to get accurate information, or organi
 
             # Convert raw todos (middleware PlanningState) -> TodoItem list
             converted_todos = []
-            if todos_raw and isinstance(todos_raw, list):
+            if tdr and isinstance(tdr, list):
                 from models import TodoItem  # local import to avoid circular
 
-                for t in todos_raw:
+                for t in tdr:
                     if not isinstance(t, dict):
                         continue
                     content = (
@@ -489,7 +491,8 @@ Do not make up results - always use tools to get accurate information, or organi
                     }
                     internal_status = status_map.get(status_raw, "not-started")  # type: ignore[assignment]
                     # Narrow type for status and priority literals
-                    todo_item = TodoItem(
+
+                    td = TodoItem(
                         user_id=self._node_metadata.user_id,
                         conversation_id=self._node_metadata.conversation_id,
                         title=content[:60],
@@ -497,7 +500,7 @@ Do not make up results - always use tools to get accurate information, or organi
                         status=internal_status,  # pyright: ignore
                         priority="medium",  # pyright: ignore
                     )
-                    converted_todos.append(todo_item)
+                    converted_todos.append(td)
 
             response = ChatResponse(
                 done=True,

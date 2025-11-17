@@ -15,7 +15,6 @@ from utils.logging import llmmllogger
 from composer.tools.static import (
     web_search,
     read_web_content,
-    create_dynamic_tool,
 )
 from runner import PipelineFactory
 
@@ -59,7 +58,6 @@ class ToolRegistry:
                 "read_web_content": read_web_content,
                 # "summarization": summarization,
                 # "get_current_date": get_current_date,
-                "create_dynamic_tool": create_dynamic_tool,
             }
 
             self.executable_tools.update(tools_to_add)

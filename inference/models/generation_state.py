@@ -8,11 +8,9 @@ from pydantic import BaseModel, Field, AnyUrl, EmailStr, constr
 
 
 
-class MemorySource(str, Enum):
-    """Source type for a memory"""
-    SUMMARY = 'summary'
-    """Memory type for conversation summaries"""
-    MESSAGE = 'message'
-    """Memory type for conversation messages"""
-    SEARCH = 'search'
-    """Memory type for search topic syntheses"""
+class GenerationState(str, Enum):
+    """Current state of the generation process."""
+    ANALYSING = 'analysing'
+    THINKING = 'thinking'
+    EXECUTING = 'executing'
+    RESPONDING = 'responding'

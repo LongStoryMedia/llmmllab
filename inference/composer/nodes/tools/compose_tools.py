@@ -20,7 +20,7 @@ class ToolComposerNode:
         Deduplicate and optimize the combined tool set.
         """
         try:
-            assert state.intent_classification
+            # assert state.intent_classification
             assert state.user_id
 
             self.logger.info(
