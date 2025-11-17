@@ -24,7 +24,6 @@ import argparse
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
-from pydantic import NonNegativeInt
 from utils.logging import llmmllogger, serialize_event_data
 from models import (
     Message,
@@ -58,6 +57,8 @@ class ComposerRealEndToEndTester:
         self.test_conversation_id: Optional[int] = None
         self.test_message_id: Optional[int] = None
         self.storage = None  # Will be initialized with infrastructure
+        # Holds last workflow state for post-stream summaries (todos etc.)
+        self._last_state = None
 
         # LLM output capture configuration
         self.output_dir = "debug/out"
@@ -109,16 +110,13 @@ class ComposerRealEndToEndTester:
         """Write LLM response to file with phase information."""
         try:
             with open(self.llm_output_file, "a", encoding="utf-8") as f:
-            # Ensure we have required IDs
-            if not self.test_conversation_id or not storage or not storage.message:
-                raise RuntimeError("Missing required components for workflow execution")
+                f.write(f"\n{'='*60}\n")
+                f.write(f"PHASE: {phase}\n")
+                f.write(f"TIMESTAMP: {datetime.now(timezone.utc).isoformat()}\n")
                 if metadata:
                     f.write(f"METADATA: {json.dumps(metadata, indent=2)}\n")
                 f.write(f"{'='*60}\n")
                 f.write(f"{response_text}\n")
-            )
-            if not messages:
-                raise RuntimeError("No messages found for conversation")
 
             # Also store in memory for analysis
             self.llm_responses.append(
@@ -541,33 +539,13 @@ Which advances would best aid in understanding images like this one?
         try:
             # Ensure we have required IDs
             if not self.test_conversation_id or not storage or not storage.message:
-            async for res in execute_workflow(
+                raise RuntimeError("Missing required components for workflow execution")
 
             # Get conversation messages for context
             messages = await storage.message.get_conversation_history(
                 self.test_conversation_id
-                # Capture last state for later validation (todos, etc.)
-                try:
-                    self._last_state = res.state  # type: ignore[attr-defined]
-                except Exception:
-                    pass
             )
-            # Append todos if available in final state
-            todos_md = ""
-            try:
-                if hasattr(self, "_last_state") and getattr(self._last_state, "generated_todos", None):
-                    todos = getattr(self._last_state, "generated_todos") or []
-                    if todos:
-                        todos_md_lines = ["\n### Captured Todos\n", "| # | Title | Status | Priority |", "|---|-------|--------|----------|"]
-                        for i, td in enumerate(todos, 1):
-                            todos_md_lines.append(f"| {i} | {td.title} | {td.status} | {td.priority} |")
-                        todos_md = "\n".join(todos_md_lines) + "\n"
-            except Exception as todo_err:
-                logger.warning(f"Todo formatting failed: {todo_err}")
-
-            completion_text = f"\n\n---\n\n**Streaming Complete**  \
-Events: {event_count}  \
-Duration: {execution_time:.2f}s\n" + todos_md + "\n---\n"
+            if not messages:
                 raise RuntimeError("No messages found for conversation")
 
             logger.info(f"   📝 Processing {len(messages)} messages")
@@ -619,7 +597,7 @@ Duration: {execution_time:.2f}s\n" + todos_md + "\n---\n"
                 workflow=workflow,
             ):
                 event_count += 1
-                # Capture latest workflow state for todos extraction later
+                # Capture latest workflow state for later todo extraction
                 try:
                     self._last_state = res.state  # type: ignore[attr-defined]
                 except Exception:
@@ -675,7 +653,9 @@ Duration: {execution_time:.2f}s\n" + todos_md + "\n---\n"
                 # Skip thoughts - we only want clean content output
 
             execution_time = time.time() - start_time
-            todos_md = ""
+            completion_text = f"\n\n{'='*80}\n✅ STREAMING COMPLETE - Total events: {event_count}\nTotal time: {execution_time:.2f} seconds\n{'='*80}\n"
+
+            # Append todos markdown if present in last state
             try:
                 if hasattr(self, "_last_state") and getattr(self._last_state, "generated_todos", None):
                     todos = getattr(self._last_state, "generated_todos") or []
@@ -683,11 +663,10 @@ Duration: {execution_time:.2f}s\n" + todos_md + "\n---\n"
                         lines = ["\n### Captured Todos\n", "| # | Title | Status | Priority |", "|---|-------|--------|----------|"]
                         for i, td in enumerate(todos, 1):
                             lines.append(f"| {i} | {td.title} | {td.status} | {td.priority} |")
-                        todos_md = "\n".join(lines) + "\n"
+                        completion_text += "\n" + "\n".join(lines) + "\n"
             except Exception as todo_err:
-                logger.warning(f"Todo markdown generation failed: {todo_err}")
+                logger.warning(f"Failed to append todos markdown: {todo_err}")
 
-            completion_text = f"\n\n{'='*80}\n✅ STREAMING COMPLETE - Total events: {event_count}\nTotal time: {execution_time:.2f} seconds\n{'='*80}\n" + todos_md
             self._write_to_output(completion_text)
 
             logger.info(f"   ✅ Workflow execution completed in {execution_time:.2f}s")
