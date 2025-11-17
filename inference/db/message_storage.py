@@ -287,12 +287,33 @@ class MessageStorage:
             elif hasattr(cap, "value"):  # Enum object
                 required_capabilities.append(cap)
 
-        # Parse computational_requirements from JSONB
-        comp_req_data = row.get("computational_requirements", {})
-        if isinstance(comp_req_data, str):
-            comp_req_data = json.loads(comp_req_data)
-
-        computational_requirements = ComputationalRequirement(**comp_req_data)
+        # Parse computational_requirements (stored as simple enum string)
+        comp_req_raw = row.get("computational_requirements")
+        computational_requirements: ComputationalRequirement
+        if isinstance(comp_req_raw, str):
+            # Direct enum value stored
+            try:
+                computational_requirements = ComputationalRequirement(comp_req_raw)
+            except ValueError:
+                # Fallback to MINIMAL if invalid
+                computational_requirements = ComputationalRequirement.MINIMAL
+        elif hasattr(comp_req_raw, "value"):
+            # Already an enum instance
+            computational_requirements = comp_req_raw  # type: ignore
+        elif isinstance(comp_req_raw, dict):
+            # Legacy dict form {"computational_requirements": "MINIMAL"} or {"value": "MINIMAL"}
+            # Try common keys
+            val = comp_req_raw.get("computational_requirements") or comp_req_raw.get("value")
+            if isinstance(val, str):
+                try:
+                    computational_requirements = ComputationalRequirement(val)
+                except ValueError:
+                    computational_requirements = ComputationalRequirement.MINIMAL
+            else:
+                computational_requirements = ComputationalRequirement.MINIMAL
+        else:
+            # None or unexpected type
+            computational_requirements = ComputationalRequirement.MINIMAL
 
         # Parse enum fields with fallback
         workflow_type = row.get("workflow_type")
