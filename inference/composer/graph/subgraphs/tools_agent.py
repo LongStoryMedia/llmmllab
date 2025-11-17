@@ -16,7 +16,7 @@ from langgraph.prebuilt import ToolNode
 from composer.graph import WorkflowState
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
-from models import PipelinePriority, TodoItem
+from models import PipelinePriority
 from utils.logging import llmmllogger, serialize_event_data
 
 logger = llmmllogger.bind(component="ToolsAgentSubgraph")
@@ -107,57 +107,28 @@ class ToolsAgentSubgraph:
                 priority=PipelinePriority.HIGH,
             )
 
-            # Extract todos from middleware if present on agent
-            todos_created = []
-            try:
-                if hasattr(self.chat_agent, "middleware"):
-                    for mw in self.chat_agent.middleware:  # type: ignore[attr-defined]
-                        # TodoListMiddleware exposes .todo_list attribute
-                        if hasattr(mw, "todo_list") and mw.todo_list:  # type: ignore
-                            for raw in mw.todo_list:  # type: ignore[index]
-                                # raw is likely a dict with keys 'description' or 'task'
-                                task_text = (
-                                    raw.get("task")
-                                    or raw.get("description")
-                                    or raw.get("text")
-                                    or "Untitled Task"
-                                )
-                                # Simple priority heuristic
-                                priority = "medium"
-                                lowered = task_text.lower()
-                                if any(p in lowered for p in ["urgent", "asap", "immediately"]):
-                                    priority = "urgent"
-                                # Create TodoItem
-                                todo = TodoItem(
-                                    user_id=state.user_id,
-                                    conversation_id=state.conversation_id,
-                                    title=task_text[:60],
-                                    description=task_text,
-                                    status="not-started",
-                                    priority=priority,
-                                )
-                                todos_created.append(todo)
-            except Exception as mw_err:
-                logger.warning(f"Failed extracting middleware todos: {mw_err}")
-
-            # Persist todos and append to state
-            if todos_created:
+            # Persist todos extracted in ChatResponse (already converted in BaseAgent)
+            if response.todos:
                 try:
                     from db import storage
+
+                    todos_to_store = response.todos
                     if storage.initialized and storage.todo:
                         svc = storage.get_service(storage.todo)
                         saved = []
-                        for td in todos_created:
+                        for td in todos_to_store:
                             saved_item = await svc.add_todo(td)
                             if saved_item:
                                 saved.append(saved_item)
-                        state.generated_todos.extend(saved if saved else todos_created)
+                        state.generated_todos.extend(saved if saved else todos_to_store)
                     else:
-                        state.generated_todos.extend(todos_created)
-                    logger.info(f"📝 Stored {len(state.generated_todos)} todos from middleware")
+                        state.generated_todos.extend(todos_to_store)
+                    logger.info(
+                        f"📝 Stored {len(state.generated_todos)} todos from middleware result"
+                    )
                 except Exception as db_err:
                     logger.error(f"Failed storing middleware todos: {db_err}")
-                    state.generated_todos.extend(todos_created)
+                    state.generated_todos.extend(response.todos)
 
             logger.info(f"📨 ChatOpenAI response: {type(response)}")
             logger.debug(f"Response content: {serialize_event_data(response)}")

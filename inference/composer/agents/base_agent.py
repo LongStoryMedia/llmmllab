@@ -17,6 +17,7 @@ from abc import ABC
 from pydantic import BaseModel
 from langchain.agents.structured_output import ProviderStrategy
 from langchain.agents import create_agent
+from langchain.agents.middleware import AgentMiddleware
 from langchain.chat_models import BaseChatModel
 from langchain.embeddings.base import Embeddings
 from langchain_core.tools import BaseTool
@@ -122,7 +123,7 @@ class BaseAgent(ABC, Generic[T]):
 
         self.agent_id = f"{id(self):x}"
         # Middleware list passed to create_agent for behaviors like TodoListMiddleware
-        self.middleware: List[Any] = []
+        self.middleware: List[AgentMiddleware] = []
 
         self.logger.debug(
             f"Initialized {component}",
@@ -433,16 +434,17 @@ If there are not results from tool usage, you must attempt to call the tool agai
             )
             result = await agent.ainvoke({"messages": normalized_messages})  # type: ignore
 
+            # Extract messages and middleware state (todos) from result
+            todos_raw = None
+            if isinstance(result, dict):
+                todos_raw = result.get("todos")
+
             # Convert agent result to ChatResponse
-            # Handle different result formats based on agent type
             if isinstance(result, BaseMessage):
-                # Direct ChatOpenAI response (AIMessage)
                 last_message = result
             elif isinstance(result, dict) and "messages" in result:
-                # Traditional LangGraph agent response
                 last_message = result["messages"][-1]
             else:
-                # Fallback - assume result is the message itself
                 last_message = result
 
             assert isinstance(last_message, BaseMessage)
@@ -450,14 +452,44 @@ If there are not results from tool usage, you must attempt to call the tool agai
                 f"Agent run result ({type(last_message)}): {serialize_event_data(last_message)}"
             )
             msg = lc_message_to_message(last_message)
-            if grammar and isinstance(grammar, IntentsResponse) and msg.content[0].text:
+            if grammar and isinstance(grammar, IntentsResponse) and msg.content and msg.content[0].text:
                 msg.analyses = parse_structured_output(
                     msg.content[0].text, IntentsResponse
                 ).intents
                 msg.content = []
+
+            # Convert raw todos (middleware PlanningState) -> TodoItem list
+            converted_todos = []
+            if todos_raw and isinstance(todos_raw, list):
+                from models import TodoItem  # local import to avoid circular
+
+                for t in todos_raw:
+                    if not isinstance(t, dict):
+                        continue
+                    content = t.get("content") or t.get("task") or t.get("description") or "Untitled Task"
+                    status_raw = t.get("status", "pending")
+                    # Map middleware statuses to internal statuses
+                    status_map = {
+                        "pending": "not-started",
+                        "in_progress": "in-progress",
+                        "completed": "completed",
+                    }
+                    internal_status = status_map.get(status_raw, "not-started")  # type: ignore[assignment]
+                    # Narrow type for status and priority literals
+                    todo_item = TodoItem(
+                        user_id=self._node_metadata.user_id,
+                        conversation_id=self._node_metadata.conversation_id,
+                        title=content[:60],
+                        description=content,
+                        status=internal_status,  # pyright: ignore
+                        priority="medium",  # pyright: ignore
+                    )
+                    converted_todos.append(todo_item)
+
             response = ChatResponse(
                 done=True,
                 message=msg,
+                todos=converted_todos or None,
             )
 
             return response
