@@ -155,8 +155,8 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
                 print(f"  Domain Specificity: {intent.domain_specificity}")
                 print(f"  Reusability Potential: {intent.reusability_potential}")
                 print(f"  Response Format: {intent.response_format}")
-                print(f"  Required Capabilities: {serialize_event_data(intent.required_capabilities)}")
-                print(f"  Computational Requirements: {serialize_event_data(intent.computational_requirements)}")
+                print(f"  Required Capabilities: {[cap.value for cap in intent.required_capabilities]}")
+                print(f"  Computational Requirements: {intent.computational_requirements.value}")
         elif isinstance(final_state, dict) and 'intent_classification' in final_state:
             # Handle case where final_state is a dict
             intents = final_state['intent_classification']
@@ -173,8 +173,8 @@ async def wrapper(model_id: str, query: str = "", image_url: str = "") -> None:
                     print(f"  Domain Specificity: {intent.domain_specificity}")
                     print(f"  Reusability Potential: {intent.reusability_potential}")
                     print(f"  Response Format: {intent.response_format}")
-                    print(f"  Required Capabilities: {serialize_event_data(intent.required_capabilities)}")
-                    print(f"  Computational Requirements: {serialize_event_data(intent.computational_requirements)}")
+                    print(f"  Required Capabilities: {[cap.value for cap in intent.required_capabilities]}")
+                    print(f"  Computational Requirements: {intent.computational_requirements.value}")
             else:
                 print("No intent classification results found in dict")
         else:
