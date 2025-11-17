@@ -10,20 +10,17 @@ from typing import (
     Dict,
     TypeVar,
     Generic,
-    AsyncIterator,
     List,
     cast,
 )
 from abc import ABC
-from numpy import isin
 from pydantic import BaseModel
 from langchain.agents.structured_output import ProviderStrategy
-from langchain.agents import create_agent, AgentState
+from langchain.agents import create_agent
 from langchain.chat_models import BaseChatModel
 from langchain.embeddings.base import Embeddings
 from langchain_core.tools import BaseTool
 from langchain_core.messages import BaseMessage
-from langgraph.graph.state import CompiledStateGraph
 
 from models import (
     MessageRole,
@@ -34,8 +31,9 @@ from models import (
     Message,
 )
 from runner import PipelineFactory
+from utils import parse_structured_output
 from utils.logging import llmmllogger, serialize_event_data
-from utils.response import create_streaming_chunk, create_error_response
+from utils.response import create_error_response
 from utils.message_conversion import (
     normalize_message_input,
     messages_to_lc_messages,
@@ -44,6 +42,7 @@ from utils.message_conversion import (
     extract_text_from_message,
 )
 from composer.core.errors import NodeExecutionError
+from .grammar_responses import IntentsResponse
 
 
 T = TypeVar("T")
@@ -122,6 +121,8 @@ class BaseAgent(ABC, Generic[T]):
         self._pipeline_locked = False
 
         self.agent_id = f"{id(self):x}"
+        # Middleware list passed to create_agent for behaviors like TodoListMiddleware
+        self.middleware: List[Any] = []
 
         self.logger.debug(
             f"Initialized {component}",
@@ -250,6 +251,7 @@ class BaseAgent(ABC, Generic[T]):
             system_prompt=system_prompt,
             response_format=ProviderStrategy(grammar) if grammar else None,
             name=self._node_metadata.node_name,
+            middleware=self.middleware,
         )
 
         return agent
@@ -383,103 +385,6 @@ If there are not results from tool usage, you must attempt to call the tool agai
 
         return system_prompt, convo
 
-    async def stream(
-        self,
-        messages: MessageInput,
-        tools: Optional[List[BaseTool]] = None,
-        priority: PipelinePriority = PipelinePriority.MEDIUM,
-        grammar: Optional[type[BaseModel]] = None,
-    ) -> AsyncIterator[ChatResponse]:
-        """
-        Stream agent execution with node metadata injection.
-
-        Creates a LangChain agent using create_agent() with BaseChatModel from factory,
-        then streams the agent execution results with node metadata injection.
-
-        Args:
-            messages: Input messages for the agent
-            user_id: User identifier
-            tools: Optional tools for the agent
-            circuit_breaker: Optional circuit breaker configuration
-            priority: Pipeline execution priority (affects model selection)
-
-        Yields:
-            ChatResponse: Streaming chunks with injected node metadata
-        """
-        try:
-            self._log_operation_start(
-                "create_agent_stream",
-                message_count=get_message_count(messages),
-                has_tools=bool(tools),
-                node_name=self._node_metadata.node_name,
-                node_type=self._node_metadata.node_type,
-            )
-
-            yield create_streaming_chunk(
-                text="",
-                role=MessageRole.OBSERVER,
-                done=False,
-            ).model_copy(update={"channels": self._node_metadata.model_dump()})
-
-            system_prompt, convo = self._separate_system_prompt(messages)
-
-            # Use persistent agent - creates once and reuses for state continuity
-            agent = self._get_or_create_agent(system_prompt, tools, priority, grammar)
-
-            # Convert messages to LangChain format
-            normalized_messages = messages_to_lc_messages(convo)
-
-            # Handle different agent types for streaming
-            chunk_count = 0
-
-            npt = {"messages": normalized_messages}
-
-            # Stream agent execution with recursion limit
-            async for chunk in agent.astream(
-                npt,  # type: ignore
-                stream_mode="messages",
-                subgraphs=True,
-            ):
-                msg_chunk = {}
-                metadata = {}
-
-                # stream_mode "messages" returns AIMessageChunk objects with metadata
-                if isinstance(chunk, tuple) and len(chunk) >= 2:
-                    msg_chunk, metadata = chunk
-                elif isinstance(chunk, BaseMessage):
-                    msg_chunk = chunk
-
-                if isinstance(msg_chunk, BaseMessage):
-                    msg = lc_message_to_message(msg_chunk)
-
-                    chat_chunk = ChatResponse(done=False, message=msg)
-                    chat_chunk.channels = self._node_metadata.model_dump()
-                    chat_chunk.channels.update(metadata)
-                    chunk_count += 1
-                    yield chat_chunk
-
-            # Yield end chunk with node metadata
-            yield create_streaming_chunk(
-                text="",
-                role=MessageRole.ASSISTANT,
-                done=True,
-            ).model_copy(update={"channels": self._node_metadata.model_dump()})
-
-            self._log_operation_success(
-                "create_agent_stream",
-                chunk_count=chunk_count,
-                node_name=self._node_metadata.node_name,
-            )
-
-        except Exception as e:
-            yield create_error_response(str(e))
-
-            self._handle_node_error(
-                "create_agent_stream",
-                e,
-                message_count=get_message_count(messages),
-            )
-
     async def run(
         self,
         messages: MessageInput,
@@ -545,12 +450,16 @@ If there are not results from tool usage, you must attempt to call the tool agai
                 f"Agent run result ({type(last_message)}): {serialize_event_data(last_message)}"
             )
             msg = lc_message_to_message(last_message)
+            if grammar and isinstance(grammar, IntentsResponse) and msg.content[0].text:
+                msg.analyses = parse_structured_output(
+                    msg.content[0].text, IntentsResponse
+                ).intents
+                msg.content = []
             response = ChatResponse(
                 done=True,
                 message=msg,
             )
 
-            response.channels = self._node_metadata.model_dump()
             return response
 
         except Exception as e:

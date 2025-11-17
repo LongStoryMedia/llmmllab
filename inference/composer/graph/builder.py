@@ -9,7 +9,6 @@ import uuid
 
 from composer.agents.chat_agent import ChatAgent
 from langgraph.graph.state import CompiledStateGraph, StateGraph, END, START
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from models import (
     ModelProfileType,
@@ -52,7 +51,6 @@ from composer.graph.state import WorkflowState, assemble_context_messages
 from composer.graph.subgraphs import ToolsAgentSubgraph
 from composer.graph.subgraphs import PlanningIntentSubgraph
 
-from .executor import WorkflowExecutor
 
 # Checkpoint integration handled through CheckpointStorage service
 
@@ -270,12 +268,17 @@ class GraphBuilder:
             )
 
             # Create agents with injected dependencies
+            from langchain.agents.middleware import TodoListMiddleware
+            todo_middleware = TodoListMiddleware()
+
             primary_agent = ChatAgent(
                 pipeline_factory=self.pipeline_factory,
                 profile=primary_profile,
                 node_metadata=primary_node_metadata,
                 priority=PipelinePriority.HIGH,
             )
+            # Attach middleware list to agent for later use in BaseAgent calls
+            primary_agent.middleware = [todo_middleware]
             # Use primary_profile for classifier agent instead of analysis_profile
             # Primary profile now uses qwen3-vl-32b multimodal model which avoids grammar constraint crashes
             classifier_agent = ClassifierAgent(
@@ -522,7 +525,7 @@ class GraphBuilder:
             # TEMPORARILY DISABLED: Checkpointer causes connection issues
             # The PostgreSQL checkpointer creates a connection during compilation
             # but the connection gets closed before workflow execution, causing failures.
-            # TODO: Fix checkpointer lifecycle management
+            # NOTE: Checkpointer lifecycle management currently disabled
             self.logger.info(
                 "ℹ️  Checkpointer temporarily disabled - compiling without persistence"
             )
