@@ -31,7 +31,6 @@ from composer.agents.primary_summary_agent import PrimarySummaryAgent
 from composer.agents.master_summary_agent import MasterSummaryAgent
 
 # Import all nodes
-from composer.nodes.routing.router import WorkflowRouter
 from composer.nodes.tools import (
     ToolCollectionNode,
     ToolComposerNode,
@@ -353,8 +352,6 @@ class GraphBuilder:
             # SearchSummaryNode uses primary summaries by default
             search_summary_node = SearchSummaryNode(primary_summary_agent)
 
-            router_node = WorkflowRouter(user_id)
-
             self.logger.info(
                 "Building workflow with dependency injection", user_id=user_id
             )
@@ -363,10 +360,6 @@ class GraphBuilder:
             workflow = StateGraph(WorkflowState)
 
             # Create nodes with injected dependencies
-            # Intent analysis -> router -> (optional specialized agents) pattern
-            # workflow.add_node("intent_analysis", classifier_node)
-            workflow.add_node("workflow_router", router_node)
-
             # Engineering agent (invoked only when routing selects engineering)
             workflow.add_node("engineering_agent", engineering_node)
 
@@ -422,26 +415,8 @@ class GraphBuilder:
             # Direct tool collection to composer
             workflow.add_edge("tool_collection", "tool_composer")
 
-            # 4. Tool composer -> Router for workflow selection
-            workflow.add_edge("tool_composer", "workflow_router")
-
-            # 5. Conditional routing: router decides next step based on complexity
-            def route_post_router(state: WorkflowState):
-                # If engineering workflow selected, use specialized agent first
-                # add more workflows here as needed
-                if WorkflowType.ENGINEERING in state.selected_workflows:
-                    return "engineering_agent"
-                # Otherwise go to intelligent tools agent subgraph (handles chat + tools + cycling)
-                return "tools_agent"
-
-            workflow.add_conditional_edges(
-                "workflow_router",
-                route_post_router,
-                {
-                    "engineering_agent": "engineering_agent",
-                    "tools_agent": "tools_agent",
-                },
-            )
+            # 4. Tool composer -> Tools Agent
+            workflow.add_edge("tool_composer", "tools_agent")
 
             # 6. Engineering agent -> Tools agent (subgraph handles intelligent agent cycling)
             workflow.add_edge("engineering_agent", "tools_agent")
