@@ -15,11 +15,8 @@ from utils.logging import llmmllogger
 from composer.tools.static import (
     web_search,
     read_web_content,
-    tool_generator_tool,
 )
 from composer.agents.engineering_agent import EngineeringAgent
-
-from runner import PipelineFactory
 
 
 class ToolRegistryManager:
@@ -28,24 +25,18 @@ class ToolRegistryManager:
     Handles creation and caching of user-specific registries.
     """
     
-    def __init__(self, pipeline_factory: PipelineFactory, engineering_agent: EngineeringAgent):
-        self.pipeline_factory = pipeline_factory
-        self.engineering_agent = engineering_agent
+    def __init__(self):
         self._user_registries: Dict[str, "ToolRegistry"] = {}
         self._lock = asyncio.Lock()
         self.logger = llmmllogger.logger.bind(component="ToolRegistryManager")
-        
-        # Set the global registry manager for tool_generator
-        tool_generator_tool.set_registry_manager(self)
     
-    async def get_user_registry(self, user_id: str) -> "ToolRegistry":
+    async def get_user_registry(self, user_id: str, engineering_agent: EngineeringAgent) -> "ToolRegistry":
         """Get or create a user-specific ToolRegistry instance."""
         async with self._lock:
             if user_id not in self._user_registries:
                 self.logger.info("Creating new ToolRegistry for user", user_id=user_id)
                 registry = ToolRegistry(
-                    pipeline_factory=self.pipeline_factory,
-                    engineering_agent=self.engineering_agent,
+                    engineering_agent=engineering_agent,
                     user_id=user_id
                 )
                 self._user_registries[user_id] = registry
@@ -78,7 +69,7 @@ class ToolRegistry:
     logger: FilteringBoundLogger
 
     def __init__(
-        self, pipeline_factory: PipelineFactory, engineering_agent: EngineeringAgent, user_id: str
+        self, engineering_agent: EngineeringAgent, user_id: str
     ):
         # Static tool classes for instantiation
         self.static_tools: Dict[str, type[BaseTool]] = {}
@@ -87,7 +78,6 @@ class ToolRegistry:
         # Executable tool instances (tool_name -> BaseTool instance)
         self.executable_tools: Dict[str, BaseTool] = {}
 
-        self.pipeline_factory = pipeline_factory
         self.engineering_agent = engineering_agent
         self.user_id = user_id
         self._lock = asyncio.Lock()
@@ -111,7 +101,8 @@ class ToolRegistry:
                 # "get_current_time": get_current_time,
                 "web_search": web_search,
                 "read_web_content": read_web_content,
-                "tool_generator": tool_generator_tool.tool_generator,
+                # Temporarily disabled while refactoring tool_generator for singleton pattern
+                # "tool_generator": tool_generator_tool.tool_generator,
                 # "memory_retrieval": memory_retrieval,
                 # "summarization": summarization,
             }
@@ -302,3 +293,7 @@ class ToolRegistry:
         self.dynamic_tools.clear()
         self.executable_tools.clear()
         self.logger.info("Tool registry closed")
+
+
+# Create singleton instance
+registry_manager = ToolRegistryManager()

@@ -9,14 +9,6 @@ from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="ToolGeneratorTool")
 
-# Global registry manager - will be set by the GraphBuilder
-_registry_manager = None
-
-def set_registry_manager(manager):
-    """Set the global registry manager instance."""
-    global _registry_manager
-    _registry_manager = manager
-
 
 @tool
 async def tool_generator(task_description: str, user_id: str) -> str:
@@ -30,11 +22,15 @@ async def tool_generator(task_description: str, user_id: str) -> str:
         user_id=user_id,
     )
     try:
-        # Get the user-specific tool registry instance
-        if not _registry_manager:
-            return "Error: Registry manager not initialized. Please ensure the system is properly started."
+        # Import the singleton registry manager
+        from composer.tools.registry import registry_manager
         
-        tool_registry = await _registry_manager.get_user_registry(user_id)
+        # We need to access the user registry but we need to provide the engineering_agent
+        # This is a limitation of the current design - tool functions can't access context easily
+        # For now, we'll need to pass None and handle this differently
+        # TODO: Consider refactoring to use a more context-aware approach
+        logger.error("tool_generator function needs refactoring for singleton pattern")
+        return "Error: This tool needs to be updated to work with the singleton pattern. Please contact system administrator."
 
         tool_storage: Optional[DynamicToolStorage] = storage.dynamic_tool
         if not tool_storage:

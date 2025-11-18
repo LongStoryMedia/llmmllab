@@ -43,7 +43,7 @@ from composer.nodes.memory import (
 from composer.nodes.agents import TitleGenerationNode
 from composer.nodes.agents.engineering import EngineeringAgentNode
 from composer.nodes.summary import ConsolidationNode, SearchSummaryNode
-from composer.tools.registry import ToolRegistryManager
+from composer.tools.registry import registry_manager
 
 from composer.graph.state import WorkflowState, assemble_context_messages
 from composer.graph.subgraphs import ToolsAgentSubgraph
@@ -318,8 +318,8 @@ class GraphBuilder:
                 self.user_config,
             )
 
-            # Create tool registry manager (also depends on engineering agent)
-            tool_registry_manager = ToolRegistryManager(self.pipeline_factory, engineering_agent)
+            # Get user-specific tool registry for this workflow
+            user_tool_registry = await registry_manager.get_user_registry(user_id, engineering_agent)
 
             # Create nodes with injected agents and storage
             engineering_node = EngineeringAgentNode(engineering_agent)
@@ -335,11 +335,11 @@ class GraphBuilder:
             )
             # Import here to avoid linting issues
             static_tool_loading_node = StaticToolLoadingNode(
-                tool_registry_manager,
+                registry_manager,
                 self.dynamic_tool_storage,
             )
             tool_collection_node = ToolCollectionNode(
-                tool_registry_manager,
+                registry_manager,
                 engineering_agent,
             )
             tool_composer_node = ToolComposerNode()
@@ -381,7 +381,7 @@ class GraphBuilder:
             workflow.add_node("search_summary", search_summary_node)
 
             tools_agent_subgraph = ToolsAgentSubgraph(
-                tool_registry_manager=tool_registry_manager,
+                tool_registry=user_tool_registry,
                 chat_agent=primary_agent,
             )
             assert tools_agent_subgraph.graph is not None

@@ -153,8 +153,7 @@ class ToolCollectionNode:
                 dynamic_tools.append(tool)
 
                 # Register with tool registry for potential future reuse
-                tool_registry = await self.tool_registry_manager.get_user_registry(user_id)
-                await tool_registry.register_dynamic_tool_instance(
+                await self.tool_registry.register_dynamic_tool_instance(
                     tool_id=f"{user_id}_{dt_spec.name}",
                     tool_instance=tool,
                     user_id=user_id,
