@@ -15,7 +15,7 @@ from utils.logging import llmmllogger
 from composer.tools.static import (
     web_search,
     read_web_content,
-    tool_generator_tool,
+    tool_generator,
 )
 from composer.agents.engineering_agent import EngineeringAgent
 
@@ -25,34 +25,37 @@ class ToolRegistryManager:
     Manager for per-user ToolRegistry instances.
     Handles creation and caching of user-specific registries.
     """
-    
+
     def __init__(self):
         self._user_registries: Dict[str, "ToolRegistry"] = {}
         self._lock = asyncio.Lock()
         self.logger = llmmllogger.logger.bind(component="ToolRegistryManager")
-    
-    async def get_user_registry(self, user_id: str, engineering_agent: EngineeringAgent) -> "ToolRegistry":
+
+    async def get_user_registry(
+        self, user_id: str, engineering_agent: EngineeringAgent
+    ) -> "ToolRegistry":
         """Get or create a user-specific ToolRegistry instance."""
         async with self._lock:
             if user_id not in self._user_registries:
                 self.logger.info("Creating new ToolRegistry for user", user_id=user_id)
                 registry = ToolRegistry(
-                    engineering_agent=engineering_agent,
-                    user_id=user_id
+                    engineering_agent=engineering_agent, user_id=user_id
                 )
                 self._user_registries[user_id] = registry
-            
+
             return self._user_registries[user_id]
-    
+
     def has_user_registry(self, user_id: str) -> bool:
         """Check if a user registry already exists."""
         return user_id in self._user_registries
-    
-    async def get_existing_user_registry(self, user_id: str) -> Optional["ToolRegistry"]:
+
+    async def get_existing_user_registry(
+        self, user_id: str
+    ) -> Optional["ToolRegistry"]:
         """Get an existing user registry without creating a new one."""
         async with self._lock:
             return self._user_registries.get(user_id)
-    
+
     async def cleanup_user_registry(self, user_id: str) -> None:
         """Clean up a user's registry when they're done."""
         async with self._lock:
@@ -60,7 +63,7 @@ class ToolRegistryManager:
                 await self._user_registries[user_id].close()
                 del self._user_registries[user_id]
                 self.logger.info("Cleaned up ToolRegistry for user", user_id=user_id)
-    
+
     async def close(self) -> None:
         """Clean up all user registries."""
         async with self._lock:
@@ -78,9 +81,7 @@ class ToolRegistry:
 
     logger: FilteringBoundLogger
 
-    def __init__(
-        self, engineering_agent: EngineeringAgent, user_id: str
-    ):
+    def __init__(self, engineering_agent: EngineeringAgent, user_id: str):
         # Static tool classes for instantiation
         self.static_tools: Dict[str, type[BaseTool]] = {}
         # Dynamic tool instances for reuse (tool_id -> Tool)
@@ -111,7 +112,7 @@ class ToolRegistry:
                 # "get_current_time": get_current_time,
                 "web_search": web_search,
                 "read_web_content": read_web_content,
-                "tool_generator": tool_generator_tool.tool_generator,
+                "tool_generator": tool_generator,
                 # "memory_retrieval": memory_retrieval,
                 # "summarization": summarization,
             }

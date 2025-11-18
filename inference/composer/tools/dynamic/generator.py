@@ -6,8 +6,7 @@ import io
 from typing import Any, Dict, Optional
 from contextlib import redirect_stdout, redirect_stderr
 
-from langchain_core.tools import BaseTool
-from langchain_core.callbacks import CallbackManagerForToolRun
+from langchain_core.tools import BaseTool, tool
 from pydantic import Field
 
 from models import DynamicTool
@@ -36,10 +35,61 @@ class DynamicToolRunner(BaseTool):
             parameters=dynamic_tool.parameters or {},
         )
 
-    def _run(
-        self, run_manager: Optional[CallbackManagerForToolRun] = None, **kwargs
-    ) -> str:
+    def to_tool(self) -> BaseTool:
+        """Convert to a LangChain BaseTool for execution"""
+        
+        # Capture self references for the closure
+        tool_name = self.name
+        tool_description = self.description
+        tool_runner = self
+        
+        def create_tool_function():
+            """Create the actual tool function with proper signature"""
+            def tool_execution(**kwargs) -> str:
+                """Execute the dynamic tool with provided arguments"""
+                return tool_runner.execute_tool(**kwargs)
+            
+            # Set the docstring dynamically
+            tool_execution.__doc__ = f"{tool_description}\n\nDynamically generated tool: {tool_name}"
+            tool_execution.__name__ = tool_name
+            
+            return tool_execution
+        
+        # Create and decorate the function
+        tool_func = create_tool_function()
+        decorated_tool = tool(tool_func)
+        
+        # Update the tool's metadata
+        decorated_tool.name = tool_name
+        decorated_tool.description = tool_description
+        
+        # Set additional attributes to match the original tool properties
+        if hasattr(self, 'args_schema'):
+            decorated_tool.args_schema = self.args_schema
+        if hasattr(self, 'return_direct'):
+            decorated_tool.return_direct = self.return_direct
+        if hasattr(self, 'tags'):
+            decorated_tool.tags = self.tags
+        if hasattr(self, 'metadata'):
+            decorated_tool.metadata = self.metadata
+        if hasattr(self, 'handle_tool_error'):
+            decorated_tool.handle_tool_error = self.handle_tool_error
+        if hasattr(self, 'handle_validation_error'):
+            decorated_tool.handle_validation_error = self.handle_validation_error
+        if hasattr(self, 'response_format'):
+            decorated_tool.response_format = self.response_format
+        
+        return decorated_tool
+        
+    def execute_tool(self, **kwargs) -> str:
+        """Execute the dynamic tool - public interface"""
+        return self._run(**kwargs)
+
+    def _run(self, *args, **kwargs) -> str:
         """Execute the dynamic tool"""
+        # Extract run_manager if provided, but ignore it for now
+        kwargs.pop('run_manager', None)  # Remove run_manager if present
+        
         try:
             # Validate the code before execution
             is_valid, error_msg = ToolSecurityValidator.validate_code(self.code)

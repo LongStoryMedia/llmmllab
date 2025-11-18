@@ -23,12 +23,16 @@ async def tool_generator(task_description: str, user_id: str) -> str:
     )
     try:
         # Import the singleton registry manager
-        from composer.tools.registry import registry_manager
-        
+        from composer.tools.registry import (  # pylint: disable=import-outside-toplevel
+            registry_manager,
+        )
+
         # Get the user-specific tool registry instance - it should already exist from graph building
         tool_registry = await registry_manager.get_existing_user_registry(user_id)
         if not tool_registry:
-            logger.error(f"No cached registry found for user {user_id}. Registry must be initialized first.")
+            logger.error(
+                f"No cached registry found for user {user_id}. Registry must be initialized first."
+            )
             return "Error: User registry not found. Please ensure the system is properly initialized for this user."
 
         tool_storage: Optional[DynamicToolStorage] = storage.dynamic_tool
@@ -94,7 +98,7 @@ async def tool_generator(task_description: str, user_id: str) -> str:
 
         # 5. Register the executable tool instance in the registry
         executable_tool = DynamicToolRunner(created_tool)
-        
+
         # Convert DynamicTool to Tool for registry storage
         tool_for_registry = Tool(
             name=created_tool.name,
@@ -107,7 +111,7 @@ async def tool_generator(task_description: str, user_id: str) -> str:
             handle_validation_error=created_tool.handle_validation_error,
             response_format=created_tool.response_format,
         )
-        
+
         await tool_registry.register_dynamic_tool_instance(
             tool_id=str(created_tool.id), tool_instance=tool_for_registry
         )

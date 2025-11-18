@@ -5,6 +5,7 @@ from .web_reader_tool import read_web_content
 from .memory_retrieval_tool import memory_retrieval
 from .summarization_tool import summarization
 from .get_date_tool import get_current_date
+from .tool_generator_tool import tool_generator
 
 
 __all__ = [
@@ -13,4 +14,5 @@ __all__ = [
     "memory_retrieval",
     "summarization",
     "get_current_date",
+    "tool_generator",
 ]
