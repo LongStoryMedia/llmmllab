@@ -15,7 +15,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from composer.graph import WorkflowState
 from composer.agents.chat_agent import ChatAgent
-from composer.tools.registry import ToolRegistry
+from composer.tools.registry import ToolRegistryManager
 from models import PipelinePriority
 from utils.logging import llmmllogger, serialize_event_data
 
@@ -43,11 +43,11 @@ class ToolsAgentSubgraph:
 
     def __init__(
         self,
-        tool_registry: ToolRegistry,
+        tool_registry_manager: ToolRegistryManager,
         chat_agent: ChatAgent,
     ):
         """Initialize agent subgraph with tools."""
-        self.tool_registry = tool_registry
+        self.tool_registry_manager = tool_registry_manager
         self.chat_agent = chat_agent
         self.graph = None
         self._build_graph()
@@ -57,11 +57,9 @@ class ToolsAgentSubgraph:
     def _build_graph(self) -> None:
         """Build standard agent following LangChain documentation exactly."""
         try:
-            # Get tools for ToolNode
-            tools_dict = self.tool_registry.get_all_executable_tools()
-            tools_list = list(tools_dict.values()) if tools_dict else []
-
-            logger.info(f"🔧 Building standard agent with {len(tools_list)} tools")
+            # We'll build the graph structure without specific tools
+            # Tools will be loaded dynamically per user during execution
+            logger.info("🔧 Building standard agent with dynamic tool loading")
 
             # Standard StateGraph following LangChain pattern
             builder = StateGraph(WorkflowState)
@@ -69,16 +67,14 @@ class ToolsAgentSubgraph:
             # Add agent node that uses ChatOpenAI with bound tools
             builder.add_node("agent", self._agent_node)
 
-            # Add standard ToolNode for tool execution
-            if tools_list:
-                tool_node = ToolNode(tools_list)
-                builder.add_node("tools", tool_node)
+            # Add custom tool execution node that handles user-specific tools
+            builder.add_node("tools", self._tool_execution_node)
 
-                # Standard conditional routing using LangChain's tools_condition
-                builder.add_conditional_edges(
-                    "agent", should_continue_tool_calls, {"tools": "tools", "end": END}
-                )
-                builder.add_edge("tools", "agent")
+            # Standard conditional routing using LangChain's tools_condition
+            builder.add_conditional_edges(
+                "agent", should_continue_tool_calls, {"tools": "tools", "end": END}
+            )
+            builder.add_edge("tools", "agent")
 
             # Start with agent
             builder.add_edge(START, "agent")
@@ -95,9 +91,11 @@ class ToolsAgentSubgraph:
     async def _agent_node(self, state: WorkflowState) -> WorkflowState:
         """Standard agent node using ChatOpenAI with bound tools."""
         try:
-            # Get tools and bind them to ChatOpenAI
-            tools_dict = self.tool_registry.get_all_executable_tools()
+            # Get user-specific tools
+            user_registry = await self.tool_registry_manager.get_user_registry(state.user_id)
+            tools_dict = user_registry.get_all_executable_tools()
             tools_list = list(tools_dict.values()) if tools_dict else []
+            
             # Invoke ChatOpenAI - this handles tool calling automatically
             logger.info("📤 Invoking ChatOpenAI with standard LangChain pattern")
 
@@ -145,4 +143,24 @@ class ToolsAgentSubgraph:
 
         except Exception as e:
             logger.error(f"Agent node error: {e}", exc_info=True)
+            return state
+    
+    async def _tool_execution_node(self, state: WorkflowState) -> WorkflowState:
+        """Custom tool execution node that uses user-specific tools."""
+        try:
+            # Get user-specific tools
+            user_registry = await self.tool_registry_manager.get_user_registry(state.user_id)
+            tools_dict = user_registry.get_all_executable_tools()
+            tools_list = list(tools_dict.values()) if tools_dict else []
+            
+            if tools_list:
+                # Create a ToolNode with user-specific tools and execute
+                tool_node = ToolNode(tools_list)
+                return await tool_node.ainvoke(state)
+            else:
+                logger.warning("No tools available for user", user_id=state.user_id)
+                return state
+                
+        except Exception as e:
+            logger.error(f"Tool execution error: {e}", exc_info=True)
             return state

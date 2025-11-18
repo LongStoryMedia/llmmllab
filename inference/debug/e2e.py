@@ -24,6 +24,7 @@ import argparse
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
+from pydantic import NonNegativeInt
 from utils.logging import llmmllogger, serialize_event_data
 from models import (
     Message,
@@ -57,8 +58,6 @@ class ComposerRealEndToEndTester:
         self.test_conversation_id: Optional[int] = None
         self.test_message_id: Optional[int] = None
         self.storage = None  # Will be initialized with infrastructure
-        # Holds last workflow state for post-stream summaries (todos etc.)
-        self._last_state = None
 
         # LLM output capture configuration
         self.output_dir = "debug/out"
@@ -597,11 +596,6 @@ Which advances would best aid in understanding images like this one?
                 workflow=workflow,
             ):
                 event_count += 1
-                # Capture latest workflow state for later todo extraction
-                try:
-                    self._last_state = res.state  # type: ignore[attr-defined]
-                except Exception:
-                    pass
 
                 if res.done and res.finish_reason == "complete":
                     full_response = res
@@ -654,19 +648,6 @@ Which advances would best aid in understanding images like this one?
 
             execution_time = time.time() - start_time
             completion_text = f"\n\n{'='*80}\n✅ STREAMING COMPLETE - Total events: {event_count}\nTotal time: {execution_time:.2f} seconds\n{'='*80}\n"
-
-            # Append todos markdown if present in last state
-            try:
-                if hasattr(self, "_last_state") and getattr(self._last_state, "generated_todos", None):
-                    todos = getattr(self._last_state, "generated_todos") or []
-                    if todos:
-                        lines = ["\n### Captured Todos\n", "| # | Title | Status | Priority |", "|---|-------|--------|----------|"]
-                        for i, td in enumerate(todos, 1):
-                            lines.append(f"| {i} | {td.title} | {td.status} | {td.priority} |")
-                        completion_text += "\n" + "\n".join(lines) + "\n"
-            except Exception as todo_err:
-                logger.warning(f"Failed to append todos markdown: {todo_err}")
-
             self._write_to_output(completion_text)
 
             logger.info(f"   ✅ Workflow execution completed in {execution_time:.2f}s")

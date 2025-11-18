@@ -7,7 +7,7 @@ from typing import List
 
 from models import Tool
 from composer.graph.state import WorkflowState
-from composer.tools.registry import ToolRegistry
+from composer.tools.registry import ToolRegistryManager
 from utils.logging import llmmllogger
 from composer.agents.engineering_agent import EngineeringAgent
 from utils import extract_text_from_message
@@ -21,10 +21,10 @@ class ToolCollectionNode:
 
     def __init__(
         self,
-        tool_registry: ToolRegistry,
+        tool_registry_manager: ToolRegistryManager,
         engineering_agent: EngineeringAgent,
     ):
-        self.tool_registry = tool_registry
+        self.tool_registry_manager = tool_registry_manager
         self.engineering_agent = engineering_agent
         self.logger = llmmllogger.bind(component="ToolCollectionNode")
 
@@ -153,7 +153,8 @@ class ToolCollectionNode:
                 dynamic_tools.append(tool)
 
                 # Register with tool registry for potential future reuse
-                await self.tool_registry.register_dynamic_tool_instance(
+                tool_registry = await self.tool_registry_manager.get_user_registry(user_id)
+                await tool_registry.register_dynamic_tool_instance(
                     tool_id=f"{user_id}_{dt_spec.name}",
                     tool_instance=tool,
                     user_id=user_id,

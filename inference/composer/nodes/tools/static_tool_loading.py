@@ -7,7 +7,7 @@ from typing import List
 
 from models import Tool
 from composer.graph.state import WorkflowState
-from composer.tools.registry import ToolRegistry
+from composer.tools.registry import ToolRegistryManager
 from utils.logging import llmmllogger
 
 
@@ -19,10 +19,10 @@ class StaticToolLoadingNode:
 
     def __init__(
         self,
-        tool_registry: ToolRegistry,
+        tool_registry_manager: ToolRegistryManager,
         dynamic_tool_storage,
     ):
-        self.tool_registry = tool_registry
+        self.tool_registry_manager = tool_registry_manager
         self.dynamic_tool_storage = dynamic_tool_storage
         self.logger = llmmllogger.logger.bind(component="StaticToolLoadingNode")
 
@@ -39,8 +39,11 @@ class StaticToolLoadingNode:
                 user_id=state.user_id,
             )
 
+            # Get user-specific registry
+            tool_registry = await self.tool_registry_manager.get_user_registry(state.user_id)
+
             # Step 1: Load standard static tools
-            static_tools = await self.tool_registry.get_static_tool_instances(
+            static_tools = await tool_registry.get_static_tool_instances(
                 state.user_id
             )
 

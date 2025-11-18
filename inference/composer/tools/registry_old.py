@@ -1,6 +1,6 @@
 """
-User-aware Tool Registry with per-user tool management and caching.
-Supports concurrent users with isolated tool namespaces.
+Simplified Tool Registry focusing on static tool management and simple dynamic tool storage.
+Removes complex embedding/semantic matching in favor of straightforward tool management.
 """
 
 import asyncio
@@ -21,6 +21,9 @@ from composer.agents.engineering_agent import EngineeringAgent
 
 from runner import PipelineFactory
 
+# Forward declaration for ToolRegistry
+class ToolRegistry:
+    pass
 
 class ToolRegistryManager:
     """
@@ -31,14 +34,14 @@ class ToolRegistryManager:
     def __init__(self, pipeline_factory: PipelineFactory, engineering_agent: EngineeringAgent):
         self.pipeline_factory = pipeline_factory
         self.engineering_agent = engineering_agent
-        self._user_registries: Dict[str, "ToolRegistry"] = {}
+        self._user_registries: Dict[str, ToolRegistry] = {}
         self._lock = asyncio.Lock()
         self.logger = llmmllogger.logger.bind(component="ToolRegistryManager")
         
         # Set the global registry manager for tool_generator
         tool_generator_tool.set_registry_manager(self)
     
-    async def get_user_registry(self, user_id: str) -> "ToolRegistry":
+    async def get_user_registry(self, user_id: str) -> ToolRegistry:
         """Get or create a user-specific ToolRegistry instance."""
         async with self._lock:
             if user_id not in self._user_registries:
@@ -117,6 +120,7 @@ class ToolRegistry:
             }
 
             self.executable_tools.update(tools_to_add)
+            tool_generator_tool.set_tool_registry(self)
 
             self.logger.info(
                 "Loaded static tools",
