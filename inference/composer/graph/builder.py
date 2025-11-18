@@ -319,7 +319,9 @@ class GraphBuilder:
             )
 
             # Get user-specific tool registry for this workflow
-            user_tool_registry = await registry_manager.get_user_registry(user_id, engineering_agent)
+            user_tool_registry = await registry_manager.get_user_registry(
+                user_id, engineering_agent
+            )
 
             # Create nodes with injected agents and storage
             engineering_node = EngineeringAgentNode(engineering_agent)
@@ -335,13 +337,10 @@ class GraphBuilder:
             )
             # Import here to avoid linting issues
             static_tool_loading_node = StaticToolLoadingNode(
-                registry_manager,
+                user_tool_registry,
                 self.dynamic_tool_storage,
             )
-            tool_collection_node = ToolCollectionNode(
-                registry_manager,
-                engineering_agent,
-            )
+            tool_collection_node = ToolCollectionNode(user_tool_registry)
             tool_composer_node = ToolComposerNode()
 
             # ConsolidationNode needs both primary (for conversation summaries) and master (for consolidation)

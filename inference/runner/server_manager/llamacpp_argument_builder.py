@@ -116,18 +116,20 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
                 "threads": os.cpu_count() or 4,
                 "ctx_size": params.num_ctx or 90000,
                 "batch_size": params.batch_size or 256,
-                "ubatch_size": params.batch_size or 256,
+                "ubatch_size": params.micro_batch_size or 256,
             }
         )
 
         # GPU configuration
-        config["n_gpu_layers"] = gcfg.gpu_layers if gcfg.gpu_layers is not None else -1
+        config["n_gpu_layers"] = (
+            params.n_gpu_layers
+            if params.n_gpu_layers is not None
+            else (gcfg.gpu_layers if gcfg.gpu_layers is not None else -1)
+        )
 
         # Main GPU selection
         if gcfg.main_gpu is not None and gcfg.main_gpu >= 0:
             config["main_gpu"] = gcfg.main_gpu
-        else:
-            config["main_gpu"] = 1  # Default to GPU 1 for large models
 
         # Tensor split configuration
         if gcfg.tensor_split:
@@ -153,14 +155,12 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
             and params.n_cpu_moe > 0
         ):
             config["n_cpu_moe"] = params.n_cpu_moe
-        else:
-            config["n_cpu_moe"] = 5  # Default for MoE models
 
         # NUMA distribution
         config["numa"] = "distribute"
 
         # KV offload disable
-        config["no_kv_offload"] = True
+        config["no_kv_offload"] = params.kv_on_cpu
 
         # Multimodal support - critical for vision models
         mmproj_path = self.model.details.clip_model_path

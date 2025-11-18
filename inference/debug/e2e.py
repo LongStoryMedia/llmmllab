@@ -65,7 +65,7 @@ class ComposerRealEndToEndTester:
 
         # Support multiple models for comprehensive testing
         available_models = [
-            "qwen3-vl-32b-thinking-abliterated",  # Primary multimodal model - use this as default
+            "qwen3-vl-32b-thinking",  # Primary multimodal model - use this as default
             "qwen3-30b-a3b-q4-k-m",
             "openai-gpt-oss-20b-uncensored-q5_1",
             "qwen2.5-vl-32b-instruct-q4-k-m",
@@ -612,7 +612,11 @@ Which advances would best aid in understanding images like this one?
                         )
                     if res.prev_state == GenerationState.ANALYSING:
                         self._write_to_output(
-                            "\n```\n",
+                            "\n```\n\n",
+                        )
+                    if res.prev_state == GenerationState.RESPONDING:
+                        self._write_to_output(
+                            "\n\n",
                         )
                     if res.state == GenerationState.RESPONDING:
                         self._write_to_output(
@@ -632,7 +636,7 @@ Which advances would best aid in understanding images like this one?
                     tool_calls_detected = True
                     for t in res.message.tool_calls:
                         self._write_to_output(
-                            f"\n{'-'*40}\n#### Tool Call: {t.name}\n\nArguments: {serialize_event_data(t.args)}\n\nRESULTS:\n{t.result_data.get("content") if t.result_data else ''}\n{'-'*40}\n",
+                            f"\n\n{'---'}\n#### Tool Call: {t.name}\n\nArguments: {serialize_event_data(t.args)}\n\nRESULTS:\n{t.result_data.get("content") if t.result_data else ''}\n\n{'---'}\n",
                         )
                 # Handle message content like tools_agent (filter out [THOUGHT] content)
                 for c in res.message.content:
@@ -647,7 +651,7 @@ Which advances would best aid in understanding images like this one?
                 # Skip thoughts - we only want clean content output
 
             execution_time = time.time() - start_time
-            completion_text = f"\n\n{'='*80}\n✅ STREAMING COMPLETE - Total events: {event_count}\nTotal time: {execution_time:.2f} seconds\n{'='*80}\n"
+            completion_text = f"\n\n{'---'}\n\n✅ STREAMING COMPLETE - Total events: {event_count}\nTotal time: {execution_time:.2f} seconds\n\n{'---'}\n"
             self._write_to_output(completion_text)
 
             logger.info(f"   ✅ Workflow execution completed in {execution_time:.2f}s")
@@ -1217,7 +1221,7 @@ async def main():
     # Available models for testing
     available_models = [
         "qwen3-vl-30b-a3b-thinking",
-        "qwen3-vl-32b-thinking-abliterated",  # Primary multimodal model - use this as default
+        "qwen3-vl-32b-thinking",  # Primary multimodal model - use this as default
         "qwen3-30b-a3b-q4-k-m",
         "openai-gpt-oss-20b-uncensored-q5_1",
     ]

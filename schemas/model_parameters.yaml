@@ -47,11 +47,22 @@ properties:
   batch_size:
     type: integer
     description: Batch size for processing inputs
+  micro_batch_size:
+    type: integer
+    description: Micro batch size for processing inputs
+  n_gpu_layers:
+    type: integer
+    minimum: -1
+    description: Number of model layers to keep on GPU for performance optimization
   n_cpu_moe:
     type: integer
     minimum: 0
     description: Number of MoE (Mixture of Experts) layers to keep on CPU for memory optimization
     default: 0
+  kv_on_cpu:
+    type: boolean
+    description: Store key-value cache on CPU to save GPU memory
+    default: false
   reasoning_effort:
     type: string
     enum: ["low", "medium", "high"]
