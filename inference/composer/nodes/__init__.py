@@ -9,11 +9,6 @@ from .memory import MemorySearchNode, MemoryStorageNode
 # Embedding nodes
 from .embeddings import EmbeddingGeneratorNode, SimilarityRankerNode
 
-# Note: SummarizationNode removed - use dedicated nodes from .summary package
-
-# Routing nodes (workflow decision making)
-from .routing import WorkflowRouter
-
 # Agent wrapper nodes
 from .agents import EngineeringAgentNode
 
@@ -38,8 +33,6 @@ __all__ = [
     # Embeddings
     "EmbeddingGeneratorNode",
     "SimilarityRankerNode",
-    # Routing
-    "WorkflowRouter",
     # Agents
     "EngineeringAgentNode",
     # Note: TitleGenerationNode moved to agents

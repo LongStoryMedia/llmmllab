@@ -14,7 +14,6 @@ from models import (
     ModelProfileType,
     PipelinePriority,
     UserConfig,
-    WorkflowType,
     NodeMetadata,
 )
 from runner import PipelineFactory

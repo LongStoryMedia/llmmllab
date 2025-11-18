@@ -165,9 +165,7 @@ class ToolCollectionNode:
             self.logger.error(f"Dynamic tool collection failed: {e}")
             return []
 
-    def _should_generate_dynamic_tools(
-        self, user_query: str, user_config
-    ) -> bool:
+    def _should_generate_dynamic_tools(self, user_query: str, user_config) -> bool:
         """
         Determine if dynamic tools should be generated based on user query and configuration.
         """

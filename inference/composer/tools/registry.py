@@ -10,12 +10,16 @@ from structlog.typing import FilteringBoundLogger
 
 from langchain.tools import BaseTool
 
-from models import Tool
+from models import Tool, ModelProfile, NodeMetadata, ModelParameters, ModelProfileType
 from utils.logging import llmmllogger
 from composer.tools.static import (
     web_search,
     read_web_content,
+    tool_generator_tool,
 )
+from composer.agents.engineering_agent import EngineeringAgent
+from db import storage, DynamicToolStorage
+
 from runner import PipelineFactory
 
 
@@ -36,6 +40,31 @@ class ToolRegistry:
         self.executable_tools: Dict[str, BaseTool] = {}
 
         self.pipeline_factory = pipeline_factory
+
+        # Safely initialize EngineeringAgent
+        self.engineering_agent = None
+        if storage.dynamic_tool:
+            # Create default or placeholder metadata and profile for the engineering agent.
+            default_profile = ModelProfile(
+                user_id="system",
+                name="default_tool_gen_profile",
+                model_name="qwen3-32b",
+                parameters=ModelParameters(),
+                system_prompt="You are an expert engineering agent. Your task is to generate Python code for a new tool based on the user's request.",
+                type=ModelProfileType.Engineering.value,
+            )
+            default_metadata = NodeMetadata(
+                node_id="tool_registry_node",
+                node_name="ToolRegistry",
+                node_type="ToolRegistry",
+            )
+            self.engineering_agent = EngineeringAgent(
+                pipeline_factory=pipeline_factory,
+                profile=default_profile,
+                node_metadata=default_metadata,
+                tool_storage=storage.dynamic_tool,
+            )
+
         self._lock = asyncio.Lock()
         self.logger = llmmllogger.logger.bind(component="ToolRegistry")
 
@@ -46,19 +75,29 @@ class ToolRegistry:
         try:
             self.static_tools.update(
                 {
-                    # "summarization": SummarizationTool,  # Temporarily disabled
+                    # "my_tool": MyTool, # Example
                 }
             )
 
             # Add function-based tools that are already decorated with @tool
             # ToolRuntime handles parameter injection automatically - no schema filtering needed
             tools_to_add = {
-                # "memory_retrieval": memory_retrieval,
+                # "get_current_date": get_current_date,
+                # "get_current_time": get_current_time,
                 "web_search": web_search,
                 "read_web_content": read_web_content,
+                # "memory_retrieval": memory_retrieval,
                 # "summarization": summarization,
-                # "get_current_date": get_current_date,
             }
+
+            # Instantiate and add the ToolGeneratorTool
+            if self.engineering_agent and storage.dynamic_tool:
+                tool_gen = tool_generator_tool.ToolGeneratorTool(
+                    engineering_agent=self.engineering_agent,
+                    tool_storage=storage.dynamic_tool,
+                    tool_registry=self,
+                )
+                tools_to_add[tool_gen.name] = tool_gen
 
             self.executable_tools.update(tools_to_add)
 

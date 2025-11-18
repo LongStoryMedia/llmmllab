@@ -17,7 +17,6 @@ from composer.graph import WorkflowState
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
 from models import PipelinePriority
-from models.dynamic_tool import DynamicTool
 from utils.logging import llmmllogger, serialize_event_data
 
 logger = llmmllogger.bind(component="ToolsAgentSubgraph")
