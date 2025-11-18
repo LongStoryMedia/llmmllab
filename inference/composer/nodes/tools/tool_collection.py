@@ -5,11 +5,10 @@ Simplifies tool management by centralizing decisions about what tools are needed
 
 from typing import List
 
-from models import Tool
+from models import Tool, UserConfig
 from composer.graph.state import WorkflowState
-from composer.tools.registry import ToolRegistryManager
+from composer.tools.registry import ToolRegistry
 from utils.logging import llmmllogger
-from composer.agents.engineering_agent import EngineeringAgent
 from utils import extract_text_from_message
 
 
@@ -21,11 +20,9 @@ class ToolCollectionNode:
 
     def __init__(
         self,
-        tool_registry_manager: ToolRegistryManager,
-        engineering_agent: EngineeringAgent,
+        tool_registry: ToolRegistry,
     ):
-        self.tool_registry_manager = tool_registry_manager
-        self.engineering_agent = engineering_agent
+        self.tool_registry = tool_registry
         self.logger = llmmllogger.bind(component="ToolCollectionNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
@@ -108,16 +105,23 @@ class ToolCollectionNode:
         user_query: str,
         user_id: str,
         static_tools: List[Tool],
-        user_config,
+        user_config: UserConfig,
     ) -> List[Tool]:
         """
         Decide if dynamic tools are needed and create them using the engineering agent.
         """
         try:
+            if not user_config.tool.enable_tool_generation:
+                self.logger.info(
+                    "Dynamic tool generation disabled in user config.",
+                    user_id=user_id,
+                )
+                return []
+
             # Check if dynamic tool generation is enabled
             if not self._should_generate_dynamic_tools(user_query, user_config):
                 self.logger.info(
-                    "Dynamic tool generation disabled or not needed based on query.",
+                    "Dynamic tool generation not needed based on query.",
                     user_id=user_id,
                 )
                 return []
@@ -128,12 +132,10 @@ class ToolCollectionNode:
             )
 
             # Use engineering agent to generate dynamic tool specifications
-            dynamic_tool_specs = (
-                await self.engineering_agent.generate_dynamic_tool_specification(
-                    user_query=user_query,
-                    user_id=user_id,
-                    static_tools=static_tools,
-                )
+            dynamic_tool_specs = await self.tool_registry.engineering_agent.generate_dynamic_tool_specification(
+                user_query=user_query,
+                user_id=user_id,
+                static_tools=static_tools,
             )
 
             # Convert DynamicTool specs to generic Tool instances for workflow state
@@ -165,7 +167,9 @@ class ToolCollectionNode:
             self.logger.error(f"Dynamic tool collection failed: {e}")
             return []
 
-    def _should_generate_dynamic_tools(self, user_query: str, user_config) -> bool:
+    def _should_generate_dynamic_tools(
+        self, user_query: str, user_config: UserConfig
+    ) -> bool:
         """
         Determine if dynamic tools should be generated based on user query and configuration.
         """
@@ -189,31 +193,3 @@ class ToolCollectionNode:
             return True
 
         return False
-
-    def _should_include_static_tool(
-        self,
-        tool: Tool,
-        user_query: str,
-    ) -> bool:
-        """
-        Determine if a static tool should be included based on the user query.
-        """
-        # This is a placeholder for more sophisticated logic.
-        # For now, we can include tools based on keywords in the query.
-        tool_name = getattr(tool, "name", "").lower()
-        query_lower = user_query.lower()
-
-        if "search" in query_lower and "search" in tool_name:
-            return True
-        if "memory" in query_lower and "memory" in tool_name:
-            return True
-
-        # Include all tools for now to ensure functionality.
-        return True
-
-    def _needs_basic_tools(self, user_query: str) -> bool:
-        """
-        Determine if basic tools are needed for simple requests.
-        """
-        # This is a placeholder for more sophisticated logic.
-        return True

@@ -25,12 +25,11 @@ async def tool_generator(task_description: str, user_id: str) -> str:
         # Import the singleton registry manager
         from composer.tools.registry import registry_manager
         
-        # We need to access the user registry but we need to provide the engineering_agent
-        # This is a limitation of the current design - tool functions can't access context easily
-        # For now, we'll need to pass None and handle this differently
-        # TODO: Consider refactoring to use a more context-aware approach
-        logger.error("tool_generator function needs refactoring for singleton pattern")
-        return "Error: This tool needs to be updated to work with the singleton pattern. Please contact system administrator."
+        # Get the user-specific tool registry instance - it should already exist from graph building
+        tool_registry = await registry_manager.get_existing_user_registry(user_id)
+        if not tool_registry:
+            logger.error(f"No cached registry found for user {user_id}. Registry must be initialized first.")
+            return "Error: User registry not found. Please ensure the system is properly initialized for this user."
 
         tool_storage: Optional[DynamicToolStorage] = storage.dynamic_tool
         if not tool_storage:
@@ -95,8 +94,22 @@ async def tool_generator(task_description: str, user_id: str) -> str:
 
         # 5. Register the executable tool instance in the registry
         executable_tool = DynamicToolRunner(created_tool)
+        
+        # Convert DynamicTool to Tool for registry storage
+        tool_for_registry = Tool(
+            name=created_tool.name,
+            description=created_tool.description,
+            args_schema=created_tool.args_schema,
+            return_direct=created_tool.return_direct,
+            tags=created_tool.tags,
+            metadata=created_tool.metadata,
+            handle_tool_error=created_tool.handle_tool_error,
+            handle_validation_error=created_tool.handle_validation_error,
+            response_format=created_tool.response_format,
+        )
+        
         await tool_registry.register_dynamic_tool_instance(
-            tool_id=str(created_tool.id), tool_instance=created_tool
+            tool_id=str(created_tool.id), tool_instance=tool_for_registry
         )
         # Also add it to the executable tools for the current run
         tool_registry.executable_tools[executable_tool.name] = executable_tool

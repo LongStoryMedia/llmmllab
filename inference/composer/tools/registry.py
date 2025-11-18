@@ -15,6 +15,7 @@ from utils.logging import llmmllogger
 from composer.tools.static import (
     web_search,
     read_web_content,
+    tool_generator_tool,
 )
 from composer.agents.engineering_agent import EngineeringAgent
 
@@ -42,6 +43,15 @@ class ToolRegistryManager:
                 self._user_registries[user_id] = registry
             
             return self._user_registries[user_id]
+    
+    def has_user_registry(self, user_id: str) -> bool:
+        """Check if a user registry already exists."""
+        return user_id in self._user_registries
+    
+    async def get_existing_user_registry(self, user_id: str) -> Optional["ToolRegistry"]:
+        """Get an existing user registry without creating a new one."""
+        async with self._lock:
+            return self._user_registries.get(user_id)
     
     async def cleanup_user_registry(self, user_id: str) -> None:
         """Clean up a user's registry when they're done."""
@@ -101,8 +111,7 @@ class ToolRegistry:
                 # "get_current_time": get_current_time,
                 "web_search": web_search,
                 "read_web_content": read_web_content,
-                # Temporarily disabled while refactoring tool_generator for singleton pattern
-                # "tool_generator": tool_generator_tool.tool_generator,
+                "tool_generator": tool_generator_tool.tool_generator,
                 # "memory_retrieval": memory_retrieval,
                 # "summarization": summarization,
             }
