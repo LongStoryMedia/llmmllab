@@ -30,11 +30,12 @@ from composer.agents.primary_summary_agent import PrimarySummaryAgent
 from composer.agents.master_summary_agent import MasterSummaryAgent
 
 # Import all nodes
-from composer.nodes.tools import (
-    ToolCollectionNode,
-    ToolComposerNode,
-    StaticToolLoadingNode,
-)
+# Removed redundant tool node imports - ToolRegistry now handles all tool management centrally
+# from composer.nodes.tools import (
+#     ToolCollectionNode,     # REMOVED: Dynamic tool generation handled by ToolRegistry  
+#     ToolComposerNode,       # REMOVED: Tool deduplication handled by ToolRegistry
+#     StaticToolLoadingNode,  # REMOVED: Tool loading handled by ToolRegistry
+# )
 from composer.nodes.memory import (
     MemorySearchNode,
     MemoryCreationNode,
@@ -324,7 +325,6 @@ class GraphBuilder:
             )
 
             # Create nodes with injected agents and storage
-            engineering_node = EngineeringAgentNode(engineering_agent)
             memory_creation_node = MemoryCreationNode(embedding_agent)
             memory_search_node = MemorySearchNode(
                 memory_agent,
@@ -336,12 +336,10 @@ class GraphBuilder:
                 classifier_agent,
             )
             # Import here to avoid linting issues
-            static_tool_loading_node = StaticToolLoadingNode(
-                user_tool_registry,
-                self.dynamic_tool_storage,
-            )
-            tool_collection_node = ToolCollectionNode(user_tool_registry)
-            tool_composer_node = ToolComposerNode()
+            # Removed redundant tool nodes - ToolRegistry handles all tool management
+            # static_tool_loading_node = StaticToolLoadingNode(...)   # REMOVED
+            # tool_collection_node = ToolCollectionNode(...)          # REMOVED  
+            # tool_composer_node = ToolComposerNode(...)              # REMOVED
 
             # ConsolidationNode needs both primary (for conversation summaries) and master (for consolidation)
             chat_summary_node = ConsolidationNode(
@@ -350,16 +348,8 @@ class GraphBuilder:
             # SearchSummaryNode uses primary summaries by default
             search_summary_node = SearchSummaryNode(primary_summary_agent)
 
-            self.logger.info(
-                "Building workflow with dependency injection", user_id=user_id
-            )
-
             # Create master workflow graph
             workflow = StateGraph(WorkflowState)
-
-            # Create nodes with injected dependencies
-            # Engineering agent (invoked only when routing selects engineering)
-            workflow.add_node("engineering_agent", engineering_node)
 
             # Title generation (if no title exists)
             workflow.add_node("title_generation", title_generation_node)
@@ -369,12 +359,10 @@ class GraphBuilder:
             workflow.add_node("memory_creation", memory_creation_node)
             workflow.add_node("memory_storage", memory_storage_node)
 
-            # Static tool loading node - loads static tools and previous dynamic tools early
-            workflow.add_node("static_tool_loading", static_tool_loading_node)
-
-            # Tool collection node with injected dependencies
-            workflow.add_node("tool_collection", tool_collection_node)
-            workflow.add_node("tool_composer", tool_composer_node)
+            # Removed redundant tool workflow nodes - ToolRegistry handles all tool management
+            # workflow.add_node("static_tool_loading", static_tool_loading_node)   # REMOVED
+            # workflow.add_node("tool_collection", tool_collection_node)          # REMOVED
+            # workflow.add_node("tool_composer", tool_composer_node)              # REMOVED
 
             workflow.add_node("chat_summary", chat_summary_node)
             workflow.add_node("search_summary", search_summary_node)
@@ -400,72 +388,16 @@ class GraphBuilder:
 
             workflow.add_node("context_assembly", context_node)
 
-            # Build a logical workflow graph structure:
-            # 1. Start -> Static tool loading (loads static tools + previous dynamic tools)
+            # Build a simplified workflow graph structure:
+            # 1. Start -> Memory search and context assembly 
             workflow.add_edge(START, "memory_search")
-            workflow.add_edge("memory_search", "static_tool_loading")
+            workflow.add_edge("memory_search", "context_assembly")
 
-            # 2. Static tool loading -> Intent Analysis (classifier can now see available tools)
-            workflow.add_edge("static_tool_loading", "context_assembly")
+            # 2. Context assembly -> Tools Agent (ToolRegistry handles all tool management internally)
+            workflow.add_edge("context_assembly", "tools_agent")
 
-            # Skip intent_analysis; route directly to tool_collection
-            workflow.add_edge("context_assembly", "tool_collection")
-            # Direct tool collection to composer
-            workflow.add_edge("tool_collection", "tool_composer")
-
-            # 4. Tool composer -> Tools Agent
-            workflow.add_edge("tool_composer", "tools_agent")
-
-            # 6. Engineering agent -> Tools agent (subgraph handles intelligent agent cycling)
-            workflow.add_edge("engineering_agent", "tools_agent")
-
-            # 7. Simple routing: tools_agent -> search_summary (if web search) or chat_summary
-            def route_after_tools_agent(state: WorkflowState):
-                """
-                Route after intelligent tools agent completes.
-                If the tools agent subgraph produced a final assistant message (no tool calls),
-                terminate the workflow and output that message as the final response.
-                Otherwise, continue to summary or title nodes as needed.
-                """
-                # Check for final assistant message (no tool calls)
-                if hasattr(state, "messages") and state.messages:
-                    last_msg = state.messages[-1]
-                    # Check both 'type' (LangChain core) and 'role' (custom) attributes for AI messages
-                    is_ai_message = (
-                        hasattr(last_msg, "type")
-                        and getattr(last_msg, "type", None) == "ai"
-                    ) or (
-                        hasattr(last_msg, "role")
-                        and getattr(last_msg, "role", None) == "assistant"
-                    )
-                    has_no_tool_calls = (
-                        not hasattr(last_msg, "tool_calls") or not last_msg.tool_calls
-                    )
-
-                    if is_ai_message and has_no_tool_calls:
-                        self.logger.info(
-                            "🔀 Tools agent produced final assistant message - routing to END"
-                        )
-                        return END
-                # Otherwise, check if web search was performed and needs summarization
-                if hasattr(state, "web_search_results") and state.web_search_results:
-                    self.logger.info(
-                        "🔀 Tools agent completed with web search results - routing to search_summary"
-                    )
-                    return "search_summary"
-                # Otherwise proceed to chat summary for consolidation
-                self.logger.info("🔀 Tools agent completed - routing to chat_summary")
-                return "chat_summary"
-
-            workflow.add_conditional_edges(
-                "tools_agent",
-                route_after_tools_agent,
-                {
-                    "search_summary": "search_summary",
-                    "chat_summary": "chat_summary",
-                    END: END,
-                },
-            )
+            # 3. Tools Agent -> Chat summary
+            workflow.add_edge("tools_agent", "chat_summary")
 
             # 9. Linear flow after agent completion with conditional title generation
             def route_after_chat_summary(state: WorkflowState):

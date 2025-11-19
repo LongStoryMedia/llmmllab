@@ -97,12 +97,49 @@ class ToolsAgentSubgraph:
     async def _agent_node(self, state: WorkflowState) -> WorkflowState:
         """Standard agent node using ChatOpenAI with bound tools."""
         try:
-            # Get pre-loaded user tools from registry
+            # Initialize ToolRegistry with comprehensive tool management for this request
+            user_query = ""
+            if state.messages:
+                # Get user query from the last user message
+                for msg in reversed(state.messages):
+                    # Handle different message types and extract content as string
+                    if hasattr(msg, 'content'):
+                        content = msg.content
+                        if isinstance(content, str):
+                            user_query = content
+                            break
+                        elif isinstance(content, list) and content:
+                            # Handle multimodal content - get first text content
+                            for item in content:
+                                if hasattr(item, 'text') and isinstance(item.text, str):
+                                    user_query = item.text
+                                    break
+                            if user_query:
+                                break
+
+            # Get user config from state (should be available from context assembly)
+            user_config = getattr(state, 'user_config', None)
+            
+            # Get dynamic tool storage if available in state
+            dynamic_tool_storage = getattr(state, 'dynamic_tool_storage', None)
+            
+            if user_config and dynamic_tool_storage:
+                # Initialize ToolRegistry with all tools for this workflow execution
+                await self.tool_registry.initialize_for_workflow(
+                    dynamic_tool_storage=dynamic_tool_storage,
+                    user_query=user_query, 
+                    user_config=user_config
+                )
+                logger.info("🔧 ToolRegistry initialized for workflow execution")
+            else:
+                logger.info("⚠️ Skipping ToolRegistry initialization - missing config or storage")
+
+            # Get all available tools from the registry (static + previous dynamic + new dynamic)
             tools_dict = self.tool_registry.get_all_executable_tools()
             tools_list = list(tools_dict.values()) if tools_dict else []
 
             # Invoke ChatOpenAI - this handles tool calling automatically
-            logger.info("📤 Invoking ChatOpenAI with standard LangChain pattern")
+            logger.info(f"📤 Invoking ChatOpenAI with {len(tools_list)} tools available")
 
             response = await self.chat_agent.run(
                 messages=state.messages,

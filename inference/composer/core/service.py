@@ -198,6 +198,7 @@ class ComposerService:
             user_config=user_config,
             conversation_id=conversation_id,
             active_todos=active_todos,  # Include active todos for context continuity
+            dynamic_tool_storage=self.storage.get_service(self.storage.dynamic_tool),  # Add dynamic tool storage
             checkpoint_metadata={
                 "conversation_id": conversation_id,
                 "user_id": user_id,
