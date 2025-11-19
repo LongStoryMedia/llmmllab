@@ -480,7 +480,11 @@ Look at this image and describe what you see. What colors are visible, and what 
 Then, see if you can find any similar images to this one online.
 Look up some news articles related to the content of the image as well.
 Also, please search the web for information about the latest developments in multimodal AI models that can process both text and images together.
-Which advances would best aid in understanding images like this one?
+Determine which advances outlined in the results you find that would best aid in understanding images like this one?
+Try to determine which open-source models would be best to use for this purpose. Do not mention proprietary models.
+Look through the images you found and tell me if there's any text visible in them. What does it say?
+If there isn't one with text, find an image that does have text and describe that text to me.
+It is very important that you do not skip any of these steps and answer each part thoroughly.
 """
             )
 

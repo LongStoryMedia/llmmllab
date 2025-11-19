@@ -3,16 +3,10 @@ Title generation node for conversation titles.
 Generates concise, descriptive titles based on conversation content.
 """
 
-from typing import TYPE_CHECKING
-
-
+from composer.agents.base_agent import BaseAgent
 from runner import PipelineFactory
 from composer.graph.state import WorkflowState
 from utils.logging import llmmllogger
-from utils.message_conversion import lc_messages_to_messages
-
-if TYPE_CHECKING:
-    from composer.agents.classifier_agent import ClassifierAgent
 
 
 class TitleGenerationNode:
@@ -26,7 +20,7 @@ class TitleGenerationNode:
     def __init__(
         self,
         pipeline_factory: PipelineFactory,
-        analysis_agent: "ClassifierAgent",
+        analysis_agent: BaseAgent,
     ):
         """Initialize title generation node with dependency injection.
 
@@ -65,6 +59,7 @@ class TitleGenerationNode:
                     extra={"existing_title": state.title},
                 )
                 return state
+
             title = await self.classifier_agent.generate_title(state.messages)
 
             if title and title.strip():

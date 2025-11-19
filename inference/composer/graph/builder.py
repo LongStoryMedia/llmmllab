@@ -7,8 +7,8 @@ All agents, storage services, and model profiles are instantiated upfront and in
 from typing import TYPE_CHECKING
 import uuid
 
-from composer.agents.chat_agent import ChatAgent
 from langgraph.graph.state import CompiledStateGraph, StateGraph, END, START
+from langchain.agents.middleware import LLMToolSelectorMiddleware
 
 from models import (
     ModelProfileType,
@@ -22,7 +22,8 @@ from utils.model_profile import get_model_profile_for_task
 from utils.logging import llmmllogger
 
 # Import all agents
-from composer.agents.classifier_agent import ClassifierAgent
+# from composer.agents.classifier_agent import ClassifierAgent
+from composer.agents.chat_agent import ChatAgent
 from composer.agents.engineering_agent import EngineeringAgent
 from composer.agents.memory_agent import MemoryAgent
 from composer.agents.embedding_agent import EmbeddingAgent
@@ -32,7 +33,7 @@ from composer.agents.master_summary_agent import MasterSummaryAgent
 # Import all nodes
 # Removed redundant tool node imports - ToolRegistry now handles all tool management centrally
 # from composer.nodes.tools import (
-#     ToolCollectionNode,     # REMOVED: Dynamic tool generation handled by ToolRegistry  
+#     ToolCollectionNode,     # REMOVED: Dynamic tool generation handled by ToolRegistry
 #     ToolComposerNode,       # REMOVED: Tool deduplication handled by ToolRegistry
 #     StaticToolLoadingNode,  # REMOVED: Tool loading handled by ToolRegistry
 # )
@@ -42,7 +43,6 @@ from composer.nodes.memory import (
     MemoryStorageNode,
 )
 from composer.nodes.agents import TitleGenerationNode
-from composer.nodes.agents.engineering import EngineeringAgentNode
 from composer.nodes.summary import ConsolidationNode, SearchSummaryNode
 from composer.tools.registry import registry_manager
 
@@ -146,11 +146,11 @@ class GraphBuilder:
                 ModelProfileType.Primary,
                 self.user_config.user_id,
             )
-            analysis_profile = await get_model_profile_for_task(
-                self.user_config.model_profiles,
-                ModelProfileType.Analysis,
-                self.user_config.user_id,
-            )
+            # analysis_profile = await get_model_profile_for_task(
+            #     self.user_config.model_profiles,
+            #     ModelProfileType.Analysis,
+            #     self.user_config.user_id,
+            # )
             memory_profile = await get_model_profile_for_task(
                 self.user_config.model_profiles,
                 ModelProfileType.MemoryRetrieval,
@@ -186,19 +186,19 @@ class GraphBuilder:
                 cache_key=None,
                 tool_count=None,
             )
-            classifier_node_metadata = NodeMetadata(
-                node_name="IntentClassifier",
-                node_id=uuid.uuid4().hex,
-                node_type="IntentClassifierNode",
-                execution_time=None,
-                user_id=user_id,
-                conversation_id=None,
-                profile_type=None,
-                streaming=None,
-                is_cached=None,
-                cache_key=None,
-                tool_count=None,
-            )
+            # classifier_node_metadata = NodeMetadata(
+            #     node_name="IntentClassifier",
+            #     node_id=uuid.uuid4().hex,
+            #     node_type="IntentClassifierNode",
+            #     execution_time=None,
+            #     user_id=user_id,
+            #     conversation_id=None,
+            #     profile_type=None,
+            #     streaming=None,
+            #     is_cached=None,
+            #     cache_key=None,
+            #     tool_count=None,
+            # )
             engineering_node_metadata = NodeMetadata(
                 node_name="EngineeringAgent",
                 node_id=uuid.uuid4().hex,
@@ -265,10 +265,7 @@ class GraphBuilder:
                 tool_count=None,
             )
 
-            # Create agents with injected dependencies
-            from langchain.agents.middleware import TodoListMiddleware
-
-            todo_middleware = TodoListMiddleware()
+            tool_selection_middleware = LLMToolSelectorMiddleware()
 
             primary_agent = ChatAgent(
                 pipeline_factory=self.pipeline_factory,
@@ -277,14 +274,14 @@ class GraphBuilder:
                 priority=PipelinePriority.HIGH,
             )
             # Attach middleware list to agent for later use in BaseAgent calls
-            primary_agent.middleware = [todo_middleware]
+            # primary_agent.middleware = [tool_selection_middleware]
             # Use primary_profile for classifier agent instead of analysis_profile
             # Primary profile now uses qwen3-vl-32b multimodal model which avoids grammar constraint crashes
-            classifier_agent = ClassifierAgent(
-                self.pipeline_factory,
-                analysis_profile,
-                classifier_node_metadata,
-            )
+            # classifier_agent = ClassifierAgent(
+            #     self.pipeline_factory,
+            #     analysis_profile,
+            #     classifier_node_metadata,
+            # )
             engineering_agent = EngineeringAgent(
                 self.pipeline_factory,
                 engineering_profile,
@@ -321,7 +318,8 @@ class GraphBuilder:
 
             # Get user-specific tool registry for this workflow
             user_tool_registry = await registry_manager.get_user_registry(
-                user_id, engineering_agent
+                user_id,
+                engineering_agent,
             )
 
             # Create nodes with injected agents and storage
@@ -333,13 +331,8 @@ class GraphBuilder:
             memory_storage_node = MemoryStorageNode(memory_agent)
             title_generation_node = TitleGenerationNode(
                 self.pipeline_factory,
-                classifier_agent,
+                primary_agent,
             )
-            # Import here to avoid linting issues
-            # Removed redundant tool nodes - ToolRegistry handles all tool management
-            # static_tool_loading_node = StaticToolLoadingNode(...)   # REMOVED
-            # tool_collection_node = ToolCollectionNode(...)          # REMOVED  
-            # tool_composer_node = ToolComposerNode(...)              # REMOVED
 
             # ConsolidationNode needs both primary (for conversation summaries) and master (for consolidation)
             chat_summary_node = ConsolidationNode(
@@ -389,7 +382,7 @@ class GraphBuilder:
             workflow.add_node("context_assembly", context_node)
 
             # Build a simplified workflow graph structure:
-            # 1. Start -> Memory search and context assembly 
+            # 1. Start -> Memory search and context assembly
             workflow.add_edge(START, "memory_search")
             workflow.add_edge("memory_search", "context_assembly")
 

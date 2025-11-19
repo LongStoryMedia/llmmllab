@@ -147,6 +147,42 @@ DEFAULT_PRIMARY_PROFILE = ModelProfile(
 # )
 
 
+DEFAULT_ANALYSIS_PROFILE = ModelProfile(
+    id=DEFAULT_MODEL_PROFILE_CONFIG.analysis_profile_id,
+    user_id="system",
+    name="Analysis (Default)",
+    type=MODEL_PROFILE_TYPE_ANALYSIS,
+    description="Profile for detailed analysis of text with optimized parameters.",
+    model_name=DEFAULT_ANALYSIS_MODEL,
+    parameters=ModelParameters(
+        num_ctx=10240,  # = 19968 to account for tokenizer differences
+        repeat_last_n=-1,
+        repeat_penalty=1.05,
+        temperature=0.7,
+        seed=0,
+        num_predict=-1,
+        top_k=20,
+        top_p=0.8,
+        min_p=0.0,
+        max_tokens=200,
+        n_parts=-1,
+        stop=[
+            "<|im_end|>",
+            "<|endoftext|>",
+            "<|end|>",
+        ],
+        think=False,
+        batch_size=16384,
+        micro_batch_size=256,
+        n_gpu_layers=-1,
+    ),
+    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
+    system_prompt="Perform an in-depth analysis of the provided text. Identify key themes, patterns, and insights.",
+    created_at=datetime.now(),
+    updated_at=datetime.now(),
+)
+
+
 # # Set reasonable upper bounds based on parameter type
 # if param_name == "n_ctx":
 #     high = min(start_value * 4, 98304)  # Max 96K context (more conservative)
@@ -369,41 +405,6 @@ DEFAULT_MEMORY_RETRIEVAL_PROFILE = ModelProfile(
     ),
     system_prompt="Retrieve relevant information from memory and present it concisely.",
     parameter_optimization=None,  # Disabled by default - users can enable manually
-    created_at=datetime.now(),
-    updated_at=datetime.now(),
-)
-
-DEFAULT_ANALYSIS_PROFILE = ModelProfile(
-    id=DEFAULT_MODEL_PROFILE_CONFIG.analysis_profile_id,
-    user_id="system",
-    name="Analysis (Default)",
-    type=MODEL_PROFILE_TYPE_ANALYSIS,
-    description="Profile for detailed analysis of text with optimized parameters.",
-    model_name=DEFAULT_ANALYSIS_MODEL,
-    parameters=ModelParameters(
-        num_ctx=40960,
-        repeat_last_n=-1,
-        repeat_penalty=1.05,
-        temperature=0.7,
-        seed=0,
-        num_predict=-1,
-        top_k=20,
-        top_p=0.8,
-        min_p=0.0,
-        max_tokens=200,
-        n_parts=-1,
-        stop=[
-            "<|im_end|>",
-            "<|endoftext|>",
-            "<|end|>",
-        ],
-        think=False,
-        batch_size=16384,
-        micro_batch_size=4096,
-        n_gpu_layers=-1,
-    ),
-    parameter_optimization=None,  # Disabled by default - users can enable manually
-    system_prompt="Perform an in-depth analysis of the provided text. Identify key themes, patterns, and insights.",
     created_at=datetime.now(),
     updated_at=datetime.now(),
 )

@@ -43,7 +43,7 @@ from utils.message_conversion import (
     extract_text_from_message,
 )
 from composer.core.errors import NodeExecutionError
-from .grammar_responses import IntentsResponse
+from .grammar_responses import IntentsResponse, TitleResponse
 
 
 T = TypeVar("T")
@@ -376,13 +376,14 @@ class BaseAgent(ABC, Generic[T]):
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
         system_prompt += f"""
 TEMPORAL CONTEXT:
-The current date is {current_date}. 
+The current date is {current_date}.
 While this is likely past your training data, you can use this information to provide better responses. If the user asks for the date or time, respond with this date.
 
 TOOL USE:
 If you intend to use any tools, ensure you follow the tool usage guidelines provided in the system prompt.
 If there are not results from tool usage, you must attempt to call the tool again as it is likely that the format is incorrect.
 Do not make up results - always use tools to get accurate information, or organize a way to obtain them.
+If you believe you have made a tool call, double-check the message history to confirm there was a tool response included.
 """
 
         return system_prompt, convo
@@ -584,3 +585,96 @@ Do not make up results - always use tools to get accurate information, or organi
             )
             # Return empty embeddings on error
             return []
+
+    async def generate_title(
+        self,
+        messages: List[Message],
+    ) -> str:
+        """
+        Generate a concise, descriptive title for a conversation based on its messages.
+
+        Args:
+            messages: List of conversation messages to analyze
+            circuit_breaker: Optional circuit breaker configuration
+
+        Returns:
+            str: Generated conversation title (2-6 words)
+
+        Raises:
+            IntentAnalysisError: When title generation fails
+        """
+
+        try:
+            # Only collect last 5 User/Assistant messages, and concatenate consecutive messages of the same role
+            filtered = [
+                m
+                for m in messages
+                if m.role in (MessageRole.USER, MessageRole.ASSISTANT)
+            ]
+            last_msgs = filtered[-5:] if len(filtered) > 5 else filtered
+
+            # Concatenate consecutive messages of the same role
+            conversation_blocks = []
+            current_role = None
+            current_text = ""
+            for msg in last_msgs:
+                text = extract_text_from_message(msg)
+                if not text.strip():
+                    continue
+                role = (
+                    MessageRole.USER
+                    if msg.role == MessageRole.USER
+                    else MessageRole.ASSISTANT
+                )
+                if role == current_role:
+                    current_text += f" {text}"  # Concatenate with space
+                else:
+                    if current_text and current_role:
+                        conversation_blocks.append(
+                            f"{current_role.value}: {current_text.strip()}"
+                        )
+                    current_role = role
+                    current_text = text
+            if current_text:
+                conversation_blocks.append(f"{current_role}: {current_text.strip()}")
+
+            conversation_text = "\n".join(conversation_blocks)
+
+            if not conversation_text.strip():
+                return "New Conversation"
+            title_prompt = f"""
+/no_think
+Generate a concise, descriptive title for this conversation. The title should:
+- Be 2-6 words maximum
+- Capture the main topic or purpose
+- Be clear and professional
+- Not include quotes or special characters
+- Be suitable as a conversation label
+
+Conversation:
+{conversation_text}
+"""
+
+            result = await self.run(
+                title_prompt,
+                tools=None,
+                priority=PipelinePriority.MEDIUM,
+                grammar=TitleResponse,
+            )
+
+            txt = (
+                extract_text_from_message(result.message)
+                if result and result.message
+                else ""
+            )
+            assert txt.strip(), "Empty title generation response"
+
+            intents = parse_structured_output(txt, TitleResponse)
+            return intents.title
+
+        except Exception as e:
+            self.logger.error(
+                "Title generation failed", error=str(e), context="title_generation"
+            )
+            # Provide fallback title instead of raising error
+            return "Conversation"

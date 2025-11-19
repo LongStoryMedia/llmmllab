@@ -49,7 +49,6 @@ class ComposerService:
         from runner import pipeline_factory  # pylint: disable=import-outside-toplevel
 
         self.pipeline_factory = pipeline_factory
-        self.storage = None
         self.graph_builder: Optional["GraphBuilder"] = None
         # Workflow cache is now created per-user during workflow composition
         self.workflow_caches: Dict[str, WorkflowCache] = {}
@@ -198,7 +197,9 @@ class ComposerService:
             user_config=user_config,
             conversation_id=conversation_id,
             active_todos=active_todos,  # Include active todos for context continuity
-            dynamic_tool_storage=self.storage.get_service(self.storage.dynamic_tool),  # Add dynamic tool storage
+            dynamic_tool_storage=storage.get_service(
+                storage.dynamic_tool
+            ),  # Add dynamic tool storage
             checkpoint_metadata={
                 "conversation_id": conversation_id,
                 "user_id": user_id,

@@ -190,8 +190,11 @@ class WorkflowState(BaseModel):
     )
 
     # Dynamic tool storage for tool generation and persistence
-    dynamic_tool_storage: Annotated[Optional[object], lambda x, y: y if y is not None else x] = Field(
-        default=None, description="Dynamic tool storage service for tool generation workflow"
+    dynamic_tool_storage: Annotated[
+        Optional[object], lambda x, y: y if y is not None else x
+    ] = Field(
+        default=None,
+        description="Dynamic tool storage service for tool generation workflow",
     )
 
     # Generated todos from planning middleware

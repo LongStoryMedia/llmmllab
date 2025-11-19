@@ -11,12 +11,13 @@ from structlog.typing import FilteringBoundLogger
 
 from langchain.tools import BaseTool
 
-from models import Tool, DynamicTool, UserConfig
+from models import Tool, UserConfig
 from utils.logging import llmmllogger
 from composer.tools.static import (
     web_search,
     read_web_content,
     tool_generator,
+    write_todos,
 )
 from composer.agents.engineering_agent import EngineeringAgent
 
@@ -96,29 +97,17 @@ class ToolRegistry:
         self.user_id = user_id
         self._lock = asyncio.Lock()
         self.logger = llmmllogger.logger.bind(component="ToolRegistry", user_id=user_id)
-        
-        # Dynamic tool storage will be injected when needed
-        self.dynamic_tool_storage = None
 
         self._load_static_tools()
 
     def _load_static_tools(self):
         """Load static tools from the static tools directory."""
         try:
-            self.static_tools.update(
-                {
-                    # "my_tool": MyTool, # Example
-                }
-            )
-
-            # Add function-based tools that are already decorated with @tool
-            # ToolRuntime handles parameter injection automatically - no schema filtering needed
             tools_to_add = {
-                # "get_current_date": get_current_date,
-                # "get_current_time": get_current_time,
                 "web_search": web_search,
                 "read_web_content": read_web_content,
                 "tool_generator": tool_generator,
+                "write_todos": write_todos,
                 # "memory_retrieval": memory_retrieval,
                 # "summarization": summarization,
             }
@@ -277,13 +266,13 @@ class ToolRegistry:
         This is the main interface method that replaces the workflow state tool collection.
         """
         all_tools = {}
-        
+
         # Add static executable tools
         all_tools.update(self.executable_tools)
-        
+
         # Add previous dynamic tools
         all_tools.update(self.previous_dynamic_tools)
-        
+
         return all_tools
 
     def convert_tools_to_langchain(self, tools: List[Tool]) -> List[BaseTool]:
@@ -306,30 +295,31 @@ class ToolRegistry:
 
         return langchain_tools
 
-    async def load_previous_dynamic_tools(self, dynamic_tool_storage) -> None:
+    async def load_previous_dynamic_tools(self) -> None:
         """
         Load previously generated dynamic tools from storage and make them available.
         This replaces the functionality of StaticToolLoadingNode.
         """
         try:
-            self.dynamic_tool_storage = dynamic_tool_storage
-            
+            from db import storage  # pylint: disable=unused-import
+
             # Get all previously generated dynamic tools for this user
-            dynamic_tools, _ = await dynamic_tool_storage.list_tools_by_user(
-                user_id=self.user_id, limit=100, offset=0
-            )
+            dynamic_tools, _ = await storage.get_service(
+                storage.dynamic_tool
+            ).list_tools_by_user(user_id=self.user_id, limit=100, offset=0)
 
             # Convert DynamicTool instances to executable tools for reuse
             for dt in dynamic_tools:
                 tool_id = f"{self.user_id}_{dt.name}"
-                
+
                 # Create executable tool from the dynamic tool code
                 from composer.tools.dynamic.generator import DynamicToolRunner
+
                 executable_tool = DynamicToolRunner(dt).to_tool()
-                
+
                 # Store in previous_dynamic_tools for reuse
                 self.previous_dynamic_tools[dt.name] = executable_tool
-                
+
                 # Also register in dynamic_tools for tracking
                 tool_model = Tool(
                     name=dt.name,
@@ -375,27 +365,33 @@ class ToolRegistry:
             static_tools = await self.get_static_tool_instances(self.user_id)
 
             # Use engineering agent to generate dynamic tool specifications
-            dynamic_tool_specs = await self.engineering_agent.generate_dynamic_tool_specification(
-                user_query=user_query,
-                user_id=self.user_id,
-                static_tools=static_tools,
+            dynamic_tool_specs = (
+                await self.engineering_agent.generate_dynamic_tool_specification(
+                    user_query=user_query,
+                    user_id=self.user_id,
+                    static_tools=static_tools,
+                )
             )
+
+            from db import storage  # pylint: disable=import-outside-toplevel
 
             # Convert specs to executable tools and store
             new_executable_tools = []
             for dt_spec in dynamic_tool_specs:
                 # Store in database if storage is available
-                if self.dynamic_tool_storage:
-                    dt_spec.user_id = self.user_id
-                    created_tool = await self.dynamic_tool_storage.create_tool(dt_spec)
-                    if created_tool:
-                        dt_spec = created_tool
-                
+                dt_spec.user_id = self.user_id
+                created_tool = await storage.get_service(
+                    storage.dynamic_tool
+                ).create_tool(dt_spec)
+                if created_tool:
+                    dt_spec = created_tool
+
                 # Create executable tool
                 from composer.tools.dynamic.generator import DynamicToolRunner
+
                 executable_tool = DynamicToolRunner(dt_spec).to_tool()
                 new_executable_tools.append(executable_tool)
-                
+
                 # Register for tracking
                 tool_id = f"{self.user_id}_{dt_spec.name}"
                 tool_model = Tool(
@@ -409,20 +405,24 @@ class ToolRegistry:
                     handle_validation_error=dt_spec.handle_validation_error,
                     response_format=dt_spec.response_format,
                 )
-                await self.register_dynamic_tool_instance(tool_id, tool_model, self.user_id)
+                await self.register_dynamic_tool_instance(
+                    tool_id, tool_model, self.user_id
+                )
 
             self.logger.info(
                 f"Generated {len(new_executable_tools)} new dynamic tools",
-                tool_names=[tool.name for tool in new_executable_tools]
+                tool_names=[tool.name for tool in new_executable_tools],
             )
-            
+
             return new_executable_tools
 
         except Exception as e:
             self.logger.error(f"Failed to generate dynamic tools: {e}")
             return []
 
-    def _should_generate_dynamic_tools(self, user_query: str, user_config: UserConfig) -> bool:
+    def _should_generate_dynamic_tools(
+        self, user_query: str, user_config: UserConfig
+    ) -> bool:
         """
         Determine if dynamic tools should be generated based on user query and configuration.
         """
@@ -433,7 +433,7 @@ class ToolRegistry:
         # Simple keyword-based heuristic to trigger tool generation
         trigger_keywords = [
             "create a tool",
-            "make a function", 
+            "make a function",
             "write a script",
             "generate code to",
             "new tool for",
@@ -449,10 +449,10 @@ class ToolRegistry:
         """
         Comprehensive tool collection method that replaces all the individual tool nodes.
         Returns deduplicated list of all available executable tools.
-        
+
         This method:
         1. Gets static tools
-        2. Gets previous dynamic tools  
+        2. Gets previous dynamic tools
         3. Generates new dynamic tools if needed
         4. Deduplicates by name
         5. Returns executable tools ready for use
@@ -475,7 +475,9 @@ class ToolRegistry:
 
             # 3. Generate new dynamic tools if requested and config allows
             if user_query and user_config:
-                new_dynamic_tools = await self.generate_new_dynamic_tools(user_query, user_config)
+                new_dynamic_tools = await self.generate_new_dynamic_tools(
+                    user_query, user_config
+                )
                 for tool in new_dynamic_tools:
                     if tool.name not in seen_names:
                         all_tools.append(tool)
@@ -491,18 +493,20 @@ class ToolRegistry:
 
             return all_tools
 
-    async def initialize_for_workflow(self, dynamic_tool_storage, user_query: str, user_config: UserConfig) -> None:
+    async def initialize_for_workflow(
+        self, user_query: str, user_config: UserConfig
+    ) -> None:
         """
         Initialize the registry with all necessary tools for workflow execution.
         This method replaces the need for separate tool loading/collection/composition nodes.
         """
         try:
             # Load previous dynamic tools from storage
-            await self.load_previous_dynamic_tools(dynamic_tool_storage)
-            
+            await self.load_previous_dynamic_tools()
+
             # Generate new dynamic tools if needed
             new_tools = await self.generate_new_dynamic_tools(user_query, user_config)
-            
+
             self.logger.info(
                 "ToolRegistry initialized for workflow execution",
                 static_tools=len(self.executable_tools),
@@ -510,7 +514,7 @@ class ToolRegistry:
                 new_dynamic_tools=len(new_tools),
                 total_tools=len(self.get_all_executable_tools()),
             )
-            
+
         except Exception as e:
             self.logger.error(f"Failed to initialize ToolRegistry for workflow: {e}")
             raise
