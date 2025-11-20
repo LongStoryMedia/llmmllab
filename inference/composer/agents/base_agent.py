@@ -8,6 +8,7 @@ from typing import (
     Optional,
     Any,
     Dict,
+    Self,
     TypeVar,
     Generic,
     List,
@@ -81,7 +82,6 @@ class BaseAgent(ABC, Generic[T]):
         self,
         pipeline_factory: PipelineFactory,
         profile: ModelProfile,
-        node_metadata: NodeMetadata,
         component_name: Optional[str] = None,
     ):
         """
@@ -101,16 +101,6 @@ class BaseAgent(ABC, Generic[T]):
         # Store required dependencies
         self.pipeline_factory = pipeline_factory
         self.profile = profile
-        self._node_metadata = node_metadata
-
-        # Update logger context with node information
-        self.logger = self.logger.bind(
-            node_name=node_metadata.node_name,
-            node_id=node_metadata.node_id,
-            node_type=node_metadata.node_type,
-            user_id=node_metadata.user_id,
-            conversation_id=node_metadata.conversation_id,
-        )
 
         # Additional metadata for debugging and tracking
         self._execution_context: Dict[str, Any] = {}
@@ -127,26 +117,36 @@ class BaseAgent(ABC, Generic[T]):
 
         self.logger.debug(
             f"Initialized {component}",
-            node_name=node_metadata.node_name,
             model_name=profile.model_name,
         )
 
-    def update_metadata(self, **kwargs) -> None:
+        self._node_metadata = NodeMetadata(
+            node_name="UNSET",
+            node_id="UNSET",
+            node_type="Base",
+        )
+
+    def bind_node_metadata(self, metadata: NodeMetadata) -> Self:
         """
-        Update node metadata and logger context with additional information.
+        Bind new node metadata to the agent for workflow tracking.
 
         Args:
-            **kwargs: Key-value pairs to update in node metadata and logger context
+            metadata: New node metadata to bind
         """
-        for key, value in kwargs.items():
-            if hasattr(self._node_metadata, key):
-                setattr(self._node_metadata, key, value)
-                self.logger = self.logger.bind(**{key: value})
-                self.logger.debug(f"Updated node metadata: {key}={value}")
-            else:
-                self.logger.warning(
-                    f"Attempted to update unknown metadata field: {key}"
-                )
+        self._node_metadata = metadata
+        self.logger = self.logger.bind(
+            node_name=metadata.node_name,
+            node_id=metadata.node_id,
+            node_type=metadata.node_type,
+            user_id=metadata.user_id,
+            conversation_id=metadata.conversation_id,
+        )
+        self.logger.debug(
+            f"Bound new node metadata to agent",
+            node_name=metadata.node_name,
+            node_type=metadata.node_type,
+        )
+        return self
 
     def cleanup(self) -> None:
         """
@@ -432,18 +432,8 @@ If you believe you have made a tool call, double-check the message history to co
             # Convert messages to LangChain format
             normalized_messages = messages_to_lc_messages(convo)
 
+            self.logger.debug(f"Running agent with {len(normalized_messages)} messages")
             result = await agent.ainvoke({"messages": normalized_messages})  # type: ignore
-
-            # Extract messages and middleware state (todos) from result
-            tdr = None
-            if isinstance(result, dict):
-                tdr = result.get("todos")
-                if tdr:
-                    self.logger.info(f"🧾 write_todos captured: {len(tdr)} items")
-                else:
-                    self.logger.info(
-                        "🧾 No write_todos entries returned in agent state"
-                    )
 
             # Convert agent result to ChatResponse
             if isinstance(result, BaseMessage):
@@ -458,55 +448,11 @@ If you believe you have made a tool call, double-check the message history to co
                 f"Agent run result ({type(last_message)}): {serialize_event_data(last_message)}"
             )
             msg = lc_message_to_message(last_message)
-            if (
-                grammar
-                and isinstance(grammar, IntentsResponse)
-                and msg.content
-                and msg.content[0].text
-            ):
-                msg.analyses = parse_structured_output(
-                    msg.content[0].text, IntentsResponse
-                ).intents
-                msg.content = []
-
-            # Convert raw todos (middleware PlanningState) -> TodoItem list
-            converted_todos = []
-            if tdr and isinstance(tdr, list):
-                from models import TodoItem  # local import to avoid circular
-
-                for t in tdr:
-                    if not isinstance(t, dict):
-                        continue
-                    content = (
-                        t.get("content")
-                        or t.get("task")
-                        or t.get("description")
-                        or "Untitled Task"
-                    )
-                    status_raw = t.get("status", "pending")
-                    # Map middleware statuses to internal statuses
-                    status_map = {
-                        "pending": "not-started",
-                        "in_progress": "in-progress",
-                        "completed": "completed",
-                    }
-                    internal_status = status_map.get(status_raw, "not-started")  # type: ignore[assignment]
-                    # Narrow type for status and priority literals
-
-                    td = TodoItem(
-                        user_id=self._node_metadata.user_id,
-                        conversation_id=self._node_metadata.conversation_id,
-                        title=content[:60],
-                        description=content,
-                        status=internal_status,  # pyright: ignore
-                        priority="medium",  # pyright: ignore
-                    )
-                    converted_todos.append(td)
 
             response = ChatResponse(
                 done=True,
                 message=msg,
-                todos=converted_todos or None,
+                metadata=self._node_metadata,
             )
 
             return response

@@ -4,6 +4,7 @@ Generates concise, descriptive titles based on conversation content.
 """
 
 from composer.agents.base_agent import BaseAgent
+from models import NodeMetadata
 from runner import PipelineFactory
 from composer.graph.state import WorkflowState
 from utils.logging import llmmllogger
@@ -17,19 +18,13 @@ class TitleGenerationNode:
     based on conversation content.
     """
 
-    def __init__(
-        self,
-        pipeline_factory: PipelineFactory,
-        analysis_agent: BaseAgent,
-    ):
+    def __init__(self, agent: BaseAgent, node_metadata: NodeMetadata):
         """Initialize title generation node with dependency injection.
 
         Args:
-            pipeline_factory: Factory for creating pipelines
-            analysis_agent: Required ClassifierAgent instance
+            agent: Required ClassifierAgent instance
         """
-        self.pipeline_factory = pipeline_factory
-        self.classifier_agent = analysis_agent
+        self.agent = agent.bind_node_metadata(node_metadata)
         self.logger = llmmllogger.logger.bind(component="TitleGenerationNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
@@ -43,6 +38,11 @@ class TitleGenerationNode:
             Updated workflow state with title
         """
         try:
+            assert (
+                state.conversation_id is not None
+            ), "Conversation ID must be set in state"
+            assert state.user_id is not None, "User ID must be set in state"
+
             self.logger.info(
                 "TitleGenerationNode called",
                 extra={
@@ -60,7 +60,7 @@ class TitleGenerationNode:
                 )
                 return state
 
-            title = await self.classifier_agent.generate_title(state.messages)
+            title = await self.agent.generate_title(state.messages)
 
             if title and title.strip():
                 self.logger.info("Title generated successfully", extra={"title": title})
@@ -68,8 +68,15 @@ class TitleGenerationNode:
             else:
                 self.logger.warning("Title generation returned empty result")
 
+            from db import storage  # pylint: disable=import-outside-toplevel
+
+            # Persist generated title to database
+            await storage.get_service(storage.conversation).update_conversation_title(
+                title, state.conversation_id, state.user_id
+            )
+
             # Cleanup classifier agent resources after completion
-            self.classifier_agent.cleanup()
+            self.agent.cleanup()
 
             return state
 
@@ -83,7 +90,7 @@ class TitleGenerationNode:
             )
 
             # Cleanup classifier agent resources even on error
-            self.classifier_agent.cleanup()
+            self.agent.cleanup()
 
             # Escalate by raising so tests fail visibly
             raise

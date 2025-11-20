@@ -7,21 +7,21 @@ import GalleryFAB from '../Shared/GalleryFAB';
 import StageProgressBars from '../Shared/StageProgressBars';
 import { useBackgroundContext } from '../../context/BackgroundContext';
 
-const MainContainer = styled(Box)<{ isChatPage: boolean }>(({ theme, isChatPage }) => ({
+const MainContainer = styled(Box)<{ overflow: string }>(({ theme, overflow }) => ({
   display: 'flex',
   flexDirection: 'column',
   height: '100vh',
   backgroundColor: theme.palette.background.default,
   color: theme.palette.text.primary,
   position: 'relative',
-  overflow: isChatPage ? 'hidden' : 'auto'
+  overflow: overflow
 }));
 
-const ContentContainer = styled(Box)<{ isChatPage: boolean }>(({ isChatPage }) => ({
+const ContentContainer = styled(Box)<{ overflow: string }>(({ overflow }) => ({
   flex: 1,
   display: 'flex',
   flexDirection: 'column',
-  overflow: isChatPage ? 'hidden' : 'auto',
+  overflow: overflow,
   paddingTop: '80px' // Account for TopBar height
 }));
 
@@ -36,7 +36,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   const handleDrawerOpen = () => setDrawerOpen(true);
   const handleDrawerClose = () => setDrawerOpen(false); return (
-    <MainContainer isChatPage={isChatPage}>
+    <MainContainer overflow={isChatPage ? 'hidden' : 'auto'}>
       <TopBar onMenuClick={handleDrawerOpen} />
 
       {/* Sidebar as Drawer */}
@@ -54,7 +54,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <Backdrop open sx={{ zIndex: theme.zIndex.drawer - 1, position: 'fixed' }} />
       )}
 
-      <ContentContainer isChatPage={isChatPage}>
+      <ContentContainer overflow={isChatPage ? 'hidden' : 'auto'}>
         {children}
       </ContentContainer>
 

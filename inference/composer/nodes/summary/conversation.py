@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from composer.graph.state import WorkflowState
 from utils.logging import llmmllogger
+from models import NodeMetadata
 
 if TYPE_CHECKING:
     from composer.agents.primary_summary_agent import PrimarySummaryAgent
@@ -27,9 +28,14 @@ class ConsolidationNode:
         self,
         primary_summary_agent: "PrimarySummaryAgent",
         master_summary_agent: "MasterSummaryAgent",
+        node_metadata: NodeMetadata,
     ):
-        self.primary_summary_agent = primary_summary_agent
-        self.master_summary_agent = master_summary_agent
+        self.primary_summary_agent = primary_summary_agent.bind_node_metadata(
+            node_metadata
+        )
+        self.master_summary_agent = master_summary_agent.bind_node_metadata(
+            node_metadata
+        )
         self.logger = llmmllogger.logger.bind(component="ConsolidationNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:

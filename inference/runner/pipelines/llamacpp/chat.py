@@ -6,7 +6,6 @@ to our llama.cpp server and exposes it for use with composer agents.
 """
 
 import json
-import logging
 import os
 from typing import Any, Dict, Iterator, List, Optional, Type
 from langchain_core.callbacks import CallbackManagerForLLMRun
@@ -20,14 +19,6 @@ from models import Model, ModelProfile, ModelProfileType
 from runner.pipelines.base import BasePipeline
 from runner.server_manager import LlamaCppServerManager
 from utils.logging import llmmllogger
-import threading
-import subprocess
-
-# Enable HTTP logging for debugging
-
-logging.getLogger("openai").setLevel(logging.DEBUG)
-logging.getLogger("httpx").setLevel(logging.DEBUG)
-logging.getLogger("httpcore").setLevel(logging.DEBUG)
 
 logger = llmmllogger.bind(component="LangChainChatOpenAIPipeline")
 
@@ -163,6 +154,7 @@ class ChatLlamaCppPipeline(BasePipeline):
                 metadata={
                     "model_profile": self.profile.name,
                     "task": ModelProfileType(self.profile.type).name,
+                    **(self.metadata or {}),
                 },
             )
 
@@ -184,6 +176,15 @@ class ChatLlamaCppPipeline(BasePipeline):
             self._logger.info(f"Shutting down server for {self.model.name}")
             self.server_manager.stop()
             self._server_started = False
+
+    def bind_metadata(self, metadata: dict):
+        """Bind additional metadata to the pipeline."""
+        if not self.chat_model:
+            raise RuntimeError("ChatOpenAI not initialized")
+        if not self.chat_model.metadata:
+            self.chat_model.metadata = {}
+        self.chat_model.metadata.update(metadata)
+        return self.chat_model
 
     def __del__(self):
         """Cleanup when pipeline is destroyed."""

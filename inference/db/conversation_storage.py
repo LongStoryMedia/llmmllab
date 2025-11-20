@@ -89,28 +89,33 @@ class ConversationStorage:
 
             return conversation
 
-    async def update_conversation(self, conversation: Conversation) -> None:
+    async def update_conversation_title(
+        self,
+        title: str,
+        conversation_id: int,
+        user_id: str,
+    ) -> None:
         async with self.typed_pool.acquire() as conn:
             await conn.execute(
                 self.get_query("conversation.update_title"),
-                conversation.title,
-                conversation.id,
+                title,
+                conversation_id,
             )
 
         # Update the cache - first get the cached conversation to update
-        cached_conversation = cache_storage.get_conversation_from_cache(conversation.id)
+        cached_conversation = cache_storage.get_conversation_from_cache(conversation_id)
         if cached_conversation:
             # Update the cached conversation and re-cache it
-            cached_conversation.title = conversation.title
+            cached_conversation.title = title
             cached_conversation.updated_at = datetime.now()
             cache_storage.cache_conversation(cached_conversation)
         else:
             # If not in cache, just invalidate cache to force refresh next time
-            cache_storage.invalidate_conversation_cache(conversation.id)
+            cache_storage.invalidate_conversation_cache(conversation_id)
 
         # Also invalidate the user's conversations list cache
-        if conversation and conversation.user_id:
-            cache_storage.invalidate_user_conversations_cache(conversation.user_id)
+        if user_id:
+            cache_storage.invalidate_user_conversations_cache(user_id)
 
     async def delete_conversation(self, conversation_id: int) -> None:
         # Get user ID before deleting for cache invalidation

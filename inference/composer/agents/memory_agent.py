@@ -27,7 +27,6 @@ class MemoryAgent(BaseAgent[List[Memory]]):
         self,
         pipeline_factory: "PipelineFactory",
         profile: ModelProfile,
-        node_metadata: NodeMetadata,
         memory_storage: "MemoryStorage",
     ):
         """Initialize memory agent with required dependencies.
@@ -38,7 +37,7 @@ class MemoryAgent(BaseAgent[List[Memory]]):
             node_metadata: Node execution metadata for tracking
             memory_storage: Injected MemoryStorage service
         """
-        super().__init__(pipeline_factory, profile, node_metadata, "MemoryAgent")
+        super().__init__(pipeline_factory, profile, "MemoryAgent")
         self.memory_storage = memory_storage
 
     async def store_memories(

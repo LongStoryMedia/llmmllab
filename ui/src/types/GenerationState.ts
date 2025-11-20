@@ -4,14 +4,14 @@
 /**
  * Current state of the generation process.
  */
-export type GenerationState = 'analysing' | 'thinking' | 'executing' | 'responding';
+export type GenerationState = 'analyzing' | 'thinking' | 'executing' | 'responding';
 
 /**
  * Constant values for GenerationState
  */
 export const GenerationStateValues = {
-  /** analysing */
-  ANALYSING: 'analysing',
+  /** analyzing */
+  ANALYZING: 'analyzing',
   /** thinking */
   THINKING: 'thinking',
   /** executing */

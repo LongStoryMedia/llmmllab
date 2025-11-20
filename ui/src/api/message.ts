@@ -28,7 +28,7 @@ export async function* chat(accessToken: string, message: Message, abortSignal?:
       // Yield the full ChatResponse directly
       yield chatResponse;
 
-      if (chatResponse.done) {
+      if (chatResponse.done && chatResponse.finish_reason !== 'tool_call') {
         break;
       }
     }

@@ -4,10 +4,11 @@ Database module that initializes all storage components and provides access to t
 
 import asyncpg
 import os
-from utils.logging import llmmllogger
+from typing import Optional, Protocol, Any, Callable, cast
 
 from asyncpg import Pool
 
+from utils.logging import llmmllogger
 from .cache_storage import cache_storage
 from .userconfig_storage import UserConfigStorage
 from .connection_recovery import init_recovery_manager
@@ -27,7 +28,8 @@ from .message_content_storage import MessageContentStorage
 from .todo_storage import TodoStorage
 from .checkpoint_storage import CheckpointStorage
 from .queries import get_query
-from typing import Optional, Protocol, Any, Callable, cast
+from .init_db import initialize_database
+from .maintenance import maintenance_service
 
 logger = llmmllogger.bind(component="db_init")
 
@@ -121,6 +123,19 @@ class Storage:
 
             self.initialized = True
             logger.info("Storage components initialized successfully")
+
+            await initialize_database(self.pool)
+
+            # Initialize and start the database maintenance service
+            maintenance_interval = int(
+                os.environ.get("DB_MAINTENANCE_INTERVAL_HOURS", "24")
+            )
+            await maintenance_service.initialize(self.pool, maintenance_interval)
+            await maintenance_service.start_maintenance_schedule()
+            logger.info("Database maintenance service started")
+            await self.model_profile.upsert_default_model_profiles()
+            logger.info("Default model profiles ensured in database")
+
         except Exception as e:
             # Reset all components to None to ensure they're not partially initialized
             self.pool = None

@@ -50,7 +50,6 @@ class EngineeringAgent(BaseAgent[str]):
         self,
         pipeline_factory: "PipelineFactory",
         profile: ModelProfile,
-        node_metadata: NodeMetadata,
         tool_storage: "DynamicToolStorage",
     ):
         """
@@ -61,7 +60,7 @@ class EngineeringAgent(BaseAgent[str]):
             profile: Model profile for engineering tasks
             node_metadata: Node execution metadata for tracking
         """
-        super().__init__(pipeline_factory, profile, node_metadata, "EngineeringAgent")
+        super().__init__(pipeline_factory, profile, "EngineeringAgent")
         self.tool_storage = tool_storage
 
     async def generate_technical_response(

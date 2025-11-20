@@ -7,11 +7,8 @@ from ComposerService into a generic, reusable component.
 """
 
 import json
-from enum import StrEnum
-from re import M
 from typing import (
     Any,
-    AsyncGenerator,
     AsyncIterator,
     Dict,
     List,
@@ -24,8 +21,8 @@ from pydantic import BaseModel
 
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.runnables.config import RunnableConfig
-from langchain_core.runnables.schema import StreamEvent, EventData, StandardStreamEvent
-from langchain_core.messages import BaseMessage, AIMessage, ToolMessage
+from langchain_core.runnables.schema import StreamEvent, EventData
+from langchain_core.messages import AIMessage, ToolMessage
 
 from models import (
     IntentAnalysis,
@@ -41,7 +38,7 @@ from models import (
 )
 
 from runner.pipelines.llamacpp.chat import ReasoningAwareAIMessageChunk
-from utils.logging import llmmllogger
+from utils.logging import llmmllogger, serialize_event_data
 
 
 class WorkflowExecutor:
@@ -113,6 +110,14 @@ class WorkflowExecutor:
             Dict[str, Any]: Stream events from workflow execution
         """
         start_time = datetime.now(timezone.utc)
+        from db import storage  # pylint: disable=import-outside-toplevel
+
+        conversation_id = getattr(initial_state, "conversation_id")
+        assert conversation_id is not None and isinstance(
+            conversation_id, int
+        ), "Initial state must have conversation_id"
+        msg_store = storage.get_service(storage.message)
+
         try:
             # Prepare state for execution
             if isinstance(initial_state, dict):
@@ -130,33 +135,40 @@ class WorkflowExecutor:
             if config is None and thread_id is not None:
                 config = self.create_thread_config(thread_id)
 
-            state: GenerationState = GenerationState.RESPONDING
-            prev_state: GenerationState = state
+            state: Optional[GenerationState] = None
+            prev_state: Optional[GenerationState] = state
             analyses_buffer = ""
             contents_buffer = ""
+            thoughts_buffer = ""
+            # Track the run_id associated with the last appended buffers so
+            # flushing uses the correct execution id rather than the current
+            # event's run_id which can change between events (e.g. tool calls).
+            #
+            # Reason: streaming chunks for a single model run may be interleaved
+            # with other events (tool calls, sub-workflows) that have different
+            # `run_id`s. If we flush or key message contents against the
+            # current event's `run_id`, we may accidentally associate the
+            # buffered text with the wrong execution id, causing the
+            # `contents_buffer` to appear empty for the original run. We
+            # therefore record the run id at the time we append content.
+            last_content_run_id: Optional[str] = None
+            last_thoughts_run_id: Optional[str] = None
+            last_analyses_run_id: Optional[str] = None
             tool_calls_timer: Dict[str, Dict[str, datetime]] = {}
             tool_calls: Dict[str, ToolCall] = {}
             thoughts: Dict[str, Thought] = {}
             analyses: Dict[str, IntentAnalysis] = {}
+            message_contents: Dict[str, MessageContent] = {}
+            total_events = 0
 
             # Stream workflow events
             async for event in workflow.astream_events(
                 state_dict, config=config, version="v2"
             ):
-                try:
-                    if enrich_events:
-                        event = self._enrich_event(
-                            event, context_name or self.default_context
-                        )
+                if total_events > 0 and not state:
+                    raise ValueError("GenerationState not initialized from first event")
 
-                except Exception as e:
-                    self.logger.warning(
-                        "Error enriching workflow event",
-                        extra={
-                            "error": str(e),
-                            "event_type": event.get("event", "unknown"),
-                        },
-                    )
+                total_events += 1
 
                 data = event.get("data", {})
                 event_type = event.get("event", "unknown")
@@ -164,15 +176,18 @@ class WorkflowExecutor:
                 output = data.get("output", {})
                 event_name = event.get("name", "unknown")
                 run_id = event.get("run_id", "unknown")
+                metadata = event.get("metadata", {})
                 new_state = state
 
                 res = ChatResponse(
+                    done=False,
                     message=Message(
                         role=MessageRole.ASSISTANT,
                         content=[],
                         thoughts=[],
                         tool_calls=[],
                         analyses=[],
+                        conversation_id=conversation_id,
                     ),
                     state=state,
                     prev_state=prev_state,
@@ -189,9 +204,9 @@ class WorkflowExecutor:
                     md = event.get("metadata", {})
                     task = md.get("task", "Primary")
                     if task == ModelProfileType.Analysis.name:
-                        new_state = GenerationState.ANALYSING
+                        new_state = GenerationState.ANALYZING
                 elif event_type == "on_chat_model_end" or event_type == "on_llm_end":
-                    if state == GenerationState.ANALYSING:
+                    if state == GenerationState.ANALYZING:
                         analysis_dict = json.loads(analyses_buffer)
                         analysis = IntentAnalysis(**analysis_dict)
                         analyses[run_id] = analysis
@@ -206,9 +221,16 @@ class WorkflowExecutor:
                     event_type == "on_chat_model_stream"
                     or event_type == "on_llm_stream"
                 ) and isinstance(chunk, AIMessage):
-                    if state == GenerationState.ANALYSING:
+                    if not metadata.get("checkpoint_ns", "").startswith("tools_agent"):
+                        self.logger.debug(
+                            f"Workflow event received: {serialize_event_data(event)}",
+                        )
+                        continue
+
+                    if state == GenerationState.ANALYZING:
                         for content in self._parse_content(chunk.content):
                             analyses_buffer += content
+                            last_analyses_run_id = run_id
                     if hasattr(chunk, "reasoning_content"):
                         new_state = GenerationState.THINKING
                         reasoning_chunk = cast(ReasoningAwareAIMessageChunk, chunk)
@@ -221,7 +243,8 @@ class WorkflowExecutor:
                                 text=reasoning_chunk.reasoning_content,
                             )
                         )
-                    if chunk.content is not None:
+                        thoughts_buffer += reasoning_chunk.reasoning_content
+                    elif chunk.content:
                         new_state = GenerationState.RESPONDING
                         for content in self._parse_content(chunk.content):
                             res.message.content.append(
@@ -230,6 +253,9 @@ class WorkflowExecutor:
                                 )
                             )
                             contents_buffer += content
+                            # remember which run this content belongs to so we
+                            # can flush against the correct execution id later
+                            last_content_run_id = run_id
 
                 elif (
                     event_type.endswith("_model_end") or event_type.endswith("_llm_end")
@@ -240,14 +266,15 @@ class WorkflowExecutor:
                     )
                     md = output.response_metadata or {}
                     reason = md.get("finish_reason") or "unknown"
-                    res.done = True
-                    res.finish_reason = reason  # type: ignore
+                    if reason == "tool_call":
+                        new_state = GenerationState.EXECUTING
 
                 elif event_type.endswith("_tool_start"):
                     self.logger.info(
                         "Tool call started",
                         extra={"tool_name": event_name, "run_id": run_id},
                     )
+                    new_state = GenerationState.EXECUTING
                     tool_calls_timer[run_id] = {"start": datetime.now(timezone.utc)}
                     tool_calls[run_id] = ToolCall(
                         name=event_name,
@@ -287,16 +314,52 @@ class WorkflowExecutor:
                             text=str(output.content) or "",
                         )
                     )
+                    self.logger.debug(
+                        "Appending tool call to response",
+                        extra={"tool_call": str(tool_call)},
+                    )
                     res.message.tool_calls.append(tool_call)
 
                 if new_state != state:
+                    self.logger.debug(f"State transition: {state} -> {new_state}")
                     if state == GenerationState.THINKING:
+                        self.logger.debug(
+                            f"Thoughts buffer: {thoughts_buffer}\n{'-'*20}"
+                        )
                         thoughts[run_id] = Thought(text=thoughts_buffer)
                         thoughts_buffer = ""
-                    elif state == GenerationState.ANALYSING:
-                        analysis_dict = json.loads(analyses_buffer)
-                        analyses[run_id] = IntentAnalysis(**analysis_dict)
+                    elif state == GenerationState.ANALYZING:
+                        self.logger.debug(
+                            f"Analyses buffer: {analyses_buffer}\n{'-'*20}"
+                        )
+                        try:
+                            analysis_dict = json.loads(analyses_buffer)
+                            analyses[last_analyses_run_id or run_id] = IntentAnalysis(
+                                **analysis_dict
+                            )
+                        except Exception:
+                            # keep resiliency for malformed analysis
+                            self.logger.debug(
+                                "Failed to parse analyses_buffer during flush",
+                                extra={"analyses_buffer": analyses_buffer},
+                            )
                         analyses_buffer = ""
+                    elif state == GenerationState.RESPONDING and contents_buffer:
+                        self.logger.debug(
+                            f"Contents buffer: {contents_buffer}\n{'-'*20}\n"
+                        )
+                        # Use the run id that we recorded when appending
+                        # to the contents buffer. The current event's
+                        # `run_id` may refer to a different execution (for
+                        # example a tool call) so using that would miss the
+                        # original streamed content.
+                        keyed_run_id = last_content_run_id or run_id
+                        content_block = MessageContent(
+                            type=MessageContentType.TEXT, text=contents_buffer
+                        )
+                        message_contents[keyed_run_id] = content_block
+                        contents_buffer = ""
+
                     prev_state = state
                     state = new_state
 
@@ -323,25 +386,68 @@ class WorkflowExecutor:
                 total_duration=total_duration,
             )
 
+        if contents_buffer:
+            self.logger.debug(
+                "Flushing remaining contents_buffer after workflow completion",
+                extra={"contents_buffer": contents_buffer},
+            )
+            # Use the run id that we recorded when appending
+            # to the contents buffer. The current event's
+            # `run_id` may refer to a different execution (for
+            # example a tool call) so using that would miss the
+            # original streamed content.
+            keyed_run_id = last_content_run_id or run_id
+            content_block = MessageContent(
+                type=MessageContentType.TEXT, text=contents_buffer
+            )
+            message_contents[keyed_run_id] = content_block
+            contents_buffer = ""
+
+        if analyses_buffer:
+            self.logger.debug(
+                "Flushing remaining analyses_buffer after workflow completion",
+                extra={"analyses_buffer": analyses_buffer},
+            )
+            try:
+                analysis_dict = json.loads(analyses_buffer)
+                analyses[last_analyses_run_id or run_id] = IntentAnalysis(
+                    **analysis_dict
+                )
+            except Exception:
+                # keep resiliency for malformed analysis
+                self.logger.debug(
+                    "Failed to parse analyses_buffer during final flush",
+                    extra={"analyses_buffer": analyses_buffer},
+                )
+            analyses_buffer = ""
+
+        if thoughts_buffer:
+            self.logger.debug(
+                "Flushing remaining thoughts_buffer after workflow completion",
+                extra={"thoughts_buffer": thoughts_buffer},
+            )
+            thoughts[last_thoughts_run_id or run_id] = Thought(text=thoughts_buffer)
+            thoughts_buffer = ""
+
         self.logger.info("Workflow execution completed. Producing final output.")
-        yield ChatResponse(
-            message=Message(
-                role=MessageRole.ASSISTANT,
-                content=[
-                    MessageContent(
-                        type=MessageContentType.TEXT,
-                        text="",
-                    )
-                ],
-                thoughts=list(thoughts.values()),
-                tool_calls=list(tool_calls.values()),
-                analyses=list(analyses.values()),
-            ),
+        final_message = Message(
+            role=MessageRole.ASSISTANT,
+            content=list(message_contents.values()),
+            thoughts=list(thoughts.values()),
+            tool_calls=list(tool_calls.values()),
+            analyses=list(analyses.values()),
+            conversation_id=conversation_id,
+        )
+        await msg_store.add_message(final_message)
+        final_response = ChatResponse(
+            message=final_message,
             done=True,
             finish_reason="complete",
             total_duration=(datetime.now(timezone.utc) - start_time).total_seconds()
             * 1000.0,
         )
+        self.logger.debug(f"Final response: {serialize_event_data(final_response)}")
+        yield final_response
 
     def _parse_content(self, content: str | List[str | Dict[str, Any]]) -> List[str]:
         """

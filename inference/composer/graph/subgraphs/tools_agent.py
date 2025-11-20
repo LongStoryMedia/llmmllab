@@ -16,7 +16,7 @@ from langgraph.prebuilt import ToolNode
 from composer.graph import WorkflowState
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
-from models import PipelinePriority
+from models import NodeMetadata, PipelinePriority
 from utils import extract_text_from_message
 from utils.logging import llmmllogger, serialize_event_data
 
@@ -46,10 +46,11 @@ class ToolsAgentSubgraph:
         self,
         tool_registry: ToolRegistry,
         chat_agent: ChatAgent,
+        node_metadata: NodeMetadata,
     ):
         """Initialize agent subgraph with tools."""
         self.tool_registry = tool_registry
-        self.chat_agent = chat_agent
+        self.chat_agent = chat_agent.bind_node_metadata(node_metadata)
         self.graph = None
         self._build_graph()
 

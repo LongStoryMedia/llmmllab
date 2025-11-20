@@ -614,7 +614,7 @@ It is very important that you do not skip any of these steps and answer each par
                         self._write_to_output(
                             "_\n\n",
                         )
-                    if res.prev_state == GenerationState.ANALYSING:
+                    if res.prev_state == GenerationState.ANALYZING:
                         self._write_to_output(
                             "\n```\n\n",
                         )
@@ -630,7 +630,7 @@ It is very important that you do not skip any of these steps and answer each par
                         self._write_to_output(
                             "\n##### Thought:\n\n_",
                         )
-                    if res.state == GenerationState.ANALYSING:
+                    if res.state == GenerationState.ANALYZING:
                         self._write_to_output(
                             "\n##### [ANALYSIS]: \n\n ```json\n",
                         )

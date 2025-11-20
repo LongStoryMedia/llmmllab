@@ -172,105 +172,11 @@ class GraphBuilder:
                 self.user_config.user_id,
             )
 
-            # Node metadata for logging and tracing
-            primary_node_metadata = NodeMetadata(
-                node_name="PrimaryChatAgent",
-                node_id=uuid.uuid4().hex,
-                node_type="ChatNode",
-                execution_time=None,
-                user_id=user_id,
-                conversation_id=None,
-                profile_type=None,
-                streaming=None,
-                is_cached=None,
-                cache_key=None,
-                tool_count=None,
-            )
-            # classifier_node_metadata = NodeMetadata(
-            #     node_name="IntentClassifier",
-            #     node_id=uuid.uuid4().hex,
-            #     node_type="IntentClassifierNode",
-            #     execution_time=None,
-            #     user_id=user_id,
-            #     conversation_id=None,
-            #     profile_type=None,
-            #     streaming=None,
-            #     is_cached=None,
-            #     cache_key=None,
-            #     tool_count=None,
-            # )
-            engineering_node_metadata = NodeMetadata(
-                node_name="EngineeringAgent",
-                node_id=uuid.uuid4().hex,
-                node_type="EngineeringAgentNode",
-                execution_time=None,
-                user_id=user_id,
-                conversation_id=None,
-                profile_type=None,
-                streaming=None,
-                is_cached=None,
-                cache_key=None,
-                tool_count=None,
-            )
-            memory_node_metadata = NodeMetadata(
-                node_name="MemoryAgent",
-                node_id=uuid.uuid4().hex,
-                node_type="MemoryAgentNode",
-                execution_time=None,
-                user_id=user_id,
-                conversation_id=None,
-                profile_type=None,
-                streaming=None,
-                is_cached=None,
-                cache_key=None,
-                tool_count=None,
-            )
-            embedding_node_metadata = NodeMetadata(
-                node_name="EmbeddingAgent",
-                node_id=uuid.uuid4().hex,
-                node_type="EmbeddingAgentNode",
-                execution_time=None,
-                user_id=user_id,
-                conversation_id=None,
-                profile_type=None,
-                streaming=None,
-                is_cached=None,
-                cache_key=None,
-                tool_count=None,
-            )
-            primary_summary_node_metadata = NodeMetadata(
-                node_name="PrimarySummaryAgent",
-                node_id=uuid.uuid4().hex,
-                node_type="PrimarySummaryAgentNode",
-                execution_time=None,
-                user_id=user_id,
-                conversation_id=None,
-                profile_type=None,
-                streaming=None,
-                is_cached=None,
-                cache_key=None,
-                tool_count=None,
-            )
-            master_summary_node_metadata = NodeMetadata(
-                node_name="MasterSummaryAgent",
-                node_id=uuid.uuid4().hex,
-                node_type="MasterSummaryAgentNode",
-                execution_time=None,
-                user_id=user_id,
-                conversation_id=None,
-                profile_type=None,
-                streaming=None,
-                is_cached=None,
-                cache_key=None,
-                tool_count=None,
-            )
-
             tool_selection_middleware = LLMToolSelectorMiddleware()
 
             primary_agent = ChatAgent(
                 pipeline_factory=self.pipeline_factory,
                 profile=primary_profile,
-                node_metadata=primary_node_metadata,
                 priority=PipelinePriority.HIGH,
             )
             # Attach middleware list to agent for later use in BaseAgent calls
@@ -285,24 +191,20 @@ class GraphBuilder:
             engineering_agent = EngineeringAgent(
                 self.pipeline_factory,
                 engineering_profile,
-                engineering_node_metadata,
                 self.dynamic_tool_storage,
             )
             memory_agent = MemoryAgent(
                 self.pipeline_factory,
                 memory_profile,
-                memory_node_metadata,
                 self.memory_storage,
             )
             embedding_agent = EmbeddingAgent(
                 self.pipeline_factory,
                 embedding_profile,
-                embedding_node_metadata,
             )
             primary_summary_agent = PrimarySummaryAgent(
                 self.pipeline_factory,
                 summarization_profile,
-                primary_summary_node_metadata,
                 self.summary_storage,
                 self.search_storage,
                 self.user_config,
@@ -310,7 +212,6 @@ class GraphBuilder:
             master_summary_agent = MasterSummaryAgent(
                 self.pipeline_factory,
                 summarization_profile,
-                master_summary_node_metadata,
                 self.summary_storage,
                 self.search_storage,
                 self.user_config,
@@ -323,23 +224,65 @@ class GraphBuilder:
             )
 
             # Create nodes with injected agents and storage
-            memory_creation_node = MemoryCreationNode(embedding_agent)
+            memory_creation_node = MemoryCreationNode(
+                embedding_agent,
+                NodeMetadata(
+                    node_name="MemoryCreationNode",
+                    node_id=uuid.uuid4().hex,
+                    node_type=ModelProfileType(embedding_agent.profile.type).name,
+                    user_id=user_id,
+                ),
+            )
             memory_search_node = MemorySearchNode(
                 memory_agent,
                 embedding_agent,
+                NodeMetadata(
+                    node_name="MemorySearchNode",
+                    node_id=uuid.uuid4().hex,
+                    node_type=ModelProfileType(memory_agent.profile.type).name,
+                    user_id=user_id,
+                ),
             )
-            memory_storage_node = MemoryStorageNode(memory_agent)
+            memory_storage_node = MemoryStorageNode(
+                memory_agent,
+                NodeMetadata(
+                    node_name="MemoryStorageNode",
+                    node_id=uuid.uuid4().hex,
+                    node_type=ModelProfileType(memory_agent.profile.type).name,
+                    user_id=user_id,
+                ),
+            )
             title_generation_node = TitleGenerationNode(
-                self.pipeline_factory,
                 primary_agent,
+                NodeMetadata(
+                    node_name="TitleGenerationNode",
+                    node_id=uuid.uuid4().hex,
+                    node_type=ModelProfileType(primary_agent.profile.type).name,
+                    user_id=user_id,
+                ),
             )
 
             # ConsolidationNode needs both primary (for conversation summaries) and master (for consolidation)
             chat_summary_node = ConsolidationNode(
-                primary_summary_agent, master_summary_agent
+                primary_summary_agent,
+                master_summary_agent,
+                NodeMetadata(
+                    node_name="ConsolidationNode",
+                    node_id=uuid.uuid4().hex,
+                    node_type=ModelProfileType(master_summary_agent.profile.type).name,
+                    user_id=user_id,
+                ),
             )
             # SearchSummaryNode uses primary summaries by default
-            search_summary_node = SearchSummaryNode(primary_summary_agent)
+            search_summary_node = SearchSummaryNode(
+                primary_summary_agent,
+                NodeMetadata(
+                    node_name="SearchSummaryNode",
+                    node_id=uuid.uuid4().hex,
+                    node_type=ModelProfileType(primary_summary_agent.profile.type).name,
+                    user_id=user_id,
+                ),
+            )
 
             # Create master workflow graph
             workflow = StateGraph(WorkflowState)
@@ -363,6 +306,12 @@ class GraphBuilder:
             tools_agent_subgraph = ToolsAgentSubgraph(
                 tool_registry=user_tool_registry,
                 chat_agent=primary_agent,
+                node_metadata=NodeMetadata(
+                    node_name="ToolsAgentSubgraph",
+                    node_id=uuid.uuid4().hex,
+                    node_type=ModelProfileType(primary_agent.profile.type).name,
+                    user_id=user_id,
+                ),
             )
             assert tools_agent_subgraph.graph is not None
             workflow.add_node("tools_agent", tools_agent_subgraph.graph)

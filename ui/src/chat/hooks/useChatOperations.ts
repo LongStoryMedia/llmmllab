@@ -5,9 +5,9 @@ import { chat, getManyConversations, getMessages, removeConversation, startConve
 import { Conversation } from '../../types/Conversation';
 import { useNavigate } from 'react-router-dom';
 import { Message } from '../../types/Message';
-import { ChatResponse } from '../../types/ChatResponse';
 import { MessageRoleValues } from '../../types/MessageRole';
 import { MessageContentTypeValues } from '../../types/MessageContentType';
+import { GenerationStateValues } from '../../types/GenerationState';
 
 export const useChatOperations = (state: ChatState, actions: ChatActions) => {
   const auth = useAuth();
@@ -187,6 +187,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     actions.setResponse('');
   }, [actions, auth.user, state.currentConversation?.id]);
 
+
   // Send a message in the current conversation
   const sendMessage = useCallback(async (message: Message) => {
     if (state.isTyping) {
@@ -220,49 +221,38 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
 
       // Fallback to HTTP API if WebSocket method fails
       abortController.current = new AbortController();
-      for await (const chunk of chat(getToken(auth.user), message, abortController.current.signal)) {
-        // Handle ChatResponse structure directly
-        if (typeof chunk === 'string') {
-          // Legacy string response - just append to response
-          actions.setResponse(r => r + chunk);
-        } else {
-          // ChatResponse object with structured data
-          const chatResponse = chunk as ChatResponse;
+      for await (const chatResponse of chat(getToken(auth.user), message, abortController.current.signal)) {
+        const genState = chatResponse.state ?? GenerationStateValues.RESPONDING;
+        actions.setGenerationState(genState);
 
-          // Extract and append text content from message
-          if (chatResponse.message?.content && Array.isArray(chatResponse.message.content) && chatResponse.message.content.length > 0) {
-            // Skip OBSERVER role messages from main content stream
-            if (chatResponse.message.role !== MessageRoleValues.OBSERVER) {
-              const textContent = chatResponse.message.content[0].text ?? '';
-              if (textContent) {
-                actions.setResponse(r => r + textContent);
-              }
-            }
+        if (genState === GenerationStateValues.THINKING) {
+          // Combine all thought text for this chunk
+          const thinkingText = chatResponse.message?.thoughts?.map(t => t.text).join(' ');
+          if (thinkingText) {
+            // Accumulate thinking text like we do with response content
+            actions.setCurrentThinking(prev => (prev || '') + thinkingText);
           }
+        }
 
-          // Handle thinking - extract from message thoughts and accumulate like text content
-          if (chatResponse.message?.thoughts && chatResponse.message.thoughts.length > 0) {
-            // Combine all thought text for this chunk
-            const thinkingText = chatResponse.message.thoughts.map(t => t.text).join(' ');
-            if (thinkingText) {
-              // Accumulate thinking text like we do with response content
-              actions.setCurrentThinking(prev => (prev || '') + thinkingText);
-            }
+        if (genState === GenerationStateValues.RESPONDING) {
+          const textContent = chatResponse.message?.content?.[0]?.text ?? '';
+          if (textContent) {
+            actions.setResponse(r => r + textContent);
           }
+        }
 
-          // Handle tool calls - accumulate tool calls like text content
-          if (chatResponse.message?.tool_calls && chatResponse.message.tool_calls.length > 0) {
-            // Accumulate tool calls by merging with existing ones
-            actions.setCurrentToolCalls(prev => {
-              const existing = prev || [];
-              return [...existing, ...chatResponse.message!.tool_calls!];
-            });
-          }
+        // Handle tool calls - accumulate tool calls like text content
+        if (chatResponse.message?.tool_calls && chatResponse.message.tool_calls.length > 0) {
+          // Accumulate tool calls by merging with existing ones
+          actions.setCurrentToolCalls(prev => {
+            const existing = prev || [];
+            return [...existing, ...chatResponse.message!.tool_calls!];
+          });
+        }
 
-          // Handle observer messages - set them for floating notification display
-          if (chatResponse.observer_messages && chatResponse.observer_messages.length > 0) {
-            actions.setCurrentObserverMessages(chatResponse.observer_messages);
-          }
+        // Handle observer messages - set them for floating notification display
+        if (chatResponse.observer_messages && chatResponse.observer_messages.length > 0) {
+          actions.setCurrentObserverMessages(chatResponse.observer_messages);
         }
       }
 

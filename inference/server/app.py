@@ -42,11 +42,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from huggingface_hub import login
 
-from server.routers import model
-from server.routers import chat
-from server.routers import (
-    conversation,
-)  # Import conversation router to register endpoints
 from server.config import CONFIG_DIR, IMAGE_DIR
 from server.routers import (
     images,
@@ -55,19 +50,31 @@ from server.routers import (
     websockets,
     users,
     todos,
+    model,
+    chat,
+    conversation,
+    internal,
+    db_admin,
 )
-from server.middleware.auth import AuthMiddleware
-from server.config import API_VERSION
+from server.middleware import (
+    AuthMiddleware,
+    db_init_middleware,
+    MessageValidationMiddleware,
+)
+from server.config import API_VERSION, AUTH_JWKS_URI
 from server.cleanup_service import cleanup_service
 from db.maintenance import maintenance_service
 from utils.logging import llmmllogger
+from composer import shutdown_composer
+from runner import local_pipeline_cache
+
 
 logger = llmmllogger.bind(component="app")
 
-# # Enable auth bypass for testing
-os.environ["DISABLE_AUTH"] = "true"
-# # Set test user ID to match existing conversation owner
-os.environ["TEST_USER_ID"] = "CgNsc20SBGxkYXA"
+# # # Enable auth bypass for testing
+# os.environ["DISABLE_AUTH"] = "true"
+# # # Set test user ID to match existing conversation owner
+# os.environ["TEST_USER_ID"] = "CgNsc20SBGxkYXA"
 
 # Create required directories if they don't exist
 os.makedirs(IMAGE_DIR, exist_ok=True)
@@ -92,180 +99,26 @@ else:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # Startup: initialize hardware monitoring and cleanup service
+    """Simplified lifespan: start services, optionally init composer, yield, then shutdown."""
     logger.info("Initializing services...")
     cleanup_service.start()
 
-    # Auth middleware is already initialized and stored in app.state
-    logger.info("Auth middleware already initialized and stored in app.state")
-
-    # Initialize database connection
-    from db import storage  # pylint: disable=import-outside-toplevel
-    from server.config import (  # pylint: disable=import-outside-toplevel
-        DB_CONNECTION_STRING,
-    )
-    from db.init_db import (  # pylint: disable=import-outside-toplevel
-        initialize_database,
-    )
-
-    # Build connection string from individual environment variables if not already set
-    connection_string = DB_CONNECTION_STRING
-
-    if connection_string:
-        try:
-            await storage.initialize(connection_string)
-            logger.info("Database connection initialized successfully")
-
-            # Ensure default model profiles exist
-            logger.info("Initializing default model profiles...")
-        except Exception as e:
-            logger.error(f"Failed to initialize database: {e}")
-    else:
-        logger.warning(
-            "No database connection string provided, continuing without database access"
-        )
-        logger.info(
-            "DB_CONNECTION_STRING not found, attempting to build from individual variables..."
-        )
-        db_host = os.environ.get("DB_HOST")
-        db_port = os.environ.get("DB_PORT")
-        db_name = os.environ.get("DB_NAME")
-        db_user = os.environ.get("DB_USER")
-        db_password = os.environ.get("DB_PASSWORD")
-
-        if db_host and db_port and db_name and db_user and db_password:
-            connection_string = (
-                f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
-            )
-            logger.info(
-                f"Built connection string from environment variables: postgresql://{db_user}:***@{db_host}:{db_port}/{db_name}"
-            )
-        else:
-            logger.info(
-                "Cannot build connection string, missing environment variables:"
-            )
-            logger.info(f"  DB_HOST: {'✓' if db_host else '✗'}")
-            logger.info(f"  DB_PORT: {'✓' if db_port else '✗'}")
-            logger.info(f"  DB_NAME: {'✓' if db_name else '✗'}")
-            logger.info(f"  DB_USER: {'✓' if db_user else '✗'}")
-            logger.info(f"  DB_PASSWORD: {'✓' if db_password else '✗'}")
-
-    if connection_string:
-        logger.info("Initializing database connection...")
-        try:
-            # Initialize the connection pool
-            await storage.initialize(connection_string)
-            logger.info("Database connection initialized successfully")
-
-            # Initialize the database schema if needed
-            if storage.pool:
-                logger.info("Initializing database schema...")
-                schema_initialized = await initialize_database(storage.pool)
-                if schema_initialized:
-                    logger.info("Database schema initialized successfully")
-
-                    # Align sequences at startup to avoid ID drift after restores/migrations
-                    try:
-                        await maintenance_service.initialize(storage.pool)
-                        await maintenance_service.align_sequences()
-                        logger.info(
-                            "Database sequences aligned successfully at startup"
-                        )
-                    except Exception as e:
-                        logger.info(
-                            f"Warning: failed to align database sequences at startup: {e}"
-                        )
-
-                    # Initialize and start the database maintenance service
-                    # Set interval to 24 hours by default (can be configured via environment variable)
-                    maintenance_interval = int(
-                        os.environ.get("DB_MAINTENANCE_INTERVAL_HOURS", "24")
-                    )
-                    logger.info(
-                        f"Initializing database maintenance service with {maintenance_interval} hour interval"
-                    )
-                    await maintenance_service.initialize(
-                        storage.pool, maintenance_interval
-                    )
-                    await maintenance_service.start_maintenance_schedule()
-                    logger.info("Database maintenance service started")
-
-                    logger.info("Creating/Updating default model profiles...")
-                    try:
-                        await storage.get_service(
-                            storage.model_profile
-                        ).upsert_default_model_profiles()
-                        logger.info(
-                            "Default model profiles created/updated successfully."
-                        )
-                    except Exception as e:
-                        logger.info(
-                            f"Error creating/updating default model profiles: {e}"
-                        )
-                else:
-                    logger.info("Failed to initialize database schema")
-                    # If schema initialization failed, don't consider the storage initialized
-                    storage.initialized = False
-        except Exception as e:
-            logger.info(f"Error initializing database connection: {e}")
-            logger.info(
-                "Some features that depend on the database may not work properly"
-            )
-            # We don't raise the exception here to allow the server to start
-            # even if the database is not available. Routes will check for
-            # initialization before accessing database components.
-    else:
-        logger.info("\n" + "=" * 80)
-        logger.info("WARNING: NO DATABASE CONNECTION STRING AVAILABLE!")
-        logger.info("Database-dependent features will not work including:")
-        logger.info("  - User configuration")
-        logger.info("  - Conversation history")
-        logger.info("  - Memory features")
-        logger.info("  - Admin functions")
-        logger.info("=" * 80 + "\n")
-
-        # Log critical information to help debug
-        logger.info("Database-related environment variables:")
-        db_vars = [
-            "DB_HOST",
-            "DB_PORT",
-            "DB_NAME",
-            "DB_USER",
-            "DB_PASSWORD",
-            "DB_CONNECTION_STRING",
-        ]
-        for var in db_vars:
-            logger.info(f"  {var}: {'✓' if os.environ.get(var) else '✗'}")
-    # Initialize composer service
+    # Initialize database connection and schema if configured
     try:
-        from composer import initialize_composer
+        from db import storage  # pylint: disable=import-outside-toplevel
+        from server.config import (  # pylint: disable=import-outside-toplevel
+            DB_CONNECTION_STRING,
+        )
 
-        await initialize_composer()
-        logger.info("Composer service initialized successfully")
+        assert DB_CONNECTION_STRING is not None, "DB_CONNECTION_STRING is not set"
+
+        await storage.initialize(DB_CONNECTION_STRING)
+        logger.info("Database schema initialized successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize composer service: {e}")
-        # Don't fail the entire service if composer fails
-        logger.info(f"Warning: Composer service initialization failed: {e}")
-
-    logger.info("Services initialization completed successfully!")
-    yield
-    #     ]
-    # )
-    # logger.info(f"gRPC server started with PID {grpc_process.pid}")
-
-    # Log hardware information
-    # Add this near the beginning of your test to check CUDA capability
-    import torch
-
-    logger.info(f"CUDA is available: {torch.cuda.is_available()}")
-    if torch.cuda.is_available():
-        logger.info(f"CUDA Device Count: {torch.cuda.device_count()}")
-        for i in range(torch.cuda.device_count()):
-            logger.info(f"CUDA Device {i}: {torch.cuda.get_device_name(i)}")
-            logger.info(f"CUDA Capability: {torch.cuda.get_device_capability(i)}")
+        logger.error(f"Failed to initialize database schema: {e}")
 
     try:
-        yield  # This is where FastAPI serves requests
+        yield  # Application runs here
     finally:
         # Shutdown: clean up resources
         logger.info("Shutting down services...")
@@ -280,29 +133,25 @@ async def lifespan(_: FastAPI):
 
         # Stop composer service
         try:
-            from composer import shutdown_composer
-
             await shutdown_composer()
             logger.info("Composer service shutdown completed")
         except Exception as e:
             logger.info(f"Error stopping composer service: {e}")
 
-        # Stop vLLM service
+        # Attempt to gracefully stop and cleanup pipeline cache
         try:
-            # await cleanup_vllm_service()
-            logger.info("vLLM service shutdown completed")
-        except (RuntimeError, ValueError) as e:
-            logger.info(f"Error stopping vLLM service: {e}")
+            if local_pipeline_cache is not None:
+                logger.info("Stopping local pipeline cache and cleaning pipelines...")
+                try:
+                    local_pipeline_cache.stop()
+                    logger.info("Local pipeline cache stopped and cleaned")
+                except Exception as e:
+                    logger.info(f"Error stopping local pipeline cache: {e}")
+        except Exception:
+            pass
 
         cleanup_service.shutdown()
 
-
-# Import logging for auth middleware debugging
-from utils.logging import llmmllogger
-
-# Initialize auth middleware first before creating the app
-# This ensures middleware is ready before any routes are registered
-from server.config import AUTH_JWKS_URI
 
 logger.info(f"Pre-initializing auth middleware with JWKS URI: {AUTH_JWKS_URI}")
 global_auth_middleware = AuthMiddleware(AUTH_JWKS_URI)
@@ -320,16 +169,14 @@ app = FastAPI(
 # Store auth middleware in app.state right away
 app.state.auth_middleware = global_auth_middleware
 # Add message validation middleware to ensure proper response structure
-from server.middleware.message_validation import MessageValidationMiddleware
-
 app.add_middleware(MessageValidationMiddleware)
+app.middleware("http")(db_init_middleware)
 
 
 @app.middleware("http")
 async def auth_middleware_handler(request: Request, call_next):
     """Authentication middleware to handle token validation and user identification"""
     # Get logger for debugging
-    logger = llmmllogger.bind(component="auth-middleware")
     logger.debug(f"Processing request for path: {request.url.path}")
 
     # Skip auth for public endpoints
@@ -412,12 +259,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Add database initialization middleware
-from server.middleware.db_init_middleware import db_init_middleware
-
-app.middleware("http")(db_init_middleware)
-
 # Include non-versioned routers (for backward compatibility)
 app.include_router(images.router)
 app.include_router(model.router)
@@ -430,9 +271,6 @@ app.include_router(users.router)
 app.include_router(todos.router)
 
 # Import and include the internal router
-from server.routers import internal
-from server.routers import db_admin
-
 app.include_router(internal.router)
 app.include_router(db_admin.router)
 
@@ -447,11 +285,6 @@ app.include_router(static.router, prefix=f"/{version}")
 app.include_router(websockets.router, prefix=f"/{version}")
 app.include_router(users.router, prefix=f"/{version}")
 app.include_router(todos.router, prefix=f"/{version}")
-# Internal router is intentionally not versioned to maintain isolation
-# app.include_router(internal.router, prefix=f"/{version}")
-
-# Include OpenAI-compatible router
-# app.include_router(openai_router, tags=["openai-compatible"])
 
 
 @app.get("/")
@@ -482,29 +315,5 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Comprehensive health check endpoint."""
-    # from .routers.openai_compatible import vllm_service
 
-    health_status = {
-        "status": "healthy",
-        "services": {
-            "hardware_manager": "active",
-            # "vllm_service": {
-            #     "status": "ready" if vllm_service.is_ready() else "not_ready",
-            #     "model": vllm_service.model_name or "not_loaded",
-            # },
-        },
-        "cuda_available": False,
-        "cuda_devices": 0,
-    }
-
-    # Check CUDA availability
-    try:
-        import torch
-
-        health_status["cuda_available"] = torch.cuda.is_available()
-        if torch.cuda.is_available():
-            health_status["cuda_devices"] = torch.cuda.device_count()
-    except ImportError:
-        health_status["cuda_available"] = False
-
-    return health_status
+    return "OK"

@@ -23,7 +23,7 @@ export async function* gen(opts: RequestOptions): AsyncGenerator<ChatResponse> {
     'Content-Type': 'application/json'
   }
   opts.method = opts.method || 'GET';
-  
+
   // Incorporate API version in path unless it's an external API (has baseUrl specified)
   const apiVersion = opts.apiVersion || config.server.apiVersion;
   const apiPath = opts.baseUrl ? opts.path : `${apiVersion}/${opts.path}`;
@@ -74,7 +74,7 @@ export async function* gen(opts: RequestOptions): AsyncGenerator<ChatResponse> {
 
           const jsonStr = buffer.substring(startIdx, parseIndex + 1);
           const res = JSON.parse(jsonStr) as ChatResponse;
-          
+
           // Ensure message has a valid content array structure if it exists
           if (res.message) {
             // Fix the content field if it exists but isn't an array
@@ -85,15 +85,15 @@ export async function* gen(opts: RequestOptions): AsyncGenerator<ChatResponse> {
                 text: String(res.message.content)
               }];
             }
-            
+
             // Ensure content array exists
             if (!res.message.content) {
               res.message.content = [{
-                type: "text", 
+                type: "text",
                 text: ""
               }];
             }
-            
+
             // Ensure conversation_id exists on the message
             if (!res.message.conversation_id) {
               // Try to extract conversation_id from the URL path
@@ -102,7 +102,7 @@ export async function* gen(opts: RequestOptions): AsyncGenerator<ChatResponse> {
               res.message.conversation_id = conversationId;
             }
           }
-          
+
           yield res;
 
           // Move start index past this JSON object
@@ -123,7 +123,7 @@ export async function* gen(opts: RequestOptions): AsyncGenerator<ChatResponse> {
       // Try to parse any remaining data in the buffer
       try {
         const res = JSON.parse(buffer) as ChatResponse;
-        
+
         // Apply the same validations to the final chunk
         if (res.message) {
           // Fix the content field if it exists but isn't an array
@@ -134,15 +134,15 @@ export async function* gen(opts: RequestOptions): AsyncGenerator<ChatResponse> {
               text: String(res.message.content)
             }];
           }
-          
+
           // Ensure content array exists
           if (!res.message.content) {
             res.message.content = [{
-              type: "text", 
+              type: "text",
               text: ""
             }];
           }
-          
+
           // Ensure conversation_id exists on the message
           if (!res.message.conversation_id) {
             // Try to extract conversation_id from the URL path
@@ -151,7 +151,7 @@ export async function* gen(opts: RequestOptions): AsyncGenerator<ChatResponse> {
             res.message.conversation_id = conversationId;
           }
         }
-        
+
         yield res;
       } catch (e: unknown) {
         if (e instanceof Error) {

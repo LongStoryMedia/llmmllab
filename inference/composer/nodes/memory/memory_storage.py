@@ -5,6 +5,7 @@ Stores messages as memories with their embeddings.
 
 from composer.agents.memory_agent import MemoryAgent
 from composer.graph.state import WorkflowState
+from models import NodeMetadata
 from utils.logging import llmmllogger
 
 
@@ -19,13 +20,14 @@ class MemoryStorageNode:
     def __init__(
         self,
         memory_agent: "MemoryAgent",
+        node_metadata: NodeMetadata,
     ):
         """Initialize memory storage node with dependency injection.
 
         Args:
             memory_agent: Required MemoryAgent instance
         """
-        self.agent = memory_agent
+        self.agent = memory_agent.bind_node_metadata(node_metadata)
         self.logger = llmmllogger.logger.bind(component="MemoryStorageNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
@@ -73,6 +75,4 @@ class MemoryStorageNode:
                 user_id=getattr(state, "user_id", "unknown"),
                 error=str(e),
             )
-            # Don't raise - add error to state and continue workflow
-            state.error_details.append(f"Memory storage failed: {str(e)}")
             return state

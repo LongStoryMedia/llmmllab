@@ -27,6 +27,7 @@ Architectural Role:
 __version__ = "0.1.0"
 
 from .pipeline_factory import PipelineFactory, pipeline_factory
+from .pipeline_cache import local_pipeline_cache
 from .pipelines.llamacpp.chat import ReasoningAwareAIMessageChunk
 
 
@@ -34,4 +35,5 @@ __all__ = [
     "PipelineFactory",
     "pipeline_factory",
     "ReasoningAwareAIMessageChunk",
+    "local_pipeline_cache",
 ]

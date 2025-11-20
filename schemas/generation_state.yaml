@@ -3,7 +3,7 @@ type: string
 title: GenerationState
 description: "Current state of the generation process."
 enum:
-  - analysing
+  - analyzing
   - thinking
   - executing
   - responding

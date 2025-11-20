@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from composer.graph.state import WorkflowState
 from utils import extract_text_from_message
 from utils.logging import llmmllogger
+from models import NodeMetadata
 
 
 if TYPE_CHECKING:
@@ -24,8 +25,10 @@ class SearchSummaryNode:
     key point extraction, and source attribution.
     """
 
-    def __init__(self, primary_summary_agent: "PrimarySummaryAgent"):
-        self.agent = primary_summary_agent
+    def __init__(
+        self, primary_summary_agent: "PrimarySummaryAgent", node_metadata: NodeMetadata
+    ):
+        self.agent = primary_summary_agent.bind_node_metadata(node_metadata)
         self.logger = llmmllogger.logger.bind(component="SearchSummaryNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
@@ -45,7 +48,7 @@ class SearchSummaryNode:
 
             # Extract search results and query
             search_results = state.web_search_results
-            query = state.search_query or (
+            query = (
                 extract_text_from_message(state.current_user_message)
                 if state.current_user_message
                 else None

@@ -25,6 +25,7 @@ async def read_web_content(url: str) -> str:
 
     This tool fetches the HTML content from a given URL and extracts the readable text,
     removing HTML tags and formatting for clean consumption by AI models.
+    If you get a response code greater than or equal to 400, you may retry, but only up to 2 times. After that, return an error message.
 
     Args:
         url: The URL to read content from (must be http:// or https://)

@@ -24,7 +24,6 @@ class EmbeddingAgent(BaseAgent[List[List[float]]]):
         self,
         pipeline_factory: PipelineFactory,
         profile: ModelProfile,
-        node_metadata: NodeMetadata,
     ):
         """
         Initialize embedding agent with required dependencies.
@@ -34,7 +33,7 @@ class EmbeddingAgent(BaseAgent[List[List[float]]]):
             profile: Model profile for embedding generation
             node_metadata: Node execution metadata for tracking
         """
-        super().__init__(pipeline_factory, profile, node_metadata, "EmbeddingAgent")
+        super().__init__(pipeline_factory, profile, "EmbeddingAgent")
 
     async def generate_embeddings(
         self,

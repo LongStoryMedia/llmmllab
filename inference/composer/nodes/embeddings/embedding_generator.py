@@ -10,6 +10,8 @@ from composer.core.errors import NodeExecutionError
 from utils import extract_text_from_message
 from utils.logging import llmmllogger
 
+from models import NodeMetadata
+
 if TYPE_CHECKING:
     from composer.agents.embedding_agent import EmbeddingAgent
 
@@ -26,6 +28,7 @@ class EmbeddingGeneratorNode:
         self,
         embedding_agent: "EmbeddingAgent",
         model_name: str,
+        node_metadata: NodeMetadata,
     ):
         """
         Initialize embedding generator node.
@@ -34,7 +37,7 @@ class EmbeddingGeneratorNode:
             embedding_agent: Required EmbeddingAgent instance
             model_name: Required specific embedding model to use
         """
-        self.agent = embedding_agent
+        self.agent = embedding_agent.bind_node_metadata(node_metadata)
         self.model_name = model_name
         self.logger = llmmllogger.logger.bind(component="EmbeddingGeneratorNode")
 
@@ -90,5 +93,4 @@ class EmbeddingGeneratorNode:
                 error=str(e),
             )
             # Don't raise - add error to state and continue workflow
-            state.error_details.append(f"Embedding generation failed: {str(e)}")
             return state

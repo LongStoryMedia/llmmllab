@@ -58,7 +58,6 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
         self,
         pipeline_factory: "PipelineFactory",
         profile: ModelProfile,
-        node_metadata: NodeMetadata,
     ):
         """
         Initialize the intent classification agent with required dependencies.
@@ -68,7 +67,7 @@ class ClassifierAgent(BaseAgent[List[IntentAnalysis]]):
             profile: Model profile for intent analysis operations
             node_metadata: Node execution metadata for tracking
         """
-        super().__init__(pipeline_factory, profile, node_metadata, "ClassifierAgent")
+        super().__init__(pipeline_factory, profile, "ClassifierAgent")
         self.logger.info("Intent classifier initialized with analysis model profile")
 
     async def analyze(

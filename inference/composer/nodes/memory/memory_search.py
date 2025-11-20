@@ -6,6 +6,7 @@ Searches for similar memories using embeddings.
 from composer.agents.memory_agent import MemoryAgent
 from composer.graph.state import WorkflowState
 from composer.agents.embedding_agent import EmbeddingAgent
+from models import NodeMetadata
 from utils import extract_text_from_message
 from utils.logging import llmmllogger
 
@@ -22,6 +23,7 @@ class MemorySearchNode:
         self,
         memory_agent: "MemoryAgent",
         embedding_agent: "EmbeddingAgent",
+        node_metadata: NodeMetadata,
     ):
         """Initialize memory search node with dependency injection.
 
@@ -30,7 +32,7 @@ class MemorySearchNode:
             embedding_agent: Required EmbeddingAgent instance
         """
         self.agent = memory_agent
-        self.embedding_agent = embedding_agent
+        self.embedding_agent = embedding_agent.bind_node_metadata(node_metadata)
         self.logger = llmmllogger.logger.bind(component="MemorySearchNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:

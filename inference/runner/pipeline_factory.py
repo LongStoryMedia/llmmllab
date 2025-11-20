@@ -17,8 +17,15 @@ from models import (
     ModelTask,
     PipelinePriority,
 )
+from runner.pipelines.base import BasePipeline
 from utils.logging import llmmllogger
 from .pipeline_cache import LocalPipelineCacheManager
+
+try:
+    # Prefer the shared module-global cache if available
+    from .pipeline_cache import local_pipeline_cache as _GLOBAL_PIPELINE_CACHE
+except Exception:
+    _GLOBAL_PIPELINE_CACHE = None
 from .utils.model_loader import ModelLoader
 
 
@@ -41,8 +48,11 @@ class PipelineFactory:
         self._active_loads = 0  # Track active loading operations
         self._active_local_uses = 0  # Track active local pipeline uses
 
-        # Use our new local pipeline cache
-        self.local_cache = LocalPipelineCacheManager()
+        # Use the shared module-global cache if present, otherwise create one
+        if _GLOBAL_PIPELINE_CACHE is not None:
+            self.local_cache = _GLOBAL_PIPELINE_CACHE
+        else:
+            self.local_cache = LocalPipelineCacheManager()
 
         # Coordination for memory-constrained loading
         self._coord_lock = threading.Lock()
@@ -61,7 +71,7 @@ class PipelineFactory:
         priority: PipelinePriority = PipelinePriority.NORMAL,
         grammar: Optional[Type[BaseModel]] = None,
         metadata: Optional[dict] = {},
-    ) -> Union[BaseChatModel, Embeddings]:
+    ) -> Union[BasePipeline, Embeddings]:
         model_id = profile.model_name
         model = self._get_model_by_id(model_id)
         if not model:
@@ -95,7 +105,7 @@ class PipelineFactory:
                 p: ModelProfile,
                 g: Optional[Type[BaseModel]] = grammar,
                 metadata: Optional[dict] = {},
-            ) -> Optional[Union[BaseChatModel, Embeddings]]:
+            ) -> Optional[Union[BasePipeline, Embeddings]]:
                 return self.create_pipeline(m, p, g, metadata)
 
             pipeline = self.local_cache.get_or_create(
@@ -294,7 +304,7 @@ class PipelineFactory:
         profile: ModelProfile,
         grammar: Optional[Type[BaseModel]] = None,
         metadata: Optional[dict] = {},
-    ) -> Optional[Union[BaseChatModel, Embeddings]]:
+    ) -> Optional[Union[BasePipeline, Embeddings]]:
         """
         Create a pipeline instance based on model task and pipeline type.
         Args:
@@ -360,7 +370,7 @@ class PipelineFactory:
         profile: ModelProfile,
         grammar: Optional[Type[BaseModel]] = None,
         metadata: Optional[dict] = {},
-    ) -> BaseChatModel:
+    ) -> BasePipeline:
         self.logger.info(
             f"Creating text pipeline for model: {model.name}, pipeline: {model.pipeline}"
         )
@@ -388,7 +398,7 @@ class PipelineFactory:
         model: Model,
         profile: ModelProfile,
         metadata: Optional[dict] = {},
-    ) -> Optional[BaseChatModel]:
+    ) -> Optional[BasePipeline]:
         if model.pipeline == "FluxPipeline":
             try:
                 from .pipelines.txt2img.flux import (  # pylint: disable=import-outside-toplevel
@@ -408,7 +418,7 @@ class PipelineFactory:
         model: Model,
         profile: ModelProfile,
         metadata: Optional[dict] = {},
-    ) -> Optional[BaseChatModel]:
+    ) -> Optional[BasePipeline]:
         if model.pipeline == "FluxKontextPipeline":
             try:
                 from .pipelines.img2img.flux import (  # pylint: disable=import-outside-toplevel

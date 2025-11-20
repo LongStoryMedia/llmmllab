@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from models import (
     Memory,
     MemoryFragment,
+    NodeMetadata,
     Summary,
     SearchTopicSynthesis,
     MemorySource,
@@ -36,13 +37,14 @@ class MemoryCreationNode:
     def __init__(
         self,
         embedding_agent: "EmbeddingAgent",
+        node_metadata: NodeMetadata,
     ):
         """Initialize memory creation node with dependency injection.
 
         Args:
             embedding_agent: Required EmbeddingAgent instance
         """
-        self.embedding_agent = embedding_agent
+        self.embedding_agent = embedding_agent.bind_node_metadata(node_metadata)
         self.logger = llmmllogger.logger.bind(component="MemoryCreationNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
@@ -92,8 +94,6 @@ class MemoryCreationNode:
                 error=str(e),
             )
             # Don't raise - add error to state and continue workflow
-            if hasattr(state, "error_details"):
-                state.error_details.append(f"Memory creation failed: {str(e)}")
             return state
 
     async def _create_memories(

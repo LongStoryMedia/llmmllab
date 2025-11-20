@@ -4,6 +4,8 @@ import { Conversation } from '../../types/Conversation';
 import { Message } from '../../types/Message';
 import { Model } from '../../types/Model';
 import { useBackgroundContext } from '../../context/BackgroundContext';
+import { GenerationState } from '../../types';
+import { GenerationStateValues } from '../../types/GenerationState';
 // import { useBackgroundContext } from '../../context/BackgroundContext';
 
 export interface ChatState {
@@ -22,6 +24,7 @@ export interface ChatState {
   currentToolCalls: unknown[] | null;
   editingMessageId: number | null;
   editingMessageContent: string;
+  generationState: GenerationState;
 }
 
 export interface ChatActions {
@@ -44,6 +47,7 @@ export interface ChatActions {
   setCurrentToolCalls: React.Dispatch<React.SetStateAction<unknown[] | null>>;
   setEditingMessageId: (id: number | null) => void;
   setEditingMessageContent: (content: string) => void;
+  setGenerationState: (state: GenerationState) => void;
 }
 
 export const useChatState = (): [ChatState, ChatActions] => {
@@ -67,6 +71,7 @@ export const useChatState = (): [ChatState, ChatActions] => {
   const currentUserId = useMemo(() => user?.profile?.preferred_username ?? '', [user]);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const { controlState } = useBackgroundContext();
+  const [currentGenerationState, setCurrentGenerationState] = useState<GenerationState>(GenerationStateValues.RESPONDING);
 
   useEffect(() => {
     console.log("Control state changed:", controlState);
@@ -132,6 +137,10 @@ export const useChatState = (): [ChatState, ChatActions] => {
     );
   }, [currentUserId]);
 
+  const setGenerationState = useCallback((state: GenerationState) => {
+    setCurrentGenerationState(state);
+  }, []);
+
   const state: ChatState = {
     messages,
     conversations,
@@ -147,7 +156,8 @@ export const useChatState = (): [ChatState, ChatActions] => {
     currentThinking,
     currentToolCalls,
     editingMessageId,
-    editingMessageContent
+    editingMessageContent,
+    generationState: currentGenerationState
   };
 
   const actions: ChatActions = {
@@ -169,7 +179,8 @@ export const useChatState = (): [ChatState, ChatActions] => {
     setCurrentThinking,
     setCurrentToolCalls,
     setEditingMessageId,
-    setEditingMessageContent
+    setEditingMessageContent,
+    setGenerationState
   };
 
   return [state, actions];

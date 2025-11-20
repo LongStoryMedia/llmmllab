@@ -39,10 +39,6 @@ MessageInput = Union[str, Message, List[Union[str, Message]], List[str], List[Me
 def message_to_lc_message(message: Message) -> BaseMessage:
     """Convert a Message object to a LangChain BaseMessage, preserving multimodal content."""
 
-    # Import here to avoid circular imports
-
-    import json
-
     # Convert Message.content to the multimodal format that LangChain expects
     content_data = convert_message_content_to_langchain_format(message.content)
 
@@ -53,9 +49,13 @@ def message_to_lc_message(message: Message) -> BaseMessage:
         if isinstance(content_data, str):
             # Parse <tool_call>{"name": "func", "arguments": {...}}</tool_call> format
             tool_call_pattern = (
-                r"<tool_call>\s*({[^}]*(?:{[^}]*}[^}]*)*})\s*</tool_call>"
+                r"<((tool|function)[-_])call>\s*({[^}]*(?:{[^}]*}[^}]*)*})\s*</\1call>"
             )
-            matches = re.findall(tool_call_pattern, content_data, re.DOTALL)
+            matches = re.findall(
+                tool_call_pattern,
+                content_data,
+                re.DOTALL | re.IGNORECASE | re.MULTILINE,
+            )
 
             for match in matches:
                 try:

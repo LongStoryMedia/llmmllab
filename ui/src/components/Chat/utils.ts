@@ -1,3 +1,12 @@
+import {
+  Message,
+  GenerationState,
+  ToolCall,
+  IntentAnalysis
+} from '../../types';
+import { MessageContentTypeValues } from '../../types/MessageContentType';
+
+
 
 // Utility function to replace Unicode characters that cause LaTeX compatibility issues
 export const sanitizeForLaTeX = (text: string): string => {
@@ -20,16 +29,16 @@ export const sanitizeForLaTeX = (text: string): string => {
   );
 };
 
-import { Message } from '../../types/Message';
-import { MessageContentTypeValues } from '../../types/MessageContentType';
-import { ToolCall } from '../../types/ToolCall';
-import { IntentAnalysis } from '../../types/IntentAnalysis';
-
 export interface ParsedMessage {
   content: string;
   thinking: string | null;
   toolCalls: ToolCall[] | null;
   analyses: IntentAnalysis[] | null;
+}
+
+export interface ContentSection<T> {
+  state: GenerationState;
+  data: T;
 }
 
 export const parseResponse = (message: Message, currentThinking?: string | null, currentToolCalls?: ToolCall[] | null): ParsedMessage => {

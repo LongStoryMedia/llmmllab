@@ -78,6 +78,8 @@ const VirtualizedChatList: React.FC<VirtualizedChatListProps> = ({
   const listRef = useRef<List>(null);
   const [itemHeights, setItemHeights] = useState<Map<number, number>>(new Map());
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
+  // Track the raw scroll offset to decide "near bottom" precisely
+  const scrollOffsetRef = useRef<number>(0);
 
   // Total items = messages + streaming message (if present)
   const totalItems = messages.length + (streamingMessage ? 1 : 0);
@@ -97,19 +99,27 @@ const VirtualizedChatList: React.FC<VirtualizedChatListProps> = ({
         if (listRef.current) {
           listRef.current.resetAfterIndex(index, false);
 
-          // If this is the last item (streaming message) and we should scroll to bottom, scroll again
-          if (shouldScrollToBottom && index === totalItems - 1) {
-            setTimeout(() => {
-              if (listRef.current) {
-                listRef.current.scrollToItem(totalItems - 1, 'end');
-              }
-            }, 0);
+          // If this is the last item (streaming message) consider scrolling
+          // only when the user is near the bottom. This allows the user to
+          // scroll up while new content is streaming without being forcibly
+          // scrolled to the bottom. Use a small margin in pixels.
+          if (index === totalItems - 1) {
+            const marginPx = 30;
+            const totalHeight = Array.from(newMap.values()).reduce((s, h) => s + h, 0) || totalItems * 100;
+            const isNearBottom = scrollOffsetRef.current + containerHeight >= totalHeight - marginPx;
+            if (shouldScrollToBottom && isNearBottom) {
+              setTimeout(() => {
+                if (listRef.current) {
+                  listRef.current.scrollToItem(totalItems - 1, 'end');
+                }
+              }, 0);
+            }
           }
         }
       }
       return newMap;
     });
-  }, [shouldScrollToBottom, totalItems]);
+  }, [shouldScrollToBottom, totalItems, containerHeight]);
 
   // Data to pass to each item
   const itemData = useMemo(() => ({
@@ -127,10 +137,12 @@ const VirtualizedChatList: React.FC<VirtualizedChatListProps> = ({
 
   // Check if user is at bottom to determine auto-scroll behavior
   const handleScroll = useCallback(({ scrollOffset, scrollUpdateWasRequested }: { scrollOffset: number; scrollUpdateWasRequested: boolean }) => {
-    if (!scrollUpdateWasRequested && listRef.current) {
-      // Use react-window's built-in scroll methods for better accuracy
+    // Track the raw scroll offset for near-bottom calculations
+    scrollOffsetRef.current = scrollOffset;
+    if (!scrollUpdateWasRequested) {
       const totalHeight = Array.from(itemHeights.values()).reduce((sum, height) => sum + height, 0) || totalItems * 100;
-      const isNearBottom = scrollOffset + containerHeight >= totalHeight - 50; // More accurate calculation with smaller threshold
+      const marginPx = 60; // small margin to decide "near bottom"
+      const isNearBottom = scrollOffset + containerHeight >= totalHeight - marginPx;
       setShouldScrollToBottom(isNearBottom);
     }
   }, [containerHeight, totalItems, itemHeights]);

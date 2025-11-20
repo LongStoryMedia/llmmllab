@@ -39,7 +39,6 @@ class PrimarySummaryAgent(BaseAgent[str]):
         self,
         pipeline_factory: PipelineFactory,
         profile: ModelProfile,
-        node_metadata: NodeMetadata,
         summary_storage: "SummaryStorage",
         search_storage: "SearchStorage",
         user_config: UserConfig,
@@ -55,9 +54,7 @@ class PrimarySummaryAgent(BaseAgent[str]):
             search_storage: Injected search storage service
             user_config: User configuration object
         """
-        super().__init__(
-            pipeline_factory, profile, node_metadata, "PrimarySummaryAgent"
-        )
+        super().__init__(pipeline_factory, profile, "PrimarySummaryAgent")
         self.summary_storage = summary_storage
         self.search_storage = search_storage
         self.user_config = user_config

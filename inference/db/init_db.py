@@ -187,8 +187,6 @@ async def initialize_database(connection_pool: Any) -> bool:
                     [
                         ("thought.create_table", []),
                         ("analysis.create_table", []),
-                        ("analysis.migrate_to_intent_analysis_schema", []),
-                        ("analysis.remove_analysis_data_column", []),
                         ("tool_call.create_table", []),
                         ("tool_call.migrate_to_tool_execution_result_schema", []),
                     ],

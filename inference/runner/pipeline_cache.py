@@ -25,6 +25,7 @@ from models import (
     OptimalParameters,
     ModelParameters,
 )
+from runner.pipelines.base import BasePipeline
 from utils.logging import llmmllogger
 from .utils.hardware_manager import hardware_manager
 from .utils.resizer import Resizer
@@ -35,7 +36,7 @@ class _PipelineCacheEntry:
 
     def __init__(
         self,
-        pipeline: BaseChatModel | Embeddings,
+        pipeline: BasePipeline | Embeddings,
         priority: PipelinePriority,
         estimated_memory: float = 0,
     ):
@@ -51,7 +52,7 @@ class _PipelineCacheEntry:
         self._use_count = 0  # Track concurrent usage
 
     @property
-    def pipeline(self) -> Optional[BaseChatModel | Embeddings]:
+    def pipeline(self) -> Optional[BasePipeline | Embeddings]:
         return self._ref()
 
     @property
@@ -120,6 +121,7 @@ class LocalPipelineCacheManager:
         self._cache_timeout = cache_timeout
         self.logger = llmmllogger.logger.bind(component="LocalPipelineCacheManager")
         self._cleanup_thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
 
         # Initialize the resizer and OOM recovery components
         self._resizer = Resizer()
@@ -159,12 +161,12 @@ class LocalPipelineCacheManager:
         priority: PipelinePriority,
         create_fn: Callable[
             [Model, ModelProfile, Optional[Type[BaseModel]], Optional[dict]],
-            Optional[BaseChatModel | Embeddings],
+            Optional[BasePipeline | Embeddings],
         ],
         grammar: Optional[Type[BaseModel]] = None,
         user_config: Optional[UserConfig] = None,
         metadata: Optional[dict] = {},
-    ) -> BaseChatModel | Embeddings:
+    ) -> BasePipeline | Embeddings:
         model_id = model.id or model.model
         with self._lock:
             entry = self._cache.get(model_id)
@@ -172,6 +174,8 @@ class LocalPipelineCacheManager:
                 entry.touch()
                 pipe = entry.pipeline
                 if pipe:
+                    if isinstance(pipe, BasePipeline) and metadata:
+                        pipe.bind_metadata(metadata)
                     return pipe
             self._cache.pop(model_id, None)
 
@@ -734,15 +738,40 @@ class LocalPipelineCacheManager:
         )
         self._cleanup_thread.start()
 
+    def stop(self, timeout: float = 5.0) -> None:
+        """Signal the cleanup thread to stop and force-clean the cache.
+
+        This is safe to call multiple times.
+        """
+        try:
+            self._stop_event.set()
+            if self._cleanup_thread and self._cleanup_thread.is_alive():
+                self._cleanup_thread.join(timeout=timeout)
+        except Exception:
+            pass
+        # Ensure any remaining pipelines are cleaned up
+        try:
+            self.force_cleanup()
+        except Exception:
+            pass
+
     def _cleanup_loop(self) -> None:  # pragma: no cover
-        while True:
+        while not self._stop_event.is_set():
             try:
-                time.sleep(60)
+                # Wake periodically or when stopped
+
+                # Sleep in small intervals so stop() is responsive
+                for _ in range(6):
+                    if self._stop_event.is_set():
+                        break
+                    time.sleep(10)
+                if self._stop_event.is_set():
+                    break
                 self.clear_expired()
             except Exception:
                 pass
 
-    def _cleanup_pipeline(self, pipeline: BaseChatModel | Embeddings) -> None:
+    def _cleanup_pipeline(self, pipeline: BasePipeline | Embeddings) -> None:
         """Properly cleanup pipeline resources by calling both close() and cleanup() methods."""
         try:
             # Try both close() and cleanup() methods as different pipelines use different names
@@ -800,3 +829,12 @@ class LocalPipelineCacheManager:
                     del pipeline
             except Exception:
                 pass
+
+
+# Module-global cache manager for consumers that want a shared cache instance.
+# This allows external services to force cleanup on startup/shutdown.
+try:
+    local_pipeline_cache: LocalPipelineCacheManager = LocalPipelineCacheManager()
+except Exception:
+    # Fallback: if construction fails (e.g., during import in restricted env), create a minimal instance later
+    local_pipeline_cache = None  # type: ignore

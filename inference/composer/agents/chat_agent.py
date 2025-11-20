@@ -26,7 +26,6 @@ class ChatAgent(BaseAgent[ChatResponse]):
         self,
         pipeline_factory: PipelineFactory,
         profile: ModelProfile,
-        node_metadata: NodeMetadata,
         priority: PipelinePriority = PipelinePriority.MEDIUM,
     ):
         """
@@ -39,5 +38,5 @@ class ChatAgent(BaseAgent[ChatResponse]):
             priority: Pipeline execution priority
             stream: Whether to enable streaming responses by default
         """
-        super().__init__(pipeline_factory, profile, node_metadata)
+        super().__init__(pipeline_factory, profile, "ChatAgent")
         self.priority = priority

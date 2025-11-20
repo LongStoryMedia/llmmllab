@@ -31,7 +31,7 @@ from models import (
     Thought,
     IntentAnalysis,
 )
-from utils.logging import serialize_event_data  # Import logging utility
+from utils import extract_text_from_message  # Import logging utility
 
 # Import composer interface and streaming state management
 import composer
@@ -146,7 +146,14 @@ async def chat_completion(
                 user_id, conversation_id
             )
 
+            logger.info(f"Starting workflow execution for request {request_id}")
+
             async for event in composer.execute_workflow(initial_state, workflow):
+                print(
+                    extract_text_from_message(event.message) if event.message else "",
+                    flush=True,
+                    end="",
+                )  # Debug print
                 yield f"{event.model_dump_json()}"
 
         return StreamingResponse(

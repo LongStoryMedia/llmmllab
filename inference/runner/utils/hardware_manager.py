@@ -421,31 +421,60 @@ class EnhancedHardwareManager:
                                     try:
                                         import ctypes
 
-                                        # Try to load CUDA runtime and force device reset
-                                        try:
-                                            cuda = ctypes.CDLL("libcudart.so")
-                                        except OSError:
+                                        # Try to load CUDA runtime and force device reset using several likely library names
+                                        cuda = None
+                                        libcandidates = [
+                                            "libcudart.so",
+                                            "libcudart.so.12",
+                                            "libcudart.so.12.0",
+                                            "libcudart.so.11",
+                                            "libcudart.so.11.0",
+                                        ]
+                                        lib_used = None
+                                        for lib in libcandidates:
                                             try:
-                                                cuda = ctypes.CDLL("libcudart.so.12")
+                                                cuda = ctypes.CDLL(lib)
+                                                lib_used = lib
+                                                break
                                             except OSError:
-                                                try:
-                                                    cuda = ctypes.CDLL(
-                                                        "libcudart.so.11"
-                                                    )
-                                                except OSError:
-                                                    cuda = None
+                                                continue
+
+                                        if cuda is None:
+                                            # Last-resort: try a generic load (may fail on some systems)
+                                            try:
+                                                cuda = ctypes.CDLL(None)
+                                                lib_used = "<default>"
+                                            except Exception:
+                                                cuda = None
 
                                         if cuda:
                                             # cudaSetDevice + cudaDeviceReset = nuclear option
-                                            cuda.cudaSetDevice(i)
-                                            result = cuda.cudaDeviceReset()
-                                            if result == 0:  # cudaSuccess
-                                                self.logger.warning(
-                                                    f"🚨 NUCLEAR: Successfully reset CUDA device {i} via ctypes"
-                                                )
-                                            else:
+                                            try:
+                                                if hasattr(cuda, "cudaSetDevice"):
+                                                    try:
+                                                        cuda.cudaSetDevice(i)
+                                                    except Exception:
+                                                        # Some libcudart variants may not expose cudaSetDevice
+                                                        pass
+                                                result = None
+                                                try:
+                                                    result = cuda.cudaDeviceReset()
+                                                except Exception as e_result:
+                                                    self.logger.debug(
+                                                        f"ctypes cudaDeviceReset call raised for device {i}: {e_result}"
+                                                    )
+
+                                                if result == 0:
+                                                    self.logger.warning(
+                                                        f"🚨 NUCLEAR: Successfully reset CUDA device {i} via ctypes ({lib_used})"
+                                                    )
+                                                else:
+                                                    self.logger.debug(
+                                                        f"ctypes CUDA reset returned {result} for device {i} ({lib_used})"
+                                                    )
+                                            except Exception as e_ctypes:
                                                 self.logger.debug(
-                                                    f"ctypes CUDA reset returned code {result} for device {i}"
+                                                    f"ctypes cudaDeviceReset attempt failed for device {i}: {e_ctypes}"
                                                 )
                                     except Exception as nuclear_e:
                                         self.logger.debug(
@@ -512,6 +541,47 @@ class EnhancedHardwareManager:
 
         except Exception as e:
             self.logger.error(f"Error during CUDA context reset: {e}")
+
+    def _alloc_and_free(self, device_idx: int, num_bytes: int) -> bool:
+        """Allocate a temporary tensor on the given device and ensure it is freed.
+
+        Returns True if allocation succeeded, False otherwise.
+        """
+        try:
+            if num_bytes <= 0:
+                return False
+            # Number of float32 elements
+            n_elems = max(1, int(num_bytes) // 4)
+            with torch.no_grad():
+                temp = torch.empty(
+                    n_elems, dtype=torch.float32, device=f"cuda:{device_idx}"
+                )
+            # Immediately delete and run cleanup to release memory
+            try:
+                del temp
+            except Exception:
+                pass
+            # Force CUDA caches to drop unused memory
+            try:
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
+            try:
+                torch.cuda.synchronize(device_idx)
+            except Exception:
+                pass
+            try:
+                gc.collect()
+            except Exception:
+                pass
+            try:
+                if hasattr(torch.cuda, "ipc_collect"):
+                    torch.cuda.ipc_collect()
+            except Exception:
+                pass
+            return True
+        except Exception:
+            return False
 
     def nuclear_clear_memory(
         self, device_idx: Optional[int] = None, kill_processes: bool = False
@@ -949,17 +1019,15 @@ class EnhancedHardwareManager:
                                     # Conservative defragmentation - only use 20% of free memory
                                     test_size = max(
                                         1024 * 1024, int(free_mem * 0.2)
-                                    )  # At least 1MB
-                                    test_tensor = torch.empty(
-                                        test_size // 4,
-                                        dtype=torch.float32,
-                                        device=f"cuda:{device_idx}",
-                                    )
-                                    del test_tensor
-                                    torch.cuda.empty_cache()
-                                    self.logger.debug(
-                                        f"Defragmentation completed for GPU {device_idx}"
-                                    )
+                                    )  # At least 1MB (bytes)
+                                    if self._alloc_and_free(device_idx, test_size):
+                                        self.logger.debug(
+                                            f"Defragmentation completed for GPU {device_idx} (attempted {test_size/1e6:.1f} MB)"
+                                        )
+                                    else:
+                                        self.logger.debug(
+                                            f"Defragmentation allocation failed on GPU {device_idx} (attempted {test_size/1e6:.1f} MB)"
+                                        )
                                 except torch.cuda.OutOfMemoryError:
                                     # This is expected if memory is tight
                                     self.logger.debug(
@@ -1045,6 +1113,223 @@ class EnhancedHardwareManager:
                             )
 
         self.update_all_memory_stats()
+
+    def log_cuda_memory_owners(self, max_items: int = 10):
+        """Scan python heap for torch tensors on CUDA and log module.attribute owners.
+
+        Returns a list of tuples (module_name.attr, count, approx_bytes).
+        """
+        owners = []
+        try:
+            import gc
+            import sys
+
+            objs = gc.get_objects()
+            owner_map = {}
+
+            def record(owner_key, size):
+                cnt, sz = owner_map.get(owner_key, (0, 0))
+                owner_map[owner_key] = (cnt + 1, sz + (size or 0))
+
+            for o in objs:
+                try:
+                    if hasattr(o, "device") and hasattr(o, "nelement"):
+                        dev = getattr(o, "device")
+                        if str(dev).startswith("cuda"):
+                            found = False
+                            approx_size = 0
+                            try:
+                                approx_size = int(
+                                    getattr(o, "element_size", lambda: 0)()
+                                    * o.nelement()
+                                )
+                            except Exception:
+                                try:
+                                    approx_size = int(
+                                        getattr(o, "element_size", lambda: 0)()
+                                        * o.numel()
+                                    )
+                                except Exception:
+                                    approx_size = 0
+
+                            for m_name, m in list(sys.modules.items()):
+                                if not m:
+                                    continue
+                                try:
+                                    for attr in dir(m):
+                                        try:
+                                            val = getattr(m, attr)
+                                            if val is o:
+                                                record(f"{m_name}.{attr}", approx_size)
+                                                found = True
+                                                break
+                                        except Exception:
+                                            continue
+                                    if found:
+                                        break
+                                except Exception:
+                                    continue
+
+                            if not found:
+                                record("<heap>.<unknown>", approx_size)
+                except Exception:
+                    continue
+
+            for k, (cnt, sz) in owner_map.items():
+                owners.append((k, cnt, sz))
+
+            owners.sort(key=lambda x: x[1], reverse=True)
+            owners = owners[:max_items]
+
+            self.logger.info(f"Top Python-level CUDA owners: {owners}")
+            return owners
+        except Exception as e:
+            self.logger.info(f"Failed to scan python heap for CUDA tensors: {e}")
+            return owners
+
+    def aggressive_python_cleanup(self) -> None:
+        """Attempt to aggressively free Python-held CUDA resources.
+
+        This will try several non-destructive actions:
+        - Call `.cleanup()`/`.close()` on objects with these methods
+        - Move `torch.nn.Module` and parameters to CPU via `.to('cpu')`
+        - Call `.cpu()` on found CUDA tensors (best-effort)
+        - Run GC, empty_cache, synchronize and ipc_collect
+        """
+        try:
+            import gc as _gc
+
+            _gc.collect()
+            # First pass: call cleanup/close on likely objects
+            objs = list(_gc.get_objects())
+            for o in objs:
+                try:
+                    # Prefer explicit cleanup methods
+                    for name in ("cleanup", "close", "destroy"):
+                        fn = getattr(o, name, None)
+                        if callable(fn):
+                            try:
+                                fn()
+                            except Exception:
+                                pass
+
+                    # Move torch modules to CPU
+                    if hasattr(o, "parameters") and callable(getattr(o, "parameters")):
+                        try:
+                            # Some modules may be large; move to CPU to release GPU memory
+                            o.to("cpu")
+                        except Exception:
+                            pass
+
+                    # For direct tensors, try to create a CPU copy (best-effort)
+                    if hasattr(o, "device"):
+                        try:
+                            dev = getattr(o, "device")
+                            if str(dev).startswith("cuda"):
+                                try:
+                                    # Create a CPU copy then delete local reference
+                                    _ = o.detach().cpu()
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+                except Exception:
+                    continue
+
+            # Final cleanup steps
+            try:
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
+            try:
+                torch.cuda.synchronize()
+            except Exception:
+                pass
+            try:
+                if hasattr(torch.cuda, "ipc_collect"):
+                    torch.cuda.ipc_collect()
+            except Exception:
+                pass
+            _gc.collect()
+        except Exception as e:
+            self.logger.debug(f"Aggressive python cleanup failed: {e}")
+
+    def targeted_clear_module_cuda_refs(self, max_modules: int = 50) -> None:
+        """Scan top-level modules for attributes that are CUDA tensors or modules and clear them.
+
+        This is bounded and safer than a full aggressive sweep. It will:
+        - Inspect the first `max_modules` entries in sys.modules
+        - For each module, look at its attributes and if an attribute is a CUDA tensor or
+          torch.nn.Module with parameters on CUDA, attempt to move it to CPU or delete the attribute.
+        """
+        try:
+            import sys as _sys
+            import gc as _gc
+
+            modules = list(_sys.modules.items())[:max_modules]
+            for name, mod in modules:
+                try:
+                    # Skip None modules
+                    if mod is None:
+                        continue
+                    attrs = getattr(mod, "__dict__", None)
+                    if not attrs:
+                        continue
+                    for attr_name, val in list(attrs.items()):
+                        try:
+                            # Direct tensor on CUDA
+                            if hasattr(val, "device") and str(
+                                getattr(val, "device", "")
+                            ).startswith("cuda"):
+                                try:
+                                    # Try to replace with CPU copy
+                                    attrs[attr_name] = val.detach().cpu()
+                                    self.logger.info(
+                                        f"Moved tensor attr {name}.{attr_name} to CPU"
+                                    )
+                                except Exception:
+                                    try:
+                                        del attrs[attr_name]
+                                        self.logger.info(
+                                            f"Deleted tensor attr {name}.{attr_name}"
+                                        )
+                                    except Exception:
+                                        pass
+                                continue
+
+                            # torch.nn.Module with CUDA params
+                            if hasattr(val, "parameters") and callable(
+                                getattr(val, "parameters")
+                            ):
+                                try:
+                                    moved = False
+                                    for p in val.parameters():
+                                        if p.is_cuda:
+                                            try:
+                                                val.to("cpu")
+                                                moved = True
+                                                break
+                                            except Exception:
+                                                pass
+                                    if moved:
+                                        self.logger.info(
+                                            f"Moved module {name}.{attr_name} to CPU"
+                                        )
+                                except Exception:
+                                    pass
+                        except Exception:
+                            continue
+
+                except Exception:
+                    continue
+
+            _gc.collect()
+            try:
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
+        except Exception as e:
+            self.logger.debug(f"targeted_clear_module_cuda_refs failed: {e}")
 
     def get_gpu_process_info(
         self, device_idx: Optional[int] = None

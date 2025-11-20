@@ -7,10 +7,10 @@ from enum import Enum
 from pydantic import BaseModel, Field, AnyUrl, EmailStr, constr
 
 
-
 class GenerationState(str, Enum):
     """Current state of the generation process."""
-    ANALYSING = 'analysing'
-    THINKING = 'thinking'
-    EXECUTING = 'executing'
-    RESPONDING = 'responding'
+
+    ANALYZING = "analyzing"
+    THINKING = "thinking"
+    EXECUTING = "executing"
+    RESPONDING = "responding"

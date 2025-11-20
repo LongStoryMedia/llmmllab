@@ -3,6 +3,7 @@ Base pipeline class for processing data in a structured manner.
 """
 
 from abc import ABC, abstractmethod
+import logging
 import os
 from typing import Iterator, Optional, Type
 
@@ -14,6 +15,17 @@ from pydantic import BaseModel
 from langchain_core.language_models import BaseChatModel
 
 from models import Model, ModelProfile
+
+
+# Enable HTTP logging for debugging
+if os.getenv("LOG_LEVEL", "").lower() == "trace":
+    logging.getLogger("openai").setLevel(logging.DEBUG)
+    logging.getLogger("httpx").setLevel(logging.DEBUG)
+    logging.getLogger("httpcore").setLevel(logging.DEBUG)
+else:
+    logging.getLogger("openai").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 class BasePipeline(BaseChatModel, ABC):
@@ -98,4 +110,9 @@ class BasePipeline(BaseChatModel, ABC):
     @abstractmethod
     def bind_tools(self, tools: list[BaseModel], **kwargs) -> BaseChatModel:
         """Bind tools to the pipeline for tool calling support."""
+        pass
+
+    @abstractmethod
+    def bind_metadata(self, metadata: dict) -> BaseChatModel:
+        """Bind additional metadata to the pipeline."""
         pass
