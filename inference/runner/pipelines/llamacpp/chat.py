@@ -92,8 +92,8 @@ class ChatLlamaCppPipeline(BasePipeline):
 
         # Create server manager
         self.server_manager = LlamaCppServerManager(
-            model=self.model,
-            profile=self.profile,
+            model=model,
+            profile=profile,
             user_config=self.user_config,
         )
 
@@ -108,7 +108,7 @@ class ChatLlamaCppPipeline(BasePipeline):
         """Initialize llama.cpp server and create ChatOpenAI instance."""
         try:
             self._logger.info(f"Starting server for model {self.model.name}")
-
+            assert self.server_manager is not None
             # Start the llama.cpp server
             success = self.server_manager.start()
             if not success:
@@ -132,6 +132,7 @@ class ChatLlamaCppPipeline(BasePipeline):
     def _initialize_chat_openai(self):
         """Initialize ChatOpenAI instance to connect to llama.cpp server."""
         try:
+            assert self.server_manager is not None
             # Get the base URL from server manager
             base_url = self.server_manager.get_api_endpoint("")  # Gets /v1 endpoint
 
@@ -184,6 +185,7 @@ class ChatLlamaCppPipeline(BasePipeline):
         if not self.chat_model.metadata:
             self.chat_model.metadata = {}
         self.chat_model.metadata.update(metadata)
+
         return self.chat_model
 
     def __del__(self):
@@ -196,6 +198,7 @@ class ChatLlamaCppPipeline(BasePipeline):
 
     @property
     def _identifying_params(self) -> Dict[str, Any]:
+        assert self.server_manager is not None
         return {
             "model_name": self.model.name,
             "server_port": self.server_manager.port,

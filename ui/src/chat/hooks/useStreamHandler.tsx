@@ -1,8 +1,9 @@
 // Hook to handle streaming response logic and section management
 import { useCallback, useRef, useState } from 'react';
 import { ChatResponse } from '../../types/ChatResponse';
-import { ResponseSection, createSection } from '../ResponseSection';
+import { createSection } from '../utils';
 import { GenerationState } from '../../types/GenerationState';
+import { ResponseSection } from '../../types/ResponseSection';
 
 interface StreamingState {
   sections: ResponseSection[];
@@ -11,99 +12,105 @@ interface StreamingState {
 }
 
 export const useStreamHandler = () => {
-  const [streamingState, setStreamingState] = useState<StreamingState>({
-    sections: [],
-    currentSection: null,
-    observerMessages: []
-  });
+  // Keep refs for frequently-updated values to avoid recreating variables
+  const sectionsRef = useRef<ResponseSection[]>([]);
+  const currentSectionRef = useRef<ResponseSection | null>(null);
+  const observerMessagesRef = useRef<string[]>([]);
+
+  const [, setTick] = useState(0); // used to force re-renders when needed
 
   const sectionOrderCounter = useRef(0);
 
   /**
    * Process a single chunk from the streaming response
+   * Returns the new state immediately for synchronous access
    */
-  const processChunk = useCallback((chunk: ChatResponse) => {
+  const processChunk = useCallback((chunk: ChatResponse): StreamingState => {
     const currentState = chunk.state;
     const prevState = chunk.prev_state;
 
-    setStreamingState(prev => {
-      // Handle state transition - create new section if state changed
-      let sections = [...prev.sections];
-      let currentSection = prev.currentSection;
+    // alias refs to local vars for easier reading
+    let sections = sectionsRef.current;
+    let currentSection = currentSectionRef.current;
 
-      // Check if we need to start a new section
-      const stateChanged = prevState && currentState && prevState !== currentState;
+    // Check if we need to start a new section
+    const stateChanged = prevState && currentState && prevState !== currentState;
 
-      if (stateChanged || !currentSection) {
-        // Complete the previous section if it exists
-        if (currentSection) {
-          const completedSection = {
-            ...currentSection,
-            completedAt: Date.now()
-          };
-          sections = sections.map(s =>
-            s.id === currentSection!.id ? completedSection : s
-          );
-        }
-
-        // Create new section for current state
-        if (currentState) {
-          currentSection = createSection(currentState, sectionOrderCounter.current++);
-          sections = [...sections, currentSection];
-        }
+    if (stateChanged || !currentSection) {
+      // Complete the previous section if it exists
+      if (currentSection) {
+        const completedSection = {
+          ...currentSection,
+          completedAt: Date.now()
+        };
+        sections = sections.map(s => (s.id === currentSection!.id ? completedSection : s));
+        console.log('✅ Completed section:', currentSection.type);
       }
 
-      // Update current section with new content
-      if (currentSection && currentState) {
-        currentSection = updateSectionContent(
-          currentSection,
-          currentState,
-          chunk
-        );
-
-        // Update the section in the array
-        sections = sections.map(s =>
-          (s.id === currentSection!.id ? currentSection : s) as ResponseSection
-        );
+      // Create new section for current state
+      if (currentState) {
+        currentSection = createSection(currentState, sectionOrderCounter.current++);
+        sections = [...sections, currentSection];
       }
+    }
 
-      // Handle observer messages
-      const observerMessages = chunk.observer_messages || prev.observerMessages;
+    // Update current section with new content
+    if (currentSection && currentState) {
+      const updatedSection = updateSectionContent(currentSection, currentState, chunk);
 
-      return {
-        sections,
-        currentSection,
-        observerMessages
-      };
-    });
+      // Update the section in the array
+      sections = sections.map(s => (s.id === currentSection!.id ? updatedSection : s) as ResponseSection);
+
+      currentSection = updatedSection;
+    }
+
+    // Handle observer messages
+    const observerMessages = chunk.observer_messages || observerMessagesRef.current;
+
+    // Write back to refs
+    sectionsRef.current = sections;
+    currentSectionRef.current = currentSection;
+    observerMessagesRef.current = observerMessages;
+
+    // Trigger a re-render asynchronously so components reading hook values update
+    setTick(t => t + 1);
+
+    const newState: StreamingState = {
+      sections,
+      currentSection,
+      observerMessages
+    };
+
+    // Return the new state synchronously
+    return newState;
   }, []);
 
   /**
    * Reset streaming state
    */
   const resetStreaming = useCallback(() => {
-    setStreamingState({
-      sections: [],
-      currentSection: null,
-      observerMessages: []
-    });
+    console.log("🔄 Resetting streaming state");
+    sectionsRef.current = [];
+    currentSectionRef.current = null;
+    observerMessagesRef.current = [];
     sectionOrderCounter.current = 0;
+    setTick(t => t + 1);
   }, []);
 
   /**
    * Get the final combined content from all sections
    */
   const getFinalContent = useCallback(() => {
-    return streamingState.sections
-      .filter(s => s.type === 'responding')
-      .map(s => s.content)
+    return sectionsRef.current
+      .filter((s: ResponseSection) => s.type === 'responding')
+      .map((s: ResponseSection) => s.content)
       .join('');
-  }, [streamingState.sections]);
+  }, []);
 
   return {
-    sections: streamingState.sections,
-    currentSection: streamingState.currentSection,
-    observerMessages: streamingState.observerMessages,
+    sections: sectionsRef.current,
+    currentSection: currentSectionRef.current,
+    observerMessages: observerMessagesRef.current,
     processChunk,
     resetStreaming,
     getFinalContent

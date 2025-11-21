@@ -94,6 +94,19 @@ async def compose_workflow(user_id: str) -> CompiledStateGraph:
     return await svc.compose_workflow(user_id)
 
 
+async def clear_workflow_cache(user_id: str) -> None:
+    """
+    Clear the workflow cache for a specific user.
+
+    Args:
+        user_id: User ID whose workflow cache should be cleared
+    """
+    svc = await get_or_init_composer_service()
+    cache = svc.workflow_caches.get(user_id, None)
+    if cache:
+        await cache.close()
+
+
 async def create_initial_state(
     user_id: str,
     conversation_id: int,

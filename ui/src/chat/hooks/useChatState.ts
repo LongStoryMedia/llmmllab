@@ -6,7 +6,7 @@ import { Model } from '../../types/Model';
 import { useBackgroundContext } from '../../context/BackgroundContext';
 import { GenerationState } from '../../types';
 import { GenerationStateValues } from '../../types/GenerationState';
-// import { useBackgroundContext } from '../../context/BackgroundContext';
+import { ResponseSection } from '../../types/ResponseSection';
 
 export interface ChatState {
   messages: Message[];
@@ -20,11 +20,13 @@ export interface ChatState {
   models: Model[];
   isPaused: boolean;
   currentObserverMessages: string[];
-  currentThinking: string | null;
-  currentToolCalls: unknown[] | null;
   editingMessageId: number | null;
   editingMessageContent: string;
   generationState: GenerationState;
+
+  // New: streaming sections for ordered rendering
+  streamingSections: ResponseSection[];
+  currentStreamingSection: ResponseSection | null;
 }
 
 export interface ChatActions {
@@ -43,11 +45,13 @@ export interface ChatActions {
   setModels: (models: Model[]) => void;
   setIsPaused: (paused: boolean) => void;
   setCurrentObserverMessages: React.Dispatch<React.SetStateAction<string[]>>;
-  setCurrentThinking: React.Dispatch<React.SetStateAction<string | null>>;
-  setCurrentToolCalls: React.Dispatch<React.SetStateAction<unknown[] | null>>;
   setEditingMessageId: (id: number | null) => void;
   setEditingMessageContent: (content: string) => void;
   setGenerationState: (state: GenerationState) => void;
+
+  // New: streaming section actions
+  setStreamingSections: React.Dispatch<React.SetStateAction<ResponseSection[]>>;
+  setCurrentStreamingSection: React.Dispatch<React.SetStateAction<ResponseSection | null>>;
 }
 
 export const useChatState = (): [ChatState, ChatActions] => {
@@ -63,15 +67,20 @@ export const useChatState = (): [ChatState, ChatActions] => {
   });
   const [models, setModelsState] = useState<Model[]>([]);
   const [currentObserverMessages, setCurrentObserverMessages] = useState<string[]>([]);
-  const [currentThinking, setCurrentThinking] = useState<string | null>(null);
-  const [currentToolCalls, setCurrentToolCalls] = useState<unknown[] | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [editingMessageContent, setEditingMessageContent] = useState<string>('');
-  const { user } = useAuth(); // Assuming useAuth is a custom hook to get user info
+  const [currentGenerationState, setCurrentGenerationState] = useState<GenerationState>(
+    GenerationStateValues.RESPONDING
+  );
+
+  // New: streaming sections state
+  const [streamingSections, setStreamingSections] = useState<ResponseSection[]>([]);
+  const [currentStreamingSection, setCurrentStreamingSection] = useState<ResponseSection | null>(null);
+
+  const { user } = useAuth();
   const currentUserId = useMemo(() => user?.profile?.preferred_username ?? '', [user]);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const { controlState } = useBackgroundContext();
-  const [currentGenerationState, setCurrentGenerationState] = useState<GenerationState>(GenerationStateValues.RESPONDING);
 
   useEffect(() => {
     console.log("Control state changed:", controlState);
@@ -99,8 +108,9 @@ export const useChatState = (): [ChatState, ChatActions] => {
 
   const addConversation = useCallback((conversation: Conversation) => {
     if (!currentUserId) {
-      return;
+      return
     }
+
     setConversations(prev => ({
       ...prev,
       [currentUserId]: [conversation, ...(prev[currentUserId] || [])]
@@ -109,11 +119,14 @@ export const useChatState = (): [ChatState, ChatActions] => {
 
   const updateConversationInList = useCallback((id: number, updates: Partial<Conversation>) => {
     if (!currentUserId) {
-      return;
+      return
     }
+
     setConversations(prev => ({
       ...prev,
-      [currentUserId]: prev[currentUserId].map(c => c.id === id ? { ...c, ...updates } : c)
+      [currentUserId]: prev[currentUserId].map(c =>
+        c.id === id ? { ...c, ...updates } : c
+      )
     }));
 
     setCurrentConversation(prev =>
@@ -123,14 +136,13 @@ export const useChatState = (): [ChatState, ChatActions] => {
 
   const removeConversationFromList = useCallback((id: number) => {
     if (!currentUserId) {
-      return;
+      return
     }
 
     setConversations(prev => ({
       ...prev,
       [currentUserId]: prev[currentUserId].filter(c => c.id !== id)
     }));
-
 
     setCurrentConversation(prev =>
       prev?.id === id ? null : prev
@@ -153,11 +165,11 @@ export const useChatState = (): [ChatState, ChatActions] => {
     models,
     isPaused,
     currentObserverMessages,
-    currentThinking,
-    currentToolCalls,
     editingMessageId,
     editingMessageContent,
-    generationState: currentGenerationState
+    generationState: currentGenerationState,
+    streamingSections,
+    currentStreamingSection
   };
 
   const actions: ChatActions = {
@@ -176,11 +188,11 @@ export const useChatState = (): [ChatState, ChatActions] => {
     setModels,
     setIsPaused,
     setCurrentObserverMessages,
-    setCurrentThinking,
-    setCurrentToolCalls,
     setEditingMessageId,
     setEditingMessageContent,
-    setGenerationState
+    setGenerationState,
+    setStreamingSections,
+    setCurrentStreamingSection
   };
 
   return [state, actions];

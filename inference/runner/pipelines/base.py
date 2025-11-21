@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from langchain_core.language_models import BaseChatModel
 
 from models import Model, ModelProfile
+from runner.server_manager.base import BaseServerManager
 
 
 # Enable HTTP logging for debugging
@@ -55,7 +56,7 @@ class BasePipeline(BaseChatModel, ABC):
         model: Model,
         profile: ModelProfile,
         grammar: Optional[Type[BaseModel]],
-        metadata: Optional[dict] = {},
+        metadata: Optional[dict] = None,
     ):
         """Base LlamaCpp pipeline implementation.
 
@@ -116,3 +117,12 @@ class BasePipeline(BaseChatModel, ABC):
     def bind_metadata(self, metadata: dict) -> BaseChatModel:
         """Bind additional metadata to the pipeline."""
         pass
+
+    @abstractmethod
+    def shutdown(self):
+        """Shutdown the pipeline and release resources."""
+        pass
+
+    def __del__(self):
+        """Cleanup when pipeline is destroyed."""
+        self.shutdown()

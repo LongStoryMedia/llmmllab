@@ -1,5 +1,5 @@
 import { styled } from '@mui/material';
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import ChatContainer from '../components/Chat/ChatContainer';
 import FloatingNotifications from '../components/Chat/FloatingNotifications';
@@ -18,21 +18,23 @@ const ChatPageContainer = styled('div')({
 });
 
 const ChatPage = memo(() => {
-  const { messages, response, isTyping, isLoading, currentConversation, selectConversation, currentObserverMessages } = useChat();
+  const {
+    messages,
+    isTyping,
+    isLoading,
+    currentConversation,
+    selectConversation,
+    currentObserverMessages,
+    streamingSections
+  } = useChat();
+
   const { conversationId } = useParams();
-  const [currentMessage, setCurrentMessage] = useState<Message>({
-    role: 'assistant' as const,
-    content: response ? [{ type: 'text', text: response }] : [],
-    id: (messages[messages.length - 1]?.id ?? 0) + 1,
-    conversation_id: conversationId ? parseInt(conversationId, 10) : currentConversation?.id || 0
-  });
 
   // Load conversation from URL parameter when component mounts or conversationId changes
   useEffect(() => {
     if (conversationId) {
       const numericId = parseInt(conversationId, 10);
       if (!isNaN(numericId)) {
-        // Only call selectConversation if the conversationId is different from the currentConversation.id
         if (!currentConversation || currentConversation.id !== numericId) {
           selectConversation(numericId);
         }
@@ -41,28 +43,39 @@ const ChatPage = memo(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, currentConversation]);
 
-  useEffect(() => {
-    setCurrentMessage(prev => ({
-      ...prev,
-      content: response ? [{ type: 'text', text: response }] : []
-    }));
-  }, [response]);
+  // Create a streaming message when actively streaming
+  // IMPORTANT: Don't give it an ID so ChatBubble knows it's streaming
+  const streamingMessage = useMemo(() => {
+    if (!isTyping && !isLoading) {
+      return undefined;
+    }
+    if (streamingSections.length === 0) {
+      return undefined;
+    }
+
+    // Create a placeholder message for streaming
+    // The sections will be rendered inside ChatBubble
+    return {
+      role: 'assistant' as const,
+      content: [], // Empty - sections contain the real content
+      // NO ID - this tells ChatBubble it's a streaming message
+      conversation_id: conversationId ? parseInt(conversationId, 10) : currentConversation?.id || 0
+    } as Message;
+  }, [isTyping, isLoading, streamingSections, conversationId, currentConversation]);
 
   return (
     <ChatPageContainer>
-      {/* Show conversation todos if we have a conversation ID */}
       {conversationId && (
         <ConversationTodos conversationId={parseInt(conversationId, 10)} />
       )}
 
       <ChatContainer
         messages={messages}
-        streamingMessage={(isTyping || isLoading || response) ? currentMessage : undefined}
+        streamingMessage={streamingMessage}
       />
 
       <ChatInput />
 
-      {/* Floating notifications for observer messages */}
       <FloatingNotifications messages={currentObserverMessages} />
     </ChatPageContainer>
   );

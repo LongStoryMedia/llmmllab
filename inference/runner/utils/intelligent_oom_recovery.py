@@ -473,13 +473,7 @@ class IntelligentOOMRecovery:
                 "clear_memory", "reduce_batch", "move_to_cpu", "reduce_context"
             ] = "clear_memory"
             new_params = current_params
-            # Parameters stay the same, just clear memory via hardware manager
-            if attempt == 0:
-                hardware_manager.clear_memory()
-            elif attempt == 1:
-                hardware_manager.clear_memory(aggressive=True)
-            else:
-                hardware_manager.clear_memory(aggressive=True, nuclear=True)
+            hardware_manager.clear_memory()
 
         elif attempt <= 4:
             # Level 2: Reduce batch/ubatch progressively
@@ -968,7 +962,7 @@ class IntelligentOOMRecovery:
                 return False
             finally:
                 # Ensure cleanup
-                hardware_manager.clear_memory(aggressive=True)
+                hardware_manager.clear_memory()
 
         except Exception as e:
             self.logger.error(f"Memory preallocation test failed: {e}")

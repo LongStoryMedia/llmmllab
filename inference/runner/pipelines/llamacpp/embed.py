@@ -139,6 +139,10 @@ class EmbedLlamaCppPipeline(Embeddings):
         except Exception as e:
             self._logger.error(f"Error stopping embedding server: {e}")
 
+    def shutdown(self):
+        """Alias for close to match server manager interface."""
+        self.close()
+
     def __del__(self):
         """Cleanup on deletion."""
         try:

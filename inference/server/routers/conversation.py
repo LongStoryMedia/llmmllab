@@ -13,6 +13,8 @@ from fastapi import HTTPException, Request
 from models import Conversation, Message
 from server.middleware.auth import get_user_id, is_admin
 from server.config import logger  # Import logger from config
+from runner import local_pipeline_cache
+from composer import clear_workflow_cache
 from db import storage  # Import database storage
 from .chat import router
 
@@ -167,6 +169,31 @@ async def delete_conversation(conversation_id: int, request: Request):
         raise e
     except Exception as e:  # noqa: BLE001, justified for DB errors
         logger.error(f"Error deleting conversation {conversation_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}") from e
+
+
+@router.get("/cancel")
+async def cancel_conversation(request: Request):
+    """
+    Delete a conversation and all its messages.
+    """
+    logger.info(f"Received cancel request")
+    user_id = get_user_id(request)
+    logger.info(f"Received cancel request for user {user_id}")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    try:
+        user_config = await storage.get_service(storage.user_config).get_user_config(
+            user_id
+        )
+        logger.info(f"Cancelling conversation for user {user_id}")
+        await clear_workflow_cache(user_id)
+        local_pipeline_cache.cleanup_for_user(user_config)
+    except HTTPException as e:
+        raise e
+    except Exception as e:  # noqa: BLE001, justified for DB errors
+        logger.error(f"Error cancelling conversation: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}") from e
 
 

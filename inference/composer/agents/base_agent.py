@@ -341,15 +341,6 @@ class BaseAgent(ABC, Generic[T]):
         """
         self._log_operation_error(operation, error, **context)
 
-        # Create descriptive error message
-        error_msg = f"{operation} failed: {error}"
-
-        # Include node context if available
-        if self._node_metadata:
-            error_msg = f"[{self._node_metadata.node_name}] {error_msg}"
-
-        raise NodeExecutionError(error_msg) from error
-
     def _separate_system_prompt(
         self, messages: MessageInput
     ) -> tuple[str, List[Message]]:

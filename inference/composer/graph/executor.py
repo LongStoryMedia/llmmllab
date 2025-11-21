@@ -165,8 +165,8 @@ class WorkflowExecutor:
             async for event in workflow.astream_events(
                 state_dict, config=config, version="v2"
             ):
-                if total_events > 0 and not state:
-                    raise ValueError("GenerationState not initialized from first event")
+                # if total_events > 0 and not state:
+                # raise ValueError("GenerationState not initialized from first event")
 
                 total_events += 1
 
@@ -223,7 +223,7 @@ class WorkflowExecutor:
                 ) and isinstance(chunk, AIMessage):
                     if not metadata.get("checkpoint_ns", "").startswith("tools_agent"):
                         self.logger.debug(
-                            f"Workflow event received: {serialize_event_data(event)}",
+                            f"Skipping checkpoint_ns: {metadata.get('checkpoint_ns')}",
                         )
                         continue
 
@@ -320,6 +320,8 @@ class WorkflowExecutor:
                     )
                     res.message.tool_calls.append(tool_call)
 
+                prev_state = state
+
                 if new_state != state:
                     self.logger.debug(f"State transition: {state} -> {new_state}")
                     if state == GenerationState.THINKING:
@@ -359,9 +361,10 @@ class WorkflowExecutor:
                         )
                         message_contents[keyed_run_id] = content_block
                         contents_buffer = ""
-
-                    prev_state = state
                     state = new_state
+
+                if not state:
+                    continue
 
                 yield res
 

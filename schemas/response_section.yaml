@@ -1,0 +1,36 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+title: ResponseSection
+description: A section of a generated response
+type: object
+properties:
+  id:
+    type: string
+    description: Unique identifier for this section
+  order:
+    type: integer
+    description: Order in which this section appeared
+  startedAt:
+    type: integer
+    description: Timestamp when section started
+  completedAt:
+    type: integer
+    description: Timestamp when section completed (state changed)
+    nullable: true
+  type:
+    $ref: generation_state.yaml
+    description: Type of section based on generation state
+  content:
+    type: string
+    description: Accumulated content for this section
+    nullable: true
+  toolCalls:
+    type: array
+    items:
+      $ref: tool_call.yaml
+    description: Tool calls for executing sections
+    nullable: true
+required:
+  - id
+  - order
+  - startedAt
+  - type

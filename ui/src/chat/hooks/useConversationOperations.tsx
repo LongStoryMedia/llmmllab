@@ -86,11 +86,12 @@ export const useConversationOperations = (
 
   /**
    * Select an existing conversation
+   * Note: This doesn't fetch messages - that should be done by the caller
+   * to avoid coupling conversation and message operations
    */
   const selectConversation = useCallback(async (id: number) => {
     actions.setIsLoading(true);
     actions.setError(null);
-    actions.setMessages([]);
 
     try {
       // Find conversation in our state
@@ -100,6 +101,14 @@ export const useConversationOperations = (
 
       if (conversation) {
         actions.setCurrentConversation(conversation);
+      } else {
+        // If not found locally, fetch it
+        const conversationsData = await getManyConversations(getToken(auth.user));
+        const foundConversation = conversationsData.find(c => c.id === id);
+
+        if (foundConversation) {
+          actions.setCurrentConversation(foundConversation);
+        }
       }
     } catch (err: unknown) {
       actions.setError((err as Error).message);
@@ -107,7 +116,7 @@ export const useConversationOperations = (
     } finally {
       actions.setIsLoading(false);
     }
-  }, [actions, state.conversations]);
+  }, [actions, state.conversations, auth.user]);
 
   /**
    * Delete a conversation

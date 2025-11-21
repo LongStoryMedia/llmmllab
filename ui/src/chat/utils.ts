@@ -1,18 +1,7 @@
 // Types for managing ordered response sections during streaming
 
 import { GenerationState } from '../types/GenerationState';
-import { ToolCall } from '../types/ToolCall';
-
-export interface ResponseSection {
-  id: string; // Unique identifier for this section
-  order: number; // Order in which this section appeared
-  startedAt: number; // Timestamp when section started
-  completedAt?: number; // Timestamp when section completed (state changed)
-  type: GenerationState; // Type of section based on generation state
-  content?: string; // Accumulated content for this section
-  toolCalls?: ToolCall[]; // Tool calls for executing sections
-}
-
+import { ResponseSection } from '../types/ResponseSection';
 /**
  * Helper to create a new section based on generation state
  */

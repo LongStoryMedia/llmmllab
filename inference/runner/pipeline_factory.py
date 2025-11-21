@@ -121,15 +121,17 @@ class PipelineFactory:
                     f"Failed to create cached pipeline for model '{model.name}'"
                 )
 
+            assert profile.id
+
             # Automatically lock local pipelines for safety
-            locked = self.local_cache.lock_pipeline(model_id)
+            locked = self.local_cache.lock_pipeline(str(profile.id))
             if locked:
                 self.logger.debug(
-                    f"Automatically locked pipeline {model_id} for safe usage"
+                    f"Automatically locked pipeline {profile.id} for safe usage"
                 )
             else:
                 self.logger.warning(
-                    f"Could not lock pipeline {model_id} - proceeding without lock"
+                    f"Could not lock pipeline {profile.id} - proceeding without lock"
                 )
 
             return pipeline

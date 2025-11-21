@@ -11,11 +11,13 @@ import {
 } from '../../api';
 import { Message } from '../../types/Message';
 import { MessageContentTypeValues } from '../../types/MessageContentType';
+import { MutableRefObject } from 'react';
 import { useAuth } from '../../auth';
 
 export const useMessageOperations = (
   state: ChatState,
-  actions: ChatActions
+  actions: ChatActions,
+  sendMessageRef: MutableRefObject<((msg: Message) => Promise<void>) | null>
 ) => {
   const navigate = useNavigate();
   const auth = useAuth();
@@ -39,6 +41,7 @@ export const useMessageOperations = (
         getToken(auth.user),
         conversationId
       );
+      console.log(fetchedMessages);
 
       // Merge messages without duplicates
       actions.setMessages(existingMessages => {
@@ -110,12 +113,15 @@ export const useMessageOperations = (
   /**
    * Replay a message (delete it and subsequent messages, then re-send)
    */
-  const replayMessage = useCallback(async (
-    message: Message,
-    sendMessageFn: (msg: Message) => Promise<void>
-  ) => {
+  const replayMessage = useCallback(async (message: Message) => {
     if (!state.currentConversation?.id || state.isLoading || !message.id || !message.created_at) {
       console.error("Cannot replay message - missing required data");
+      return;
+    }
+
+    const sendMessageFn = sendMessageRef.current;
+    if (!sendMessageFn) {
+      console.error("Cannot replay message - sendMessage function not available");
       return;
     }
 
@@ -157,7 +163,7 @@ export const useMessageOperations = (
     } finally {
       actions.setIsLoading(false);
     }
-  }, [state.isLoading, state.currentConversation, actions, auth.user]);
+  }, [state.isLoading, state.currentConversation, state.messages, actions, auth.user, sendMessageRef]);
 
   /**
    * Start editing a message
@@ -196,11 +202,16 @@ export const useMessageOperations = (
    */
   const saveEditAndReplay = useCallback(async (
     messageId: number,
-    newContent: string,
-    sendMessageFn: (msg: Message) => Promise<void>
+    newContent: string
   ) => {
     if (!state.currentConversation?.id || !newContent.trim()) {
       console.error("Cannot save - missing conversation or empty content");
+      return;
+    }
+
+    const sendMessageFn = sendMessageRef.current;
+    if (!sendMessageFn) {
+      console.error("Cannot save and replay - sendMessage function not available");
       return;
     }
 
@@ -222,12 +233,12 @@ export const useMessageOperations = (
       actions.setEditingMessageContent('');
 
       // Replay with edited content
-      await replayMessage(editedMessage, sendMessageFn);
+      await replayMessage(editedMessage);
     } catch (error) {
       console.error("Failed to save edit and replay:", error);
       actions.setError((error as Error).message);
     }
-  }, [state.currentConversation?.id, state.messages, actions, replayMessage]);
+  }, [state.currentConversation?.id, state.messages, actions, replayMessage, sendMessageRef]);
 
   return {
     fetchMessages,

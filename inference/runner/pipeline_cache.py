@@ -1,4 +1,5 @@
-"""Local pipeline cache & memory management for local model providers.
+"""
+Local pipeline cache & memory management for local model providers.
 
 Extracted from pipeline_factory so only local (on-device) model providers
 consume persistent cached resources. Remote/API providers bypass caching.
@@ -165,24 +166,46 @@ class LocalPipelineCacheManager:
         ],
         grammar: Optional[Type[BaseModel]] = None,
         user_config: Optional[UserConfig] = None,
-        metadata: Optional[dict] = {},
+        metadata: Optional[dict] = None,
     ) -> BasePipeline | Embeddings:
-        model_id = model.id or model.model
+        assert profile.id is not None, "ModelProfile must have a valid ID"
+        profile_id = str(profile.id)
+
         with self._lock:
-            entry = self._cache.get(model_id)
+            entry = self._cache.get(profile_id)
             if entry and entry.is_alive():
-                entry.touch()
                 pipe = entry.pipeline
                 if pipe:
-                    if isinstance(pipe, BasePipeline) and metadata:
-                        pipe.bind_metadata(metadata)
-                    return pipe
-            self._cache.pop(model_id, None)
+                    # FIX: HEALTH CHECK
+                    # Verify the underlying server is actually running before returning it.
+                    # This handles "zombie" cache entries where the process was killed (e.g. by cancellation)
+                    # but the cache entry wasn't evicted.
+                    is_healthy = True
+                    if hasattr(pipe, "server_manager"):
+                        # Check server status if available
+                        sm = getattr(pipe, "server_manager", None)
+                        if sm and hasattr(sm, "is_running") and not sm.is_running():
+                            self.logger.warning(
+                                f"⚠️ Found cached pipeline for {profile_id} with dead server - evicting"
+                            )
+                            is_healthy = False
+
+                    if is_healthy:
+                        entry.touch()
+                        if isinstance(pipe, BasePipeline) and metadata:
+                            pipe.bind_metadata(metadata)
+                        return pipe
+
+                # If we reach here, the entry exists but is either:
+                # 1. Dead (weakref is None)
+                # 2. Unhealthy (server is dead)
+                # So we remove it.
+                self._cache.pop(profile_id, None)
 
         required = self.estimate_memory(model, profile)
 
         # Check if graceful degradation is enabled and try OOM recovery if needed
-        if not self._ensure_memory(required, exclude=model_id):
+        if not self._ensure_memory(required, exclude=profile_id):
             # Check if we should try intelligent OOM recovery
             if (
                 user_config
@@ -216,7 +239,7 @@ class LocalPipelineCacheManager:
                     )
 
                     # Try again with optimized parameters
-                    if self._ensure_memory(optimized_required, exclude=model_id):
+                    if self._ensure_memory(optimized_required, exclude=profile_id):
                         required = optimized_required
                         self.logger.info(
                             "✅ OOM recovery successful, proceeding with optimized parameters"
@@ -245,13 +268,13 @@ class LocalPipelineCacheManager:
             raise RuntimeError(f"Failed to create pipeline for {model.name}")
 
         with self._lock:
-            self._cache[model_id] = _PipelineCacheEntry(pipeline, priority, required)
-            self.logger.debug(f"💾 Cached NEW pipeline for {model_id}")
+            self._cache[profile_id] = _PipelineCacheEntry(pipeline, priority, required)
+            self.logger.debug(f"💾 Cached NEW pipeline for {profile_id}")
 
         # Auto-mark small models (likely embeddings) as persistent
         if required < 2 * 1024 * 1024 * 1024:  # < 2GB
-            self.set_persistent(model_id, True)
-            self.logger.info(f"🔒 Auto-marked small model {model_id} as persistent")
+            self.set_persistent(profile_id, True)
+            self.logger.info(f"🔒 Auto-marked small model {profile_id} as persistent")
 
         hardware_manager.update_all_memory_stats()
         return pipeline
@@ -456,8 +479,77 @@ class LocalPipelineCacheManager:
                 self._cache.pop(mid, None)
                 if entry and entry.pipeline:
                     self._cleanup_pipeline(entry.pipeline)
-        hardware_manager.clear_memory(aggressive=True, nuclear=True)
+        hardware_manager.clear_memory()
         return count
+
+    def cleanup_for_user(self, user_config: UserConfig) -> int:
+        """Cleanup all pipelines associated with a specific user."""
+        cleaned_count = 0
+        pids_to_cleanup = []
+
+        with self._lock:
+            # First pass: collect all PIDs and clean up pipelines
+            # FIX: Iterate over ALL model fields, not just set ones
+            # This ensures default profile IDs (like Chat/Primary) are caught even if not explicitly set in DB
+            for model_profile_field in user_config.model_profiles.model_fields:
+                profile_id = getattr(user_config.model_profiles, model_profile_field)
+                if not profile_id:
+                    continue
+
+                profile_id = str(profile_id)
+                entry = self._cache.get(profile_id)
+
+                if entry and entry.pipeline:
+                    # Unlock the pipeline before cleanup
+                    if entry.in_use:
+                        entry.unlock()
+                        self.logger.info(
+                            f"Unlocked pipeline {profile_id} before cleanup"
+                        )
+
+                    # Extract PID if it's a server-based pipeline
+                    pid = None
+                    if isinstance(entry.pipeline, BasePipeline):
+                        if hasattr(entry.pipeline, "server_manager") and entry.pipeline.server_manager:  # type: ignore[attr-defined]
+                            pid = entry.pipeline.server_manager.pid  # type: ignore[attr-defined]
+                            if pid:
+                                pids_to_cleanup.append(pid)
+                                self.logger.info(
+                                    f"Collected PID {pid} for cleanup from pipeline {profile_id}"
+                                )
+
+                    # Now remove from cache
+                    self._cache.pop(profile_id, None)
+
+                    # Shutdown the pipeline (stops the server gracefully)
+                    self._cleanup_pipeline(entry.pipeline)
+                    cleaned_count += 1
+
+            # Second pass: Kill any remaining processes and clear GPU memory
+            if pids_to_cleanup:
+                self.logger.info(
+                    f"Performing GPU cleanup for {len(pids_to_cleanup)} process(es): {pids_to_cleanup}"
+                )
+
+                # Kill each PID individually on each GPU it's using
+                for pid in pids_to_cleanup:
+                    for device_idx in range(
+                        hardware_manager.gpu_count if hardware_manager.has_gpu else 0
+                    ):
+                        # Check if this PID is on this GPU
+                        processes = hardware_manager.get_gpu_process_info(
+                            device_idx
+                        ).get(device_idx, [])
+                        if any(p["pid"] == pid for p in processes):
+                            self.logger.info(f"Clearing GPU {device_idx} for PID {pid}")
+                            # Nuclear clear for this specific PID only, with reinitialization
+                            hardware_manager.clear_memory(
+                                device_idx=device_idx, pid=pid
+                            )
+
+            self.logger.info("Completed GPU cleanup for all collected PIDs")
+
+        return cleaned_count
 
     # ---- Internals ----
     def _convert_model_parameters_to_optimal(
@@ -612,7 +704,7 @@ class LocalPipelineCacheManager:
                         self._cleanup_pipeline(removed.pipeline)
 
                 # Aggressive memory clear after eviction
-                hardware_manager.clear_memory(aggressive=True, nuclear=True)
+                hardware_manager.clear_memory()
                 self.logger.info(
                     "🧹 Completed aggressive cache clearing for very large model"
                 )
@@ -633,7 +725,7 @@ class LocalPipelineCacheManager:
 
         if dead:
             self.logger.debug(f"🗑️ Cleared {len(dead)} dead entries")
-            hardware_manager.clear_memory(aggressive=False)
+            hardware_manager.clear_memory()
             if hardware_manager.check_memory_available(required):
                 return True
 
@@ -690,7 +782,7 @@ class LocalPipelineCacheManager:
                 removed = self._cache.pop(mid, None)
             if removed and removed.pipeline:
                 self._cleanup_pipeline(removed.pipeline)
-            hardware_manager.clear_memory(aggressive=True, nuclear=True)
+            hardware_manager.clear_memory()
 
             if hardware_manager.check_memory_available(required):
                 self.logger.info(f"✅ Memory freed after evicting {mid}, proceeding")
@@ -714,7 +806,7 @@ class LocalPipelineCacheManager:
                     removed = self._cache.pop(mid, None)
                 if removed and removed.pipeline:
                     self._cleanup_pipeline(removed.pipeline)
-                hardware_manager.clear_memory(aggressive=True, nuclear=True)
+                hardware_manager.clear_memory()
 
                 if hardware_manager.check_memory_available(required):
                     self.logger.info(
@@ -774,61 +866,11 @@ class LocalPipelineCacheManager:
     def _cleanup_pipeline(self, pipeline: BasePipeline | Embeddings) -> None:
         """Properly cleanup pipeline resources by calling both close() and cleanup() methods."""
         try:
-            # Try both close() and cleanup() methods as different pipelines use different names
-            close_fn = getattr(pipeline, "close", None)
-            if callable(close_fn):
-                self.logger.debug(
-                    f"Calling close() on pipeline {type(pipeline).__name__}"
-                )
-                close_fn()
-
-            cleanup_fn = getattr(pipeline, "cleanup", None)
-            if callable(cleanup_fn):
-                self.logger.debug(
-                    f"Calling cleanup() on pipeline {type(pipeline).__name__}"
-                )
-                cleanup_fn()
-
-            # Also check nested llm attribute
-            llm = getattr(pipeline, "llm", None)
-            if llm is not None:
-                llm_close = getattr(llm, "close", None)
-                if callable(llm_close):
-                    self.logger.debug(
-                        f"Calling close() on nested llm {type(llm).__name__}"
-                    )
-                    llm_close()
-
-                llm_cleanup = getattr(llm, "cleanup", None)
-                if callable(llm_cleanup):
-                    self.logger.debug(
-                        f"Calling cleanup() on nested llm {type(llm).__name__}"
-                    )
-                    llm_cleanup()
-
-            # Also check for llama_instance directly (BaseLlamaCppPipeline specific)
-            llama_instance = getattr(pipeline, "llama_instance", None)
-            if llama_instance is not None:
-                llama_close = getattr(llama_instance, "close", None)
-                if callable(llama_close):
-                    self.logger.debug(
-                        f"Calling close() on llama_instance {type(llama_instance).__name__}"
-                    )
-                    llama_close()
-
-            self.logger.info(
-                f"🗑️ Successfully cleaned up pipeline {type(pipeline).__name__}"
-            )
+            del pipeline.server_manager  # type: ignore[attr-defined]
+            del pipeline
 
         except Exception as e:
             self.logger.warning(f"Error during pipeline cleanup: {e}")
-        finally:
-            # Force deletion regardless of cleanup success
-            try:
-                if pipeline is not None:
-                    del pipeline
-            except Exception:
-                pass
 
 
 # Module-global cache manager for consumers that want a shared cache instance.

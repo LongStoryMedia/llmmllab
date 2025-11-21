@@ -6,7 +6,6 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { sanitizeForLaTeX } from './utils';
-import LoadingAnimation from '../Shared/LoadingAnimation';
 import Stamp from '../Shared/Stamp';
 
 interface ThinkSectionProps {
@@ -17,7 +16,7 @@ interface ThinkSectionProps {
   inProgress?: boolean;
 }
 
-const ThinkSection: React.FC<ThinkSectionProps> = ({ think, thinking, searching, inProgress }) => {
+const ThinkSection: React.FC<ThinkSectionProps> = ({ think }) => {
   const [showThink, setShowThink] = useState(false);
   const theme = useTheme();
 
@@ -35,14 +34,11 @@ const ThinkSection: React.FC<ThinkSectionProps> = ({ think, thinking, searching,
       }}
     >
       {think && (<>
-        {inProgress && <LoadingAnimation size={70} sx={{ mr: 1, position: 'absolute', left: 0, right: 0, margin: 'auto' }} />}
         <Box sx={{ mb: 1, ml: 2 }}>
           <Tooltip title={showThink ? 'Hide Thoughts' : 'Show Thoughts'} arrow placement='right'>
             <Button
               size="small"
               variant="outlined"
-              loadingIndicator={<LoadingAnimation size={50} sx={{ mr: 1 }} />}
-              loading={thinking || searching}
               onClick={() => setShowThink((v) => !v)}
             >
               <Stamp />

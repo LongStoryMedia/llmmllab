@@ -39,20 +39,8 @@ export const removeConversation = async (accessToken: string, id: number) => {
   });
 }
 
-export const pause = async (accessToken: string, conversationId: number) => req({
-  method: 'POST',
-  path: `chat/conversations/${conversationId}/pause`,
-  headers: getHeaders(accessToken)
-})
-
-export const resume = async (accessToken: string, conversationId: number) => req({
-  method: 'POST',
-  path: `chat/conversations/${conversationId}/resume`,
-  headers: getHeaders(accessToken)
-})
-
-export const cancel = async (accessToken: string, conversationId: number) => req({
-  method: 'POST',
-  path: `chat/conversations/${conversationId}/cancel`,
+export const cancel = async (accessToken: string) => req({
+  method: 'GET',
+  path: `chat/cancel`,
   headers: getHeaders(accessToken)
 })

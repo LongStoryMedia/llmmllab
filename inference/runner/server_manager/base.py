@@ -38,17 +38,25 @@ class BaseServerManager(ABC):
         )
         self.process: Optional[subprocess.Popen] = None
         self.port: int = port or self._find_available_port()
-        self.server_url = f"http://localhost:{self.port}"  # No /v1 suffix
+
+        # FIX: Use 127.0.0.1 explicitly to match llama-server host and avoid IPv6/localhost ambiguity
+        self.server_url = f"http://127.0.0.1:{self.port}"  # No /v1 suffix
+
         self._lock = threading.Lock()
         self._shutdown_event = threading.Event()
         self.startup_timeout = startup_timeout
+        self.pid: Optional[int] = None
 
     def _find_available_port(self, start_port: int = 8001) -> int:
         """Find an available port starting from start_port."""
         for port in range(start_port, start_port + 100):
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                # FIX: Ensure we don't accidentally reuse a port in TIME_WAIT
+                # by NOT setting SO_REUSEADDR. This forces us to skip ports
+                # that are not fully clean.
+                # Also bind explicitly to 127.0.0.1 to match server config.
                 try:
-                    s.bind(("localhost", port))
+                    s.bind(("127.0.0.1", port))
                     return port
                 except OSError:
                     continue
@@ -105,6 +113,7 @@ class BaseServerManager(ABC):
                 self._logger.info(
                     f"Process started with PID {self.process.pid}, waiting for server readiness..."
                 )
+                self.pid = self.process.pid
 
                 # Wait for server to be ready
                 if self._wait_for_server():
@@ -222,3 +231,12 @@ class BaseServerManager(ABC):
         except Exception:
             pass
         return {}
+
+    def __del__(self):
+        """Cleanup when server manager is destroyed."""
+        try:
+            self.stop()
+        except Exception as e:
+            self._logger.warning(f"Error during server manager cleanup: {e}")
+
+        del self.process

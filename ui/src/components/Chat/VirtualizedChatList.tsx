@@ -80,6 +80,8 @@ const VirtualizedChatList: React.FC<VirtualizedChatListProps> = ({
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
   // Track the raw scroll offset to decide "near bottom" precisely
   const scrollOffsetRef = useRef<number>(0);
+  // Prevent scheduling many scroll calls while streaming updates continuously
+  const scrollScheduledRef = useRef<boolean>(false);
 
   // Total items = messages + streaming message (if present)
   const totalItems = messages.length + (streamingMessage ? 1 : 0);
@@ -108,11 +110,16 @@ const VirtualizedChatList: React.FC<VirtualizedChatListProps> = ({
             const totalHeight = Array.from(newMap.values()).reduce((s, h) => s + h, 0) || totalItems * 100;
             const isNearBottom = scrollOffsetRef.current + containerHeight >= totalHeight - marginPx;
             if (shouldScrollToBottom && isNearBottom) {
-              setTimeout(() => {
-                if (listRef.current) {
-                  listRef.current.scrollToItem(totalItems - 1, 'end');
-                }
-              }, 0);
+              if (!scrollScheduledRef.current) {
+                scrollScheduledRef.current = true;
+                // schedule one scroll on next animation frame to avoid constant resets
+                window.requestAnimationFrame(() => {
+                  if (listRef.current) {
+                    listRef.current.scrollToItem(totalItems - 1, 'end');
+                  }
+                  scrollScheduledRef.current = false;
+                });
+              }
             }
           }
         }
@@ -131,7 +138,15 @@ const VirtualizedChatList: React.FC<VirtualizedChatListProps> = ({
   // Auto-scroll to bottom when new messages arrive or streaming content updates
   useEffect(() => {
     if (shouldScrollToBottom && listRef.current && totalItems > 0) {
-      listRef.current.scrollToItem(totalItems - 1, 'end');
+      if (!scrollScheduledRef.current) {
+        scrollScheduledRef.current = true;
+        window.requestAnimationFrame(() => {
+          if (listRef.current) {
+            listRef.current.scrollToItem(totalItems - 1, 'end');
+          }
+          scrollScheduledRef.current = false;
+        });
+      }
     }
   }, [totalItems, shouldScrollToBottom, streamingMessage]);
 
@@ -152,7 +167,7 @@ const VirtualizedChatList: React.FC<VirtualizedChatListProps> = ({
   }
 
   return (
-    <ListContainer>
+    <ListContainer onPointerDown={() => setShouldScrollToBottom(false)}>
       <List
         ref={listRef}
         height={containerHeight - 140} // Account for padding and input

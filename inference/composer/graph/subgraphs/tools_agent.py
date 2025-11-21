@@ -124,7 +124,6 @@ class ToolsAgentSubgraph:
                 f"📤 Invoking ChatOpenAI with {len(tools_list)} tools available"
             )
 
-            logger.debug(f"State messages: {serialize_event_data(state.messages)}")
             logger.debug(f"tools: {tools_dict.keys()}")
 
             response = await self.chat_agent.run(
