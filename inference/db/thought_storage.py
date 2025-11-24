@@ -41,11 +41,9 @@ class ThoughtStorage:
             # Use provided connection or acquire a new one
             if conn is None:
                 async with self.typed_pool.acquire() as connection:
-                    return await self._add_thought(
-                        thought.message_id, thought.text, connection
-                    )
+                    return await self._add_thought(thought, connection)
             else:
-                return await self._add_thought(thought.message_id, thought.text, conn)
+                return await self._add_thought(thought, conn)
 
         except Exception as e:
             self.logger.error(
@@ -54,19 +52,26 @@ class ThoughtStorage:
             return None
 
     async def _add_thought(
-        self, message_id: int, text: str, conn: TypedConnection
+        self,
+        thought: Thought,
+        conn: TypedConnection,
     ) -> Optional[int]:
         """Internal method to add thought using a specific connection."""
         row = await conn.fetchrow(
-            self.get_query("thought.add_thought"), message_id, text
+            self.get_query("thought.add_thought"),
+            thought.message_id,
+            thought.text,
+            thought.created_at,
         )
 
         if row:
             thought_id = row["id"]
-            self.logger.info(f"Added thought {thought_id} for message {message_id}")
+            self.logger.info(
+                f"Added thought {thought_id} for message {thought.message_id}"
+            )
             return thought_id
         else:
-            self.logger.error(f"Failed to add thought for message {message_id}")
+            self.logger.error(f"Failed to add thought for message {thought.message_id}")
             return None
 
     async def get_thoughts_by_message(self, message_id: int) -> List[Thought]:

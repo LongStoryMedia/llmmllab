@@ -50,8 +50,8 @@ class EmbedLlamaCppPipeline(Embeddings):
         )
 
         # Start persistent server for embeddings
-        success = self.server_manager.start()
-        if not success:
+        self.started = self.server_manager.start()
+        if not self.started:
             raise RuntimeError(
                 f"Failed to start embedding server for model {model.name}"
             )

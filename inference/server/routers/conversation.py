@@ -7,16 +7,25 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 - Versioned: /v1/chat/...
 """
 
+from typing import AsyncIterator, Optional
 from datetime import datetime as dt
 
 from fastapi import HTTPException, Request
-from models import Conversation, Message
-from server.middleware.auth import get_user_id, is_admin
+from fastapi.responses import StreamingResponse
+from models import (
+    Conversation,
+    Message,
+    MessageContent,
+    MessageContentType,
+    MessageRole,
+)
+from pydantic import BaseModel
+from server.middleware.auth import get_request_id, get_user_id, is_admin
 from server.config import logger  # Import logger from config
 from runner import local_pipeline_cache
 from composer import clear_workflow_cache
 from db import storage  # Import database storage
-from .chat import router
+from .chat import router, composer_chat_completion
 
 
 @router.get("/conversations", response_model=list[Conversation])
@@ -250,10 +259,15 @@ async def delete_message(conversation_id: int, message_id: int, request: Request
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}") from e
 
 
-@router.delete("/conversations/{conversation_id}/messages/bulk/from-timestamp")
-async def bulk_delete_messages_from_timestamp(
+class ReplayRequestBody(BaseModel):
+    timestamp: str
+    message: Optional[Message] = None
+
+
+@router.post("/conversations/{conversation_id}/replay")
+async def replay_from_timestamp(
     conversation_id: int,
-    from_timestamp: str,  # ISO 8601 timestamp string
+    body: ReplayRequestBody,
     request: Request,
 ):
     """
@@ -267,6 +281,9 @@ async def bulk_delete_messages_from_timestamp(
     user_id = get_user_id(request)
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
+    request_id = get_request_id(request)
+    if not request_id:
+        raise HTTPException(status_code=400, detail="Request ID not found")
 
     # Check if database is initialized
     if not storage.initialized or not storage.conversation or not storage.message:
@@ -276,12 +293,12 @@ async def bulk_delete_messages_from_timestamp(
     try:
         # Parse the timestamp
         try:
-            parsed_timestamp = dt.fromisoformat(from_timestamp.replace("Z", "+00:00"))
-        except ValueError:
+            parsed_timestamp = dt.fromisoformat(body.timestamp.replace("Z", "+00:00"))
+        except ValueError as ve:
             raise HTTPException(
                 status_code=400,
                 detail="Invalid timestamp format. Use ISO 8601 format (e.g., '2023-10-24T14:30:00Z')",
-            )
+            ) from ve
 
         # First check if conversation exists and user has access
         conversation = await storage.conversation.get_conversation(conversation_id)
@@ -296,20 +313,43 @@ async def bulk_delete_messages_from_timestamp(
             )
 
         # Perform bulk delete
-        deleted_count = await storage.message.bulk_delete_messages_from_timestamp(
+        await storage.message.bulk_delete_messages_from_timestamp(
             conversation_id, parsed_timestamp
         )
 
-        return {
-            "status": "success",
-            "message": f"Bulk deleted {deleted_count} messages from conversation {conversation_id} created >= {from_timestamp}",
-            "deleted_count": deleted_count,
-        }
+        if body.message:
+            convo = await storage.get_service(storage.message).get_conversation_history(
+                conversation_id=conversation_id
+            )
+            current_user_message = next(
+                (msg for msg in reversed(convo) if msg.role == MessageRole.USER),
+                Message(
+                    content=[
+                        MessageContent(type=MessageContentType.TEXT, text="", url=None)
+                    ],
+                    role=MessageRole.USER,
+                ),
+            )
+            if current_user_message and current_user_message.id:
+                await storage.get_service(storage.message).delete_message(
+                    current_user_message.id
+                )
+            await storage.get_service(storage.message).add_message(body.message)
+
+        return StreamingResponse(
+            composer_chat_completion(user_id, conversation_id, request_id),
+            media_type="application/json",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # Disable nginx buffer
+            },
+        )
     except HTTPException as e:
         raise e
     except Exception as e:  # noqa: BLE001, justified for DB errors
         logger.error(
-            f"Error bulk deleting messages from conversation {conversation_id} >= {from_timestamp}: {e}"
+            f"Error bulk deleting messages from conversation {conversation_id} >= {body.timestamp}: {e}"
         )
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}") from e
 

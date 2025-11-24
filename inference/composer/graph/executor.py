@@ -83,6 +83,8 @@ class WorkflowExecutor:
 
         return config
 
+    # What are some recent advancements in multimodal ai models? what are some of the best open source multimodal models available? of those, which is most capable of interpreting text in an image? Find 4 articles detailing the research and development behind that article and list out the links, publication dates, authors, and a brief synopsis. find any citations within those articles and read through the citations, then list those out as well with their links, publication dates, authors and synopses.
+
     async def stream_workflow(
         self,
         workflow: CompiledStateGraph,
@@ -165,8 +167,6 @@ class WorkflowExecutor:
             async for event in workflow.astream_events(
                 state_dict, config=config, version="v2"
             ):
-                # if total_events > 0 and not state:
-                # raise ValueError("GenerationState not initialized from first event")
 
                 total_events += 1
 
@@ -268,6 +268,11 @@ class WorkflowExecutor:
                     reason = md.get("finish_reason") or "unknown"
                     if reason == "tool_call":
                         new_state = GenerationState.EXECUTING
+                    if reason == "length":
+                        self.logger.warn(
+                            "Model generation ended due to length",
+                            extra={"run_id": run_id},
+                        )
 
                 elif event_type.endswith("_tool_start"):
                     self.logger.info(
@@ -280,6 +285,7 @@ class WorkflowExecutor:
                         name=event_name,
                         args=data.get("input", {}),
                         execution_id=run_id,
+                        created_at=datetime.now(timezone.utc),
                     )
                 elif event_type.endswith("_tool_end") and isinstance(
                     output, ToolMessage
@@ -307,13 +313,8 @@ class WorkflowExecutor:
                     tool_call.result_data = output.model_dump()
                     tool_call.execution_time_ms = duration_ms
                     tool_call.execution_id = run_id
+                    tool_call.created_at = datetime.now(timezone.utc)
                     tool_calls[run_id] = tool_call
-                    res.message.content.append(
-                        MessageContent(
-                            type=MessageContentType.TOOL_RESULT,
-                            text=str(output.content) or "",
-                        )
-                    )
                     self.logger.debug(
                         "Appending tool call to response",
                         extra={"tool_call": str(tool_call)},
@@ -328,7 +329,10 @@ class WorkflowExecutor:
                         self.logger.debug(
                             f"Thoughts buffer: {thoughts_buffer}\n{'-'*20}"
                         )
-                        thoughts[run_id] = Thought(text=thoughts_buffer)
+                        thoughts[run_id] = Thought(
+                            text=thoughts_buffer,
+                            created_at=datetime.now(timezone.utc),
+                        )
                         thoughts_buffer = ""
                     elif state == GenerationState.ANALYZING:
                         self.logger.debug(
@@ -337,7 +341,8 @@ class WorkflowExecutor:
                         try:
                             analysis_dict = json.loads(analyses_buffer)
                             analyses[last_analyses_run_id or run_id] = IntentAnalysis(
-                                **analysis_dict
+                                **analysis_dict,
+                                created_at=datetime.now(timezone.utc),
                             )
                         except Exception:
                             # keep resiliency for malformed analysis
@@ -357,14 +362,16 @@ class WorkflowExecutor:
                         # original streamed content.
                         keyed_run_id = last_content_run_id or run_id
                         content_block = MessageContent(
-                            type=MessageContentType.TEXT, text=contents_buffer
+                            type=MessageContentType.TEXT,
+                            text=contents_buffer,
+                            created_at=datetime.now(timezone.utc),
                         )
                         message_contents[keyed_run_id] = content_block
                         contents_buffer = ""
                     state = new_state
 
-                if not state:
-                    continue
+                res.state = state
+                res.prev_state = prev_state
 
                 yield res
 
@@ -381,6 +388,7 @@ class WorkflowExecutor:
                         MessageContent(
                             type=MessageContentType.TEXT,
                             text="Sorry, I could not complete your request.",
+                            created_at=datetime.now(timezone.utc),
                         )
                     ],
                 ),
@@ -401,7 +409,9 @@ class WorkflowExecutor:
             # original streamed content.
             keyed_run_id = last_content_run_id or run_id
             content_block = MessageContent(
-                type=MessageContentType.TEXT, text=contents_buffer
+                type=MessageContentType.TEXT,
+                text=contents_buffer,
+                created_at=datetime.now(timezone.utc),
             )
             message_contents[keyed_run_id] = content_block
             contents_buffer = ""
@@ -414,7 +424,8 @@ class WorkflowExecutor:
             try:
                 analysis_dict = json.loads(analyses_buffer)
                 analyses[last_analyses_run_id or run_id] = IntentAnalysis(
-                    **analysis_dict
+                    **analysis_dict,
+                    created_at=datetime.now(timezone.utc),
                 )
             except Exception:
                 # keep resiliency for malformed analysis
@@ -429,7 +440,10 @@ class WorkflowExecutor:
                 "Flushing remaining thoughts_buffer after workflow completion",
                 extra={"thoughts_buffer": thoughts_buffer},
             )
-            thoughts[last_thoughts_run_id or run_id] = Thought(text=thoughts_buffer)
+            thoughts[last_thoughts_run_id or run_id] = Thought(
+                text=thoughts_buffer,
+                created_at=datetime.now(timezone.utc),
+            )
             thoughts_buffer = ""
 
         self.logger.info("Workflow execution completed. Producing final output.")

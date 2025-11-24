@@ -32,6 +32,10 @@ properties:
     description: "Execution time in milliseconds"
   resource_usage:
     $ref: "resource_usage.yaml"
+  created_at:
+    type: string
+    format: date-time
+    description: "Timestamp when the tool call record was created"
 required:
   - name
   - args

@@ -105,16 +105,13 @@ class ToolCallStorage:
 
         try:
             resource_usage_json = (
-                json.dumps(tool_call.resource_usage.dict())
+                tool_call.resource_usage.model_dump_json()
                 if tool_call.resource_usage
                 else "{}"
             )
         except (TypeError, ValueError) as e:
             self.logger.error(f"Failed to serialize tool_call.resource_usage: {e}")
             resource_usage_json = "{}"
-
-        # Handle created_at field - use None if not present (SQL will default to NOW())
-        created_at_value = getattr(tool_call, "created_at", None)
 
         row = await conn.fetchrow(
             self.get_query("tool_call.add_tool_call"),
@@ -127,7 +124,7 @@ class ToolCallStorage:
             tool_call.error_message,  # $7
             tool_call.execution_time_ms,  # $8
             resource_usage_json,  # $9
-            created_at_value,  # $10
+            tool_call.created_at,  # $10
         )
 
         if row:
@@ -195,6 +192,12 @@ class ToolCallStorage:
                             self.logger.warning(f"Failed to parse resource_usage: {e}")
                             resource_usage = None
 
+                    created_at = row["created_at"]
+                    if isinstance(created_at, str):
+                        created_at = datetime.fromisoformat(created_at).replace(
+                            tzinfo=timezone.utc
+                        )
+
                     tool_execution_result = ToolCall(
                         name=row[
                             "tool_name"
@@ -211,6 +214,7 @@ class ToolCallStorage:
                         ),
                         resource_usage=resource_usage,
                         message_id=message_id,
+                        created_at=created_at,
                     )
                     tool_calls.append(tool_execution_result)
 

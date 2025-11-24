@@ -3,10 +3,10 @@ Message storage service with enhanced support for tool_calls and thoughts.
 Handles message persistence, caching, and proper aggregation of related data.
 """
 
-import asyncpg
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
+import asyncpg
 from models.message import Message
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
@@ -22,11 +22,12 @@ from models.technical_domain import TechnicalDomain
 from models.computational_requirement import ComputationalRequirement
 from db.cache_storage import cache_storage
 from db.db_utils import TypedConnection, typed_pool
-from utils.logging import llmmllogger
 from db.thought_storage import ThoughtStorage
 from db.tool_call_storage import ToolCallStorage
 from db.message_content_storage import MessageContentStorage
 from db.analysis_storage import AnalysisStorage
+from db.connection_recovery import ConnectionRecoveryManager, recovery_manager
+from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="message_storage")
 
@@ -52,6 +53,9 @@ class MessageStorage:
         self.tool_call_storage = tool_call_storage
         self.message_content_storage = message_content_storage
         self.analysis_storage = analysis_storage
+        
+        # Initialize connection recovery manager
+        self.recovery_manager = recovery_manager if recovery_manager else ConnectionRecoveryManager(self.typed_pool._pool)
 
     async def add_message(
         self,
@@ -86,12 +90,15 @@ class MessageStorage:
         """
         Internal method to add message using a specific connection.
         """
-        # Insert the main message record
-        row = await conn.fetchrow(
-            self.get_query("message.add_message"),
-            message.conversation_id,
-            message.role,
-        )
+        # Insert the main message record with recovery for OID errors
+        async def _insert_message_record():
+            return await conn.fetchrow(
+                self.get_query("message.add_message"),
+                message.conversation_id,
+                message.role,
+            )
+        
+        row = await self.recovery_manager.execute_with_recovery(_insert_message_record)
         message_id = row["id"] if row and "id" in row else None
 
         if not message_id:
@@ -130,7 +137,9 @@ class MessageStorage:
         return message_id
 
     async def get_message(
-        self, message_id: int, conn: Optional[TypedConnection] = None
+        self,
+        message_id: int,
+        conn: Optional[TypedConnection] = None,
     ) -> Optional[Message]:
         """
         Get a message by ID with all related content, tool_calls, and thoughts using multiple queries.
@@ -155,7 +164,10 @@ class MessageStorage:
             return await self._get_message(message_id, conn, cache_result=True)
 
     async def _get_message(
-        self, message_id: int, conn: TypedConnection, cache_result: bool = True
+        self,
+        message_id: int,
+        conn: TypedConnection,
+        cache_result: bool = True,
     ) -> Optional[Message]:
         """
         Internal method to get message using a specific connection.
@@ -165,41 +177,56 @@ class MessageStorage:
             conn: Database connection to use
             cache_result: Whether to cache the result after fetching
         """
-        # Get the base message
-        row = await conn.fetchrow(self.get_query("message.get_message"), message_id)
+        # Get the base message with recovery
+        async def _get_message_record():
+            return await conn.fetchrow(self.get_query("message.get_message"), message_id)
+            
+        row = await self.recovery_manager.execute_with_recovery(_get_message_record)
         if not row:
             return None
 
         message_data = dict(row)
 
-        # Get message contents using separate query
-        contents_rows = await conn.fetch(
-            self.get_query("message_content.get_by_message"), message_id
-        )
+        # Get message contents using separate query with recovery
+        async def _get_contents():
+            return await conn.fetch(
+                self.get_query("message_content.get_by_message"), message_id
+            )
+            
+        contents_rows = await self.recovery_manager.execute_with_recovery(_get_contents)
         message_data["content"] = [
             MessageContent(**dict(content_row)) for content_row in contents_rows
         ]
 
-        # Get tool calls using separate query
-        tool_calls_rows = await conn.fetch(
-            self.get_query("tool_call.get_by_message"), message_id
-        )
+        # Get tool calls using separate query with recovery
+        async def _get_tool_calls():
+            return await conn.fetch(
+                self.get_query("tool_call.get_by_message"), message_id
+            )
+            
+        tool_calls_rows = await self.recovery_manager.execute_with_recovery(_get_tool_calls)
         message_data["tool_calls"] = [
             self._parse_tool_call_row(dict(tool_row)) for tool_row in tool_calls_rows
         ]
 
-        # Get thoughts using separate query
-        thoughts_rows = await conn.fetch(
-            self.get_query("thought.get_by_message"), message_id
-        )
+        # Get thoughts using separate query with recovery
+        async def _get_thoughts():
+            return await conn.fetch(
+                self.get_query("thought.get_by_message"), message_id
+            )
+            
+        thoughts_rows = await self.recovery_manager.execute_with_recovery(_get_thoughts)
         message_data["thoughts"] = [
             Thought(**dict(thought_row)) for thought_row in thoughts_rows
         ]
 
-        # Get analyses using separate query
-        analyses_rows = await conn.fetch(
-            self.get_query("analysis.get_by_message"), message_id
-        )
+        # Get analyses using separate query with recovery
+        async def _get_analyses():
+            return await conn.fetch(
+                self.get_query("analysis.get_by_message"), message_id
+            )
+            
+        analyses_rows = await self.recovery_manager.execute_with_recovery(_get_analyses)
         message_data["analyses"] = [
             self._parse_analysis_row(dict(analysis_row))
             for analysis_row in analyses_rows
@@ -241,6 +268,10 @@ class MessageStorage:
                 json.loads(resource_usage_data) if resource_usage_data.strip() else {}
             )
 
+        created_at = row["created_at"]
+        if isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at).replace(tzinfo=timezone.utc)
+
         # Convert resource_usage dict to ResourceUsage object if not empty
         resource_usage = None
         if resource_usage_data:
@@ -260,6 +291,7 @@ class MessageStorage:
             error_message=row.get("error_message"),
             execution_time_ms=row.get("execution_time_ms"),
             resource_usage=resource_usage,
+            created_at=created_at,
         )
 
     def _parse_analysis_row(self, row: Dict[str, Any]) -> IntentAnalysis:
@@ -303,7 +335,9 @@ class MessageStorage:
         elif isinstance(comp_req_raw, dict):
             # Legacy dict form {"computational_requirements": "MINIMAL"} or {"value": "MINIMAL"}
             # Try common keys
-            val = comp_req_raw.get("computational_requirements") or comp_req_raw.get("value")
+            val = comp_req_raw.get("computational_requirements") or comp_req_raw.get(
+                "value"
+            )
             if isinstance(val, str):
                 try:
                     computational_requirements = ComputationalRequirement(val)
@@ -392,16 +426,21 @@ class MessageStorage:
             return await self._get_conversation_history(conversation_id, conn)
 
     async def _get_conversation_history(
-        self, conversation_id: int, conn: TypedConnection
+        self,
+        conversation_id: int,
+        conn: TypedConnection,
     ) -> List[Message]:
         """
         Internal method to get conversation history using a specific connection with transaction support.
         """
-        # Get all messages for the conversation
-        rows = await conn.fetch(
-            self.get_query("message.get_conversation_history"),
-            conversation_id,
-        )
+        # Get all messages for the conversation with recovery
+        async def _get_conversation_rows():
+            return await conn.fetch(
+                self.get_query("message.get_conversation_history"),
+                conversation_id,
+            )
+            
+        rows = await self.recovery_manager.execute_with_recovery(_get_conversation_rows)
 
         messages = []
         for row in rows:
@@ -455,7 +494,11 @@ class MessageStorage:
             )
 
     async def _get_messages_by_conversation_id(
-        self, conversation_id: int, limit: int, offset: int, conn: TypedConnection
+        self,
+        conversation_id: int,
+        limit: int,
+        offset: int,
+        conn: TypedConnection,
     ) -> List[Message]:
         """
         Internal method to get paginated messages using a specific connection.
@@ -539,13 +582,16 @@ class MessageStorage:
         """
         async with self.typed_pool.acquire() as conn:
             async with conn.transaction():
-                # Delete messages - cascade triggers will automatically delete related data
+                # Delete messages with recovery - cascade triggers will automatically delete related data
                 # (message_contents, thoughts, tool_calls, analyses, etc.)
-                message_result = await conn.execute(
-                    self.get_query("message.delete_messages_from_timestamp"),
-                    conversation_id,
-                    from_timestamp,
-                )
+                async def _delete_messages():
+                    return await conn.execute(
+                        self.get_query("message.delete_messages_from_timestamp"),
+                        conversation_id,
+                        from_timestamp,
+                    )
+                    
+                message_result = await self.recovery_manager.execute_with_recovery(_delete_messages)
 
                 # Extract the number of deleted rows from the command result
                 deleted_count = (
@@ -591,17 +637,24 @@ class MessageStorage:
         return messages
 
     async def _insert_message_contents(
-        self, conn: TypedConnection, message_id: int, contents: List[MessageContent]
+        self,
+        conn: TypedConnection,
+        message_id: int,
+        contents: List[MessageContent],
     ) -> None:
         """Helper method to insert message contents using MessageContentStorage."""
 
         for content in contents:
             # Set the message_id on the content before inserting
-            content.message_id = message_id
+            if not content.message_id:
+                content.message_id = message_id
             await self.message_content_storage.add_content(content=content, conn=conn)
 
     async def _insert_tool_calls(
-        self, conn: TypedConnection, message_id: int, tool_calls: List[ToolCall]
+        self,
+        conn: TypedConnection,
+        message_id: int,
+        tool_calls: List[ToolCall],
     ) -> None:
         """Helper method to insert tool calls using ToolCallStorage."""
 
@@ -612,16 +665,18 @@ class MessageStorage:
             await self.tool_call_storage.add_tool_call(tool_call=tool_call, conn=conn)
 
     async def _insert_thoughts(
-        self, conn: TypedConnection, message_id: int, thoughts: List[Thought]
+        self,
+        conn: TypedConnection,
+        message_id: int,
+        thoughts: List[Thought],
     ) -> None:
         """Helper method to insert thoughts using ThoughtStorage."""
 
         for thought in thoughts:
-            thought_obj = Thought(
-                message_id=message_id,
-                text=thought if isinstance(thought, str) else str(thought),
-            )
-            await self.thought_storage.add_thought(thought_obj, conn=conn)
+            # Set message_id if not already set (for streaming thoughts)
+            if not thought.message_id:
+                thought.message_id = message_id
+            await self.thought_storage.add_thought(thought, conn=conn)
 
     def _parse_message_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
         """

@@ -8,12 +8,7 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 """
 
 import json
-from typing import AsyncGenerator, Any, AsyncIterator, List, cast
-from typing_extensions import TypedDict
-
-from langchain_core.runnables import RunnableConfig
-from langchain_core.runnables.schema import StandardStreamEvent
-from langchain_core.messages import BaseMessage, AIMessage, ToolMessage
+from typing import Any, AsyncIterator
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -23,85 +18,38 @@ from server.config import logger  # Import logger from config
 from db import storage  # Import database storage
 from models import (
     MessageRole,
-    MessageContent,
-    MessageContentType,
     ChatResponse,
     Message,
-    ToolCall,
-    Thought,
-    IntentAnalysis,
 )
 from utils import extract_text_from_message  # Import logging utility
 
 # Import composer interface and streaming state management
 import composer
-from runner import ReasoningAwareAIMessageChunk
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
-class StructuredResponseData(TypedDict):
-    """Strongly typed structure for response data storage."""
+async def composer_chat_completion(
+    user_id: str, conversation_id: int, request_id: str
+) -> AsyncIterator[str]:
+    """Handle chat completions by delegating to composer interface."""
+    await composer.initialize_composer()
 
-    thoughts: List[Thought]
-    tool_calls: List[ToolCall]
-    analyses: List[IntentAnalysis]
+    # Compose workflow for user
+    workflow = await composer.compose_workflow(user_id)
 
+    # Create initial state (conversation_id is already validated)
+    initial_state = await composer.create_initial_state(user_id, conversation_id)
 
-async def store_structured_response_data(
-    message_id: int, structured_data: StructuredResponseData
-) -> None:
-    """
-    Store structured response data (thoughts, analyses, tool_calls) in the database.
+    logger.info(f"Starting workflow execution for request {request_id}")
 
-    Args:
-        message_id: The ID of the assistant message
-        structured_data: Strongly typed dictionary containing thoughts, tool_calls and analyses
-    """
-    try:
-        # Store thoughts if present
-        thoughts = structured_data.get("thoughts", [])
-        if thoughts:
-            for thought in thoughts:
-                if isinstance(thought, Thought):
-                    thought_obj = Thought(
-                        message_id=message_id,
-                        text=thought.text,
-                    )
-                    await storage.get_service(storage.thought).add_thought(thought_obj)
-            logger.info(f"Stored {len(thoughts)} thoughts for message {message_id}")
-
-        # Store intent analyses if present
-        analyses = structured_data.get("analyses", [])
-        if analyses:
-            for analysis in analyses:
-                if isinstance(analysis, IntentAnalysis):
-                    await storage.get_service(storage.analysis).add_analysis(
-                        message_id=message_id,
-                        intent_analysis=analysis,
-                    )
-            logger.info(
-                f"Stored {len(analyses)} intent analyses for message {message_id}"
-            )
-
-        # Store tool calls if present
-        tool_calls = structured_data.get("tool_calls", [])
-        if tool_calls:
-            for tool_call in tool_calls:
-                if isinstance(tool_call, ToolCall):
-                    await storage.get_service(storage.tool_call).add_tool_call(
-                        tool_call=tool_call,
-                    )
-            logger.info(
-                f"Stored {len(tool_calls)} tool execution results for message {message_id}"
-            )
-
-        logger.info(f"Structured response data stored for message {message_id}")
-
-    except Exception as e:
-        logger.error(
-            f"Failed to store structured response data for message {message_id}: {e}"
-        )
+    async for event in composer.execute_workflow(initial_state, workflow):
+        print(
+            extract_text_from_message(event.message) if event.message else "",
+            flush=True,
+            end="",
+        )  # Debug print
+        yield f"{event.model_dump_json()}"
 
 
 @router.post("/completions", response_model=ChatResponse)
@@ -124,6 +72,8 @@ async def chat_completion(
         raise HTTPException(status_code=400, detail="Conversation ID not found")
     if not msg or msg.role != MessageRole.USER:
         raise HTTPException(status_code=400, detail="Invalid user message")
+    if not request_id:
+        raise HTTPException(status_code=400, detail="Request ID not found")
 
     logger.info(f"Processing chat completion request {request_id} for user {user_id}")
 
@@ -134,30 +84,9 @@ async def chat_completion(
         conversation_id = msg.conversation_id
 
         # Direct composer workflow orchestration
-        async def composer_chat_completion() -> AsyncIterator[str]:
-            """Handle chat completions by delegating to composer interface."""
-            await composer.initialize_composer()
-
-            # Compose workflow for user
-            workflow = await composer.compose_workflow(user_id)
-
-            # Create initial state (conversation_id is already validated)
-            initial_state = await composer.create_initial_state(
-                user_id, conversation_id
-            )
-
-            logger.info(f"Starting workflow execution for request {request_id}")
-
-            async for event in composer.execute_workflow(initial_state, workflow):
-                print(
-                    extract_text_from_message(event.message) if event.message else "",
-                    flush=True,
-                    end="",
-                )  # Debug print
-                yield f"{event.model_dump_json()}"
 
         return StreamingResponse(
-            composer_chat_completion(),
+            composer_chat_completion(user_id, conversation_id, request_id),
             media_type="application/json",
             headers={
                 "Cache-Control": "no-cache",

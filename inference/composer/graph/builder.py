@@ -339,11 +339,11 @@ class GraphBuilder:
             workflow.add_edge("context_assembly", "tools_agent")
 
             # 3. Tools Agent -> Chat summary
-            workflow.add_edge("tools_agent", "chat_summary")
+            # workflow.add_edge("tools_agent", "chat_summary")
 
             # 9. Linear flow after agent completion with conditional title generation
-            def route_after_chat_summary(state: WorkflowState):
-                """Route after chat summary - conditionally generate title."""
+            def route_after_chat(state: WorkflowState):
+                """Route after chat - conditionally generate title."""
                 # Check if title already exists
                 if hasattr(state, "title") and state.title and state.title.strip():
                     self.logger.info(
@@ -356,8 +356,8 @@ class GraphBuilder:
 
             workflow.add_edge("search_summary", "chat_summary")
             workflow.add_conditional_edges(
-                "chat_summary",
-                route_after_chat_summary,
+                "tools_agent",
+                route_after_chat,
                 {
                     "title_generation": "title_generation",
                     "memory_creation": "memory_creation",

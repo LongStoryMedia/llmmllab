@@ -6,18 +6,15 @@ import {
   getMessages,
   getManyConversations,
   deleteMessage,
-  bulkDeleteMessagesFromTimestamp,
   getToken
 } from '../../api';
 import { Message } from '../../types/Message';
 import { MessageContentTypeValues } from '../../types/MessageContentType';
-import { MutableRefObject } from 'react';
 import { useAuth } from '../../auth';
 
 export const useMessageOperations = (
   state: ChatState,
-  actions: ChatActions,
-  sendMessageRef: MutableRefObject<((msg: Message) => Promise<void>) | null>
+  actions: ChatActions
 ) => {
   const navigate = useNavigate();
   const auth = useAuth();
@@ -41,7 +38,6 @@ export const useMessageOperations = (
         getToken(auth.user),
         conversationId
       );
-      console.log(fetchedMessages);
 
       // Merge messages without duplicates
       actions.setMessages(existingMessages => {
@@ -110,60 +106,7 @@ export const useMessageOperations = (
     }
   }, [state.isLoading, state.currentConversation, actions, auth.user]);
 
-  /**
-   * Replay a message (delete it and subsequent messages, then re-send)
-   */
-  const replayMessage = useCallback(async (message: Message) => {
-    if (!state.currentConversation?.id || state.isLoading || !message.id || !message.created_at) {
-      console.error("Cannot replay message - missing required data");
-      return;
-    }
-
-    const sendMessageFn = sendMessageRef.current;
-    if (!sendMessageFn) {
-      console.error("Cannot replay message - sendMessage function not available");
-      return;
-    }
-
-    actions.setIsLoading(true);
-    actions.setError(null);
-
-    try {
-      // Bulk delete all messages from this timestamp forward
-      const deleteResult = await bulkDeleteMessagesFromTimestamp(
-        getToken(auth.user),
-        state.currentConversation.id,
-        message.created_at
-      );
-
-      console.log(`Deleted ${deleteResult.deleted_count} messages for replay`);
-
-      // Remove deleted messages from local state
-      actions.setMessages(prev =>
-        prev.filter(msg => !msg.created_at || msg.created_at < message.created_at!)
-      );
-
-      // Re-send the message (without ID so server assigns new one)
-      const messageWithoutId = { ...message };
-      delete messageWithoutId.id;
-
-      await sendMessageFn(messageWithoutId);
-
-      // Refresh messages from server
-      actions.setMessages([]);
-      const freshMessages = await getMessages(
-        getToken(auth.user),
-        state.currentConversation.id
-      );
-      actions.setMessages(freshMessages ?? []);
-
-    } catch (err: unknown) {
-      actions.setError((err as Error).message);
-      console.error("Error replaying message:", err);
-    } finally {
-      actions.setIsLoading(false);
-    }
-  }, [state.isLoading, state.currentConversation, state.messages, actions, auth.user, sendMessageRef]);
+  // replayMessage moved to useChatOperations
 
   /**
    * Start editing a message
@@ -197,55 +140,13 @@ export const useMessageOperations = (
     actions.setEditingMessageContent('');
   }, [actions]);
 
-  /**
-   * Save edited message and replay
-   */
-  const saveEditAndReplay = useCallback(async (
-    messageId: number,
-    newContent: string
-  ) => {
-    if (!state.currentConversation?.id || !newContent.trim()) {
-      console.error("Cannot save - missing conversation or empty content");
-      return;
-    }
-
-    const sendMessageFn = sendMessageRef.current;
-    if (!sendMessageFn) {
-      console.error("Cannot save and replay - sendMessage function not available");
-      return;
-    }
-
-    try {
-      const originalMessage = state.messages.find(m => m.id === messageId);
-      if (!originalMessage) {
-        console.error("Original message not found");
-        return;
-      }
-
-      // Create edited message
-      const editedMessage: Message = {
-        ...originalMessage,
-        content: [{ type: MessageContentTypeValues.TEXT, text: newContent.trim() }]
-      };
-
-      // Clear editing state
-      actions.setEditingMessageId(null);
-      actions.setEditingMessageContent('');
-
-      // Replay with edited content
-      await replayMessage(editedMessage);
-    } catch (error) {
-      console.error("Failed to save edit and replay:", error);
-      actions.setError((error as Error).message);
-    }
-  }, [state.currentConversation?.id, state.messages, actions, replayMessage, sendMessageRef]);
+  // saveEditAndReplay moved to useChatOperations
 
   return {
     fetchMessages,
     deleteMessage: deleteMessageFromConversation,
-    replayMessage,
     startEditMessage,
     cancelEditMessage,
-    saveEditAndReplay
+    saveEditAndReplay: undefined as unknown as ((id: number, content: string) => Promise<void>)
   };
 };

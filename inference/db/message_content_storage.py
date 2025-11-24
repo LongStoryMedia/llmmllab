@@ -54,7 +54,9 @@ class MessageContentStorage:
             return None
 
     async def _add_content(
-        self, content: MessageContent, conn: TypedConnection
+        self,
+        content: MessageContent,
+        conn: TypedConnection,
     ) -> Optional[int]:
         """Internal method to add message content using a specific connection."""
         row = await conn.fetchrow(
@@ -63,6 +65,7 @@ class MessageContentStorage:
             content.type.value if hasattr(content.type, "value") else str(content.type),
             content.text,
             content.url,
+            content.created_at,
         )
 
         if row:

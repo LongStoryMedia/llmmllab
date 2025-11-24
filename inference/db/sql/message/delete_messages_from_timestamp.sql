@@ -2,5 +2,5 @@
 -- This leverages TimescaleDB's time-series optimization for efficient bulk deletion
 DELETE FROM messages
 WHERE conversation_id = $1
-    AND created_at >= $2;
+    AND created_at > $2;
 

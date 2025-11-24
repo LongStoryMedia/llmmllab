@@ -100,13 +100,14 @@ class BaseServerManager(ABC):
                 self._logger.info(f"Starting server on port {self.port}")
                 self._logger.debug(f"Command: {' '.join(args)}")
 
-                # Start the process with output redirected to prevent hanging
+                # Start the process and capture output so we can log failures
                 self.process = subprocess.Popen(
                     args,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                     stdin=subprocess.DEVNULL,
                     text=True,
+                    bufsize=1,
                 )
 
                 # Log PID
@@ -114,6 +115,35 @@ class BaseServerManager(ABC):
                     f"Process started with PID {self.process.pid}, waiting for server readiness..."
                 )
                 self.pid = self.process.pid
+
+                # Stream subprocess stdout/stderr into our logger so failures are visible
+                def _stream_pipe(pipe, log_fn):
+                    try:
+                        if not pipe:
+                            return
+                        with pipe:
+                            for line in iter(pipe.readline, ""):
+                                if line:
+                                    log_fn(line.rstrip())
+                    except Exception:
+                        # best-effort - avoid crashing main thread
+                        pass
+
+                if self.process.stdout:
+                    t_out = threading.Thread(
+                        target=_stream_pipe,
+                        args=(self.process.stdout, self._logger.debug),
+                        daemon=True,
+                    )
+                    t_out.start()
+
+                if self.process.stderr:
+                    t_err = threading.Thread(
+                        target=_stream_pipe,
+                        args=(self.process.stderr, self._logger.debug),
+                        daemon=True,
+                    )
+                    t_err.start()
 
                 # Wait for server to be ready
                 if self._wait_for_server():
@@ -125,11 +155,6 @@ class BaseServerManager(ABC):
                     self._logger.error(
                         "Server failed to start within timeout - cleaning up"
                     )
-                    # Force cleanup of failed startup
-                    try:
-                        self.stop()
-                    except Exception as cleanup_error:
-                        self._logger.error(f"Error during cleanup: {cleanup_error}")
                     return False
 
             except Exception as e:
@@ -140,10 +165,25 @@ class BaseServerManager(ABC):
         """Wait for server to become ready."""
         health_endpoint = self.get_api_endpoint("/health")
 
+        self._logger.debug(
+            f"Waiting for server health at {health_endpoint} for up to {self.startup_timeout} seconds"
+        )
+
         start_time = time.time()
         while time.time() - start_time < self.startup_timeout:
             # Check if process is still alive
             if self.process and self.process.poll() is not None:
+                # Process exited early - capture any remaining output for debugging
+                try:
+                    out, err = self.process.communicate(timeout=1)
+                    if out:
+                        self._logger.error(f"Server stdout before exit:\n{out}")
+                    if err:
+                        self._logger.error(f"Server stderr before exit:\n{err}")
+                except Exception:
+                    # ignore communicate errors
+                    pass
+
                 self._logger.error(
                     f"Server process died unexpectedly (exit code: {self.process.returncode})"
                 )

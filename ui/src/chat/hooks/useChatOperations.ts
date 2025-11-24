@@ -7,6 +7,8 @@ import {
   getToken,
   cancel
 } from '../../api';
+import { replay } from '../../api/message';
+import { MessageContentTypeValues } from '../../types/MessageContentType';
 import { Message } from '../../types/Message';
 import { useStreamHandler } from './useStreamHandler';
 import { useConversationOperations } from './useConversationOperations';
@@ -26,8 +28,8 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
   // Create a ref to hold sendMessage so messageOps can access it
   const sendMessageRef = useRef<((message: Message) => Promise<void>) | null>(null);
 
-  // Create messageOps first (it will use sendMessageRef)
-  const messageOps = useMessageOperations(state, actions, sendMessageRef);
+  // Create messageOps first (it will use sendMessageRef) and provide streaming handler
+  const messageOps = useMessageOperations(state, actions);
 
   /**
    * Send a message - simplified streaming logic
@@ -113,6 +115,83 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
   sendMessageRef.current = sendMessage;
 
   /**
+   * Replay a message by calling the streaming replay endpoint and updating streaming state
+   */
+  const replayMessage = useCallback(async (message: Message) => {
+    if (!state.currentConversation?.id || state.isLoading || !message.created_at) {
+      console.error('Cannot replay message - missing required data');
+      return;
+    }
+
+    const conversationId = state.currentConversation.id;
+
+    actions.setIsLoading(true);
+    actions.setError(null);
+
+    try {
+      // Reuse shared abortController for cancellation
+      abortController.current = new AbortController();
+      for await (const chunk of replay(
+        getToken(auth.user),
+        conversationId,
+        message,
+        abortController.current.signal
+      )) {
+        const updatedState = streaming.processChunk(chunk);
+        actions.setStreamingSections([...updatedState.sections]);
+        actions.setCurrentStreamingSection(updatedState.currentSection ? { ...updatedState.currentSection } : null);
+
+        if (chunk.observer_messages?.length) {
+          actions.setCurrentObserverMessages(chunk.observer_messages);
+        }
+      }
+
+      // Stream complete - refresh messages
+      if (conversationId) {
+        await messageOps.fetchMessages(conversationId);
+      }
+    } catch (err: unknown) {
+      if ((err as Error).name !== 'AbortError') {
+        actions.setError((err as Error).message);
+        console.error('Error replaying message:', err);
+      }
+    } finally {
+      if (!state.isPaused) {
+        actions.setIsTyping(false);
+        streaming.resetStreaming();
+        actions.setCurrentObserverMessages([]);
+        actions.setStreamingSections([]);
+        actions.setCurrentStreamingSection(null);
+      }
+      actions.setIsLoading(false);
+    }
+  }, [state.currentConversation, state.isLoading, state.isPaused, actions, auth.user, streaming, messageOps]);
+
+  const saveEditAndReplay = useCallback(async (messageId: number, newContent: string) => {
+    if (!state.currentConversation?.id || !newContent.trim()) {
+      console.error('Cannot save - missing conversation or empty content');
+      return;
+    }
+
+    const originalMessage = state.messages.find(m => m.id === messageId);
+    if (!originalMessage) {
+      console.error('Original message not found');
+      return;
+    }
+
+    const editedMessage: Message = {
+      ...originalMessage,
+      content: [{ type: MessageContentTypeValues.TEXT, text: newContent.trim() }]
+    };
+
+    // Clear editing state
+    actions.setEditingMessageId(null);
+    actions.setEditingMessageContent('');
+
+    await replayMessage(editedMessage);
+  }, [state.currentConversation, state.messages, actions, replayMessage]);
+
+  /**
    * Cancel current request
    */
   const cancelRequest = useCallback(async () => {
@@ -136,11 +215,11 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     // Message operations
     sendMessage,
     deleteMessage: messageOps.deleteMessage,
-    replayMessage: messageOps.replayMessage,
+    replayMessage,
     fetchMessages: messageOps.fetchMessages,
     startEditMessage: messageOps.startEditMessage,
     cancelEditMessage: messageOps.cancelEditMessage,
-    saveEditAndReplay: messageOps.saveEditAndReplay,
+    saveEditAndReplay,
 
     // Conversation operations
     fetchConversations: conversationOps.fetchConversations,

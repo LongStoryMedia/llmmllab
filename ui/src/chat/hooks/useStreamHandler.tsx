@@ -44,7 +44,6 @@ export const useStreamHandler = () => {
           completedAt: Date.now()
         };
         sections = sections.map(s => (s.id === currentSection!.id ? completedSection : s));
-        console.log('✅ Completed section:', currentSection.type);
       }
 
       // Create new section for current state

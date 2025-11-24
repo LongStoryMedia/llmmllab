@@ -44,6 +44,7 @@ from utils.message_conversion import (
     extract_text_from_message,
 )
 from composer.core.errors import NodeExecutionError
+
 from .grammar_responses import IntentsResponse, TitleResponse
 
 
@@ -83,6 +84,7 @@ class BaseAgent(ABC, Generic[T]):
         pipeline_factory: PipelineFactory,
         profile: ModelProfile,
         component_name: Optional[str] = None,
+        middleware: Optional[List[AgentMiddleware]] = None,
     ):
         """
         Initialize base agent with required dependencies.
@@ -113,7 +115,7 @@ class BaseAgent(ABC, Generic[T]):
 
         self.agent_id = f"{id(self):x}"
         # Middleware list passed to create_agent for behaviors like TodoListMiddleware
-        self.middleware: List[AgentMiddleware] = []
+        self.middleware: List[AgentMiddleware] = middleware or []
 
         self.logger.debug(
             f"Initialized {component}",
@@ -188,7 +190,7 @@ class BaseAgent(ABC, Generic[T]):
             # Silently ignore cleanup errors during destruction
             pass
 
-    def get_pipeline(
+    async def get_pipeline(
         self,
         priority: PipelinePriority = PipelinePriority.MEDIUM,
         grammar: Optional[type[BaseModel]] = None,
@@ -206,6 +208,16 @@ class BaseAgent(ABC, Generic[T]):
                 grammar,
                 self._node_metadata.model_dump(),
             )
+
+            if not self._pipeline.started:  # type: ignore
+                from composer import (  # pylint: disable=import-outside-toplevel
+                    clear_workflow_cache,
+                )
+
+                self.logger.error("🚨 Pipeline is not started after creation!")
+                assert self._node_metadata.user_id is not None
+                await clear_workflow_cache(self._node_metadata.user_id)
+
             # Mark that we have locked a pipeline that needs cleanup
             self._pipeline_locked = True
             self.logger.debug(
@@ -213,12 +225,13 @@ class BaseAgent(ABC, Generic[T]):
             )
         return self._pipeline
 
-    def _get_or_create_agent(
+    async def _get_or_create_agent(
         self,
         system_prompt,
         tools: Optional[List[BaseTool]] = None,
         priority: PipelinePriority = PipelinePriority.MEDIUM,
         grammar: Optional[type[BaseModel]] = None,
+        middleware: Optional[List[AgentMiddleware]] = None,
     ):
         """
         Get the persistent agent or create it if it doesn't exist.
@@ -240,7 +253,7 @@ class BaseAgent(ABC, Generic[T]):
         # This allows different system prompts, tools, and grammars while maintaining server reuse
 
         self.logger.debug("Creating LangChain agent (pipeline will be reused)")
-        pipeline = self.get_pipeline(priority, grammar)
+        pipeline = await self.get_pipeline(priority, grammar)
         if pipeline is None:
             self.logger.error("🚨 Pipeline is None after get_pipeline call!")
             raise ValueError("Pipeline creation failed - pipeline is None")
@@ -252,7 +265,7 @@ class BaseAgent(ABC, Generic[T]):
             system_prompt=system_prompt,
             response_format=ProviderStrategy(grammar) if grammar else None,
             name=self._node_metadata.node_name,
-            middleware=self.middleware,
+            middleware=middleware or [],
         )
 
         return agent
@@ -385,6 +398,7 @@ If you believe you have made a tool call, double-check the message history to co
         tools: Optional[List[BaseTool]] = None,
         priority: PipelinePriority = PipelinePriority.MEDIUM,
         grammar: Optional[type[BaseModel]] = None,
+        middleware: Optional[List[AgentMiddleware]] = None,
     ) -> ChatResponse:
         """
         Run agent execution with node metadata injection.
@@ -414,7 +428,13 @@ If you believe you have made a tool call, double-check the message history to co
             system_prompt, convo = self._separate_system_prompt(messages)
 
             # Use persistent agent - creates once and reuses for state continuity
-            agent = self._get_or_create_agent(system_prompt, tools, priority, grammar)
+            agent = await self._get_or_create_agent(
+                system_prompt,
+                tools,
+                priority,
+                grammar,
+                list(set((self.middleware or []) + (middleware or []))),
+            )
 
             if agent is None:
                 self.logger.error("🚨 Agent is None after _get_or_create_agent call!")

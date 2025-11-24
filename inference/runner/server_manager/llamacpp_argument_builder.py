@@ -117,6 +117,7 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
                 "ctx_size": params.num_ctx or 90000,
                 "batch_size": params.batch_size or 256,
                 "ubatch_size": params.micro_batch_size or 256,
+                "reasoning_budget": (-1 if self.profile.parameters.think else 0),
             }
         )
 

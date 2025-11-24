@@ -6,9 +6,10 @@ import ThinkSection from './ThinkSection';
 import ToolCallsSection from './ToolCallsSection';
 import MessageActions from './MessageActions';
 import MessageEditor from './MessageEditor';
-import { sanitizeForLaTeX, parseResponse } from './utils';
+import { sanitizeForLaTeX } from './utils';
 import { Message } from '../../types/Message';
 import { ResponseSection } from '../../types/ResponseSection';
+import { MessageContent, Thought, ToolCall } from '../../types';
 
 interface ChatBubbleProps {
   message: Message;
@@ -101,7 +102,12 @@ const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
   // Use streaming sections for actively streaming messages
   // Use parsed content for stored messages
   const shouldRenderSections = isStreamingMessage && streamingSections.length > 0;
-  const parsed = !shouldRenderSections ? parseResponse(message, null, null) : null;
+  // const parsed = !shouldRenderSections ? parseResponse(message, null, null) : null;
+
+  const sectionsToRender = [...(message.analyses || []), ...(message.tool_calls || []), ...(message.content || []), ...(message.thoughts || [])]
+    .sort((a, b) => (a.created_at && b.created_at) ? new Date(a.created_at).getTime() - new Date(b.created_at).getTime() : 0);
+
+  // console.log("Sections to render:", sectionsToRender);
 
   return (
     <Box
@@ -143,42 +149,46 @@ const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
           )}
 
           {/* Render sections in order for streaming messages */}
-          {!isUser && shouldRenderSections && (
-            <Box sx={{ mt: 1 }}>
-              {streamingSections.map((section) => (
-                <RenderSection
-                  key={section.id}
-                  section={section}
-                  inProgress={inProgress}
-                />
-              ))}
-            </Box>
-          )}
-
-          {/* Fallback to legacy rendering for stored messages */}
-          {!isUser && !shouldRenderSections && parsed && (
-            <>
-              {parsed.thinking && (
-                <ThinkSection think={parsed.thinking} />
-              )}
-              {parsed.toolCalls && (
-                <ToolCallsSection
-                  toolCalls={parsed.toolCalls}
-                  isTyping={false}
-                />
-              )}
-              <MarkdownRenderer sanitizeForLaTeX={sanitizeForLaTeX}>
-                {parsed.content}
-              </MarkdownRenderer>
-            </>
-          )}
-
-          {/* User messages - simple content rendering */}
-          {isUser && parsed && (
-            <MarkdownRenderer sanitizeForLaTeX={sanitizeForLaTeX}>
-              {parsed.content}
-            </MarkdownRenderer>
-          )}
+          {
+            (!isUser && shouldRenderSections) ? (
+              <Box sx={{ mt: 1 }}>
+                {streamingSections.map((section) => (
+                  <RenderSection
+                    key={section.id}
+                    section={section}
+                    inProgress={inProgress}
+                  />
+                ))}
+              </Box>
+            ) : (
+              // Render sections in order for stored messages
+              <Box sx={{ mt: 1 }}>
+                {sectionsToRender.map((section, index) => (
+                  (section as ToolCall)?.execution_id ? (
+                    <ToolCallsSection
+                      key={index}
+                      toolCalls={[section as ToolCall]}
+                      isTyping={false}
+                    />
+                  ) : (
+                    (section as MessageContent)?.type === 'text' ? (
+                      <MarkdownRenderer
+                        key={index}
+                        sanitizeForLaTeX={sanitizeForLaTeX}
+                      >
+                        {(section as MessageContent).text ?? ''}
+                      </MarkdownRenderer>
+                    ) : (
+                      <ThinkSection
+                        key={index}
+                        think={(section as Thought).text ?? ''}
+                      />
+                    )
+                  )
+                ))}
+              </Box>
+            )
+          }
         </Paper>
       </Fade>
     </Box>

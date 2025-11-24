@@ -41,8 +41,7 @@ const commonOptions: ThemeOptions = {
       fontSize: '1rem'
     },
     caption: {
-      fontStyle: 'italic',
-      color: '#6a1b9a' // purple
+      fontStyle: 'italic'
     }
   }
 };

@@ -81,7 +81,7 @@ class ChatLlamaCppPipeline(BasePipeline):
         model: Model,
         profile: ModelProfile,
         grammar: Optional[Type[BaseModel]] = None,
-        metadata: Optional[dict] = {},
+        metadata: Optional[dict] = None,
         **kwargs,
     ):
         super().__init__(model, profile, grammar, metadata)
@@ -99,7 +99,7 @@ class ChatLlamaCppPipeline(BasePipeline):
 
         # Initialize ChatOpenAI instance
         self.chat_model: Optional[ReasoningChatOpenAI] = None
-        self._server_started = False
+        self.started = False
 
         # Initialize server and ChatOpenAI
         self._initialize_persistent_server()
@@ -110,13 +110,11 @@ class ChatLlamaCppPipeline(BasePipeline):
             self._logger.info(f"Starting server for model {self.model.name}")
             assert self.server_manager is not None
             # Start the llama.cpp server
-            success = self.server_manager.start()
-            if not success:
+            self.started = self.server_manager.start()
+            if not self.started:
                 raise RuntimeError(
                     f"Failed to start server for model {self.model.name}"
                 )
-
-            self._server_started = True
 
             # Create ChatOpenAI instance pointing to our llama.cpp server
             self._initialize_chat_openai()
@@ -173,10 +171,10 @@ class ChatLlamaCppPipeline(BasePipeline):
 
     def shutdown(self):
         """Shutdown the llama.cpp server."""
-        if self._server_started and self.server_manager:
+        if self.started and hasattr(self, "server_manager"):
             self._logger.info(f"Shutting down server for {self.model.name}")
             self.server_manager.stop()
-            self._server_started = False
+            self.started = False
 
     def bind_metadata(self, metadata: dict):
         """Bind additional metadata to the pipeline."""
