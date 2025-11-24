@@ -140,23 +140,22 @@ class ToolsAgentSubgraph:
             max_tokens_before_summary = int(n_ctx * 0.95)
             logger.debug(f"Max tokens before summary: {max_tokens_before_summary}")
 
-            summarizer = SummarizationMiddleware(
-                agent=self.chat_agent,
-                max_tokens_before_summary=10000,
-                messages_to_keep=10,
-                summary_prompt=DEFAULT_SUMMARY_PROMPT,
-                summary_prefix=SUMMARY_PREFIX,
-                token_counter=count_tokens_approximately,
-            )
-
-            # Perform async summarization prior to model invocation.
-            state.messages = await summarizer.maybe_summarize(state.messages)  # type: ignore[assignment]
+            middleware: List[AgentMiddleware] = [
+                SummarizationMiddleware(
+                    agent=self.chat_agent,
+                    max_tokens_before_summary=10000,
+                    messages_to_keep=10,
+                    summary_prompt=DEFAULT_SUMMARY_PROMPT,
+                    summary_prefix=SUMMARY_PREFIX,
+                    token_counter=count_tokens_approximately,
+                )
+            ]
 
             response = await self.chat_agent.run(
                 messages=state.messages,
                 tools=tools_list,
                 priority=PipelinePriority.HIGH,
-                middleware=[],
+                middleware=middleware,
             )
 
             # Persist todos extracted in ChatResponse (already converted in BaseAgent)

@@ -1,17 +1,16 @@
-"""Async-capable summarization helper.
+"""Summarization middleware with background event loop support.
 
-The original implementation attempted to call ``asyncio.run`` inside a LangChain
-``AgentMiddleware`` hook (``before_model``) which executes while an event loop is
-already running inside our FastAPI / LangGraph runtime. Calling ``asyncio.run``
-in that context raises ``RuntimeError: asyncio.run() cannot be called from a running event loop``.
+This implementation preserves the LangChain ``AgentMiddleware`` synchronous
+``before_model`` interface while safely executing async summarization logic by
+offloading it to a dedicated background asyncio event loop/thread.
 
-To adapt this to the project's fully async execution model we expose an async
-``maybe_summarize`` method that can be invoked from our own agent node prior to
-LLM invocation. The ``AgentMiddleware`` base is retained for compatibility but
-the summarization logic is no longer executed in the synchronous ``before_model``.
+Avoids: ``asyncio.run`` within a running loop (prior RuntimeError).
+Pattern: ``asyncio.run_coroutine_threadsafe`` against a singleton loop.
 """
 
 import uuid
+import asyncio
+import threading
 from collections.abc import Callable, Iterable
 from typing import Any, cast
 
@@ -73,12 +72,40 @@ _DEFAULT_FALLBACK_MESSAGE_COUNT = 15
 _SEARCH_RANGE_FOR_TOOL_PAIRS = 5
 
 
-class SummarizationMiddleware(AgentMiddleware):
-    """Async summarization helper invoked explicitly by agent node.
+_SUMMARY_LOOP: asyncio.AbstractEventLoop | None = None
+_SUMMARY_THREAD: threading.Thread | None = None
 
-    The summarization logic was moved out of the synchronous ``before_model`` hook
-    (which cannot ``await``) and into ``maybe_summarize`` so it can be awaited
-    safely by our async LangGraph node implementation.
+
+def _ensure_summary_loop() -> asyncio.AbstractEventLoop:
+    global _SUMMARY_LOOP, _SUMMARY_THREAD
+    if _SUMMARY_LOOP is None:
+        loop = asyncio.new_event_loop()
+        _SUMMARY_LOOP = loop
+
+        def _run_loop() -> None:
+            asyncio.set_event_loop(loop)
+            loop.run_forever()
+
+        t = threading.Thread(target=_run_loop, name="summary-loop", daemon=True)
+        _SUMMARY_THREAD = t
+        t.start()
+    return _SUMMARY_LOOP
+
+
+from typing import Coroutine
+
+
+def _run_coroutine_sync(coro: Coroutine[Any, Any, Any]) -> Any:
+    loop = _ensure_summary_loop()
+    fut = asyncio.run_coroutine_threadsafe(coro, loop)
+    return fut.result()
+
+
+class SummarizationMiddleware(AgentMiddleware):
+    """Middleware that summarizes conversation history when token limits are approached.
+
+    Executes async summary generation on a background event loop to remain
+    compatible with synchronous LangChain middleware contract.
     """
 
     def __init__(
@@ -116,29 +143,15 @@ class SummarizationMiddleware(AgentMiddleware):
         state: AgentState,
         runtime: Runtime,  # noqa: ARG002
     ) -> dict[str, Any] | None:
-        """No-op in synchronous middleware hook.
-
-        Summarization is performed explicitly in the agent node via ``maybe_summarize``.
-        Returning ``None`` preserves original middleware contract without triggering
-        runtime errors from improper event loop usage.
-        """
-        return None
-
-    async def maybe_summarize(self, messages: list[AnyMessage]) -> list[AnyMessage]:
-        """Potentially summarize the provided messages and return the new list.
-
-        This method encapsulates the original logic from ``before_model`` but is
-        safe to ``await`` from our async graph node. If summarization is not
-        triggered the original list is returned unchanged.
-        """
+        messages = state["messages"]
         self._ensure_message_ids(messages)
 
         total_tokens = self.token_counter(messages)
         if (
-            self.max_tokens_before_summary is None
-            or total_tokens < self.max_tokens_before_summary
+            self.max_tokens_before_summary is not None
+            and total_tokens < self.max_tokens_before_summary
         ):
-            return messages
+            return None
 
         self.logger.debug(
             f"Total tokens ({total_tokens}) exceed threshold "
@@ -150,19 +163,22 @@ class SummarizationMiddleware(AgentMiddleware):
         cutoff_index = self._find_safe_cutoff(messages)
         self.logger.debug(f"Determined safe cutoff index at: {cutoff_index}")
         if cutoff_index <= 0:
-            return messages
+            return None
 
         messages_to_summarize, preserved_messages = self._partition_messages(
             messages, cutoff_index
         )
-        summary = await self._create_summary(messages_to_summarize)
+
+        summary = _run_coroutine_sync(self._create_summary(messages_to_summarize))
         new_messages = self._build_new_messages(summary)
 
-        return [
-            RemoveMessage(id=REMOVE_ALL_MESSAGES),
-            *new_messages,
-            *preserved_messages,
-        ]
+        return {
+            "messages": [
+                RemoveMessage(id=REMOVE_ALL_MESSAGES),
+                *new_messages,
+                *preserved_messages,
+            ]
+        }
 
     def _build_new_messages(self, summary: str) -> list[HumanMessage]:
         return [
