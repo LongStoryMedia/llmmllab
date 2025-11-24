@@ -1,14 +1,6 @@
-"""Summarization middleware.
-
-Provides a synchronous ``before_model`` hook that triggers async summarization
-by submitting the coroutine to a dedicated background event loop and waiting
-for the result. This avoids calling ``asyncio.run`` inside a running loop and
-also avoids the previous busy-wait that blocked the active loop.
-"""
+"""Summarization middleware."""
 
 import uuid
-import asyncio
-import threading
 from collections.abc import Callable, Iterable
 from typing import Any, cast
 
@@ -29,6 +21,7 @@ from langgraph.runtime import Runtime
 
 
 from composer.agents.base_agent import BaseAgent
+# Removed streaming-specific agent creation imports
 from utils.logging import llmmllogger
 from utils.message_conversion import extract_text_from_message
 
@@ -73,8 +66,9 @@ _SEARCH_RANGE_FOR_TOOL_PAIRS = 5
 class SummarizationMiddleware(AgentMiddleware):
     """Middleware that summarizes conversation history when token limits are approached.
 
-    Executes async summary generation on a background event loop to remain
-    compatible with synchronous LangChain middleware contract.
+    This middleware monitors message token counts and automatically summarizes older
+    messages when a threshold is reached, preserving recent messages and maintaining
+    context continuity by ensuring AI/Tool message pairs remain together.
     """
 
     def __init__(
@@ -85,6 +79,7 @@ class SummarizationMiddleware(AgentMiddleware):
         token_counter: TokenCounter = count_tokens_approximately,
         summary_prompt: str = DEFAULT_SUMMARY_PROMPT,
         summary_prefix: str = SUMMARY_PREFIX,
+        # Streaming removed for simplicity per design decision
     ) -> None:
         """Initialize the summarization middleware.
 
@@ -106,12 +101,14 @@ class SummarizationMiddleware(AgentMiddleware):
         self.summary_prompt = summary_prompt
         self.summary_prefix = summary_prefix
         self.logger = llmmllogger.bind(component="SummarizationMiddleware")
+        # Streaming disabled; simplify implementation
 
-    def before_model(  # type: ignore[override]
+    def before_model(
         self,
         state: AgentState,
-        runtime: Runtime,  # noqa: ARG002
-    ) -> dict[str, Any] | None:
+        runtime: Runtime,
+    ) -> dict[str, Any] | None:  # noqa: ARG002
+        """Process messages before model invocation, potentially triggering summarization."""
         messages = state["messages"]
         self._ensure_message_ids(messages)
 
@@ -130,15 +127,16 @@ class SummarizationMiddleware(AgentMiddleware):
         )
 
         cutoff_index = self._find_safe_cutoff(messages)
+
         self.logger.debug(f"Determined safe cutoff index at: {cutoff_index}")
+
         if cutoff_index <= 0:
             return None
 
         messages_to_summarize, preserved_messages = self._partition_messages(
             messages, cutoff_index
         )
-
-        summary = _submit_blocking(self._create_summary(messages_to_summarize))
+        summary = self._create_summary(messages_to_summarize)
         new_messages = self._build_new_messages(summary)
 
         return {
@@ -159,13 +157,8 @@ class SummarizationMiddleware(AgentMiddleware):
     def _ensure_message_ids(self, messages: list[AnyMessage]) -> None:
         """Ensure all messages have unique IDs for the add_messages reducer."""
         for msg in messages:
-            # Only AI and Tool messages expose id in langchain schema we rely on for reducer behavior
-            if hasattr(msg, "id") and getattr(msg, "id") is None:  # type: ignore[attr-defined]
-                try:
-                    setattr(msg, "id", str(uuid.uuid4()))  # type: ignore[attr-defined]
-                except Exception:
-                    # Ignore silently if message type is immutable or lacks id
-                    continue
+            if msg.id is None:
+                msg.id = str(uuid.uuid4())
 
     def _partition_messages(
         self,
@@ -252,8 +245,8 @@ class SummarizationMiddleware(AgentMiddleware):
                     return True
         return False
 
-    async def _create_summary(self, messages_to_summarize: list[AnyMessage]) -> str:
-        """Generate summary for the given messages."""
+    def _create_summary(self, messages_to_summarize: list[AnyMessage]) -> str:
+        """Generate summary for the given messages (simple non-streaming path)."""
         if not messages_to_summarize:
             return "No previous conversation history."
 
@@ -261,49 +254,23 @@ class SummarizationMiddleware(AgentMiddleware):
         if not trimmed_messages:
             return "Previous conversation was too long to summarize."
 
-        prompt = self.summary_prompt.format(messages=trimmed_messages)
+        # Build concise textual representation for insertion into summary prompt
+        lines: list[str] = []
+        for m in trimmed_messages:
+            content = extract_text_from_message(m) if hasattr(m, "content") else ""
+            role = getattr(m, "type", getattr(m, "role", "message"))
+            lines.append(f"[{role}] {content}")
+        prompt_text = "\n".join(lines)
+        prompt = self.summary_prompt.format(messages=prompt_text)
         try:
-            response = await self.agent.run(prompt)
-            assert response.message is not None
+            response = self.agent.run_sync(prompt)
+            if response.message is None:
+                return "Summary generation produced no content."
             return extract_text_from_message(response.message)
         except Exception as e:  # noqa: BLE001
             return f"Error generating summary: {e!s}"
 
-
-# --- Background loop helper (minimal) -------------------------------------------------
-_SUMMARY_LOOP: asyncio.AbstractEventLoop | None = None
-_SUMMARY_THREAD: threading.Thread | None = None
-
-
-def _get_loop() -> asyncio.AbstractEventLoop:
-    global _SUMMARY_LOOP, _SUMMARY_THREAD
-    if _SUMMARY_LOOP is None:
-        loop = asyncio.new_event_loop()
-        _SUMMARY_LOOP = loop
-
-        def _run() -> None:
-            asyncio.set_event_loop(loop)
-            loop.run_forever()
-
-        t = threading.Thread(target=_run, name="summary-loop", daemon=True)
-        _SUMMARY_THREAD = t
-        t.start()
-    return _SUMMARY_LOOP
-
-
-def _submit_blocking(coro: asyncio.coroutines) -> Any:  # type: ignore[type-arg]
-    from typing import Coroutine
-
-
-    def _submit_blocking(coro: Coroutine[Any, Any, Any]) -> Any:
-        """Submit coroutine to background loop and block for result.
-
-        Uses ``run_coroutine_threadsafe`` to obtain a future and waits synchronously
-        for completion.
-        """
-        loop = _get_loop()
-        future = asyncio.run_coroutine_threadsafe(coro, loop)
-        return future.result()
+    # Removed streaming & diagnostic helpers for simplicity
 
     def _trim_messages_for_summary(
         self, messages: list[AnyMessage]
