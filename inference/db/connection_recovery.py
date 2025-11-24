@@ -17,15 +17,18 @@ class ConnectionRecoveryManager:
         self.pool = pool
 
     async def is_stale_oid_error(self, error: Exception) -> bool:
-        """Check if the error is caused by a stale OID reference."""
+        """Check if the error is caused by a stale OID reference or related transaction issues."""
         error_message = str(error).lower()
-        return "could not open relation with oid" in error_message or (
-            "relation with oid" in error_message and "does not exist" in error_message
+        return (
+            "could not open relation with oid" in error_message or
+            ("relation with oid" in error_message and "does not exist" in error_message) or
+            ("current transaction is aborted" in error_message and "recovery" in str(error_message))
         )
 
     async def recover_from_stale_oid(self, error: Exception) -> bool:
         """
         Attempt to recover from stale OID errors by refreshing connection pool state.
+        For transaction abort errors, we skip connection flushing to avoid interference.
 
         Returns:
             bool: True if recovery was attempted, False otherwise
@@ -33,7 +36,14 @@ class ConnectionRecoveryManager:
         if not await self.is_stale_oid_error(error):
             return False
 
-        logger.warning(f"Detected stale OID error: {error}")
+        logger.warning(f"Detected stale OID or transaction error: {error}")
+        
+        # If this is a transaction abort error, we don't flush connections
+        # as it would interfere with transaction handling
+        if "current transaction is aborted" in str(error).lower():
+            logger.info("Transaction abort detected - skipping connection flush, transaction will be retried")
+            return True
+        
         logger.info("Attempting connection pool recovery...")
 
         try:

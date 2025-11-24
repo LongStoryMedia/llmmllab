@@ -64,7 +64,7 @@ class MessageStorage:
     ) -> Optional[int]:
         """
         Add a message with all its related content, tool_calls, and thoughts.
-        Uses proper transaction handling for data consistency.
+        Uses proper transaction handling for data consistency and OID error recovery.
 
         Args:
             message: The message to add
@@ -73,13 +73,18 @@ class MessageStorage:
         if not message.conversation_id:
             raise ValueError("Message must have a conversation_id")
 
-        # Acquire connection if not provided
+        # If no connection provided, wrap the entire transaction in recovery
         if conn is None:
-            async with self.typed_pool.acquire() as connection:
-                async with connection.transaction():
-                    return await self._add_message(message, connection)
+            async def _add_with_transaction():
+                async with self.typed_pool.acquire() as connection:
+                    async with connection.transaction():
+                        return await self._add_message(message, connection)
+            
+            # Execute the entire transaction with recovery
+            return await self.recovery_manager.execute_with_recovery(_add_with_transaction)
         else:
             # Use existing connection (transaction managed externally)
+            # In this case, recovery should be handled by the outer transaction manager
             return await self._add_message(message, conn)
 
     async def _add_message(
@@ -90,15 +95,12 @@ class MessageStorage:
         """
         Internal method to add message using a specific connection.
         """
-        # Insert the main message record with recovery for OID errors
-        async def _insert_message_record():
-            return await conn.fetchrow(
-                self.get_query("message.add_message"),
-                message.conversation_id,
-                message.role,
-            )
-        
-        row = await self.recovery_manager.execute_with_recovery(_insert_message_record)
+        # Insert the main message record
+        row = await conn.fetchrow(
+            self.get_query("message.add_message"),
+            message.conversation_id,
+            message.role,
+        )
         message_id = row["id"] if row and "id" in row else None
 
         if not message_id:
@@ -580,29 +582,31 @@ class MessageStorage:
         Returns:
             Number of messages deleted
         """
-        async with self.typed_pool.acquire() as conn:
-            async with conn.transaction():
-                # Delete messages with recovery - cascade triggers will automatically delete related data
-                # (message_contents, thoughts, tool_calls, analyses, etc.)
-                async def _delete_messages():
-                    return await conn.execute(
+        async def _delete_with_transaction():
+            async with self.typed_pool.acquire() as conn:
+                async with conn.transaction():
+                    # Delete messages - cascade triggers will automatically delete related data
+                    # (message_contents, thoughts, tool_calls, analyses, etc.)
+                    message_result = await conn.execute(
                         self.get_query("message.delete_messages_from_timestamp"),
                         conversation_id,
                         from_timestamp,
                     )
-                    
-                message_result = await self.recovery_manager.execute_with_recovery(_delete_messages)
 
-                # Extract the number of deleted rows from the command result
-                deleted_count = (
-                    int(message_result.split()[-1])
-                    if message_result and message_result.split()
-                    else 0
-                )
+                    # Extract the number of deleted rows from the command result
+                    deleted_count = (
+                        int(message_result.split()[-1])
+                        if message_result and message_result.split()
+                        else 0
+                    )
 
-                logger.info(
-                    f"Bulk deleted {deleted_count} messages from conversation {conversation_id} created >= {from_timestamp} (cascade triggers handled related data)"
-                )
+                    logger.info(
+                        f"Bulk deleted {deleted_count} messages from conversation {conversation_id} created >= {from_timestamp} (cascade triggers handled related data)"
+                    )
+                    return deleted_count
+
+        # Execute the entire transaction with recovery
+        deleted_count = await self.recovery_manager.execute_with_recovery(_delete_with_transaction)
 
         # Invalidate conversation messages list cache
         cache_storage.invalidate_conversation_messages_cache(conversation_id)
