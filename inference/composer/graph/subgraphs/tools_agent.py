@@ -15,20 +15,19 @@ from typing import List
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
-from .summarization_middleware import (
-    SummarizationMiddleware,
-    DEFAULT_SUMMARY_PROMPT,
-    SUMMARY_PREFIX,
-)
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages.utils import count_tokens_approximately
-from langchain_core.language_models import BaseChatModel
 from composer.graph import WorkflowState
 from composer.agents.chat_agent import ChatAgent
 from composer.tools.registry import ToolRegistry
 from models import NodeMetadata, PipelinePriority
 from utils import extract_text_from_message
 from utils.logging import llmmllogger, serialize_event_data
+from .summarization_middleware import (
+    SummarizationMiddleware,
+    DEFAULT_SUMMARY_PROMPT,
+    SUMMARY_PREFIX,
+)
 
 logger = llmmllogger.bind(component="ToolsAgentSubgraph")
 
@@ -136,29 +135,28 @@ class ToolsAgentSubgraph:
 
             logger.debug(f"tools: {tools_dict.keys()}")
 
-            model = await self.chat_agent.get_pipeline()
-            assert isinstance(model, BaseChatModel)
             n_ctx = self.chat_agent.profile.parameters.batch_size or 4096
             logger.debug(f"Model context length: {n_ctx}")
             max_tokens_before_summary = int(n_ctx * 0.95)
             logger.debug(f"Max tokens before summary: {max_tokens_before_summary}")
 
-            middleware: List[AgentMiddleware] = [
-                SummarizationMiddleware(
-                    model=model,
-                    max_tokens_before_summary=20000,
-                    messages_to_keep=10,
-                    summary_prompt=DEFAULT_SUMMARY_PROMPT,
-                    summary_prefix=SUMMARY_PREFIX,
-                    token_counter=count_tokens_approximately,
-                )
-            ]
+            summarizer = SummarizationMiddleware(
+                agent=self.chat_agent,
+                max_tokens_before_summary=10000,
+                messages_to_keep=10,
+                summary_prompt=DEFAULT_SUMMARY_PROMPT,
+                summary_prefix=SUMMARY_PREFIX,
+                token_counter=count_tokens_approximately,
+            )
+
+            # Perform async summarization prior to model invocation.
+            state.messages = await summarizer.maybe_summarize(state.messages)  # type: ignore[assignment]
 
             response = await self.chat_agent.run(
                 messages=state.messages,
                 tools=tools_list,
                 priority=PipelinePriority.HIGH,
-                middleware=middleware,
+                middleware=[],
             )
 
             # Persist todos extracted in ChatResponse (already converted in BaseAgent)

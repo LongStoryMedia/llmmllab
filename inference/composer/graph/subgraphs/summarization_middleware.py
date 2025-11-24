@@ -1,4 +1,15 @@
-"""Summarization middleware."""
+"""Async-capable summarization helper.
+
+The original implementation attempted to call ``asyncio.run`` inside a LangChain
+``AgentMiddleware`` hook (``before_model``) which executes while an event loop is
+already running inside our FastAPI / LangGraph runtime. Calling ``asyncio.run``
+in that context raises ``RuntimeError: asyncio.run() cannot be called from a running event loop``.
+
+To adapt this to the project's fully async execution model we expose an async
+``maybe_summarize`` method that can be invoked from our own agent node prior to
+LLM invocation. The ``AgentMiddleware`` base is retained for compatibility but
+the summarization logic is no longer executed in the synchronous ``before_model``.
+"""
 
 import uuid
 from collections.abc import Callable, Iterable
@@ -13,15 +24,16 @@ from langchain_core.messages import (
 )
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.utils import count_tokens_approximately, trim_messages
+from langchain.agents.middleware.types import AgentMiddleware, AgentState
 from langgraph.graph.message import (
     REMOVE_ALL_MESSAGES,
 )
 from langgraph.runtime import Runtime
 
-from langchain.agents.middleware.types import AgentMiddleware, AgentState
-from langchain.chat_models import BaseChatModel, init_chat_model
 
-from utils.logging import llmmllogger, serialize_event_data
+from composer.agents.base_agent import BaseAgent
+from utils.logging import llmmllogger
+from utils.message_conversion import extract_text_from_message
 
 TokenCounter = Callable[[Iterable[MessageLikeRepresentation]], int]
 
@@ -62,16 +74,16 @@ _SEARCH_RANGE_FOR_TOOL_PAIRS = 5
 
 
 class SummarizationMiddleware(AgentMiddleware):
-    """Middleware that summarizes conversation history when token limits are approached.
+    """Async summarization helper invoked explicitly by agent node.
 
-    This middleware monitors message token counts and automatically summarizes older
-    messages when a threshold is reached, preserving recent messages and maintaining
-    context continuity by ensuring AI/Tool message pairs remain together.
+    The summarization logic was moved out of the synchronous ``before_model`` hook
+    (which cannot ``await``) and into ``maybe_summarize`` so it can be awaited
+    safely by our async LangGraph node implementation.
     """
 
     def __init__(
         self,
-        model: str | BaseChatModel,
+        agent: BaseAgent,
         max_tokens_before_summary: int | None = None,
         messages_to_keep: int = _DEFAULT_MESSAGES_TO_KEEP,
         token_counter: TokenCounter = count_tokens_approximately,
@@ -91,10 +103,7 @@ class SummarizationMiddleware(AgentMiddleware):
         """
         super().__init__()
 
-        if isinstance(model, str):
-            model = init_chat_model(model)
-
-        self.model = model
+        self.agent = agent
         self.max_tokens_before_summary = max_tokens_before_summary
         self.messages_to_keep = messages_to_keep
         self.token_counter = token_counter
@@ -102,19 +111,34 @@ class SummarizationMiddleware(AgentMiddleware):
         self.summary_prefix = summary_prefix
         self.logger = llmmllogger.bind(component="SummarizationMiddleware")
 
-    def before_model(
-        self, state: AgentState, runtime: Runtime
-    ) -> dict[str, Any] | None:  # noqa: ARG002
-        """Process messages before model invocation, potentially triggering summarization."""
-        messages = state["messages"]
+    def before_model(  # type: ignore[override]
+        self,
+        state: AgentState,
+        runtime: Runtime,  # noqa: ARG002
+    ) -> dict[str, Any] | None:
+        """No-op in synchronous middleware hook.
+
+        Summarization is performed explicitly in the agent node via ``maybe_summarize``.
+        Returning ``None`` preserves original middleware contract without triggering
+        runtime errors from improper event loop usage.
+        """
+        return None
+
+    async def maybe_summarize(self, messages: list[AnyMessage]) -> list[AnyMessage]:
+        """Potentially summarize the provided messages and return the new list.
+
+        This method encapsulates the original logic from ``before_model`` but is
+        safe to ``await`` from our async graph node. If summarization is not
+        triggered the original list is returned unchanged.
+        """
         self._ensure_message_ids(messages)
 
         total_tokens = self.token_counter(messages)
         if (
-            self.max_tokens_before_summary is not None
-            and total_tokens < self.max_tokens_before_summary
+            self.max_tokens_before_summary is None
+            or total_tokens < self.max_tokens_before_summary
         ):
-            return None
+            return messages
 
         self.logger.debug(
             f"Total tokens ({total_tokens}) exceed threshold "
@@ -124,38 +148,21 @@ class SummarizationMiddleware(AgentMiddleware):
         )
 
         cutoff_index = self._find_safe_cutoff(messages)
-
         self.logger.debug(f"Determined safe cutoff index at: {cutoff_index}")
-
         if cutoff_index <= 0:
-            return None
+            return messages
 
         messages_to_summarize, preserved_messages = self._partition_messages(
             messages, cutoff_index
         )
-
-        self.logger.debug(
-            f"Messages to summarize: {serialize_event_data(messages_to_summarize)}"
-        )
-        self.logger.debug(
-            f"Messages to preserve: {serialize_event_data(preserved_messages)}"
-        )
-
-        summary = self._create_summary(messages_to_summarize)
+        summary = await self._create_summary(messages_to_summarize)
         new_messages = self._build_new_messages(summary)
 
-        self.logger.debug(f"Generated summary: {summary}")
-        self.logger.debug(
-            f"New messages after summarization: {serialize_event_data(new_messages)}"
-        )
-
-        return {
-            "messages": [
-                RemoveMessage(id=REMOVE_ALL_MESSAGES),
-                *new_messages,
-                *preserved_messages,
-            ]
-        }
+        return [
+            RemoveMessage(id=REMOVE_ALL_MESSAGES),
+            *new_messages,
+            *preserved_messages,
+        ]
 
     def _build_new_messages(self, summary: str) -> list[HumanMessage]:
         return [
@@ -167,8 +174,13 @@ class SummarizationMiddleware(AgentMiddleware):
     def _ensure_message_ids(self, messages: list[AnyMessage]) -> None:
         """Ensure all messages have unique IDs for the add_messages reducer."""
         for msg in messages:
-            if msg.id is None:
-                msg.id = str(uuid.uuid4())
+            # Only AI and Tool messages expose id in langchain schema we rely on for reducer behavior
+            if hasattr(msg, "id") and getattr(msg, "id") is None:  # type: ignore[attr-defined]
+                try:
+                    setattr(msg, "id", str(uuid.uuid4()))  # type: ignore[attr-defined]
+                except Exception:
+                    # Ignore silently if message type is immutable or lacks id
+                    continue
 
     def _partition_messages(
         self,
@@ -255,7 +267,7 @@ class SummarizationMiddleware(AgentMiddleware):
                     return True
         return False
 
-    def _create_summary(self, messages_to_summarize: list[AnyMessage]) -> str:
+    async def _create_summary(self, messages_to_summarize: list[AnyMessage]) -> str:
         """Generate summary for the given messages."""
         if not messages_to_summarize:
             return "No previous conversation history."
@@ -264,11 +276,11 @@ class SummarizationMiddleware(AgentMiddleware):
         if not trimmed_messages:
             return "Previous conversation was too long to summarize."
 
+        prompt = self.summary_prompt.format(messages=trimmed_messages)
         try:
-            response = self.model.invoke(
-                self.summary_prompt.format(messages=trimmed_messages)
-            )
-            return cast("str", response.content).strip()
+            response = await self.agent.run(prompt)
+            assert response.message is not None
+            return extract_text_from_message(response.message)
         except Exception as e:  # noqa: BLE001
             return f"Error generating summary: {e!s}"
 
