@@ -10,6 +10,7 @@ from typing import List, Optional
 import asyncpg
 from models.model_profile import ModelProfile
 from models.default_model_profiles import DEFAULT_PROFILES
+from db.connection_recovery import ConnectionRecoveryManager, recovery_manager
 from db.db_utils import typed_pool
 from .serialization import serialize_to_json
 
@@ -21,15 +22,21 @@ class ModelProfileStorage:
         self.pool = pool
         self.typed_pool = typed_pool(pool)
         self.get_query = get_query
+        
+        # Initialize connection recovery manager
+        self.recovery_manager = recovery_manager if recovery_manager else ConnectionRecoveryManager(pool)
 
     async def get_model_profile_by_id(
         self, profile_id: uuid.UUID, user_id: str
     ) -> Optional[ModelProfile]:
         """Get a model profile by ID"""
         async with self.typed_pool.acquire() as conn:
-            row = await conn.fetchrow(
-                self.get_query("modelprofile.get_profile_by_id"), profile_id, user_id
-            )
+            async def _get_profile():
+                return await conn.fetchrow(
+                    self.get_query("modelprofile.get_profile_by_id"), profile_id, user_id
+                )
+            
+            row = await self.recovery_manager.execute_with_recovery(_get_profile)
             if not row:
                 # If the profile is a system default, return it
                 for profile in DEFAULT_PROFILES.values():
@@ -85,9 +92,12 @@ class ModelProfileStorage:
     async def list_model_profiles_by_user(self, user_id: str) -> List[ModelProfile]:
         """List all model profiles for a user"""
         async with self.typed_pool.acquire() as conn:
-            rows = await conn.fetch(
-                self.get_query("modelprofile.list_profiles_by_user"), user_id
-            )
+            async def _list_profiles():
+                return await conn.fetch(
+                    self.get_query("modelprofile.list_profiles_by_user"), user_id
+                )
+            
+            rows = await self.recovery_manager.execute_with_recovery(_list_profiles)
             profiles = []
 
             # Add default system profiles
@@ -192,21 +202,24 @@ class ModelProfileStorage:
             gpu_config_json = None
 
         async with self.typed_pool.acquire() as conn:
-            await conn.execute(
-                self.get_query("modelprofile.create_profile"),
-                profile.id,
-                profile.user_id,
-                profile.name,
-                profile.description,
-                profile.model_name,
-                params_json,
-                profile.system_prompt,
-                profile.model_version,
-                profile.type,
-                circuit_breaker_json,
-                gpu_config_json,
-                profile.draft_model,
-            )
+            async def _create_profile():
+                return await conn.execute(
+                    self.get_query("modelprofile.create_profile"),
+                    profile.id,
+                    profile.user_id,
+                    profile.name,
+                    profile.description,
+                    profile.model_name,
+                    params_json,
+                    profile.system_prompt,
+                    profile.model_version,
+                    profile.type,
+                    circuit_breaker_json,
+                    gpu_config_json,
+                    profile.draft_model,
+                )
+            
+            await self.recovery_manager.execute_with_recovery(_create_profile)
 
             # Update the profile with current timestamps (which are set by the database)
             profile.created_at = datetime.now()
@@ -245,21 +258,24 @@ class ModelProfileStorage:
             gpu_config_json = None
 
         async with self.typed_pool.acquire() as conn:
-            await conn.execute(
-                self.get_query("modelprofile.update_profile"),
-                profile.id,
-                profile.name,
-                profile.description,
-                profile.model_name,
-                params_json,
-                profile.system_prompt,
-                profile.model_version,
-                profile.type,
-                circuit_breaker_json,
-                gpu_config_json,
-                profile.draft_model,
-                profile.user_id,
-            )
+            async def _update_profile():
+                return await conn.execute(
+                    self.get_query("modelprofile.update_profile"),
+                    profile.id,
+                    profile.name,
+                    profile.description,
+                    profile.model_name,
+                    params_json,
+                    profile.system_prompt,
+                    profile.model_version,
+                    profile.type,
+                    circuit_breaker_json,
+                    gpu_config_json,
+                    profile.draft_model,
+                    profile.user_id,
+                )
+            
+            await self.recovery_manager.execute_with_recovery(_update_profile)
 
             # Update the profile with current timestamp (which is set by the database)
             profile.updated_at = datetime.now()
@@ -276,9 +292,12 @@ class ModelProfileStorage:
             raise ValueError("Cannot delete system default profiles")
 
         async with self.typed_pool.acquire() as conn:
-            result = await conn.execute(
-                self.get_query("modelprofile.delete_profile"), profile_id, user_id
-            )
+            async def _delete_profile():
+                return await conn.execute(
+                    self.get_query("modelprofile.delete_profile"), profile_id, user_id
+                )
+            
+            result = await self.recovery_manager.execute_with_recovery(_delete_profile)
 
             return "DELETE" in result
 
@@ -293,15 +312,19 @@ class ModelProfileStorage:
                     params_json = serialize_to_json(params_dict)
                 else:
                     params_json = "{}"
-                await conn.execute(
-                    self.get_query("modelprofile.upsert_default_profile"),
-                    profile.id,
-                    profile.user_id,
-                    profile.name,
-                    profile.description,
-                    profile.model_name,
-                    params_json,
-                    profile.system_prompt,
-                    profile.model_version,
-                    profile.type,
-                )
+                
+                async def _upsert_default():
+                    return await conn.execute(
+                        self.get_query("modelprofile.upsert_default_profile"),
+                        profile.id,
+                        profile.user_id,
+                        profile.name,
+                        profile.description,
+                        profile.model_name,
+                        params_json,
+                        profile.system_prompt,
+                        profile.model_version,
+                        profile.type,
+                    )
+                
+                await self.recovery_manager.execute_with_recovery(_upsert_default)
