@@ -1,11 +1,9 @@
-"""Summarization middleware with background event loop support.
+"""Summarization middleware.
 
-This implementation preserves the LangChain ``AgentMiddleware`` synchronous
-``before_model`` interface while safely executing async summarization logic by
-offloading it to a dedicated background asyncio event loop/thread.
-
-Avoids: ``asyncio.run`` within a running loop (prior RuntimeError).
-Pattern: ``asyncio.run_coroutine_threadsafe`` against a singleton loop.
+Provides a synchronous ``before_model`` hook that triggers async summarization
+by submitting the coroutine to a dedicated background event loop and waiting
+for the result. This avoids calling ``asyncio.run`` inside a running loop and
+also avoids the previous busy-wait that blocked the active loop.
 """
 
 import uuid
@@ -70,35 +68,6 @@ _DEFAULT_MESSAGES_TO_KEEP = 20
 _DEFAULT_TRIM_TOKEN_LIMIT = 4000
 _DEFAULT_FALLBACK_MESSAGE_COUNT = 15
 _SEARCH_RANGE_FOR_TOOL_PAIRS = 5
-
-
-_SUMMARY_LOOP: asyncio.AbstractEventLoop | None = None
-_SUMMARY_THREAD: threading.Thread | None = None
-
-
-def _ensure_summary_loop() -> asyncio.AbstractEventLoop:
-    global _SUMMARY_LOOP, _SUMMARY_THREAD
-    if _SUMMARY_LOOP is None:
-        loop = asyncio.new_event_loop()
-        _SUMMARY_LOOP = loop
-
-        def _run_loop() -> None:
-            asyncio.set_event_loop(loop)
-            loop.run_forever()
-
-        t = threading.Thread(target=_run_loop, name="summary-loop", daemon=True)
-        _SUMMARY_THREAD = t
-        t.start()
-    return _SUMMARY_LOOP
-
-
-from typing import Coroutine
-
-
-def _run_coroutine_sync(coro: Coroutine[Any, Any, Any]) -> Any:
-    loop = _ensure_summary_loop()
-    fut = asyncio.run_coroutine_threadsafe(coro, loop)
-    return fut.result()
 
 
 class SummarizationMiddleware(AgentMiddleware):
@@ -169,7 +138,7 @@ class SummarizationMiddleware(AgentMiddleware):
             messages, cutoff_index
         )
 
-        summary = _run_coroutine_sync(self._create_summary(messages_to_summarize))
+        summary = _submit_blocking(self._create_summary(messages_to_summarize))
         new_messages = self._build_new_messages(summary)
 
         return {
@@ -299,6 +268,42 @@ class SummarizationMiddleware(AgentMiddleware):
             return extract_text_from_message(response.message)
         except Exception as e:  # noqa: BLE001
             return f"Error generating summary: {e!s}"
+
+
+# --- Background loop helper (minimal) -------------------------------------------------
+_SUMMARY_LOOP: asyncio.AbstractEventLoop | None = None
+_SUMMARY_THREAD: threading.Thread | None = None
+
+
+def _get_loop() -> asyncio.AbstractEventLoop:
+    global _SUMMARY_LOOP, _SUMMARY_THREAD
+    if _SUMMARY_LOOP is None:
+        loop = asyncio.new_event_loop()
+        _SUMMARY_LOOP = loop
+
+        def _run() -> None:
+            asyncio.set_event_loop(loop)
+            loop.run_forever()
+
+        t = threading.Thread(target=_run, name="summary-loop", daemon=True)
+        _SUMMARY_THREAD = t
+        t.start()
+    return _SUMMARY_LOOP
+
+
+def _submit_blocking(coro: asyncio.coroutines) -> Any:  # type: ignore[type-arg]
+    from typing import Coroutine
+
+
+    def _submit_blocking(coro: Coroutine[Any, Any, Any]) -> Any:
+        """Submit coroutine to background loop and block for result.
+
+        Uses ``run_coroutine_threadsafe`` to obtain a future and waits synchronously
+        for completion.
+        """
+        loop = _get_loop()
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+        return future.result()
 
     def _trim_messages_for_summary(
         self, messages: list[AnyMessage]
