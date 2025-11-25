@@ -1,79 +1,38 @@
 import React, { memo } from 'react';
-import { Box, Paper, Fade } from '@mui/material';
+import { Box } from '@mui/material';
+import { Message, MessageContent, MessageResponse } from '../ai-elements/message';
 import { useChat } from '../../chat';
-import MarkdownRenderer from '../Shared/MarkdownRenderer';
 import ThinkSection from './ThinkSection';
 import ToolCallsSection from './ToolCallsSection';
 import MessageActions from './MessageActions';
 import MessageEditor from './MessageEditor';
-import { sanitizeForLaTeX } from './utils';
-import { Message } from '../../types/Message';
-import { ResponseSection } from '../../types/ResponseSection';
-import { MessageContent, Thought, ToolCall } from '../../types';
+import { parseResponse } from './utils';
+import { Message as CustomMessage } from '../../types/Message';
+import { convertToUIMessage } from '../../api/types';
+import { ToolCall } from '../../types/ToolCall';
 
 interface ChatBubbleProps {
-  message: Message;
+  message: CustomMessage;
 }
 
-const isThinkingSection = (section: ResponseSection) => {
-  return section.type === 'thinking';
-};
-
-const isExecutingSection = (section: ResponseSection) => {
-  return section.type === 'executing';
-};
-
-const isRespondingSection = (section: ResponseSection) => {
-  return section.type === 'responding';
-};
-
-/**
- * Render a single response section based on its type
- */
-const RenderSection: React.FC<{ section: ResponseSection; inProgress: boolean }> = memo(({
-  section,
-  inProgress
-}) => {
-  if (isThinkingSection(section)) {
-    return <ThinkSection think={section.content} />;
-  }
-
-  if (isExecutingSection(section)) {
-    return (
-      <ToolCallsSection
-        toolCalls={section.toolCalls ?? []}
-        isTyping={inProgress && !section.completedAt}
-      />
-    );
-  }
-
-  if (isRespondingSection(section)) {
-    return (
-      <Box sx={{ mt: 1 }}>
-        <MarkdownRenderer sanitizeForLaTeX={sanitizeForLaTeX}>
-          {section.content ?? ''}
-        </MarkdownRenderer>
-      </Box>
-    );
-  }
-
-  return null;
-});
-
 const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
-  const {
-    isLoading,
-    isTyping,
-    editingMessageId,
-    editingMessageContent,
-    streamingSections
-  } = useChat();
-
+  const { isLoading, isTyping, currentThinking, currentToolCalls, editingMessageId, editingMessageContent } = useChat();
   const inProgress = isLoading || isTyping;
+
+  // Parse the message to get aggregated content, thinking, tool calls, and analyses
+  const parsed = parseResponse(
+    message,
+    (isTyping ? currentThinking : null),
+    (isTyping && currentToolCalls ? currentToolCalls as ToolCall[] : null)
+  );
+
   const isUser = message.role === 'user';
   const isEditing = editingMessageId === message.id;
 
-  // If editing, render the editor
+  // Convert to UI message for AI SDK components
+  const uiMessage = convertToUIMessage(message);
+
+  // If this message is being edited, render the editor instead
   if (isEditing && message.id) {
     return (
       <Box
@@ -93,106 +52,61 @@ const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
     );
   }
 
-  // Determine if this is the streaming message:
-  // - Must be assistant role
-  // - No ID (streaming messages don't have IDs yet)
-  // - Currently in progress (typing or loading)
-  const isStreamingMessage = !isUser && !message.id && inProgress;
-
-  // Use streaming sections for actively streaming messages
-  // Use parsed content for stored messages
-  const shouldRenderSections = isStreamingMessage && streamingSections.length > 0;
-  // const parsed = !shouldRenderSections ? parseResponse(message, null, null) : null;
-
-  const sectionsToRender = [...(message.analyses || []), ...(message.tool_calls || []), ...(message.content || []), ...(message.thoughts || [])]
-    .sort((a, b) => (a.created_at && b.created_at) ? new Date(a.created_at).getTime() - new Date(b.created_at).getTime() : 0);
-
-  // console.log("Sections to render:", sectionsToRender);
-
   return (
     <Box
       sx={{
         display: 'flex',
         justifyContent: isUser ? 'flex-end' : 'flex-start',
-        mb: 2
+        mb: 2,
+        position: 'relative'
       }}
     >
-      <Fade in={true} timeout={1500}>
-        <Paper
+      <Message 
+        from={uiMessage.role}
+        className="w-full max-w-[80%] sm:max-w-[90%]"
+        style={{
+          opacity: inProgress ? 0.75 : 1
+        }}
+      >
+        {/* Message actions in top-right corner */}
+        <Box
           sx={{
-            p: { xs: 1.5, sm: 2 },
-            width: { xs: '100%', sm: isUser ? '80%' : '90%' },
-            backgroundColor: isUser ? 'primary.light' : 'background.paper',
-            color: isUser ? 'primary.contrastText' : 'text.primary',
-            borderRadius: 2,
-            opacity: isStreamingMessage ? 0.75 : 1,
-            borderLeft: `0.5px solid`,
-            borderLeftColor: isUser ? 'secondary.main' : 'primary.main',
-            wordBreak: 'break-word',
-            overflowWrap: 'break-word',
-            minHeight: 100,
-            position: 'relative'
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            zIndex: 1
           }}
         >
-          {/* Message actions - only for stored messages with IDs */}
-          {message.id && (
-            <Box
-              sx={{
-                position: 'absolute',
-                top: 8,
-                right: 8,
-                zIndex: 1
-              }}
-            >
-              <MessageActions message={message} isUser={isUser} />
-            </Box>
-          )}
+          <MessageActions message={message} isUser={isUser} />
+        </Box>
 
-          {/* Render sections in order for streaming messages */}
-          {
-            (!isUser && shouldRenderSections) ? (
-              <Box sx={{ mt: 1 }}>
-                {streamingSections.map((section) => (
-                  <RenderSection
-                    key={section.id}
-                    section={section}
-                    inProgress={inProgress}
-                  />
-                ))}
-              </Box>
-            ) : (
-              // Render sections in order for stored messages
-              <Box sx={{ mt: 1 }}>
-                {sectionsToRender.map((section, index) => (
-                  (section as ToolCall)?.execution_id ? (
-                    <ToolCallsSection
-                      key={index}
-                      toolCalls={[section as ToolCall]}
-                      isTyping={false}
-                    />
-                  ) : (
-                    (section as MessageContent)?.type === 'text' ? (
-                      <MarkdownRenderer
-                        key={index}
-                        sanitizeForLaTeX={sanitizeForLaTeX}
-                      >
-                        {(section as MessageContent).text ?? ''}
-                      </MarkdownRenderer>
-                    ) : (
-                      <ThinkSection
-                        key={index}
-                        think={(section as Thought).text ?? ''}
-                      />
-                    )
-                  )
-                ))}
-              </Box>
-            )
-          }
-        </Paper>
-      </Fade>
+        <MessageContent>
+          {!isUser && (parsed.thinking || inProgress) && (
+            <ThinkSection think={parsed.thinking || ""} inProgress={inProgress} />
+          )}
+          {!isUser && parsed.toolCalls && (
+            <ToolCallsSection 
+              toolCalls={parsed.toolCalls as { 
+                tool_name?: string; 
+                name?: string; 
+                success?: boolean; 
+                execution_time_ms?: number; 
+                args?: Record<string, unknown>; 
+                result_data?: Record<string, unknown>; 
+                error_message?: string; 
+              }[]} 
+              isTyping={isTyping} 
+            />
+          )}
+          <MessageResponse>
+            {parsed.content || 'No content'}
+          </MessageResponse>
+        </MessageContent>
+      </Message>
     </Box>
   );
 });
+
+ChatBubble.displayName = 'ChatBubble';
 
 export default ChatBubble;

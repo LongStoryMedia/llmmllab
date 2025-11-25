@@ -70,7 +70,6 @@ const Wrapper: React.FC = () => {
           </BackgroundContextProvider>
         )}
       </ConfigProvider>
-      <ThemeToggle mode={mode} setMode={setMode} />
     </ThemeProvider>
   )
 }

@@ -4,9 +4,9 @@ import { useControllableState } from "@radix-ui/react-use-controllable-state";
 import {
   Collapsible,
   CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { cn } from "@/lib/utils";
+  CollapsibleTrigger
+} from "../ui/collapsible";
+import { cn } from "../../lib/utils";
 import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
@@ -55,11 +55,11 @@ export const Reasoning = memo(
     const [isOpen, setIsOpen] = useControllableState({
       prop: open,
       defaultProp: defaultOpen,
-      onChange: onOpenChange,
+      onChange: onOpenChange
     });
     const [duration, setDuration] = useControllableState({
       prop: durationProp,
-      defaultProp: undefined,
+      defaultProp: undefined
     });
 
     const [hasAutoClosed, setHasAutoClosed] = useState(false);

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "../ui/button";
 import {
   Command,
   CommandEmpty,
@@ -8,33 +8,33 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
-} from "@/components/ui/command";
+  CommandSeparator
+} from "../ui/command";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  DropdownMenuTrigger
+} from "../ui/dropdown-menu";
 import {
   HoverCard,
   HoverCardContent,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card";
+  HoverCardTrigger
+} from "../ui/hover-card";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
-  InputGroupTextarea,
-} from "@/components/ui/input-group";
+  InputGroupTextarea
+} from "../ui/input-group";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+  SelectValue
+} from "../ui/select";
+import { cn } from "../../lib/utils";
 import type { ChatStatus, FileUIPart } from "ai";
 import {
   CornerDownLeftIcon,
@@ -44,7 +44,7 @@ import {
   PaperclipIcon,
   PlusIcon,
   SquareIcon,
-  XIcon,
+  XIcon
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import {
@@ -67,7 +67,7 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
+  useState
 } from "react";
 
 // ============================================================================
@@ -143,7 +143,7 @@ export type PromptInputProviderProps = PropsWithChildren<{
  */
 export function PromptInputProvider({
   initialInput: initialTextInput = "",
-  children,
+  children
 }: PromptInputProviderProps) {
   // ----- textInput state
   const [textInput, setTextInput] = useState(initialTextInput);
@@ -152,7 +152,7 @@ export function PromptInputProvider({
   // ----- attachments state (global when wrapped)
   const [attachements, setAttachements] = useState<
     (FileUIPart & { id: string })[]
-  >([]);
+      >([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const openRef = useRef<() => void>(() => {});
 
@@ -169,7 +169,7 @@ export function PromptInputProvider({
           type: "file" as const,
           url: URL.createObjectURL(file),
           mediaType: file.type,
-          filename: file.name,
+          filename: file.name
         }))
       )
     );
@@ -207,7 +207,7 @@ export function PromptInputProvider({
       remove,
       clear,
       openFileDialog,
-      fileInputRef,
+      fileInputRef
     }),
     [attachements, add, remove, clear, openFileDialog]
   );
@@ -225,10 +225,10 @@ export function PromptInputProvider({
       textInput: {
         value: textInput,
         setInput: setTextInput,
-        clear: clearInput,
+        clear: clearInput
       },
       attachments,
-      __registerFileInput,
+      __registerFileInput
     }),
     [textInput, clearInput, attachments, __registerFileInput]
   );
@@ -499,7 +499,7 @@ export const PromptInput = ({
       if (incoming.length && accepted.length === 0) {
         onError?.({
           code: "accept",
-          message: "No files match the accepted types.",
+          message: "No files match the accepted types."
         });
         return;
       }
@@ -509,7 +509,7 @@ export const PromptInput = ({
       if (accepted.length > 0 && sized.length === 0) {
         onError?.({
           code: "max_file_size",
-          message: "All files exceed the maximum size.",
+          message: "All files exceed the maximum size."
         });
         return;
       }
@@ -524,7 +524,7 @@ export const PromptInput = ({
         if (typeof capacity === "number" && sized.length > capacity) {
           onError?.({
             code: "max_files",
-            message: "Too many files. Some were not added.",
+            message: "Too many files. Some were not added."
           });
         }
         const next: (FileUIPart & { id: string })[] = [];
@@ -534,7 +534,7 @@ export const PromptInput = ({
             type: "file",
             url: URL.createObjectURL(file),
             mediaType: file.type,
-            filename: file.name,
+            filename: file.name
           });
         }
         return prev.concat(next);
@@ -550,25 +550,25 @@ export const PromptInput = ({
   const remove = usingProvider
     ? (id: string) => controller.attachments.remove(id)
     : (id: string) =>
-        setItems((prev) => {
-          const found = prev.find((file) => file.id === id);
-          if (found?.url) {
-            URL.revokeObjectURL(found.url);
-          }
-          return prev.filter((file) => file.id !== id);
-        });
+      setItems((prev) => {
+        const found = prev.find((file) => file.id === id);
+        if (found?.url) {
+          URL.revokeObjectURL(found.url);
+        }
+        return prev.filter((file) => file.id !== id);
+      });
 
   const clear = usingProvider
     ? () => controller.attachments.clear()
     : () =>
-        setItems((prev) => {
-          for (const file of prev) {
-            if (file.url) {
-              URL.revokeObjectURL(file.url);
-            }
+      setItems((prev) => {
+        for (const file of prev) {
+          if (file.url) {
+            URL.revokeObjectURL(file.url);
           }
-          return [];
-        });
+        }
+        return [];
+      });
 
   const openFileDialog = usingProvider
     ? () => controller.attachments.openFileDialog()
@@ -576,7 +576,9 @@ export const PromptInput = ({
 
   // Let provider know about our hidden file input so external menus can call openFileDialog()
   useEffect(() => {
-    if (!usingProvider) return;
+    if (!usingProvider) {
+      return;
+    }
     controller.__registerFileInput(inputRef, () => inputRef.current?.click());
   }, [usingProvider, controller]);
 
@@ -591,7 +593,9 @@ export const PromptInput = ({
   // Attach drop handlers on nearest form and document (opt-in)
   useEffect(() => {
     const form = formRef.current;
-    if (!form) return;
+    if (!form) {
+      return;
+    }
 
     const onDragOver = (e: DragEvent) => {
       if (e.dataTransfer?.types?.includes("Files")) {
@@ -615,7 +619,9 @@ export const PromptInput = ({
   }, [add]);
 
   useEffect(() => {
-    if (!globalDrop) return;
+    if (!globalDrop) {
+      return;
+    }
 
     const onDragOver = (e: DragEvent) => {
       if (e.dataTransfer?.types?.includes("Files")) {
@@ -642,7 +648,9 @@ export const PromptInput = ({
     () => () => {
       if (!usingProvider) {
         for (const f of files) {
-          if (f.url) URL.revokeObjectURL(f.url);
+          if (f.url) {
+            URL.revokeObjectURL(f.url);
+          }
         }
       }
     },
@@ -673,7 +681,7 @@ export const PromptInput = ({
       remove,
       clear,
       openFileDialog,
-      fileInputRef: inputRef,
+      fileInputRef: inputRef
     }),
     [files, add, remove, clear, openFileDialog]
   );
@@ -685,9 +693,9 @@ export const PromptInput = ({
     const text = usingProvider
       ? controller.textInput.value
       : (() => {
-          const formData = new FormData(form);
-          return (formData.get("message") as string) || "";
-        })();
+        const formData = new FormData(form);
+        return (formData.get("message") as string) || "";
+      })();
 
     // Reset form immediately after capturing text to avoid race condition
     // where user input during async blob conversion would be lost
@@ -701,7 +709,7 @@ export const PromptInput = ({
         if (item.url && item.url.startsWith("blob:")) {
           return {
             ...item,
-            url: await convertBlobUrlToDataUrl(item.url),
+            url: await convertBlobUrlToDataUrl(item.url)
           };
         }
         return item;
@@ -729,7 +737,7 @@ export const PromptInput = ({
             controller.textInput.clear();
           }
         }
-      } catch (error) {
+      } catch (_error) {
         // Don't clear on error - user may want to retry
       }
     });
@@ -820,7 +828,7 @@ export const PromptInputTextarea = ({
       attachments.files.length > 0
     ) {
       e.preventDefault();
-      const lastAttachment = attachments.files.at(-1);
+      const lastAttachment = attachments.files.length > 0 ? attachments.files[attachments.files.length - 1] : undefined;
       if (lastAttachment) {
         attachments.remove(lastAttachment.id);
       }
@@ -853,15 +861,15 @@ export const PromptInputTextarea = ({
 
   const controlledProps = controller
     ? {
-        value: controller.textInput.value,
-        onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
-          controller.textInput.setInput(e.currentTarget.value);
-          onChange?.(e);
-        },
+      value: controller.textInput.value,
+      onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
+        controller.textInput.setInput(e.currentTarget.value);
+        onChange?.(e);
       }
+    }
     : {
-        onChange,
-      };
+      onChange
+    };
 
   return (
     <InputGroupTextarea
@@ -1025,13 +1033,13 @@ interface SpeechRecognition extends EventTarget {
   lang: string;
   start(): void;
   stop(): void;
-  onstart: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onend: ((this: SpeechRecognition, ev: Event) => any) | null;
+  onstart: ((this: SpeechRecognition, ev: Event) => unknown) | null;
+  onend: ((this: SpeechRecognition, ev: Event) => unknown) | null;
   onresult:
-    | ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => any)
+    | ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => unknown)
     | null;
   onerror:
-    | ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => any)
+    | ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => unknown)
     | null;
 }
 

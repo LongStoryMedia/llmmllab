@@ -2,6 +2,8 @@ import { AppBar, Toolbar, Typography, Button, useTheme, IconButton, Box } from '
 import MenuIcon from '@mui/icons-material/Menu';
 import { useAuth } from '../../auth';
 import BackgroundProcessNotifications from './BackgroundProcessNotifications';
+import ThemeToggle from '../Shared/ThemeToggle';
+import useColorMode from '../../hooks/useColorMode';
 // import Icon from '../Shared/Icon';
 // import Title from '../Shared/Title';
 
@@ -9,6 +11,7 @@ import BackgroundProcessNotifications from './BackgroundProcessNotifications';
 const TopBar = ({ onMenuClick }: { onMenuClick?: () => void }) => {
   const { user, logout } = useAuth();
   const theme = useTheme();
+  const [mode, setMode] = useColorMode();
 
   return (
     <AppBar>
@@ -50,6 +53,7 @@ const TopBar = ({ onMenuClick }: { onMenuClick?: () => void }) => {
           </Typography>
         )}
         <BackgroundProcessNotifications />
+        <ThemeToggle mode={mode} setMode={setMode} />
         <Button color="inherit" onClick={logout}>
           Logout
         </Button>

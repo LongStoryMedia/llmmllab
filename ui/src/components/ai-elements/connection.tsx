@@ -6,7 +6,7 @@ export const Connection: ConnectionLineComponent = ({
   fromX,
   fromY,
   toX,
-  toY,
+  toY
 }) => (
   <g>
     <path

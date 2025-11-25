@@ -1,14 +1,14 @@
 "use client";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Alert, AlertDescription } from "../ui/alert";
+import { Button } from "../ui/button";
+import { cn } from "../../lib/utils";
 import type { ToolUIPart } from "ai";
 import {
   type ComponentProps,
   createContext,
   type ReactNode,
-  useContext,
+  useContext
 } from "react";
 
 type ToolUIPartApproval =
@@ -109,7 +109,7 @@ export type ConfirmationAcceptedProps = {
 };
 
 export const ConfirmationAccepted = ({
-  children,
+  children
 }: ConfirmationAcceptedProps) => {
   const { approval, state } = useConfirmation();
 
@@ -131,7 +131,7 @@ export type ConfirmationRejectedProps = {
 };
 
 export const ConfirmationRejected = ({
-  children,
+  children
 }: ConfirmationRejectedProps) => {
   const { approval, state } = useConfirmation();
 

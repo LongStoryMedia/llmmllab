@@ -21,8 +21,9 @@ const ContentContainer = styled(Box)<{ overflow: string }>(({ overflow }) => ({
   flex: 1,
   display: 'flex',
   flexDirection: 'column',
-  overflow: overflow,
-  paddingTop: '80px' // Account for TopBar height
+  overflow: 'hidden',
+  paddingTop: '80px', // Account for TopBar height
+  minHeight: 0
 }));
 
 const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {

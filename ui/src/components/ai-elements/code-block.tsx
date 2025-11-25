@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Button } from "../ui/button";
+import { cn } from "../../lib/utils";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import {
   type ComponentProps,
@@ -10,7 +10,7 @@ import {
   useContext,
   useEffect,
   useRef,
-  useState,
+  useState
 } from "react";
 import { type BundledLanguage, codeToHtml, type ShikiTransformer } from "shiki";
 
@@ -25,7 +25,7 @@ type CodeBlockContextType = {
 };
 
 const CodeBlockContext = createContext<CodeBlockContextType>({
-  code: "",
+  code: ""
 });
 
 const lineNumberTransformer: ShikiTransformer = {
@@ -41,12 +41,12 @@ const lineNumberTransformer: ShikiTransformer = {
           "mr-4",
           "text-right",
           "select-none",
-          "text-muted-foreground",
-        ],
+          "text-muted-foreground"
+        ]
       },
-      children: [{ type: "text", value: String(line) }],
+      children: [{ type: "text", value: String(line) }]
     });
-  },
+  }
 };
 
 export async function highlightCode(
@@ -62,13 +62,13 @@ export async function highlightCode(
     codeToHtml(code, {
       lang: language,
       theme: "one-light",
-      transformers,
+      transformers
     }),
     codeToHtml(code, {
       lang: language,
       theme: "one-dark-pro",
-      transformers,
-    }),
+      transformers
+    })
   ]);
 }
 

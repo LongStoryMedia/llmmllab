@@ -1,23 +1,23 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "../ui/button";
 import {
   ButtonGroup,
   ButtonGroupText,
-} from "@/components/ui/button-group";
+} from "../ui/button-group";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+} from "../ui/tooltip";
+import { cn } from "../../lib/utils";
 import type { FileUIPart, UIMessage } from "ai";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
   PaperclipIcon,
-  XIcon,
+  XIcon
 } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
@@ -168,7 +168,7 @@ export const MessageBranch = ({
     goToPrevious,
     goToNext,
     branches,
-    setBranches,
+    setBranches
   };
 
   return (

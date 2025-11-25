@@ -1,18 +1,18 @@
 "use client";
 
 import { useControllableState } from "@radix-ui/react-use-controllable-state";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "../ui/badge";
 import {
   Collapsible,
   CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { cn } from "@/lib/utils";
+  CollapsibleTrigger
+} from "../ui/collapsible";
+import { cn } from "../../lib/utils";
 import {
   BrainIcon,
   ChevronDownIcon,
   DotIcon,
-  type LucideIcon,
+  type LucideIcon
 } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { createContext, memo, useContext, useMemo } from "react";
@@ -54,7 +54,7 @@ export const ChainOfThought = memo(
     const [isOpen, setIsOpen] = useControllableState({
       prop: open,
       defaultProp: defaultOpen,
-      onChange: onOpenChange,
+      onChange: onOpenChange
     });
 
     const chainOfThoughtContext = useMemo(
@@ -128,7 +128,7 @@ export const ChainOfThoughtStep = memo(
     const statusStyles = {
       complete: "text-muted-foreground",
       active: "text-foreground",
-      pending: "text-muted-foreground/50",
+      pending: "text-muted-foreground/50"
     };
 
     return (

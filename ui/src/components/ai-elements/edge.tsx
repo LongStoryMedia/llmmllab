@@ -6,7 +6,7 @@ import {
   type InternalNode,
   type Node,
   Position,
-  useInternalNode,
+  useInternalNode
 } from "@xyflow/react";
 
 const Temporary = ({
@@ -16,7 +16,7 @@ const Temporary = ({
   targetX,
   targetY,
   sourcePosition,
-  targetPosition,
+  targetPosition
 }: EdgeProps) => {
   const [edgePath] = getSimpleBezierPath({
     sourceX,
@@ -24,7 +24,7 @@ const Temporary = ({
     sourcePosition,
     targetX,
     targetY,
-    targetPosition,
+    targetPosition
   });
 
   return (
@@ -33,7 +33,7 @@ const Temporary = ({
       id={id}
       path={edgePath}
       style={{
-        strokeDasharray: "5, 5",
+        strokeDasharray: "5, 5"
       }}
     />
   );
@@ -98,7 +98,7 @@ const getEdgeParams = (
     tx,
     ty,
     sourcePos,
-    targetPos,
+    targetPos
   };
 };
 
@@ -121,7 +121,7 @@ const Animated = ({ id, source, target, markerEnd, style }: EdgeProps) => {
     sourcePosition: sourcePos,
     targetX: tx,
     targetY: ty,
-    targetPosition: targetPos,
+    targetPosition: targetPos
   });
 
   return (
@@ -136,5 +136,5 @@ const Animated = ({ id, source, target, markerEnd, style }: EdgeProps) => {
 
 export const Edge = {
   Temporary,
-  Animated,
+  Animated
 };

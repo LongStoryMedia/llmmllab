@@ -1,12 +1,12 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "../ui/badge";
 import {
   Collapsible,
   CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { cn } from "@/lib/utils";
+  CollapsibleTrigger
+} from "../ui/collapsible";
+import { cn } from "../../lib/utils";
 import type { ToolUIPart } from "ai";
 import {
   CheckCircleIcon,
@@ -14,7 +14,7 @@ import {
   CircleIcon,
   ClockIcon,
   WrenchIcon,
-  XCircleIcon,
+  XCircleIcon
 } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { isValidElement } from "react";
@@ -44,7 +44,7 @@ const getStatusBadge = (status: ToolUIPart["state"]) => {
     "approval-responded": "Responded",
     "output-available": "Completed",
     "output-error": "Error",
-    "output-denied": "Denied",
+    "output-denied": "Denied"
   };
 
   const icons: Record<ToolUIPart["state"], ReactNode> = {
@@ -54,7 +54,7 @@ const getStatusBadge = (status: ToolUIPart["state"]) => {
     "approval-responded": <CheckCircleIcon className="size-4 text-blue-600" />,
     "output-available": <CheckCircleIcon className="size-4 text-green-600" />,
     "output-error": <XCircleIcon className="size-4 text-red-600" />,
-    "output-denied": <XCircleIcon className="size-4 text-orange-600" />,
+    "output-denied": <XCircleIcon className="size-4 text-orange-600" />
   };
 
   return (

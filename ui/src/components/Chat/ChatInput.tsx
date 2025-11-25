@@ -1,16 +1,14 @@
-import { Typography, useTheme, FormControl, styled } from '@mui/material';
+import React from 'react';
+import { Typography, useTheme, FormControl, useMediaQuery, styled } from '@mui/material';
 import ChatInputForm from './ChatInputForm';
-// import ChatOptionsToggle from './ChatOptionsToggle';
+import ChatOptionsToggle from './ChatOptionsToggle';
 import { useChat } from '../../chat';
 import useChatInput from './useChatInput';
 
-const InputContainer = styled('div')(({ theme }) => ({
+const InputContainer = styled('div')<{ isMobile: boolean }>(({ theme, isMobile }) => ({
   display: 'flex',
   flexDirection: 'column',
-  padding: theme.spacing(2),
-  [theme.breakpoints.down('sm')]: {
-    padding: theme.spacing(1)
-  },
+  padding: theme.spacing(isMobile ? 1 : 2),
   position: 'fixed',
   bottom: 0,
   left: 0,
@@ -21,38 +19,31 @@ const InputContainer = styled('div')(({ theme }) => ({
   backdropFilter: 'blur(8px)'
 }));
 
-const InputFormWrapper = styled(FormControl)(({ theme }) => ({
+const InputFormWrapper = styled(FormControl)<{ isMobile: boolean }>(({ theme, isMobile }) => ({
   display: 'flex',
   alignItems: 'center',
   width: '100%',
   flexDirection: 'column',
+  gap: theme.spacing(1),
   backgroundColor: theme.palette.background.paper,
   borderRadius: '28px',
-  padding: '8px 16px',
-  [theme.breakpoints.down('sm')]: {
-    padding: '6px 12px'
-  },
+  padding: isMobile ? '6px 12px' : '8px 16px',
   boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.15)',
   border: `1px solid ${theme.palette.divider}`,
   margin: '0 auto',
   maxWidth: '1000px'
 }));
 
-const ChatInput = () => {
+const NewChatInput = () => {
   const { currentConversation } = useChat();
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   // Use the chat input hook here to manage state at this level
-  const {
-    // handleToggleChange, 
-    input,
-    setInput,
-    selectedOptions,
-    handleSend
-  } = useChatInput();
+  const { handleToggleChange, input, setInput, selectedOptions, handleSend } = useChatInput();
 
   return (
-    <InputContainer>
+    <InputContainer isMobile={isMobile}>
       {!currentConversation && (
         <Typography
           variant="body2"
@@ -62,20 +53,20 @@ const ChatInput = () => {
           Start a new conversation to begin chatting
         </Typography>
       )}
-      <InputFormWrapper>
+      <InputFormWrapper isMobile={isMobile}>
         <ChatInputForm
           input={input}
           setInput={setInput}
           selectedOptions={selectedOptions}
           handleSend={handleSend}
         />
-        {/* <ChatOptionsToggle
+        <ChatOptionsToggle
           selectedOptions={selectedOptions}
           handleToggleChange={handleToggleChange}
-        /> */}
+        />
       </InputFormWrapper>
     </InputContainer>
   );
 };
 
-export default ChatInput;
+export default NewChatInput;
