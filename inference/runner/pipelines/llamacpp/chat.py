@@ -100,6 +100,7 @@ class ChatLlamaCppPipeline(BasePipeline):
         # Initialize ChatOpenAI instance
         self.chat_model: Optional[ReasoningChatOpenAI] = None
         self.started = False
+        self.metadata = metadata or {}
 
         # Initialize server and ChatOpenAI
         self._initialize_persistent_server()
@@ -178,15 +179,19 @@ class ChatLlamaCppPipeline(BasePipeline):
 
     def bind_metadata(self, metadata: dict):
         """Bind additional metadata to the pipeline.
-        
+
         Existing metadata keys will be overwritten if they exist in the new metadata.
         """
         if not self.chat_model:
             raise RuntimeError("ChatOpenAI not initialized")
-        if not self.chat_model.metadata:
-            self.chat_model.metadata = {}
-        
+        if not self.metadata:
+            self.metadata = {}
+
         # Use update() which overwrites existing keys with same names
+        self.metadata.update(metadata)
+
+        if not self.chat_model.metadata:
+            self.chat_model.metadata = {}  # type: ignore[assignment]
         self.chat_model.metadata.update(metadata)
 
         return self.chat_model
