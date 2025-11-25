@@ -4,6 +4,7 @@ Provides node metadata injection, logging setup, and common error handling patte
 """
 
 import datetime
+import logging
 from typing import (
     Optional,
     Any,
@@ -45,8 +46,15 @@ from utils.message_conversion import (
 )
 from composer.core.errors import NodeExecutionError
 
-from .grammar_responses import IntentsResponse, TitleResponse
+from .grammar_responses import TitleResponse
 
+
+# Get the 'asyncio' logger
+asyncio_logger = logging.getLogger("asyncio")
+
+# Set the logging level to WARNING or higher (e.g., ERROR, CRITICAL)
+# This will prevent INFO and DEBUG messages from being displayed when run_sync is used.
+asyncio_logger.setLevel(logging.WARNING)
 
 T = TypeVar("T")
 
@@ -144,7 +152,7 @@ class BaseAgent(ABC, Generic[T]):
             conversation_id=metadata.conversation_id,
         )
         self.logger.debug(
-            f"Bound new node metadata to agent",
+            "Bound new node metadata to agent",
             node_name=metadata.node_name,
             node_type=metadata.node_type,
         )
@@ -270,8 +278,61 @@ class BaseAgent(ABC, Generic[T]):
 
         return agent
 
+    def _get_cached_agent(
+        self,
+        system_prompt,
+        tools: Optional[List[BaseTool]] = None,
+        grammar: Optional[type[BaseModel]] = None,
+        middleware: Optional[List[AgentMiddleware]] = None,
+    ):
+        """
+        Get the cached agent if available.
+        For performance and server reuse, we cache the pipeline but not the agent,
+        since agent configuration (system prompt, tools, grammar) varies by call.
+        The pipeline (LLM server) should be reused across different agent configurations.
+        """
+        # Ensure pipeline exists for synchronous runs (run_sync uses cached path)
+        if self.current_pipeline is None:
+            try:
+                self.logger.debug(
+                    "Cached pipeline missing in _get_cached_agent; creating synchronously"
+                )
+                pipeline = self.pipeline_factory.get_pipeline(
+                    self.profile,
+                    PipelinePriority.MEDIUM,
+                    grammar,
+                    self._node_metadata.model_dump(),
+                )
+                self._pipeline = pipeline
+                # Mark locked similar to async path
+                self._pipeline_locked = True
+                if hasattr(pipeline, "started") and not getattr(pipeline, "started"):
+                    self.logger.error(
+                        "🚨 Pipeline is not started after creation (sync path)!"
+                    )
+                self.logger.debug(
+                    f"🔒 (sync) Agent {self.agent_id} locked new pipeline for {self.profile.model_name}"
+                )
+            except Exception as e:  # noqa: BLE001
+                self.logger.error(
+                    f"Failed to create pipeline synchronously in _get_cached_agent: {e}"
+                )
+                raise
+
+        llm = cast(BaseChatModel, self.current_pipeline)
+        agent = create_agent(
+            model=llm,
+            tools=tools or [],
+            system_prompt=system_prompt,
+            response_format=ProviderStrategy(grammar) if grammar else None,
+            name=self._node_metadata.node_name,
+            middleware=middleware or [],
+        )
+
+        return agent
+
     @property
-    def current_pipeline(self) -> Optional[Any]:
+    def current_pipeline(self) -> Optional[BaseChatModel | Embeddings]:
         """Get the current pipeline instance if available."""
         return self._pipeline
 
@@ -391,6 +452,85 @@ If you believe you have made a tool call, double-check the message history to co
 """
 
         return system_prompt, convo
+
+    def run_sync(
+        self,
+        messages: MessageInput,
+        tools: Optional[List[BaseTool]] = None,
+        grammar: Optional[type[BaseModel]] = None,
+        middleware: Optional[List[AgentMiddleware]] = None,
+    ) -> ChatResponse:
+        """
+        Synchronous wrapper for the async run method.
+
+        Args:
+            messages: Input messages for the agent
+            tools: Optional tools for the agent
+            priority: Pipeline execution priority (affects model selection)
+            grammar: Optional grammar constraints for structured output
+            middleware: Optional[List[AgentMiddleware]] = None,
+
+        Returns:
+            ChatResponse: The response from the agent execution.
+        """
+
+        try:
+            self._log_operation_start(
+                "create_agent_run",
+                message_count=get_message_count(messages),
+                has_tools=bool(tools),
+                node_name=self._node_metadata.node_name,
+                node_type=self._node_metadata.node_type,
+            )
+            system_prompt, convo = self._separate_system_prompt(messages)
+
+            # Use persistent agent - creates once and reuses for state continuity
+            agent = self._get_cached_agent(
+                system_prompt,
+                tools,
+                grammar,
+                list(set((self.middleware or []) + (middleware or []))),
+            )
+
+            if agent is None:
+                self.logger.error("🚨 Agent is None after _get_cached_agent call!")
+                raise ValueError("Agent retrieval failed - agent is None")
+
+            # Convert messages to LangChain format
+            normalized_messages = messages_to_lc_messages(convo)
+
+            self.logger.debug(f"Running agent with {len(normalized_messages)} messages")
+            result = agent.invoke({"messages": normalized_messages})  # type: ignore
+
+            # Convert agent result to ChatResponse
+            if isinstance(result, BaseMessage):
+                last_message = result
+            elif isinstance(result, dict) and "messages" in result:
+                last_message = result["messages"][-1]
+            else:
+                last_message = result
+
+            assert isinstance(last_message, BaseMessage)
+            self.logger.debug(
+                f"Agent run result ({type(last_message)}): {serialize_event_data(last_message)}"
+            )
+            msg = lc_message_to_message(last_message)
+
+            response = ChatResponse(
+                done=True,
+                message=msg,
+                metadata=self._node_metadata,
+            )
+
+            return response
+
+        except Exception as e:
+            self._handle_node_error(
+                "create_agent_run",
+                e,
+                message_count=get_message_count(messages),
+            )
+            return create_error_response(str(e))
 
     async def run(
         self,

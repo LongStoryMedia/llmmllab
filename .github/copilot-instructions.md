@@ -1,204 +1,87 @@
-# LLM ML Lab - AI Agent Instructions
+# LLM ML Lab – AI Coding Agent Guide
 
-NO GUESSWORK!
-ALWAYS be certain and check the codebase!
-ALWAYS create a git commit with a descriptive message after making changes.
-ALWAYS sync code after making changes.
-NEVER leave the kubernetes pod in a crash loop or bad state.
-NEVER use complex nested commands; use simple commands or scripts instead.
-NEVER leave code that didn't help solve the problem, or create the feature. (cleanup)
-AVOID using things like `getattr`, `get`, or `hasattr` in favor of strong typing and explicit code.
-ALWAYS try to remove more code than you add.
+Focus: Execute precisely against current architecture. No speculation.
 
-## Architecture Overview
+## Core Principles
+1. Verify code before modifying – read surrounding files first.
+2. Prefer removal/simplification over added complexity.
+3. Never leave unused experimental code; clean as you go.
+4. Keep Kubernetes pod healthy – fix crash loops immediately.
+5. Use short, single-purpose commands (avoid long chained subshells).
+6. Strong typing over reflection (`getattr`/`hasattr` avoided).
+7. Always commit + sync after meaningful changes.
 
-**Core Services:**
-- **inference/**: Python services running in unified container environment
-  - **server/**: FastAPI REST services  
-  - **runner/**: Pure LLM interface (simplified from orchestration component)
-  - **composer/**: LangGraph workflow orchestration and agentic system runtime
-  - **evaluation/**: Model benchmarking tools
-- **ui/**: React TypeScript frontend
-- **schemas/**: YAML schema definitions → auto-generated Python/TypeScript models
+## High-Level Architecture
+- `inference/` container houses: `composer/` (LangGraph orchestration), `runner/` (pure LLM interface & streaming), `server/` (FastAPI + gRPC), `evaluation/` (benchmarking).
+- `composer/graph/` builds workflow state machines (see `subgraphs/tools_agent.py`, `summarization_middleware.py`). Composer owns all orchestration; runner must stay stateless regarding workflows.
+- `schemas/` YAML → generated models in `inference/models/` and TS types in `ui/src/types/` via `./regenerate_models.sh` (existing schemas) or `schema2code` for single new model.
+- `db/` provides storage services; register new storage in `init_db.py` & `db/__init__.py`.
+- `ui/` React TS (MUI) consumes OpenAI-compatible and custom endpoints from server.
 
-**Key Architectural Pattern:** Composer is the authoritative runtime for LangGraph execution, removing orchestration from runner.
+## Workflow & Agents Pattern
+- Agents inherit `BaseAgent` for metadata injection, logging, error handling (see `docs/base_agent_architecture.md`).
+- Subgraphs: build `StateGraph(WorkflowState)` with nodes; tool routing uses conditional edges (example: `should_continue_tool_calls` in `tools_agent.py`).
+- Middleware (e.g. `SummarizationMiddleware`) modifies message lists before model invocation using token thresholds; respect its patterns (ID assignment, safe cutoff logic, tool pair preservation).
+- Context assembly occurs via `assemble_context_messages()` (see `docs/context_assembly_usage.md`) combining summaries, memories, search results, then recent messages.
 
-## Development Workflow
+## Database & Schema Rules
+- All SQL idempotent; use parameter placeholders `$1`, `$2` etc. Never string format SQL.
+- New entity flow: schema → `./regenerate_models.sh` → SQL in `db/sql/<entity>/` → storage service (`<entity>_storage.py`) using `typed_pool`, `get_query` → register.
+- New standalone model (no full regen): `schema2code --language python --output inference/models/<name>.py schemas/<name>.yaml`.
 
-### Code Generation
+## Execution & Environment
+- Activate env: `source inference/.venv/bin/activate` (local) or use `/app/v.sh python` in pod.
+- Always run modules with `python -m <module>` (avoid direct file paths) for import correctness.
+- Sync code: `inference/sync-code.sh` (retry once if fails).
+
+## Testing & Validation
+- Unit: `cd inference && pytest test/` for pure logic changes.
+- Full E2E: `kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.test_composer_real_e2e` (composer + runner + db).
+- Tools agent focus only: `kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.tools_agent`.
+- A change is incomplete if: lint/import errors, hardcoded paths, failing pod, or architectural pattern violations.
+
+## UI Conventions
+- Lint & typecheck: `cd ui && npm run lint && npm run typecheck`.
+- Use generated types in `ui/src/types/` for API models; avoid manual duplication.
+
+## Configuration
+- System settings: `schemas/config.yaml`. User prefs: `schemas/user_config.yaml`.
+- Add new env var: update schema → regenerate models → k8s deployment → runtime validation.
+
+## Safe Change Checklist
+1. Read target file + related doc in `docs/`.
+2. Confirm pattern match (agent inheritance, context assembly, storage registration, etc.).
+3. Implement minimal diff; avoid unrelated refactors.
+4. Add/adjust tests only for changed logic.
+5. Run appropriate test command.
+6. Commit descriptive message; run `inference/sync-code.sh`.
+
+## Anti-Patterns (Avoid)
+- Long chained kubectl commands; break into two steps.
+- Direct file execution (`python path/file.py`).
+- Hardcoded absolute import path modifications.
+- Leaving experimental commented blocks or dead code.
+- SQL with string interpolation.
+
+## Quick Command Examples
 ```bash
-./regenerate_models.sh  # Generate Python + TypeScript from YAML schemas
-```
-
-### Environment Setup
-```bash
-# Container commands (no separate virtual environments)
-kubectl exec -it -n ollama $(kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}') -- /app/v.sh python [command]
-
-# Code sync (use this, not manual rsync/cp)
-inference/sync-code.sh
-```
-
-**NOTE:** if sync-code.sh fails, try again. it always works on the second attempt.
-**Never use long commands.** Use simple commands instead. if necessary, use a script.
-
-### Database Development
-1. **Schema First**: Create YAML schema in `schemas/[entity].yaml`
-2. **Generate Models**: Run `./regenerate_models.sh`
-3. **SQL Files**: Create idempotent SQL in `db/sql/[entity]/`
-4. **Storage Service**: Implement `[entity]_storage.py` with `typed_pool`, `get_query` patterns
-5. **Register**: Add to `init_db.py` and `db/__init__.py`
-
-### Model Creation (NEW)
-**For creating new standalone Pydantic models:**
-1. **Create Schema**: Define YAML schema in `schemas/[model_name].yaml` 
-2. **Use schema2code**: Generate single model with `schema2code --language python --output inference/models/[model_name].py schemas/[model_name].yaml`
-3. **NOT regenerate_models.sh**: The `regenerate_models.sh` script only processes existing schemas, use `schema2code` for new models
-
-### UI Development
-1. **Lint & Typecheck**: `cd ui && npm run lint && npm run typecheck`
-2. **eslint**: Follows standard eslint rules with custom overrides in `ui/.eslintrc.json`
-3. **Typescript Types**: Auto-generated in `ui/src/types/` from YAML schemas
-4. **MUI**: Use Material-UI components for consistent styling
-
-## Critical Rules
-
-### Documentation Guidelines
-- ✅ **Document current state only** - describe what exists, not what changed
-- ✅ **Update existing docs** to reflect current architecture and implementation
-- ❌ **Don't document changes** - no "before/after", "migration", or "update" documentation
-- ✅ **Create documentation** if none exists for current features
-- ✅ **Focus on usage and architecture** - how things work now, not how they evolved
-
-### Import Organization
-- ✅ **Top-level imports preferred** - place at file top unless technical reason prevents it
-- ❌ **Avoid nested imports** - only use for circular dependencies or performance reasons
-- ❌ **Never hardcode paths**: `sys.path.append('/Users/...')` 
-
-### Database Layer
-- ✅ **All SQL must be idempotent** - safe to run multiple times
-- ✅ **Use parameter binding** ($1, $2) never string formatting
-- ✅ **Follow patterns**: `typed_pool()`, `get_query()`, proper error handling
-
-### Component Architecture
-**Composer (NEW):** All LangGraph orchestration, workflow construction, agent nodes
-**Runner (SIMPLIFIED):** Pure LLM interface, grammar constraints, streaming - NO orchestration
-**Shared Code:** `models/`, `utils/`, `db/` - shared across all services
-
-### Configuration
-- **System Config**: `schemas/config.yaml` - service settings
-- **User Config**: `schemas/user_config.yaml` - user preferences  
-- **Environment Variables**: Add to schema first, then k8s deployment, then validate
-
-## Quick Commands
-
-```bash
-# Test syntax
-kubectl exec -n ollama $POD_NAME -- python3 -c "import ast; ast.parse(open('file.py').read())"
-
-# Debug database
-kubectl exec -it psql-0 -n psql -- psql -h localhost -U lsm -d llmmll -c "SELECT 1"
-
-# Validate environment
-kubectl exec -n ollama $POD_NAME -- /app/v.sh python -c "from composer.config import config; print('✅ Config loaded')"
-```
-
-## Testing Strategy
-- **Unit Tests** (`inference/test/`): Pure Python logic, fast, mockable
-- **Manual Verification** (`inference/debug/`): Integration tests requiring real services
-
-## Critical Notes
-- **Always sync with** `inference/sync-code.sh` - never use manual rsync/cp
-- **Always commit changes** with descriptive messages
-- **Avoid complex nested commands** - use scripts instead
-- **Fix pod errors immediately** - don't ignore crash loops or leave pods in bad state
-- **Document only completed features** in `docs/` folder
-- **Always source the virtual environment** before running Python commands
-
-## Import Path Rules
-
-**NEVER use hardcoded path imports:**
-```python
-# ❌ NEVER DO THIS
-import sys
-sys.path.append('/Users/lons7862/workspace/llmmllab/inference')
-```
-
-**Use proper Python module imports and PYTHONPATH configuration instead.**
-**Rely on virtual environment activation and project structure for imports.**
-
-## Database Layer Rules
-
-- **ALL SQL files must be idempotent** - safe to run multiple times
-- **Follow established storage service patterns** - use `typed_pool`, `get_query`, proper error handling
-- **Add all new storage services** to `init_db.py` and `db/__init__.py` registration
-- **SQL files go in `db/sql/[entity]/`** directories with clear naming conventions
-- **Always use parameter binding** ($1, $2) never string formatting in SQL
-- **Test database initialization** and storage services after changes
-
-## Command Complexity Rules
-
-**Avoid nested commands like:**
-```bash
-POD_NAME=$(kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}') && kubectl exec -it -n ollama $POD_NAME -- /app/v.sh python test.py
-```
-
-**Use simple commands instead:**
-```bash
+# Pod name lookup
 kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}'
-# Remember the pod name, then:
-kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.test
+
+# Validate config load
+kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -c "from composer.config import config; print('CONFIG_OK')"
+
+# Run summarization middleware test (example)
+kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.test_composer_real_e2e
 ```
 
-## Python Module Execution Rules
+## When Adding Middleware or Subgraphs
+- Preserve message ID handling (`uuid` assignment if missing).
+- Maintain separation of AI/Tool message pairs; use similar safe cutoff logic if trimming.
+- Return updated state, not raw model outputs; append `response.message` only if present.
 
-**ALWAYS run Python files as modules using -m flag:**
-```bash
-# ✅ CORRECT - Run as module with proper import resolution
-kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.test_qwen3_pipeline_creation
+## Final Reminder
+No guesswork. Every modification must align with existing documented patterns and minimal diff philosophy.
 
-# ❌ WRONG - Direct file execution causes import issues
-kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python debug/test_qwen3_pipeline_creation.py
-```
-
-**Module execution benefits:**
-- Proper PYTHONPATH resolution
-- Correct relative imports
-- Avoids "No module named" errors
-- Follows Python best practices
-
-## Schema-Driven Development
-1. Update YAML schema in `schemas/`
-2. Run `./regenerate_models.sh` 
-3. Generated files: `inference/models/*.py`, `ui/src/types/*.ts`
-4. Use generated models for type safety across services
-
-# A Task Is Not Complete If:
-- There are any linting errors
-- There are any import path issues
-- There are any hardcoded paths
-- the kubernetes pod is not running correctly
-- the pattern does not follow the documented architecture or patterns in existing code
-
-# Validation Steps After Changes 
-
-- Full E2E Test: `kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.test_composer_real_e2e`
-  - this validates the entire inference workflow including composer + runner + db
-- Primary llm completion test: `kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.tools_agent`
-  - this validates the core llm completion functionality
-  - this is only preffered if no changes were made to components other than the [tools_agent](../inference/composer/graph/subgraphs/tools_agent.py) subgraph
-- Unit Tests: `cd inference && pytest test/`
-  - this validates all unit tests
-  - use this if the changes were isolated to pure python logic that does not require e2e testing
-
-# REMEMBER:
-
-NO GUESSWORK!
-ALWAYS be certain and check the codebase!
-ALWAYS create a git commit with a descriptive message after making changes.
-ALWAYS sync code after making changes.
-NEVER leave the kubernetes pod in a crash loop or bad state.
-NEVER use complex nested commands; use simple commands or scripts instead.
-NEVER leave code that didn't help solve the problem, or create the feature. (cleanup)
-AVOID using things like `getattr`, `get`, or `hasattr` in favor of strong typing and explicit code.
-ALWAYS try to remove more code than you add.
+---
+Feedback welcome: highlight unclear sections or missing workflows.
