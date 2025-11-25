@@ -19,15 +19,12 @@ from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages.utils import count_tokens_approximately
 from composer.graph import WorkflowState
 from composer.agents.chat_agent import ChatAgent
+from composer.agents.primary_summary_agent import PrimarySummaryAgent
 from composer.tools.registry import ToolRegistry
 from models import NodeMetadata, PipelinePriority
 from utils import extract_text_from_message
 from utils.logging import llmmllogger, serialize_event_data
-from .summarization_middleware import (
-    SummarizationMiddleware,
-    DEFAULT_SUMMARY_PROMPT,
-    SUMMARY_PREFIX,
-)
+from .summarization_middleware import SummarizationMiddleware
 
 logger = llmmllogger.bind(component="ToolsAgentSubgraph")
 
@@ -55,11 +52,13 @@ class ToolsAgentSubgraph:
         self,
         tool_registry: ToolRegistry,
         chat_agent: ChatAgent,
+        summary_agent: PrimarySummaryAgent,
         node_metadata: NodeMetadata,
     ):
         """Initialize agent subgraph with tools."""
         self.tool_registry = tool_registry
         self.chat_agent = chat_agent.bind_node_metadata(node_metadata)
+        self.summary_agent = summary_agent.bind_node_metadata(node_metadata)
         self.graph = None
         self._build_graph()
 
@@ -134,8 +133,7 @@ class ToolsAgentSubgraph:
             )
 
             logger.debug(f"tools: {tools_dict.keys()}")
-
-            n_ctx = self.chat_agent.profile.parameters.batch_size or 4096
+            n_ctx = self.chat_agent.profile.parameters.num_ctx or 4096
             logger.debug(f"Model context length: {n_ctx}")
             max_tokens_before_summary = int(n_ctx * 0.95)
             logger.debug(f"Max tokens before summary: {max_tokens_before_summary}")
@@ -143,11 +141,8 @@ class ToolsAgentSubgraph:
             middleware: List[AgentMiddleware] = [
                 SummarizationMiddleware(
                     agent=self.chat_agent,
-                    max_tokens_before_summary=10000,
-                    messages_to_keep=10,
-                    summary_prompt=DEFAULT_SUMMARY_PROMPT,
-                    summary_prefix=SUMMARY_PREFIX,
-                    token_counter=count_tokens_approximately,
+                    conversation_id=state.conversation_id,
+                    max_tokens_before_summary=max_tokens_before_summary,
                 )
             ]
 

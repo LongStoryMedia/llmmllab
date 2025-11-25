@@ -1,7 +1,6 @@
 """Summarization middleware."""
 
 import uuid
-from datetime import datetime, timezone
 from collections.abc import Callable, Iterable
 from typing import Any, cast
 
@@ -9,17 +8,15 @@ from langchain_core.messages import (
     AIMessage,
     AnyMessage,
     MessageLikeRepresentation,
-    RemoveMessage,
     ToolMessage,
 )
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.utils import count_tokens_approximately
 from langchain.agents.middleware import AgentMiddleware, AgentState
-from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.runtime import Runtime
 from composer.agents.base_agent import BaseAgent
-from models import Summary, SummaryStyle
-from utils import lc_messages_to_messages, extract_text_from_message
+from models import SummaryStyle
+from utils import lc_messages_to_messages
 from utils.logging import llmmllogger
 
 TokenCounter = Callable[[Iterable[MessageLikeRepresentation]], int]
@@ -42,6 +39,7 @@ class SummarizationMiddleware(AgentMiddleware):
         conversation_id: int,
         max_tokens_before_summary: int | None = None,
         percent_to_keep: int = 50,
+        min_messages_to_keep: int = 2,
         token_counter: TokenCounter = count_tokens_approximately,
     ) -> None:
         """Initialize the summarization middleware.
@@ -60,9 +58,10 @@ class SummarizationMiddleware(AgentMiddleware):
         self.max_tokens_before_summary = max_tokens_before_summary
         self.percent_to_keep = percent_to_keep
         self.token_counter = token_counter
+        self.messages_to_keep = min_messages_to_keep
         self.logger = llmmllogger.bind(component="SummarizationMiddleware")
 
-    async def aafter_model(
+    async def abefore_model(
         self,
         state: AgentState,
         runtime: Runtime,
@@ -101,16 +100,15 @@ class SummarizationMiddleware(AgentMiddleware):
 
         return {
             "messages": [
-                RemoveMessage(id=REMOVE_ALL_MESSAGES),
                 *new_messages,
                 *preserved_messages,
             ]
         }
 
-    def _build_new_messages(self, summary: Summary) -> list[HumanMessage]:
+    def _build_new_messages(self, summary: str) -> list[HumanMessage]:
         return [
             HumanMessage(
-                content=f"Here is a summary of the conversation to date:\n\n{summary.content}"
+                content=f"Here is a summary of the conversation to date:\n\n{summary}"
             )
         ]
 
@@ -140,25 +138,23 @@ class SummarizationMiddleware(AgentMiddleware):
         """
         if not self.max_tokens_before_summary:
             return 0
-            
-        if len(messages) <= 2:  # Keep at least some messages
+
+        if len(messages) <= self.messages_to_keep:  # Keep at least some messages
             return 0
 
         # Calculate target tokens to preserve (from the end)
         target_tokens_to_keep = int(
             (self.percent_to_keep / 100) * self.max_tokens_before_summary
         )
-        
+
         self.logger.debug(
             f"Target tokens to keep: {target_tokens_to_keep} "
             f"({self.percent_to_keep}% of {self.max_tokens_before_summary})"
         )
-        
+
         # Use binary search to find the cutoff point
-        cutoff_index = self._binary_search_token_cutoff(
-            messages, target_tokens_to_keep
-        )
-        
+        cutoff_index = self._binary_search_token_cutoff(messages, target_tokens_to_keep)
+
         # Find a safe cutoff point that doesn't separate AI/Tool pairs
         for i in range(cutoff_index, -1, -1):
             if self._is_safe_cutoff_point(messages, i):
@@ -171,33 +167,33 @@ class SummarizationMiddleware(AgentMiddleware):
     ) -> int:
         """Use binary search to find the largest cutoff index where remaining messages
         have tokens <= target_tokens_to_keep.
-        
+
         Args:
             messages: List of messages to search
             target_tokens_to_keep: Target number of tokens to preserve from the end
-            
+
         Returns:
             Index where to cut messages (messages[cutoff_index:] will be preserved)
         """
         if not messages:
             return 0
-            
+
         # Binary search for the optimal cutoff
         left, right = 0, len(messages)
         best_cutoff = len(messages)  # Default to keeping all messages
-        
+
         while left <= right:
             mid = (left + right) // 2
-            
+
             # Calculate tokens in messages that would be preserved (from mid to end)
             preserved_messages = messages[mid:]
             preserved_tokens = self.token_counter(preserved_messages)
-            
+
             self.logger.debug(
                 f"Binary search: mid={mid}, preserved_tokens={preserved_tokens}, "
                 f"target={target_tokens_to_keep}"
             )
-            
+
             if preserved_tokens <= target_tokens_to_keep:
                 # We can afford to preserve more messages, try cutting earlier
                 best_cutoff = mid
@@ -205,7 +201,7 @@ class SummarizationMiddleware(AgentMiddleware):
             else:
                 # Too many tokens, need to cut later (preserve fewer messages)
                 left = mid + 1
-        
+
         self.logger.debug(f"Binary search result: cutoff_index={best_cutoff}")
         return best_cutoff
 
@@ -266,18 +262,11 @@ class SummarizationMiddleware(AgentMiddleware):
                     return True
         return False
 
-    async def _create_summary(self, messages_to_summarize: list[AnyMessage]) -> Summary:
+    async def _create_summary(self, messages_to_summarize: list[AnyMessage]) -> str:
         """Generate summary using PrimarySummaryAgent and store in database."""
         if not messages_to_summarize:
             # Return empty summary object instead of string
-            return Summary(
-                id=0,
-                conversation_id=self.conversation_id,
-                level=1,
-                content="No previous conversation history.",
-                source_ids=[],
-                created_at=datetime.now(timezone.utc),
-            )
+            return "No previous conversation history."
 
         try:
             # Use PrimarySummaryAgent's summarize_conversation method
@@ -293,15 +282,8 @@ class SummarizationMiddleware(AgentMiddleware):
             self.logger.debug(
                 f"Created summary with {len(messages_to_summarize)} messages"
             )
-            return summary
+            return summary.content
 
         except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error generating summary: {e}", exc_info=True)
-            return Summary(
-                id=0,
-                conversation_id=self.conversation_id,
-                level=1,
-                content=f"Error generating summary: {e!s}",
-                source_ids=[],
-                created_at=datetime.now(timezone.utc),
-            )
+            return f"Error generating summary: {e!s}"

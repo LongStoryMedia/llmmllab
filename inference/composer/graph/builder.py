@@ -306,6 +306,7 @@ class GraphBuilder:
             tools_agent_subgraph = ToolsAgentSubgraph(
                 tool_registry=user_tool_registry,
                 chat_agent=primary_agent,
+                summary_agent=primary_summary_agent,
                 node_metadata=NodeMetadata(
                     node_name="ToolsAgentSubgraph",
                     node_id=uuid.uuid4().hex,

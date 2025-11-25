@@ -15,7 +15,6 @@ from models import (
     SearchTopicSynthesis,
     SearchResult,
     UserConfig,
-    NodeMetadata,
 )
 from runner import PipelineFactory
 from composer.core.errors import NodeExecutionError
@@ -157,13 +156,13 @@ class PrimarySummaryAgent(BaseAgent[str]):
                 style=style,
             )
 
-            # Create conversation text with primary focus on progression
-            conversation_text = "\n".join(
-                [f"{msg.role}: {extract_text_from_message(msg)}" for msg in messages]
-            )
-
             prompt = await self._create_primary_conversation_prompt(
-                conversation_text, style, max_length
+                [
+                    f"### [{msg.role}]:\n{extract_text_from_message(msg)}\n\n---\n\n"
+                    for msg in messages
+                ],
+                style,
+                max_length,
             )
 
             summary_text = await self._execute_summarization_with_profile(prompt)
@@ -252,7 +251,7 @@ STYLE: {style_instruction}
 Create a comprehensive synthesis that captures the logical progression and evolution of topics and ideas across all search results."""
 
     async def _create_primary_conversation_prompt(
-        self, conversation_text: str, style: SummaryStyle, max_length: Optional[int]
+        self, messages: List[str], style: SummaryStyle, max_length: Optional[int]
     ) -> str:
         """Create specialized prompt for primary conversation summarization."""
         style_instruction = self._get_style_instruction(style)
@@ -260,22 +259,41 @@ Create a comprehensive synthesis that captures the logical progression and evolu
             f"Keep the summary under {max_length} words." if max_length else ""
         )
 
-        return f"""As a conversation analysis expert, create a comprehensive primary summary focusing on the logical progression of the discussion.
+        return f"""<role>
+Context Extraction Assistant
+</role>
 
-PRIMARY CONVERSATION ANALYSIS REQUIREMENTS:
+<primary_objective>
+Your sole objective in this task is to extract the highest quality/most relevant context from the conversation history below.
+</primary_objective>
+
+<objective_information>
+You're nearing the total number of input tokens you can accept, so you must extract the highest quality/most relevant pieces of information from your conversation history.
+This context will then overwrite the conversation history presented below. Because of this, ensure the context you extract is only the most important information to your overall goal.
+</objective_information>
+
+<instructions>
+The conversation history below will be replaced with the context you extract in this step. Because of this, you must do your very best to extract and record all of the most important context from the conversation history.
+You want to ensure that you don't repeat any actions you've already completed, so the context you extract from the conversation history should be focused on the most important information to your overall goal.
 - Trace the evolution of topics and ideas throughout the conversation
 - Identify key decision points and their rationale
 - Highlight agreements, disagreements, and resolution processes
 - Capture the flow of reasoning and argumentation
 - Focus on logical progression and development of concepts
-
-CONVERSATION TO SUMMARIZE:
-{conversation_text}
-
 STYLE: {style_instruction}
 {length_constraint}
+</instructions>
 
-Focus on the logical progression and evolution of topics and ideas throughout the conversation. Provide comprehensive analysis of how the discussion developed."""
+The user will message you with the full message history you'll be extracting context from, to then replace. Carefully read over it all, and think deeply about what information is most important to your overall goal that should be saved:
+
+With all of this in mind, please carefully read over the entire conversation history, and extract the most important and relevant context to replace it so that you can free up space in the conversation history.
+Respond ONLY with the extracted context. Do not include any additional information, or text before or after the extracted context.
+
+<messages>
+Messages to summarize:
+{messages}
+</messages>
+"""
 
     def _get_style_instruction(self, style: SummaryStyle) -> str:
         """Get style-specific instruction for primary summaries."""
@@ -310,18 +328,12 @@ Focus on the logical progression and evolution of topics and ideas throughout th
     ) -> str:
         """Execute summarization using the specified profile."""
         try:
-            # Use the base agent's streaming interface
-            messages = [prompt]
-            response_chunks = []
-
-            async for chunk in self.stream(
-                messages=messages,
-                priority=PipelinePriority.NORMAL,
-            ):
-                if chunk.message and chunk.message.content:
-                    response_chunks.append(extract_text_from_message(chunk.message))
-
-            return "".join(response_chunks)
+            response = await self.run(
+                messages=prompt,
+                priority=PipelinePriority.HIGH,
+            )
+            assert response.message is not None
+            return extract_text_from_message(response.message)
 
         except Exception as e:
             self.logger.error(

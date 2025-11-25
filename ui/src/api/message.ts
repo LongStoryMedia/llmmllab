@@ -70,32 +70,3 @@ export const deleteMessage = async (accessToken: string, conversationId: number,
     headers: getHeaders(accessToken),
     path: `chat/conversations/${conversationId}/messages/${messageId}`
   });
-
-export const replayFromTimestamp = async (
-  accessToken: string,
-  conversationId: number,
-  message?: Message,
-  fromTimestamp?: Date | string
-) => {
-  // Handle both Date objects and ISO string timestamps
-  let timestampString = '';
-  if (fromTimestamp) {
-    if (fromTimestamp instanceof Date) {
-      timestampString = fromTimestamp.toISOString();
-    } else if (typeof fromTimestamp === 'string') {
-      timestampString = fromTimestamp;
-    }
-  }
-
-  const body = {
-    timestamp: encodeURIComponent(timestampString),
-    message: message ? JSON.stringify(message) : undefined
-  }
-
-  return req<{ status: string; message: string; deleted_count: number }>({
-    method: 'POST',
-    headers: getHeaders(accessToken),
-    path: `chat/conversations/${conversationId}/replay`,
-    body: JSON.stringify(body)
-  });
-};

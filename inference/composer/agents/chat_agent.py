@@ -8,7 +8,6 @@ from models import (
     ChatResponse,
     ModelProfile,
     PipelinePriority,
-    NodeMetadata,
 )
 from .base_agent import BaseAgent
 

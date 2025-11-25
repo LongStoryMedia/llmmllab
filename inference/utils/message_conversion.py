@@ -25,12 +25,9 @@ from models import (
     MessageContent,
     MessageContentType,
 )
-from .logging import llmmllogger, serialize_event_data
+from .logging import llmmllogger
 from .tool_call_types import is_langchain_tool_call
-from .tool_call_extraction import (
-    extract_tool_calls_from_message_content,
-    extract_tool_calls_from_langchain_message,
-)
+from .tool_call_extraction import extract_tool_calls_from_langchain_message
 
 logger = llmmllogger.bind(component="message_conversion")
 
@@ -45,6 +42,7 @@ def message_to_lc_message(message: Message) -> AnyMessage:
 
     # For assistant messages, also parse XML tool calls from text content
     parsed_tool_calls = []
+    lc_id = str(message.id) if message.id is not None else None
     if message.role == MessageRole.ASSISTANT or message.role == MessageRole.AGENT:
         # Extract XML-wrapped tool calls from text content
         if isinstance(content_data, str):
@@ -92,7 +90,8 @@ def message_to_lc_message(message: Message) -> AnyMessage:
             ).strip()
 
         # Create AIMessage with parsed tool calls
-        ai_message = AIMessage(content=content_data, id=message.id)
+        # Convert int ID to string for LangChain compatibility
+        ai_message = AIMessage(content=content_data, id=lc_id)
         if parsed_tool_calls:
             ai_message.tool_calls = parsed_tool_calls
             logger.info(
@@ -101,21 +100,23 @@ def message_to_lc_message(message: Message) -> AnyMessage:
         return ai_message
 
     elif message.role == MessageRole.USER:
-        return HumanMessage(content=content_data, id=message.id)
+        return HumanMessage(content=content_data, id=lc_id)
     elif message.role == MessageRole.SYSTEM:
-        return SystemMessage(content=content_data, id=message.id)
+        return SystemMessage(content=content_data, id=lc_id)
     elif message.role == MessageRole.TOOL:
         # For tool messages, we need both content and tool_call_id
         tool_call_id = None
         if message.tool_calls and len(message.tool_calls) > 0:
             tool_call_id = message.tool_calls[0].execution_id
-        return ToolMessage(content=content_data, tool_call_id=tool_call_id or "unknown", id=message.id)
+        return ToolMessage(
+            content=content_data, tool_call_id=tool_call_id or "unknown", id=lc_id
+        )
     elif message.role == MessageRole.OBSERVER:
         # Treat observer messages as system messages
-        return SystemMessage(content=content_data, id=message.id)
+        return SystemMessage(content=content_data, id=lc_id)
     else:
         # Default to human message for unknown roles
-        return HumanMessage(content=content_data, id=message.id)
+        return HumanMessage(content=content_data, id=lc_id)
 
 
 def lc_message_to_message(
@@ -153,8 +154,19 @@ def lc_message_to_message(
 
     # Create message with explicit field validation
     try:
+        # Convert string ID from LangChain back to int for our format
+        msg_id = None
+        if hasattr(base_message, "id") and base_message.id is not None:
+            try:
+                msg_id = int(base_message.id)
+            except (ValueError, TypeError):
+                logger.warning(
+                    f"Failed to convert LangChain message ID '{base_message.id}' to int"
+                )
+                msg_id = None
+
         msg = Message(
-            id=getattr(base_message, 'id', None),  # Transfer id from LangChain message
+            id=msg_id,
             role=role,
             content=content,
             conversation_id=conversation_id,

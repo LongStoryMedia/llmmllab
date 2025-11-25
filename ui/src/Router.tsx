@@ -1,4 +1,4 @@
-import './App.css';
+import './index.css';
 import ChatPage from './pages/ChatPage';
 import SettingsPage from './pages/SettingsPage';
 import { Route, Routes } from 'react-router-dom';

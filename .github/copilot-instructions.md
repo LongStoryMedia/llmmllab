@@ -12,10 +12,9 @@ Focus: Execute precisely against current architecture. No speculation.
 7. Always commit + sync after meaningful changes.
 
 ## High-Level Architecture
-- `inference/` container houses: `composer/` (LangGraph orchestration), `runner/` (pure LLM interface & streaming), `server/` (FastAPI + gRPC), `evaluation/` (benchmarking).
-- `composer/graph/` builds workflow state machines (see `subgraphs/tools_agent.py`, `summarization_middleware.py`). Composer owns all orchestration; runner must stay stateless regarding workflows.
+- `inference/` container houses: `composer/` (LangGraph orchestration), `runner/` (pure LLM interface & streaming), `server/` (FastAPI + gRPC), `evaluation/` (benchmarking), `db/` provides storage services; register new storage in `init_db.py` & `db/__init__.py`, `utils/` shared utilities, `test/` unit and integration tests.
+- `inference/composer/graph/` builds workflow state machines (see `subgraphs/tools_agent.py`, `summarization_middleware.py`). Composer owns all orchestration; runner must stay stateless regarding workflows.
 - `schemas/` YAML → generated models in `inference/models/` and TS types in `ui/src/types/` via `./regenerate_models.sh` (existing schemas) or `schema2code` for single new model.
-- `db/` provides storage services; register new storage in `init_db.py` & `db/__init__.py`.
 - `ui/` React TS (MUI) consumes OpenAI-compatible and custom endpoints from server.
 
 ## Workflow & Agents Pattern

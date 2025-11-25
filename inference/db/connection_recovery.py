@@ -20,9 +20,15 @@ class ConnectionRecoveryManager:
         """Check if the error is caused by a stale OID reference or related transaction issues."""
         error_message = str(error).lower()
         return (
-            "could not open relation with oid" in error_message or
-            ("relation with oid" in error_message and "does not exist" in error_message) or
-            ("current transaction is aborted" in error_message and "recovery" in str(error_message))
+            "could not open relation with oid" in error_message
+            or (
+                "relation with oid" in error_message
+                and "does not exist" in error_message
+            )
+            or (
+                "current transaction is aborted" in error_message
+                and "recovery" in str(error_message)
+            )
         )
 
     async def recover_from_stale_oid(self, error: Exception) -> bool:
@@ -37,13 +43,15 @@ class ConnectionRecoveryManager:
             return False
 
         logger.warning(f"Detected stale OID or transaction error: {error}")
-        
+
         # If this is a transaction abort error, we don't flush connections
         # as it would interfere with transaction handling
         if "current transaction is aborted" in str(error).lower():
-            logger.info("Transaction abort detected - skipping connection flush, transaction will be retried")
+            logger.info(
+                "Transaction abort detected - skipping connection flush, transaction will be retried"
+            )
             return True
-        
+
         logger.info("Attempting connection pool recovery...")
 
         try:

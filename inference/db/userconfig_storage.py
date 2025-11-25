@@ -209,9 +209,10 @@ class UserConfigStorage:
 
         # Fallback to legacy method if users table method fails
         async with self.typed_pool.acquire() as conn:
+
             async def _get_config_legacy():
                 return await conn.fetchrow(self.get_query("user.get_config"), user_id)
-            
+
             row = await execute_with_recovery(_get_config_legacy)
             if not row:
                 logger.info(

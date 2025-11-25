@@ -145,28 +145,3 @@ async def admin_only(request: Request):
         "user_id": user_id,
         "request_id": request_id,
     }
-
-
-def safe_json_serialize(obj: Any) -> str:
-    """Safely serialize objects to JSON, handling non-serializable types."""
-
-    def json_serializer(obj):
-        if isinstance(obj, set):
-            return list(obj)
-        elif hasattr(obj, "__dict__"):
-            return obj.__dict__
-        elif hasattr(obj, "dict") and callable(obj.dict):
-            return obj.dict()
-        else:
-            return str(obj)
-
-    try:
-        return json.dumps(obj, default=json_serializer, ensure_ascii=False)
-    except Exception as e:
-        # If all else fails, return a safe error representation
-        return json.dumps(
-            {
-                "error": f"Serialization failed: {str(e)}",
-                "original_type": str(type(obj)),
-            }
-        )

@@ -166,6 +166,10 @@ class ComposerService:
             conversation_id
         )
 
+        conversation = await storage.get_service(storage.conversation).get_conversation(
+            conversation_id
+        )
+
         summaries = await storage.get_service(
             storage.summary
         ).get_summaries_for_conversation(conversation_id)
@@ -190,6 +194,7 @@ class ComposerService:
 
         # Create the state with centralized user configuration and todo context
         state = WorkflowState(
+            title=conversation.title if conversation else None,
             messages=messages,  # Use Message objects directly
             summaries=summaries,
             current_user_message=current_user_message,  # Use Message object directly

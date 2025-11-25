@@ -127,7 +127,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = ({ input, setInput, selected
           onClick={() => setConfirmOpen(true)}
           size="small"
           sx={{ mr: 1 }}
-          disabled={!currentConversation || (!isTyping && !isPaused)}
+        // disabled={!currentConversation || (!isTyping && !isPaused)}
         >
           <CancelOutlined fontSize={isMobile ? 'small' : 'medium'} />
         </IconButton>
@@ -159,7 +159,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = ({ input, setInput, selected
             color="secondary"
             variant="contained"
             autoFocus
-            disabled={!currentConversation || (!isTyping && !isPaused)}
+          // disabled={!currentConversation || (!isTyping && !isPaused)}
           >
             Yes, cancel
           </Button>

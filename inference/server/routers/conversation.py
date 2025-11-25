@@ -284,6 +284,12 @@ async def replay_from_timestamp(
     request_id = get_request_id(request)
     if not request_id:
         raise HTTPException(status_code=400, detail="Request ID not found")
+    if not body.message:
+        raise HTTPException(status_code=400, detail="Message content required")
+    if not body.timestamp:
+        raise HTTPException(status_code=400, detail="Timestamp required")
+    if not body.message.id:
+        raise HTTPException(status_code=400, detail="Message ID required")
 
     # Check if database is initialized
     if not storage.initialized or not storage.conversation or not storage.message:
@@ -291,15 +297,6 @@ async def replay_from_timestamp(
         raise HTTPException(status_code=503, detail="Database service unavailable")
 
     try:
-        # Parse the timestamp
-        try:
-            parsed_timestamp = dt.fromisoformat(body.timestamp.replace("Z", "+00:00"))
-        except ValueError as ve:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid timestamp format. Use ISO 8601 format (e.g., '2023-10-24T14:30:00Z')",
-            ) from ve
-
         # First check if conversation exists and user has access
         conversation = await storage.conversation.get_conversation(conversation_id)
 
@@ -313,28 +310,7 @@ async def replay_from_timestamp(
             )
 
         # Perform bulk delete
-        await storage.message.bulk_delete_messages_from_timestamp(
-            conversation_id, parsed_timestamp
-        )
-
-        if body.message:
-            convo = await storage.get_service(storage.message).get_conversation_history(
-                conversation_id=conversation_id
-            )
-            current_user_message = next(
-                (msg for msg in reversed(convo) if msg.role == MessageRole.USER),
-                Message(
-                    content=[
-                        MessageContent(type=MessageContentType.TEXT, text="", url=None)
-                    ],
-                    role=MessageRole.USER,
-                ),
-            )
-            if current_user_message and current_user_message.id:
-                await storage.get_service(storage.message).delete_message(
-                    current_user_message.id
-                )
-            await storage.get_service(storage.message).add_message(body.message)
+        await storage.message.delete_all_from_message(body.message)
 
         return StreamingResponse(
             composer_chat_completion(user_id, conversation_id, request_id),

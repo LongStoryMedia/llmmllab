@@ -193,7 +193,7 @@ class MessageStorage:
         if not message.id:
             self.logger.error("Cannot update message without id")
             return False
-            
+
         try:
             # Update the main message record (role is typically immutable, but we'll include it)
             await conn.execute(
@@ -210,9 +210,7 @@ class MessageStorage:
             await conn.execute(
                 self.get_query("tool_call.delete_by_message"), message.id
             )
-            await conn.execute(
-                self.get_query("thought.delete_by_message"), message.id
-            )
+            await conn.execute(self.get_query("thought.delete_by_message"), message.id)
 
             # Insert new message contents
             if message.content:
@@ -242,7 +240,9 @@ class MessageStorage:
             return True
 
         except Exception as e:
-            self.logger.error(f"Failed to update message {message.id}: {e}", exc_info=True)
+            self.logger.error(
+                f"Failed to update message {message.id}: {e}", exc_info=True
+            )
             return False
 
     async def get_message(
@@ -709,6 +709,8 @@ class MessageStorage:
                         message.conversation_id,
                         message.created_at,
                     )
+
+                    await self.update_message(message, conn=conn)
 
                     # Extract the number of deleted rows from the command result
                     deleted_count = (

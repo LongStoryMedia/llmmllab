@@ -91,8 +91,6 @@ class WorkflowExecutor:
         initial_state: BaseModel,
         config: Optional[RunnableConfig] = None,
         thread_id: Optional[str] = None,
-        enrich_events: bool = True,
-        context_name: Optional[str] = None,
     ) -> AsyncIterator[ChatResponse]:
         """
         Execute a compiled workflow with streaming output.
@@ -224,6 +222,14 @@ class WorkflowExecutor:
                     if not metadata.get("checkpoint_ns", "").startswith("tools_agent"):
                         self.logger.debug(
                             f"Skipping checkpoint_ns: {metadata.get('checkpoint_ns')}",
+                        )
+                        continue
+
+                    if not metadata.get("node_name", "").startswith(
+                        "ToolsAgentSubgraph"
+                    ):
+                        self.logger.debug(
+                            f"Skipping : {metadata.get('node_name')}",
                         )
                         continue
 
@@ -592,6 +598,5 @@ async def stream_workflow(
         initial_state=initial_state,
         config=config,
         thread_id=thread_id,
-        context_name=context,
     ):
         yield event

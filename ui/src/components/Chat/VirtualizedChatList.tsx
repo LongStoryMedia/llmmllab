@@ -103,6 +103,23 @@ const VirtualizedChatList: React.FC<VirtualizedChatListProps> = ({
   // itemCount includes an extra spacer item at the end to allow overscroll
   const totalItems = contentCount + 1;
 
+  // Helper function to calculate total height and scroll position
+  const getScrollMetrics = useCallback(() => {
+    const measuredTotal = Array.from(itemHeights.values()).reduce((sum, height) => sum + height, 0);
+    const estimatedUnknowns = Math.max(0, totalItems - itemHeights.size) * 100;
+    const totalHeight = measuredTotal + estimatedUnknowns;
+    const spacerTop = totalHeight - EXTRA_SPACER_HEIGHT;
+    const viewportBottom = scrollOffsetRef.current + containerHeight;
+
+    return {
+      totalHeight,
+      spacerTop,
+      viewportBottom,
+      isNearBottom: viewportBottom >= totalHeight,
+      isInSpacer: viewportBottom >= spacerTop
+    };
+  }, [itemHeights, totalItems, containerHeight]);
+
   // Height cache for each item
   const getItemHeight = useCallback((index: number) => {
     if (index === contentCount) {
@@ -152,77 +169,60 @@ const VirtualizedChatList: React.FC<VirtualizedChatListProps> = ({
   }), [messages, streamingMessage, handleHeightChange, contentCount]);
 
   // Auto-scroll to bottom when new messages arrive or streaming content updates
-  // Scroll to bottom when contentCount changes (including on mount).
-  // Reset react-window cache and use two RAFs so measurements settle before scrolling.
   useEffect(() => {
     if (!listRef.current || contentCount === 0) {
       return;
     }
 
-    const tryScroll = () => {
+    const scrollToBottom = () => {
+      if (!listRef.current) {
+        return;
+      }
+
       try {
         // Force react-window to recompute sizes before scrolling
-        listRef.current!.resetAfterIndex(0, true);
+        listRef.current.resetAfterIndex(0, true);
       } catch (_err) {
         // ignore
       }
 
-      // Double RAF to ensure DOM/layout settled. First scroll to the spacer
-      // (true bottom) then repeatedly align to the last content item across
-      // a few RAFs to let react-window measure actual sizes and avoid landing
-      // mid-list when many items use estimated heights.
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          if (listRef.current) {
-            const lastContentIndex = Math.max(0, contentCount - 1);
-            // Scroll to spacer to ensure true bottom first
-            listRef.current.scrollToItem(totalItems - 1, 'end');
+      const lastContentIndex = Math.max(0, contentCount - 1);
 
-            // Try aligning to last content item across several RAFs.
-            let attempts = 6;
-            const attemptAlign = () => {
-              if (!listRef.current) {
-                return;
-              }
-              if (attempts <= 0) {
-                return;
-              }
-              listRef.current.scrollToItem(lastContentIndex, 'end');
-              attempts -= 1;
-              // schedule another try to cope with measurements settling
-              window.requestAnimationFrame(attemptAlign);
-            };
-            window.requestAnimationFrame(attemptAlign);
+      // First scroll to spacer to ensure we reach true bottom
+      listRef.current.scrollToItem(totalItems - 1, 'end');
 
-            setShouldScrollToBottom(true);
-          }
-        });
-      });
+      // Then align to last content item across multiple RAF calls
+      let attempts = 6;
+      const attemptAlign = () => {
+        if (!listRef.current || attempts <= 0) {
+          return;
+        }
+
+        listRef.current.scrollToItem(lastContentIndex, 'end');
+        attempts -= 1;
+
+        requestAnimationFrame(attemptAlign);
+      };
+
+      // Use RAF to let measurements settle, then start alignment attempts
+      requestAnimationFrame(() => requestAnimationFrame(attemptAlign));
+
+      setShouldScrollToBottom(true);
     };
 
-    tryScroll();
-  }, [contentCount, totalItems, containerHeight]);
+    // Double RAF to ensure DOM/layout has settled before starting scroll sequence
+    requestAnimationFrame(() => requestAnimationFrame(scrollToBottom));
+  }, [contentCount, totalItems]);
 
   // Check if user is at bottom to determine auto-scroll behavior
   const handleScroll = useCallback(({ scrollOffset, scrollUpdateWasRequested }: { scrollOffset: number; scrollUpdateWasRequested: boolean }) => {
     // Track the raw scroll offset for near-bottom calculations
     scrollOffsetRef.current = scrollOffset;
     if (!scrollUpdateWasRequested) {
-      // Compute total measured height; fall back to estimated height for unknowns
-      const measuredTotal = Array.from(itemHeights.values()).reduce((sum, height) => sum + height, 0);
-      const estimatedUnknowns = Math.max(0, totalItems - itemHeights.size) * 100;
-      const totalHeight = measuredTotal + estimatedUnknowns;
-
-      const marginPx = 10; // small margin to decide "near bottom"
-      const isNearBottom = scrollOffset + containerHeight >= totalHeight - marginPx;
-
-      // If user scrolls into the spacer region (last item), treat as bottom and stick.
-      const spacerTop = totalHeight - EXTRA_SPACER_HEIGHT;
-      const isInSpacer = scrollOffset + containerHeight >= spacerTop;
-
+      const { isNearBottom, isInSpacer } = getScrollMetrics();
       setShouldScrollToBottom(isNearBottom || isInSpacer);
     }
-  }, [containerHeight, totalItems, itemHeights]);
+  }, [getScrollMetrics]);
 
   if (totalItems === 0) {
     return <ListContainer />;
@@ -233,11 +233,8 @@ const VirtualizedChatList: React.FC<VirtualizedChatListProps> = ({
       onPointerDown={() => setShouldScrollToBottom(false)}
       onPointerUp={() => {
         // If the user released the pointer while in the spacer area, enable auto-scroll
-        const totalMeasured = Array.from(itemHeights.values()).reduce((s, h) => s + h, 0);
-        const estimatedUnknowns = Math.max(0, totalItems - itemHeights.size) * 100;
-        const totalHeight = totalMeasured + estimatedUnknowns;
-        const viewportBottom = scrollOffsetRef.current + containerHeight - 5;
-        if (viewportBottom >= totalHeight - EXTRA_SPACER_HEIGHT) {
+        const { isInSpacer } = getScrollMetrics();
+        if (isInSpacer) {
           setShouldScrollToBottom(true);
         }
       }}

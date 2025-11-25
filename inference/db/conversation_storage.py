@@ -2,7 +2,7 @@
 Direct port of Maistro's conversation.go storage logic to Python with cache integration.
 """
 
-from typing import List, Optional
+from typing import Callable, List, Optional
 from datetime import datetime
 import asyncpg
 from models.conversation import Conversation
@@ -10,19 +10,27 @@ from db.cache_storage import cache_storage
 from db.connection_recovery import ConnectionRecoveryManager, recovery_manager
 from db.db_utils import typed_pool
 from utils.logging import llmmllogger
+from .userconfig_storage import UserConfigStorage
 
 logger = llmmllogger.bind(component="conversation_storage")
 
 
 class ConversationStorage:
-    def __init__(self, pool: asyncpg.Pool, get_query, user_config_storage=None):
+    def __init__(
+        self,
+        pool: asyncpg.Pool,
+        get_query: Callable[[str], str],
+        user_config_storage: UserConfigStorage = None,
+    ):
         self.pool = pool
         self.typed_pool = typed_pool(pool)
         self.get_query = get_query
         self.user_config_storage = user_config_storage  # Will be set by Storage class
-        
+
         # Initialize connection recovery manager
-        self.recovery_manager = recovery_manager if recovery_manager else ConnectionRecoveryManager(pool)
+        self.recovery_manager = (
+            recovery_manager if recovery_manager else ConnectionRecoveryManager(pool)
+        )
 
     async def create_conversation(self, conversation: Conversation) -> Optional[int]:
         async with self.typed_pool.acquire() as conn:
@@ -35,6 +43,7 @@ class ConversationStorage:
                     return await conn.execute(
                         self.get_query("user.ensure_user"), conversation.user_id
                     )
+
                 await self.recovery_manager.execute_with_recovery(_ensure_user)
 
             async def _create_conversation():
@@ -43,8 +52,10 @@ class ConversationStorage:
                     conversation.user_id,
                     conversation.title,
                 )
-            
-            row = await self.recovery_manager.execute_with_recovery(_create_conversation)
+
+            row = await self.recovery_manager.execute_with_recovery(
+                _create_conversation
+            )
             assert row
             conversation_id = row["id"] if row and "id" in row else None
 
@@ -69,12 +80,15 @@ class ConversationStorage:
 
         # If not in cache, get from database
         async with self.typed_pool.acquire() as conn:
+
             async def _get_user_conversations():
                 return await conn.fetch(
                     self.get_query("conversation.list_user_conversations"), user_id
                 )
-            
-            rows = await self.recovery_manager.execute_with_recovery(_get_user_conversations)
+
+            rows = await self.recovery_manager.execute_with_recovery(
+                _get_user_conversations
+            )
             return [Conversation(**dict(row)) for row in rows]
 
     async def get_conversation(self, conversation_id: int) -> Optional[Conversation]:
@@ -85,11 +99,12 @@ class ConversationStorage:
 
         # If not in cache, get from database
         async with self.typed_pool.acquire() as conn:
+
             async def _get_conversation():
                 return await conn.fetchrow(
                     self.get_query("conversation.get_conversation"), conversation_id
                 )
-            
+
             row = await self.recovery_manager.execute_with_recovery(_get_conversation)
             if not row:
                 return None
@@ -111,13 +126,14 @@ class ConversationStorage:
         user_id: str,
     ) -> None:
         async with self.typed_pool.acquire() as conn:
+
             async def _update_title():
                 return await conn.execute(
                     self.get_query("conversation.update_title"),
                     title,
                     conversation_id,
                 )
-            
+
             await self.recovery_manager.execute_with_recovery(_update_title)
 
         # Update the cache - first get the cached conversation to update
@@ -141,11 +157,12 @@ class ConversationStorage:
         user_id = conversation.user_id if conversation else None
 
         async with self.typed_pool.acquire() as conn:
+
             async def _delete_conversation():
                 return await conn.execute(
                     self.get_query("conversation.delete_conversation"), conversation_id
                 )
-            
+
             await self.recovery_manager.execute_with_recovery(_delete_conversation)
 
         # Invalidate all related cache entries

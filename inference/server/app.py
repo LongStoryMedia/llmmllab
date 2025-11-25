@@ -287,33 +287,7 @@ app.include_router(users.router, prefix=f"/{version}")
 app.include_router(todos.router, prefix=f"/{version}")
 
 
-@app.get("/")
-async def root():
-    """Root endpoint with API information."""
-    return {
-        "message": "Stable Diffusion API with OpenAI Compatibility",
-        "api_version": API_VERSION,
-        "endpoints": {
-            "image_generation": "/docs#/images",
-            "chat": "/docs#/chat",
-            "models": "/docs#/models",
-            "loras": "/docs#/loras",
-            "resources": "/docs#/resources",
-        },
-        "versioned_endpoints": {
-            "image_generation": f"/{API_VERSION}/images",
-            "chat": f"/{API_VERSION}/chat",
-            "models": f"/{API_VERSION}/models",
-            "config": f"/{API_VERSION}/config",
-            "resources": f"/{API_VERSION}/resources",
-            "websockets": f"/{API_VERSION}/ws",
-            "users": f"/{API_VERSION}/users",
-        },
-    }
-
-
 @app.get("/health")
 async def health_check():
     """Comprehensive health check endpoint."""
-
     return "OK"

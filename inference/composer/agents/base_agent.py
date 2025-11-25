@@ -26,14 +26,19 @@ from langchain_core.tools import BaseTool
 from langchain_core.messages import BaseMessage
 
 from models import (
+    MessageContent,
+    MessageContentType,
     MessageRole,
     NodeMetadata,
     ModelProfile,
     ChatResponse,
     PipelinePriority,
     Message,
+    Summary,
+    SummaryStyle,
 )
 from runner import PipelineFactory
+from runner.pipelines.base import BasePipeline
 from utils import parse_structured_output
 from utils.logging import llmmllogger, serialize_event_data
 from utils.response import create_error_response
@@ -202,6 +207,7 @@ class BaseAgent(ABC, Generic[T]):
         self,
         priority: PipelinePriority = PipelinePriority.MEDIUM,
         grammar: Optional[type[BaseModel]] = None,
+        metadata: Optional[NodeMetadata] = None,
     ) -> Optional[BaseChatModel | Embeddings]:
         """
         Get the current pipeline instance if available.
@@ -231,6 +237,9 @@ class BaseAgent(ABC, Generic[T]):
             self.logger.debug(
                 f"🔒 Agent {self.agent_id} locked new pipeline for {self.profile.model_name}"
             )
+
+        if metadata is not None and isinstance(self._pipeline, BasePipeline):
+            self._pipeline.bind_metadata(metadata.model_dump())
         return self._pipeline
 
     async def _get_or_create_agent(
@@ -240,6 +249,7 @@ class BaseAgent(ABC, Generic[T]):
         priority: PipelinePriority = PipelinePriority.MEDIUM,
         grammar: Optional[type[BaseModel]] = None,
         middleware: Optional[List[AgentMiddleware]] = None,
+        metadata: Optional[NodeMetadata] = None,
     ):
         """
         Get the persistent agent or create it if it doesn't exist.
@@ -261,7 +271,7 @@ class BaseAgent(ABC, Generic[T]):
         # This allows different system prompts, tools, and grammars while maintaining server reuse
 
         self.logger.debug("Creating LangChain agent (pipeline will be reused)")
-        pipeline = await self.get_pipeline(priority, grammar)
+        pipeline = await self.get_pipeline(priority, grammar, metadata)
         if pipeline is None:
             self.logger.error("🚨 Pipeline is None after get_pipeline call!")
             raise ValueError("Pipeline creation failed - pipeline is None")
@@ -272,60 +282,11 @@ class BaseAgent(ABC, Generic[T]):
             tools=tools or [],
             system_prompt=system_prompt,
             response_format=ProviderStrategy(grammar) if grammar else None,
-            name=self._node_metadata.node_name,
-            middleware=middleware or [],
-        )
-
-        return agent
-
-    def _get_cached_agent(
-        self,
-        system_prompt,
-        tools: Optional[List[BaseTool]] = None,
-        grammar: Optional[type[BaseModel]] = None,
-        middleware: Optional[List[AgentMiddleware]] = None,
-    ):
-        """
-        Get the cached agent if available.
-        For performance and server reuse, we cache the pipeline but not the agent,
-        since agent configuration (system prompt, tools, grammar) varies by call.
-        The pipeline (LLM server) should be reused across different agent configurations.
-        """
-        # Ensure pipeline exists for synchronous runs (run_sync uses cached path)
-        if self.current_pipeline is None:
-            try:
-                self.logger.debug(
-                    "Cached pipeline missing in _get_cached_agent; creating synchronously"
-                )
-                pipeline = self.pipeline_factory.get_pipeline(
-                    self.profile,
-                    PipelinePriority.MEDIUM,
-                    grammar,
-                    self._node_metadata.model_dump(),
-                )
-                self._pipeline = pipeline
-                # Mark locked similar to async path
-                self._pipeline_locked = True
-                if hasattr(pipeline, "started") and not getattr(pipeline, "started"):
-                    self.logger.error(
-                        "🚨 Pipeline is not started after creation (sync path)!"
-                    )
-                self.logger.debug(
-                    f"🔒 (sync) Agent {self.agent_id} locked new pipeline for {self.profile.model_name}"
-                )
-            except Exception as e:  # noqa: BLE001
-                self.logger.error(
-                    f"Failed to create pipeline synchronously in _get_cached_agent: {e}"
-                )
-                raise
-
-        llm = cast(BaseChatModel, self.current_pipeline)
-        agent = create_agent(
-            model=llm,
-            tools=tools or [],
-            system_prompt=system_prompt,
-            response_format=ProviderStrategy(grammar) if grammar else None,
-            name=self._node_metadata.node_name,
+            name=(
+                metadata.node_name
+                if metadata is not None
+                else self._node_metadata.node_name
+            ),
             middleware=middleware or [],
         )
 
@@ -444,93 +405,16 @@ TEMPORAL CONTEXT:
 The current date is {current_date}.
 While this is likely past your training data, you can use this information to provide better responses. If the user asks for the date or time, respond with this date.
 
+DO NOT EVER PROVIDE ANWERS WITH LOW CONFIDENCE. IT IS BETTER TO ADMIT YOU DON'T KNOW THAN TO MAKE UP ANSWERS. ALWAYS ATTEMPT TO USE TOOLS TO FIND THE ANSWER IF YOU ARE UNSURE.
+
 TOOL USE:
+Do not make up results - always use tools to get accurate information, or organize a way to obtain them.
 If you intend to use any tools, ensure you follow the tool usage guidelines provided in the system prompt.
 If there are not results from tool usage, you must attempt to call the tool again as it is likely that the format is incorrect.
-Do not make up results - always use tools to get accurate information, or organize a way to obtain them.
 If you believe you have made a tool call, double-check the message history to confirm there was a tool response included.
 """
 
         return system_prompt, convo
-
-    def run_sync(
-        self,
-        messages: MessageInput,
-        tools: Optional[List[BaseTool]] = None,
-        grammar: Optional[type[BaseModel]] = None,
-        middleware: Optional[List[AgentMiddleware]] = None,
-    ) -> ChatResponse:
-        """
-        Synchronous wrapper for the async run method.
-
-        Args:
-            messages: Input messages for the agent
-            tools: Optional tools for the agent
-            priority: Pipeline execution priority (affects model selection)
-            grammar: Optional grammar constraints for structured output
-            middleware: Optional[List[AgentMiddleware]] = None,
-
-        Returns:
-            ChatResponse: The response from the agent execution.
-        """
-
-        try:
-            self._log_operation_start(
-                "create_agent_run",
-                message_count=get_message_count(messages),
-                has_tools=bool(tools),
-                node_name=self._node_metadata.node_name,
-                node_type=self._node_metadata.node_type,
-            )
-            system_prompt, convo = self._separate_system_prompt(messages)
-
-            # Use persistent agent - creates once and reuses for state continuity
-            agent = self._get_cached_agent(
-                system_prompt,
-                tools,
-                grammar,
-                list(set((self.middleware or []) + (middleware or []))),
-            )
-
-            if agent is None:
-                self.logger.error("🚨 Agent is None after _get_cached_agent call!")
-                raise ValueError("Agent retrieval failed - agent is None")
-
-            # Convert messages to LangChain format
-            normalized_messages = messages_to_lc_messages(convo)
-
-            self.logger.debug(f"Running agent with {len(normalized_messages)} messages")
-            result = agent.invoke({"messages": normalized_messages})  # type: ignore
-
-            # Convert agent result to ChatResponse
-            if isinstance(result, BaseMessage):
-                last_message = result
-            elif isinstance(result, dict) and "messages" in result:
-                last_message = result["messages"][-1]
-            else:
-                last_message = result
-
-            assert isinstance(last_message, BaseMessage)
-            self.logger.debug(
-                f"Agent run result ({type(last_message)}): {serialize_event_data(last_message)}"
-            )
-            msg = lc_message_to_message(last_message)
-
-            response = ChatResponse(
-                done=True,
-                message=msg,
-                metadata=self._node_metadata,
-            )
-
-            return response
-
-        except Exception as e:
-            self._handle_node_error(
-                "create_agent_run",
-                e,
-                message_count=get_message_count(messages),
-            )
-            return create_error_response(str(e))
 
     async def run(
         self,
@@ -539,6 +423,7 @@ If you believe you have made a tool call, double-check the message history to co
         priority: PipelinePriority = PipelinePriority.MEDIUM,
         grammar: Optional[type[BaseModel]] = None,
         middleware: Optional[List[AgentMiddleware]] = None,
+        metadata: Optional[NodeMetadata] = None,
     ) -> ChatResponse:
         """
         Run agent execution with node metadata injection.
@@ -574,6 +459,7 @@ If you believe you have made a tool call, double-check the message history to co
                 priority,
                 grammar,
                 list(set((self.middleware or []) + (middleware or []))),
+                metadata,
             )
 
             if agent is None:
@@ -754,8 +640,6 @@ Conversation:
 
             result = await self.run(
                 title_prompt,
-                tools=None,
-                priority=PipelinePriority.MEDIUM,
                 grammar=TitleResponse,
             )
 
@@ -775,3 +659,137 @@ Conversation:
             )
             # Provide fallback title instead of raising error
             return "Conversation"
+
+    async def summarize_conversation(
+        self,
+        messages: List[Message],
+        conversation_id: int,
+        max_length: Optional[int] = None,
+        style: SummaryStyle = SummaryStyle.CONCISE,
+    ) -> Summary:
+        """
+        Create primary summary of conversation messages.
+
+        Args:
+            messages: Conversation messages to summarize
+            user_id: User identifier for model profile retrieval
+            max_length: Optional maximum summary length
+            style: Summary style preference
+            tools: Optional tools available to the agent
+            grammar: Optional grammar constraints for structured output
+
+        Returns:
+            Comprehensive primary conversation summary
+        """
+        try:
+            self.logger.info(
+                "Generating primary conversation summary",
+                messages_count=len(messages),
+                style=style,
+            )
+
+            prompt = await self._create_primary_conversation_prompt(
+                [
+                    f"### [{msg.role}]:\n{extract_text_from_message(msg)}\n\n---\n\n"
+                    for msg in messages
+                ],
+                style,
+                max_length,
+            )
+
+            metadata = self._node_metadata.model_copy()
+            metadata.node_name = "PrimaryConversationSummaryAgent"
+            metadata.node_type = "Summarization"
+
+            res = await self.run(prompt, metadata=metadata)
+            await self.get_pipeline(
+                metadata=self._node_metadata
+            )  # Reset pipeline metadata
+            assert res.message is not None, "No message returned from summary agent"
+            summary_text = extract_text_from_message(res.message)
+
+            summary = Summary(
+                id=0,  # ID to be set when storing
+                content=summary_text,
+                level=1,
+                conversation_id=conversation_id,
+                created_at=datetime.datetime.now(datetime.timezone.utc),
+                source_ids=[msg.id for msg in messages if msg.id is not None],
+            )
+
+            from db import storage  # pylint: disable=import-outside-toplevel
+
+            # Store primary conversation summary
+            await storage.get_service(storage.summary).create_summary(summary)
+
+            self.logger.info(
+                "Generated primary conversation summary",
+                summary_length=len(summary_text),
+            )
+
+            return summary
+
+        except Exception as e:
+            self.logger.error(
+                "Failed to generate primary conversation summary",
+                error=str(e),
+            )
+            raise NodeExecutionError(
+                f"Primary conversation summarization failed: {e}"
+            ) from e
+
+    async def _create_primary_conversation_prompt(
+        self, messages: List[str], style: SummaryStyle, max_length: Optional[int]
+    ) -> str:
+        """Create specialized prompt for primary conversation summarization."""
+        style_instruction = self._get_style_instruction(style)
+        length_constraint = (
+            f"Keep the summary under {max_length} words." if max_length else ""
+        )
+
+        return f"""<role>
+Context Extraction Assistant
+</role>
+
+<primary_objective>
+Your sole objective in this task is to extract the highest quality/most relevant context from the conversation history below.
+</primary_objective>
+
+<objective_information>
+You're nearing the total number of input tokens you can accept, so you must extract the highest quality/most relevant pieces of information from your conversation history.
+This context will then overwrite the conversation history presented below. Because of this, ensure the context you extract is only the most important information to your overall goal.
+</objective_information>
+
+<instructions>
+The conversation history below will be replaced with the context you extract in this step. Because of this, you must do your very best to extract and record all of the most important context from the conversation history.
+You want to ensure that you don't repeat any actions you've already completed, so the context you extract from the conversation history should be focused on the most important information to your overall goal.
+- Trace the evolution of topics and ideas throughout the conversation
+- Identify key decision points and their rationale
+- Highlight agreements, disagreements, and resolution processes
+- Capture the flow of reasoning and argumentation
+- Focus on logical progression and development of concepts
+STYLE: {style_instruction}
+{length_constraint}
+</instructions>
+
+The user will message you with the full message history you'll be extracting context from, to then replace. Carefully read over it all, and think deeply about what information is most important to your overall goal that should be saved:
+
+With all of this in mind, please carefully read over the entire conversation history, and extract the most important and relevant context to replace it so that you can free up space in the conversation history.
+Respond ONLY with the extracted context. Do not include any additional information, or text before or after the extracted context.
+
+<messages>
+Messages to summarize:
+{messages}
+</messages>
+"""
+
+    def _get_style_instruction(self, style: SummaryStyle) -> str:
+        """Get style-specific instruction for primary summaries."""
+        style_instructions = {
+            SummaryStyle.CONCISE: "Provide a focused yet comprehensive analysis.",
+            SummaryStyle.DETAILED: "Provide extensive detail and comprehensive coverage.",
+            SummaryStyle.BULLET_POINTS: "Use structured bullet points for comprehensive analysis.",
+        }
+        return style_instructions.get(
+            style, "Provide a balanced comprehensive analysis."
+        )
