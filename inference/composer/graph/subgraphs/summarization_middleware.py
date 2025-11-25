@@ -1,6 +1,7 @@
 """Summarization middleware."""
 
 import uuid
+from datetime import datetime, timezone
 from collections.abc import Callable, Iterable
 from typing import Any, cast
 
@@ -13,7 +14,12 @@ from langchain_core.messages import (
 )
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.utils import count_tokens_approximately, trim_messages
-from langchain.agents.middleware.types import AgentMiddleware, AgentState
+from langchain.agents.middleware import (
+    AgentMiddleware,
+    AgentState,
+    hook_config,
+    after_model,
+)
 from langgraph.graph.message import (
     REMOVE_ALL_MESSAGES,
 )
@@ -21,9 +27,10 @@ from langgraph.runtime import Runtime
 
 
 from composer.agents.base_agent import BaseAgent
-# Removed streaming-specific agent creation imports
+from composer.agents.primary_summary_agent import PrimarySummaryAgent
+from models import Summary, SummaryStyle, Message, MessageRole, MessageContent, MessageContentType
 from utils.logging import llmmllogger
-from utils.message_conversion import extract_text_from_message
+from utils.message_conversion import extract_text_from_message, lc_message_to_message
 
 TokenCounter = Callable[[Iterable[MessageLikeRepresentation]], int]
 
@@ -73,18 +80,17 @@ class SummarizationMiddleware(AgentMiddleware):
 
     def __init__(
         self,
-        agent: BaseAgent,
+        agent: PrimarySummaryAgent,
         max_tokens_before_summary: int | None = None,
         messages_to_keep: int = _DEFAULT_MESSAGES_TO_KEEP,
         token_counter: TokenCounter = count_tokens_approximately,
         summary_prompt: str = DEFAULT_SUMMARY_PROMPT,
         summary_prefix: str = SUMMARY_PREFIX,
-        # Streaming removed for simplicity per design decision
     ) -> None:
         """Initialize the summarization middleware.
 
         Args:
-            model: The language model to use for generating summaries.
+            agent: PrimarySummaryAgent for generating conversation summaries.
             max_tokens_before_summary: Token threshold to trigger summarization.
                 If `None`, summarization is disabled.
             messages_to_keep: Number of recent messages to preserve after summarization.
@@ -101,9 +107,8 @@ class SummarizationMiddleware(AgentMiddleware):
         self.summary_prompt = summary_prompt
         self.summary_prefix = summary_prefix
         self.logger = llmmllogger.bind(component="SummarizationMiddleware")
-        # Streaming disabled; simplify implementation
 
-    def before_model(
+    async def aafter_model(
         self,
         state: AgentState,
         runtime: Runtime,
@@ -136,7 +141,11 @@ class SummarizationMiddleware(AgentMiddleware):
         messages_to_summarize, preserved_messages = self._partition_messages(
             messages, cutoff_index
         )
-        summary = self._create_summary(messages_to_summarize)
+        
+        # Extract conversation_id from state
+        conversation_id = state.get("conversation_id", 1)  # Default to 1 if not found
+        
+        summary = await self._create_summary(messages_to_summarize, conversation_id)
         new_messages = self._build_new_messages(summary)
 
         return {
@@ -147,10 +156,10 @@ class SummarizationMiddleware(AgentMiddleware):
             ]
         }
 
-    def _build_new_messages(self, summary: str) -> list[HumanMessage]:
+    def _build_new_messages(self, summary: Summary) -> list[HumanMessage]:
         return [
             HumanMessage(
-                content=f"Here is a summary of the conversation to date:\n\n{summary}"
+                content=f"Here is a summary of the conversation to date:\n\n{summary.content}"
             )
         ]
 
@@ -245,32 +254,61 @@ class SummarizationMiddleware(AgentMiddleware):
                     return True
         return False
 
-    def _create_summary(self, messages_to_summarize: list[AnyMessage]) -> str:
-        """Generate summary for the given messages (simple non-streaming path)."""
+    async def _create_summary(self, messages_to_summarize: list[AnyMessage], conversation_id: int) -> Summary:
+        """Generate summary using PrimarySummaryAgent and store in database."""
         if not messages_to_summarize:
-            return "No previous conversation history."
+            # Return empty summary object instead of string
+            return Summary(
+                id=0,
+                conversation_id=conversation_id,
+                level=1,
+                content="No previous conversation history.",
+                source_ids=[],
+                created_at=datetime.now(timezone.utc)
+            )
 
-        trimmed_messages = self._trim_messages_for_summary(messages_to_summarize)
-        if not trimmed_messages:
-            return "Previous conversation was too long to summarize."
+        # Convert LangChain messages to Message objects for PrimarySummaryAgent
+        messages_for_summary = []
+        for lc_msg in messages_to_summarize:
+            try:
+                msg = lc_message_to_message(lc_msg, conversation_id)
+                messages_for_summary.append(msg)
+            except Exception as e:
+                self.logger.warning(f"Failed to convert message: {e}")
+                continue
 
-        # Build concise textual representation for insertion into summary prompt
-        lines: list[str] = []
-        for m in trimmed_messages:
-            content = extract_text_from_message(m) if hasattr(m, "content") else ""
-            role = getattr(m, "type", getattr(m, "role", "message"))
-            lines.append(f"[{role}] {content}")
-        prompt_text = "\n".join(lines)
-        prompt = self.summary_prompt.format(messages=prompt_text)
+        if not messages_for_summary:
+            return Summary(
+                id=0,
+                conversation_id=conversation_id,
+                level=1,
+                content="Failed to process conversation history.",
+                source_ids=[],
+                created_at=datetime.now(timezone.utc)
+            )
+
         try:
-            response = self.agent.run_sync(prompt)
-            if response.message is None:
-                return "Summary generation produced no content."
-            return extract_text_from_message(response.message)
+            # Use PrimarySummaryAgent's summarize_conversation method
+            summary = await self.agent.summarize_conversation(
+                messages=messages_for_summary,
+                conversation_id=conversation_id,
+                max_length=None,  # Let agent decide
+                style=SummaryStyle.CONCISE  # Use concise for middleware summaries
+            )
+            
+            self.logger.debug(f"Created summary with {len(messages_for_summary)} messages")
+            return summary
+            
         except Exception as e:  # noqa: BLE001
-            return f"Error generating summary: {e!s}"
-
-    # Removed streaming & diagnostic helpers for simplicity
+            self.logger.error(f"Error generating summary: {e}", exc_info=True)
+            return Summary(
+                id=0,
+                conversation_id=conversation_id,
+                level=1,
+                content=f"Error generating summary: {e!s}",
+                source_ids=[msg.id for msg in messages_for_summary if msg.id],
+                created_at=datetime.now(timezone.utc)
+            )
 
     def _trim_messages_for_summary(
         self, messages: list[AnyMessage]
