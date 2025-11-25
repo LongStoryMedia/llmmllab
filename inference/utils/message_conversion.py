@@ -16,6 +16,7 @@ from langchain_core.messages import (
     AIMessage,
     SystemMessage,
     ToolMessage,
+    AnyMessage,
 )
 
 from models import (
@@ -36,7 +37,7 @@ logger = llmmllogger.bind(component="message_conversion")
 MessageInput = Union[str, Message, List[Union[str, Message]], List[str], List[Message]]
 
 
-def message_to_lc_message(message: Message) -> BaseMessage:
+def message_to_lc_message(message: Message) -> AnyMessage:
     """Convert a Message object to a LangChain BaseMessage, preserving multimodal content."""
 
     # Convert Message.content to the multimodal format that LangChain expects
@@ -91,7 +92,7 @@ def message_to_lc_message(message: Message) -> BaseMessage:
             ).strip()
 
         # Create AIMessage with parsed tool calls
-        ai_message = AIMessage(content=content_data)
+        ai_message = AIMessage(content=content_data, id=message.id)
         if parsed_tool_calls:
             ai_message.tool_calls = parsed_tool_calls
             logger.info(
@@ -100,21 +101,25 @@ def message_to_lc_message(message: Message) -> BaseMessage:
         return ai_message
 
     elif message.role == MessageRole.USER:
-        return HumanMessage(content=content_data)
+        return HumanMessage(content=content_data, id=message.id)
     elif message.role == MessageRole.SYSTEM:
-        return SystemMessage(content=content_data)
+        return SystemMessage(content=content_data, id=message.id)
     elif message.role == MessageRole.TOOL:
-        return ToolMessage(content=content_data)
+        # For tool messages, we need both content and tool_call_id
+        tool_call_id = None
+        if message.tool_calls and len(message.tool_calls) > 0:
+            tool_call_id = message.tool_calls[0].execution_id
+        return ToolMessage(content=content_data, tool_call_id=tool_call_id or "unknown", id=message.id)
     elif message.role == MessageRole.OBSERVER:
         # Treat observer messages as system messages
-        return SystemMessage(content=content_data)
+        return SystemMessage(content=content_data, id=message.id)
     else:
         # Default to human message for unknown roles
-        return HumanMessage(content=content_data)
+        return HumanMessage(content=content_data, id=message.id)
 
 
 def lc_message_to_message(
-    base_message: BaseMessage,
+    base_message: AnyMessage | BaseMessage,
     conversation_id: Optional[int] = None,
 ) -> Message:
     """Convert a LangChain BaseMessage to a Message object."""
@@ -149,6 +154,7 @@ def lc_message_to_message(
     # Create message with explicit field validation
     try:
         msg = Message(
+            id=getattr(base_message, 'id', None),  # Transfer id from LangChain message
             role=role,
             content=content,
             conversation_id=conversation_id,
@@ -167,13 +173,13 @@ def lc_message_to_message(
     return msg
 
 
-def messages_to_lc_messages(messages: List[Message]) -> List[BaseMessage]:
+def messages_to_lc_messages(messages: List[Message]) -> List[AnyMessage]:
     """Convert a list of Message objects to LangChain BaseMessages."""
     return [message_to_lc_message(msg) for msg in messages]
 
 
 def lc_messages_to_messages(
-    base_messages: List[BaseMessage], conversation_id: Optional[int] = None
+    base_messages: List[AnyMessage], conversation_id: Optional[int] = None
 ) -> List[Message]:
     """Convert a list of LangChain BaseMessages to Message objects."""
     return [lc_message_to_message(msg, conversation_id) for msg in base_messages]
