@@ -5,7 +5,7 @@ Handles message persistence, caching, and proper aggregation of related data.
 
 import json
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
+from typing import Callable, List, Optional, Dict, Any
 import asyncpg
 from models.message import Message
 from models.message_content import MessageContent
@@ -37,7 +37,7 @@ class MessageStorage:
     def __init__(
         self,
         pool: asyncpg.Pool,
-        get_query,
+        get_query: Callable[[str], str],
         thought_storage: ThoughtStorage,
         tool_call_storage: ToolCallStorage,
         message_content_storage: MessageContentStorage,
@@ -53,9 +53,13 @@ class MessageStorage:
         self.tool_call_storage = tool_call_storage
         self.message_content_storage = message_content_storage
         self.analysis_storage = analysis_storage
-        
+
         # Initialize connection recovery manager
-        self.recovery_manager = recovery_manager if recovery_manager else ConnectionRecoveryManager(self.typed_pool._pool)
+        self.recovery_manager = (
+            recovery_manager
+            if recovery_manager
+            else ConnectionRecoveryManager(self.typed_pool._pool)
+        )
 
     async def add_message(
         self,
@@ -75,13 +79,16 @@ class MessageStorage:
 
         # If no connection provided, wrap the entire transaction in recovery
         if conn is None:
+
             async def _add_with_transaction():
                 async with self.typed_pool.acquire() as connection:
                     async with connection.transaction():
                         return await self._add_message(message, connection)
-            
+
             # Execute the entire transaction with recovery
-            return await self.recovery_manager.execute_with_recovery(_add_with_transaction)
+            return await self.recovery_manager.execute_with_recovery(
+                _add_with_transaction
+            )
         else:
             # Use existing connection (transaction managed externally)
             # In this case, recovery should be handled by the outer transaction manager
@@ -138,6 +145,106 @@ class MessageStorage:
 
         return message_id
 
+    async def update_message(
+        self,
+        message: Message,
+        conn: Optional[TypedConnection] = None,
+    ) -> bool:
+        """
+        Update an existing message with all its related content, tool_calls, and thoughts.
+        Uses proper transaction handling for data consistency and OID error recovery.
+
+        Args:
+            message: The message to update (must have an id)
+            conn: Optional existing connection for transaction support
+
+        Returns:
+            True if update was successful, False otherwise
+        """
+        if not message.id:
+            raise ValueError("Message must have an id to be updated")
+        if not message.conversation_id:
+            raise ValueError("Message must have a conversation_id")
+
+        # If no connection provided, wrap the entire transaction in recovery
+        if conn is None:
+
+            async def _update_with_transaction():
+                async with self.typed_pool.acquire() as connection:
+                    async with connection.transaction():
+                        return await self._update_message(message, connection)
+
+            # Execute the entire transaction with recovery
+            return await self.recovery_manager.execute_with_recovery(
+                _update_with_transaction
+            )
+        else:
+            # Use existing connection (transaction managed externally)
+            return await self._update_message(message, conn)
+
+    async def _update_message(
+        self,
+        message: Message,
+        conn: TypedConnection,
+    ) -> bool:
+        """
+        Internal method to update message using a specific connection.
+        """
+        if not message.id:
+            self.logger.error("Cannot update message without id")
+            return False
+            
+        try:
+            # Update the main message record (role is typically immutable, but we'll include it)
+            await conn.execute(
+                self.get_query("message.update_message"),
+                message.id,
+                message.role,
+            )
+
+            # Delete existing related data to replace with new data
+            # This ensures consistency and handles cases where lists have changed
+            await conn.execute(
+                self.get_query("message_content.delete_message_contents"), message.id
+            )
+            await conn.execute(
+                self.get_query("tool_call.delete_by_message"), message.id
+            )
+            await conn.execute(
+                self.get_query("thought.delete_by_message"), message.id
+            )
+
+            # Insert new message contents
+            if message.content:
+                await self._insert_message_contents(conn, message.id, message.content)
+
+            # Insert new tool_calls if present
+            if message.tool_calls:
+                await self._insert_tool_calls(conn, message.id, message.tool_calls)
+
+            # Insert new thoughts if present
+            if message.thoughts:
+                await self._insert_thoughts(conn, message.id, message.thoughts)
+
+            # Update cache
+            if message.conversation_id is not None:
+                try:
+                    cache_storage.cache_message(message)
+                    cache_storage.invalidate_conversation_messages_cache(
+                        message.conversation_id
+                    )
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to update cache for message {message.id}: {e}"
+                    )
+
+            self.logger.debug(f"Successfully updated message {message.id}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to update message {message.id}: {e}", exc_info=True)
+            return False
+
     async def get_message(
         self,
         message_id: int,
@@ -179,10 +286,13 @@ class MessageStorage:
             conn: Database connection to use
             cache_result: Whether to cache the result after fetching
         """
+
         # Get the base message with recovery
         async def _get_message_record():
-            return await conn.fetchrow(self.get_query("message.get_message"), message_id)
-            
+            return await conn.fetchrow(
+                self.get_query("message.get_message"), message_id
+            )
+
         row = await self.recovery_manager.execute_with_recovery(_get_message_record)
         if not row:
             return None
@@ -194,7 +304,7 @@ class MessageStorage:
             return await conn.fetch(
                 self.get_query("message_content.get_by_message"), message_id
             )
-            
+
         contents_rows = await self.recovery_manager.execute_with_recovery(_get_contents)
         message_data["content"] = [
             MessageContent(**dict(content_row)) for content_row in contents_rows
@@ -205,8 +315,10 @@ class MessageStorage:
             return await conn.fetch(
                 self.get_query("tool_call.get_by_message"), message_id
             )
-            
-        tool_calls_rows = await self.recovery_manager.execute_with_recovery(_get_tool_calls)
+
+        tool_calls_rows = await self.recovery_manager.execute_with_recovery(
+            _get_tool_calls
+        )
         message_data["tool_calls"] = [
             self._parse_tool_call_row(dict(tool_row)) for tool_row in tool_calls_rows
         ]
@@ -216,7 +328,7 @@ class MessageStorage:
             return await conn.fetch(
                 self.get_query("thought.get_by_message"), message_id
             )
-            
+
         thoughts_rows = await self.recovery_manager.execute_with_recovery(_get_thoughts)
         message_data["thoughts"] = [
             Thought(**dict(thought_row)) for thought_row in thoughts_rows
@@ -227,7 +339,7 @@ class MessageStorage:
             return await conn.fetch(
                 self.get_query("analysis.get_by_message"), message_id
             )
-            
+
         analyses_rows = await self.recovery_manager.execute_with_recovery(_get_analyses)
         message_data["analyses"] = [
             self._parse_analysis_row(dict(analysis_row))
@@ -285,7 +397,9 @@ class MessageStorage:
 
         return ToolCall(
             message_id=row.get("message_id"),
-            name=row.get("tool_name"),  # Map tool_name from DB to name field in model
+            name=row.get(
+                "tool_name", "UNKNOWN"
+            ),  # Map tool_name from DB to name field in model
             execution_id=row.get("execution_id"),
             success=row.get("success", False),
             args=args,
@@ -435,13 +549,14 @@ class MessageStorage:
         """
         Internal method to get conversation history using a specific connection with transaction support.
         """
+
         # Get all messages for the conversation with recovery
         async def _get_conversation_rows():
             return await conn.fetch(
                 self.get_query("message.get_conversation_history"),
                 conversation_id,
             )
-            
+
         rows = await self.recovery_manager.execute_with_recovery(_get_conversation_rows)
 
         messages = []
@@ -567,9 +682,7 @@ class MessageStorage:
                 f"Failed to invalidate cache for deleted message {message_id}: {e}"
             )
 
-    async def bulk_delete_messages_from_timestamp(
-        self, conversation_id: int, from_timestamp: datetime
-    ) -> int:
+    async def delete_all_from_message(self, message: Message) -> int:
         """
         Delete all messages in a conversation created at or after the specified timestamp.
         This is more efficient than deleting messages one by one, especially with TimescaleDB.
@@ -582,6 +695,10 @@ class MessageStorage:
         Returns:
             Number of messages deleted
         """
+        assert (
+            message.conversation_id is not None
+        ), "Message must have a conversation_id"
+
         async def _delete_with_transaction():
             async with self.typed_pool.acquire() as conn:
                 async with conn.transaction():
@@ -589,8 +706,8 @@ class MessageStorage:
                     # (message_contents, thoughts, tool_calls, analyses, etc.)
                     message_result = await conn.execute(
                         self.get_query("message.delete_messages_from_timestamp"),
-                        conversation_id,
-                        from_timestamp,
+                        message.conversation_id,
+                        message.created_at,
                     )
 
                     # Extract the number of deleted rows from the command result
@@ -601,15 +718,17 @@ class MessageStorage:
                     )
 
                     logger.info(
-                        f"Bulk deleted {deleted_count} messages from conversation {conversation_id} created >= {from_timestamp} (cascade triggers handled related data)"
+                        f"Bulk deleted {deleted_count} messages from conversation {message.conversation_id} created > {message.created_at} (cascade triggers handled related data)"
                     )
                     return deleted_count
 
         # Execute the entire transaction with recovery
-        deleted_count = await self.recovery_manager.execute_with_recovery(_delete_with_transaction)
+        deleted_count = await self.recovery_manager.execute_with_recovery(
+            _delete_with_transaction
+        )
 
         # Invalidate conversation messages list cache
-        cache_storage.invalidate_conversation_messages_cache(conversation_id)
+        cache_storage.invalidate_conversation_messages_cache(message.conversation_id)
 
         return deleted_count
 
