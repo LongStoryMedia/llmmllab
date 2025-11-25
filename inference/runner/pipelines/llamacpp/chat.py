@@ -177,11 +177,16 @@ class ChatLlamaCppPipeline(BasePipeline):
             self.started = False
 
     def bind_metadata(self, metadata: dict):
-        """Bind additional metadata to the pipeline."""
+        """Bind additional metadata to the pipeline.
+        
+        Existing metadata keys will be overwritten if they exist in the new metadata.
+        """
         if not self.chat_model:
             raise RuntimeError("ChatOpenAI not initialized")
         if not self.chat_model.metadata:
             self.chat_model.metadata = {}
+        
+        # Use update() which overwrites existing keys with same names
         self.chat_model.metadata.update(metadata)
 
         return self.chat_model
