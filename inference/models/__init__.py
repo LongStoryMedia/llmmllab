@@ -22,6 +22,7 @@ try:
     from . import default_configs
     from . import default_model_profiles
     from . import dev_stats
+    from . import document
     from . import document_source
     from . import dynamic_tool
     from . import embedding_response
@@ -148,6 +149,7 @@ __all__ = [
     'default_configs',
     'default_model_profiles',
     'dev_stats',
+    'document',
     'document_source',
     'dynamic_tool',
     'embedding_response',
@@ -268,6 +270,7 @@ __all__ = [
     'CrashPrevention',
     'DatabaseConfig',
     'DevStats',
+    'Document',
     'DocumentSource',
     'DynamicTool',
     'EmbeddingResponse',
@@ -429,6 +432,9 @@ from .database_config import (
 )
 from .dev_stats import (
     DevStats,
+)
+from .document import (
+    Document,
 )
 from .document_source import (
     DocumentSource,

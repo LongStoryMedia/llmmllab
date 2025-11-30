@@ -55,6 +55,7 @@ from server.routers import (
     conversation,
     internal,
     db_admin,
+    documents,
 )
 from server.middleware import (
     AuthMiddleware,
@@ -269,6 +270,7 @@ app.include_router(static.router)
 app.include_router(websockets.router)
 app.include_router(users.router)
 app.include_router(todos.router)
+app.include_router(documents.router)
 
 # Import and include the internal router
 app.include_router(internal.router)
@@ -285,6 +287,7 @@ app.include_router(static.router, prefix=f"/{version}")
 app.include_router(websockets.router, prefix=f"/{version}")
 app.include_router(users.router, prefix=f"/{version}")
 app.include_router(todos.router, prefix=f"/{version}")
+app.include_router(documents.router, prefix=f"/{version}")
 
 
 @app.get("/health")

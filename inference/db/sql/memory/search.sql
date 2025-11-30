@@ -73,7 +73,28 @@ similar_search_topics_unfiltered AS (
             AND ($7::text IS NULL
                 OR st.created_at <=($7::text)::timestamptz)
 ),
--- Step 1d: CTE for user-level filtering.
+-- Step 1d: Find similar file documents
+similar_documents_unfiltered AS (
+    SELECT
+        d.id AS source_id,
+        d.conversation_id,
+        1 -(e.embedding <=> $1) AS similarity
+    FROM
+        memories e
+        JOIN documents d ON e.source_id = d.id
+    WHERE
+        e.source = 'document'
+        AND 1 -(e.embedding <=> $1) > $2
+        -- Filter by conversation_id if present.
+        AND ($5::bigint IS NULL
+            OR d.conversation_id = $5::bigint)
+            -- Add conditional time window filters.
+            AND ($6::text IS NULL
+                OR d.created_at >=($6::text)::timestamptz)
+            AND ($7::text IS NULL
+                OR d.created_at <=($7::text)::timestamptz)
+),
+-- Step 1e: CTE for user-level filtering.
 filtered_convos AS (
     SELECT
         id
@@ -82,7 +103,7 @@ filtered_convos AS (
     WHERE
         user_id = $4::text
 ),
--- Step 1e: Apply the user filter ONLY IF conversation_id was NOT provided.
+-- Step 1f: Apply the user filter ONLY IF conversation_id was NOT provided.
 similar_messages AS (
     SELECT
         *
@@ -268,7 +289,29 @@ search_results_to_fetch AS (
             FROM
                 filtered_convos)
 ),
--- Step 7: Combine message pairs and summaries
+-- step 7, Include the file documents
+document_results_to_fetch AS (
+    SELECT
+        sa.source_id,
+        'document' AS source_type,
+        sa.similarity,
+        sa.conversation_id,
+        0 AS pair_order, -- documents are standalone
+        sa.similarity AS original_similarity,
+        CONCAT('document-', sa.source_id) AS pair_key -- Each document is its own group
+    FROM
+        similar_documents_unfiltered sa
+    WHERE
+        -- If conversation_id is specified, this entire user check is skipped.
+        $5::bigint IS NOT NULL
+        OR $4::text IS NULL
+        OR sa.conversation_id IN (
+            SELECT
+                id
+            FROM
+                filtered_convos)
+),
+-- Step 8: Combine message pairs, summaries, search results, and documents
 all_results_to_fetch AS (
     SELECT
         *
@@ -284,8 +327,13 @@ all_results_to_fetch AS (
         *
     FROM
         search_results_to_fetch
+    UNION ALL
+    SELECT
+        *
+    FROM
+        document_results_to_fetch
 ),
--- Step 8: Prepare final results
+-- Step 9: Prepare final results
 -- Keep the original ordering and uniqueness ensured from previous steps
 unique_results AS (
     SELECT
@@ -320,12 +368,12 @@ limited_pairs AS (
 )
 SELECT
     COALESCE(m.role, 'system') AS role,
-    u.source_id,
-    COALESCE(mc.text_content, s.content, ss.synthesis) AS content,
-    u.source_type,
-    u.similarity,
-    COALESCE(m.conversation_id, s.conversation_id, ss.conversation_id) AS conversation_id,
-    COALESCE(m.created_at, s.created_at, ss.created_at) AS created_at
+u.source_id,
+COALESCE(mc.text_content, s.content, ss.synthesis, d.text_content, d.filename) AS content,
+u.source_type,
+u.similarity,
+COALESCE(m.conversation_id, s.conversation_id, ss.conversation_id, d.conversation_id) AS conversation_id,
+COALESCE(m.created_at, s.created_at, ss.created_at, d.created_at) AS created_at
 FROM
     unique_results u
     LEFT JOIN messages m ON u.source_id = m.id
@@ -336,6 +384,8 @@ FROM
         AND u.source_type = 'summary'
     LEFT JOIN search_topic_syntheses ss ON u.source_id = ss.id
         AND u.source_type = 'search'
+    LEFT JOIN documents d ON u.source_id = d.id
+        AND u.source_type = 'document'
 WHERE
     u.pair_key IN (
         SELECT
@@ -344,5 +394,5 @@ WHERE
             limited_pairs)
 ORDER BY
     u.similarity DESC, -- Sort by highest similarity first
-    COALESCE(m.conversation_id, s.conversation_id, ss.conversation_id), -- Keep conversation pairs together
-    COALESCE(m.created_at, s.created_at, ss.created_at) -- Maintain chronological order within conversations
+    COALESCE(m.conversation_id, s.conversation_id, ss.conversation_id, d.conversation_id), -- Keep conversation pairs together
+    COALESCE(m.created_at, s.created_at, ss.created_at, d.created_at) -- Maintain chronological order within conversations

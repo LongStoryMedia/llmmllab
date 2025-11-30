@@ -25,6 +25,7 @@ from .thought_storage import ThoughtStorage
 from .analysis_storage import AnalysisStorage
 from .tool_call_storage import ToolCallStorage
 from .message_content_storage import MessageContentStorage
+from .document_storage import DocumentStorage
 from .todo_storage import TodoStorage
 from .checkpoint_storage import CheckpointStorage
 from .queries import get_query
@@ -60,6 +61,7 @@ class Storage:
         self.analysis = None
         self.tool_call = None
         self.message_content = None
+        self.document = None
         self.todo = None
         self.checkpoint = None
         self.get_query = get_query
@@ -107,6 +109,7 @@ class Storage:
             self.analysis = AnalysisStorage(self.pool, get_query)
             self.tool_call = ToolCallStorage(self.pool, get_query)
             self.message_content = MessageContentStorage(self.pool, get_query)
+            self.document = DocumentStorage(self.pool, get_query)
             self.todo = TodoStorage(self.pool, get_query)
             self.checkpoint = CheckpointStorage(self.pool, get_query)
             self.message = MessageStorage(

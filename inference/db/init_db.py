@@ -120,7 +120,14 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ),
                     ],
                 ),
-                # Step 6: Create summary tables
+                # Step 6: Create document tables
+                (
+                    "Creating document tables",
+                    [
+                        ("document.init_document_schema", ["timescaledb"]),
+                    ],
+                ),
+                # Step 7: Create summary tables
                 (
                     "Creating summary tables",
                     [
@@ -130,7 +137,7 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("summary.enable_summaries_compression", ["timescaledb"]),
                     ],
                 ),
-                # Step 7: Create search tables
+                # Step 8: Create search tables
                 (
                     "Creating search tables",
                     [
@@ -141,7 +148,7 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ),
                     ],
                 ),
-                # Step 8: Create memory tables (requires vector extension)
+                # Step 9: Create memory tables (requires vector extension)
                 (
                     "Creating memory tables",
                     [
@@ -162,9 +169,9 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("memory.memories_retention_policy", ["timescaledb"]),
                     ],
                 ),
-                # Step 9: Create image tables
+                # Step 10: Create image tables
                 ("Creating image tables", [("images.create_images_schema", [])]),
-                # Step 10: Create dynamic tools tables
+                # Step 11: Create dynamic tools tables
                 (
                     "Creating dynamic tools tables",
                     [
@@ -173,7 +180,7 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("tool.create_embedding_index", ["vector"]),
                     ],
                 ),
-                # Step 11: Create research tables
+                # Step 12: Create research tables
                 (
                     "Creating research tables",
                     [
@@ -181,7 +188,7 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("research.create_research_subtasks_table", []),
                     ],
                 ),
-                # Step 12: Create structured response tables (thoughts, analyses, tool_calls)
+                # Step 13: Create structured response tables (thoughts, analyses, tool_calls)
                 (
                     "Creating structured response tables",
                     [
@@ -191,7 +198,7 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("tool_call.migrate_to_tool_execution_result_schema", []),
                     ],
                 ),
-                # Step 13: Create message cascade delete triggers
+                # Step 14: Create message cascade delete triggers
                 (
                     "Creating message cascade delete triggers",
                     [
@@ -205,8 +212,6 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("todo.create_table", []),
                     ],
                 ),
-                # Step 15: LangGraph checkpoint tables are created automatically by AsyncPostgresSaver.setup()
-                # No manual table creation needed - LangGraph handles this internally
             ]
 
             # Execute all initialization steps
