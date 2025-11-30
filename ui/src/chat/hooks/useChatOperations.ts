@@ -195,20 +195,27 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
    * Cancel current request
    */
   const cancelRequest = useCallback(async () => {
+    console.log('🛑 Cancelling request...');
+    
+    // First abort the stream
     if (abortController.current) {
       abortController.current.abort();
       abortController.current = null;
     }
 
-    try {
-      await cancel(getToken(auth.user));
-    } catch (error) {
-      actions.setError((error as Error).message);
-      console.error("Error cancelling request:", error);
-    }
-
+    // Reset streaming immediately for UI responsiveness
     actions.setIsTyping(false);
     streaming.resetStreaming();
+    actions.setStreamingSections([]);
+    actions.setCurrentStreamingSection(null);
+    
+    try {
+      // Call the server cancel endpoint
+      await cancel(getToken(auth.user));
+    } catch (error) {
+      // Don't throw error for cancel request
+      console.warn('Cancel request failed (stream already stopped):', error);
+    }
   }, [actions, auth.user, streaming]);
 
   return {

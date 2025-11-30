@@ -3,7 +3,9 @@ SELECT
     created_at,
     type,
     text_content,
-    url
+    url,
+    format,
+    name
 FROM
     message_contents
 WHERE

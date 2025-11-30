@@ -1,52 +1,313 @@
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { Box } from '@mui/material';
 import { Message, MessageContent, MessageResponse } from '../ai-elements/message';
+import {
+  Tool,
+  ToolContent,
+  ToolHeader,
+  ToolInput,
+  ToolOutput
+} from '../ai-elements/tool';
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger
+} from '../ai-elements/reasoning';
 import { useChat } from '../../chat';
-import ThinkSection from './ThinkSection';
-import ToolCallsSection from './ToolCallsSection';
 import MessageActions from './MessageActions';
 import MessageEditor from './MessageEditor';
-import { parseResponse } from './utils';
-import { Message as CustomMessage } from '../../types/Message';
+// import { parseResponse } from './utils';
+import {
+  MessageContent as MessageContentType,
+  Message as MessageType,
+  ResponseSection,
+  Thought,
+  ToolCall
+} from '../../types';
 import { convertToUIMessage } from '../../api/types';
-import { ToolCall } from '../../types/ToolCall';
 
 interface ChatBubbleProps {
-  message: CustomMessage;
+  message: MessageType;
 }
 
-const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
-  const { isLoading, isTyping, currentThinking, currentToolCalls, editingMessageId, editingMessageContent } = useChat();
-  const inProgress = isLoading || isTyping;
+interface ChronologicalSection {
+  type: 'thought' | 'tool' | 'content';
+  timestamp: Date | number;
+  data: Thought | ToolCall | MessageContentType;
+  index?: number;
+}
 
-  // Parse the message to get aggregated content, thinking, tool calls, and analyses
-  const parsed = parseResponse(
-    message,
-    (isTyping ? currentThinking : null),
-    (isTyping && currentToolCalls ? currentToolCalls as ToolCall[] : null)
+// Shared utility function for formatting tool call results
+const formatToolResult = (result: unknown): string | undefined => {
+  if (!result) {
+    return undefined;
+  }
+
+  if (typeof result === 'string') {
+    try {
+      return formatToolResult(JSON.parse(result));
+    } catch {
+      return result;
+    }
+  }
+
+  if (typeof result === 'object' && result !== null) {
+    if ('content' in result && typeof (result as { content?: unknown }).content === 'string') {
+      return (result as { content: string }).content;
+    }
+    return JSON.stringify(result, null, 2);
+  }
+
+  return String(result);
+};
+
+// Shared component for rendering tool calls
+const ToolCallComponent: React.FC<{
+  toolCall: ToolCall;
+  keyPrefix: string;
+}> = memo(({ toolCall, keyPrefix: _ }) => {
+  const toolName = toolCall.name || 'unknown';
+  const isCompleted = toolCall.success !== undefined;
+  const isError = toolCall.success === false;
+  const state = isError ? 'output-error' : (isCompleted ? 'output-available' : 'input-available');
+
+  return (
+    <Tool defaultOpen={false}>
+      <ToolHeader type={`tool-${toolName}`} state={state} />
+      <ToolContent>
+        {toolCall.args && <ToolInput input={toolCall.args} />}
+        <ToolOutput
+          output={toolCall.result_data ? (
+            <MessageResponse>{formatToolResult(toolCall.result_data)}</MessageResponse>
+          ) : undefined}
+          errorText={toolCall.error_message}
+        />
+      </ToolContent>
+    </Tool>
   );
+});
+ToolCallComponent.displayName = 'ToolCallComponent';
 
+// Component for rendering reasoning sections
+const ReasoningSection: React.FC<{
+  content: string;
+  isStreaming?: boolean;
+}> = memo(({ content, isStreaming = false }) => (
+  <Reasoning isStreaming={isStreaming} className="w-full mb-4">
+    <ReasoningTrigger />
+    <ReasoningContent>{content}</ReasoningContent>
+  </Reasoning>
+));
+ReasoningSection.displayName = 'ReasoningSection';
+
+// Component for rendering content sections
+const ContentSection: React.FC<{ content: string }> = memo(({ content }) => (
+  <div className="mb-4">
+    <MessageResponse>{content}</MessageResponse>
+  </div>
+));
+ContentSection.displayName = 'ContentSection';
+
+// Custom hook for creating chronological sections from message data
+const useChronologicalSections = (message: MessageType): ChronologicalSection[] => {
+  return useMemo(() => {
+    const sections: ChronologicalSection[] = [];
+
+    // Add thoughts
+    message.thoughts?.forEach((thought, index) => {
+      sections.push({
+        type: 'thought',
+        timestamp: thought.created_at || message.created_at || 0,
+        data: thought,
+        index
+      });
+    });
+
+    // Add tool calls
+    message.tool_calls?.forEach((toolCall, index) => {
+      sections.push({
+        type: 'tool',
+        timestamp: toolCall.created_at || message.created_at || 0,
+        data: toolCall,
+        index
+      });
+    });
+
+    // Add content items (text only)
+    message.content?.forEach((contentItem, index) => {
+      if (contentItem.type === 'text' && contentItem.text) {
+        sections.push({
+          type: 'content',
+          timestamp: contentItem.created_at || message.created_at || 0,
+          data: contentItem,
+          index
+        });
+      }
+    });
+
+    // Sort by timestamp
+    return sections.sort((a, b) => {
+      const getTime = (ts: Date | number | string) => {
+        if (ts instanceof Date) {
+          return ts.getTime();
+        }
+        if (typeof ts === 'string') {
+          return new Date(ts).getTime();
+        }
+        return Number(ts) || 0;
+      };
+      return getTime(a.timestamp) - getTime(b.timestamp);
+    });
+  }, [message]);
+};
+
+// Component for rendering streaming sections
+const StreamingSections: React.FC<{
+  sections: ResponseSection[];
+  currentSection: ResponseSection | null;
+  isTyping: boolean;
+}> = memo(({ sections, currentSection, isTyping }) => (
+  <>
+    {sections.map((section, index) => {
+      const keyPrefix = `${section.type}-${section.startedAt}-${index}`;
+
+      if (section.type === 'thinking') {
+        return (
+          <ReasoningSection
+            key={keyPrefix}
+            content={section.content || ''}
+          />
+        );
+      }
+
+      if (section.type === 'executing' && section.toolCalls) {
+        return (
+          <div key={keyPrefix} className="space-y-2 mb-4">
+            {section.toolCalls.map((toolCall, toolIndex) => (
+              <ToolCallComponent
+                key={`tool-${toolIndex}`}
+                toolCall={toolCall}
+                keyPrefix={`tool-${toolIndex}`}
+              />
+            ))}
+          </div>
+        );
+      }
+
+      if (section.type === 'responding' && section.content) {
+        return (
+          <ContentSection
+            key={keyPrefix}
+            content={section.content}
+          />
+        );
+      }
+
+      return null;
+    })}
+
+    {/* Current streaming section if not in completed sections */}
+    {isTyping && currentSection && !sections.some(s => s.id === currentSection.id) && (
+      <>
+        {currentSection.type === 'thinking' && currentSection.content && (
+          <ReasoningSection
+            content={currentSection.content}
+            isStreaming
+          />
+        )}
+        {currentSection.type === 'responding' && currentSection.content && (
+          <ContentSection content={currentSection.content} />
+        )}
+      </>
+    )}
+  </>
+));
+StreamingSections.displayName = 'StreamingSections';
+
+// Component for rendering chronological sections from completed messages
+const ChronologicalSections: React.FC<{
+  sections: ChronologicalSection[]
+}> = memo(({ sections }) => (
+  <>
+    {sections.map((section, index) => {
+      const keyBase = `${section.type}-${section.index}-${index}`;
+
+      if (section.type === 'thought') {
+        const thought = section.data as Thought;
+        return (
+          <ReasoningSection
+            key={keyBase}
+            content={thought.text}
+          />
+        );
+      }
+
+      if (section.type === 'tool') {
+        const toolCall = section.data as ToolCall;
+        return (
+          <div key={keyBase} className="mb-4">
+            <ToolCallComponent
+              toolCall={toolCall}
+              keyPrefix={keyBase}
+            />
+          </div>
+        );
+      }
+
+      if (section.type === 'content') {
+        const contentItem = section.data as MessageContentType;
+        return (
+          <ContentSection
+            key={keyBase}
+            content={contentItem.text || ''}
+          />
+        );
+      }
+
+      return null;
+    })}
+  </>
+));
+ChronologicalSections.displayName = 'ChronologicalSections';
+
+const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
+  const {
+    isLoading,
+    isTyping,
+    streamingSections,
+    currentStreamingSection,
+    editingMessageId,
+    editingMessageContent
+  } = useChat();
+
+  const inProgress = isLoading || isTyping;
+  const isStreamingMessage = !message.id;
   const isUser = message.role === 'user';
   const isEditing = editingMessageId === message.id;
+
+  // Get chronological sections for completed messages
+  const chronologicalSections = useChronologicalSections(message);
+
+  // Get sorted streaming sections
+  const sortedStreamingSections = useMemo(() => {
+    if (!isStreamingMessage || streamingSections.length === 0) {
+      return [];
+    }
+    return [...streamingSections].sort((a, b) => a.startedAt - b.startedAt);
+  }, [isStreamingMessage, streamingSections]);
+
+  // Parse legacy message format
+  // const parsed = parseResponse(message, null, null);
 
   // Convert to UI message for AI SDK components
   const uiMessage = convertToUIMessage(message);
 
-  // If this message is being edited, render the editor instead
+  // Render editor if editing
   if (isEditing && message.id) {
     return (
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: isUser ? 'flex-end' : 'flex-start',
-          mb: 2
-        }}
-      >
+      <Box sx={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start', mb: 2 }}>
         <Box sx={{ width: { xs: '100%', sm: isUser ? '80%' : '90%' } }}>
-          <MessageEditor
-            messageId={message.id}
-            initialContent={editingMessageContent}
-          />
+          <MessageEditor messageId={message.id} initialContent={editingMessageContent} />
         </Box>
       </Box>
     );
@@ -61,13 +322,66 @@ const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
         position: 'relative'
       }}
     >
-      <Message 
+      <Message
         from={uiMessage.role}
         className="w-full max-w-[80%] sm:max-w-[90%]"
         style={{
-          opacity: inProgress ? 0.75 : 1
+          opacity: inProgress ? 0.75 : 1,
+          display: 'flex',
+          flexDirection: 'row'
         }}
       >
+        <MessageContent style={{ flex: 1 }}>
+          {/* Render user messages */}
+          {isUser && (
+            <MessageResponse>
+              {typeof message.content === 'string'
+                ? message.content
+                : message.content?.map(c => c.type === 'text' ? c.text : '').join('') || 'No content'
+              }
+            </MessageResponse>
+          )}
+
+          {/* Render streaming sections for assistant messages */}
+          {!isUser && isStreamingMessage && (
+            <StreamingSections
+              sections={sortedStreamingSections}
+              currentSection={currentStreamingSection}
+              isTyping={isTyping}
+            />
+          )}
+
+          {/* Render chronological content for completed assistant messages */}
+          {!isUser && !isStreamingMessage && message.id && (
+            <ChronologicalSections sections={chronologicalSections} />
+          )}
+
+          {/* Fallback for legacy messages without structured data */}
+          {/* {!isUser && !isStreamingMessage && !message.id && (
+            <>
+              {parsed.thinking && (
+                <ReasoningSection content={parsed.thinking} />
+              )}
+
+              {parsed.toolCalls && (
+                <div className="space-y-2 mb-4">
+                  {parsed.toolCalls.map((toolCall, index) => (
+                    <ToolCallComponent
+                      key={index}
+                      toolCall={toolCall}
+                      keyPrefix={`legacy-tool-${index}`}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {parsed.content && (
+                <ContentSection content={parsed.content} />
+              )}
+            </>
+          )} */}
+        </MessageContent>
+
         {/* Message actions in top-right corner */}
         <Box
           sx={{
@@ -79,29 +393,6 @@ const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
         >
           <MessageActions message={message} isUser={isUser} />
         </Box>
-
-        <MessageContent>
-          {!isUser && (parsed.thinking || inProgress) && (
-            <ThinkSection think={parsed.thinking || ""} inProgress={inProgress} />
-          )}
-          {!isUser && parsed.toolCalls && (
-            <ToolCallsSection 
-              toolCalls={parsed.toolCalls as { 
-                tool_name?: string; 
-                name?: string; 
-                success?: boolean; 
-                execution_time_ms?: number; 
-                args?: Record<string, unknown>; 
-                result_data?: Record<string, unknown>; 
-                error_message?: string; 
-              }[]} 
-              isTyping={isTyping} 
-            />
-          )}
-          <MessageResponse>
-            {parsed.content || 'No content'}
-          </MessageResponse>
-        </MessageContent>
       </Message>
     </Box>
   );

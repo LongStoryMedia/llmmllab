@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS message_contents(
     type TEXT NOT NULL,
     text_content text,
     url text,
+    format text,
+    name text,
     PRIMARY KEY (id, created_at)
 );
 

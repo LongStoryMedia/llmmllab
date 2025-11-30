@@ -29,6 +29,7 @@ from models import (
     MessageContent,
     MessageContentType,
     MessageRole,
+    ModelProvider,
     NodeMetadata,
     ModelProfile,
     ChatResponse,
@@ -376,6 +377,42 @@ class BaseAgent(ABC, Generic[T]):
         """
         self._log_operation_error(operation, error, **context)
 
+    async def _is_llama_model(self) -> bool:
+        """
+        Detect if the current model is llama.cpp based.
+        Used to determine whether to use file-friendly or base64 format for multimodal content.
+        """
+        pipe = await self.get_pipeline()
+        if pipe and isinstance(pipe, BasePipeline):
+            if pipe.model.provider == ModelProvider.LLAMA_CPP:
+                return True
+
+        model_name = self.profile.model_name.lower()
+
+        # Check for common llama.cpp model patterns
+        llama_indicators = [
+            "llama",
+            "mistral",
+            "qwen",
+            "phi",
+            "gemma",
+            "codellama",
+            "alpaca",
+            "vicuna",
+            "orca",
+            "wizard",
+            "dolphin",
+            "openchat",
+            "starling",
+        ]
+
+        # Also check for .gguf file extension (common llama.cpp format)
+        if ".gguf" in model_name or "ggml" in model_name:
+            return True
+
+        # Check if model name contains llama indicators
+        return any(indicator in model_name for indicator in llama_indicators)
+
     def _separate_system_prompt(
         self, messages: MessageInput
     ) -> tuple[str, List[Message]]:
@@ -467,9 +504,12 @@ If you believe you have made a tool call, double-check the message history to co
                 raise ValueError("Agent creation failed - agent is None")
 
             # Convert messages to LangChain format
-            normalized_messages = messages_to_lc_messages(convo)
+            # Detect if we're using llama.cpp and need file-friendly format
+            use_llama_format = await self._is_llama_model()
+            normalized_messages = messages_to_lc_messages(convo, use_llama_format)
 
             self.logger.debug(f"Running agent with {len(normalized_messages)} messages")
+
             result = await agent.ainvoke({"messages": normalized_messages})  # type: ignore
 
             # Convert agent result to ChatResponse

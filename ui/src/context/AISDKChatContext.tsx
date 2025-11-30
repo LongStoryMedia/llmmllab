@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, ReactNode, useState, useMemo } from 'react';
+import { createContext, useContext, ReactNode, useState, useMemo } from 'react';
 import { Chat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 
@@ -14,8 +14,8 @@ const AISDKChatContext = createContext<AISDKChatContextValue | undefined>(undefi
 function createChat() {
   return new Chat<UIMessage>({
     transport: new DefaultChatTransport({
-      api: '/api/ai-chat',
-    }),
+      api: '/api/ai-chat'
+    })
   });
 }
 
@@ -28,7 +28,7 @@ export function AISDKChatProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(() => ({
     chat,
-    clearChat,
+    clearChat
   }), [chat]);
 
   return (

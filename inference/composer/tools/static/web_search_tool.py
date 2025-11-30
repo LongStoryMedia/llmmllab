@@ -30,22 +30,12 @@ Available Engines (see https://docs.searxng.org/dev/engines/index.html):
 - And many more specialized engines
 """
 
-from calendar import c
-import json
 import os
 from typing import Annotated, List, Literal, Optional
 
 from langchain_core.tools import tool
-from langchain.tools import ToolRuntime
-from composer.graph.state import WorkflowState
 from utils.logging import llmmllogger
 from models import SearchResult, SearchResultContent, WebSearchConfig
-
-# Global cache to track recent searches and prevent duplicates
-_search_cache = {}
-_duplicate_counts = {}  # Track how many times each query was requested
-_max_cache_size = 100
-_max_duplicate_attempts = 3  # Hard stop after 3 duplicate attempts
 
 # Import from langchain_community (preferred) then fallback to langchain_classic
 try:  # pragma: no cover - import resolution
@@ -125,7 +115,7 @@ class SearxNG:
                 "files",
                 "social",
             ]
-        ] = [],
+        ] = ["general"],
     ) -> SearchResult:
         """Execute search using Searx Search API."""
         results = []
@@ -212,7 +202,7 @@ async def web_search(
             ]
         ],
         "Search categories to include",
-    ] = [],
+    ] = ["general"],
 ) -> str:
     """
     Search the web for information and automatically add results to workflow state.
@@ -233,52 +223,6 @@ async def web_search(
     )
 
     logger = llmmllogger.logger.bind(component="WebSearch")
-
-    # ANTI-RECURSION: Check for duplicate searches to prevent infinite loops
-    global _search_cache
-    query_normalized = query.strip().lower()
-
-    if query_normalized in _search_cache:
-        # Track duplicate attempts
-        _duplicate_counts[query_normalized] = (
-            _duplicate_counts.get(query_normalized, 0) + 1
-        )
-        duplicate_count = _duplicate_counts[query_normalized]
-
-        logger.warning(
-            f"🔄 BLOCKED duplicate web search for: '{query}' (attempt #{duplicate_count}) - returning cached results"
-        )
-
-        # Hard stop after too many duplicate attempts - force agent to use what it has
-        if duplicate_count >= _max_duplicate_attempts:
-            return (
-                "🛑 **SEARCH LIMIT REACHED** 🛑\n\n"
-                f"The query '{query}' has been searched multiple times already. "
-                "Please use the information from previous searches to provide your response. "
-                "No further searches for this query will be performed.\n\n"
-                "**Final Answer Required:** Based on the search results already provided, "
-                "please synthesize and present your findings to the user."
-            )
-
-        cached_result = _search_cache[query_normalized]
-
-        # Add explicit duplicate notice to help agent understand it should stop
-        duplicate_notice = (
-            f"⚠️ **DUPLICATE SEARCH DETECTED (#{duplicate_count})** ⚠️\n\n"
-            f"This query '{query}' has already been searched in this conversation. "
-            "Using previous results to avoid redundant searches.\n\n"
-            "**Previous Search Results:**\n\n"
-        )
-        return duplicate_notice + cached_result
-
-    # Clean cache if it gets too large
-    if len(_search_cache) > _max_cache_size:
-        # Remove oldest entries (simple FIFO)
-        keys_to_remove = list(_search_cache.keys())[: -(_max_cache_size // 2)]
-        for key in keys_to_remove:
-            del _search_cache[key]
-        logger.debug(f"Cleaned search cache, removed {len(keys_to_remove)} old entries")
-
     try:
         # For testing without ToolRuntime - use default config
         # TODO: Implement proper LangGraph agent context to support ToolRuntime
@@ -293,81 +237,16 @@ async def web_search(
         provider = SearxNG(web_config=web_config, categories=categories)
         search_result = await provider.search(query, num_results)
         if search_result and search_result.contents:
-            # Format results for display with more substantial content
-            formatted_results = []
-            for content in search_result.contents:
-                # Provide much more content (up to 1500 characters) instead of just 300
-                # This gives the AI enough context to work with while still being manageable
-                content_text = content.content
-                if len(content_text) > 1500:
-                    # Find a good breaking point (sentence end) near 1500 chars
-                    truncate_pos = 1500
-                    sentence_ends = [". ", "! ", "? ", ". "]
-                    for end in sentence_ends:
-                        last_sentence = content_text.rfind(end, 1200, 1500)
-                        if last_sentence != -1:
-                            truncate_pos = last_sentence + len(end)
-                            break
-                    content_text = content_text[:truncate_pos].rstrip() + "..."
+            return search_result.model_dump_json()
 
-                formatted_results.append(
-                    {
-                        "title": content.title,
-                        "url": content.url,
-                        "content": content_text,
-                        "relevance": content.relevance,
-                    }
-                )
+        # No results found
+        if search_result and search_result.error:
+            return f"⚠️ Web search error: {search_result.error}"
 
-            # Create response message with improved formatting
-            response_message = f"🔍 **Web Search Results for: '{query}'**\n\n"
-            response_message += f"Found {len(formatted_results)} relevant results:\n\n"
-
-            for i, result in enumerate(formatted_results, 1):
-                response_message += f"**Result {i}: {result['title']}**\n"
-                response_message += f"📍 URL: {result['url']}\n"
-                response_message += f"📄 Content: {result['content']}\n"
-                response_message += f"⭐ Relevance: {result['relevance']:.2f}\n"
-                response_message += "---\n\n"
-
-            # Add helpful note about getting full content if needed
-            response_message += "💡 **Note**: If you need the complete content from any of these articles, "
-            response_message += "use the `read_web_content` tool with the specific URL."
-
-            logger.info(
-                f"Web search completed successfully with {len(formatted_results)} results",
-                query=query,
-                result_count=len(formatted_results),
-            )
-
-            # Cache the successful result and initialize duplicate count
-            _search_cache[query_normalized] = response_message
-            _duplicate_counts[query_normalized] = 0
-
-            # Return string result - ToolNode will automatically create ToolMessage
-            return response_message
-
-        else:
-            # No results found
-            if search_result and search_result.error:
-                response_message = f"⚠️ Web search error: {search_result.error}"
-            else:
-                response_message = f"🔍 No results found for query: '{query}'"
-
-            logger.warning(f"Web search returned no results", query=query)
-
-            # Cache the no-results response to prevent repeated failed searches
-            _search_cache[query_normalized] = response_message
-            _duplicate_counts[query_normalized] = 0
-
-            return response_message
+        return f"🔍 No results found for query: '{query}'"
 
     except Exception as e:
         error_message = f"❌ Web search failed: {str(e)}"
         logger.error(f"Web search error: {e}", query=query, error=str(e))
-
-        # Cache the error response to prevent repeated failed searches
-        _search_cache[query_normalized] = error_message
-        _duplicate_counts[query_normalized] = 0
 
         return error_message

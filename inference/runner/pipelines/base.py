@@ -19,7 +19,7 @@ from runner.server_manager.base import BaseServerManager
 
 
 # Enable HTTP logging for debugging
-if os.getenv("LOG_LEVEL", "").lower() == "trace":
+if os.getenv("LOG_LEVEL", "").lower() == "debug":
     logging.getLogger("openai").setLevel(logging.DEBUG)
     logging.getLogger("httpx").setLevel(logging.DEBUG)
     logging.getLogger("httpcore").setLevel(logging.DEBUG)

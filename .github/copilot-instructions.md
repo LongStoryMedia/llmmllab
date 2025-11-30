@@ -35,7 +35,7 @@ Focus: Execute precisely against current architecture. No speculation.
 
 ## Testing & Validation
 - Unit: `cd inference && pytest test/` for pure logic changes.
-- Full E2E: `kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.test_composer_real_e2e` (composer + runner + db).
+- Full E2E: `kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.e2e` (composer + runner + db).
 - Tools agent focus only: `kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.tools_agent`.
 - A change is incomplete if: lint/import errors, hardcoded paths, failing pod, or architectural pattern violations.
 

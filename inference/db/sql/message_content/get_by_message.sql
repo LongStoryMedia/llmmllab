@@ -5,6 +5,8 @@ SELECT
     mc.type,
     mc.text_content AS text,
     mc.url,
+    mc.format,
+    mc.name,
     mc.created_at
 FROM
     message_contents mc

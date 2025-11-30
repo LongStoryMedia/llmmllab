@@ -14,7 +14,6 @@ from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from server.middleware.auth import get_request_id, get_user_id, is_admin
-from server.config import logger  # Import logger from config
 from db import storage  # Import database storage
 from models import (
     MessageRole,
@@ -22,10 +21,13 @@ from models import (
     Message,
 )
 from utils import extract_text_from_message  # Import logging utility
+from utils.logging import llmmllogger, serialize_event_data
 
 # Import composer interface and streaming state management
 import composer
 
+
+logger = llmmllogger.bind(component="chat_router")
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 

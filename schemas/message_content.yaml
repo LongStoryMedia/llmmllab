@@ -18,6 +18,12 @@ properties:
   url:
     type: string
     description: URL of the image or resource, if applicable
+  format:
+    type: string
+    description: Format of the content (e.g., 'mp3' for audio, 'mp4' for video)
+  name:
+    type: string
+    description: Name of the file/image/etc., if applicable
   created_at:
     type: string
     format: date-time

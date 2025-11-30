@@ -28,17 +28,47 @@ from models import (
 from .logging import llmmllogger
 from .tool_call_types import is_langchain_tool_call
 from .tool_call_extraction import extract_tool_calls_from_langchain_message
+from .file_handler import (
+    decode_and_save_image,
+    extract_text_from_file,
+    is_image_format,
+)
+from .data_uri_utils import (
+    extract_base64_from_data_uri,
+    extract_mime_type_from_data_uri,
+    create_data_uri,
+    is_data_uri,
+)
 
 logger = llmmllogger.bind(component="message_conversion")
 
 MessageInput = Union[str, Message, List[Union[str, Message]], List[str], List[Message]]
 
 
-def message_to_lc_message(message: Message) -> AnyMessage:
-    """Convert a Message object to a LangChain BaseMessage, preserving multimodal content."""
+def _get_file_extras(content_item: MessageContent) -> Dict[str, Any]:
+    """Extract extra metadata for file content blocks."""
+    extras = {}
+    if content_item.name:
+        extras["filename"] = content_item.name
+    return {"extras": extras} if extras else {}
 
-    # Convert Message.content to the multimodal format that LangChain expects
-    content_data = convert_message_content_to_langchain_format(message.content)
+
+def message_to_lc_message(
+    message: Message, use_llama_format: bool = False
+) -> AnyMessage:
+    """Convert a Message object to a LangChain BaseMessage, preserving multimodal content.
+
+    Args:
+        message: Message object to convert
+        use_llama_format: If True, use llama.cpp compatible format (images as URLs, files as text)
+                         If False, use OpenAI compatible format (base64 encoded content)
+    """
+
+    # Convert Message.content to the appropriate multimodal format
+    if use_llama_format:
+        content_data = convert_message_content_to_llama_format(message.content)
+    else:
+        content_data = convert_message_content_to_langchain_format(message.content)
 
     # For assistant messages, also parse XML tool calls from text content
     parsed_tool_calls = []
@@ -185,9 +215,16 @@ def lc_message_to_message(
     return msg
 
 
-def messages_to_lc_messages(messages: List[Message]) -> List[AnyMessage]:
-    """Convert a list of Message objects to LangChain BaseMessages."""
-    return [message_to_lc_message(msg) for msg in messages]
+def messages_to_lc_messages(
+    messages: List[Message], use_llama_format: bool = False
+) -> List[AnyMessage]:
+    """Convert a list of Message objects to LangChain BaseMessages.
+
+    Args:
+        messages: List of Message objects to convert
+        use_llama_format: If True, use llama.cpp compatible format
+    """
+    return [message_to_lc_message(msg, use_llama_format) for msg in messages]
 
 
 def lc_messages_to_messages(
@@ -220,9 +257,249 @@ def convert_message_content_to_langchain_format(
         if content_item.type == MessageContentType.TEXT:
             result.append({"type": "text", "text": content_item.text or ""})
         elif content_item.type == MessageContentType.IMAGE:
-            result.append(
-                {"type": "image_url", "image_url": {"url": content_item.url or ""}}
-            )
+            # Handle images using LangChain standard format - base64 required for OpenAI compatibility
+            if content_item.url and is_data_uri(content_item.url):
+                base64_data = extract_base64_from_data_uri(content_item.url)
+                mime_type = extract_mime_type_from_data_uri(content_item.url)
+
+                if base64_data and mime_type:
+                    # Use LangChain standard base64 format (required for OpenAI models)
+                    result.append(
+                        {
+                            "type": "image",
+                            "base64": base64_data,
+                            "mime_type": mime_type,
+                            **(_get_file_extras(content_item)),
+                        }
+                    )
+                else:
+                    # Skip image content without valid data URI
+                    logger.warning(
+                        f"Image content has invalid data URI (required for OpenAI): {content_item}"
+                    )
+                    continue
+            else:
+                # Skip image content without data URI (OpenAI requires base64)
+                logger.warning(
+                    f"Image content missing data URI (required for OpenAI): {content_item}"
+                )
+                continue
+
+        elif content_item.type == MessageContentType.AUDIO:
+            # Handle audio files using LangChain standard format - base64 required for OpenAI compatibility
+            if content_item.url and is_data_uri(content_item.url):
+                base64_data = extract_base64_from_data_uri(content_item.url)
+                mime_type = extract_mime_type_from_data_uri(content_item.url)
+
+                if base64_data and mime_type:
+                    # Use LangChain standard base64 format for audio (required for OpenAI models)
+                    result.append(
+                        {
+                            "type": "audio",
+                            "base64": base64_data,
+                            "mime_type": mime_type,
+                            **(_get_file_extras(content_item)),
+                        }
+                    )
+                else:
+                    # Skip audio content without valid data URI
+                    logger.warning(
+                        f"Audio content has invalid data URI (required for OpenAI): {content_item}"
+                    )
+                    continue
+            else:
+                # Skip audio content without data URI (OpenAI requires base64)
+                logger.warning(
+                    f"Audio content missing data URI (required for OpenAI): {content_item}"
+                )
+                continue
+
+        elif content_item.type == MessageContentType.VIDEO:
+            # Handle video files using LangChain standard format - base64 required for OpenAI compatibility
+            if content_item.url and is_data_uri(content_item.url):
+                base64_data = extract_base64_from_data_uri(content_item.url)
+                mime_type = extract_mime_type_from_data_uri(content_item.url)
+
+                if base64_data and mime_type:
+                    # Use LangChain standard base64 format for video (required for OpenAI models)
+                    result.append(
+                        {
+                            "type": "video",
+                            "base64": base64_data,
+                            "mime_type": mime_type,
+                            **(_get_file_extras(content_item)),
+                        }
+                    )
+                else:
+                    # Skip video content without valid data URI
+                    logger.warning(
+                        f"Video content has invalid data URI (required for OpenAI): {content_item}"
+                    )
+                    continue
+            else:
+                # Skip video content without data URI (OpenAI requires base64)
+                logger.warning(
+                    f"Video content missing data URI (required for OpenAI): {content_item}"
+                )
+                continue
+
+        elif content_item.type == MessageContentType.FILE:
+            # Handle generic file attachments using LangChain standard format - base64 required for OpenAI compatibility
+            base64_data = None
+            mime_type = None
+
+            # Try to get base64 data from URL field (data URI) or fallback to data field
+            if content_item.url and is_data_uri(content_item.url):
+                base64_data = extract_base64_from_data_uri(content_item.url)
+                mime_type = extract_mime_type_from_data_uri(content_item.url)
+            elif content_item.data and content_item.format:
+                # Fallback to legacy data field (for backward compatibility)
+                base64_data = content_item.data
+                mime_type = content_item.format
+
+            if base64_data and mime_type:
+                # Use LangChain standard base64 format for files (required for OpenAI models)
+                result.append(
+                    {
+                        "type": "file",
+                        "base64": base64_data,
+                        "mime_type": mime_type,
+                        **(_get_file_extras(content_item)),
+                    }
+                )
+            else:
+                # Fallback to text description if no base64 data (OpenAI requires base64 for files)
+                file_name = content_item.name or "attachment"
+                file_info = f"[File: {file_name}"
+                if content_item.format:
+                    file_info += f" ({content_item.format})"
+                file_info += "]"
+                logger.warning(
+                    f"File content missing base64 data, converting to text description: {file_name}"
+                )
+                result.append({"type": "text", "text": file_info})
+        # Add other content types as needed
+
+    return result
+
+
+def convert_message_content_to_llama_format(
+    content: List[MessageContent],
+) -> Union[str, List[Union[str, Dict[str, Any]]]]:
+    """
+    Convert Message.content list to llama.cpp compatible format.
+    - Images: Use data URI format with base64 encoded image data
+    - Files: Extract text content or create text descriptions
+    - Audio/Video: Convert to text descriptions (llama.cpp doesn't support these)
+
+    Returns:
+        - str: For simple text-only messages
+        - List[Union[str, Dict[str, Any]]]: For multimodal messages with text and/or image data URIs
+    """
+    if not content:
+        return ""
+
+    # If single text content, return as string for simplicity
+    if len(content) == 1 and content[0].type == MessageContentType.TEXT:
+        return content[0].text or ""
+
+    # Multimodal content - return as list of dictionaries
+    result = []
+    for content_item in content:
+        if content_item.type == MessageContentType.TEXT:
+            result.append({"type": "text", "text": content_item.text or ""})
+
+        elif content_item.type == MessageContentType.IMAGE:
+            # Handle images: use data URI with base64 for llama.cpp
+            data_uri = None
+
+            # Try to get data URI from URL field or create from data field
+            if content_item.url and is_data_uri(content_item.url):
+                # Already a data URI
+                data_uri = content_item.url
+            elif (
+                content_item.data
+                and content_item.format
+                and is_image_format(content_item.format)
+            ):
+                # Create data URI from legacy data field
+                data_uri = create_data_uri(content_item.format, content_item.data)
+
+            if data_uri:
+                try:
+                    # Use image_url format with data URI for llama.cpp
+                    result.append({"type": "image_url", "image_url": {"url": data_uri}})
+                    logger.info(
+                        f"Using data URI for llama.cpp image: {content_item.name or 'image'}"
+                    )
+
+                except Exception as e:
+                    logger.error(f"Failed to process image: {e}")
+                    # Fallback to text description
+                    result.append(
+                        {
+                            "type": "text",
+                            "text": f"[Image: {content_item.name or 'attachment'} - processing failed]",
+                        }
+                    )
+            else:
+                # Skip images without proper data or unsupported formats
+                logger.warning(
+                    f"Image content missing data or unsupported format: {content_item}"
+                )
+                result.append(
+                    {
+                        "type": "text",
+                        "text": f"[Image: {content_item.name or 'attachment'} - unsupported format]",
+                    }
+                )
+
+        elif content_item.type in (
+            MessageContentType.AUDIO,
+            MessageContentType.VIDEO,
+            MessageContentType.FILE,
+        ):
+            # Handle non-image files: extract text or create descriptions
+            base64_data = None
+            mime_type = None
+
+            # Try to get base64 data from URL field (data URI) or fallback to data field
+            if content_item.url and is_data_uri(content_item.url):
+                base64_data = extract_base64_from_data_uri(content_item.url)
+                mime_type = extract_mime_type_from_data_uri(content_item.url)
+            elif content_item.data and content_item.format:
+                # Fallback to legacy data field
+                base64_data = content_item.data
+                mime_type = content_item.format
+
+            if base64_data and mime_type:
+                try:
+                    # Extract text content from file
+                    text_content = extract_text_from_file(
+                        base64_data, mime_type, content_item.name
+                    )
+
+                    result.append({"type": "text", "text": text_content})
+                    logger.info(f"Converted file to text: {content_item.name}")
+
+                except Exception as e:
+                    logger.error(f"Failed to extract text from file: {e}")
+                    # Fallback to basic description
+                    file_name = content_item.name or "attachment"
+                    result.append(
+                        {
+                            "type": "text",
+                            "text": f"[File: {file_name} - unable to process]",
+                        }
+                    )
+            else:
+                # No data available - create basic description
+                file_name = content_item.name or "attachment"
+                file_info = f"[File: {file_name}"
+                if content_item.format:
+                    file_info += f" ({content_item.format})"
+                file_info += "]"
+                result.append({"type": "text", "text": file_info})
         # Add other content types as needed
 
     return result
@@ -270,17 +547,123 @@ def convert_lc_message_content_to_message_format(
                         )
                     except Exception as e:
                         logger.warning(f"Failed to create TEXT MessageContent: {e}")
-                elif item.get("type") == "image_url":
+                elif item.get("type") == "image":
+                    # Handle LangChain standard image format with base64
                     try:
+                        base64_data = item.get("base64")
+                        mime_type = item.get("mime_type")
+                        url = item.get("url")
+                        filename = item.get("extras", {}).get("filename")
+
+                        # Create data URI if we have base64 data, otherwise use provided URL
+                        if base64_data and mime_type:
+                            data_uri = create_data_uri(mime_type, base64_data)
+                        else:
+                            data_uri = url
+
                         content.append(
                             MessageContent(
                                 type=MessageContentType.IMAGE,
                                 text=None,
-                                url=item.get("image_url", {}).get("url", ""),
+                                url=data_uri,
+                                format=mime_type,
+                                name=filename,
                             )
                         )
                     except Exception as e:
-                        logger.warning(f"Failed to create IMAGE MessageContent: {e}")
+                        logger.warning(
+                            f"Failed to create IMAGE MessageContent from LangChain format: {e}"
+                        )
+                elif item.get("type") == "image_url":
+                    # Handle legacy OpenAI image_url format
+                    try:
+                        url = item.get("image_url", {}).get("url", "")
+                        content.append(
+                            MessageContent(
+                                type=MessageContentType.IMAGE,
+                                text=None,
+                                url=url,
+                            )
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to create IMAGE MessageContent from image_url format: {e}"
+                        )
+                elif item.get("type") == "audio":
+                    # Handle LangChain standard audio format with base64
+                    try:
+                        base64_data = item.get("base64")
+                        mime_type = item.get("mime_type")
+                        url = item.get("url")
+                        filename = item.get("extras", {}).get("filename")
+
+                        # Create data URI if we have base64 data, otherwise use provided URL
+                        if base64_data and mime_type:
+                            data_uri = create_data_uri(mime_type, base64_data)
+                        else:
+                            data_uri = url
+
+                        content.append(
+                            MessageContent(
+                                type=MessageContentType.AUDIO,
+                                text=None,
+                                url=data_uri,
+                                format=mime_type,
+                                name=filename,
+                            )
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to create AUDIO MessageContent: {e}")
+                elif item.get("type") == "video":
+                    # Handle LangChain standard video format with base64
+                    try:
+                        base64_data = item.get("base64")
+                        mime_type = item.get("mime_type")
+                        url = item.get("url")
+                        filename = item.get("extras", {}).get("filename")
+
+                        # Create data URI if we have base64 data, otherwise use provided URL
+                        if base64_data and mime_type:
+                            data_uri = create_data_uri(mime_type, base64_data)
+                        else:
+                            data_uri = url
+
+                        content.append(
+                            MessageContent(
+                                type=MessageContentType.VIDEO,
+                                text=None,
+                                url=data_uri,
+                                format=mime_type,
+                                name=filename,
+                            )
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to create VIDEO MessageContent: {e}")
+                elif item.get("type") == "file":
+                    # Handle LangChain standard file format with base64
+                    try:
+                        base64_data = item.get("base64")
+                        mime_type = item.get("mime_type")
+                        url = item.get("url")
+                        filename = item.get("extras", {}).get("filename")
+
+                        # Create data URI if we have base64 data, otherwise use provided URL
+                        if base64_data and mime_type:
+                            data_uri = create_data_uri(mime_type, base64_data)
+                        else:
+                            data_uri = url
+
+                        content.append(
+                            MessageContent(
+                                type=MessageContentType.FILE,
+                                text=None,
+                                url=data_uri,
+                                format=mime_type,
+                                name=filename,
+                            )
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to create FILE MessageContent: {e}")
                 else:
                     # Unknown content type, treat as text
                     try:
