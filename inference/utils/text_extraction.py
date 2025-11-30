@@ -3,6 +3,8 @@
 import base64
 from typing import Optional, Dict, Any
 
+from .file_extensions import ALL_TEXT_EXTENSIONS, get_file_extension, get_file_metadata as get_file_metadata_base
+
 
 def extract_text_content(content: str, content_type: str, filename: str) -> Optional[str]:
     """
@@ -45,9 +47,9 @@ def extract_text_content(content: str, content_type: str, filename: str) -> Opti
         except Exception:
             return None
             
-    # For markdown, code files, etc.
+    # For markdown, code files, etc. - use centralized extension definitions
     if (content_type.startswith('text/') or 
-        filename.endswith(('.md', '.py', '.js', '.ts', '.html', '.css', '.sql', '.sh', '.yaml', '.yml', '.json', '.xml'))):
+        get_file_extension(filename) in ALL_TEXT_EXTENSIONS):
         try:
             decoded_content = base64.b64decode(content).decode('utf-8')
             return decoded_content
@@ -81,14 +83,5 @@ def get_file_metadata(filename: str, content_type: str, file_size: int) -> Dict[
     Returns:
         Dictionary with file metadata
     """
-    file_extension = filename.split('.')[-1] if '.' in filename else ''
-    
-    return {
-        'filename': filename,
-        'extension': file_extension,
-        'content_type': content_type,
-        'file_size': file_size,
-        'is_text': content_type.startswith('text/') or file_extension in ['md', 'py', 'js', 'ts', 'html', 'css', 'sql', 'sh', 'yaml', 'yml', 'json', 'xml'],
-        'is_image': content_type.startswith('image/'),
-        'is_code': file_extension in ['py', 'js', 'ts', 'html', 'css', 'sql', 'sh', 'java', 'cpp', 'c', 'h', 'go', 'rs', 'php'],
-    }
+    # Use the centralized metadata function
+    return get_file_metadata_base(filename, content_type, file_size)

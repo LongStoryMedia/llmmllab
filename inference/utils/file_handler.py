@@ -12,6 +12,7 @@ from datetime import datetime
 import uuid
 
 from utils.logging import llmmllogger
+from .file_extensions import ALL_TEXT_EXTENSIONS, get_file_extension as get_ext_from_filename
 
 logger = llmmllogger.bind(component="file_handler")
 
@@ -217,49 +218,9 @@ def extract_text_from_file(
         else:
             # Check for text-based files by extension if MIME type is generic
             if filename:
-                ext = os.path.splitext(filename)[1].lower()
-                text_extensions = {
-                    ".py",
-                    ".js",
-                    ".ts",
-                    ".html",
-                    ".css",
-                    ".json",
-                    ".xml",
-                    ".yaml",
-                    ".yml",
-                    ".md",
-                    ".txt",
-                    ".csv",
-                    ".sql",
-                    ".sh",
-                    ".bash",
-                    ".zsh",
-                    ".ps1",
-                    ".php",
-                    ".rb",
-                    ".go",
-                    ".rs",
-                    ".cpp",
-                    ".c",
-                    ".h",
-                    ".hpp",
-                    ".java",
-                    ".kt",
-                    ".swift",
-                    ".dart",
-                    ".r",
-                    ".m",
-                    ".scala",
-                    ".dockerfile",
-                    ".gitignore",
-                    ".env",
-                    ".ini",
-                    ".conf",
-                    ".cfg",
-                }
+                ext = get_ext_from_filename(filename)
 
-                if ext in text_extensions:
+                if ext in ALL_TEXT_EXTENSIONS:
                     try:
                         text_content = file_data.decode("utf-8")
                         safe_filename = filename or f"code{ext}"
