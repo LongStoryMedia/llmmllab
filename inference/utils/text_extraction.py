@@ -19,40 +19,23 @@ def extract_text_content(content: str, content_type: str, filename: str) -> Opti
         Extracted text content or None if no text can be extracted
     """
     
-    # Handle text files directly
-    if content_type.startswith('text/'):
+    # Check if this is a text-based file (by MIME type or extension)
+    is_text_by_mime = (
+        content_type.startswith('text/') or
+        content_type in ['application/json', 'application/xml', 'application/x-yaml', 'text/yaml']
+    )
+    is_text_by_extension = get_file_extension(filename) in ALL_TEXT_EXTENSIONS
+    
+    if is_text_by_mime or is_text_by_extension:
         try:
-            # If it's base64 encoded, decode it
-            if content_type != 'text/plain' or _is_base64_encoded(content):
+            # For text/plain, check if it's already decoded or needs base64 decoding
+            if content_type == 'text/plain' and not _is_base64_encoded(content):
+                # Already plain text, return as-is
+                return content
+            else:
+                # Assume base64 encoded, decode it
                 decoded_content = base64.b64decode(content).decode('utf-8')
                 return decoded_content
-            else:
-                # It's already plain text
-                return content
-        except Exception:
-            return None
-    
-    # Handle specific file types
-    if content_type == 'application/json':
-        try:
-            decoded_content = base64.b64decode(content).decode('utf-8')
-            return decoded_content
-        except Exception:
-            return None
-    
-    if content_type in ['application/xml', 'application/x-yaml', 'text/yaml']:
-        try:
-            decoded_content = base64.b64decode(content).decode('utf-8')
-            return decoded_content
-        except Exception:
-            return None
-            
-    # For markdown, code files, etc. - use centralized extension definitions
-    if (content_type.startswith('text/') or 
-        get_file_extension(filename) in ALL_TEXT_EXTENSIONS):
-        try:
-            decoded_content = base64.b64decode(content).decode('utf-8')
-            return decoded_content
         except Exception:
             return None
     
