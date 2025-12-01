@@ -28,12 +28,16 @@ def extract_text_content(content: str, content_type: str, filename: str) -> Opti
     
     if is_text_by_mime or is_text_by_extension:
         try:
-            # For text/plain, check if it's already decoded or needs base64 decoding
-            if content_type == 'text/plain' and not _is_base64_encoded(content):
-                # Already plain text, return as-is
-                return content
+            # For text/plain, try to decode as base64 first, fall back to plain text
+            if content_type == 'text/plain':
+                decoded_content = _try_base64_decode(content)
+                if decoded_content is not None:
+                    return decoded_content
+                else:
+                    # Not base64, assume it's already plain text
+                    return content
             else:
-                # Assume base64 encoded, decode it
+                # Assume base64 encoded for other text types
                 decoded_content = base64.b64decode(content).decode('utf-8')
                 return decoded_content
         except Exception:
@@ -43,15 +47,15 @@ def extract_text_content(content: str, content_type: str, filename: str) -> Opti
     return f"File: {filename}"
 
 
-def _is_base64_encoded(content: str) -> bool:
-    """Check if content appears to be base64 encoded."""
+def _try_base64_decode(content: str) -> Optional[str]:
+    """Try to decode content as base64. Return decoded content or None if not base64."""
     try:
         # Try to decode as base64
-        base64.b64decode(content, validate=True)
-        # If it decodes without error, it's likely base64 encoded
-        return True
+        decoded_bytes = base64.b64decode(content, validate=True)
+        decoded_text = decoded_bytes.decode('utf-8')
+        return decoded_text
     except Exception:
-        return False
+        return None
 
 
 def get_file_metadata(filename: str, content_type: str, file_size: int) -> Dict[str, Any]:
