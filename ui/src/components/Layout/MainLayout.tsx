@@ -17,7 +17,7 @@ const MainContainer = styled(Box)<{ overflow: string }>(({ theme, overflow }) =>
   overflow: overflow
 }));
 
-const ContentContainer = styled(Box)<{ overflow: string }>(({ overflow }) => ({
+const ContentContainer = styled(Box)(() => ({
   flex: 1,
   display: 'flex',
   flexDirection: 'column',

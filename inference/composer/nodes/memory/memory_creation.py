@@ -99,7 +99,9 @@ class MemoryCreationNode:
 
     async def _create_memories(
         self,
-        things_to_remember: List[Union[Message, Summary, SearchTopicSynthesis, Document]],
+        things_to_remember: List[
+            Union[Message, Summary, SearchTopicSynthesis, Document]
+        ],
         conversation_id: int,
     ) -> List[Memory]:
         """
@@ -330,6 +332,12 @@ class MemoryCreationNode:
         memories = []
 
         for document in documents:
+            if not document.id:
+                self.logger.warning(
+                    "Document missing ID, skipping memory creation",
+                    filename=document.filename,
+                )
+                continue
             # Use text_content if available, otherwise create description from metadata
             if document.text_content:
                 content = document.text_content

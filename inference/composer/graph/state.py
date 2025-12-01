@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 
 from models import (
     Memory,
-    IntentAnalysis,
     MessageContent,
     MessageContentType,
     MessageRole,
@@ -21,7 +20,6 @@ from models import (
     SearchTopicSynthesis,
     SearchResult,
     Message,
-    NodeMetadata,
     ToolCall,
     Document,
 )
@@ -236,9 +234,7 @@ class WorkflowState(BaseModel):
     )
 
 
-def assemble_context_messages(
-    state: WorkflowState, max_tokens: Optional[int] = None
-) -> List[Message]:
+def assemble_context_messages(state: WorkflowState) -> List[Message]:
     """
     Assemble a comprehensive list of Message objects from WorkflowState.
 

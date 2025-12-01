@@ -167,6 +167,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+@app.middleware("http")
+async def proxy_headers_middleware(request: Request, call_next):
+    """Middleware to handle proxy headers for correct scheme detection in redirects"""
+    # Trust X-Forwarded-Proto header from reverse proxy
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    if forwarded_proto:
+        # Update the request scope to use the forwarded protocol
+        request.scope["scheme"] = forwarded_proto
+
+    response = await call_next(request)
+    return response
+
+
 # Store auth middleware in app.state right away
 app.state.auth_middleware = global_auth_middleware
 # Add message validation middleware to ensure proper response structure

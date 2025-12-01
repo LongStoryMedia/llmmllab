@@ -16,7 +16,8 @@ const RetrievalSettings = () => {
     enable_cross_user: false,
     enable_cross_conversation: false,
     similarity_threshold: 0.7,
-    always_retrieve: false
+    always_retrieve: false,
+    timeout: 30
   });
   const [saveStatus, setSaveStatus] = useState<{ success?: boolean; message: string } | null>(null);
   const [memoryCleanupStatus, setMemoryCleanupStatus] = useState<{ success?: boolean; message: string } | null>(null);
@@ -32,7 +33,8 @@ const RetrievalSettings = () => {
         enable_cross_user: config.memory.enable_cross_user ?? false,
         enable_cross_conversation: config.memory.enable_cross_conversation ?? false,
         similarity_threshold: config.memory.similarity_threshold ?? 0.7,
-        always_retrieve: config.memory.always_retrieve ?? false
+        always_retrieve: config.memory.always_retrieve ?? false,
+        timeout: config.memory.timeout ?? 30
       });
     }
   }, [config]);
@@ -130,7 +132,8 @@ const RetrievalSettings = () => {
         enable_cross_user: localConfig.enable_cross_user,
         enable_cross_conversation: localConfig.enable_cross_conversation,
         similarity_threshold: localConfig.similarity_threshold,
-        always_retrieve: localConfig.always_retrieve
+        always_retrieve: localConfig.always_retrieve,
+        timeout: localConfig.timeout
       };
 
       const success = await updatePartialConfig('memory', snakeCaseConfig);

@@ -4,7 +4,6 @@ import SettingsPage from './pages/SettingsPage';
 import { Route, Routes } from 'react-router-dom';
 import ModelProfilesPage from './pages/ModelProfilesPage';
 import ImagePage from './pages/ImagePage';
-import TodoPage from './pages/TodoPage';
 
 function Router() {
   return (
@@ -12,7 +11,6 @@ function Router() {
       <Route path="/" element={<ChatPage />} />
       <Route path="/chat/:conversationId" element={<ChatPage />} />
       <Route path="/images" element={<ImagePage />} />
-      <Route path="/todos" element={<TodoPage />} />
       <Route path="/settings/:tab?" element={<SettingsPage />} />
       <Route path="/model-profiles" element={<ModelProfilesPage />} />
     </Routes>

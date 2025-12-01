@@ -1,16 +1,20 @@
 """Document API endpoints."""
 
 import base64
-import asyncio
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request, BackgroundTasks
+from typing import List
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    UploadFile,
+    File,
+    Form,
+    Request,
+)
 from fastapi.responses import Response
 
 from models.document import Document
-from models.memory_source import MemorySource
 from utils.logging import llmmllogger
 from utils.text_extraction import extract_text_content, get_file_metadata
-from utils.document_memory_integration import add_document_to_memory_system
 from server.middleware.auth import get_user_id
 from db import storage
 
@@ -183,59 +187,3 @@ async def get_conversation_documents(
 
     documents = await storage.document.get_documents_for_conversation(conversation_id)
     return documents
-
-
-@router.post("/search", response_model=List[Document])
-async def search_documents(
-    request: Request,
-    query_embedding: List[float],
-    similarity_threshold: float = 0.7,
-    limit: int = 10,
-    conversation_id: Optional[int] = None,
-):
-    """
-    Search for documents using semantic similarity.
-
-    Args:
-        request: FastAPI request object for auth
-        query_embedding: Query embedding vector
-        similarity_threshold: Minimum similarity score
-        limit: Maximum number of results
-        conversation_id: Optional conversation ID to limit search
-
-    Returns:
-        List of matching Document objects with similarity scores
-    """
-    user_id = get_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
-
-    if not storage.initialized or not storage.memory or not storage.document:
-        raise HTTPException(status_code=503, detail="Database service unavailable")
-
-    try:
-        # Use the memory search to find similar documents
-        memories = await storage.memory.search_memories(
-            user_id=user_id,
-            query_embedding=query_embedding,
-            similarity_threshold=similarity_threshold,
-            limit=limit,
-            conversation_id=conversation_id,
-            source_filter=MemorySource.DOCUMENT,
-        )
-
-        # Get the actual document objects
-        documents = []
-        for memory in memories:
-            if memory.source == MemorySource.DOCUMENT:
-                document = await storage.document.get_document(memory.source_id)
-                if document:
-                    # Add similarity score to document for ranking
-                    document.similarity = memory.similarity  # type: ignore
-                    documents.append(document)
-
-        return documents
-
-    except Exception as e:
-        logger.error(f"Failed to search documents: {e}")
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")

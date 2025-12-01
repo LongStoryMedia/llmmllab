@@ -10,8 +10,16 @@ const WebSearchSettings = () => {
     auto_detect: true,
     max_results: 3,
     include_results: true,
-    search_providers: [],
-    max_urls_deep: 3
+    engines: [
+      "google",
+      "bing",
+      "duckduckgo",
+      "startpage"
+    ],
+    max_urls_deep: 3,
+    categories: ["general"],
+    language: "en",
+    safesearch: 1
   });
   const [saveStatus, setSaveStatus] = useState<{ success?: boolean; message: string } | null>(null);
 
@@ -23,8 +31,11 @@ const WebSearchSettings = () => {
         auto_detect: config.web_search.auto_detect ?? true,
         max_results: config.web_search.max_results ?? 3,
         include_results: config.web_search.include_results ?? true,
-        search_providers: config.web_search.search_providers ?? [],
-        max_urls_deep: config.web_search.max_urls_deep ?? 3
+        engines: config.web_search.engines ?? ["google", "bing", "duckduckgo", "startpage"],
+        max_urls_deep: config.web_search.max_urls_deep ?? 3,
+        categories: config.web_search.categories ?? ["general"],
+        language: config.web_search.language ?? "en",
+        safesearch: config.web_search.safesearch ?? 1
       });
     }
   }, [config]);
