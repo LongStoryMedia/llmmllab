@@ -23,6 +23,7 @@ from models import (
     Message,
     NodeMetadata,
     ToolCall,
+    Document,
 )
 
 
@@ -51,7 +52,7 @@ class WorkflowState(BaseModel):
     ] = Field(default=None, description="Most recent user message in the conversation")
 
     things_to_remember: Annotated[
-        List[Union[Message, Summary, SearchTopicSynthesis]],
+        List[Union[Message, Summary, SearchTopicSynthesis, Document]],
         operator.add,
     ] = Field(
         default_factory=list, description="Key messages or information to remember"

@@ -16,6 +16,7 @@ from models import (
     MemorySource,
     MessageRole,
     Message,
+    Document,
 )
 from composer.graph.state import WorkflowState
 from utils.message_conversion import extract_text_from_message
@@ -98,7 +99,7 @@ class MemoryCreationNode:
 
     async def _create_memories(
         self,
-        things_to_remember: List[Union[Message, Summary, SearchTopicSynthesis]],
+        things_to_remember: List[Union[Message, Summary, SearchTopicSynthesis, Document]],
         conversation_id: int,
     ) -> List[Memory]:
         """
@@ -115,6 +116,7 @@ class MemoryCreationNode:
         summaries = []
         messages = []
         search_syntheses = []
+        documents = []
 
         for item in things_to_remember:
             if isinstance(item, Summary):
@@ -123,6 +125,8 @@ class MemoryCreationNode:
                 messages.append(item)
             elif isinstance(item, SearchTopicSynthesis):
                 search_syntheses.append(item)
+            elif isinstance(item, Document):
+                documents.append(item)
 
         # Process different types concurrently
         tasks = []
@@ -147,6 +151,14 @@ class MemoryCreationNode:
             tasks.append(
                 self._create_memories_from_search_syntheses(
                     search_syntheses,
+                    conversation_id=conversation_id,
+                )
+            )
+
+        if documents:
+            tasks.append(
+                self._create_memories_from_documents(
+                    documents,
                     conversation_id=conversation_id,
                 )
             )
@@ -293,6 +305,55 @@ class MemoryCreationNode:
                 created_at=synthesis.created_at,
                 similarity=1.0,  # Not applicable for new memories
                 source_id=synthesis.id or 0,
+                conversation_id=conversation_id,
+            )
+
+            memories.append(memory)
+
+        return memories
+
+    async def _create_memories_from_documents(
+        self,
+        documents: List[Document],
+        conversation_id: int,
+    ) -> List[Memory]:
+        """
+        Create Memory objects from Document objects.
+
+        Args:
+            documents: List of Document objects
+            conversation_id: Current conversation ID
+
+        Returns:
+            List of Memory objects created from documents
+        """
+        memories = []
+
+        for document in documents:
+            # Use text_content if available, otherwise create description from metadata
+            if document.text_content:
+                content = document.text_content
+            else:
+                # Create a descriptive content for non-text documents
+                content = f"Document: {document.filename}\nType: {document.content_type}\nSize: {document.file_size} bytes"
+
+            # Generate embeddings using the injected EmbeddingAgent
+            embeddings = await self.embedding_agent.generate_embeddings([content])
+
+            fragment = MemoryFragment(
+                id=document.id,
+                role=MessageRole.SYSTEM,  # Documents are system-provided content
+                content=content,
+                embeddings=embeddings,
+            )
+
+            # Create memory object
+            memory = Memory(
+                fragments=[fragment],
+                source=MemorySource.DOCUMENT,
+                created_at=document.created_at,
+                similarity=1.0,  # Not applicable for new memories
+                source_id=document.id,
                 conversation_id=conversation_id,
             )
 
