@@ -437,9 +437,6 @@ if __name__ == "__main__":
     # Run tests manually if executed directly
     import sys
 
-    # Add inference directory to path for imports
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
     test_loader = TestModelLoader()
 
     print("Running ModelLoader validation tests...")

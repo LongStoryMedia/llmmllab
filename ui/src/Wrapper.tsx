@@ -9,7 +9,6 @@ import { CssBaseline, styled, GlobalStyles, Theme, useTheme } from '@mui/materia
 import { ConfigProvider } from './context/ConfigContext'
 import MainLayout from './components/Layout/MainLayout'
 import LoadingAnimation from './components/Shared/LoadingAnimation'
-import { BackgroundContextProvider } from './context/BackgroundContext'
 
 // Utility function to convert any color to HSL format
 const colorToHsl = (color: string): string => {
@@ -108,18 +107,18 @@ const LoadingContainer = styled('div')(({ theme }) => ({
 
 const globalStyles = {
   html: {
-    overflow: 'hidden',
+    // overflow: 'hidden',
     height: '100%'
   },
   body: {
-    overflow: 'hidden',
+    // overflow: 'hidden',
     height: '100%',
     margin: 0,
     padding: 0
   },
   '#root': {
-    height: '100%',
-    overflow: 'hidden'
+    height: '100%'
+    // overflow: 'hidden'
   }
 };
 
@@ -162,13 +161,11 @@ const Wrapper: React.FC = () => {
             <LoadingAnimation size={1000} />
           </LoadingContainer>
         ) : (
-          <BackgroundContextProvider>
-            <ChatProvider>
-              <MainLayout>
-                <Router />
-              </MainLayout>
-            </ChatProvider>
-          </BackgroundContextProvider>
+          <ChatProvider>
+            <MainLayout>
+              <Router />
+            </MainLayout>
+          </ChatProvider>
         )}
       </ConfigProvider>
     </ThemeProvider>

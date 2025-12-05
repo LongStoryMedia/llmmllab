@@ -1,9 +1,8 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useAuth } from '../../auth';
 import { Conversation } from '../../types/Conversation';
 import { Message } from '../../types/Message';
 import { Model } from '../../types/Model';
-import { useBackgroundContext } from '../../context/BackgroundContext';
 import { GenerationState } from '../../types';
 import { GenerationStateValues } from '../../types/GenerationState';
 import { ResponseSection } from '../../types/ResponseSection';
@@ -80,18 +79,6 @@ export const useChatState = (): [ChatState, ChatActions] => {
   const { user } = useAuth();
   const currentUserId = useMemo(() => user?.profile?.preferred_username ?? '', [user]);
   const [isPaused, setIsPaused] = useState<boolean>(false);
-  const { controlState } = useBackgroundContext();
-
-  useEffect(() => {
-    console.log("Control state changed:", controlState);
-    if (controlState === 'paused') {
-      setIsPaused(true);
-    } else if (controlState === 'running') {
-      setIsPaused(false);
-    } else if (controlState === 'cancelled') {
-      setIsPaused(false);
-    }
-  }, [controlState, currentUserId]);
 
   const setModels = useCallback((models: Model[]) => {
     setModelsState(models);

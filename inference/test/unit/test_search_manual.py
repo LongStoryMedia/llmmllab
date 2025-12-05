@@ -14,8 +14,6 @@ import asyncio
 from typing import List, Dict
 import json
 
-# Add the parent directory to path so we can import modules
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from models import Message, UserConfig, SearchResult, SearchResultContent
 from models.message_role import MessageRole

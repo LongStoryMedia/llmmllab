@@ -5,7 +5,7 @@ Centralized tool management with sophisticated static/dynamic tool merging.
 """
 
 import asyncio
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Sequence
 
 from structlog.typing import FilteringBoundLogger
 
@@ -260,7 +260,7 @@ class ToolRegistry:
         """Get the actual BaseTool instance for execution by tool name."""
         return self.executable_tools.get(tool_name)
 
-    def get_all_executable_tools(self) -> Dict[str, BaseTool]:
+    def get_all_executable_tools(self) -> List[BaseTool]:
         """
         Get all executable tools (static + dynamic) for use by ToolsAgentSubgraph.
         This is the main interface method that replaces the workflow state tool collection.
@@ -273,7 +273,7 @@ class ToolRegistry:
         # Add previous dynamic tools
         all_tools.update(self.previous_dynamic_tools)
 
-        return all_tools
+        return list(all_tools.values())
 
     def convert_tools_to_langchain(self, tools: List[Tool]) -> List[BaseTool]:
         """

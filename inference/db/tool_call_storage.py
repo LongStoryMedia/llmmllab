@@ -208,7 +208,7 @@ class ToolCallStorage:
                         result_data=result_data,
                         error_message=row["error_message"],
                         execution_time_ms=(
-                            float(row["execution_time_ms"])
+                            int(row["execution_time_ms"])
                             if row["execution_time_ms"]
                             else None
                         ),

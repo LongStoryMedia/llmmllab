@@ -461,7 +461,7 @@ class WorkflowExecutor:
             analyses=list(analyses.values()),
             conversation_id=conversation_id,
         )
-        await msg_store.add_message(final_message)
+
         final_response = ChatResponse(
             message=final_message,
             done=True,

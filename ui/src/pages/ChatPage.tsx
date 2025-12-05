@@ -14,7 +14,9 @@ const ChatPageContainer = styled('div')(() => ({
   flex: 1,
   position: 'relative',
   overflow: 'hidden'
-})); const ChatPage = memo(() => {
+}));
+
+const ChatPage = memo(() => {
   const {
     messages,
     isTyping,

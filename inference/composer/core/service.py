@@ -18,7 +18,6 @@ from langgraph.graph.state import CompiledStateGraph
 from models import (
     Message,
     MessageRole,
-    UserConfig,
     MessageContent,
     MessageContentType,
 )
@@ -57,26 +56,6 @@ class ComposerService:
             logger=self.logger, default_context="composer_service"
         )
 
-    def _ensure_graph_builder(self, user_config: UserConfig) -> None:
-        """Lazily create GraphBuilder when needed, ensuring storage is available."""
-        if self.graph_builder is None:
-            from db import storage  # pylint: disable=import-outside-toplevel
-
-            if not storage.initialized:
-                raise RuntimeError(
-                    "Storage must be initialized before using ComposerService"
-                )
-
-            self.storage = storage
-            self.graph_builder = GraphBuilder(
-                storage,
-                self.pipeline_factory,
-                user_config,
-            )
-
-        # Assert for type checking that graph_builder is not None after this call
-        assert self.graph_builder is not None
-
     async def compose_workflow(
         self,
         user_id: str,
@@ -109,30 +88,31 @@ class ComposerService:
                 user_cache = self.workflow_caches[user_id]
 
                 # Simplified cache key - master workflow is the same for all users
-                cache_key = f"master_workflow_{user_id}"
+                cache_key = f"workflow_{user_id}"
 
                 cached_workflow = await user_cache.get(cache_key)
                 if cached_workflow:
                     self.logger.debug(
-                        "Retrieved master workflow from cache",
+                        "Retrieved workflow from cache",
                         extra={"cache_key": cache_key},
                     )
                     return cached_workflow
 
-            # 3. Build master workflow with intelligent routing or explicit type
-            # Intent analysis and tool selection happen inside the graph now
-            self._ensure_graph_builder(user_config)
-
-            # Type guard: assert graph_builder is available after _ensure_graph_builder
-            graph_builder = self.graph_builder
+            # 3. Build master workflow
+            graph_builder = self.graph_builder = GraphBuilder(
+                storage,
+                self.pipeline_factory,
+                user_config,
+            )
             assert graph_builder is not None, "GraphBuilder should be initialized"
 
-            builder_fn = lambda: graph_builder.build_workflow(user_id)
-
             if user_cache:
-                workflow = await user_cache.get_or_create(cache_key, builder_fn)
+                workflow = await user_cache.get_or_create(
+                    cache_key,
+                    lambda: graph_builder.build_workflow(user_id),
+                )
             else:
-                workflow = await builder_fn()
+                workflow = await graph_builder.build_workflow(user_id)
 
             self.logger.info(
                 "Master workflow composed successfully", extra={"user_id": user_id}
@@ -194,7 +174,14 @@ class ComposerService:
 
         # Create the state with centralized user configuration and todo context
         state = WorkflowState(
-            title=conversation.title if conversation else None,
+            title=(
+                conversation.title
+                if (
+                    conversation
+                    and not conversation.title.startswith("New conversation")
+                )
+                else None
+            ),
             messages=messages,  # Use Message objects directly
             summaries=summaries,
             current_user_message=current_user_message,  # Use Message object directly
@@ -210,6 +197,7 @@ class ComposerService:
                 "user_id": user_id,
                 "turn_timestamp": datetime.now(timezone.utc).isoformat(),
             },
+            things_to_remember=[current_user_message],
         )
 
         return state

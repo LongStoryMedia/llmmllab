@@ -36,6 +36,11 @@ properties:
     items:
       $ref: intent_analysis.yaml
     description: Array of intent analyses associated with the message
+  documents:
+    type: array
+    items:
+      $ref: document.yaml
+    description: Array of documents attached to the message
 required:
   - role
   - content

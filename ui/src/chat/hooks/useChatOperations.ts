@@ -24,11 +24,6 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
   // Delegate to specialized hooks
   const streaming = useStreamHandler();
   const conversationOps = useConversationOperations(state, actions);
-
-  // Create a ref to hold sendMessage so messageOps can access it
-  const sendMessageRef = useRef<((message: Message) => Promise<void>) | null>(null);
-
-  // Create messageOps first (it will use sendMessageRef) and provide streaming handler
   const messageOps = useMessageOperations(state, actions);
 
   /**
@@ -110,9 +105,6 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     streaming,
     messageOps
   ]);
-
-  // Update the ref so messageOps can access the latest sendMessage
-  sendMessageRef.current = sendMessage;
 
   /**
    * Replay a message by calling the streaming replay endpoint and updating streaming state

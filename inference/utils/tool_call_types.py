@@ -105,7 +105,7 @@ def tool_call_request_to_execution_result(
     success: Optional[bool] = None,
     result_data: Optional[Dict[str, Any]] = None,
     error_message: Optional[str] = None,
-    execution_time_ms: Optional[float] = None,
+    execution_time_ms: Optional[int] = None,
     message_id: Optional[int] = None,
     execution_id: Optional[str] = None,
 ) -> ToolCall:

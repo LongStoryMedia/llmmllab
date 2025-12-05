@@ -1,7 +1,6 @@
 import { AppBar, Toolbar, Typography, Button, useTheme, IconButton, Box } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import { useAuth } from '../../auth';
-import BackgroundProcessNotifications from './BackgroundProcessNotifications';
 import ThemeToggle from '../Shared/ThemeToggle';
 import useColorMode from '../../hooks/useColorMode';
 // import Icon from '../Shared/Icon';
@@ -52,7 +51,6 @@ const TopBar = ({ onMenuClick }: { onMenuClick?: () => void }) => {
             Welcome, {user.profile.name}
           </Typography>
         )}
-        <BackgroundProcessNotifications />
         <ThemeToggle mode={mode} setMode={setMode} />
         <Button color="inherit" onClick={logout}>
           Logout

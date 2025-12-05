@@ -7,10 +7,6 @@ import json
 import httpx
 from pathlib import Path
 import sys
-
-# Add the inference directory to the Python path for imports
-sys.path.append(str(Path(__file__).parent.parent))
-
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="test_raw_http_response")

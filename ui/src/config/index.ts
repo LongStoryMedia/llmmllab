@@ -4,6 +4,8 @@ import { darkTheme, lightTheme } from "./theme";
 export default {
   server: {
     baseUrl: import.meta.env.VITE_BASE_URL || 'https://ai.longstorymedia.com',
+    // baseUrl: import.meta.env.VITE_BASE_URL,
+    // baseUrl: 'http://192.168.0.71:8000',
     apiVersion: 'v1'
   },
   auth: {

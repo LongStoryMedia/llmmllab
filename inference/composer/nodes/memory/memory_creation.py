@@ -124,6 +124,8 @@ class MemoryCreationNode:
             if isinstance(item, Summary):
                 summaries.append(item)
             elif isinstance(item, Message):
+                if item.documents:
+                    documents.extend(item.documents)
                 messages.append(item)
             elif isinstance(item, SearchTopicSynthesis):
                 search_syntheses.append(item)

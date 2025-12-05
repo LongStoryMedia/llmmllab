@@ -9,9 +9,6 @@ import argparse
 import os
 import sys
 
-# Add the parent directory to the path to allow importing from sibling packages
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-
 from evaluation.embeddings.adapter import EmbeddingModelAdapter
 from evaluation.embeddings.extractor import EmbeddingExtractor
 from evaluation.embeddings.utils import EmbeddingUtils

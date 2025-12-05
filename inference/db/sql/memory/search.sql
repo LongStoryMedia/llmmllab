@@ -77,17 +77,18 @@ similar_search_topics_unfiltered AS (
 similar_documents_unfiltered AS (
     SELECT
         d.id AS source_id,
-        d.conversation_id,
+        m.conversation_id,
         1 -(e.embedding <=> $1) AS similarity
     FROM
         memories e
         JOIN documents d ON e.source_id = d.id
+        JOIN messages m ON d.message_id = m.id
     WHERE
         e.source = 'document'
         AND 1 -(e.embedding <=> $1) > $2
         -- Filter by conversation_id if present.
         AND ($5::bigint IS NULL
-            OR d.conversation_id = $5::bigint)
+            OR m.conversation_id = $5::bigint)
             -- Add conditional time window filters.
             AND ($6::text IS NULL
                 OR d.created_at >=($6::text)::timestamptz)
@@ -372,7 +373,7 @@ u.source_id,
 COALESCE(mc.text_content, s.content, ss.synthesis, d.text_content, d.filename) AS content,
 u.source_type,
 u.similarity,
-COALESCE(m.conversation_id, s.conversation_id, ss.conversation_id, d.conversation_id) AS conversation_id,
+COALESCE(m.conversation_id, s.conversation_id, ss.conversation_id, msg.conversation_id) AS conversation_id,
 COALESCE(m.created_at, s.created_at, ss.created_at, d.created_at) AS created_at
 FROM
     unique_results u
@@ -386,6 +387,8 @@ FROM
         AND u.source_type = 'search'
     LEFT JOIN documents d ON u.source_id = d.id
         AND u.source_type = 'document'
+    LEFT JOIN messages msg ON d.message_id = msg.id
+        AND u.source_type = 'document'
 WHERE
     u.pair_key IN (
         SELECT
@@ -394,5 +397,5 @@ WHERE
             limited_pairs)
 ORDER BY
     u.similarity DESC, -- Sort by highest similarity first
-    COALESCE(m.conversation_id, s.conversation_id, ss.conversation_id, d.conversation_id), -- Keep conversation pairs together
+    COALESCE(m.conversation_id, s.conversation_id, ss.conversation_id, msg.conversation_id), -- Keep conversation pairs together
     COALESCE(m.created_at, s.created_at, ss.created_at, d.created_at) -- Maintain chronological order within conversations

@@ -11,8 +11,6 @@ import sys
 import os
 from unittest.mock import MagicMock, patch
 
-# Add the parent directory to the sys.path to make imports work correctly
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from models.circuit_breaker_config import CircuitBreakerConfig
 from models.default_configs import DEFAULT_CIRCUIT_BREAKER_CONFIG

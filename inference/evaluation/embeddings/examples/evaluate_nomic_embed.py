@@ -10,8 +10,6 @@ import os
 import sys
 from pathlib import Path
 
-# Add parent directory to path to make imports work
-sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from evaluation.embeddings.embedding_benchmark import EmbeddingBenchmark
 from evaluation.embeddings.extractor import EmbeddingExtractor

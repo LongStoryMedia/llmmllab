@@ -20,12 +20,14 @@ from models.required_capability import RequiredCapability
 from models.response_format import ResponseFormat
 from models.technical_domain import TechnicalDomain
 from models.computational_requirement import ComputationalRequirement
+from models.document import Document
 from db.cache_storage import cache_storage
 from db.db_utils import TypedConnection, typed_pool
 from db.thought_storage import ThoughtStorage
 from db.tool_call_storage import ToolCallStorage
 from db.message_content_storage import MessageContentStorage
 from db.analysis_storage import AnalysisStorage
+from db.document_storage import DocumentStorage
 from db.connection_recovery import ConnectionRecoveryManager, recovery_manager
 from utils.logging import llmmllogger
 
@@ -33,7 +35,6 @@ logger = llmmllogger.bind(component="message_storage")
 
 
 class MessageStorage:
-
     def __init__(
         self,
         pool: asyncpg.Pool,
@@ -42,6 +43,7 @@ class MessageStorage:
         tool_call_storage: ToolCallStorage,
         message_content_storage: MessageContentStorage,
         analysis_storage: AnalysisStorage,
+        document_storage: DocumentStorage,
     ):
         self.pool = pool
         self.typed_pool = typed_pool(pool)
@@ -53,6 +55,7 @@ class MessageStorage:
         self.tool_call_storage = tool_call_storage
         self.message_content_storage = message_content_storage
         self.analysis_storage = analysis_storage
+        self.document_storage = document_storage
 
         # Initialize connection recovery manager
         self.recovery_manager = (
@@ -76,6 +79,8 @@ class MessageStorage:
         """
         if not message.conversation_id:
             raise ValueError("Message must have a conversation_id")
+
+        self.logger.info(f"Adding message to conversation {message.conversation_id}")
 
         # If no connection provided, wrap the entire transaction in recovery
         if conn is None:
@@ -125,6 +130,10 @@ class MessageStorage:
         # Insert thoughts if present
         if message.thoughts:
             await self._insert_thoughts(conn, message_id, message.thoughts)
+
+        # Insert documents if present
+        if message.documents:
+            await self._insert_documents(conn, message_id, message.documents)
 
         # Set the message_id on the message object
         message.id = message_id
@@ -344,6 +353,19 @@ class MessageStorage:
         message_data["analyses"] = [
             self._parse_analysis_row(dict(analysis_row))
             for analysis_row in analyses_rows
+        ]
+
+        # Get documents using separate query with recovery
+        async def _get_documents():
+            return await conn.fetch(
+                self.get_query("document.get_documents_by_message"), message_id
+            )
+
+        documents_rows = await self.recovery_manager.execute_with_recovery(
+            _get_documents
+        )
+        message_data["documents"] = [
+            Document(**dict(document_row)) for document_row in documents_rows
         ]
 
         message = Message(**message_data)
@@ -803,10 +825,33 @@ class MessageStorage:
                 thought.message_id = message_id
             await self.thought_storage.add_thought(thought, conn=conn)
 
+    async def _insert_documents(
+        self,
+        conn: TypedConnection,
+        message_id: int,
+        documents: List[Document],
+    ) -> None:
+        """Helper method to insert documents using DocumentStorage."""
+
+        for document in documents:
+            # Set message_id if not already set
+            if not document.message_id:
+                document.message_id = message_id
+            # Use the document storage to store the document
+            await self.document_storage.store_document(
+                message_id=document.message_id,
+                user_id=document.user_id,
+                filename=document.filename,
+                content_type=document.content_type,
+                file_size=document.file_size,
+                content=document.content,
+                text_content=document.text_content,
+            )
+
     def _parse_message_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
         """
         Parse a database row containing message data with aggregated JSON fields.
-        Handles contents, tool_calls, thoughts, and analyses aggregation.
+        Handles contents, tool_calls, thoughts, analyses, and documents aggregation.
         """
         # Parse message contents from JSON array
         contents = self._parse_contents(row.get("contents"))
@@ -820,6 +865,9 @@ class MessageStorage:
         # Parse analyses from JSON array
         analyses = self._parse_analyses(row.get("analyses"))
 
+        # Parse documents from JSON array
+        documents = self._parse_documents(row.get("documents"))
+
         return {
             "id": row["id"],
             "conversation_id": row["conversation_id"],
@@ -829,6 +877,7 @@ class MessageStorage:
             "tool_calls": tool_calls if tool_calls else None,
             "thoughts": thoughts if thoughts else None,
             "analyses": analyses if analyses else None,
+            "documents": documents if documents else None,
         }
 
     def _parse_contents(self, contents_data: Any) -> List[MessageContent]:
@@ -979,6 +1028,39 @@ class MessageStorage:
                 continue
 
         return analyses if analyses else None
+
+    def _parse_documents(self, documents_data: Any) -> Optional[List[Document]]:
+        """Parse documents from JSON data."""
+        if not documents_data:
+            return None
+
+        documents = []
+        # Parse JSON data (could be string or already parsed)
+        try:
+            if isinstance(documents_data, str):
+                documents_list = json.loads(documents_data)
+            else:
+                documents_list = documents_data
+
+            if not isinstance(documents_list, list):
+                return None
+
+            for doc_data in documents_list:
+                if not doc_data:
+                    continue
+
+                try:
+                    document = Document(**doc_data)
+                    documents.append(document)
+                except Exception as e:
+                    self.logger.warning(f"Failed to parse document data: {e}")
+                    continue
+
+        except (json.JSONDecodeError, TypeError) as e:
+            self.logger.warning(f"Failed to parse documents JSON: {e}")
+            return None
+
+        return documents if documents else None
 
     def _validate_cached_messages(self, cached_messages: Any) -> List[Message]:
         """Validate and clean cached messages data."""

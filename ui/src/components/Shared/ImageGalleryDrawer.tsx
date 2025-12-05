@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { 
+import {
   Drawer,
   Box,
   Typography,
@@ -16,8 +16,9 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import DownloadIcon from '@mui/icons-material/Download';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { useBackgroundContext } from '../../context/BackgroundContext';
 import { ImageMetadata } from '../../types/ImageMetadata';
+import { deleteImage } from '../../api/image';
+import { useAuth } from '@/auth';
 
 interface ImageGalleryDrawerProps {
   open: boolean;
@@ -27,8 +28,8 @@ interface ImageGalleryDrawerProps {
 
 const ImageGalleryDrawer: React.FC<ImageGalleryDrawerProps> = ({ open, onClose, images }) => {
   const theme = useTheme();
-  const { deleteImage } = useBackgroundContext();
   const [selectedImage, setSelectedImage] = useState<number | null>(null);
+  const { user } = useAuth();
 
   const handleDownload = (url: string, name?: string) => {
     const link = document.createElement('a');
@@ -41,16 +42,20 @@ const ImageGalleryDrawer: React.FC<ImageGalleryDrawerProps> = ({ open, onClose, 
 
   // Handler for image deletion from the gallery
   const handleRemove = (id: number) => {
-    deleteImage(id);
+    if (!user) {
+      console.error('User not authenticated');
+      return;
+    }
+    deleteImage(user.access_token, id);
   };
-  
+
   // Handler for selecting/deselecting an image for preview
   const toggleImageSelection = (id: number | null) => {
     setSelectedImage(currentId => currentId === id ? null : id);
   };
 
   // Get the selected image data
-  const selectedImageData = selectedImage 
+  const selectedImageData = selectedImage
     ? images.find(img => img.id === selectedImage)
     : null;
 
@@ -73,9 +78,9 @@ const ImageGalleryDrawer: React.FC<ImageGalleryDrawerProps> = ({ open, onClose, 
           <CloseIcon />
         </IconButton>
       </Box>
-      
+
       <Divider sx={{ mb: 2 }} />
-      
+
       {images.length === 0 ? (
         <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
           No images have been generated yet.
@@ -89,8 +94,8 @@ const ImageGalleryDrawer: React.FC<ImageGalleryDrawerProps> = ({ open, onClose, 
               <Card>
                 <CardMedia
                   component="img"
-                  sx={{ 
-                    maxHeight: '500px', 
+                  sx={{
+                    maxHeight: '500px',
                     objectFit: 'contain',
                     backgroundColor: 'black'
                   }}
@@ -98,13 +103,13 @@ const ImageGalleryDrawer: React.FC<ImageGalleryDrawerProps> = ({ open, onClose, 
                   alt="Selected image preview"
                 />
                 <CardActions>
-                  <Button 
+                  <Button
                     startIcon={<DownloadIcon />}
                     onClick={() => handleDownload(selectedImageData.download_url || '', selectedImageData.created_at.toISOString())}
                   >
                     Download
                   </Button>
-                  <Button 
+                  <Button
                     startIcon={<DeleteIcon />}
                     color="error"
                     onClick={() => {
@@ -125,12 +130,12 @@ const ImageGalleryDrawer: React.FC<ImageGalleryDrawerProps> = ({ open, onClose, 
           </Typography>
           <Grid container spacing={2}>
             {images.map((image) => (
-              <Grid sx={{xs:12, sm:6, md:4}} key={image.id}>
-                <Card 
-                  sx={{ 
+              <Grid sx={{ xs: 12, sm: 6, md: 4 }} key={image.id}>
+                <Card
+                  sx={{
                     cursor: 'pointer',
-                    border: selectedImage === image.id 
-                      ? `2px solid ${theme.palette.primary.main}` 
+                    border: selectedImage === image.id
+                      ? `2px solid ${theme.palette.primary.main}`
                       : 'none'
                   }}
                   onClick={() => toggleImageSelection(image.id ?? -1)}
@@ -151,8 +156,8 @@ const ImageGalleryDrawer: React.FC<ImageGalleryDrawerProps> = ({ open, onClose, 
                     </Typography>
                   </CardContent>
                   <CardActions>
-                    <Button 
-                      size="small" 
+                    <Button
+                      size="small"
                       startIcon={<DownloadIcon />}
                       onClick={(e) => {
                         e.stopPropagation(); // Prevent image selection
@@ -161,8 +166,8 @@ const ImageGalleryDrawer: React.FC<ImageGalleryDrawerProps> = ({ open, onClose, 
                     >
                       Download
                     </Button>
-                    <Button 
-                      size="small" 
+                    <Button
+                      size="small"
                       color="error"
                       startIcon={<DeleteIcon />}
                       onClick={(e) => {

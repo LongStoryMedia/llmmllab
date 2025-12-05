@@ -12,7 +12,7 @@ if [[ -f .env ]]; then
   set +a # Turn off auto-export
 fi
 
-npm run build
+npm run build || exit 1
 # npm run test
 # npm run lint
 ssh root@longstorymedia.com "for i in \$(ls /var/www/ai.longstorymedia.com); do rm -rf /var/www/ai.longstorymedia.com/\$i; done" || true

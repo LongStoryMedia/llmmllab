@@ -20,7 +20,7 @@ class ConversationStorage:
         self,
         pool: asyncpg.Pool,
         get_query: Callable[[str], str],
-        user_config_storage: UserConfigStorage = None,
+        user_config_storage: UserConfigStorage,
     ):
         self.pool = pool
         self.typed_pool = typed_pool(pool)

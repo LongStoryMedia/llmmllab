@@ -20,56 +20,66 @@ Architectural Role:
 - Maintains Protocol-based decoupling requirements
 """
 
-from typing import Any, AsyncIterator, Dict, List, Optional, Union
-
-from langchain_core.runnables.schema import StreamEvent
-
-from models import Message, WorkflowType, ChatResponse
-
+from typing import AsyncIterator, Optional
 from pydantic import BaseModel
+from models import ChatResponse
 from utils.logging import llmmllogger
-
 from .core.service import CompiledStateGraph, ComposerService
 from .graph.executor import stream_workflow
 
-# Global service instance
-_composer_service: Optional[ComposerService] = None
+
+class ComposerServiceManager:
+    """Singleton manager for composer service instance."""
+
+    _instance: Optional["ComposerServiceManager"] = None
+    _service: Optional[ComposerService] = None
+
+    def __new__(cls) -> "ComposerServiceManager":
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    async def initialize(self) -> None:
+        """Initialize the composer service. Should be called once at startup."""
+        if self._service is None:
+            llmmllogger.logger.info("Initializing composer service")
+            self._service = ComposerService()
+            llmmllogger.logger.info("Composer service initialized")
+
+    async def shutdown(self) -> None:
+        """Shutdown the composer service. Should be called at server shutdown."""
+        if self._service:
+            llmmllogger.logger.info("Shutting down composer service")
+            await self._service.shutdown()
+            self._service = None
+
+    def get_service(self) -> ComposerService:
+        """Get the composer service instance."""
+        if self._service is None:
+            raise RuntimeError(
+                "Composer service not initialized. Call initialize_composer() first."
+            )
+        return self._service
+
+    async def get_or_init_service(self) -> ComposerService:
+        """Get or initialize the composer service instance."""
+        if self._service is None:
+            await self.initialize()
+        assert self._service is not None
+        return self._service
 
 
-async def initialize_composer() -> None:
-    """Initialize the composer service. Should be called once at startup."""
-    global _composer_service  # noqa: PLW0603
-    if _composer_service is None:
-        llmmllogger.logger.info("Initializing composer service")
-        _composer_service = ComposerService()
-        llmmllogger.logger.info("Composer service initialized")
+_manager = ComposerServiceManager()
 
 
 async def shutdown_composer() -> None:
     """Shutdown the composer service. Should be called at server shutdown."""
-    global _composer_service  # noqa: PLW0603
-    if _composer_service:
-        llmmllogger.logger.info("Shutting down composer service")
-        await _composer_service.shutdown()
-        _composer_service = None
-
-
-def get_composer_service() -> ComposerService:
-    """Get the composer service instance."""
-    if _composer_service is None:
-        raise RuntimeError(
-            "Composer service not initialized. Call initialize_composer() first."
-        )
-    return _composer_service
+    await _manager.shutdown()
 
 
 async def get_or_init_composer_service() -> ComposerService:
     """Get or initialize the composer service instance."""
-    global _composer_service  # noqa: PLW0603
-    if _composer_service is None:
-        await initialize_composer()
-    assert _composer_service is not None
-    return _composer_service
+    return await _manager.get_or_init_service()
 
 
 async def compose_workflow(user_id: str) -> CompiledStateGraph:
@@ -90,7 +100,7 @@ async def compose_workflow(user_id: str) -> CompiledStateGraph:
         Configuration is retrieved from shared data layer using user_id.
         No configuration objects should be passed as arguments (architectural rule).
     """
-    svc = await get_or_init_composer_service()
+    svc = await _manager.get_or_init_service()
     return await svc.compose_workflow(user_id)
 
 
@@ -101,7 +111,7 @@ async def clear_workflow_cache(user_id: str) -> None:
     Args:
         user_id: User ID whose workflow cache should be cleared
     """
-    svc = await get_or_init_composer_service()
+    svc = await _manager.get_or_init_service()
     cache = svc.workflow_caches.get(user_id, None)
     if cache:
         await cache.close()
@@ -126,7 +136,7 @@ async def create_initial_state(
         User configuration is retrieved from shared data layer using user_id.
         No configuration objects should be passed as arguments (architectural rule).
     """
-    service = get_composer_service()
+    service = await _manager.get_or_init_service()
     return await service.create_initial_state(user_id, conversation_id)
 
 
@@ -151,9 +161,7 @@ async def execute_workflow(
 
 # Convenience exports for direct usage
 __all__ = [
-    "initialize_composer",
     "shutdown_composer",
-    "get_composer_service",
     "compose_workflow",
     "create_initial_state",
     "execute_workflow",

@@ -4,8 +4,6 @@ import { useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import GalleryFAB from '../Shared/GalleryFAB';
-import StageProgressBars from '../Shared/StageProgressBars';
-import { useBackgroundContext } from '../../context/BackgroundContext';
 
 const MainContainer = styled(Box)<{ overflow: string }>(({ theme, overflow }) => ({
   display: 'flex',
@@ -30,7 +28,6 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const theme = useTheme();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { activeStages } = useBackgroundContext();
 
   // Check if current route is a chat page
   const isChatPage = location.pathname === '/' || location.pathname.startsWith('/chat/');
@@ -61,9 +58,6 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
       {/* Image Gallery Floating Action Button */}
       <GalleryFAB />
-
-      {/* Stage Progress Bars */}
-      <StageProgressBars activeStages={activeStages} />
     </MainContainer>
   );
 };

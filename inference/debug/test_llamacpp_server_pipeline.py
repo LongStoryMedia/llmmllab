@@ -11,8 +11,6 @@ import sys
 import asyncio
 from pathlib import Path
 
-# Add inference directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from models import Model, ModelProfile, ModelParameters, ModelDetails
 from runner.pipelines.llamacpp.llamacpp_server_pipeline import LlamaCppServerPipeline

@@ -7,10 +7,10 @@ import asyncio
 import hashlib
 import json
 import time
-from typing import Dict, Any, Optional, Callable, List
+from typing import Coroutine, Dict, Any, Optional, Callable, List
+from langgraph.graph.state import CompiledStateGraph
 
 from models import Tool, WorkflowType
-from models.config import Config as config
 from utils.logging import llmmllogger
 
 
@@ -144,7 +144,7 @@ class WorkflowCache:
     async def get_or_create(
         self,
         cache_key: str,
-        factory_fn: Callable[[], Any],
+        factory_fn: Callable[[], Coroutine[Any, Any, CompiledStateGraph]],
         ttl_seconds: Optional[int] = None,
     ) -> Any:
         """Get from cache or create using factory function."""

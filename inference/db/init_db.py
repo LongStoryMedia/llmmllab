@@ -124,7 +124,8 @@ async def initialize_database(connection_pool: Any) -> bool:
                 (
                     "Creating document tables",
                     [
-                        ("document.init_document_schema", ["timescaledb"]),
+                        ("document.create_documents_table", []),
+                        ("document.create_documents_hypertable", ["timescaledb"]),
                     ],
                 ),
                 # Step 7: Create summary tables
@@ -135,6 +136,7 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("summary.create_summaries_hypertable", ["timescaledb"]),
                         ("summary.create_summaries_indexes", []),
                         ("summary.enable_summaries_compression", ["timescaledb"]),
+                        ("summary.create_summary_cascade_delete_triggers", []),
                     ],
                 ),
                 # Step 8: Create search tables
@@ -146,6 +148,7 @@ async def initialize_database(connection_pool: Any) -> bool:
                             "search.create_search_topic_synthesis_hypertable",
                             ["timescaledb"],
                         ),
+                        ("search.create_search_cascade_delete_triggers", []),
                     ],
                 ),
                 # Step 9: Create memory tables (requires vector extension)
@@ -205,7 +208,7 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("message.create_message_cascade_delete_triggers", []),
                     ],
                 ),
-                # Step 14: Create todo tables
+                # Step 17: Create todo tables
                 (
                     "Creating todo tables",
                     [

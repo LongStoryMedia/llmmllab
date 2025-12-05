@@ -172,8 +172,6 @@ class GraphBuilder:
                 self.user_config.user_id,
             )
 
-            tool_selection_middleware = LLMToolSelectorMiddleware()
-
             primary_agent = ChatAgent(
                 pipeline_factory=self.pipeline_factory,
                 profile=primary_profile,
@@ -334,10 +332,11 @@ class GraphBuilder:
             # Build a simplified workflow graph structure:
             # 1. Start -> Memory search and context assembly
             workflow.add_edge(START, "memory_search")
-            workflow.add_edge("memory_search", "context_assembly")
+            workflow.add_edge(START, "context_assembly")
 
             # 2. Context assembly -> Tools Agent (ToolRegistry handles all tool management internally)
             workflow.add_edge("context_assembly", "tools_agent")
+            workflow.add_edge("memory_search", "tools_agent")
 
             # 3. Tools Agent -> Chat summary
             # workflow.add_edge("tools_agent", "chat_summary")

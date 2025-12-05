@@ -6,9 +6,9 @@ properties:
   id:
     type: integer
     description: Unique identifier for the file attachment
-  conversation_id:
+  message_id:
     type: integer
-    description: ID of the conversation this attachment belongs to
+    description: ID of the message this attachment belongs to
   user_id:
     type: string
     description: ID of the user who uploaded this attachment
@@ -37,7 +37,7 @@ properties:
     format: date-time
     description: Timestamp when the attachment was last updated
 required:
-  - conversation_id
+  - message_id
   - user_id
   - filename
   - content_type

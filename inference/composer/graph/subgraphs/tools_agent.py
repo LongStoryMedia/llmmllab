@@ -16,7 +16,6 @@ from typing import List
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from langchain.agents.middleware import AgentMiddleware
-from langchain_core.messages.utils import count_tokens_approximately
 from composer.graph import WorkflowState
 from composer.agents.chat_agent import ChatAgent
 from composer.agents.primary_summary_agent import PrimarySummaryAgent
@@ -24,6 +23,7 @@ from composer.tools.registry import ToolRegistry
 from models import NodeMetadata, PipelinePriority
 from utils import extract_text_from_message
 from utils.logging import llmmllogger, serialize_event_data
+from db import storage
 from .summarization_middleware import SummarizationMiddleware
 
 logger = llmmllogger.bind(component="ToolsAgentSubgraph")
@@ -156,8 +156,6 @@ class ToolsAgentSubgraph:
             # Persist todos extracted in ChatResponse (already converted in BaseAgent)
             if response.todos:
                 try:
-                    from db import storage
-
                     todos_to_store = response.todos
                     if storage.initialized and storage.todo:
                         svc = storage.get_service(storage.todo)
@@ -184,8 +182,15 @@ class ToolsAgentSubgraph:
                     logger.info(
                         f"🔧 Generated {len(response.message.tool_calls)} tool calls"
                     )
+                if not response.message.conversation_id:
+                    response.message.conversation_id = state.conversation_id
                 # Convert our Message back to LangChain format and add to state
+                msg_id = await storage.get_service(storage.message).add_message(
+                    response.message
+                )
+                response.message.id = msg_id
                 state.messages.append(response.message)
+                state.things_to_remember.append(response.message)
 
             return state
 

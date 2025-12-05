@@ -119,6 +119,7 @@ class Storage:
                 self.tool_call,
                 self.message_content,
                 self.analysis,
+                self.document,
             )
 
             # Initialize checkpoint storage

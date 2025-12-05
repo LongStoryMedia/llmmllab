@@ -22,6 +22,7 @@ from models import (
 )
 from utils import extract_text_from_message  # Import logging utility
 from utils.logging import llmmllogger, serialize_event_data
+from utils.message_transformation import transform_file_content_to_documents
 
 # Import composer interface and streaming state management
 import composer
@@ -31,12 +32,11 @@ logger = llmmllogger.bind(component="chat_router")
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
+
 async def composer_chat_completion(
     user_id: str, conversation_id: int, request_id: str
 ) -> AsyncIterator[str]:
     """Handle chat completions by delegating to composer interface."""
-    await composer.initialize_composer()
-
     # Compose workflow for user
     workflow = await composer.compose_workflow(user_id)
 
@@ -80,20 +80,17 @@ async def chat_completion(
     logger.info(f"Processing chat completion request {request_id} for user {user_id}")
 
     try:
-        # Store the user message in database first (with fallback for connection issues)
+        # Transform file content to documents before storing
+        msg = await transform_file_content_to_documents(msg, user_id)
+        
         await storage.get_service(storage.message).add_message(msg)
-        # Capture variables for the async generator
-        conversation_id = msg.conversation_id
-
-        # Direct composer workflow orchestration
-
         return StreamingResponse(
-            composer_chat_completion(user_id, conversation_id, request_id),
+            composer_chat_completion(user_id, msg.conversation_id, request_id),  # type: ignore
             media_type="application/json",
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",  # Disable nginx buffer
+                "X-Accel-Buffering": "no",
             },
         )
 
