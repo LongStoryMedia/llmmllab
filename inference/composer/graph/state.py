@@ -4,7 +4,7 @@ This is the centralized state schema that acts as the common interface
 """
 
 import operator
-from typing import List, Dict, Any, Optional, Annotated, Set, Union
+from typing import List, Optional, Annotated, Union
 from pydantic import BaseModel, Field
 
 from models import (
@@ -12,15 +12,11 @@ from models import (
     MessageContent,
     MessageContentType,
     MessageRole,
-    TodoItem,
-    Tool,
-    WorkflowType,
     UserConfig,
     Summary,
     SearchTopicSynthesis,
     SearchResult,
     Message,
-    ToolCall,
     Document,
 )
 
@@ -37,13 +33,6 @@ class WorkflowState(BaseModel):
         "use_enum_values": True,  # Use enum values in serialization
         "extra": "forbid",  # Prevent extra fields for type safety
     }
-
-    current_date: Annotated[Optional[str], lambda x, y: y if y is not None else x] = (
-        Field(
-            default_factory=lambda: __import__("datetime").datetime.now().isoformat(),
-            description="Current date in ISO format",
-        )
-    )
 
     current_user_message: Annotated[
         Optional[Message], lambda x, y: y if y is not None else x
@@ -65,85 +54,9 @@ class WorkflowState(BaseModel):
         default_factory=list, description="Conversation history and LLM outputs"
     )
 
-    # Structured output from Intent Agent - directs subsequent search and tool decisions
-    # intent_classification: Annotated[
-    #     List[IntentAnalysis], lambda x, y: y if y is not None else x
-    # ] = Field(
-    #     default_factory=list,
-    #     description="Intent analysis results for routing decisions",
-    # )
-
-    # Curated list of tools collected for current execution phase
-    available_tools: Annotated[List[Tool], lambda x, y: y if y is not None else x] = (
-        Field(
-            default_factory=list,
-            description="Dynamic and static tools selected for this workflow",
-        )
-    )
-
-    dynamic_tools: Annotated[List[Tool], lambda x, y: y if y is not None else x] = (
-        Field(
-            default_factory=list,
-            description="Dynamic tools created during this workflow",
-        )
-    )
-
-    static_tools: Annotated[List[Tool], lambda x, y: y if y is not None else x] = Field(
-        default_factory=list,
-        description="Static tools available for this workflow",
-    )
-
-    # Stores search depth decision - drives conditional edge routing
-    search_depth_config: Annotated[
-        Optional[str], lambda x, y: y if y is not None else x
-    ] = Field(default=None, description="Search complexity level: 'SHALLOW' or 'DEEP'")
-
-    # User-defined signals for granular progress tracking
-    progress_updates: Annotated[List[str], operator.add] = Field(
-        default_factory=list,
-        description="Progress signals during tool or crawl execution",
-    )
-
     summaries: Annotated[List[Summary], operator.add] = Field(
         default_factory=list,
         description="All summaries relevant to this workflow execution",
-    )
-
-    # Ephemeral structured tool calls from the latest assistant message.
-    # This is surfaced explicitly so streaming state events include a
-    # 'tool_calls' key allowing external harnesses to detect tool usage
-    # without parsing raw assistant content. Replaced (not concatenated)
-    # each time a new assistant message is produced.
-    tool_calls: Annotated[
-        Optional[List[ToolCall]],
-        lambda current, new: new if new is not None else current,
-    ] = Field(
-        default=None,
-        description="Structured tool calls from the most recent assistant generation",
-    )
-
-    embedding: Annotated[
-        Optional[List[float]],
-        lambda current, new: new if new is not None else current,
-    ] = Field(
-        default=None,
-        description="Embedding for comparison and retrieval tasks",
-    )
-
-    unranked_retrievals: Annotated[
-        Optional[List[List[float]]],
-        lambda current, new: new if new is not None else current,
-    ] = Field(
-        default=None,
-        description="Unranked retrieval results from the most recent retrieval operation",
-    )
-
-    ranked_retrievals: Annotated[
-        Optional[List[List[float]]],
-        lambda current, new: new if new is not None else current,
-    ] = Field(
-        default=None,
-        description="Ranked retrieval results from the most recent retrieval operation",
     )
 
     # Memory retrieval results
@@ -166,13 +79,6 @@ class WorkflowState(BaseModel):
     search_syntheses: Annotated[List[SearchTopicSynthesis], operator.add] = Field(
         default_factory=list, description="Syntheses of web search results"
     )
-
-    selected_workflows: Annotated[
-        Set[WorkflowType], lambda x, y: y if y is not None else x
-    ] = Field(
-        default_factory=set, description="List of workflows selected for execution"
-    )
-
     # Additional context fields
     conversation_id: Annotated[int, lambda x, y: y if y is not None else x] = Field(
         ...,
@@ -186,51 +92,6 @@ class WorkflowState(BaseModel):
     # User configuration - centralized to eliminate database fetch duplication
     user_config: Annotated[UserConfig, lambda x, y: y if y is not None else x] = Field(
         ..., description="User configuration for this workflow execution"
-    )
-
-    # Dynamic tool storage for tool generation and persistence
-    dynamic_tool_storage: Annotated[
-        Optional[object], lambda x, y: y if y is not None else x
-    ] = Field(
-        default=None,
-        description="Dynamic tool storage service for tool generation workflow",
-    )
-
-    # Generated todos from planning middleware
-    generated_todos: Annotated[
-        List[TodoItem], lambda x, y: y if y is not None else x
-    ] = Field(
-        default_factory=list,
-        description="Todos automatically generated by intent analysis planning middleware",
-    )
-
-    # Active todos from database (checkpointer integration)
-    active_todos: Annotated[List[TodoItem], lambda x, y: y if y is not None else x] = (
-        Field(
-            default_factory=list,
-            description="Active todos loaded from database for context continuity",
-        )
-    )
-
-    # Planning context for multi-turn workflows
-    planning_steps: Annotated[List[str], operator.add] = Field(
-        default_factory=list,
-        description="Sequence of planning steps taken in this workflow",
-    )
-
-    complexity_score: Annotated[
-        Optional[int], lambda x, y: y if y is not None else x
-    ] = Field(
-        default=None,
-        description="Complexity score from planning analysis (1-10 scale)",
-    )
-
-    # Checkpoint context for state persistence
-    checkpoint_metadata: Annotated[
-        Dict[str, Any], lambda x, y: {**x, **y} if x and y else y or x or {}
-    ] = Field(
-        default_factory=dict,
-        description="Metadata for checkpoint persistence including turn tracking",
     )
 
 

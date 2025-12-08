@@ -7,17 +7,17 @@ import { ResponseSection } from '../../types/ResponseSection';
 
 interface StreamingState {
   sections: ResponseSection[];
-  currentSection: ResponseSection | null;
+  currentSection?: ResponseSection;
   observerMessages: string[];
 }
 
 export const useStreamHandler = () => {
   // Keep refs for frequently-updated values to avoid recreating variables
   const sectionsRef = useRef<ResponseSection[]>([]);
-  const currentSectionRef = useRef<ResponseSection | null>(null);
+  const currentSectionRef = useRef<ResponseSection | undefined>(undefined);
   const observerMessagesRef = useRef<string[]>([]);
 
-  const [, setTick] = useState(0); // used to force re-renders when needed
+  const [tick, setTick] = useState(0); // used to force re-renders when needed
 
   const sectionOrderCounter = useRef(0);
 
@@ -72,7 +72,7 @@ export const useStreamHandler = () => {
     observerMessagesRef.current = observerMessages;
 
     // Trigger a re-render asynchronously so components reading hook values update
-    setTick(t => t + 1);
+    setTick(tick + 1);
 
     const newState: StreamingState = {
       sections,
@@ -82,19 +82,19 @@ export const useStreamHandler = () => {
 
     // Return the new state synchronously
     return newState;
-  }, []);
+  }, [tick]);
 
-  /**
+  /** 
    * Reset streaming state
    */
   const resetStreaming = useCallback(() => {
     console.log("🔄 Resetting streaming state");
     sectionsRef.current = [];
-    currentSectionRef.current = null;
+    currentSectionRef.current = undefined;
     observerMessagesRef.current = [];
     sectionOrderCounter.current = 0;
-    setTick(t => t + 1);
-  }, []);
+    setTick(tick + 1);
+  }, [tick]);
 
   /**
    * Get the final combined content from all sections

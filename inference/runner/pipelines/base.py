@@ -6,20 +6,19 @@ from abc import ABC, abstractmethod
 import logging
 import os
 from typing import Iterator, Optional, Type
+from pydantic import BaseModel
 
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatResult, ChatGenerationChunk
-from pydantic import BaseModel
-
 from langchain_core.language_models import BaseChatModel
 
+
 from models import Model, ModelProfile
-from runner.server_manager.base import BaseServerManager
 
 
 # Enable HTTP logging for debugging
-if os.getenv("LOG_LEVEL", "").lower() == "debug":
+if os.getenv("LOG_LEVEL", "").lower() == "trace":
     logging.getLogger("openai").setLevel(logging.DEBUG)
     logging.getLogger("httpx").setLevel(logging.DEBUG)
     logging.getLogger("httpcore").setLevel(logging.DEBUG)
@@ -95,7 +94,6 @@ class BasePipeline(BaseChatModel, ABC):
         **kwargs
     ) -> ChatResult:
         """Generate chat completions given input messages."""
-        pass
 
     @abstractmethod
     def _stream(
@@ -106,22 +104,18 @@ class BasePipeline(BaseChatModel, ABC):
         **kwargs
     ) -> Iterator[ChatGenerationChunk]:
         """Stream chat completions given input messages."""
-        pass
 
     @abstractmethod
     def bind_tools(self, tools: list[BaseModel], **kwargs) -> BaseChatModel:
         """Bind tools to the pipeline for tool calling support."""
-        pass
 
     @abstractmethod
     def bind_metadata(self, metadata: dict) -> BaseChatModel:
         """Bind additional metadata to the pipeline."""
-        pass
 
     @abstractmethod
     def shutdown(self):
         """Shutdown the pipeline and release resources."""
-        pass
 
     def __del__(self):
         """Cleanup when pipeline is destroyed."""

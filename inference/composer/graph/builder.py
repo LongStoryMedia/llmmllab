@@ -4,53 +4,37 @@ Uses clean factories and strategies with proper dependency injection pattern.
 All agents, storage services, and model profiles are instantiated upfront and injected.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 import uuid
 
 from langgraph.graph.state import CompiledStateGraph, StateGraph, END, START
-from langchain.agents.middleware import LLMToolSelectorMiddleware
+from langchain.chat_models import BaseChatModel
+from langchain.embeddings import Embeddings
+from langgraph.prebuilt import ToolNode
 
 from models import (
     ModelProfileType,
-    PipelinePriority,
     UserConfig,
     NodeMetadata,
 )
-from runner import PipelineFactory
+from runner import pipeline_factory
 
 from utils.model_profile import get_model_profile_for_task
 from utils.logging import llmmllogger
 
 # Import all agents
 # from composer.agents.classifier_agent import ClassifierAgent
-from composer.agents.chat_agent import ChatAgent
+from composer.agents.chat import ChatAgent
 from composer.agents.engineering_agent import EngineeringAgent
-from composer.agents.memory_agent import MemoryAgent
-from composer.agents.embedding_agent import EmbeddingAgent
-from composer.agents.primary_summary_agent import PrimarySummaryAgent
-from composer.agents.master_summary_agent import MasterSummaryAgent
-
-# Import all nodes
-# Removed redundant tool node imports - ToolRegistry now handles all tool management centrally
-# from composer.nodes.tools import (
-#     ToolCollectionNode,     # REMOVED: Dynamic tool generation handled by ToolRegistry
-#     ToolComposerNode,       # REMOVED: Tool deduplication handled by ToolRegistry
-#     StaticToolLoadingNode,  # REMOVED: Tool loading handled by ToolRegistry
-# )
-from composer.nodes.memory import (
+from composer.agents.embed import EmbeddingAgent
+from composer.graph.nodes.agent import AgentNode
+from composer.graph.nodes.memory import (
     MemorySearchNode,
     MemoryCreationNode,
     MemoryStorageNode,
 )
-from composer.nodes.agents import TitleGenerationNode
-from composer.nodes.summary import ConsolidationNode, SearchSummaryNode
 from composer.tools.registry import registry_manager
-
 from composer.graph.state import WorkflowState, assemble_context_messages
-from composer.graph.subgraphs import ToolsAgentSubgraph
-
-
-# Checkpoint integration handled through CheckpointStorage service
 
 if TYPE_CHECKING:
     from db import Storage
@@ -63,6 +47,20 @@ if TYPE_CHECKING:
     from db.search_storage import SearchStorage
     from db.dynamic_tool_storage import DynamicToolStorage
     from db.checkpoint_storage import CheckpointStorage
+
+
+def should_continue_tool_calls(state: WorkflowState) -> str:
+    """Determine if the agent should continue making tool calls based on the last message."""
+    # Get the last message from state
+    if not state.messages:
+        return "end"
+
+    last_message = state.messages[-1]
+
+    # Check if the last message has tool calls
+    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        return "tools"
+    return "end"
 
 
 class GraphBuilder:
@@ -86,7 +84,6 @@ class GraphBuilder:
     def __init__(
         self,
         storage: "Storage",
-        pipeline_factory: PipelineFactory,
         user_config: UserConfig,
     ):
         """
@@ -97,7 +94,6 @@ class GraphBuilder:
             pipeline_factory: PipelineFactory
         """
         # Core dependencies
-        self.pipeline_factory = pipeline_factory
         self.user_config = user_config
         self.logger = llmmllogger.logger.bind(component="GraphBuilder")
 
@@ -146,16 +142,6 @@ class GraphBuilder:
                 ModelProfileType.Primary,
                 self.user_config.user_id,
             )
-            # analysis_profile = await get_model_profile_for_task(
-            #     self.user_config.model_profiles,
-            #     ModelProfileType.Analysis,
-            #     self.user_config.user_id,
-            # )
-            memory_profile = await get_model_profile_for_task(
-                self.user_config.model_profiles,
-                ModelProfileType.MemoryRetrieval,
-                self.user_config.user_id,
-            )
             engineering_profile = await get_model_profile_for_task(
                 self.user_config.model_profiles,
                 ModelProfileType.Engineering,
@@ -166,59 +152,27 @@ class GraphBuilder:
                 ModelProfileType.Embedding,
                 self.user_config.user_id,
             )
-            summarization_profile = await get_model_profile_for_task(
-                self.user_config.model_profiles,
-                ModelProfileType.PrimarySummary,
-                self.user_config.user_id,
-            )
+
+            primary_model = pipeline_factory.get_pipeline(profile=primary_profile)
+            embedding_model = pipeline_factory.get_pipeline(profile=embedding_profile)
+            # engineering_model = pipeline_factory.get_pipeline(
+            #     profile=engineering_profile
+            # )
 
             primary_agent = ChatAgent(
-                pipeline_factory=self.pipeline_factory,
+                model=cast(BaseChatModel, primary_model),
                 profile=primary_profile,
-                priority=PipelinePriority.HIGH,
+                component_name="PrimaryChatAgent",
             )
-            # Attach middleware list to agent for later use in BaseAgent calls
-            # primary_agent.middleware = [tool_selection_middleware]
-            # Use primary_profile for classifier agent instead of analysis_profile
-            # Primary profile now uses qwen3-vl-32b multimodal model which avoids grammar constraint crashes
-            # classifier_agent = ClassifierAgent(
-            #     self.pipeline_factory,
-            #     analysis_profile,
-            #     classifier_node_metadata,
-            # )
             engineering_agent = EngineeringAgent(
-                self.pipeline_factory,
-                engineering_profile,
-                self.dynamic_tool_storage,
-            )
-            memory_agent = MemoryAgent(
-                self.pipeline_factory,
-                memory_profile,
-                self.memory_storage,
+                model=cast(BaseChatModel, primary_model),
+                profile=engineering_profile,
+                tool_storage=self.dynamic_tool_storage,
             )
             embedding_agent = EmbeddingAgent(
-                self.pipeline_factory,
-                embedding_profile,
-            )
-            primary_summary_agent = PrimarySummaryAgent(
-                self.pipeline_factory,
-                summarization_profile,
-                self.summary_storage,
-                self.search_storage,
-                self.user_config,
-            )
-            master_summary_agent = MasterSummaryAgent(
-                self.pipeline_factory,
-                summarization_profile,
-                self.summary_storage,
-                self.search_storage,
-                self.user_config,
-            )
-
-            # Get user-specific tool registry for this workflow
-            user_tool_registry = await registry_manager.get_user_registry(
-                user_id,
-                engineering_agent,
+                model=cast(Embeddings, embedding_model),
+                profile=embedding_profile,
+                component_name="EmbeddingAgent",
             )
 
             # Create nodes with injected agents and storage
@@ -232,95 +186,33 @@ class GraphBuilder:
                 ),
             )
             memory_search_node = MemorySearchNode(
-                memory_agent,
                 embedding_agent,
-                NodeMetadata(
-                    node_name="MemorySearchNode",
-                    node_id=uuid.uuid4().hex,
-                    node_type=ModelProfileType(memory_agent.profile.type).name,
-                    user_id=user_id,
-                ),
+                self.memory_storage,
             )
-            memory_storage_node = MemoryStorageNode(
-                memory_agent,
-                NodeMetadata(
-                    node_name="MemoryStorageNode",
-                    node_id=uuid.uuid4().hex,
-                    node_type=ModelProfileType(memory_agent.profile.type).name,
-                    user_id=user_id,
-                ),
-            )
-            title_generation_node = TitleGenerationNode(
-                primary_agent,
-                NodeMetadata(
-                    node_name="TitleGenerationNode",
-                    node_id=uuid.uuid4().hex,
-                    node_type=ModelProfileType(primary_agent.profile.type).name,
-                    user_id=user_id,
-                ),
-            )
+            memory_storage_node = MemoryStorageNode(self.memory_storage)
 
-            # ConsolidationNode needs both primary (for conversation summaries) and master (for consolidation)
-            chat_summary_node = ConsolidationNode(
-                primary_summary_agent,
-                master_summary_agent,
-                NodeMetadata(
-                    node_name="ConsolidationNode",
-                    node_id=uuid.uuid4().hex,
-                    node_type=ModelProfileType(master_summary_agent.profile.type).name,
-                    user_id=user_id,
-                ),
+            # create tool registry
+            tool_registry = await registry_manager.get_user_registry(
+                user_id, engineering_agent
             )
-            # SearchSummaryNode uses primary summaries by default
-            search_summary_node = SearchSummaryNode(
-                primary_summary_agent,
-                NodeMetadata(
-                    node_name="SearchSummaryNode",
-                    node_id=uuid.uuid4().hex,
-                    node_type=ModelProfileType(primary_summary_agent.profile.type).name,
-                    user_id=user_id,
-                ),
-            )
+            tools = tool_registry.get_all_executable_tools()
+
+            tool_node = ToolNode(tools)
 
             # Create master workflow graph
             workflow = StateGraph(WorkflowState)
 
-            # Title generation (if no title exists)
-            workflow.add_node("title_generation", title_generation_node)
-
-            # Memory nodes with injected agents and storage
-            workflow.add_node("memory_search", memory_search_node)
-            workflow.add_node("memory_creation", memory_creation_node)
-            workflow.add_node("memory_storage", memory_storage_node)
-
-            # Removed redundant tool workflow nodes - ToolRegistry handles all tool management
-            # workflow.add_node("static_tool_loading", static_tool_loading_node)   # REMOVED
-            # workflow.add_node("tool_collection", tool_collection_node)          # REMOVED
-            # workflow.add_node("tool_composer", tool_composer_node)              # REMOVED
-
-            workflow.add_node("chat_summary", chat_summary_node)
-            workflow.add_node("search_summary", search_summary_node)
-
-            tools_agent_subgraph = ToolsAgentSubgraph(
-                tool_registry=user_tool_registry,
-                chat_agent=primary_agent,
-                summary_agent=primary_summary_agent,
+            # create nodes with injected dependencies
+            chat_node = AgentNode(
+                agent=primary_agent,
+                tool_registry=tool_registry,
                 node_metadata=NodeMetadata(
-                    node_name="ToolsAgentSubgraph",
+                    node_name="AgentNode",
                     node_id=uuid.uuid4().hex,
                     node_type=ModelProfileType(primary_agent.profile.type).name,
                     user_id=user_id,
                 ),
             )
-            assert tools_agent_subgraph.graph is not None
-            workflow.add_node("tools_agent", tools_agent_subgraph.graph)
-
-            # Intent planning disabled: TodoListMiddleware supersedes manual intent planning todos
-            # intent_analysis_subgraph = PlanningIntentSubgraph(
-            #     classifier_agent=classifier_agent
-            # )
-            # assert intent_analysis_subgraph.graph is not None
-            # workflow.add_node("intent_analysis", intent_analysis_subgraph.graph)
 
             async def context_node(state: WorkflowState) -> WorkflowState:
                 """Execute the context assembly subgraph and return updated state."""
@@ -329,43 +221,30 @@ class GraphBuilder:
 
             workflow.add_node("context_assembly", context_node)
 
+            # Memory nodes with injected agents and storage
+            workflow.add_node("memory_search", memory_search_node)
+            workflow.add_node("memory_creation", memory_creation_node)
+            workflow.add_node("memory_storage", memory_storage_node)
+            workflow.add_node("agent", chat_node)
+            workflow.add_node("tool", tool_node)
+
             # Build a simplified workflow graph structure:
-            # 1. Start -> Memory search and context assembly
             workflow.add_edge(START, "memory_search")
             workflow.add_edge(START, "context_assembly")
 
-            # 2. Context assembly -> Tools Agent (ToolRegistry handles all tool management internally)
-            workflow.add_edge("context_assembly", "tools_agent")
-            workflow.add_edge("memory_search", "tools_agent")
-
-            # 3. Tools Agent -> Chat summary
-            # workflow.add_edge("tools_agent", "chat_summary")
-
-            # 9. Linear flow after agent completion with conditional title generation
-            def route_after_chat(state: WorkflowState):
-                """Route after chat - conditionally generate title."""
-                # Check if title already exists
-                if hasattr(state, "title") and state.title and state.title.strip():
-                    self.logger.info(
-                        "🔀 Title already exists - skipping title generation"
-                    )
-                    return "memory_creation"
-                else:
-                    self.logger.info("🔀 No title exists - routing to title generation")
-                    return "title_generation"
-
-            workflow.add_edge("search_summary", "chat_summary")
+            workflow.add_edge("context_assembly", "agent")
+            workflow.add_edge("memory_search", "agent")
+            # create conditional tool call loop
             workflow.add_conditional_edges(
-                "tools_agent",
-                route_after_chat,
+                "agent",
+                should_continue_tool_calls,
                 {
-                    "title_generation": "title_generation",
-                    "memory_creation": "memory_creation",
+                    "tools": "tool",
+                    "end": "memory_creation",
                 },
             )
-            workflow.add_edge("title_generation", "memory_creation")
 
-            # 10. Memory storage -> End (both from dual-loop exit and normal flow)
+            workflow.add_edge("agent", "memory_creation")
             workflow.add_edge("memory_creation", "memory_storage")
             workflow.add_edge("memory_storage", END)
 

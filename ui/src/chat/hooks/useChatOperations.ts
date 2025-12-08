@@ -13,13 +13,14 @@ import { Message } from '../../types/Message';
 import { useStreamHandler } from './useStreamHandler';
 import { useConversationOperations } from './useConversationOperations';
 import { useMessageOperations } from './useMessageOperations';
+import { MessageRoleValues } from '@/types/MessageRole';
 
 /**
  * Main chat operations hook - orchestrates streaming and state
  */
 export const useChatOperations = (state: ChatState, actions: ChatActions) => {
   const auth = useAuth();
-  const abortController = useRef<AbortController | null>(null);
+  const abortController = useRef<AbortController | undefined>(undefined);
 
   // Delegate to specialized hooks
   const streaming = useStreamHandler();
@@ -31,12 +32,13 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
    */
   const sendMessage = useCallback(async (message: Message) => {
     if (state.isTyping) {
-      console.warn("Already typing, please wait.");
       return;
     }
 
     actions.setIsTyping(true);
-    actions.setError(null);
+    actions.setError(undefined);
+
+    const userMessage = { ...message, role: MessageRoleValues.USER };
 
     try {
       // Ensure we have a conversation
@@ -46,7 +48,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
       }
 
       // Add user message to UI
-      actions.addMessage({ ...message, role: 'user' });
+      actions.addMessage(userMessage);
 
       // Reset streaming state
       streaming.resetStreaming();
@@ -54,32 +56,79 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
 
       // Sync streaming sections to state
       actions.setStreamingSections([]);
-      actions.setCurrentStreamingSection(null);
+      actions.setCurrentStreamingSection(undefined);
 
       // Start streaming
       abortController.current = new AbortController();
 
+      // Create initial streaming message WITHOUT an ID (so it's treated as streaming)
+      const initialStreamingMessage: Message = {
+        role: MessageRoleValues.ASSISTANT,
+        content: [{
+          type: MessageContentTypeValues.TEXT,
+          text: ''
+        }]
+        // No ID - this marks it as a streaming message
+      };
+
+      // Add initial streaming message to state (not persisted)
+      actions.setMessages(prev => [...prev, initialStreamingMessage]);
+
+      let finalMessage: Message | undefined;
+
       for await (const chunk of chat(
         getToken(auth.user),
-        message,
+        userMessage,
         abortController.current.signal
       )) {
         // Process each chunk through streaming handler and GET THE UPDATED STATE
         const updatedState = streaming.processChunk(chunk);
 
         actions.setStreamingSections([...updatedState.sections]); // Use returned state
-        actions.setCurrentStreamingSection(updatedState.currentSection ? { ...updatedState.currentSection } : null);
+        actions.setCurrentStreamingSection(updatedState.currentSection);
 
         // Update observer messages if present
         if (chunk.observer_messages?.length) {
           actions.setCurrentObserverMessages(chunk.observer_messages);
         }
+
+        // If this is the final complete message, use it directly
+        if (chunk.finish_reason === 'complete' && chunk.message) {
+          finalMessage = chunk.message;
+          break; // No need to process more chunks
+        }
       }
 
-      // Stream complete - refresh messages from server
-      if (conversationId) {
-        await messageOps.fetchMessages(conversationId);
+      // Use the complete final message if available
+      if (finalMessage) {
+        // First, immediately stop showing streaming sections to prevent duplication
+        streaming.resetStreaming();
+        actions.setStreamingSections([]);
+        actions.setCurrentStreamingSection(undefined);
+
+        // Remove any streaming messages (assistant messages without IDs)
+        actions.setMessages(prev => {
+          const filtered = prev.filter(msg =>
+            msg.role === MessageRoleValues.USER ||
+            (msg.role === MessageRoleValues.ASSISTANT && msg.id)
+          );
+          return filtered;
+        });
+
+        // Add the final message - addMessage will handle giving it an ID and updating state
+        actions.addMessage(finalMessage);
+      } else {
+        // If no complete message received, just clean up streaming
+        streaming.resetStreaming();
+        actions.setStreamingSections([]);
+        actions.setCurrentStreamingSection(undefined);
+        actions.setMessages(prev => prev.filter(msg => msg.id || msg.role === MessageRoleValues.USER));
       }
+
+      // // Stream complete - refresh messages from server
+      // if (conversationId) {
+      //   await messageOps.fetchMessages(conversationId);
+      // }
 
     } catch (err: unknown) {
       if ((err as Error).name !== 'AbortError') {
@@ -92,7 +141,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
         streaming.resetStreaming();
         actions.setCurrentObserverMessages([]);
         actions.setStreamingSections([]);
-        actions.setCurrentStreamingSection(null);
+        actions.setCurrentStreamingSection(undefined);
       }
     }
   }, [
@@ -102,8 +151,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     actions,
     auth.user,
     conversationOps,
-    streaming,
-    messageOps
+    streaming
   ]);
 
   /**
@@ -118,7 +166,9 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     const conversationId = state.currentConversation.id;
 
     actions.setIsLoading(true);
-    actions.setError(null);
+    actions.setError(undefined);
+
+    let finalMessage: Message | undefined;
 
     try {
       // Reuse shared abortController for cancellation
@@ -130,18 +180,50 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
         abortController.current.signal
       )) {
         const updatedState = streaming.processChunk(chunk);
-        actions.setStreamingSections([...updatedState.sections]);
-        actions.setCurrentStreamingSection(updatedState.currentSection ? { ...updatedState.currentSection } : null);
+        actions.setStreamingSections(updatedState.sections);
+        actions.setCurrentStreamingSection(updatedState.currentSection);
 
         if (chunk.observer_messages?.length) {
           actions.setCurrentObserverMessages(chunk.observer_messages);
         }
+
+        // If this is the final complete message, use it directly
+        if (chunk.finish_reason === 'complete' && chunk.message) {
+          finalMessage = chunk.message;
+          break; // No need to process more chunks
+        }
       }
 
-      // Stream complete - refresh messages
-      if (conversationId) {
-        await messageOps.fetchMessages(conversationId);
+      // Use the complete final message if available
+      if (finalMessage) {
+        // First, immediately stop showing streaming sections to prevent duplication
+        streaming.resetStreaming();
+        actions.setStreamingSections([]);
+        actions.setCurrentStreamingSection(undefined);
+        // Remove any streaming messages (assistant messages without IDs)
+        actions.setMessages(prev => {
+          const filtered = prev.filter(msg =>
+            msg.role === MessageRoleValues.USER ||
+            (msg.role === MessageRoleValues.ASSISTANT && msg.id)
+          );
+          return filtered;
+        });
+
+        // Add the final message - addMessage will handle giving it an ID and updating state
+        actions.addMessage(finalMessage);
+      } else {
+        // If no complete message received, just clean up streaming
+        streaming.resetStreaming();
+        actions.setStreamingSections([]);
+        actions.setCurrentStreamingSection(undefined);
+        actions.setMessages(prev => prev.filter(msg => msg.id || msg.role === 'user'));
       }
+
+
+      // // Stream complete - refresh messages
+      // if (conversationId) {
+      //   await messageOps.fetchMessages(conversationId);
+      // }
     } catch (err: unknown) {
       if ((err as Error).name !== 'AbortError') {
         actions.setError((err as Error).message);
@@ -153,11 +235,11 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
         streaming.resetStreaming();
         actions.setCurrentObserverMessages([]);
         actions.setStreamingSections([]);
-        actions.setCurrentStreamingSection(null);
+        actions.setCurrentStreamingSection(undefined);
       }
       actions.setIsLoading(false);
     }
-  }, [state.currentConversation, state.isLoading, state.isPaused, actions, auth.user, streaming, messageOps]);
+  }, [state.currentConversation, state.isLoading, state.isPaused, actions, auth.user, streaming]);
 
   const saveEditAndReplay = useCallback(async (messageId: number, newContent: string) => {
     if (!state.currentConversation?.id || !newContent.trim()) {
@@ -177,7 +259,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     };
 
     // Clear editing state
-    actions.setEditingMessageId(null);
+    actions.setEditingMessageId(undefined);
     actions.setEditingMessageContent('');
 
     await replayMessage(editedMessage);
@@ -188,19 +270,19 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
    */
   const cancelRequest = useCallback(async () => {
     console.log('🛑 Cancelling request...');
-    
+
     // First abort the stream
     if (abortController.current) {
       abortController.current.abort();
-      abortController.current = null;
+      abortController.current = undefined;
     }
 
     // Reset streaming immediately for UI responsiveness
     actions.setIsTyping(false);
     streaming.resetStreaming();
     actions.setStreamingSections([]);
-    actions.setCurrentStreamingSection(null);
-    
+    actions.setCurrentStreamingSection(undefined);
+
     try {
       // Call the server cancel endpoint
       await cancel(getToken(auth.user));

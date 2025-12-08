@@ -5,39 +5,36 @@ Provides core business logic for technical analysis, code generation, and engine
 
 import re
 import json
-from typing import List, Optional, Dict, Any, TYPE_CHECKING, Type
+from typing import List, Optional, TYPE_CHECKING, Type
 
 from pydantic import BaseModel
 
 from langchain.tools import BaseTool
+from langchain.chat_models import BaseChatModel
 
 from models import (
     ChatResponse,
-    IntentAnalysis,
     Message,
     ModelProfile,
-    PipelinePriority,
     TechnicalDomain,
     ResponseFormat,
-    NodeMetadata,
     DynamicTool,
-    TodoItem,
     Tool,
 )
+from composer.agents.base import BaseAgent
 from composer.core.errors import NodeExecutionError
-from utils.message_conversion import extract_text_from_message
-from .base_agent import BaseAgent
 
+from utils.message_conversion import extract_text_from_message
+from utils.logging import llmmllogger
 
 if TYPE_CHECKING:
-    from runner import PipelineFactory
     from db import DynamicToolStorage
 
 
 NON_TOOL_NAME = "__NON_TOOL__"
 
 
-class EngineeringAgent(BaseAgent[str]):
+class EngineeringAgent(BaseAgent):
     """
     Engineering Agent for generating technical responses with grammar-constrained output.
 
@@ -48,7 +45,7 @@ class EngineeringAgent(BaseAgent[str]):
 
     def __init__(
         self,
-        pipeline_factory: "PipelineFactory",
+        model: BaseChatModel,
         profile: ModelProfile,
         tool_storage: "DynamicToolStorage",
     ):
@@ -60,7 +57,10 @@ class EngineeringAgent(BaseAgent[str]):
             profile: Model profile for engineering tasks
             node_metadata: Node execution metadata for tracking
         """
-        super().__init__(pipeline_factory, profile, "EngineeringAgent")
+        super().__init__(
+            model=model, profile=profile, component_name="EngineeringAgent"
+        )
+        self.logger = llmmllogger.bind(component="EngineeringAgent")
         self.tool_storage = tool_storage
 
     async def generate_technical_response(
@@ -100,7 +100,6 @@ class EngineeringAgent(BaseAgent[str]):
             return await self.run(
                 messages=messages,
                 tools=tools,
-                priority=PipelinePriority.NORMAL,
                 grammar=grammar,
             )
 
@@ -330,7 +329,6 @@ Code Solution:"""
             # Use BaseAgent's run method to get LLM response
             result = await self.run(
                 messages=[prompt],
-                priority=PipelinePriority.NORMAL,
                 grammar=DynamicTool,
             )
 

@@ -1,0 +1,43 @@
+import { ResourceUsage } from './ResourceUsage';
+/**
+ * Result from executing a tool
+ */
+export interface ToolCall {
+    /**
+     * Foreign key reference to the associated message
+     */
+    message_id?: number;
+    /**
+     * Name of the executed tool
+     */
+    name: string;
+    /**
+     * Unique execution identifier
+     */
+    execution_id?: string;
+    /**
+     * Whether execution was successful
+     */
+    success?: boolean;
+    /**
+     * Arguments passed to the tool
+     */
+    args: Record<string, unknown>;
+    /**
+     * Result data from the tool
+     */
+    result_data?: Record<string, unknown>;
+    /**
+     * Error message if execution failed
+     */
+    error_message?: string;
+    /**
+     * Execution time in milliseconds
+     */
+    execution_time_ms?: number;
+    resource_usage?: ResourceUsage;
+    /**
+     * Timestamp when the tool call record was created
+     */
+    created_at?: Date;
+}

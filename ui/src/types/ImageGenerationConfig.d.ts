@@ -1,0 +1,49 @@
+/**
+ * Image generation configuration
+ */
+export interface ImageGenerationConfig {
+    /**
+     * Whether image generation is enabled
+     */
+    enabled: boolean;
+    /**
+     * Directory for file storage
+     */
+    storage_directory: string;
+    /**
+     * Maximum number of pixels in width or height (whichever is greater) for generated images
+     */
+    max_image_size: number;
+    /**
+     * Retention period for generated images in hours (e.g., 720 for 30 days)
+     */
+    retention_hours: number;
+    /**
+     * Whether to enable automatic prompt refinement for image generation. This will take the given prompt and attempt to refine it to improve the quality of the generated image.
+     */
+    auto_prompt_refinement: boolean;
+    /**
+     * Width of the generated image
+     */
+    width: number;
+    /**
+     * Height of the generated image
+     */
+    height: number;
+    /**
+     * Number of inference steps
+     */
+    inference_steps: number;
+    /**
+     * Guidance scale for image generation
+     */
+    guidance_scale: number;
+    /**
+     * Whether to use low memory mode
+     */
+    low_memory_mode: boolean;
+    /**
+     * Negative prompt for image generation
+     */
+    negative_prompt: string;
+}

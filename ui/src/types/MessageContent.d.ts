@@ -1,0 +1,38 @@
+import { MessageContentType } from './MessageContentType';
+/**
+ * Content of a message in a chat conversation
+ */
+export interface MessageContent {
+    /**
+     * Unique identifier for the message content
+     */
+    id?: number;
+    /**
+     * Foreign key reference to the associated message
+     */
+    message_id?: number;
+    /**
+     * Type of the message content (e.g., text, image, tool call)
+     */
+    type: MessageContentType;
+    /**
+     * Text content of the message, if applicable
+     */
+    text?: string;
+    /**
+     * URL of the image or resource, if applicable
+     */
+    url?: string;
+    /**
+     * Format of the content (e.g., 'mp3' for audio, 'mp4' for video)
+     */
+    format?: string;
+    /**
+     * Name of the file/image/etc., if applicable
+     */
+    name?: string;
+    /**
+     * Timestamp when the message content was created
+     */
+    created_at?: Date;
+}

@@ -1,0 +1,25 @@
+/**
+ * Resource usage metrics for operations
+ */
+export interface ResourceUsage {
+    /**
+     * CPU usage percentage
+     */
+    cpu_percent?: number;
+    /**
+     * Memory usage in MB
+     */
+    memory_mb?: number;
+    /**
+     * GPU memory usage in MB
+     */
+    gpu_memory_mb?: number;
+    /**
+     * Disk I/O in MB
+     */
+    disk_io_mb?: number;
+    /**
+     * Network I/O in MB
+     */
+    network_io_mb?: number;
+}

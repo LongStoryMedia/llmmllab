@@ -222,7 +222,7 @@ async def web_search(
         DEFAULT_WEB_SEARCH_CONFIG,
     )
 
-    logger = llmmllogger.logger.bind(component="WebSearch")
+    logger = llmmllogger.bind(component="WebSearch")
     try:
         # For testing without ToolRuntime - use default config
         # TODO: Implement proper LangGraph agent context to support ToolRuntime

@@ -13,11 +13,10 @@ from langchain_core.messages import (
 from langchain_core.messages.utils import count_tokens_approximately
 from langchain.agents.middleware import AgentMiddleware, AgentState
 from langgraph.runtime import Runtime
-from models import Message, MessageContent, MessageContentType, MessageRole
 
 
 from utils.message_conversion import lc_messages_to_messages
-from utils.logging import ehp_agent_logger
+from utils.logging import llmmllogger
 
 from composer.agents.chat import ChatAgent
 
@@ -39,6 +38,7 @@ class SummarizationMiddleware(AgentMiddleware):
     def __init__(
         self,
         agent: ChatAgent,
+        conversation_id: int,
         max_tokens_before_summary: int | None = None,
         percent_to_keep: int = 50,
         min_messages_to_keep: int = 2,
@@ -60,7 +60,8 @@ class SummarizationMiddleware(AgentMiddleware):
         self.percent_to_keep = percent_to_keep
         self.token_counter = token_counter
         self.messages_to_keep = min_messages_to_keep
-        self.logger = ehp_agent_logger.bind(component="SummarizationMiddleware")
+        self.conversation_id = conversation_id
+        self.logger = llmmllogger.bind(component="SummarizationMiddleware")
 
     async def abefore_model(
         self,
@@ -255,39 +256,26 @@ class SummarizationMiddleware(AgentMiddleware):
                     return True
         return False
 
-    async def _create_summary(self, messages_to_summarize: list[AnyMessage]) -> Message:
+    async def _create_summary(self, messages_to_summarize: list[AnyMessage]) -> str:
         """Generate summary using PrimarySummaryAgent and store in database."""
         if not messages_to_summarize:
             # Return empty summary object instead of string
-            return Message(
-                content=[
-                    MessageContent(
-                        text="No previous conversation history.",
-                        type=MessageContentType.TEXT,
-                    )
-                ],
-                role=MessageRole.ASSISTANT,
-            )
+            return "No previous conversation history."
 
         try:
             # Use PrimarySummaryAgent's summarize_conversation method
             summary = await self.agent.summarize_conversation(
-                messages=lc_messages_to_messages(messages_to_summarize)
+                messages=lc_messages_to_messages(
+                    messages_to_summarize, self.conversation_id
+                ),
+                level=1,
             )
 
             self.logger.debug(
                 f"Created summary with {len(messages_to_summarize)} messages"
             )
-            return summary
+            return summary.content
 
         except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error generating summary: {e}", exc_info=True)
-            return Message(
-                content=[
-                    MessageContent(
-                        text=f"Error generating summary: {e!s}",
-                        type=MessageContentType.TEXT,
-                    )
-                ],
-                role=MessageRole.ASSISTANT,
-            )
+            return f"Error generating summary: {e!s}"

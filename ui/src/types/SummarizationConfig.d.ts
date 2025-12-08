@@ -1,0 +1,29 @@
+/**
+ * Conversation summarization settings
+ */
+export interface SummarizationConfig {
+    /**
+     * Whether summarization is enabled
+     */
+    enabled: boolean;
+    /**
+     * Number of messages before summary
+     */
+    messages_before_summary: number;
+    /**
+     * Number of summaries before consolidation
+     */
+    summaries_before_consolidation: number;
+    /**
+     * Embedding dimension
+     */
+    embedding_dimension: number;
+    /**
+     * Maximum summary levels
+     */
+    max_summary_levels: number;
+    /**
+     * Summary weight coefficient
+     */
+    summary_weight_coefficient: number;
+}

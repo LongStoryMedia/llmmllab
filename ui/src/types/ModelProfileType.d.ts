@@ -1,0 +1,24 @@
+/**
+ * Type of model profile
+ */
+export declare enum ModelProfileType {
+    Primary = 0,
+    PrimarySummary = 1,
+    MasterSummary = 2,
+    BriefSummary = 3,
+    KeyPoints = 4,
+    SelfCritique = 5,
+    Improvement = 6,
+    MemoryRetrieval = 7,
+    Analysis = 8,
+    ResearchTask = 9,
+    ResearchPlan = 10,
+    ResearchConsolidation = 11,
+    ResearchAnalysis = 12,
+    Embedding = 13,
+    Formatting = 14,
+    ImageGenerationPrompt = 15,
+    Engineering = 16,
+    Reranking = 17,
+    ImageGeneration = 115
+}

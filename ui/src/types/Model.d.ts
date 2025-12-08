@@ -1,0 +1,49 @@
+import { ModelTask } from './ModelTask';
+import { ModelDetails } from './ModelDetails';
+import { ModelProvider } from './ModelProvider';
+import { LoraWeight } from './LoraWeight';
+/**
+ * Model represents a machine learning model used for generating responses
+ */
+export interface Model {
+    /**
+     * Unique identifier for the model
+     */
+    id?: string;
+    /**
+     * Display name of the model
+     */
+    name: string;
+    /**
+     * Identifier used to reference the model
+     */
+    model: string;
+    /**
+     * Type of task the model is designed for (e.g., "TextToText", "TextToImage")
+     */
+    task: ModelTask;
+    /**
+     * Timestamp of when the model was last modified
+     */
+    modified_at: string;
+    /**
+     * Hash digest identifying the model version
+     */
+    digest: string;
+    /**
+     * Additional information about the model
+     */
+    details: ModelDetails;
+    /**
+     * Pipeline type used for the model (e.g., "sd3", "sdxl")
+     */
+    pipeline?: string;
+    /**
+     * List of LoRA weights associated with the model
+     */
+    lora_weights?: (LoraWeight)[];
+    /**
+     * Provider or runtime of the model (e.g., "llama.cpp", "hf", "openai")
+     */
+    provider: ModelProvider;
+}

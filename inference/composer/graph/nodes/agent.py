@@ -6,11 +6,10 @@ Generates concise, descriptive titles based on conversation content.
 from typing import List
 from langchain.agents.middleware import AgentMiddleware
 
-
-from composer.graph.middleware.summarization_middleware import SummarizationMiddleware
 from composer.tools.registry import ToolRegistry
-from composer.graph.state import WorkflowState
 from composer.agents.chat import ChatAgent
+from composer.graph.state import WorkflowState
+from composer.graph.middleware.summarization_middleware import SummarizationMiddleware
 
 from models import NodeMetadata
 from utils.logging import llmmllogger
@@ -27,7 +26,8 @@ class AgentNode:
     def __init__(
         self, agent: ChatAgent, tool_registry: ToolRegistry, node_metadata: NodeMetadata
     ):
-        """Initialize title generation node with dependency injection.
+        """
+        Initialize title generation node with dependency injection.
 
         Args:
             agent: Required ClassifierAgent instance
@@ -46,6 +46,7 @@ class AgentNode:
         Returns:
             Updated workflow state with title
         """
+        assert state.conversation_id is not None
         try:
             n_ctx = self.agent.profile.parameters.num_ctx or 100000
             max_tokens_before_summary = int(n_ctx * 0.95)
@@ -53,6 +54,7 @@ class AgentNode:
                 SummarizationMiddleware(
                     agent=self.agent,
                     max_tokens_before_summary=max_tokens_before_summary,
+                    conversation_id=state.conversation_id,
                 )
             ]
             tools = self.tool_registry.get_all_executable_tools()

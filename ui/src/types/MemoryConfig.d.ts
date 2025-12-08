@@ -1,0 +1,33 @@
+/**
+ * Memory retrieval settings for semantic search and embedding operations
+ */
+export interface MemoryConfig {
+    /**
+     * Whether memory retrieval is enabled
+     */
+    enabled: boolean;
+    /**
+     * Maximum number of memories to retrieve
+     */
+    limit: number;
+    /**
+     * Enable cross-user memory retrieval
+     */
+    enable_cross_user: boolean;
+    /**
+     * Enable cross-conversation memory retrieval
+     */
+    enable_cross_conversation: boolean;
+    /**
+     * Minimum similarity threshold for memory matching (0.0 to 1.0)
+     */
+    similarity_threshold: number;
+    /**
+     * Always retrieve memories regardless of query content
+     */
+    always_retrieve: boolean;
+    /**
+     * Memory retrieval timeout in seconds
+     */
+    timeout: number;
+}

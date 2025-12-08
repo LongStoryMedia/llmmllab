@@ -22,7 +22,7 @@ from models import (
     NodeMetadata,
 )
 
-from utils.logging import ehp_agent_logger
+from utils.logging import llmmllogger
 from utils.message_conversion import (
     normalize_message_input,
     MessageInput,
@@ -64,7 +64,7 @@ class EmbeddingAgent:
         """
         # Set up component-specific logging
         component = component_name or self.__class__.__name__
-        self.logger = ehp_agent_logger.bind(component=component)
+        self.logger = llmmllogger.bind(component=component)
 
         # Store required dependencies
         self.model = model
@@ -88,6 +88,7 @@ class EmbeddingAgent:
         self._node_metadata = NodeMetadata(
             node_name="UNSET",
             node_id="UNSET",
+            node_type="UNSET",
         )
 
     def bind_node_metadata(self, metadata: NodeMetadata) -> Self:

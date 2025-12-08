@@ -11,7 +11,6 @@ Configuration Management:
 """
 
 from typing import Dict, Optional
-from datetime import datetime, timezone
 
 from langgraph.graph.state import CompiledStateGraph
 
@@ -44,17 +43,12 @@ class ComposerService:
     """
 
     def __init__(self):
-        self.logger = llmmllogger.logger
-        from runner import pipeline_factory  # pylint: disable=import-outside-toplevel
-
-        self.pipeline_factory = pipeline_factory
+        self.logger = llmmllogger.bind(component="ComposerService")
         self.graph_builder: Optional["GraphBuilder"] = None
         # Workflow cache is now created per-user during workflow composition
         self.workflow_caches: Dict[str, WorkflowCache] = {}
         # Generic workflow executor for streaming
-        self.executor = WorkflowExecutor(
-            logger=self.logger, default_context="composer_service"
-        )
+        self.executor = WorkflowExecutor()
 
     async def compose_workflow(
         self,
@@ -101,7 +95,6 @@ class ComposerService:
             # 3. Build master workflow
             graph_builder = self.graph_builder = GraphBuilder(
                 storage,
-                self.pipeline_factory,
                 user_config,
             )
             assert graph_builder is not None, "GraphBuilder should be initialized"
@@ -167,11 +160,6 @@ class ComposerService:
             ),
         )
 
-        # Load active todos for continuation context
-        active_todos = await storage.get_service(
-            storage.todo
-        ).get_todos_by_conversation(user_id, conversation_id)
-
         # Create the state with centralized user configuration and todo context
         state = WorkflowState(
             title=(
@@ -188,15 +176,6 @@ class ComposerService:
             user_id=user_id,
             user_config=user_config,
             conversation_id=conversation_id,
-            active_todos=active_todos,  # Include active todos for context continuity
-            dynamic_tool_storage=storage.get_service(
-                storage.dynamic_tool
-            ),  # Add dynamic tool storage
-            checkpoint_metadata={
-                "conversation_id": conversation_id,
-                "user_id": user_id,
-                "turn_timestamp": datetime.now(timezone.utc).isoformat(),
-            },
             things_to_remember=[current_user_message],
         )
 

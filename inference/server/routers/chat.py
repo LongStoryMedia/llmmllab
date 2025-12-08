@@ -32,7 +32,6 @@ logger = llmmllogger.bind(component="chat_router")
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
-
 async def composer_chat_completion(
     user_id: str, conversation_id: int, request_id: str
 ) -> AsyncIterator[str]:
@@ -82,7 +81,7 @@ async def chat_completion(
     try:
         # Transform file content to documents before storing
         msg = await transform_file_content_to_documents(msg, user_id)
-        
+
         await storage.get_service(storage.message).add_message(msg)
         return StreamingResponse(
             composer_chat_completion(user_id, msg.conversation_id, request_id),  # type: ignore

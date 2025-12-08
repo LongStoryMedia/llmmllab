@@ -164,7 +164,7 @@ const useChronologicalSections = (message: MessageType): ChronologicalSection[] 
 // Component for rendering streaming sections
 const StreamingSections: React.FC<{
   sections: ResponseSection[];
-  currentSection: ResponseSection | null;
+  currentSection?: ResponseSection;
   isTyping: boolean;
 }> = memo(({ sections, currentSection, isTyping }) => (
   <>
@@ -182,7 +182,7 @@ const StreamingSections: React.FC<{
 
       if (section.type === 'executing' && section.toolCalls) {
         return (
-          <div key={keyPrefix} className="space-y-2 mb-4">
+          <Box key={keyPrefix} className="space-y-2 mb-4">
             {section.toolCalls.map((toolCall, toolIndex) => (
               <ToolCallComponent
                 key={`tool-${toolIndex}`}
@@ -190,7 +190,7 @@ const StreamingSections: React.FC<{
                 keyPrefix={`tool-${toolIndex}`}
               />
             ))}
-          </div>
+          </Box>
         );
       }
 
@@ -245,12 +245,12 @@ const ChronologicalSections: React.FC<{
       if (section.type === 'tool') {
         const toolCall = section.data as ToolCall;
         return (
-          <div key={keyBase} className="mb-4">
+          <Box key={keyBase} className="mb-4">
             <ToolCallComponent
               toolCall={toolCall}
               keyPrefix={keyBase}
             />
-          </div>
+          </Box>
         );
       }
 
@@ -281,23 +281,24 @@ const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
   } = useChat();
 
   const inProgress = isLoading || isTyping;
-  const isStreamingMessage = !message.id;
   const isUser = message.role === 'user';
   const isEditing = editingMessageId === message.id;
 
   // Get chronological sections for completed messages
   const chronologicalSections = useChronologicalSections(message);
 
-  // Get sorted streaming sections
+  // Get sorted streaming sections (only use when actively streaming this specific message)
   const sortedStreamingSections = useMemo(() => {
-    if (!isStreamingMessage || streamingSections.length === 0) {
+    if (Boolean(message.id) || !isTyping || streamingSections.length === 0) {
       return [];
     }
-    return [...streamingSections].sort((a, b) => a.startedAt - b.startedAt);
-  }, [isStreamingMessage, streamingSections]);
 
-  // Parse legacy message format
-  // const parsed = parseResponse(message, null, null);
+    return [...streamingSections].sort((a, b) => a.startedAt - b.startedAt);
+  }, [message.id, isTyping, streamingSections]);
+
+  // Determine if we should show streaming or final content
+  // Only show streaming for messages without IDs that are currently being typed
+  const shouldShowStreaming = !message.id && isTyping && streamingSections.length > 0;
 
   // Convert to UI message for AI SDK components
   const uiMessage = convertToUIMessage(message);
@@ -343,7 +344,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
           )}
 
           {/* Render streaming sections for assistant messages */}
-          {!isUser && isStreamingMessage && (
+          {!isUser && shouldShowStreaming && (
             <StreamingSections
               sections={sortedStreamingSections}
               currentSection={currentStreamingSection}
@@ -352,34 +353,9 @@ const ChatBubble: React.FC<ChatBubbleProps> = memo(({ message }) => {
           )}
 
           {/* Render chronological content for completed assistant messages */}
-          {!isUser && !isStreamingMessage && message.id && (
+          {!isUser && !shouldShowStreaming && message.id && (
             <ChronologicalSections sections={chronologicalSections} />
           )}
-
-          {/* Fallback for legacy messages without structured data */}
-          {/* {!isUser && !isStreamingMessage && !message.id && (
-            <>
-              {parsed.thinking && (
-                <ReasoningSection content={parsed.thinking} />
-              )}
-
-              {parsed.toolCalls && (
-                <div className="space-y-2 mb-4">
-                  {parsed.toolCalls.map((toolCall, index) => (
-                    <ToolCallComponent
-                      key={index}
-                      toolCall={toolCall}
-                      keyPrefix={`legacy-tool-${index}`}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {parsed.content && (
-                <ContentSection content={parsed.content} />
-              )}
-            </>
-          )} */}
         </MessageContent>
 
         {/* Message actions in top-right corner */}

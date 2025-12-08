@@ -79,17 +79,6 @@ class PipelineFactory:
 
         # DEBUG: Add provider detection logging
         provider = getattr(model, "provider", None)
-        import traceback
-
-        call_stack = traceback.extract_stack()[-3:-1]
-        call_info = " → ".join(
-            [f"{frame.filename.split('/')[-1]}:{frame.lineno}" for frame in call_stack]
-        )
-
-        self.logger.info(
-            f"🔍 get_pipeline() called for {model_id}, provider={provider}, from: {call_info}"
-        )
-
         # Local providers -> managed cached path with automatic locking
         if provider in {
             ModelProvider.LLAMA_CPP,

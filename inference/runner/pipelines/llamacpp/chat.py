@@ -148,7 +148,7 @@ class ChatLlamaCppPipeline(BasePipeline):
                 temperature=self.profile.parameters.temperature or 0.7,
                 max_completion_tokens=self.profile.parameters.max_tokens or 10240,
                 top_p=self.profile.parameters.top_p or 0.9,
-                seed=self.profile.parameters.seed or 42,
+                seed=self.profile.parameters.seed or -1,
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
                 reasoning_effort=self.profile.parameters.reasoning_effort or "minimal",
                 metadata={

@@ -39,6 +39,7 @@ from models import (
 
 from runner.pipelines.llamacpp.chat import ReasoningAwareAIMessageChunk
 from utils.logging import llmmllogger, serialize_event_data
+from db import storage
 
 
 class WorkflowExecutor:
@@ -110,13 +111,37 @@ class WorkflowExecutor:
             Dict[str, Any]: Stream events from workflow execution
         """
         start_time = datetime.now(timezone.utc)
-        from db import storage  # pylint: disable=import-outside-toplevel
+        run_id = ""
+        state: Optional[GenerationState] = None
+        prev_state: Optional[GenerationState] = state
+        analyses_buffer = ""
+        contents_buffer = ""
+        thoughts_buffer = ""
+        # Track the run_id associated with the last appended buffers so
+        # flushing uses the correct execution id rather than the current
+        # event's run_id which can change between events (e.g. tool calls).
+        #
+        # Reason: streaming chunks for a single model run may be interleaved
+        # with other events (tool calls, sub-workflows) that have different
+        # `run_id`s. If we flush or key message contents against the
+        # current event's `run_id`, we may accidentally associate the
+        # buffered text with the wrong execution id, causing the
+        # `contents_buffer` to appear empty for the original run. We
+        # therefore record the run id at the time we append content.
+        last_content_run_id: Optional[str] = None
+        last_thoughts_run_id: Optional[str] = None
+        last_analyses_run_id: Optional[str] = None
+        tool_calls_timer: Dict[str, Dict[str, datetime]] = {}
+        tool_calls: Dict[str, ToolCall] = {}
+        thoughts: Dict[str, Thought] = {}
+        analyses: Dict[str, IntentAnalysis] = {}
+        message_contents: Dict[str, MessageContent] = {}
+        total_events = 0
 
         conversation_id = getattr(initial_state, "conversation_id")
         assert conversation_id is not None and isinstance(
             conversation_id, int
         ), "Initial state must have conversation_id"
-        msg_store = storage.get_service(storage.message)
 
         try:
             # Prepare state for execution
@@ -135,39 +160,13 @@ class WorkflowExecutor:
             if config is None and thread_id is not None:
                 config = self.create_thread_config(thread_id)
 
-            state: Optional[GenerationState] = None
-            prev_state: Optional[GenerationState] = state
-            analyses_buffer = ""
-            contents_buffer = ""
-            thoughts_buffer = ""
-            # Track the run_id associated with the last appended buffers so
-            # flushing uses the correct execution id rather than the current
-            # event's run_id which can change between events (e.g. tool calls).
-            #
-            # Reason: streaming chunks for a single model run may be interleaved
-            # with other events (tool calls, sub-workflows) that have different
-            # `run_id`s. If we flush or key message contents against the
-            # current event's `run_id`, we may accidentally associate the
-            # buffered text with the wrong execution id, causing the
-            # `contents_buffer` to appear empty for the original run. We
-            # therefore record the run id at the time we append content.
-            last_content_run_id: Optional[str] = None
-            last_thoughts_run_id: Optional[str] = None
-            last_analyses_run_id: Optional[str] = None
-            tool_calls_timer: Dict[str, Dict[str, datetime]] = {}
-            tool_calls: Dict[str, ToolCall] = {}
-            thoughts: Dict[str, Thought] = {}
-            analyses: Dict[str, IntentAnalysis] = {}
-            message_contents: Dict[str, MessageContent] = {}
-            total_events = 0
-
             # Stream workflow events
             async for event in workflow.astream_events(
-                state_dict, config=config, version="v2"
+                state_dict,
+                config=config,
+                version="v2",
             ):
-
                 total_events += 1
-
                 data = event.get("data", {})
                 event_type = event.get("event", "unknown")
                 chunk = data.get("chunk")
@@ -219,19 +218,9 @@ class WorkflowExecutor:
                     event_type == "on_chat_model_stream"
                     or event_type == "on_llm_stream"
                 ) and isinstance(chunk, AIMessage):
-                    if not metadata.get("checkpoint_ns", "").startswith("tools_agent"):
-                        self.logger.debug(
-                            f"Skipping checkpoint_ns: {metadata.get('checkpoint_ns')}",
-                        )
-                        continue
-
-                    if not metadata.get("node_name", "").startswith(
-                        "ToolsAgentSubgraph"
-                    ):
-                        self.logger.debug(
-                            f"Skipping : {metadata.get('node_name')}",
-                        )
-                        continue
+                    self.logger.debug(
+                        f"Model chunk received: {serialize_event_data(event)}",
+                    )
 
                     if state == GenerationState.ANALYZING:
                         for content in self._parse_content(chunk.content):
@@ -243,25 +232,46 @@ class WorkflowExecutor:
                         res.message.thoughts.append(
                             Thought(text=reasoning_chunk.reasoning_content)
                         )
-                        res.message.content.append(
-                            MessageContent(
-                                type=MessageContentType.THINKING,
-                                text=reasoning_chunk.reasoning_content,
-                            )
-                        )
+                        # res.message.content.append(
+                        #     MessageContent(
+                        #         type=MessageContentType.THINKING,
+                        #         text=reasoning_chunk.reasoning_content,
+                        #     )
+                        # )
                         thoughts_buffer += reasoning_chunk.reasoning_content
                     elif chunk.content:
-                        new_state = GenerationState.RESPONDING
-                        for content in self._parse_content(chunk.content):
-                            res.message.content.append(
-                                MessageContent(
-                                    type=MessageContentType.TEXT, text=content
+                        # Debug log the raw content to understand the structure
+                        self.logger.debug(f"Raw chunk.content: {repr(chunk.content)}")
+
+                        # Parse content and separate reasoning from regular text
+                        text_content, reasoning_content = (
+                            self._parse_content_with_reasoning(chunk.content)
+                        )
+
+                        # Handle reasoning content
+                        if reasoning_content:
+                            new_state = GenerationState.THINKING
+                            for reasoning_text in reasoning_content:
+                                res.message.thoughts.append(
+                                    Thought(text=reasoning_text)
                                 )
-                            )
-                            contents_buffer += content
-                            # remember which run this content belongs to so we
-                            # can flush against the correct execution id later
-                            last_content_run_id = run_id
+                                thoughts_buffer += reasoning_text
+                                # Track the run_id for thoughts as well
+                                last_thoughts_run_id = run_id
+
+                        # Handle regular text content
+                        if text_content:
+                            new_state = GenerationState.RESPONDING
+                            for content_text in text_content:
+                                res.message.content.append(
+                                    MessageContent(
+                                        type=MessageContentType.TEXT, text=content_text
+                                    )
+                                )
+                                contents_buffer += content_text
+                                # remember which run this content belongs to so we
+                                # can flush against the correct execution id later
+                                last_content_run_id = run_id
 
                 elif (
                     event_type.endswith("_model_end") or event_type.endswith("_llm_end")
@@ -461,6 +471,11 @@ class WorkflowExecutor:
             analyses=list(analyses.values()),
             conversation_id=conversation_id,
         )
+        message_id = await storage.get_service(storage.message).add_message(
+            final_message
+        )
+        final_message.id = message_id
+        final_message.created_at = datetime.now(timezone.utc)
 
         final_response = ChatResponse(
             message=final_message,
@@ -471,6 +486,133 @@ class WorkflowExecutor:
         )
         self.logger.debug(f"Final response: {serialize_event_data(final_response)}")
         yield final_response
+
+    def _parse_content_with_reasoning(
+        self, content: str | List[str | Dict[str, Any]]
+    ) -> tuple[List[str], List[str]]:
+        """
+        Parse message content into text and reasoning content separately.
+
+        Args:
+            content: Content which can be a string or list of strings/dicts
+
+        Returns:
+            tuple[List[str], List[str]]: (text_content, reasoning_content)
+        """
+        text_content = []
+        reasoning_content = []
+
+        if isinstance(content, str):
+            # Check if it's a JSON string containing reasoning
+            try:
+                parsed = json.loads(content)
+                if isinstance(parsed, dict) and parsed.get("type") == "reasoning":
+                    # Extract reasoning content
+                    reasoning_text = self._extract_reasoning_text(parsed)
+                    if reasoning_text:
+                        reasoning_content.append(reasoning_text)
+                elif isinstance(parsed, list):
+                    # Process as list
+                    text_parts, reasoning_parts = self._parse_content_with_reasoning(
+                        parsed
+                    )
+                    text_content.extend(text_parts)
+                    reasoning_content.extend(reasoning_parts)
+                else:
+                    # Regular string content
+                    text_content.append(content)
+            except (json.JSONDecodeError, TypeError):
+                # Not JSON, treat as regular string
+                text_content.append(content)
+        else:
+            # Process list/array content
+            for item in content:
+                if isinstance(item, str):
+                    # Check if string contains reasoning JSON
+                    try:
+                        parsed = json.loads(item)
+                        if (
+                            isinstance(parsed, dict)
+                            and parsed.get("type") == "reasoning"
+                        ):
+                            # Extract reasoning content
+                            reasoning_text = self._extract_reasoning_text(parsed)
+                            if reasoning_text:
+                                reasoning_content.append(reasoning_text)
+                        else:
+                            # Regular string content
+                            text_content.append(item)
+                    except (json.JSONDecodeError, TypeError):
+                        # Not JSON, regular string
+                        text_content.append(item)
+                elif isinstance(item, dict):
+                    # Handle structured content
+                    if item.get("type") == "reasoning":
+                        # Extract reasoning content
+                        reasoning_text = self._extract_reasoning_text(item)
+                        if reasoning_text:
+                            reasoning_content.append(reasoning_text)
+                    elif item.get("type") == "text" and "text" in item:
+                        # Extract text field
+                        text = item.get("text", "")
+                        text_content.append(text)
+                    elif "text" in item and not item.get("type"):
+                        # Fallback for text without explicit type
+                        text = item.get("text", "")
+                        text_content.append(text)
+                else:
+                    # Convert to string if not empty
+                    str_item = str(item)
+                    # Check if it looks like reasoning JSON
+                    if str_item.startswith('{"type": "reasoning"'):
+                        try:
+                            parsed = json.loads(str_item)
+                            reasoning_text = self._extract_reasoning_text(parsed)
+                            if reasoning_text:
+                                reasoning_content.append(reasoning_text)
+                        except json.JSONDecodeError:
+                            text_content.append(str_item)
+                    else:
+                        text_content.append(str_item)
+
+        return text_content, reasoning_content
+
+    def _extract_reasoning_text(self, reasoning_obj: Dict[str, Any]) -> str:
+        """
+        Extract text from a reasoning object structure.
+
+        Args:
+            reasoning_obj: Dictionary containing reasoning data
+
+        Returns:
+            str: Extracted reasoning text
+        """
+        if (
+            not isinstance(reasoning_obj, dict)
+            or reasoning_obj.get("type") != "reasoning"
+        ):
+            return ""
+
+        # Extract from summary structure
+        summary = reasoning_obj.get("summary", [])
+        if isinstance(summary, list):
+            text_parts = []
+            for summary_item in summary:
+                if (
+                    isinstance(summary_item, dict)
+                    and summary_item.get("type") == "summary_text"
+                ):
+                    text = summary_item.get("text", "")
+                    if text:
+                        text_parts.append(text)
+                elif isinstance(summary_item, str):
+                    text_parts.append(summary_item)
+            return "".join(text_parts)
+        elif isinstance(summary, str):
+            return summary
+
+        # Fallback - look for any text field
+        return reasoning_obj.get("text", "")
 
     def _parse_content(self, content: str | List[str | Dict[str, Any]]) -> List[str]:
         """

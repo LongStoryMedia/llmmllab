@@ -1,0 +1,38 @@
+import { ParameterTuningStrategy } from './ParameterTuningStrategy';
+/**
+ * Performance parameters for model initialization
+ */
+export interface PerformanceParameter {
+    /**
+     * Name of the performance parameter
+     */
+    parameter_name: 'n_ctx' | 'n_batch' | 'n_ubatch' | 'n_gpu_layers';
+    /**
+     * Priority of the parameter for optimization (lower number = higher priority)
+     */
+    priority: number;
+    /**
+     * Strategy for tuning this parameter
+     */
+    tuning_strategy: ParameterTuningStrategy;
+    /**
+     * Maximum number of search attempts for this parameter
+     */
+    max_search_attempts: number;
+    /**
+     * Minimum value for the parameter during optimization
+     */
+    floor: number;
+    /**
+     * Operator to adjust the parameter value during optimization
+     */
+    operator: '+' | '-' | '*' | '/';
+    /**
+     * Modifier value to apply with the operator during optimization
+     */
+    modifier: number;
+    /**
+     * Maximum value for the parameter during optimization
+     */
+    max_value: number;
+}

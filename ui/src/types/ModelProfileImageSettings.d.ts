@@ -1,0 +1,33 @@
+/**
+ * ModelProfileImageSettings represents the image settings for a model profile
+ */
+export interface ModelProfileImageSettings {
+    /**
+     * Height of the image in pixels
+     */
+    height?: number;
+    /**
+     * Width of the image in pixels
+     */
+    width?: number;
+    /**
+     * Number of inference steps
+     */
+    inference_steps?: number;
+    /**
+     * Guidance scale for image generation
+     */
+    guidance_scale?: number;
+    /**
+     * Whether to use low memory mode
+     */
+    low_memory_mode?: boolean;
+    /**
+     * Negative prompt for image generation
+     */
+    negative_prompt?: string;
+    /**
+     * Name of the LoRA model to use for image generation
+     */
+    lora_model?: string;
+}

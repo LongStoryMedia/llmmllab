@@ -1,0 +1,74 @@
+import { ModelParameters } from './ModelParameters';
+import { ModelProfileImageSettings } from './ModelProfileImageSettings';
+import { CircuitBreakerConfig } from './CircuitBreakerConfig';
+import { GPUConfig } from './GpuConfig';
+import { ParameterOptimizationConfig } from './ParameterOptimizationConfig';
+/**
+ * ModelProfile represents a model profile used for generating responses
+ */
+export interface ModelProfile {
+    /**
+     * Unique identifier for the profile
+     */
+    id?: string;
+    /**
+     * Id of the user who owns the profile
+     */
+    user_id: string;
+    /**
+     * Name of the profile
+     */
+    name: string;
+    /**
+     * Description of the profile
+     */
+    description?: string;
+    /**
+     * Name of the model to use
+     */
+    model_name: string;
+    /**
+     * Parameters for configuring the model
+     */
+    parameters: ModelParameters;
+    /**
+     * System prompt to send to the model
+     */
+    system_prompt: string;
+    /**
+     * Timestamp of when the profile was created
+     */
+    created_at?: Date;
+    /**
+     * Timestamp of when the profile was last updated
+     */
+    updated_at?: Date;
+    /**
+     * Version of the model
+     */
+    model_version?: string;
+    /**
+     * Type of the model profile
+     */
+    type: number;
+    /**
+     * Image settings for the model profile
+     */
+    image_settings?: ModelProfileImageSettings;
+    /**
+     * Optional circuit breaker configuration that overrides global settings
+     */
+    circuit_breaker?: CircuitBreakerConfig;
+    /**
+     * Optional GPU configuration that overrides global settings
+     */
+    gpu_config?: GPUConfig;
+    /**
+     * Configuration for parameter optimization during model initialization
+     */
+    parameter_optimization?: ParameterOptimizationConfig;
+    /**
+     * Optional draft model to use for faster initial responses
+     */
+    draft_model?: string;
+}

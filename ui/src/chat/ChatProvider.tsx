@@ -3,7 +3,6 @@ import { ChatContext } from './useChat';
 import { useAuth } from '../auth';
 import { useChatState } from './hooks/useChatState';
 import { useChatOperations } from './hooks/useChatOperations';
-import { Model } from '../types/Model';
 import { ResponseSection } from '../types/ResponseSection';
 
 export interface ChatContextType {
@@ -12,26 +11,14 @@ export interface ChatContextType {
   conversations: ReturnType<typeof useChatState>[0]['conversations'];
   currentConversation: ReturnType<typeof useChatState>[0]['currentConversation'];
   isLoading: boolean;
-  error: string | null;
+  error?: string;
   isTyping: boolean;
-  selectedModel: string;
-  models: Model[];
   isPaused: boolean;
   currentObserverMessages: string[];
-  editingMessageId: number | null;
+  editingMessageId?: number;
   editingMessageContent: string;
-
-  // New: Streaming sections (replaces response, currentThinking, currentToolCalls)
   streamingSections: ResponseSection[];
-  currentStreamingSection: ResponseSection | null;
-
-  // Deprecated (kept for backward compatibility during migration)
-  /** @deprecated Use streamingSections instead */
-  response: string;
-  /** @deprecated Use streamingSections instead */
-  currentThinking: string | null;
-  /** @deprecated Use streamingSections instead */
-  currentToolCalls: unknown[] | null;
+  currentStreamingSection?: ResponseSection;
 
   // Actions
   sendMessage: ReturnType<typeof useChatOperations>['sendMessage'];
@@ -42,8 +29,6 @@ export interface ChatContextType {
   replayMessage: ReturnType<typeof useChatOperations>['replayMessage'];
   startNewConversation: ReturnType<typeof useChatOperations>['startNewConversation'];
   selectConversation: ReturnType<typeof useChatOperations>['selectConversation'];
-  setSelectedModel: ReturnType<typeof useChatState>[1]['setSelectedModel'];
-  fetchModels: ReturnType<typeof useChatOperations>['fetchModels'];
   setCurrentConversation: ReturnType<typeof useChatState>[1]['setCurrentConversation'];
   cancelRequest: ReturnType<typeof useChatOperations>['cancelRequest'];
   setCurrentObserverMessages: ReturnType<typeof useChatState>[1]['setCurrentObserverMessages'];
@@ -85,8 +70,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(
     isLoading: state.isLoading,
     error: state.error,
     isTyping: state.isTyping,
-    selectedModel: state.selectedModel,
-    models: state.models,
     isPaused: state.isPaused,
     currentObserverMessages: state.currentObserverMessages,
     editingMessageId: state.editingMessageId,
@@ -95,12 +78,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(
     // New: Streaming sections
     streamingSections: state.streamingSections,
     currentStreamingSection: state.currentStreamingSection,
-
-    // Deprecated: Keep for backward compatibility during migration
-    // These can be removed once all components are updated
-    response: state.response,
-    currentThinking: null, // Deprecated - data now in streamingSections
-    currentToolCalls: null, // Deprecated - data now in streamingSections
 
     // Actions
     sendMessage: operations.sendMessage,
@@ -111,9 +88,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(
     replayMessage: operations.replayMessage,
     startNewConversation: operations.startNewConversation,
     selectConversation: operations.selectConversation,
-    setSelectedModel: actions.setSelectedModel,
     setCurrentConversation: actions.setCurrentConversation,
-    fetchModels: operations.fetchModels,
     cancelRequest: operations.cancelRequest,
     setCurrentObserverMessages: actions.setCurrentObserverMessages,
     startEditMessage: operations.startEditMessage,

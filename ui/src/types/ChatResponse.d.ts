@@ -1,0 +1,77 @@
+import { Message } from './Message';
+import { GenerationState } from './GenerationState';
+import { NodeMetadata } from './NodeMetadata';
+import { TodoItem } from './TodoItem';
+/**
+ * ChatResponse represents a response from the chat API
+ */
+export interface ChatResponse {
+    /**
+     * Indicates whether the generation is complete
+     */
+    done?: boolean;
+    /**
+     * The message content and metadata returned by the model
+     */
+    message?: Message;
+    /**
+     * Timestamp when the response was created
+     */
+    created_at?: Date;
+    /**
+     * Vectors representing the tokenized context (embeddings)
+     */
+    context?: ((number)[])[];
+    /**
+     * Specific indicator of how or why the generation finished
+     */
+    finish_reason?: 'stop' | 'complete' | 'length' | 'error' | 'load' | 'unload' | 'timeout' | 'cancel' | 'tool_call' | 'unknown';
+    /**
+     * Total time taken for the entire generation process in milliseconds
+     */
+    total_duration?: number;
+    /**
+     * Time taken to load the model in milliseconds
+     */
+    load_duration?: number;
+    /**
+     * Number of tokens in the prompt that were evaluated
+     */
+    prompt_eval_count?: number;
+    /**
+     * Time taken to evaluate the prompt tokens in milliseconds
+     */
+    prompt_eval_duration?: number;
+    /**
+     * Total number of tokens evaluated
+     */
+    eval_count?: number;
+    /**
+     * Time taken for token evaluation in milliseconds
+     */
+    eval_duration?: number;
+    /**
+     * Optional responses generated during message processing
+     */
+    processing?: string;
+    /**
+     * Optional state information from the model
+     */
+    state?: GenerationState;
+    /**
+     * Previous state information from the model before the current generation
+     */
+    prev_state?: GenerationState;
+    /**
+     * Additional metadata about the response
+     */
+    metadata?: NodeMetadata;
+    /**
+     * OBSERVER role messages that should be displayed as temporary floating notifications
+     */
+    observer_messages?: (string)[];
+    /**
+     * List of TODO items extracted from the response
+     */
+    todos?: (TodoItem)[];
+}

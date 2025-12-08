@@ -176,10 +176,6 @@ class LocalPipelineCacheManager:
             if entry and entry.is_alive():
                 pipe = entry.pipeline
                 if pipe:
-                    # FIX: HEALTH CHECK
-                    # Verify the underlying server is actually running before returning it.
-                    # This handles "zombie" cache entries where the process was killed (e.g. by cancellation)
-                    # but the cache entry wasn't evicted.
                     is_healthy = True
                     if hasattr(pipe, "server_manager"):
                         # Check server status if available
@@ -194,6 +190,9 @@ class LocalPipelineCacheManager:
                         entry.touch()
                         if isinstance(pipe, BasePipeline) and metadata:
                             pipe.bind_metadata(metadata)
+                        self.logger.debug(
+                            f"💾 Retrieved cached pipeline for {profile_id}"
+                        )
                         return pipe
 
                 # If we reach here, the entry exists but is either:
@@ -202,6 +201,8 @@ class LocalPipelineCacheManager:
                 # So we remove it.
                 self._cache.pop(profile_id, None)
 
+        self.logger.info(f"🆕 Creating new pipeline for {profile_id}")
+        # Estimate memory requirement for this model/profile
         required = self.estimate_memory(model, profile)
 
         # Check if graceful degradation is enabled and try OOM recovery if needed

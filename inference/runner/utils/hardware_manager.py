@@ -487,12 +487,18 @@ class EnhancedHardwareManager:
         if not self.has_gpu:
             return False
 
+        # Always refresh memory stats before checking to avoid stale data
+        self.update_all_memory_stats()
+
         total_available = 0
         for stats in self.memory_stats.values():
             if stats.mem_free:
                 available = stats.mem_free * 1024 * 1024 * self.config.safety_margin
                 total_available += available
 
+        self.logger.debug(
+            f"Memory check: {total_available/1e9:.2f}GB available vs {required_bytes/1e9:.2f}GB required"
+        )
         return total_available >= required_bytes
 
     def update_all_memory_stats(self) -> Dict[str, DevStats]:

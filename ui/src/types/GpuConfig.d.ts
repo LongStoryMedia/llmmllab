@@ -1,0 +1,37 @@
+/**
+ * Configuration for GPU memory management and device allocation
+ */
+export interface GPUConfig {
+    /**
+     * Force KV cache to CPU instead of GPU (saves VRAM)
+     */
+    no_kv_offload?: boolean;
+    /**
+     * Explicit number of model layers to place on GPU (-1 means all layers). If unset, heuristic allocation/backoff is used.
+     */
+    gpu_layers?: number;
+    /**
+     * Main GPU device index (-1 for auto-selection)
+     */
+    main_gpu?: number;
+    /**
+     * Device ID/name for main GPU (overrides main_gpu index)
+     */
+    main_gpu_device_id?: string;
+    /**
+     * Fraction of model to put on each GPU (must sum to 1.0)
+     */
+    tensor_split?: (number)[];
+    /**
+     * Device IDs/names corresponding to tensor_split fractions
+     */
+    tensor_split_devices?: (string)[];
+    /**
+     * How to split model across devices
+     */
+    split_mode?: 'none' | 'layer' | 'row';
+    /**
+     * Offload key/query/value tensors to GPU (opposite of no_kv_offload)
+     */
+    offload_kqv?: boolean;
+}

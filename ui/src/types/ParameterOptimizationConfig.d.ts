@@ -1,0 +1,19 @@
+import { PerformanceParameter } from './PerformanceParameter';
+import { CrashPrevention } from './CrashPrevention';
+/**
+ * Configuration for optimizing LLM initialization parameters to find maximum values
+ */
+export interface ParameterOptimizationConfig {
+    /**
+     * Enable parameter optimization to find maximum viable values
+     */
+    enabled: boolean;
+    /**
+     * List of performance parameters to optimize
+     */
+    parameters: (PerformanceParameter)[];
+    /**
+     * Settings to prevent container crashes during optimization
+     */
+    crash_prevention: CrashPrevention;
+}

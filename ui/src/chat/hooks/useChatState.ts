@@ -2,7 +2,6 @@ import { useState, useCallback, useMemo } from 'react';
 import { useAuth } from '../../auth';
 import { Conversation } from '../../types/Conversation';
 import { Message } from '../../types/Message';
-import { Model } from '../../types/Model';
 import { GenerationState } from '../../types';
 import { GenerationStateValues } from '../../types/GenerationState';
 import { ResponseSection } from '../../types/ResponseSection';
@@ -10,84 +9,61 @@ import { ResponseSection } from '../../types/ResponseSection';
 export interface ChatState {
   messages: Message[];
   conversations: { [key: string]: Conversation[] };
-  currentConversation: Conversation | null;
+  currentConversation?: Conversation;
   isLoading: boolean;
-  error: string | null;
+  error?: string;
   isTyping: boolean;
   response: string;
-  selectedModel: string;
-  models: Model[];
   isPaused: boolean;
   currentObserverMessages: string[];
-  editingMessageId: number | null;
+  editingMessageId?: number;
   editingMessageContent: string;
   generationState: GenerationState;
-
-  // New: streaming sections for ordered rendering
   streamingSections: ResponseSection[];
-  currentStreamingSection: ResponseSection | null;
+  currentStreamingSection?: ResponseSection;
 }
 
 export interface ChatActions {
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   setConversations: React.Dispatch<React.SetStateAction<{ [key: string]: Conversation[] }>>;
-  setCurrentConversation: (conversation: Conversation | null) => void;
+  setCurrentConversation: (conversation: Conversation | undefined) => void;
   setIsLoading: (loading: boolean) => void;
-  setError: (error: string | null) => void;
+  setError: (error?: string) => void;
   setIsTyping: (typing: boolean) => void;
   setResponse: React.Dispatch<React.SetStateAction<string>>;
-  setSelectedModel: (model: string) => void;
   addMessage: (message: Message) => void;
   addConversation: (conversation: Conversation) => void;
   updateConversationInList: (id: number, updates: Partial<Conversation>) => void;
   removeConversationFromList: (id: number) => void;
-  setModels: (models: Model[]) => void;
   setIsPaused: (paused: boolean) => void;
   setCurrentObserverMessages: React.Dispatch<React.SetStateAction<string[]>>;
-  setEditingMessageId: (id: number | null) => void;
+  setEditingMessageId: (id: number | undefined) => void;
   setEditingMessageContent: (content: string) => void;
   setGenerationState: (state: GenerationState) => void;
-
-  // New: streaming section actions
   setStreamingSections: React.Dispatch<React.SetStateAction<ResponseSection[]>>;
-  setCurrentStreamingSection: React.Dispatch<React.SetStateAction<ResponseSection | null>>;
+  setCurrentStreamingSection: React.Dispatch<React.SetStateAction<ResponseSection | undefined>>;
 }
 
 export const useChatState = (): [ChatState, ChatActions] => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversations, setConversations] = useState<{ [key: string]: Conversation[] }>({});
-  const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
+  const [currentConversation, setCurrentConversation] = useState<Conversation | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | undefined>(undefined);
   const [isTyping, setIsTyping] = useState(false);
   const [response, setResponse] = useState<string>('');
-  const [selectedModel, setSelectedModelState] = useState<string>(() => {
-    return localStorage.getItem('selectedModel') || '';
-  });
-  const [models, setModelsState] = useState<Model[]>([]);
   const [currentObserverMessages, setCurrentObserverMessages] = useState<string[]>([]);
-  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<number | undefined>(undefined);
   const [editingMessageContent, setEditingMessageContent] = useState<string>('');
   const [currentGenerationState, setCurrentGenerationState] = useState<GenerationState>(
     GenerationStateValues.RESPONDING
   );
-
-  // New: streaming sections state
   const [streamingSections, setStreamingSections] = useState<ResponseSection[]>([]);
-  const [currentStreamingSection, setCurrentStreamingSection] = useState<ResponseSection | null>(null);
+  const [currentStreamingSection, setCurrentStreamingSection] = useState<ResponseSection | undefined>(undefined);
 
   const { user } = useAuth();
   const currentUserId = useMemo(() => user?.profile?.preferred_username ?? '', [user]);
   const [isPaused, setIsPaused] = useState<boolean>(false);
-
-  const setModels = useCallback((models: Model[]) => {
-    setModelsState(models);
-  }, []);
-
-  const setSelectedModel = useCallback((model: string) => {
-    setSelectedModelState(model);
-    localStorage.setItem('selectedModel', model);
-  }, []);
 
   const addMessage = useCallback((message: Message) => {
     setMessages(prev => [...prev, message]);
@@ -132,7 +108,7 @@ export const useChatState = (): [ChatState, ChatActions] => {
     }));
 
     setCurrentConversation(prev =>
-      prev?.id === id ? null : prev
+      prev?.id === id ? undefined : prev
     );
   }, [currentUserId]);
 
@@ -148,8 +124,6 @@ export const useChatState = (): [ChatState, ChatActions] => {
     error,
     isTyping,
     response,
-    selectedModel,
-    models,
     isPaused,
     currentObserverMessages,
     editingMessageId,
@@ -167,12 +141,10 @@ export const useChatState = (): [ChatState, ChatActions] => {
     setError,
     setIsTyping,
     setResponse,
-    setSelectedModel,
     addMessage,
     addConversation,
     updateConversationInList,
     removeConversationFromList,
-    setModels,
     setIsPaused,
     setCurrentObserverMessages,
     setEditingMessageId,

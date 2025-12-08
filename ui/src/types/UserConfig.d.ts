@@ -1,0 +1,37 @@
+import { SummarizationConfig } from './SummarizationConfig';
+import { MemoryConfig } from './MemoryConfig';
+import { WebSearchConfig } from './WebSearchConfig';
+import { PreferencesConfig } from './PreferencesConfig';
+import { ModelProfileConfig } from './ModelProfileConfig';
+import { RefinementConfig } from './RefinementConfig';
+import { ImageGenerationConfig } from './ImageGenerationConfig';
+import { CircuitBreakerConfig } from './CircuitBreakerConfig';
+import { GPUConfig } from './GpuConfig';
+import { ParameterOptimizationConfig } from './ParameterOptimizationConfig';
+import { WorkflowConfig } from './WorkflowConfig';
+import { ToolConfig } from './ToolConfig';
+import { EventStreamConfig } from './EventStreamConfig';
+import { ContextWindowConfig } from './ContextWindowConfig';
+/**
+ * User-specific configuration
+ */
+export interface UserConfig {
+    /**
+     * User ID
+     */
+    user_id: string;
+    summarization: SummarizationConfig;
+    memory: MemoryConfig;
+    web_search: WebSearchConfig;
+    preferences: PreferencesConfig;
+    model_profiles: ModelProfileConfig;
+    refinement: RefinementConfig;
+    image_generation: ImageGenerationConfig;
+    circuit_breaker: CircuitBreakerConfig;
+    gpu_config: GPUConfig;
+    parameter_optimization: ParameterOptimizationConfig;
+    workflow: WorkflowConfig;
+    tool: ToolConfig;
+    event_stream?: EventStreamConfig;
+    context_window: ContextWindowConfig;
+}

@@ -1,0 +1,13 @@
+/**
+ * Response refinement settings
+ */
+export interface RefinementConfig {
+    /**
+     * Enable response filtering
+     */
+    enable_response_filtering: boolean;
+    /**
+     * Enable response critique
+     */
+    enable_response_critique: boolean;
+}
