@@ -3,7 +3,6 @@ import { Box, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Divide
 import { Link, useLocation } from 'react-router-dom';
 import ChatIcon from '@mui/icons-material/Chat';
 import ImageIcon from '@mui/icons-material/Image';
-import ChecklistIcon from '@mui/icons-material/Checklist';
 import SettingsIcon from '@mui/icons-material/Settings';
 import HandymanIcon from '@mui/icons-material/Handyman';
 
@@ -13,7 +12,6 @@ const Navigation: React.FC = () => {
   const navigationItems = [
     { text: 'Chat', icon: <ChatIcon />, path: '/' },
     { text: 'Images', icon: <ImageIcon />, path: '/images' },
-    { text: 'Todos', icon: <ChecklistIcon />, path: '/todos' },
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' },
     { text: 'Model Profiles', icon: <HandymanIcon />, path: '/model-profiles' }
   ];

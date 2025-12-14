@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Grid, Typography, useTheme, Tabs, Tab, Box, Paper, Alert, CircularProgress, Button } from '@mui/material';
 import { useConfig } from '../../hooks/useConfig';
-import ProfileSettings from './ProfileSettings';
 import ModelSettings from './ModelSettings';
 import SummarizationSettings from './SummarizationSettings';
 import MemorySettings from './MemorySettings';
@@ -112,9 +111,6 @@ const SettingsTabs = ({ onTabChange, currentTab }: { onTabChange: (tab: string) 
             </Tabs>
 
             <Box sx={{ p: 2 }}>
-              <TabPanel value={tabValue} index={0}>
-                <ProfileSettings />
-              </TabPanel>
               <TabPanel value={tabValue} index={1}>
                 <ModelSettings />
               </TabPanel>

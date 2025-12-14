@@ -15,11 +15,11 @@ const MainContainer = styled(Box)<{ overflow: string }>(({ theme, overflow }) =>
   overflow: overflow
 }));
 
-const ContentContainer = styled(Box)(() => ({
+const ContentContainer = styled(Box)<{ overflow: string }>(({ overflow }) => ({
   flex: 1,
   display: 'flex',
   flexDirection: 'column',
-  overflow: 'hidden',
+  overflow: overflow,
   paddingTop: '80px', // Account for TopBar height
   minHeight: 0
 }));

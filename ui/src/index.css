@@ -12,6 +12,28 @@
 /* ========================================
    STREAMDOWN STYLING - https://streamdown.ai/docs/styling
    ======================================== */
+pre {
+  white-space: pre-wrap;
+}
+
+#root {
+  margin: 0 auto;
+  text-align: left;
+  width: 100%;
+  height: 100vh;
+  position: relative;
+}
+
+body {
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  height: 100vh;
+}
+
 
 /* Headings */
 [data-streamdown="heading-1"] {
@@ -142,31 +164,6 @@
   height: 1px;
   background: hsl(var(--border));
   margin: 2rem 0;
-}
-
-pre {
-  white-space: pre-wrap;
-}
-
-#root {
-  margin: 0 auto;
-  text-align: left;
-  width: 100%;
-  height: 100vh;
-  overflow: hidden;
-  position: relative;
-}
-
-body {
-  overflow: hidden;
-  height: 100vh;
-  margin: 0;
-  padding: 0;
-}
-
-html {
-  overflow: hidden;
-  height: 100vh;
 }
 
 /* Code Blocks - Minimal styling per docs */

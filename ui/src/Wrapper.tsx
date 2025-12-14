@@ -10,6 +10,10 @@ import { ConfigProvider } from './context/ConfigContext'
 import MainLayout from './components/Layout/MainLayout'
 import LoadingAnimation from './components/Shared/LoadingAnimation'
 
+const isChatPage = (path: string) => {
+  return path === '/' || path.startsWith('/chat/');
+};
+
 // Utility function to convert any color to HSL format
 const colorToHsl = (color: string): string => {
   // Create a temporary element to get computed color
@@ -117,8 +121,8 @@ const globalStyles = {
     padding: 0
   },
   '#root': {
-    height: '100%'
-    // overflow: 'hidden'
+    height: '100%',
+    overflow: isChatPage(window.location.pathname) ? 'hidden' : 'auto'
   }
 };
 
