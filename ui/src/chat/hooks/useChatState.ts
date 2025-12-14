@@ -21,6 +21,8 @@ export interface ChatState {
   generationState: GenerationState;
   streamingSections: ResponseSection[];
   currentStreamingSection?: ResponseSection;
+  isStructuredMode: boolean;
+  jsonSchema: string;
 }
 
 export interface ChatActions {
@@ -42,6 +44,8 @@ export interface ChatActions {
   setGenerationState: (state: GenerationState) => void;
   setStreamingSections: React.Dispatch<React.SetStateAction<ResponseSection[]>>;
   setCurrentStreamingSection: React.Dispatch<React.SetStateAction<ResponseSection | undefined>>;
+  setIsStructuredMode: (isStructured: boolean) => void;
+  setJsonSchema: (schema: string) => void;
 }
 
 export const useChatState = (): [ChatState, ChatActions] => {
@@ -64,6 +68,8 @@ export const useChatState = (): [ChatState, ChatActions] => {
   const { user } = useAuth();
   const currentUserId = useMemo(() => user?.profile?.preferred_username ?? '', [user]);
   const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [isStructuredMode, setIsStructuredMode] = useState<boolean>(false);
+  const [jsonSchema, setJsonSchema] = useState<string>('{\n  "type": "object",\n  "properties": {\n    "response": {\n      "type": "string"\n    }\n  }\n}');
 
   const addMessage = useCallback((message: Message) => {
     setMessages(prev => [...prev, message]);
@@ -130,7 +136,9 @@ export const useChatState = (): [ChatState, ChatActions] => {
     editingMessageContent,
     generationState: currentGenerationState,
     streamingSections,
-    currentStreamingSection
+    currentStreamingSection,
+    isStructuredMode,
+    jsonSchema
   };
 
   const actions: ChatActions = {
@@ -151,7 +159,9 @@ export const useChatState = (): [ChatState, ChatActions] => {
     setEditingMessageContent,
     setGenerationState,
     setStreamingSections,
-    setCurrentStreamingSection
+    setCurrentStreamingSection,
+    setIsStructuredMode,
+    setJsonSchema
   };
 
   return [state, actions];

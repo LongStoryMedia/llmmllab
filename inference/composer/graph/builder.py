@@ -4,14 +4,22 @@ Uses clean factories and strategies with proper dependency injection pattern.
 All agents, storage services, and model profiles are instantiated upfront and injected.
 """
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Optional, Type, cast
 import uuid
 
 from langgraph.graph.state import CompiledStateGraph, StateGraph, END, START
+from langgraph.prebuilt import ToolNode
 from langchain.chat_models import BaseChatModel
 from langchain.embeddings import Embeddings
-from langgraph.prebuilt import ToolNode
+from pydantic import BaseModel
 
+from composer.constants import (
+    AGENT_NODE_NAME,
+    MEMORY_CREATE_NODE_NAME,
+    MEMORY_SEARCH_NODE_NAME,
+    MEMORY_STORE_NODE_NAME,
+    TOOL_NODE_NAME,
+)
 from models import (
     ModelProfileType,
     UserConfig,
@@ -121,6 +129,7 @@ class GraphBuilder:
     async def build_workflow(
         self,
         user_id: str,
+        response_format: Optional[Type[BaseModel]] = None,
     ) -> CompiledStateGraph:
         """
         Build a workflow of the specified type.
@@ -207,11 +216,12 @@ class GraphBuilder:
                 agent=primary_agent,
                 tool_registry=tool_registry,
                 node_metadata=NodeMetadata(
-                    node_name="AgentNode",
+                    node_name=AGENT_NODE_NAME,
                     node_id=uuid.uuid4().hex,
                     node_type=ModelProfileType(primary_agent.profile.type).name,
                     user_id=user_id,
                 ),
+                grammar=response_format,
             )
 
             async def context_node(state: WorkflowState) -> WorkflowState:
@@ -222,31 +232,30 @@ class GraphBuilder:
             workflow.add_node("context_assembly", context_node)
 
             # Memory nodes with injected agents and storage
-            workflow.add_node("memory_search", memory_search_node)
-            workflow.add_node("memory_creation", memory_creation_node)
-            workflow.add_node("memory_storage", memory_storage_node)
-            workflow.add_node("agent", chat_node)
-            workflow.add_node("tool", tool_node)
-
+            workflow.add_node(MEMORY_SEARCH_NODE_NAME, memory_search_node)
+            workflow.add_node(MEMORY_CREATE_NODE_NAME, memory_creation_node)
+            workflow.add_node(MEMORY_STORE_NODE_NAME, memory_storage_node)
+            workflow.add_node(AGENT_NODE_NAME, chat_node)
+            workflow.add_node(TOOL_NODE_NAME, tool_node)
             # Build a simplified workflow graph structure:
-            workflow.add_edge(START, "memory_search")
+            workflow.add_edge(START, MEMORY_SEARCH_NODE_NAME)
             workflow.add_edge(START, "context_assembly")
 
-            workflow.add_edge("context_assembly", "agent")
-            workflow.add_edge("memory_search", "agent")
+            workflow.add_edge("context_assembly", AGENT_NODE_NAME)
+            workflow.add_edge(MEMORY_SEARCH_NODE_NAME, AGENT_NODE_NAME)
             # create conditional tool call loop
             workflow.add_conditional_edges(
-                "agent",
+                AGENT_NODE_NAME,
                 should_continue_tool_calls,
                 {
-                    "tools": "tool",
-                    "end": "memory_creation",
+                    "tools": TOOL_NODE_NAME,
+                    "end": MEMORY_CREATE_NODE_NAME,
                 },
             )
 
-            workflow.add_edge("agent", "memory_creation")
-            workflow.add_edge("memory_creation", "memory_storage")
-            workflow.add_edge("memory_storage", END)
+            workflow.add_edge(AGENT_NODE_NAME, MEMORY_CREATE_NODE_NAME)
+            workflow.add_edge(MEMORY_CREATE_NODE_NAME, MEMORY_STORE_NODE_NAME)
+            workflow.add_edge(MEMORY_STORE_NODE_NAME, END)
 
             # TEMPORARILY DISABLED: Checkpointer causes connection issues
             # The PostgreSQL checkpointer creates a connection during compilation

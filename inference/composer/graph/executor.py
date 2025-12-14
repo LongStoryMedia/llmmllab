@@ -24,6 +24,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.runnables.schema import StreamEvent, EventData
 from langchain_core.messages import AIMessage, ToolMessage
 
+from composer.constants import STRUCTURED_AGENT_RUNNABLE_NAME
 from models import (
     IntentAnalysis,
     MessageContentType,
@@ -136,6 +137,7 @@ class WorkflowExecutor:
         thoughts: Dict[str, Thought] = {}
         analyses: Dict[str, IntentAnalysis] = {}
         message_contents: Dict[str, MessageContent] = {}
+        structured_content: Dict[str, Any] = {}
         total_events = 0
 
         conversation_id = getattr(initial_state, "conversation_id")
@@ -218,10 +220,6 @@ class WorkflowExecutor:
                     event_type == "on_chat_model_stream"
                     or event_type == "on_llm_stream"
                 ) and isinstance(chunk, AIMessage):
-                    self.logger.debug(
-                        f"Model chunk received: {serialize_event_data(event)}",
-                    )
-
                     if state == GenerationState.ANALYZING:
                         for content in self._parse_content(chunk.content):
                             analyses_buffer += content
@@ -232,17 +230,8 @@ class WorkflowExecutor:
                         res.message.thoughts.append(
                             Thought(text=reasoning_chunk.reasoning_content)
                         )
-                        # res.message.content.append(
-                        #     MessageContent(
-                        #         type=MessageContentType.THINKING,
-                        #         text=reasoning_chunk.reasoning_content,
-                        #     )
-                        # )
                         thoughts_buffer += reasoning_chunk.reasoning_content
                     elif chunk.content:
-                        # Debug log the raw content to understand the structure
-                        self.logger.debug(f"Raw chunk.content: {repr(chunk.content)}")
-
                         # Parse content and separate reasoning from regular text
                         text_content, reasoning_content = (
                             self._parse_content_with_reasoning(chunk.content)
@@ -272,6 +261,15 @@ class WorkflowExecutor:
                                 # remember which run this content belongs to so we
                                 # can flush against the correct execution id later
                                 last_content_run_id = run_id
+                elif (
+                    event_type == "on_chain_end"
+                    and event_name == STRUCTURED_AGENT_RUNNABLE_NAME
+                ):
+                    new_state = GenerationState.FORMATTING
+                    if isinstance(output, BaseModel):
+                        output = output.model_dump()
+                    structured_content = output
+                    res.message.structured_output = output
 
                 elif (
                     event_type.endswith("_model_end") or event_type.endswith("_llm_end")
@@ -470,6 +468,7 @@ class WorkflowExecutor:
             tool_calls=list(tool_calls.values()),
             analyses=list(analyses.values()),
             conversation_id=conversation_id,
+            structured_output=structured_content,
         )
         message_id = await storage.get_service(storage.message).add_message(
             final_message

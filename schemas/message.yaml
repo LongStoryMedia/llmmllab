@@ -41,6 +41,9 @@ properties:
     items:
       $ref: document.yaml
     description: Array of documents attached to the message
+  structured_output:
+    type: object
+    description: Structured output data from the message
 required:
   - role
   - content

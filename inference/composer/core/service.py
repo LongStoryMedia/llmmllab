@@ -10,9 +10,10 @@ Configuration Management:
 - No configuration merging logic should exist in service layer components
 """
 
-from typing import Dict, Optional
+from typing import Dict, Optional, Type
 
 from langgraph.graph.state import CompiledStateGraph
+from pydantic import BaseModel
 
 from models import (
     Message,
@@ -53,6 +54,7 @@ class ComposerService:
     async def compose_workflow(
         self,
         user_id: str,
+        response_format: Optional[Type[BaseModel]] = None,
     ) -> CompiledStateGraph:
         """
         Construct or retrieve a master workflow with intelligent routing.
@@ -102,10 +104,10 @@ class ComposerService:
             if user_cache:
                 workflow = await user_cache.get_or_create(
                     cache_key,
-                    lambda: graph_builder.build_workflow(user_id),
+                    lambda: graph_builder.build_workflow(user_id, response_format),
                 )
             else:
-                workflow = await graph_builder.build_workflow(user_id)
+                workflow = await graph_builder.build_workflow(user_id, response_format)
 
             self.logger.info(
                 "Master workflow composed successfully", extra={"user_id": user_id}

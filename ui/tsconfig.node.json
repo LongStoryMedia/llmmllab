@@ -9,7 +9,6 @@
     "skipLibCheck": true,
     /* Bundler mode */
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
     // "isolatedModules": true,
     "moduleDetection": "force",
     /* Linting */

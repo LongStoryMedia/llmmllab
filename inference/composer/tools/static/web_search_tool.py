@@ -49,6 +49,42 @@ except ModuleNotFoundError:  # pragma: no cover - environment variability
         ) from e
 
 
+#   engines:
+#     type: array
+#     description: List of SearxNG search engines to use
+#     items:
+#       type: string
+#     default:
+#       [
+#         "google",
+#         "bing",
+#         "duckduckgo",
+#         "startpage",
+#         "github",
+#         "arxiv",
+#         "wikipedia",
+#       ]
+#   categories:
+#     type: array
+#     description: SearxNG search categories to include
+#     items:
+#       type: string
+#       enum:
+#         [
+#           "general",
+#           "news",
+#           "science",
+#           "it",
+#           "shopping",
+#           "images",
+#           "videos",
+#           "music",
+#           "files",
+#           "social",
+#         ]
+#     default: ["general", "news", "science", "it"]
+
+
 class SearxNG:
     """Wrapper for Searx Search API using WebSearchConfig."""
 

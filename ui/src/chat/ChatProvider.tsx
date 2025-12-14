@@ -17,6 +17,8 @@ export interface ChatContextType {
   currentObserverMessages: string[];
   editingMessageId?: number;
   editingMessageContent: string;
+  isStructuredMode: boolean;
+  jsonSchema: string;
   streamingSections: ResponseSection[];
   currentStreamingSection?: ResponseSection;
 
@@ -35,6 +37,8 @@ export interface ChatContextType {
   startEditMessage: ReturnType<typeof useChatOperations>['startEditMessage'];
   cancelEditMessage: ReturnType<typeof useChatOperations>['cancelEditMessage'];
   saveEditAndReplay: ReturnType<typeof useChatOperations>['saveEditAndReplay'];
+  setIsStructuredMode: (isStructured: boolean) => void;
+  setJsonSchema: (schema: string) => void;
 }
 
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(({ children }) => {
@@ -74,8 +78,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(
     currentObserverMessages: state.currentObserverMessages,
     editingMessageId: state.editingMessageId,
     editingMessageContent: state.editingMessageContent,
-
-    // New: Streaming sections
+    isStructuredMode: state.isStructuredMode,
+    jsonSchema: state.jsonSchema,
     streamingSections: state.streamingSections,
     currentStreamingSection: state.currentStreamingSection,
 
@@ -93,7 +97,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(
     setCurrentObserverMessages: actions.setCurrentObserverMessages,
     startEditMessage: operations.startEditMessage,
     cancelEditMessage: operations.cancelEditMessage,
-    saveEditAndReplay: operations.saveEditAndReplay
+    saveEditAndReplay: operations.saveEditAndReplay,
+    setIsStructuredMode: actions.setIsStructuredMode,
+    setJsonSchema: actions.setJsonSchema
   };
 
   return <ChatContext.Provider value={contextValue}>{children}</ChatContext.Provider>;

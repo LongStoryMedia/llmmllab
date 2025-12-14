@@ -20,7 +20,7 @@ Architectural Role:
 - Maintains Protocol-based decoupling requirements
 """
 
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Optional, Type
 from pydantic import BaseModel
 from models import ChatResponse
 from utils.logging import llmmllogger
@@ -82,7 +82,10 @@ async def get_or_init_composer_service() -> ComposerService:
     return await _manager.get_or_init_service()
 
 
-async def compose_workflow(user_id: str) -> CompiledStateGraph:
+async def compose_workflow(
+    user_id: str,
+    response_format: Optional[Type[BaseModel]] = None,
+) -> CompiledStateGraph:
     """
     Compose a workflow for the given user and conversation messages.
 
@@ -101,7 +104,7 @@ async def compose_workflow(user_id: str) -> CompiledStateGraph:
         No configuration objects should be passed as arguments (architectural rule).
     """
     svc = await _manager.get_or_init_service()
-    return await svc.compose_workflow(user_id)
+    return await svc.compose_workflow(user_id, response_format)
 
 
 async def clear_workflow_cache(user_id: str) -> None:

@@ -25,15 +25,16 @@ import {
   ToolCall
 } from '../../types';
 import { convertToUIMessage } from '../../api/types';
+import { CodeBlock } from '../ai-elements/code-block';
 
 interface ChatBubbleProps {
   message: MessageType;
 }
 
 interface ChronologicalSection {
-  type: 'thought' | 'tool' | 'content';
+  type: 'thought' | 'tool' | 'content' | 'structured';
   timestamp: Date | number;
-  data: Thought | ToolCall | MessageContentType;
+  data: Thought | ToolCall | MessageContentType | Record<string, unknown>;
   index?: number;
 }
 
@@ -108,63 +109,86 @@ const ContentSection: React.FC<{ content: string }> = memo(({ content }) => (
 ));
 ContentSection.displayName = 'ContentSection';
 
+// Component for rendering structured content
+const StructuredContent: React.FC<{ content: Record<string, unknown> }> = memo(({ content }) => (
+  <Box className='mb-4'>
+    <CodeBlock
+      showLineNumbers
+      language='json'
+      code={JSON.stringify(content, null, 2)}
+    />
+  </Box>
+));
+StructuredContent.displayName = 'StructuredContent';
+
 // Custom hook for creating chronological sections from message data
-const useChronologicalSections = (message: MessageType): ChronologicalSection[] => {
-  return useMemo(() => {
-    const sections: ChronologicalSection[] = [];
+const useChronologicalSections = (message: MessageType): ChronologicalSection[] => useMemo(() => {
+  const sections: ChronologicalSection[] = [];
 
-    // Add thoughts
-    message.thoughts?.forEach((thought, index) => {
+  // Add thoughts
+  message.thoughts?.forEach((thought, index) => {
+    sections.push({
+      type: 'thought',
+      timestamp: thought.created_at ?? message.created_at ?? 0,
+      data: thought,
+      index
+    });
+  });
+
+  // Add tool calls
+  message.tool_calls?.forEach((toolCall, index) => {
+    sections.push({
+      type: 'tool',
+      timestamp: toolCall.created_at ?? message.created_at ?? 0,
+      data: toolCall,
+      index
+    });
+  });
+
+  // Add content items (text only)
+  message.content?.forEach((contentItem, index) => {
+    if (contentItem.type === 'text' && contentItem.text) {
       sections.push({
-        type: 'thought',
-        timestamp: thought.created_at || message.created_at || 0,
-        data: thought,
+        type: 'content',
+        timestamp: contentItem.created_at ?? message.created_at ?? 0,
+        data: contentItem,
         index
       });
-    });
+    }
+  });
 
-    // Add tool calls
-    message.tool_calls?.forEach((toolCall, index) => {
-      sections.push({
-        type: 'tool',
-        timestamp: toolCall.created_at || message.created_at || 0,
-        data: toolCall,
-        index
-      });
+  // Add structured content items
+  if (message.structured_output && Object.keys(message.structured_output).length > 0) {
+    sections.push({
+      type: 'structured',
+      timestamp: message.created_at ?? Date.now(),
+      data: message.structured_output ?? {},
+      index: sections.length
     });
+  }
 
-    // Add content items (text only)
-    message.content?.forEach((contentItem, index) => {
-      if (contentItem.type === 'text' && contentItem.text) {
-        sections.push({
-          type: 'content',
-          timestamp: contentItem.created_at || message.created_at || 0,
-          data: contentItem,
-          index
-        });
+  // Sort by timestamp
+  return sections.sort((a, b) => {
+    const getTime = (ts: Date | number | string) => {
+      if (ts instanceof Date) {
+        return ts.getTime();
       }
-    });
 
-    // Sort by timestamp
-    return sections.sort((a, b) => {
-      const getTime = (ts: Date | number | string) => {
-        if (ts instanceof Date) {
-          return ts.getTime();
-        }
-        if (typeof ts === 'string') {
-          return new Date(ts).getTime();
-        }
-        return Number(ts) || 0;
-      };
-      return getTime(a.timestamp) - getTime(b.timestamp);
-    });
-  }, [message]);
-};
+      if (typeof ts === 'string') {
+        return new Date(ts).getTime();
+      }
+
+      return Number(ts) || 0;
+    };
+
+    return getTime(a.timestamp) - getTime(b.timestamp);
+  });
+}, [message]);
 
 // Component for rendering streaming sections
 const StreamingSections: React.FC<{
   sections: ResponseSection[];
-  currentSection?: ResponseSection;
+  currentSection: ResponseSection | undefined;
   isTyping: boolean;
 }> = memo(({ sections, currentSection, isTyping }) => (
   <>
@@ -175,22 +199,22 @@ const StreamingSections: React.FC<{
         return (
           <ReasoningSection
             key={keyPrefix}
-            content={section.content || ''}
+            content={section.content ?? ''}
           />
         );
       }
 
       if (section.type === 'executing' && section.toolCalls) {
         return (
-          <Box key={keyPrefix} className="space-y-2 mb-4">
-            {section.toolCalls.map((toolCall, toolIndex) => (
+          <div key={keyPrefix} className='space-y-2 mb-4'>
+            {section.toolCalls.map(toolCall => (
               <ToolCallComponent
-                key={`tool-${toolIndex}`}
+                key={`tool-${section.startedAt}-${toolCall.name ?? 'unknown'}-${String(toolCall.created_at ?? '')}`}
                 toolCall={toolCall}
-                keyPrefix={`tool-${toolIndex}`}
+                keyPrefix={keyPrefix}
               />
             ))}
-          </Box>
+          </div>
         );
       }
 
@@ -203,6 +227,19 @@ const StreamingSections: React.FC<{
         );
       }
 
+      if (section.type === 'formatting' && section.structuredContent) {
+        if (!section.structuredContent || Object.keys(section.structuredContent).length === 0) {
+          return null;
+        }
+
+        return (
+          <StructuredContent
+            key={keyPrefix}
+            content={section.structuredContent ?? {}}
+          />
+        );
+      }
+
       return null;
     })}
 
@@ -211,8 +248,8 @@ const StreamingSections: React.FC<{
       <>
         {currentSection.type === 'thinking' && currentSection.content && (
           <ReasoningSection
-            content={currentSection.content}
             isStreaming
+            content={currentSection.content}
           />
         )}
         {currentSection.type === 'responding' && currentSection.content && (
@@ -224,9 +261,10 @@ const StreamingSections: React.FC<{
 ));
 StreamingSections.displayName = 'StreamingSections';
 
+
 // Component for rendering chronological sections from completed messages
 const ChronologicalSections: React.FC<{
-  sections: ChronologicalSection[]
+  sections: ChronologicalSection[];
 }> = memo(({ sections }) => (
   <>
     {sections.map((section, index) => {
@@ -245,12 +283,12 @@ const ChronologicalSections: React.FC<{
       if (section.type === 'tool') {
         const toolCall = section.data as ToolCall;
         return (
-          <Box key={keyBase} className="mb-4">
+          <div key={keyBase} className='mb-4'>
             <ToolCallComponent
               toolCall={toolCall}
               keyPrefix={keyBase}
             />
-          </Box>
+          </div>
         );
       }
 
@@ -259,7 +297,17 @@ const ChronologicalSections: React.FC<{
         return (
           <ContentSection
             key={keyBase}
-            content={contentItem.text || ''}
+            content={contentItem.text ?? ''}
+          />
+        );
+      }
+
+      if (section.type === 'structured') {
+        const content = section.data as Record<string, unknown>;
+        return (
+          <StructuredContent
+            key={keyBase}
+            content={content}
           />
         );
       }

@@ -16,7 +16,7 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import AgentMiddleware
 from langchain.chat_models import BaseChatModel
 from langchain_core.tools import BaseTool
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, AIMessage
 
 from models import (
     MessageContent,
@@ -35,6 +35,7 @@ from utils.message_conversion import (
     MessageInput,
     extract_text_from_message,
 )
+from utils.grammar_generator import parse_structured_output
 
 # Get the 'asyncio' logger
 asyncio_logger = logging.getLogger("asyncio")
@@ -307,10 +308,10 @@ If you believe you have made a tool call, double-check the message history to co
 
         Args:
             messages: Input messages for the agent
-            user_id: User identifier
             tools: Optional tools for the agent
-            circuit_breaker: Optional circuit breaker configuration
-            priority: Pipeline execution priority (affects model selection)
+            grammar: Optional grammar constraints for structured output
+            middleware: Optional middleware for the agent
+            metadata: Optional node metadata for workflow tracking
 
         Returns:
             ChatResponse: Response with injected node metadata
@@ -362,10 +363,23 @@ If you believe you have made a tool call, double-check the message history to co
             normalized_messages = messages_to_lc_messages(convo)
             self.logger.debug(f"Running agent with {len(normalized_messages)} messages")
             result = await agent.ainvoke({"messages": normalized_messages})  # type: ignore
-            assert isinstance(result, BaseMessage)
-            self.logger.debug(
-                f"Agent run result ({type(result)}): {serialize_event_data(result)}"
-            )
+
+            if isinstance(result, dict):
+                if "structured_response" in result and grammar:
+                    result = result["structured_response"]
+                    if not isinstance(result, BaseMessage):
+                        result = AIMessage(content=grammar.model_dump_json(result))
+                elif "messages" in result:
+                    msgs = result["messages"]
+                    if isinstance(msgs, list) and len(msgs) > 0:
+                        # get the last message and assert that it's ai
+                        result = msgs[-1]
+                        if hasattr(result, "role") and result.role != "ai":
+                            self.logger.warning(
+                                "🚨 Last message role is not 'ai' - unexpected result format"
+                            )
+
+            assert isinstance(result, BaseMessage), "Agent result is not a BaseMessage"
             msg = lc_message_to_message(result)
             response = ChatResponse(
                 done=True,
@@ -394,3 +408,87 @@ If you believe you have made a tool call, double-check the message history to co
                 ),
                 metadata=self._node_metadata,
             )
+
+    async def run_structured[T: BaseModel](
+        self,
+        message_input: MessageInput,
+        grammar: type[T],
+        tools: Optional[List[BaseTool]] = None,
+        middleware: Optional[List[AgentMiddleware]] = None,
+        metadata: Optional[NodeMetadata] = None,
+    ) -> T:
+        """
+        Run agent execution with node metadata injection.
+
+        Creates a LangChain agent using create_agent() with BaseChatModel from factory,
+        then executes the agent and returns the result with node metadata.
+
+        Args:
+            messages: Input messages for the agent
+            user_id: User identifier
+            tools: Optional tools for the agent
+            circuit_breaker: Optional circuit breaker configuration
+            priority: Pipeline execution priority (affects model selection)
+
+        Returns:
+            ChatResponse: Response with injected node metadata
+        """
+
+        try:
+            self._log_operation_start(
+                "structured_agent_run",
+                message_count=get_message_count(message_input),
+                node_name=self._node_metadata.node_name,
+                node_type=self._node_metadata.node_type,
+            )
+            system_prompt, convo = self._separate_system_prompt(message_input)
+
+            # Use persistent agent - creates once and reuses for state continuity
+            agent = await self._get_or_create_agent(
+                system_prompt,
+                list((self.tools or []) + (tools or [])),
+                grammar,
+                list((self.middleware or []) + (middleware or [])),
+                metadata,
+            )
+
+            if agent is None:
+                self.logger.error("🚨 Agent is None after _get_or_create_agent call!")
+                raise ValueError("Agent creation failed - agent is None")
+
+            # Convert messages to LangChain format
+            normalized_messages = messages_to_lc_messages(convo)
+            self.logger.debug(f"Running agent with {len(normalized_messages)} messages")
+            result = await agent.ainvoke({"messages": normalized_messages})  # type: ignore
+            self.logger.debug(
+                f"Agent run result ({type(result)}): {serialize_event_data(result)}"
+            )
+
+            if isinstance(result, dict):
+                if "structured_response" in result and grammar:
+                    result = result["structured_response"]
+                    if isinstance(result, grammar):
+                        self.logger.debug("Structured response matches grammar type")
+                        return result
+                elif "messages" in result:
+                    msgs = result["messages"]
+                    if isinstance(msgs, list) and len(msgs) > 0:
+                        # get the last message and assert that it's ai
+                        result = msgs[-1]
+                        if hasattr(result, "role") and result.role != "ai":
+                            self.logger.warning(
+                                "🚨 Last message role is not 'ai' - unexpected result format"
+                            )
+
+            assert isinstance(result, BaseMessage), "Agent result is not a BaseMessage"
+
+            msg = lc_message_to_message(result)
+            return parse_structured_output(extract_text_from_message(msg), grammar)
+
+        except Exception as e:
+            self._handle_node_error(
+                "create_agent_run",
+                e,
+                message_count=get_message_count(message_input),
+            )
+            raise RuntimeError(f"Structured agent execution failed: {e}") from e

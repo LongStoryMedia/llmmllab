@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { styled, FormControlLabel, Switch, useTheme, useMediaQuery } from '@mui/material';
+import { styled, FormControlLabel, Switch, useTheme, useMediaQuery, Box } from '@mui/material';
 import { useChat } from '../../chat';
 import {
   PromptInput,
@@ -28,7 +28,11 @@ import { useAuth } from '../../auth';
 import { listModelProfiles, updateModelProfile } from '../../api/model';
 import { Image as ImageIcon, Stop as StopIcon } from '@mui/icons-material';
 import { MessageContent } from '@/types';
-import { uuidv4 as uuid } from '../../lib/utils';
+import { type FileUIPart } from 'ai';
+import { nanoid } from 'nanoid';
+import { uint8ArrayToBase64 } from 'uint8array-extras';
+import { StructuredModeToggle } from './StructuredModeToggle';
+import { JsonSchemaEditor } from './JsonSchemaEditor';
 
 const InputContainer = styled('div')(({ theme }) => ({
   padding: theme.spacing(1.5),
@@ -48,13 +52,68 @@ const StyledPromptInput = styled(PromptInput)(({ theme }) => ({
   }
 }));
 
+type ProcessedFileAttachment = {
+  type: MessageContentType;
+  name: string;
+  data?: string;
+  format?: string;
+  url?: string;
+};
+
+const processFileAttachment = async (file: FileUIPart): Promise<ProcessedFileAttachment | undefined> => {
+  try {
+    let fileData: string | undefined;
+    let fileFormat: string | undefined;
+
+    if (file.url.startsWith('blob:')) {
+      const response = await fetch(file.url);
+      const blob = await response.blob();
+      const arrayBuffer = await blob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      fileData = uint8ArrayToBase64(uint8Array);
+      fileFormat = file.mediaType || blob.type;
+      fileFormat = file.mediaType || blob.type;
+    } else if (file.url?.startsWith('data:')) {
+      const match = /^data:(.*?);base64,(.*)$/.exec(file.url);
+      if (match) {
+        fileFormat = match[1];
+        fileData = match[2];
+      }
+    }
+
+    let contentType: MessageContentType = MessageContentTypeValues.FILE;
+    if (file.mediaType?.startsWith('image/')) {
+      contentType = MessageContentTypeValues.IMAGE;
+    } else if (file.mediaType?.startsWith('audio/')) {
+      contentType = MessageContentTypeValues.AUDIO;
+    } else if (file.mediaType?.startsWith('video/')) {
+      contentType = MessageContentTypeValues.VIDEO;
+    }
+
+    return {
+      type: contentType,
+      name: file.filename ?? nanoid(),
+      data: fileData,
+      format: fileFormat,
+      url: file.url && !file.url.startsWith('blob:') ? file.url : undefined
+    };
+  } catch (error) {
+    console.error('Failed to process file attachment:', error);
+  }
+};
+
 const ChatInput = () => {
   const {
     currentConversation,
     isTyping,
     isLoading,
+    error,
     sendMessage,
-    cancelRequest
+    cancelRequest,
+    isStructuredMode,
+    jsonSchema,
+    setIsStructuredMode,
+    setJsonSchema
   } = useChat();
 
   const theme = useTheme();
@@ -66,6 +125,7 @@ const ChatInput = () => {
   const [thinkLoading, setThinkLoading] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [showSchemaEditor, setShowSchemaEditor] = useState(false);
   const inProgress = isTyping || isLoading;
 
   // Load primary profile and its 'think' setting
@@ -120,18 +180,6 @@ const ChatInput = () => {
       return;
     }
 
-    // {
-    //   "text": "test",
-    //     "files": [
-    //       {
-    //         "type": "file",
-    //         "url": "data:text/x-python-script;base64,aW1wb3J0IHBhbmRhcyBhcyBwZApmcm9tIC5tbCBpbXBvcnQgTUxTdHJhdGVneQoKZGVmIG1sX3N0cmF0ZWd5KGRmLCB3aW5kb3c9MjAsIHRocmVzaG9sZD0wLjAwNSk6CiAgICBtbCA9IE1MU3RyYXRlZ3kod2luZG93PXdpbmRvdykKICAgIG1sLnRyYWluKGRmKQogICAgcmV0dXJuIG1sLmdlbmVyYXRlX3NpZ25hbChkZikK",
-    //         "mediaType": "text/x-python-script",
-    //         "filename": "file.py"
-    //       }
-    //     ]
-    // }
-
     // Start with text content
     const content: MessageContent[] = [
       {
@@ -142,66 +190,33 @@ const ChatInput = () => {
 
     // Process file attachments
     if (message.files && message.files.length > 0) {
-      for (const file of message.files) {
-        try {
-          // Convert file to base64 if it has a URL (blob URL)
-          let fileData: string | undefined;
-          let fileFormat: string | undefined;
+      const filePromises = message.files.map(processFileAttachment);
+      const processedFiles = await Promise.all(filePromises);
 
-          if (file.url) {
-            if (file.url.startsWith('blob:')) {
-              // Fetch the blob and convert to base64
-              const response = await fetch(file.url);
-              const blob = await response.blob();
-              const arrayBuffer = await blob.arrayBuffer();
-              const uint8Array = new Uint8Array(arrayBuffer);
-              const binaryString = Array.from(uint8Array, byte => String.fromCharCode(byte)).join('');
-              fileData = btoa(binaryString);
-              fileFormat = file.mediaType || blob.type;
-            } else if (file.url.startsWith('data:')) {
-              // Data URL - extract base64 data
-              const match = file.url.match(/^data:(.*?);base64,(.*)$/);
-              if (match) {
-                fileFormat = match[1];
-                fileData = match[2];
-              }
-            }
-          }
-
-          // Determine content type based on media type
-          let contentType: MessageContentType = MessageContentTypeValues.FILE;
-          if (file.mediaType?.startsWith('image/')) {
-            contentType = MessageContentTypeValues.IMAGE;
-          } else if (file.mediaType?.startsWith('audio/')) {
-            contentType = MessageContentTypeValues.AUDIO;
-          } else if (file.mediaType?.startsWith('video/')) {
-            contentType = MessageContentTypeValues.VIDEO;
-          }
-
-          const contentItem = {
-            type: contentType,
-            name: file.filename || uuid(),
-            data: fileData,
-            format: fileFormat,
-            url: file.url && !file.url.startsWith('blob:') ? file.url : undefined
-          }
-
-          // Add file content to message
+      processedFiles.forEach(contentItem => {
+        if (contentItem) {
           content.push(contentItem);
-        } catch (error) {
-          console.error('Failed to process file attachment:', error);
-          // Continue with other files
         }
-      }
+      });
     }
 
-    console.log('Sending message content:', content);
+    // Parse JSON schema if in structured mode
+    let responseFormat: Record<string, unknown> | undefined;
+    if (isStructuredMode) {
+      try {
+        responseFormat = JSON.parse(jsonSchema) as Record<string, unknown>;
+      } catch (error) {
+        console.error('Invalid JSON schema:', error);
+        // You might want to show an error to the user here
+        return;
+      }
+    }
 
     await sendMessage({
       role: MessageRoleValues.USER,
       content,
       conversation_id: currentConversation.id
-    });
+    }, responseFormat);
   };
 
   const handleCancel = async () => {
@@ -286,9 +301,18 @@ const ChatInput = () => {
                   }
                 }}
               />
+
+              {/* Structured Mode Toggle */}
+              <StructuredModeToggle
+                isStructuredMode={isStructuredMode}
+                onToggle={setIsStructuredMode}
+                onEditSchema={() => {
+                  setShowSchemaEditor(true);
+                }}
+              />
             </PromptInputTools>
 
-            <div className="flex items-center gap-2">
+            <Box className="flex items-center gap-2">
               {/* Cancel/Stop Button - only show when actively generating */}
               {inProgress ? (
                 <PromptInputButton
@@ -302,13 +326,25 @@ const ChatInput = () => {
                 </PromptInputButton>
               ) : (
                 <PromptInputSubmit
-                  status={inProgress ? 'streaming' : undefined}
+                  status={inProgress ? 'streaming' : error ? 'error' : 'ready'}
                   disabled={!currentConversation?.id}
                 />
               )}
-            </div>
+            </Box>
           </PromptInputFooter>
         </StyledPromptInput>
+
+        {/* JSON Schema Editor Dialog */}
+        <JsonSchemaEditor
+          isOpen={showSchemaEditor}
+          schema={jsonSchema}
+          onOpenChange={setShowSchemaEditor}
+          onSchemaChange={setJsonSchema}
+          onSave={() => {
+            // Schema is already saved via onSchemaChange
+            console.log('JSON schema updated');
+          }}
+        />
       </InputContainer>
     </PromptInputProvider>
   );

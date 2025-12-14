@@ -7,11 +7,11 @@ Note: This router is included in app.py with both non-versioned and versioned pa
 - Versioned: /v1/chat/...
 """
 
-import json
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Dict, Optional, Type
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from server.middleware.auth import get_request_id, get_user_id, is_admin
 from db import storage  # Import database storage
@@ -21,7 +21,7 @@ from models import (
     Message,
 )
 from utils import extract_text_from_message  # Import logging utility
-from utils.logging import llmmllogger, serialize_event_data
+from utils.logging import llmmllogger
 from utils.message_transformation import transform_file_content_to_documents
 
 # Import composer interface and streaming state management
@@ -33,11 +33,14 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 async def composer_chat_completion(
-    user_id: str, conversation_id: int, request_id: str
+    user_id: str,
+    conversation_id: int,
+    request_id: str,
+    response_format: Optional[Type[BaseModel]] = None,
 ) -> AsyncIterator[str]:
     """Handle chat completions by delegating to composer interface."""
     # Compose workflow for user
-    workflow = await composer.compose_workflow(user_id)
+    workflow = await composer.compose_workflow(user_id, response_format)
 
     # Create initial state (conversation_id is already validated)
     initial_state = await composer.create_initial_state(user_id, conversation_id)
@@ -53,9 +56,16 @@ async def composer_chat_completion(
         yield f"{event.model_dump_json()}"
 
 
+class ChatCompletionBody(BaseModel):
+    """Request model for chat completion endpoint."""
+
+    message: Message
+    response_format: Optional[Dict[str, Any]] = None
+
+
 @router.post("/completions", response_model=ChatResponse)
 async def chat_completion(
-    msg: Message,
+    body: ChatCompletionBody,
     request: Request,
 ):
     """
@@ -65,6 +75,7 @@ async def chat_completion(
     # Early validation and setup
     user_id = get_user_id(request)
     request_id = get_request_id(request)
+    msg = body.message
 
     # Validate inputs early
     if not user_id:

@@ -7,7 +7,7 @@ import { gen, getHeaders, req } from "./base";
  * Shared streaming wrapper for calling the server streaming endpoints.
  * path should be a relative API path (e.g. 'chat/completions' or 'chat/conversations/{id}/replay')
  */
-async function* streamEndpoint(accessToken: string, path: string, body: Message | { message?: Message, timestamp: string }, abortSignal?: AbortSignal): AsyncGenerator<ChatResponse> {
+async function* streamEndpoint(accessToken: string, path: string, body: { message: Message, response_format?: Record<string, unknown>, timestamp?: string }, abortSignal?: AbortSignal): AsyncGenerator<ChatResponse> {
   // Log the request for debugging
   console.log('Streaming to endpoint:', path, body);
 
@@ -42,18 +42,11 @@ async function* streamEndpoint(accessToken: string, path: string, body: Message 
   }
 }
 
-export async function* chat(accessToken: string, message: Message, abortSignal?: AbortSignal): AsyncGenerator<ChatResponse> {
-  yield* streamEndpoint(accessToken, `chat/completions`, message, abortSignal);
+export async function* chat(accessToken: string, body: { message: Message, response_format?: Record<string, unknown> }, abortSignal?: AbortSignal): AsyncGenerator<ChatResponse> {
+  yield* streamEndpoint(accessToken, `chat/completions`, body, abortSignal);
 }
 
-export async function* replay(accessToken: string, conversationId: number, message: Message, abortSignal?: AbortSignal): AsyncGenerator<ChatResponse> {
-  const body: { message?: Message, timestamp: string } = {
-    timestamp: message?.created_at ? message.created_at.toString() : ''
-  };
-  if (message) {
-    body.message = message;
-  }
-
+export async function* replay(accessToken: string, conversationId: number, body: { message: Message, timestamp: string, response_format?: Record<string, unknown> }, abortSignal?: AbortSignal): AsyncGenerator<ChatResponse> {
   yield* streamEndpoint(accessToken, `chat/conversations/${conversationId}/replay`, body, abortSignal);
 }
 

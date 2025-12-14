@@ -10,14 +10,8 @@ properties:
     $ref: summarization_config.yaml
   memory:
     $ref: memory_config.yaml
-  web_search:
-    $ref: web_search_config.yaml
-  preferences:
-    $ref: preferences_config.yaml
   model_profiles:
     $ref: model_profile_config.yaml
-  refinement:
-    $ref: refinement_config.yaml
   image_generation:
     $ref: image_generation_config.yaml
   circuit_breaker:
@@ -32,20 +26,15 @@ properties:
     $ref: tool_config.yaml
   event_stream:
     $ref: event_stream_config.yaml
-  context_window:
-    $ref: context_window_config.yaml
 required:
   - user_id
   - summarization
   - memory
-  - web_search
   - preferences
   - model_profiles
-  - refinement
   - image_generation
   - circuit_breaker
   - gpu_config
   - workflow
   - tool
-  - context_window
   - parameter_optimization

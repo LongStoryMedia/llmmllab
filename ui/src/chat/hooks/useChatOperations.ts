@@ -30,7 +30,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
   /**
    * Send a message - simplified streaming logic
    */
-  const sendMessage = useCallback(async (message: Message) => {
+  const sendMessage = useCallback(async (message: Message, responseFormat?: Record<string, unknown>) => {
     if (state.isTyping) {
       return;
     }
@@ -78,7 +78,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
 
       for await (const chunk of chat(
         getToken(auth.user),
-        userMessage,
+        { message: userMessage, response_format: responseFormat },
         abortController.current.signal
       )) {
         // Process each chunk through streaming handler and GET THE UPDATED STATE
@@ -176,7 +176,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
       for await (const chunk of replay(
         getToken(auth.user),
         conversationId,
-        message,
+        { message, timestamp: message.created_at.toISOString() },
         abortController.current.signal
       )) {
         const updatedState = streaming.processChunk(chunk);
