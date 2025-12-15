@@ -4,7 +4,7 @@
 -- $2: minimum similarity threshold
 -- $3: limit of results
 -- $4: user_id (optional, can be NULL)
--- $5: conversation_id (optional, can be NULL, has priority)
+-- $5: conversation_id (optional, can be NULL)
 -- $6: start_date (optional, can be NULL, e.g., '2025-06-01')
 -- $7: end_date (optional, can be NULL, e.g., '2025-06-05')
 WITH
@@ -22,9 +22,8 @@ similar_messages_unfiltered AS (
     WHERE
         e.source = 'message'
         AND 1 -(e.embedding <=> $1) > $2
-        -- Filter by conversation_id if present (highest priority).
-        AND ($5::bigint IS NULL
-            OR m.conversation_id = $5::bigint)
+        -- Filter by user_id directly on memories table
+        AND ($4::text IS NULL OR e.user_id = $4::text)
             -- Add conditional time window filters.
             AND ($6::text IS NULL
                 OR m.created_at >=($6::text)::timestamptz)
@@ -43,9 +42,8 @@ similar_summaries_unfiltered AS (
     WHERE
         e.source = 'summary'
         AND 1 -(e.embedding <=> $1) > $2
-        -- Filter by conversation_id if present.
-        AND ($5::bigint IS NULL
-            OR s.conversation_id = $5::bigint)
+        -- Filter by user_id directly on memories table
+        AND ($4::text IS NULL OR e.user_id = $4::text)
             -- Add conditional time window filters.
             AND ($6::text IS NULL
                 OR s.created_at >=($6::text)::timestamptz)
@@ -64,9 +62,8 @@ similar_search_topics_unfiltered AS (
     WHERE
         e.source = 'search'
         AND 1 -(e.embedding <=> $1) > $2
-        -- Filter by conversation_id if present.
-        AND ($5::bigint IS NULL
-            OR st.conversation_id = $5::bigint)
+        -- Filter by user_id directly on memories table
+        AND ($4::text IS NULL OR e.user_id = $4::text)
             -- Add conditional time window filters.
             AND ($6::text IS NULL
                 OR st.created_at >=($6::text)::timestamptz)
@@ -86,39 +83,26 @@ similar_documents_unfiltered AS (
     WHERE
         e.source = 'document'
         AND 1 -(e.embedding <=> $1) > $2
-        -- Filter by conversation_id if present.
-        AND ($5::bigint IS NULL
-            OR m.conversation_id = $5::bigint)
+        -- Filter by user_id directly on memories table
+        AND ($4::text IS NULL OR e.user_id = $4::text)
             -- Add conditional time window filters.
             AND ($6::text IS NULL
                 OR d.created_at >=($6::text)::timestamptz)
             AND ($7::text IS NULL
                 OR d.created_at <=($7::text)::timestamptz)
 ),
--- Step 1e: CTE for user-level filtering.
-filtered_convos AS (
-    SELECT
-        id
-    FROM
-        conversations
-    WHERE
-        user_id = $4::text
-),
--- Step 1f: Apply the user filter ONLY IF conversation_id was NOT provided.
+-- Step 1e: Apply conversation filtering only (user filtering already applied above)
 similar_messages AS (
     SELECT
         *
     FROM
         similar_messages_unfiltered
     WHERE
-    -- The user filter below is only applied if conversation_id is NOT provided; if conversation_id is present, user filtering is skipped.
-    $5::bigint IS NOT NULL
-    OR $4::text IS NULL
-    OR conversation_id IN (
-        SELECT
-            id
-        FROM
-            filtered_convos)
+        -- If no conversation_id provided, show all conversations 
+        ($5::integer IS NULL)
+        OR
+        -- If conversation_id provided, filter by specific conversation
+        (conversation_id = $5::integer)
 ),
 -- Step 2: Use LAG and LEAD to find sequential message pairs
 message_context AS (
@@ -259,14 +243,15 @@ summary_results_to_fetch AS (
     FROM
         similar_summaries_unfiltered ssu
     WHERE
-        -- If conversation_id is specified, this entire user check is skipped.
-        $5::bigint IS NOT NULL
-        OR $4::text IS NULL
-        OR ssu.conversation_id IN (
-            SELECT
-                id
-            FROM
-                filtered_convos)
+        -- Apply conversation filtering for summaries (user filtering already applied)
+        ($5::integer IS NULL)
+        OR 
+        (ssu.conversation_id = $5::integer)
+    AND
+        -- Apply conversation filtering for summaries
+        ($5::integer IS NULL)
+        OR
+        (ssu.conversation_id = $5::integer)
 ),
 -- step 6, Include the search topic syntheses
 search_results_to_fetch AS (
@@ -281,14 +266,15 @@ search_results_to_fetch AS (
     FROM
         similar_search_topics_unfiltered ss
     WHERE
-        -- If conversation_id is specified, this entire user check is skipped.
-        $5::bigint IS NOT NULL
-        OR $4::text IS NULL
-        OR ss.conversation_id IN (
-            SELECT
-                id
-            FROM
-                filtered_convos)
+        -- Apply conversation filtering for search topics (user filtering already applied)
+        ($5::integer IS NULL)
+        OR 
+        (ss.conversation_id = $5::integer)
+    AND
+        -- Apply conversation filtering for search topics
+        ($5::integer IS NULL)
+        OR
+        (ss.conversation_id = $5::integer)
 ),
 -- step 7, Include the file documents
 document_results_to_fetch AS (
@@ -303,14 +289,15 @@ document_results_to_fetch AS (
     FROM
         similar_documents_unfiltered sa
     WHERE
-        -- If conversation_id is specified, this entire user check is skipped.
-        $5::bigint IS NOT NULL
-        OR $4::text IS NULL
-        OR sa.conversation_id IN (
-            SELECT
-                id
-            FROM
-                filtered_convos)
+        -- Apply conversation filtering for documents (user filtering already applied)
+        ($5::integer IS NULL)
+        OR 
+        (sa.conversation_id = $5::integer)
+    AND
+        -- Apply conversation filtering for documents
+        ($5::integer IS NULL)
+        OR
+        (sa.conversation_id = $5::integer)
 ),
 -- Step 8: Combine message pairs, summaries, search results, and documents
 all_results_to_fetch AS (
