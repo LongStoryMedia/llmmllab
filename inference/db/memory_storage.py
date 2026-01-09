@@ -120,7 +120,7 @@ class MemoryStorage:
             if not embedding:
                 continue
             embedding_str = self.format_embedding_for_pgvector(embedding)
-            # Prepare parameters for the SQL query
+            # Prepare parameters for the SQL query (now includes conversation_id)
             params = [
                 embedding_str,
                 min_similarity,

@@ -10,6 +10,7 @@ export interface ChatState {
   messages: Message[];
   conversations: { [key: string]: Conversation[] };
   currentConversation?: Conversation;
+  models: any[];
   isLoading: boolean;
   error?: string;
   isTyping: boolean;
@@ -29,6 +30,7 @@ export interface ChatActions {
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   setConversations: React.Dispatch<React.SetStateAction<{ [key: string]: Conversation[] }>>;
   setCurrentConversation: (conversation: Conversation | undefined) => void;
+  setModels: React.Dispatch<React.SetStateAction<any[]>>;
   setIsLoading: (loading: boolean) => void;
   setError: (error?: string) => void;
   setIsTyping: (typing: boolean) => void;
@@ -52,6 +54,7 @@ export const useChatState = (): [ChatState, ChatActions] => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversations, setConversations] = useState<{ [key: string]: Conversation[] }>({});
   const [currentConversation, setCurrentConversation] = useState<Conversation | undefined>(undefined);
+  const [models, setModels] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [isTyping, setIsTyping] = useState(false);
@@ -126,6 +129,7 @@ export const useChatState = (): [ChatState, ChatActions] => {
     messages,
     conversations,
     currentConversation,
+    models,
     isLoading,
     error,
     isTyping,
@@ -145,6 +149,7 @@ export const useChatState = (): [ChatState, ChatActions] => {
     setMessages,
     setConversations,
     setCurrentConversation,
+    setModels,
     setIsLoading,
     setError,
     setIsTyping,

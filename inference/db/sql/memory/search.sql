@@ -23,7 +23,8 @@ similar_messages_unfiltered AS (
         e.source = 'message'
         AND 1 -(e.embedding <=> $1) > $2
         -- Filter by user_id directly on memories table
-        AND ($4::text IS NULL OR e.user_id = $4::text)
+        AND ($4::text IS NULL
+            OR e.user_id = $4::text)
             -- Add conditional time window filters.
             AND ($6::text IS NULL
                 OR m.created_at >=($6::text)::timestamptz)
@@ -43,7 +44,8 @@ similar_summaries_unfiltered AS (
         e.source = 'summary'
         AND 1 -(e.embedding <=> $1) > $2
         -- Filter by user_id directly on memories table
-        AND ($4::text IS NULL OR e.user_id = $4::text)
+        AND ($4::text IS NULL
+            OR e.user_id = $4::text)
             -- Add conditional time window filters.
             AND ($6::text IS NULL
                 OR s.created_at >=($6::text)::timestamptz)
@@ -63,7 +65,8 @@ similar_search_topics_unfiltered AS (
         e.source = 'search'
         AND 1 -(e.embedding <=> $1) > $2
         -- Filter by user_id directly on memories table
-        AND ($4::text IS NULL OR e.user_id = $4::text)
+        AND ($4::text IS NULL
+            OR e.user_id = $4::text)
             -- Add conditional time window filters.
             AND ($6::text IS NULL
                 OR st.created_at >=($6::text)::timestamptz)
@@ -84,7 +87,8 @@ similar_documents_unfiltered AS (
         e.source = 'document'
         AND 1 -(e.embedding <=> $1) > $2
         -- Filter by user_id directly on memories table
-        AND ($4::text IS NULL OR e.user_id = $4::text)
+        AND ($4::text IS NULL
+            OR e.user_id = $4::text)
             -- Add conditional time window filters.
             AND ($6::text IS NULL
                 OR d.created_at >=($6::text)::timestamptz)
@@ -98,76 +102,89 @@ similar_messages AS (
     FROM
         similar_messages_unfiltered
     WHERE
-        -- If no conversation_id provided, show all conversations 
-        ($5::integer IS NULL)
+        -- If no conversation_id provided, show all conversations
+($5::integer IS NULL)
         OR
         -- If conversation_id provided, filter by specific conversation
-        (conversation_id = $5::integer)
+(conversation_id = $5::integer)
 ),
--- Step 2: Use LAG and LEAD to find sequential message pairs
-message_context AS (
-    SELECT
-        sm.source_id,
-        sm.conversation_id,
-        sm.role,
-        sm.similarity,
-        sm.created_at,
-        -- Get the next message ID, role, and created_at
-        LEAD(sm.source_id) OVER (PARTITION BY sm.conversation_id ORDER BY sm.source_id,
-            sm.created_at) AS next_message_id,
-        LEAD(sm.role) OVER (PARTITION BY sm.conversation_id ORDER BY sm.source_id,
-            sm.created_at) AS next_message_role,
-    LEAD(sm.created_at) OVER (PARTITION BY sm.conversation_id ORDER BY sm.source_id,
-        sm.created_at) AS next_message_created_at,
-    -- Get the previous message ID, role, and created_at
-    LAG(sm.source_id) OVER (PARTITION BY sm.conversation_id ORDER BY sm.source_id,
-        sm.created_at) AS prev_message_id,
-    LAG(sm.role) OVER (PARTITION BY sm.conversation_id ORDER BY sm.source_id,
-        sm.created_at) AS prev_message_role,
-    LAG(sm.created_at) OVER (PARTITION BY sm.conversation_id ORDER BY sm.source_id,
-        sm.created_at) AS prev_message_created_at
-FROM
-    similar_messages sm
-ORDER BY
-    sm.conversation_id,
-    sm.source_id
-),
+-- Step 2: Find user+assistant message pairs
 message_pairs AS (
-    -- Find user messages with their next assistant response
+    -- For user messages: find the next assistant message in same conversation
     SELECT
-        mc.source_id AS first_message_id,
+        user_msg.source_id AS first_message_id,
         'user' AS first_message_role,
-        mc.created_at AS first_message_created_at,
-        mc.next_message_id AS second_message_id,
+        user_msg.created_at AS first_message_created_at,
+(
+            SELECT
+                m.id
+            FROM
+                messages m
+            WHERE
+                m.conversation_id = user_msg.conversation_id
+                AND m.role = 'assistant'
+                AND m.created_at > user_msg.created_at
+            ORDER BY
+                m.created_at ASC
+            LIMIT 1) AS second_message_id,
         'assistant' AS second_message_role,
-        mc.next_message_created_at AS second_message_created_at,
-        mc.conversation_id,
-        mc.similarity,
-        'user_first' AS pair_type -- Mark that user message comes first
+(
+            SELECT
+                m.created_at
+            FROM
+                messages m
+            WHERE
+                m.conversation_id = user_msg.conversation_id
+                AND m.role = 'assistant'
+                AND m.created_at > user_msg.created_at
+            ORDER BY
+                m.created_at ASC
+            LIMIT 1) AS second_message_created_at,
+        user_msg.conversation_id,
+        user_msg.similarity,
+        'user_matched' AS pair_type
     FROM
-        message_context mc
+        similar_messages user_msg
     WHERE
-        mc.role = 'user'
-        AND mc.next_message_role = 'assistant'
-        AND mc.next_message_id IS NOT NULL
+        user_msg.role = 'user'
     UNION ALL
-    -- Find assistant messages with their previous user query
+    -- For assistant messages: find the previous user message in same conversation
     SELECT
-        mc.prev_message_id AS first_message_id,
+        (
+            SELECT
+                m.id
+            FROM
+                messages m
+            WHERE
+                m.conversation_id = assistant_msg.conversation_id
+                AND m.role = 'user'
+                AND m.created_at < assistant_msg.created_at
+            ORDER BY
+                m.created_at DESC
+            LIMIT 1) AS first_message_id,
         'user' AS first_message_role,
-        mc.prev_message_created_at AS first_message_created_at,
-        mc.source_id AS second_message_id,
+(
+            SELECT
+                m.created_at
+            FROM
+                messages m
+            WHERE
+                m.conversation_id = assistant_msg.conversation_id
+                AND m.role = 'user'
+                AND m.created_at < assistant_msg.created_at
+            ORDER BY
+                m.created_at DESC
+            LIMIT 1) AS first_message_created_at,
+        assistant_msg.source_id AS second_message_id,
         'assistant' AS second_message_role,
-        mc.created_at AS second_message_created_at,
-        mc.conversation_id,
-        mc.similarity,
-        'assistant_match' AS pair_type -- Mark that assistant message was the match
+        assistant_msg.created_at AS second_message_created_at,
+        assistant_msg.conversation_id,
+        assistant_msg.similarity,
+        'assistant_matched' AS pair_type
     FROM
-        message_context mc
+        similar_messages assistant_msg
     WHERE
-        mc.role = 'assistant'
-        AND mc.prev_message_role = 'user'
-        AND mc.prev_message_id IS NOT NULL
+        assistant_msg.role = 'assistant'
 ),
 -- Step 3: Deduplicate message pairs by prioritizing pairs with higher similarity
 -- and ensuring we don't include the same message in multiple pairs
@@ -194,7 +211,7 @@ deduplicated_message_pairs AS (
 -- Step 4: Prepare message pairs to fetch with their similarity scores
 -- Always putting user messages first, assistant messages second
 message_results_to_fetch AS (
-    -- Add first message (user)
+    -- Add first message (user) from pairs
     SELECT
         first_message_id AS source_id,
         'message' AS source_type,
@@ -202,17 +219,21 @@ message_results_to_fetch AS (
         conversation_id,
         1 AS pair_order, -- User message first
         similarity AS original_similarity,
-        CONCAT(first_message_id, '-', second_message_id) AS pair_key -- Create unique pair key
+        CONCAT(COALESCE(first_message_id::text, 'null'), '-', COALESCE(second_message_id::text, 'null')) AS pair_key -- Create unique pair key
     FROM
         deduplicated_message_pairs
     WHERE
         exact_pair_rank = 1 -- Only the highest similarity for this exact pair
         AND first_message_rank = 1 -- Only include this message in one pair (highest similarity)
-        AND second_message_rank = 1 -- Only include this message in one pair (highest similarity)
-        AND first_message_role = 'user' -- Verify it's a user message
-        AND second_message_role = 'assistant' -- Verify it's paired with an assistant message
+        AND first_message_id IS NOT NULL -- Must have a first message
+        AND (
+            -- Only complete pairs: user + assistant
+            second_message_id IS NOT NULL
+            AND second_message_rank = 1
+            AND first_message_role = 'user'
+            AND second_message_role = 'assistant')
     UNION ALL
-    -- Add second message (assistant)
+    -- Add second message (assistant) from pairs (only for actual pairs, not fallback singles)
     SELECT
         second_message_id AS source_id,
         'message' AS source_type,
@@ -220,13 +241,15 @@ message_results_to_fetch AS (
         conversation_id,
         2 AS pair_order, -- Assistant message second
         similarity AS original_similarity,
-        CONCAT(first_message_id, '-', second_message_id) AS pair_key -- Same pair key to match
+        CONCAT(COALESCE(first_message_id::text, 'null'), '-', COALESCE(second_message_id::text, 'null')) AS pair_key -- Same pair key to match
     FROM
         deduplicated_message_pairs
     WHERE
         exact_pair_rank = 1 -- Only the highest similarity for this exact pair
         AND first_message_rank = 1 -- Only include this message in one pair (highest similarity)
         AND second_message_rank = 1 -- Only include this message in one pair (highest similarity)
+        AND first_message_id IS NOT NULL -- Must have a first message
+        AND second_message_id IS NOT NULL -- Must have a second message for pairs
         AND first_message_role = 'user' -- Verify it's a user message
         AND second_message_role = 'assistant' -- Verify it's paired with an assistant message
 ),
@@ -243,15 +266,9 @@ summary_results_to_fetch AS (
     FROM
         similar_summaries_unfiltered ssu
     WHERE
-        -- Apply conversation filtering for summaries (user filtering already applied)
-        ($5::integer IS NULL)
-        OR 
-        (ssu.conversation_id = $5::integer)
-    AND
-        -- Apply conversation filtering for summaries
-        ($5::integer IS NULL)
-        OR
-        (ssu.conversation_id = $5::integer)
+    -- Apply conversation filtering for summaries (user filtering already applied)
+($5::integer IS NULL)
+    OR (ssu.conversation_id = $5::integer)
 ),
 -- step 6, Include the search topic syntheses
 search_results_to_fetch AS (
@@ -266,15 +283,9 @@ search_results_to_fetch AS (
     FROM
         similar_search_topics_unfiltered ss
     WHERE
-        -- Apply conversation filtering for search topics (user filtering already applied)
-        ($5::integer IS NULL)
-        OR 
-        (ss.conversation_id = $5::integer)
-    AND
-        -- Apply conversation filtering for search topics
-        ($5::integer IS NULL)
-        OR
-        (ss.conversation_id = $5::integer)
+    -- Apply conversation filtering for search topics (user filtering already applied)
+($5::integer IS NULL)
+    OR (ss.conversation_id = $5::integer)
 ),
 -- step 7, Include the file documents
 document_results_to_fetch AS (
@@ -289,15 +300,9 @@ document_results_to_fetch AS (
     FROM
         similar_documents_unfiltered sa
     WHERE
-        -- Apply conversation filtering for documents (user filtering already applied)
-        ($5::integer IS NULL)
-        OR 
-        (sa.conversation_id = $5::integer)
-    AND
-        -- Apply conversation filtering for documents
-        ($5::integer IS NULL)
-        OR
-        (sa.conversation_id = $5::integer)
+    -- Apply conversation filtering for documents (user filtering already applied)
+($5::integer IS NULL)
+    OR (sa.conversation_id = $5::integer)
 ),
 -- Step 8: Combine message pairs, summaries, search results, and documents
 all_results_to_fetch AS (
@@ -356,12 +361,12 @@ limited_pairs AS (
 )
 SELECT
     COALESCE(m.role, 'system') AS role,
-u.source_id,
-COALESCE(mc.text_content, s.content, ss.synthesis, d.text_content, d.filename) AS content,
-u.source_type,
-u.similarity,
-COALESCE(m.conversation_id, s.conversation_id, ss.conversation_id, msg.conversation_id) AS conversation_id,
-COALESCE(m.created_at, s.created_at, ss.created_at, d.created_at) AS created_at
+    u.source_id,
+    COALESCE(mc.text_content, s.content, ss.synthesis, d.text_content, d.filename) AS content,
+    u.source_type,
+    u.similarity,
+    COALESCE(m.conversation_id, s.conversation_id, ss.conversation_id, msg.conversation_id) AS conversation_id,
+    COALESCE(m.created_at, s.created_at, ss.created_at, d.created_at) AS created_at
 FROM
     unique_results u
     LEFT JOIN messages m ON u.source_id = m.id

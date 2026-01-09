@@ -359,11 +359,14 @@ class UserConfigStorage:
         config_json = serialize_to_json(config_data)
 
         # Save to database
-        async with self.typed_pool.acquire() as conn:
-            await conn.execute(
-                self.get_query("user.update_config"), config_json, user_id
-            )
-            logger.debug(f"Successfully updated user config in database: {user_id}")
+        async def _update_config():
+            async with self.typed_pool.acquire() as conn:
+                await conn.execute(
+                    self.get_query("user.update_config"), config_json, user_id
+                )
+                logger.debug(f"Successfully updated user config in database: {user_id}")
+
+        await execute_with_recovery(_update_config)
 
     async def get_all_users(self) -> List[dict]:
         # This is an admin operation and doesn't need caching
@@ -575,14 +578,16 @@ class UserConfigStorage:
         try:
             config_json = serialize_to_json(config.dict())
 
-            async with self.typed_pool.acquire() as conn:
-                await conn.execute(
-                    self.get_query("user.update_user_config_in_users_table"),
-                    user_id,
-                    config_json,
-                )
+            async def _update_config():
+                async with self.typed_pool.acquire() as conn:
+                    await conn.execute(
+                        self.get_query("user.update_user_config_in_users_table"),
+                        user_id,
+                        config_json,
+                    )
+                    logger.info(f"Updated user config in users table: {user_id}")
 
-                logger.info(f"Updated user config in users table: {user_id}")
+            await execute_with_recovery(_update_config)
 
         except Exception as e:
             logger.error(

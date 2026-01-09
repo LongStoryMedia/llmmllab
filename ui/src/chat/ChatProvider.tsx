@@ -10,6 +10,7 @@ export interface ChatContextType {
   messages: ReturnType<typeof useChatState>[0]['messages'];
   conversations: ReturnType<typeof useChatState>[0]['conversations'];
   currentConversation: ReturnType<typeof useChatState>[0]['currentConversation'];
+  models: ReturnType<typeof useChatState>[0]['models'];
   isLoading: boolean;
   error?: string;
   isTyping: boolean;
@@ -71,6 +72,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = React.memo(
     messages: state.messages,
     conversations: state.conversations,
     currentConversation: state.currentConversation,
+    models: state.models,
     isLoading: state.isLoading,
     error: state.error,
     isTyping: state.isTyping,

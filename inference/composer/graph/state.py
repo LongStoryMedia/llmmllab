@@ -4,7 +4,7 @@ This is the centralized state schema that acts as the common interface
 """
 
 import operator
-from typing import List, Optional, Annotated, Union
+from typing import List, Optional, Annotated, Sequence, Union
 from pydantic import BaseModel, Field
 
 from models import (
@@ -39,7 +39,7 @@ class WorkflowState(BaseModel):
     ] = Field(default=None, description="Most recent user message in the conversation")
 
     things_to_remember: Annotated[
-        List[Union[Message, Summary, SearchTopicSynthesis, Document]],
+        Sequence[Union[Message, Summary, SearchTopicSynthesis, Document]],
         operator.add,
     ] = Field(
         default_factory=list, description="Key messages or information to remember"

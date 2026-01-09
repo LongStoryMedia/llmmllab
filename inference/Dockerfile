@@ -28,27 +28,6 @@ ENV CUDA_HOME=/usr/local/cuda \
 # Create symlink for CUDA driver stub (needed for linking during build)
 RUN ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
 
-# Create wheels directory
-RUN mkdir -p /opt/wheels
-
-
-# Build only packages that need CUDA compilation - avoid PyTorch wheels in builder
-RUN python3 -m venv /tmp/build_venv && \
-    . /tmp/build_venv/bin/activate && \
-    pip install --upgrade pip setuptools wheel && \
-    # Install llama-cpp-python dependencies first
-    pip install --no-cache-dir diskcache>=5.6.1 typing-extensions>=4.5.0 numpy>=1.20.0 jinja2>=2.11.3 && \
-    # Only build llama-cpp-python with CUDA (the main package that needs compilation)
-    # Updated to use commit 835e918 with qwen3vl architecture support
-    CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86" \
-    pip wheel --wheel-dir /opt/wheels git+https://github.com/LongStoryMedia/llama-cpp-python.git@feat/qwen3vl --no-deps -vvv && \
-    # pip wheel --wheel-dir /opt/wheels git+https://github.com/LongStoryMedia/llama-cpp-python.git@feat/b6990 --no-deps -vvv && \
-    # pip wheel --wheel-dir /opt/wheels git+https://github.com/LongStoryMedia/llama-cpp-python.git@feat/decoupled-llama-cpp --no-deps -vvv && \
-    # pip wheel --wheel-dir /opt/wheels git+https://github.com/LongStoryMedia/llama-cpp-python.git@feat/b6890 --no-deps -vvv && \
-    # pip wheel --wheel-dir /opt/wheels git+https://github.com/LongStoryMedia/llama-cpp-python.git@feature/b6482 --no-deps -vvv && \
-    # Clean up immediately to reduce layer size
-    deactivate && \
-    rm -rf /tmp/build_venv /root/.cache /tmp/*
 
 RUN cd / && git clone https://github.com/ggml-org/llama.cpp.git && \
     cd llama.cpp && \
@@ -60,7 +39,7 @@ RUN cmake -B build \
     -DGGML_CUDA=ON \
     -DCMAKE_CUDA_ARCHITECTURES="75;86" \
     -DCMAKE_BUILD_TYPE=Release && \
-    cmake --build build --config Release -j$(nproc)
+    cmake --build build --config Release -j6
 
 # Runtime stage - minimal CUDA runtime
 FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
@@ -119,7 +98,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && ln -sf /usr/bin/python3 /usr/bin/python
 
 # Copy only the compiled llama.cpp from builder (no wheels needed)
-COPY --from=builder /opt/wheels /opt/wheels
 COPY --from=builder /llama.cpp /llama.cpp
 
 # Set working directory
@@ -136,9 +114,7 @@ RUN . ${SHARED_VENV}/bin/activate && \
     # Install llama-cpp-python dependencies first
     pip install --no-cache-dir diskcache>=5.6.1 typing-extensions>=4.5.0 numpy>=1.20.0 jinja2>=2.11.3 && \
     # Install our custom llama-cpp-python from wheels
-    CMAKE_ARGS="-DLLAMA_CPP_LIB_PATH=/llama.cpp" pip install --no-cache-dir --find-links /opt/wheels --no-index llama-cpp-python && \
     # Cleanup wheels and pip cache
-    rm -rf /opt/wheels /root/.cache/pip && \
     deactivate
 
 
@@ -168,7 +144,7 @@ RUN find ${SHARED_VENV} -name "*.pyc" -delete && \
     echo 'echo "Use: v <environment> <command>"' >> /root/.bashrc
 
 # Expose ports  
-EXPOSE 8000 50051
+EXPOSE 8000
 
 # Default command
 CMD ["sh", "-c", "cd /app/server && /app/v.sh python -m uvicorn app:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app --timeout-graceful-shutdown 0"]

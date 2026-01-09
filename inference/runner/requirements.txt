@@ -20,4 +20,3 @@ nvsmi==0.4.2
 scikit-learn==1.7.2
 nvidia-ml-py==12.560.30
 requests>=2.32.0  # For server health checks
-argparse>=3.14.0

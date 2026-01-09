@@ -61,19 +61,6 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
       // Start streaming
       abortController.current = new AbortController();
 
-      // Create initial streaming message WITHOUT an ID (so it's treated as streaming)
-      const initialStreamingMessage: Message = {
-        role: MessageRoleValues.ASSISTANT,
-        content: [{
-          type: MessageContentTypeValues.TEXT,
-          text: ''
-        }]
-        // No ID - this marks it as a streaming message
-      };
-
-      // Add initial streaming message to state (not persisted)
-      actions.setMessages(prev => [...prev, initialStreamingMessage]);
-
       let finalMessage: Message | undefined;
 
       for await (const chunk of chat(
@@ -106,29 +93,34 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
         actions.setStreamingSections([]);
         actions.setCurrentStreamingSection(undefined);
 
-        // Remove any streaming messages (assistant messages without IDs)
+        // Replace streaming message with final message in one atomic operation
         actions.setMessages(prev => {
           const filtered = prev.filter(msg =>
+            // Keep user messages
             msg.role === MessageRoleValues.USER ||
+            // Keep assistant messages that have IDs (already persisted)
             (msg.role === MessageRoleValues.ASSISTANT && msg.id)
           );
-          return filtered;
+          // Add the final message
+          return [...filtered, finalMessage];
         });
-
-        // Add the final message - addMessage will handle giving it an ID and updating state
-        actions.addMessage(finalMessage);
       } else {
         // If no complete message received, just clean up streaming
         streaming.resetStreaming();
         actions.setStreamingSections([]);
         actions.setCurrentStreamingSection(undefined);
-        actions.setMessages(prev => prev.filter(msg => msg.id || msg.role === MessageRoleValues.USER));
+        actions.setMessages(prev => prev.filter(msg =>
+          // Keep user messages
+          msg.role === MessageRoleValues.USER ||
+          // Keep assistant messages that have IDs
+          (msg.role === MessageRoleValues.ASSISTANT && msg.id)
+        ));
       }
 
-      // // Stream complete - refresh messages from server
-      // if (conversationId) {
-      //   await messageOps.fetchMessages(conversationId);
-      // }
+      // Stream complete - refresh messages from server
+      if (conversationId) {
+        await messageOps.fetchMessages(conversationId);
+      }
 
     } catch (err: unknown) {
       if ((err as Error).name !== 'AbortError') {
@@ -151,7 +143,8 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
     actions,
     auth.user,
     conversationOps,
-    streaming
+    streaming,
+    messageOps
   ]);
 
   /**
@@ -200,30 +193,36 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
         streaming.resetStreaming();
         actions.setStreamingSections([]);
         actions.setCurrentStreamingSection(undefined);
-        // Remove any streaming messages (assistant messages without IDs)
+
+        // Replace streaming message with final message in one atomic operation
         actions.setMessages(prev => {
           const filtered = prev.filter(msg =>
+            // Keep user messages
             msg.role === MessageRoleValues.USER ||
+            // Keep assistant messages that have IDs (already persisted)
             (msg.role === MessageRoleValues.ASSISTANT && msg.id)
           );
-          return filtered;
+          // Add the final message
+          return [...filtered, finalMessage] as Message[];
         });
-
-        // Add the final message - addMessage will handle giving it an ID and updating state
-        actions.addMessage(finalMessage);
       } else {
         // If no complete message received, just clean up streaming
         streaming.resetStreaming();
         actions.setStreamingSections([]);
         actions.setCurrentStreamingSection(undefined);
-        actions.setMessages(prev => prev.filter(msg => msg.id || msg.role === 'user'));
+        actions.setMessages(prev => prev.filter(msg =>
+          // Keep user messages
+          msg.role === MessageRoleValues.USER ||
+          // Keep assistant messages that have IDs
+          (msg.role === MessageRoleValues.ASSISTANT && msg.id)
+        ));
       }
 
 
-      // // Stream complete - refresh messages
-      // if (conversationId) {
-      //   await messageOps.fetchMessages(conversationId);
-      // }
+      // Stream complete - refresh messages
+      if (conversationId) {
+        await messageOps.fetchMessages(conversationId);
+      }
     } catch (err: unknown) {
       if ((err as Error).name !== 'AbortError') {
         actions.setError((err as Error).message);
@@ -239,7 +238,7 @@ export const useChatOperations = (state: ChatState, actions: ChatActions) => {
       }
       actions.setIsLoading(false);
     }
-  }, [state.currentConversation, state.isLoading, state.isPaused, actions, auth.user, streaming]);
+  }, [state.currentConversation, state.isLoading, state.isPaused, actions, auth.user, streaming, messageOps]);
 
   const saveEditAndReplay = useCallback(async (messageId: number, newContent: string) => {
     if (!state.currentConversation?.id || !newContent.trim()) {

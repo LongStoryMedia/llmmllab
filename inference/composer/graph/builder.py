@@ -18,6 +18,7 @@ from composer.constants import (
     MEMORY_CREATE_NODE_NAME,
     MEMORY_SEARCH_NODE_NAME,
     MEMORY_STORE_NODE_NAME,
+    TITLE_GENERATION_NODE_NAME,
     TOOL_NODE_NAME,
 )
 from models import (
@@ -69,6 +70,14 @@ def should_continue_tool_calls(state: WorkflowState) -> str:
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
         return "tools"
     return "end"
+
+
+def should_generate_title(state: WorkflowState) -> str:
+    """Determine if we should generate a conversation title."""
+    # Only generate if title is None or starts with "New conversation"
+    if state.title is None or state.title.startswith("New conversation"):
+        return "generate_title"
+    return "skip_title"
 
 
 class GraphBuilder:
@@ -229,7 +238,56 @@ class GraphBuilder:
                 state.messages = assemble_context_messages(state)
                 return state
 
+            async def title_generation_node(state: WorkflowState) -> WorkflowState:
+                """Generate and update conversation title if needed."""
+                try:
+                    # Check if we need to generate a title
+                    if state.title and not state.title.startswith("New conversation"):
+                        self.logger.debug(
+                            f"Skipping title generation - conversation already has title: {state.title}"
+                        )
+                        return state
+
+                    # Need at least 2 messages (user + assistant) for meaningful title
+                    if not state.messages or len(state.messages) < 2:
+                        self.logger.debug("Not enough messages for title generation")
+                        return state
+
+                    # Generate title using primary agent
+                    self.logger.info(
+                        f"Generating title for conversation {state.conversation_id}"
+                    )
+                    title = await primary_agent.generate_title(state.messages)
+
+                    if title and title != "New Conversation":
+                        # Update the state
+                        state.title = title
+
+                        # Persist to database
+                        await self.conversation_storage.update_conversation_title(
+                            title=title,
+                            conversation_id=state.conversation_id,
+                            user_id=state.user_id,
+                        )
+                        self.logger.info(
+                            f"✓ Generated and saved title for conversation {state.conversation_id}: {title}"
+                        )
+                    else:
+                        self.logger.warning(
+                            f"Failed to generate valid title for conversation {state.conversation_id}"
+                        )
+
+                except Exception as e:
+                    # Don't fail the workflow if title generation fails
+                    self.logger.error(
+                        f"Error generating title for conversation {state.conversation_id}: {e}",
+                        exc_info=True,
+                    )
+
+                return state
+
             workflow.add_node("context_assembly", context_node)
+            workflow.add_node(TITLE_GENERATION_NODE_NAME, title_generation_node)
 
             # Memory nodes with injected agents and storage
             workflow.add_node(MEMORY_SEARCH_NODE_NAME, memory_search_node)
@@ -255,7 +313,17 @@ class GraphBuilder:
 
             workflow.add_edge(AGENT_NODE_NAME, MEMORY_CREATE_NODE_NAME)
             workflow.add_edge(MEMORY_CREATE_NODE_NAME, MEMORY_STORE_NODE_NAME)
-            workflow.add_edge(MEMORY_STORE_NODE_NAME, END)
+
+            # Add conditional title generation after memory storage
+            workflow.add_conditional_edges(
+                MEMORY_STORE_NODE_NAME,
+                should_generate_title,
+                {
+                    "generate_title": TITLE_GENERATION_NODE_NAME,
+                    "skip_title": END,
+                },
+            )
+            workflow.add_edge(TITLE_GENERATION_NODE_NAME, END)
 
             # TEMPORARILY DISABLED: Checkpointer causes connection issues
             # The PostgreSQL checkpointer creates a connection during compilation

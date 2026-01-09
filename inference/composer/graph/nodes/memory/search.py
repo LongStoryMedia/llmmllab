@@ -82,14 +82,14 @@ class MemorySearchNode:
                 similarity_threshold=similarity_threshold,
             )
 
-            # Use storage layer for similarity search
+            # Use storage layer for similarity search with conversation filtering
             memories = await self.memory_storage.search_similarity(
                 embeddings=embeddings,
                 min_similarity=similarity_threshold,
                 limit=max_results,
                 user_id=(user_id if not enable_cross_user else None),
                 conversation_id=(
-                    conversation_id if not enable_cross_conversation else None
+                    int(conversation_id) if not enable_cross_conversation else None
                 ),
                 start_date=None,
                 end_date=None,

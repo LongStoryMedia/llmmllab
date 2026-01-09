@@ -44,7 +44,7 @@ spec:
             type: DirectoryOrCreate
       containers:
         - name: ollama
-          image: 192.168.0.71:31500/inference:base-pipeline
+          image: 192.168.0.71:31500/inference:agent-cleanup
           imagePullPolicy: Always
           securityContext:
             # Required for GPU hardware-level operations (pynvml device resets)
@@ -64,11 +64,11 @@ spec:
             requests:
               memory: "24Gi"
               cpu: "16"
-              nvidia.com/gpu: "3"
+              # nvidia.com/gpu: "3"
             limits:
               memory: "30Gi"
               cpu: "20"
-              nvidia.com/gpu: "3"
+              # nvidia.com/gpu: "3"
           volumeMounts:
             - name: ollama-models-volume
               mountPath: /root/.ollama
@@ -203,7 +203,7 @@ spec:
             - name: GGML_LOG_LEVEL
               value: "2"
             - name: NVIDIA_VISIBLE_DEVICES
-              value: 0,1,2
+              value: "all"
             - name: NVIDIA_DRIVER_CAPABILITIES
               value: "compute,utility"
             # Search API keys configuration

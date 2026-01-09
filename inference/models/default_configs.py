@@ -131,7 +131,7 @@ DEFAULT_CIRCUIT_BREAKER_CONFIG = CircuitBreakerConfig(
 DEFAULT_GPU_CONFIG = GPUConfig(
     no_kv_offload=False,
     gpu_layers=-1,  # Use all GPU layers by default
-    main_gpu=1,
+    main_gpu=0,
     main_gpu_device_id=None,
     tensor_split=None,
     tensor_split_devices=None,
@@ -275,17 +275,13 @@ def create_default_user_config(user_id: str) -> UserConfig:
     """Create a default user configuration with predefined defaults for all settings"""
     return UserConfig(
         user_id=user_id,
-        preferences=DEFAULT_PREFERENCES_CONFIG,
         memory=DEFAULT_MEMORY_CONFIG,
         summarization=DEFAULT_SUMMARIZATION_CONFIG,
-        refinement=DEFAULT_REFINEMENT_CONFIG,
-        web_search=DEFAULT_WEB_SEARCH_CONFIG,
         image_generation=DEFAULT_IMAGE_GENERATION_CONFIG,
         model_profiles=DEFAULT_MODEL_PROFILE_CONFIG,
         circuit_breaker=DEFAULT_CIRCUIT_BREAKER_CONFIG,
         gpu_config=DEFAULT_GPU_CONFIG,
         workflow=DEFAULT_WORKFLOW_CONFIG,
         tool=DEFAULT_TOOL_CONFIG,
-        context_window=DEFAULT_CONTEXT_WINDOW_CONFIG,
         parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     )
