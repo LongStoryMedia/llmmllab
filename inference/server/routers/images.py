@@ -1,9 +1,6 @@
 """
 Image router for handling image generation, editing, and manipulation.
 
-Note: This router is included in app.py with both non-versioned and versioned paths:
-- Non-versioned: /images/...
-- Versioned: /v1/images/...
 """
 
 import os

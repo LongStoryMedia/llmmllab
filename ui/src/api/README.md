@@ -1,92 +1,72 @@
-# API Layer with Versioning
+# API Layer
 
-This directory contains the API layer for the UI, which has been updated to include versioning support for better compatibility management.
+This directory contains the API layer for the UI.
 
-## API Versioning
+## Structure
 
-All API requests now include a version prefix (e.g., `/v1/models`, `/v1/config`) to ensure backward compatibility as APIs evolve.
+The API layer is organized by resource type:
 
-### Configuration
+- `base.ts` - Core request functions (`req`, `gen`) and authentication utilities
+- `types.ts` - TypeScript types for API requests and responses
+- `message.ts` - Message and chat operations
+- `conversation.ts` - Conversation management
+- `config.ts` - User configuration
+- `model.ts` - Model and model profile management
+- `image.ts` - Image generation and management
+- `usrmgr.ts` - User management and authentication
+- `resources.ts` - System resource monitoring
 
-The API version is configured in `src/config/index.ts`:
+## Usage Examples
 
-```typescript
-export default {
-  server: {
-    baseUrl: import.meta.env.VITE_BASE_URL,
-    apiVersion: 'v1'  // Current API version
-  },
-  // ...other config
-}
-```
+### Basic API Requests
 
-### Usage Examples
-
-#### Basic API Requests
-
-API requests automatically include the configured API version:
-
-```typescript
-// This will call `/v1/models`
-const models = await getModels(accessToken);
-```
-
-#### Targeting Specific API Versions
-
-If you need to target a specific API version for compatibility:
+API requests use the centralized `req` function:
 
 ```typescript
 import { req, getHeaders } from './api';
 
-// Call a specific API version endpoint
-const result = await req({
+// Make a GET request
+const models = await req({
   method: 'GET',
   path: 'models',
-  apiVersion: 'v2',  // This will call `/v2/models`
   headers: getHeaders(accessToken)
+});
+
+// Make a POST request with body
+const result = await req({
+  method: 'POST',
+  path: 'chat/completions',
+  headers: getHeaders(accessToken),
+  body: JSON.stringify(data)
 });
 ```
 
-#### Version Utilities
+### Streaming Responses
 
-The `version.ts` module provides utilities for working with versioned APIs:
+For streaming endpoints, use the `gen` function:
 
 ```typescript
-import { getVersionedPath, isVersionCompatible } from './api';
+import { gen } from './api';
 
-// Get a versioned path (e.g., "v1/models")
-const path = getVersionedPath('models');
-
-// Check if the current API version supports a feature
-if (isVersionCompatible('v2')) {
-  // Use features that require API v2 or higher
+for await (const chunk of gen({
+  method: 'POST',
+  path: 'chat/completions',
+  headers: getHeaders(accessToken),
+  body: JSON.stringify(data)
+})) {
+  // Process streaming chunks
+  console.log(chunk);
 }
 ```
 
-#### WebSocket Connections
+### WebSocket Connections
 
-WebSocket connections also support versioning:
+WebSocket connections are managed through the `ChatWebSocketClient`:
 
 ```typescript
 const ws = new ChatWebSocketClient(
   SocketConnectionTypeValues.CHAT, 
   handleMessage,
-  '/conversation/123',
-  'v2'  // Optional custom API version
+  '/conversation/123'
 );
 ```
-
-## Migration
-
-When the backend API evolves and introduces breaking changes, follow these steps:
-
-1. Update the API version in the backend (e.g., from `/v1/...` to `/v2/...`)
-2. Maintain backward compatibility in the backend for older clients
-3. Update the UI to use the new API version when ready:
-
-   ```typescript
-   // Update global default in config
-   config.server.apiVersion = 'v2';
-   ```
-   
-4. For gradual migration, you can target specific endpoints with specific versions

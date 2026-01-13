@@ -1,9 +1,6 @@
 """
 Todo router for handling user todo list management.
 
-Note: This router is included in app.py with both non-versioned and versioned paths:
-- Non-versioned: /todos/...
-- Versioned: /v1/todos/...
 """
 
 from typing import List, Optional

@@ -1,8 +1,6 @@
 """
 Internal router for internal API endpoints with restricted access.
 
-Note: This router is included in app.py with non-versioned path only.
-It is intentionally not versioned to maintain isolation of internal endpoints.
 """
 
 import os
@@ -91,31 +89,3 @@ async def internal_get_user_image(
 
     # Serve the file directly with appropriate content type
     return FileResponse(file_path, media_type=content_type, headers=headers)
-
-
-@router.post("/cleanup/targeted")
-async def internal_trigger_targeted_cleanup(
-    request: Request, _: bool = Depends(verify_internal_api_key)
-) -> Any:
-    """Trigger a bounded targeted cleanup scan and return diagnostics.
-
-    Protected: requires X-API-Key header and allowed source IP.
-    """
-    try:
-        from runner.utils.hardware_manager import hardware_manager
-    except Exception as e:
-        logger.error(f"Hardware manager not available: {e}")
-        raise HTTPException(status_code=500, detail="Hardware manager unavailable")
-
-    try:
-        owners_before = hardware_manager.log_cuda_memory_owners(max_items=200)
-        try:
-            hardware_manager.targeted_clear_module_cuda_refs(max_modules=200)
-        except Exception as e:
-            logger.info(f"Targeted cleanup failed: {e}")
-
-        owners_after = hardware_manager.log_cuda_memory_owners(max_items=200)
-        return {"before": owners_before, "after": owners_after}
-    except Exception as e:
-        logger.error(f"Error running targeted cleanup: {e}")
-        raise HTTPException(status_code=500, detail=str(e))

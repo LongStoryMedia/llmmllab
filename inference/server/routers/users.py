@@ -1,9 +1,6 @@
 """
 Users router for handling user management and authentication.
 
-Note: This router is included in app.py with both non-versioned and versioned paths:
-- Non-versioned: /users/...
-- Versioned: /v1/users/...
 """
 
 from typing import List

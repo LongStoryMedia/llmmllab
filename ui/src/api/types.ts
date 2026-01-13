@@ -16,11 +16,6 @@ export type RequestOptions = {
   timeout?: number;
   requestKey?: string;
   baseUrl?: string;
-  /**
-   * Optional API version override. If not provided, uses the default from config.
-   * Use this to target specific API versions for compatibility.
-   */
-  apiVersion?: string;
 };
 
 export type UserAttribute = {

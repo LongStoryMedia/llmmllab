@@ -2,9 +2,6 @@
 Simplified Chat router that delegates to composer interface.
 All chat logic has been moved to the composer module for clean architectural separation.
 
-Note: This router is included in app.py with both non-versioned and versioned paths:
-- Non-versioned: /chat/...
-- Versioned: /v1/chat/...
 """
 
 from typing import Any, AsyncIterator, Dict, Optional, Type

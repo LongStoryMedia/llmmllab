@@ -29,7 +29,6 @@ Endpoints:
 - /models/*: Model management endpoints
 - /loras/*: LoRA adapter management endpoints
 - /resources/*: System resource endpoints
-- /v1/*: OpenAI-compatible endpoints
 
 The application handles initialization and cleanup of all services and provides
 detailed logging throughout the startup and shutdown processes.
@@ -56,13 +55,15 @@ from server.routers import (
     internal,
     db_admin,
     documents,
+    ollama,
+    openai,
 )
 from server.middleware import (
     AuthMiddleware,
     db_init_middleware,
     MessageValidationMiddleware,
 )
-from server.config import API_VERSION, AUTH_JWKS_URI
+from server.config import AUTH_JWKS_URI
 from server.cleanup_service import cleanup_service
 from db.maintenance import maintenance_service
 from utils.logging import llmmllogger
@@ -160,7 +161,7 @@ global_auth_middleware = AuthMiddleware(AUTH_JWKS_URI)
 # Initialize the FastAPI application with the lifespan context manager
 app = FastAPI(
     title="Inference API",
-    description="FastAPI server for inference with API versioning (current version: v1)",
+    description="FastAPI server for inference",
     version="0.1.0",
     redoc_url="/redoc",
     docs_url="/docs",
@@ -290,18 +291,11 @@ app.include_router(documents.router)
 app.include_router(internal.router)
 app.include_router(db_admin.router)
 
-# Include versioned routers
-version = API_VERSION
-app.include_router(images.router, prefix=f"/{version}")
-app.include_router(model.router, prefix=f"/{version}")
-app.include_router(chat.router, prefix=f"/{version}")
-app.include_router(conversation.router, prefix=f"/{version}")
-app.include_router(config.router, prefix=f"/{version}")
-app.include_router(static.router, prefix=f"/{version}")
-app.include_router(websockets.router, prefix=f"/{version}")
-app.include_router(users.router, prefix=f"/{version}")
-app.include_router(todos.router, prefix=f"/{version}")
-app.include_router(documents.router, prefix=f"/{version}")
+# Include Ollama-compatible API endpoints
+app.include_router(ollama.router)
+
+# Include OpenAI-compatible API endpoints
+app.include_router(openai.router)
 
 
 @app.get("/health")

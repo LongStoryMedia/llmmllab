@@ -1,9 +1,6 @@
 """
 Static router for serving static files like images.
 
-Note: This router is included in app.py with both non-versioned and versioned paths:
-- Non-versioned: /static/...
-- Versioned: /v1/static/...
 """
 
 import os

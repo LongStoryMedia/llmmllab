@@ -1,9 +1,6 @@
 """
 Config router for handling user and system configuration.
 
-Note: This router is included in app.py with both non-versioned and versioned paths:
-- Non-versioned: /config/...
-- Versioned: /v1/config/...
 """
 
 from fastapi import APIRouter, HTTPException, Request

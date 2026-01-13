@@ -6,7 +6,6 @@ export default {
     baseUrl: import.meta.env.VITE_BASE_URL || 'https://ai.longstorymedia.com',
     // baseUrl: import.meta.env.VITE_BASE_URL,
     // baseUrl: 'http://192.168.0.71:8000',
-    apiVersion: 'v1'
   },
   auth: {
     clientId: import.meta.env.VITE_CLIENT_ID,
