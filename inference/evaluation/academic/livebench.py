@@ -54,7 +54,7 @@ class LiveBenchmark(BenchmarkBase):
             },
         ]
 
-    def run(
+    async def run(
         self, model_id: str, num_samples: int = 50, dataset_path: Optional[str] = None
     ) -> BenchmarkResult:
         """Run LiveBench evaluation."""
@@ -75,46 +75,44 @@ class LiveBenchmark(BenchmarkBase):
                 f"LiveBench Question {i+1}/{len(extended_questions)} ({question['category']})"
             )
 
-            try:
-                # Use livebench_template from PromptTemplates
-                prompt = PromptTemplates.livebench_template(
-                    question=question["question"], category=question["category"]
-                )
-                response = self.inference_engine.run_single_inference(
-                    model_id, prompt, max_tokens=200, temperature=0.3
-                )
-                model_response = response.get("response", "")
+            # No try/except - let errors propagate to show actual failures
+            # Use livebench_template from PromptTemplates
+            prompt = PromptTemplates.livebench_template(
+                question=question["question"], category=question["category"]
+            )
 
-                # Evaluate based on question type
-                if question["type"] == "math_reasoning":
-                    score = self._evaluate_math_reasoning(model_response, question)
-                elif question["type"] == "current_events":
-                    score = self._evaluate_knowledge(model_response, question)
-                elif question["type"] == "creative_constraint":
-                    score = self._evaluate_creative_constraint(model_response, question)
-                else:
-                    score = 0.5  # Default middle score
+            response = await self.inference_engine.run_single_inference(
+                model_id, prompt, max_tokens=200, temperature=0.3
+            )
+            model_response = response["response"]  # No need for .get() with default
 
-                total_score += score
+            # Evaluate based on question type
+            if question["type"] == "math_reasoning":
+                score = self._evaluate_math_reasoning(model_response, question)
+            elif question["type"] == "current_events":
+                score = self._evaluate_knowledge(model_response, question)
+            elif question["type"] == "creative_constraint":
+                score = self._evaluate_creative_constraint(model_response, question)
+            else:
+                score = 0.5  # Default middle score
 
-                detailed_results.append(
-                    {
-                        "question_id": i,
-                        "category": question["category"],
-                        "type": question["type"],
-                        "score": score,
-                        "response": (
-                            model_response[:150] + "..."
-                            if len(model_response) > 150
-                            else model_response
-                        ),
-                    }
-                )
+            total_score += score
 
-                print(f"  Score: {score:.2f}")
+            detailed_results.append(
+                {
+                    "question_id": i,
+                    "category": question["category"],
+                    "type": question["type"],
+                    "score": score,
+                    "response": (
+                        model_response[:150] + "..."
+                        if len(model_response) > 150
+                        else model_response
+                    ),
+                }
+            )
 
-            except Exception as e:
-                self.logger.error(f"Error in LiveBench question {i}: {str(e)}")
+            print(f"  Score: {score:.2f}")
 
         livebench_score = (
             total_score / len(extended_questions) if extended_questions else 0

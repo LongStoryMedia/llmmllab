@@ -1,0 +1,56 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: RetrievedDocument
+description: "Document retrieved from RAG system"
+properties:
+  document_id:
+    type: string
+    description: "Unique identifier for the document"
+  source:
+    $ref: "document_source.yaml"
+    description: "Source of the document"
+  content:
+    type: string
+    description: "The document content"
+    maxLength: 50000
+  relevance_score:
+    type: number
+    minimum: 0
+    maximum: 1
+    description: "Relevance score for the query"
+  metadata:
+    type: object
+    description: "Document metadata"
+    properties:
+      title:
+        type: string
+        description: "Document title"
+      url:
+        type: string
+        format: "uri"
+        description: "Source URL if applicable"
+      created_at:
+        type: string
+        format: "date-time"
+        description: "When document was created"
+      tags:
+        type: array
+        items:
+          type: string
+        description: "Document tags"
+    additionalProperties: true
+  chunk_info:
+    type: object
+    description: "Information about document chunking"
+    properties:
+      chunk_id:
+        type: string
+      total_chunks:
+        type: integer
+        minimum: 1
+      chunk_index:
+        type: integer
+        minimum: 0
+    additionalProperties: false
+required: ["document_id", "source", "content", "relevance_score"]
+additionalProperties: false

@@ -1,0 +1,78 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: IntentAnalysis
+description: "Detailed analysis of user intent for smart tool generation"
+properties:
+  id:
+    type: integer
+    description: "Unique identifier for the analysis record"
+  message_id:
+    type: integer
+    description: "ID of the associated message this analysis belongs to"
+  task:
+    type: string
+    description: "The specific task inferred from the user message for this analysis"
+  workflow_type:
+    $ref: "workflow_type.yaml"
+    description: "Primary intent category identified from the user message"
+  complexity_level:
+    $ref: "complexity_level.yaml"
+    description: "Assessed complexity level of the request"
+  required_capabilities:
+    type: array
+    items:
+      $ref: "required_capability.yaml"
+    description: "Set of capabilities required to fulfill the request"
+  domain_specificity:
+    type: number
+    minimum: 0.0
+    maximum: 1.0
+    description: "Domain specificity score (0-1, higher = more domain-specific)"
+  reusability_potential:
+    type: number
+    minimum: 0.0
+    maximum: 1.0
+    description: "Reusability potential score (0-1, higher = more reusable)"
+  confidence:
+    type: number
+    minimum: 0.0
+    maximum: 1.0
+    description: "Confidence in the analysis (0-1)"
+  response_format:
+    $ref: "response_format.yaml"
+    description: "Suggested response format for the user"
+  technical_domain:
+    $ref: "technical_domain.yaml"
+    description: "Identified technical domain if applicable"
+  requires_tools:
+    type: boolean
+    default: false
+    description: "Whether this intent specifically requires tool execution"
+  requires_custom_tools:
+    type: boolean
+    default: false
+    description: "Whether this intent requires custom/dynamic tool generation"
+  tool_complexity_score:
+    type: number
+    minimum: 0.0
+    maximum: 1.0
+    description: "Tool complexity score (0-1, higher = more complex tools needed)"
+  computational_requirements:
+    $ref: "computational_requirement.yaml"
+    description: "Computational requirements assessment for the request"
+  created_at:
+    type: string
+    format: date-time
+    description: "Timestamp when the analysis was created"
+required:
+  - workflow_type
+  - complexity_level
+  - required_capabilities
+  - computational_requirements
+  - domain_specificity
+  - reusability_potential
+  - confidence
+  - requires_tools
+  - requires_custom_tools
+  - tool_complexity_score
+additionalProperties: false

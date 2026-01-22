@@ -4,11 +4,11 @@ import { Link, useLocation } from 'react-router-dom';
 import ChatIcon from '@mui/icons-material/Chat';
 import ImageIcon from '@mui/icons-material/Image';
 import SettingsIcon from '@mui/icons-material/Settings';
-import HandymanIcon  from '@mui/icons-material/Handyman';
+import HandymanIcon from '@mui/icons-material/Handyman';
 
 const Navigation: React.FC = () => {
   const location = useLocation();
-  
+
   const navigationItems = [
     { text: 'Chat', icon: <ChatIcon />, path: '/' },
     { text: 'Images', icon: <ImageIcon />, path: '/images' },
@@ -23,8 +23,8 @@ const Navigation: React.FC = () => {
           const isActive = location.pathname === item.path;
           return (
             <ListItem key={item.text} disablePadding>
-              <ListItemButton 
-                component={Link} 
+              <ListItemButton
+                component={Link}
                 to={item.path}
                 selected={isActive}
                 sx={{
@@ -39,8 +39,8 @@ const Navigation: React.FC = () => {
                 <ListItemIcon sx={{ color: isActive ? 'primary.main' : 'inherit' }}>
                   {item.icon}
                 </ListItemIcon>
-                <ListItemText 
-                  primary={item.text} 
+                <ListItemText
+                  primary={item.text}
                   sx={{ color: isActive ? 'primary.main' : 'inherit' }}
                 />
               </ListItemButton>

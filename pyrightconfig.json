@@ -1,19 +1,18 @@
 {
     "include": [
-        "inference",
-        "maistro",
-        "ui"
+        "inference/server",
+        "inference/composer",
+        "inference/runner",
     ],
     "exclude": [
         "**/node_modules",
-        "**/__pycache__"
+        "**/__pycache__",
+        "**/venv",
+        "**/.venv"
     ],
     "typeCheckingMode": "basic",
     "reportMissingImports": true,
     "reportMissingTypeStubs": false,
-    "pythonVersion": "3.10",
-    "extraPaths": [
-        "inference/runner",
-        "inference/runner/typings"
-    ]
+    "pythonVersion": "3.12",
+    "extraPaths": []
 }

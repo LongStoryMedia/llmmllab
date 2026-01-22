@@ -1,0 +1,27 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: OptimalParameters
+description: "Optimal parameters predicted by ML models for LLM initialization"
+properties:
+  n_ctx:
+    type: integer
+    minimum: 1
+    description: "Context window size"
+  n_batch:
+    type: integer
+    minimum: 1
+    description: "Batch size for processing"
+  n_ubatch:
+    type: integer
+    minimum: 1
+    description: "Micro-batch size"
+  n_gpu_layers:
+    type: integer
+    minimum: -1
+    description: "Number of model layers to place on GPU (-1 means all layers)"
+required:
+  - n_ctx
+  - n_batch
+  - n_ubatch
+  - n_gpu_layers
+additionalProperties: false

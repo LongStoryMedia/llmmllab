@@ -23,11 +23,8 @@ export async function* gen(opts: RequestOptions): AsyncGenerator<ChatResponse> {
     'Content-Type': 'application/json'
   }
   opts.method = opts.method || 'GET';
-  
-  // Incorporate API version in path unless it's an external API (has baseUrl specified)
-  const apiVersion = opts.apiVersion || config.server.apiVersion;
-  const apiPath = opts.baseUrl ? opts.path : `${apiVersion}/${opts.path}`;
-  const response = await fetch(`${opts.baseUrl || config.server.baseUrl}/${apiPath}`, opts);
+
+  const response = await fetch(`${opts.baseUrl || config.server.baseUrl}/${opts.path}`, opts);
 
   // Handle authentication errors
   if (response.status === 401 || response.status === 403) {
@@ -49,73 +46,143 @@ export async function* gen(opts: RequestOptions): AsyncGenerator<ChatResponse> {
   let buffer = ''; // Add buffer to accumulate partial JSON chunks
   let done = false;
 
-  while (!done) {
-    if (opts.signal?.aborted) {
-      console.log('Request was cancelled');
-      break;
-    }
-    const { done: doneReading, value } = await reader.read();
-    done = doneReading;
+  try {
+    while (!done) {
+      if (opts.signal?.aborted) {
+        console.log('Request was cancelled');
+        break;
+      }
+      const { done: doneReading, value } = await reader.read();
+      done = doneReading;
 
-    if (value) {
-      buffer += decoder.decode(value, { stream: !doneReading });
+      if (value) {
+        buffer += decoder.decode(value, { stream: !doneReading });
 
-      // Process complete JSON objects from the buffer
-      let startIdx = 0;
-      let parseIndex;
+        // Process complete JSON objects from the buffer
+        let startIdx = 0;
+        let parseIndex;
 
-      // Try to parse as many complete JSON objects as possible from the buffer
-      while (startIdx < buffer.length) {
-        try {
-          parseIndex = findCompleteJsonEnd(buffer, startIdx);
-          if (parseIndex === -1) {
-            break; // No complete JSON found
+        // Try to parse as many complete JSON objects as possible from the buffer
+        while (startIdx < buffer.length) {
+          try {
+            parseIndex = findCompleteJsonEnd(buffer, startIdx);
+            if (parseIndex === -1) {
+              break; // No complete JSON found
+            }
+
+            const jsonStr = buffer.substring(startIdx, parseIndex + 1);
+            const res = JSON.parse(jsonStr) as ChatResponse;
+
+            // Ensure message has a valid content array structure if it exists
+            if (res.message) {
+              // Fix the content field if it exists but isn't an array
+              if (res.message.content && !Array.isArray(res.message.content)) {
+                console.warn('Response has message with non-array content:', res.message.content);
+                res.message.content = [{
+                  type: "text",
+                  text: String(res.message.content)
+                }];
+              }
+
+              // Ensure content array exists
+              if (!res.message.content) {
+                res.message.content = [{
+                  type: "text",
+                  text: ""
+                }];
+              }
+
+              // Ensure conversation_id exists on the message
+              if (!res.message.conversation_id) {
+                // Try to extract conversation_id from the URL path
+                const pathMatch = window.location.pathname.match(/\/conversations\/(\d+)/);
+                const conversationId = pathMatch ? parseInt(pathMatch[1], 10) : -1;
+                res.message.conversation_id = conversationId;
+              }
+            }
+
+            yield res;
+
+            // Move start index past this JSON object
+            startIdx = parseIndex + 1;
+          } catch {
+            // If we can't parse a complete JSON object, break and wait for more data
+            break;
           }
+        }
 
-          const jsonStr = buffer.substring(startIdx, parseIndex + 1);
-          const res = JSON.parse(jsonStr) as ChatResponse;
-          yield res;
-
-          // Move start index past this JSON object
-          startIdx = parseIndex + 1;
-        } catch {
-          // If we can't parse a complete JSON object, break and wait for more data
-          break;
+        // Remove processed JSON from buffer
+        if (startIdx > 0) {
+          buffer = buffer.substring(startIdx);
         }
       }
 
-      // Remove processed JSON from buffer
-      if (startIdx > 0) {
-        buffer = buffer.substring(startIdx);
-      }
-    }
+      if (done && buffer.trim()) {
+        // Try to parse any remaining data in the buffer
+        try {
+          const res = JSON.parse(buffer) as ChatResponse;
 
-    if (done && buffer.trim()) {
-      // Try to parse any remaining data in the buffer
-      try {
-        const res = JSON.parse(buffer) as ChatResponse;
-        yield res;
-      } catch (e: unknown) {
-        if (e instanceof Error) {
-          console.error("Error parsing final JSON chunk:", e);
-          // Try parsing individual lines as separate JSON objects
-          const lines = buffer.split('\n').filter(line => line.trim());
-          for (const line of lines) {
-            try {
-              const res = JSON.parse(line) as ChatResponse;
-              yield res;
-            } catch {
-              // Ignore parsing errors for individual lines
+          // Apply the same validations to the final chunk
+          if (res.message) {
+            // Fix the content field if it exists but isn't an array
+            if (res.message.content && !Array.isArray(res.message.content)) {
+              console.warn('Final response has message with non-array content:', res.message.content);
+              res.message.content = [{
+                type: "text",
+                text: String(res.message.content)
+              }];
+            }
+
+            // Ensure content array exists
+            if (!res.message.content) {
+              res.message.content = [{
+                type: "text",
+                text: ""
+              }];
+            }
+
+            // Ensure conversation_id exists on the message
+            if (!res.message.conversation_id) {
+              // Try to extract conversation_id from the URL path
+              const pathMatch = window.location.pathname.match(/\/conversations\/(\d+)/);
+              const conversationId = pathMatch ? parseInt(pathMatch[1], 10) : -1;
+              res.message.conversation_id = conversationId;
+            }
+          }
+
+          yield res;
+        } catch (e: unknown) {
+          if (e instanceof Error) {
+            console.error("Error parsing final JSON chunk:", e);
+            // Try parsing individual lines as separate JSON objects
+            const lines = buffer.split('\n').filter(line => line.trim());
+            for (const line of lines) {
+              try {
+                const res = JSON.parse(line) as ChatResponse;
+                yield res;
+              } catch {
+                // Ignore parsing errors for individual lines
+              }
             }
           }
         }
       }
     }
+  } finally {
+    // Clean up - cancel before releasing lock to avoid errors
+    try {
+      if (opts.signal?.aborted) {
+        // If the request was aborted, try to cancel the stream
+        await reader.cancel();
+      }
+    } catch (error) {
+      // Ignore cancel errors - the stream might already be closed
+      console.debug('Stream cancel failed (likely already closed):', error);
+    } finally {
+      // Always release the lock
+      reader.releaseLock();
+    }
   }
-
-  // Clean up
-  reader.releaseLock();
-  reader.cancel();
 }
 
 // Helper function to find the end of a complete JSON object
@@ -184,11 +251,7 @@ export async function req<T>(opts: RequestOptions): Promise<T> {
       }, opts.timeout);
     }
 
-    // Incorporate API version in path unless it's an external API (custom baseUrl specified)
-    const isExternalApi = opts.baseUrl !== config.server.baseUrl;
-    const apiVersion = opts.apiVersion || config.server.apiVersion;
-    const apiPath = isExternalApi ? opts.path : `${apiVersion}/${opts.path}`;
-    const response = await fetch(`${opts.baseUrl}/${apiPath}`, opts);
+    const response = await fetch(`${opts.baseUrl}/${opts.path}`, opts);
 
     // Handle authentication errors
     if (response.status === 401 || response.status === 403) {

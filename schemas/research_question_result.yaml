@@ -6,9 +6,11 @@ properties:
   id:
     type: integer
     description: Unique identifier for the question result
-  question:
-    type: string
-    description: The question that was investigated
+  sources:
+    type: array
+    items:
+      type: string
+    description: List of sources used to gather information
   synthesized_answer:
     type: string
     description: Synthesized answer to the question

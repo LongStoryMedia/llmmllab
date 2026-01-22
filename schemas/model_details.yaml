@@ -12,6 +12,9 @@ properties:
   gguf_file:
     type: string
     description: Path to the GGUF file if applicable
+  clip_model_path:
+    type: string
+    description: Path to the CLIP model file for multimodal models (e.g., mmproj file)
   family:
     type: string
     description: Primary model family this belongs to (e.g., llama, phi3)
@@ -57,8 +60,31 @@ properties:
   weight:
     type: number
     description: Weight of the model (applies to LoRA models)
+  size:
+    type: integer
+    description: Size of the model in bytes
+  original_ctx:
+    type: integer
+    description: Original context window size of the model
+  n_layers:
+    type: integer
+    description: Number of layers in the model
+  hidden_size:
+    type: integer
+    description: Hidden size of the model
+  n_heads:
+    type: integer
+    description: Number of attention heads in the model
+  n_kv_heads:
+    type: integer
+    description: Number of key-value heads in the model
+  clip_model_size:
+    type: integer
+    description: Size of the CLIP model in bytes, if applicable
 required:
   - format
   - family
   - families
   - parameter_size
+  - original_ctx
+  - size

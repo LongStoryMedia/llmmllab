@@ -1,0 +1,28 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: SystemGPUStats
+description: "System-wide GPU statistics for dynamic multi-GPU systems"
+properties:
+  total_gpus:
+    type: integer
+    minimum: 0
+    description: "Total number of GPU devices in the system"
+  total_memory:
+    type: number
+    minimum: 0
+    description: "Total GPU memory across all devices in MB"
+  total_available_memory:
+    type: number
+    minimum: 0
+    description: "Total available GPU memory across all devices in MB"
+  gpus:
+    type: array
+    description: "List of individual GPU device information"
+    items:
+      $ref: "dev_stats.yaml"
+required:
+  - total_gpus
+  - total_memory
+  - total_available_memory
+  - gpus
+additionalProperties: false

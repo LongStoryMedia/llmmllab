@@ -3,6 +3,12 @@ title: MessageContent
 description: Content of a message in a chat conversation
 type: object
 properties:
+  id:
+    type: integer
+    description: Unique identifier for the message content
+  message_id:
+    type: integer
+    description: Foreign key reference to the associated message
   type:
     $ref: message_content_type.yaml
     description: Type of the message content (e.g., text, image, tool call)
@@ -12,5 +18,15 @@ properties:
   url:
     type: string
     description: URL of the image or resource, if applicable
+  format:
+    type: string
+    description: Format of the content (e.g., 'mp3' for audio, 'mp4' for video)
+  name:
+    type: string
+    description: Name of the file/image/etc., if applicable
+  created_at:
+    type: string
+    format: date-time
+    description: Timestamp when the message content was created
 required:
   - type

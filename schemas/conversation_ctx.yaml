@@ -1,0 +1,37 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ConversationCtx
+description: >
+  Manages context for a conversation, including messages, summaries, and retrieved memories.
+  Provides methods for adding messages, summarizing conversations, and retrieving relevant context.
+type: object
+required:
+  - messages
+  - notes
+  - images
+  - conversation
+properties:
+  messages:
+    type: array
+    description: List of messages in the conversation
+    items:
+      $ref: message.yaml
+  notes:
+    type: array
+    description: List of notes related to the conversation
+    items:
+      type: string
+  images:
+    type: array
+    description: List of images associated with the conversation
+    items:
+      $ref: image_metadata.yaml
+  conversation:
+    $ref: conversation.yaml
+    description: The conversation object
+  current_user_message:
+    $ref: message.yaml
+    description: The current message from the user
+    nullable: true
+  intent:
+    $ref: intent.yaml
+    description: The intent detected from the user's message

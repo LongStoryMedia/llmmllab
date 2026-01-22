@@ -1,0 +1,28 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ParameterOptimizationConfig
+description: Configuration for optimizing LLM initialization parameters to find maximum values
+type: object
+properties:
+  enabled:
+    type: boolean
+    description: Enable parameter optimization to find maximum viable values
+    default: false
+
+  parameters:
+    type: array
+    description: List of performance parameters to optimize
+    items:
+      $ref: performance_parameter.yaml
+    minItems: 1
+    uniqueItems: true
+
+  crash_prevention:
+    $ref: crash_prevention.yaml
+    description: Settings to prevent container crashes during optimization
+
+required:
+  - enabled
+  - parameters
+  - crash_prevention
+
+additionalProperties: false

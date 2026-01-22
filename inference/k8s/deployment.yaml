@@ -15,6 +15,8 @@ spec:
         app: ollama
     spec:
       runtimeClassName: nvidia
+      nodeSelector:
+        kubernetes.io/hostname: lsnode-3
       volumes:
         - name: ollama-models-volume
           persistentVolumeClaim:
@@ -23,19 +25,19 @@ spec:
           configMap:
             name: ollama-init-script
             defaultMode: 0755
-        - name: sd-models-volume
-          persistentVolumeClaim:
-            claimName: sd-models
+        # - name: sd-models-volume
+        #   persistentVolumeClaim:
+        #     claimName: sd-models
         - name: generated-images
           persistentVolumeClaim:
             claimName: generated-images
         - name: code-base
           persistentVolumeClaim:
             claimName: code-base
-        - name: llama-cpp
-          hostPath:
-            path: /llama.cpp
-            type: DirectoryOrCreate
+        # - name: llama-cpp
+        #   hostPath:
+        #     path: /llama.cpp
+        #     type: DirectoryOrCreate
         - name: models
           hostPath:
             path: /models
@@ -44,6 +46,13 @@ spec:
         - name: ollama
           image: 192.168.0.71:31500/inference:main
           imagePullPolicy: Always
+          securityContext:
+            # Required for GPU hardware-level operations (pynvml device resets)
+            privileged: true
+            capabilities:
+              add:
+                - SYS_ADMIN # Required for CUDA device reset operations
+                - SYS_RAWIO # Required for direct hardware access
           ports:
             - name: ollama
               containerPort: 11434
@@ -55,31 +64,27 @@ spec:
             requests:
               memory: "24Gi"
               cpu: "16"
-              nvidia.com/gpu: "3"
+              # nvidia.com/gpu: "3"
             limits:
               memory: "30Gi"
               cpu: "20"
-              nvidia.com/gpu: "3"
+              # nvidia.com/gpu: "3"
           volumeMounts:
             - name: ollama-models-volume
               mountPath: /root/.ollama
-            - name: sd-models-volume
-              mountPath: /root/.cache/huggingface/hub
+            # - name: sd-models-volume
+            #   mountPath: /root/.cache/huggingface/hub
             - name: init-script
               mountPath: /scripts
             - name: generated-images
               mountPath: /root/images
             - name: code-base
               mountPath: /app
-            - name: llama-cpp
-              mountPath: /llama.cpp
+            # - name: llama-cpp
+            #   mountPath: /llama.cpp
             - name: models
               mountPath: /models
           env:
-            - name: OLLAMA_HOST
-              value: "0.0.0.0"
-            - name: OLLAMA_DEBUG
-              value: "false"
             - name: PYTHONPATH
               value: "/app"
             - name: HF_TOKEN
@@ -87,31 +92,7 @@ spec:
                 secretKeyRef:
                   name: hf-token
                   key: token
-            # RabbitMQ configuration
-            - name: RABBITMQ_ENABLED
-              value: "true"
-            - name: RABBITMQ_HOST
-              value: "rabbitmq-0.rabbitmq.rabbitmq.svc.cluster.local"
-            - name: RABBITMQ_PORT
-              value: "5672"
-            - name: RABBITMQ_USER
-              value: "lsm"
-            - name: RABBITMQ_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: rabbitmq
-                  key: password
-            - name: RABBITMQ_VHOST
-              value: "/"
-            # Internal service settings
-            - name: MAISTRO_INTERNAL_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: internal-api-key
-                  key: api_key
-            - name: MAISTRO_BASE_URL
-              value: "http://maistro.maistro.svc.cluster.local:8080"
-              
+
             # Authentication configuration
             - name: AUTH_ISSUER
               value: "https://auth.longstorymedia.com"
@@ -126,7 +107,7 @@ spec:
                   key: client_secret
             - name: AUTH_JWKS_URI
               value: "https://auth.longstorymedia.com/keys"
-              
+
             # Database configuration
             - name: DB_HOST
               value: "192.168.0.71"
@@ -143,7 +124,9 @@ spec:
               value: "llmmll"
             - name: DB_SSLMODE
               value: "disable"
-              
+            - name: DB_REINDEX_ON_MAINTENANCE
+              value: "true"
+
             # Redis configuration
             - name: REDIS_ENABLED
               value: "true"
@@ -165,7 +148,7 @@ spec:
               value: "2"
             - name: REDIS_CONNECT_TIMEOUT
               value: "5"
-              
+
             # Summarization configuration
             - name: MESSAGES_BEFORE_SUMMARY
               value: "6"
@@ -178,10 +161,8 @@ spec:
             - name: MAX_SUMMARY_LEVELS
               value: "3"
             - name: SUMMARY_WEIGHT_COEFFICIENT
-              value: "0.7"
-            - name: MASTER_SUMMARY_PROMPT
-              value: "Create a comprehensive summary of the conversation, giving most weight to the most recent points and gradually less weight to older information. This is a master summary that will be used for long-term context."
-            
+              value: "192.168.0.71"
+
             # Image generation configuration
             - name: IMAGE_GENERATION_ENABLED
               value: "true"
@@ -191,17 +172,7 @@ spec:
               value: "2048"
             - name: IMAGE_RETENTION_HOURS
               value: "24"
-              
-            # Inference services configuration
-            - name: INFERENCE_SERVICES_OLLAMA_BASE_URL
-              value: "http://localhost:11434"
-            - name: INFERENCE_SERVICES_SD_BASE_URL
-              value: "http://localhost:8000"
-            - name: INFERENCE_SERVICES_HOST
-              value: "0.0.0.0" 
-            - name: INFERENCE_SERVICES_PORT
-              value: "50051"
-              
+
             # Internal security configuration
             - name: INTERNAL_API_KEY
               valueFrom:
@@ -210,34 +181,38 @@ spec:
                   key: api_key
             - name: INTERNAL_ALLOWED_IPS
               value: "192.168.0.0/24,10.43.0.0/16"
-              
-            # Log level
+
+            # Logging configuration
             - name: LOG_LEVEL
               value: "debug"
-            # API versioning configuration
+            - name: FORCE_COLOR
+              value: "1"
+            # API versioning configurationEL
             - name: API_VERSION
               value: "v1"
-            - name: EVALUATION_VENV
-              value: "/opt/venv/evaluation"
-            - name: SERVER_VENV
-              value: "/opt/venv/server"
-            - name: RUNNER_VENV
-              value: "/opt/venv/runner"
-            - name: BASE_VENV
-              value: "/opt/venv/base"
-            - name: CMAKE_ARGS
-              value: "-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75;86 -DCMAKE_PREFIX_PATH=/llama.cpp/build/bin"
-            - name: LLAMA_CPP_LIB_PATH
-              value: "/llama.cpp/build/bin"
-            - name: GOOGLE_SEARCH_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: google-search-api-key
-                  key: google-search-api-key
-            - name: GOOGLE_SEARCH_CX
-              valueFrom:
-                secretKeyRef:
-                  name: google-search-cx
-                  key: google-search-cx
+            - name: CUDA_VISIBLE_DEVICES
+              value: "0,1,2" # Explicitly list available devices
+            - name: CUDA_DEVICE_ORDER
+              value: "PCI_BUS_ID"
+            # Python memory optimizations
+            - name: PYTHONMALLOC
+              value: "malloc"
+            - name: MALLOC_ARENA_MAX
+              value: "2"
+            # Logging configuration for debugging
+            - name: GGML_LOG_LEVEL
+              value: "2"
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "compute,utility"
+            # Search API keys configuration
+            - name: SEARX_HOST
+              value: "http://searxng.searxng.svc.cluster.local:8080"
+
+            # OOM Recovery for large models
+            - name: ENABLE_INTELLIGENT_OOM_RECOVERY
+              value: "true"
+
   strategy:
     type: Recreate

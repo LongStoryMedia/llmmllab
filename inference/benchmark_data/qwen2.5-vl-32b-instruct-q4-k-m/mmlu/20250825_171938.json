@@ -1,0 +1,1 @@
+"BenchmarkResult(score=0.0, total_questions=0, correct_answers=0, detailed_results=[], metadata={'error': 'Required inference components are not available. Cannot run inference for model: qwen2.5-vl-32b-instruct-q4-k-m'})"

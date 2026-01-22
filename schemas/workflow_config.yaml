@@ -1,0 +1,63 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: WorkflowConfig
+description: User-configurable workflow settings
+type: object
+properties:
+  enable_workflow_caching:
+    type: boolean
+    description: Enable workflow result caching
+    default: true
+  workflow_cache_ttl:
+    type: integer
+    description: Workflow cache TTL in seconds
+    default: 3600
+    minimum: 60
+    maximum: 86400
+  max_parallel_tools:
+    type: integer
+    description: Maximum number of tools to execute in parallel
+    default: 5
+    minimum: 1
+    maximum: 20
+  enable_multi_agent:
+    type: boolean
+    description: Enable multi-agent workflow capabilities
+    default: false
+  default_timeout:
+    type: number
+    description: Default workflow execution timeout in seconds
+    default: 60.0
+    minimum: 5.0
+    maximum: 300.0
+  max_context_length:
+    type: integer
+    description: Maximum context length for workflow processing
+    default: 128000
+    minimum: 1000
+    maximum: 1000000
+  context_trim_threshold:
+    type: number
+    description: Context trimming threshold (0.0-1.0)
+    default: 0.8
+    minimum: 0.1
+    maximum: 1.0
+  enable_streaming:
+    type: boolean
+    description: Enable streaming workflow responses
+    default: true
+  stream_buffer_size:
+    type: integer
+    description: Streaming buffer size in bytes
+    default: 1024
+    minimum: 256
+    maximum: 8192
+required:
+  - enable_workflow_caching
+  - workflow_cache_ttl
+  - max_parallel_tools
+  - enable_multi_agent
+  - default_timeout
+  - max_context_length
+  - context_trim_threshold
+  - enable_streaming
+  - stream_buffer_size

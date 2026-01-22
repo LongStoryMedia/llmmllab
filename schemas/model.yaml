@@ -18,9 +18,6 @@ properties:
   modified_at:
     type: string
     description: Timestamp of when the model was last modified
-  size:
-    type: integer
-    description: Size of the model in bytes
   digest:
     type: string
     description: Hash digest identifying the model version
@@ -35,6 +32,9 @@ properties:
     items:
       $ref: "#/definitions/LoraWeight"
     description: List of LoRA weights associated with the model
+  provider:
+    $ref: model_provider.yaml
+    description: Provider or runtime of the model (e.g., "llama.cpp", "hf", "openai")
 required:
   - name
   - model
@@ -43,6 +43,7 @@ required:
   - digest
   - details
   - task
+  - provider
 definitions:
   ModelDetails:
     $ref: model_details.yaml

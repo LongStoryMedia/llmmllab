@@ -1,0 +1,46 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ApiKey
+description: API key for IDE and external service integration
+type: object
+properties:
+  id:
+    type: string
+    description: Unique identifier (UUID)
+  user_id:
+    type: string
+    description: User ID that owns this key
+  key_hash:
+    type: string
+    description: SHA-256 hash of the actual API key (never store plaintext)
+  name:
+    type: string
+    description: Human-readable name for this key
+  created_at:
+    type: string
+    format: date-time
+    description: When the key was created
+  last_used_at:
+    type: string
+    format: date-time
+    nullable: true
+    description: When the key was last used
+  expires_at:
+    type: string
+    format: date-time
+    nullable: true
+    description: When the key expires (null = never)
+  is_revoked:
+    type: boolean
+    description: Whether this key has been revoked
+  scopes:
+    type: array
+    items:
+      type: string
+    description: API scopes this key has access to (e.g., 'chat', 'generate', 'embed')
+required:
+  - id
+  - user_id
+  - key_hash
+  - name
+  - created_at
+  - scopes

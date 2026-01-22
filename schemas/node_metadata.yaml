@@ -1,0 +1,56 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+title: NodeMetadata
+type: object
+description: Metadata structure for workflow node execution tracking
+required:
+  - node_name
+  - node_id
+  - node_type
+properties:
+  node_name:
+    type: string
+    description: Human-readable name of the node
+
+  node_id:
+    type: string
+    description: Unique identifier for this specific node instance
+    pattern: "^[a-f0-9]{8}$"
+
+  node_type:
+    type: string
+    description: Class name of the node for type identification
+
+  execution_time:
+    type: string
+    format: date-time
+
+  user_id:
+    type: string
+    description: User identifier associated with this execution
+
+  conversation_id:
+    type: integer
+    description: Conversation identifier for this execution context
+
+  profile_type:
+    description: Model profile type for pipeline execution
+    $ref: model_profile_type.yaml
+
+  streaming:
+    type: boolean
+    description: Whether this execution uses streaming responses
+
+  is_cached:
+    type: boolean
+    description: Whether this execution uses a cached pipeline
+
+  cache_key:
+    type: string
+    description: Cache key used for pipeline caching
+
+  tool_count:
+    type: integer
+    description: Number of tools available or executed
+    minimum: 0
+
+additionalProperties: true # Allow for custom metadata from specific nodes

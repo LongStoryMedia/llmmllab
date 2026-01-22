@@ -5,6 +5,10 @@ type: string
 enum:
   - summary
   - message
+  - search
+  - document
 enumDescriptions:
   summary: Memory type for conversation summaries
   message: Memory type for conversation messages
+  search: Memory type for search topic syntheses
+  document: Memory type for documents and file attachments

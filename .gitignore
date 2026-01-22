@@ -54,3 +54,12 @@ __pycache__
 
 dl/
 .dl/
+
+.models.json
+.models.yaml
+.maistro/
+res*.md
+io.md
+CHAT_COMPLETION*.md
+.*.json
+res2.md

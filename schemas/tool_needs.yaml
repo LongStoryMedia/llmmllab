@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ToolNeeds
+description: Schema for tool needs analysis
+type: object
+properties:
+  available_tools:
+    type: array
+    items:
+      type: string
+    description: List of available tool names
+  needs_dynamic_tool:
+    type: boolean
+  dynamic_tool:
+    $ref: dynamic_tool.yaml
+required:
+  - available_tools
+  - needs_dynamic_tool

@@ -1,0 +1,54 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: PerformanceParameter
+description: Performance parameters for model initialization
+type: object
+properties:
+  parameter_name:
+    type: string
+    enum:
+      - n_ctx
+      - n_batch
+      - n_ubatch
+      - n_gpu_layers
+    description: Name of the performance parameter
+  priority:
+    type: integer
+    minimum: 1
+    description: Priority of the parameter for optimization (lower number = higher priority)
+  tuning_strategy:
+    $ref: parameter_tuning_strategy.yaml
+    description: Strategy for tuning this parameter
+  max_search_attempts:
+    type: integer
+    minimum: 1
+    maximum: 20
+    description: Maximum number of search attempts for this parameter
+  floor:
+    type: integer
+    minimum: 1
+    description: Minimum value for the parameter during optimization
+  operator:
+    type: string
+    enum:
+      - "+"
+      - "-"
+      - "*"
+      - "/"
+    description: Operator to adjust the parameter value during optimization
+  modifier:
+    type: integer
+    description: Modifier value to apply with the operator during optimization
+  max_value:
+    type: integer
+    minimum: 1
+    description: Maximum value for the parameter during optimization
+
+required:
+  - parameter_name
+  - priority
+  - tuning_strategy
+  - max_search_attempts
+  - floor
+  - operator
+  - modifier
+  - max_value

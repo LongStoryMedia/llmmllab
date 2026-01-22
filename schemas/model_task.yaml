@@ -16,3 +16,4 @@ enum:
   - TextToEmbeddings
   - VisionTextToText
   - ImageTextToImage
+  - TextToRanking

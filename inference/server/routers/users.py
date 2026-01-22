@@ -1,38 +1,22 @@
 """
 Users router for handling user management and authentication.
 
-Note: This router is included in app.py with both non-versioned and versioned paths:
-- Non-versioned: /users/...
-- Versioned: /v1/users/...
 """
 
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Request, Depends
-from pydantic import BaseModel
-import time
-import uuid
+from typing import List
+from datetime import datetime
+from fastapi import APIRouter, HTTPException, Request
 
-from server.auth import get_user_id, is_admin
-from server.routers.chat import ConversationResponse, ListConversationsResponse
+from db import storage
+from server.middleware.auth import get_user_id, is_admin
+
+from models.user import User
+from models.conversation import Conversation
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-class User(BaseModel):
-    id: str
-    username: str
-    email: Optional[str] = None
-    full_name: Optional[str] = None
-    is_admin: bool = False
-    created_at: float
-    updated_at: float
-
-
-class UsersResponse(BaseModel):
-    users: List[User]
-
-
-@router.get("/", response_model=UsersResponse)
+@router.get("/", response_model=List[User])
 async def get_users(request: Request):
     """Get all users - admin only"""
     user_id = get_user_id(request)
@@ -42,32 +26,38 @@ async def get_users(request: Request):
     if not is_admin(request):
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    # Mock implementation - in a real scenario, fetch from database
-    users = [
-        User(
-            id="1",
-            username="admin",
-            email="admin@example.com",
-            full_name="Admin User",
-            is_admin=True,
-            created_at=time.time() - 3600 * 24,
-            updated_at=time.time() - 1800,
-        ),
-        User(
-            id="2",
-            username="user1",
-            email="user1@example.com",
-            full_name="Regular User",
-            is_admin=False,
-            created_at=time.time() - 3600 * 12,
-            updated_at=time.time() - 900,
-        ),
-    ]
+    if not storage.initialized:
+        raise HTTPException(status_code=503, detail="Database not initialized")
 
-    return UsersResponse(users=users)
+    if not storage.user_config:
+        raise HTTPException(
+            status_code=503, detail="User config storage not initialized"
+        )
+
+    try:
+        users = await storage.user_config.get_all_users()
+        # Transform the data to match the User model
+        transformed_users = []
+        for user in users:
+            # Copy the original user data
+            user_copy = dict(user)
+
+            # Add the uid field (required by the User model)
+            # Using id as the uid since they appear to represent the same data
+            user_copy["uid"] = user.get("id", "")
+
+            # Handle NULL username - provide default value or use id
+            if user_copy.get("username") is None:
+                user_copy["username"] = user_copy.get("id", "unknown_user")
+
+            transformed_users.append(user_copy)
+
+        return transformed_users
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching users: {str(e)}")
 
 
-@router.get("/{user_id}/conversations", response_model=ListConversationsResponse)
+@router.get("/{user_id}/conversations", response_model=List[Conversation])
 async def get_conversations_for_user(user_id: str, request: Request):
     """Get all conversations for a specific user - admin only"""
     caller_id = get_user_id(request)
@@ -81,28 +71,12 @@ async def get_conversations_for_user(user_id: str, request: Request):
             detail="Admin access required to view other users' conversations",
         )
 
-    # Mock implementation - in a real scenario, fetch from database
-    conversations = [
-        ConversationResponse(
-            id=str(uuid.uuid4()),
-            user_id=user_id,
-            title="Sample Conversation 1",
-            created_at=time.time() - 3600,
-            updated_at=time.time() - 1800,
-            model_id="gpt-4",
-            message_count=5,
-            is_pinned=False,
-        ),
-        ConversationResponse(
-            id=str(uuid.uuid4()),
-            user_id=user_id,
-            title="Sample Conversation 2",
-            created_at=time.time() - 7200,
-            updated_at=time.time() - 3600,
-            model_id="gpt-3.5-turbo",
-            message_count=12,
-            is_pinned=True,
-        ),
-    ]
+    if not storage.initialized:
+        raise HTTPException(status_code=503, detail="Database not initialized")
 
-    return ListConversationsResponse(conversations=conversations)
+    if not storage.conversation:
+        raise HTTPException(
+            status_code=503, detail="Conversation storage not initialized"
+        )
+
+    return await storage.conversation.get_user_conversations(user_id)

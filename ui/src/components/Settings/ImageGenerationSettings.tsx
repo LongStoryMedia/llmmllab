@@ -11,7 +11,13 @@ const ImageGenerationSettings = () => {
     storage_directory: '',
     max_image_size: 1024,
     retention_hours: 720,
-    auto_prompt_refinement: true
+    auto_prompt_refinement: true,
+    width: 1024,
+    height: 1024,
+    inference_steps: 20,
+    guidance_scale: 7.5,
+    low_memory_mode: false,
+    negative_prompt: ''
   });
   const [saveStatus, setSaveStatus] = useState<{ success?: boolean; message: string } | null>(null);
 
@@ -23,7 +29,13 @@ const ImageGenerationSettings = () => {
         storage_directory: config.image_generation.storage_directory ?? '',
         max_image_size: config.image_generation.max_image_size ?? 1024,
         retention_hours: config.image_generation.retention_hours ?? 720,
-        auto_prompt_refinement: config.image_generation.auto_prompt_refinement ?? true
+        auto_prompt_refinement: config.image_generation.auto_prompt_refinement ?? true,
+        width: config.image_generation.width ?? 1024,
+        height: config.image_generation.height ?? 1024,
+        inference_steps: config.image_generation.inference_steps ?? 20,
+        guidance_scale: config.image_generation.guidance_scale ?? 7.5,
+        low_memory_mode: config.image_generation.low_memory_mode ?? false,
+        negative_prompt: config.image_generation.negative_prompt ?? ''
       });
     }
   }, [config]);

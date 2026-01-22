@@ -29,11 +29,17 @@ properties:
     $ref: refinement_config.yaml
   image_generation:
     $ref: image_generation_config.yaml
+  circuit_breaker:
+    $ref: circuit_breaker_config.yaml
+  gpu_config:
+    $ref: gpu_config.yaml
   log_level:
     type: string
     description: Log level
   internal:
     $ref: internal_config.yaml
+  event_stream:
+    $ref: event_stream_config.yaml
 required:
   - server
   - database
@@ -47,6 +53,8 @@ required:
   - model_profiles
   - refinement
   - image_generation
+  - circuit_breaker
+  - gpu_config
   - log_level
   - rabbitmq
   - internal_config

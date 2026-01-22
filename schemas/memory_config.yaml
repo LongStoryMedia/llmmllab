@@ -1,31 +1,47 @@
 $schema: http://json-schema.org/draft-07/schema#
 title: MemoryConfig
-description: Memory retrieval settings
+description: Memory retrieval settings for semantic search and embedding operations
 type: object
 properties:
   enabled:
     type: boolean
     description: Whether memory retrieval is enabled
+    default: true
   limit:
     type: integer
-    description: Retrieval limit
+    description: Maximum number of memories to retrieve
+    default: 5
+    minimum: 1
+    maximum: 50
   enable_cross_user:
     type: boolean
-    description: Enable cross-user retrieval
+    description: Enable cross-user memory retrieval
+    default: false
   enable_cross_conversation:
     type: boolean
-    description: Enable cross-conversation retrieval
+    description: Enable cross-conversation memory retrieval
+    default: true
   similarity_threshold:
     type: number
-    description: Similarity threshold
+    description: Minimum similarity threshold for memory matching (0.0 to 1.0)
+    default: 0.7
+    minimum: 0.0
+    maximum: 1.0
   always_retrieve:
     type: boolean
-    description: Always retrieve
+    description: Always retrieve memories regardless of query content
+    default: false
+  timeout:
+    type: number
+    description: Memory retrieval timeout in seconds
+    default: 10.0
+    minimum: 1.0
+    maximum: 60.0
 required:
   - enabled
   - limit
-  - profile_id
   - enable_cross_user
   - enable_cross_conversation
   - similarity_threshold
   - always_retrieve
+  - timeout

@@ -1,9 +1,6 @@
 """
 WebSockets router for handling real-time communication.
 
-Note: This router is included in app.py with both non-versioned and versioned paths:
-- Non-versioned: /ws/...
-- Versioned: /v1/ws/...
 """
 
 from fastapi import (
@@ -22,7 +19,7 @@ import asyncio
 import time
 import uuid
 
-from server.auth import verify_token
+from server.middleware.auth import verify_token
 
 router = APIRouter(prefix="/ws", tags=["websockets"])
 
@@ -97,6 +94,15 @@ async def chat_socket(
             await websocket.close(code=1008, reason="Authentication failed")
             return
 
+        # Check if this conversation already has a connection
+        if conversation_id in manager.active_connections["chat"]:
+            # Log that we're rejecting a duplicate connection
+            print(
+                f"Rejecting duplicate chat socket connection for conversation {conversation_id}"
+            )
+            await websocket.close(code=1000, reason="Duplicate connection")
+            return
+
         # Connect to socket
         await manager.connect("chat", conversation_id, websocket)
 
@@ -115,42 +121,67 @@ async def chat_socket(
         )
 
         try:
+            # Send a heartbeat every 30 seconds to keep the connection alive
+            heartbeat_interval = 30  # seconds
+            last_heartbeat = time.time()
+
             while True:
-                # Receive message from client
-                data = await websocket.receive_text()
-
-                # Parse message
+                # Use a short timeout to check for heartbeats
                 try:
-                    message = json.loads(data)
-                except json.JSONDecodeError:
-                    await manager.send_message(
-                        "chat",
-                        conversation_id,
-                        {
-                            "type": "error",
-                            "data": {"message": "Invalid message format"},
-                        },
-                    )
-                    continue
+                    data = await asyncio.wait_for(websocket.receive_text(), timeout=1.0)
 
-                # Process message (mock implementation)
-                # In a real scenario, this would call your chat service
-                await manager.send_message(
-                    "chat",
-                    conversation_id,
-                    {
-                        "type": "message",
-                        "data": {
-                            "id": str(uuid.uuid4()),
-                            "conversation_id": conversation_id,
-                            "role": "assistant",
-                            "content": f"You sent: {message.get('content', 'empty message')}",
-                            "timestamp": time.time(),
-                        },
-                    },
-                )
+                    # Process actual message
+                    try:
+                        message = json.loads(data)
+
+                        # Check if this is a heartbeat message
+                        if message.get("type") == "ping":
+                            await manager.send_message(
+                                "chat",
+                                conversation_id,
+                                {"type": "pong", "timestamp": time.time()},
+                            )
+                            continue
+
+                        # Process message (mock implementation)
+                        # In a real scenario, this would call your chat service
+                        await manager.send_message(
+                            "chat",
+                            conversation_id,
+                            {
+                                "type": "message",
+                                "data": {
+                                    "id": str(uuid.uuid4()),
+                                    "conversation_id": conversation_id,
+                                    "role": "assistant",
+                                    "content": f"You sent: {message.get('content', 'empty message')}",
+                                    "timestamp": time.time(),
+                                },
+                            },
+                        )
+                    except json.JSONDecodeError:
+                        await manager.send_message(
+                            "chat",
+                            conversation_id,
+                            {
+                                "type": "error",
+                                "data": {"message": "Invalid message format"},
+                            },
+                        )
+
+                except asyncio.TimeoutError:
+                    # No message received, check if we should send a heartbeat
+                    current_time = time.time()
+                    if current_time - last_heartbeat >= heartbeat_interval:
+                        await manager.send_message(
+                            "chat",
+                            conversation_id,
+                            {"type": "heartbeat", "timestamp": current_time},
+                        )
+                        last_heartbeat = current_time
 
         except WebSocketDisconnect:
+            print(f"Chat socket disconnected for conversation {conversation_id}")
             manager.disconnect("chat", conversation_id)
     except Exception as e:
         try:
@@ -173,6 +204,13 @@ async def image_socket(websocket: WebSocket, token: str = Query(...)):
         # Use user_id as the connection ID for the image socket
         conn_id = user_id
 
+        # Check if this user already has a connection
+        if conn_id in manager.active_connections["image"]:
+            # Log that we're rejecting a duplicate connection
+            print(f"Rejecting duplicate image socket connection for user {user_id}")
+            await websocket.close(code=1000, reason="Duplicate connection")
+            return
+
         # Connect to socket
         await manager.connect("image", conn_id, websocket)
 
@@ -187,61 +225,85 @@ async def image_socket(websocket: WebSocket, token: str = Query(...)):
         )
 
         try:
+            # Send a heartbeat every 30 seconds to keep the connection alive
+            heartbeat_interval = 30  # seconds
+            last_heartbeat = time.time()
+
             while True:
-                # Receive message from client
-                data = await websocket.receive_text()
-
-                # Parse message
+                # Use a short timeout to check for heartbeats
                 try:
-                    message = json.loads(data)
-                except json.JSONDecodeError:
-                    await manager.send_message(
-                        "image",
-                        conn_id,
-                        {
-                            "type": "error",
-                            "data": {"message": "Invalid message format"},
-                        },
-                    )
-                    continue
+                    data = await asyncio.wait_for(websocket.receive_text(), timeout=1.0)
 
-                # Process message (mock implementation)
-                # In a real scenario, this would call your image generation service
-                await manager.send_message(
-                    "image",
-                    conn_id,
-                    {
-                        "type": "image_update",
-                        "data": {
-                            "id": str(uuid.uuid4()),
-                            "user_id": user_id,
-                            "status": "processing",
-                            "message": "Image generation in progress",
-                            "timestamp": time.time(),
-                        },
-                    },
-                )
+                    # Process actual message
+                    try:
+                        message = json.loads(data)
 
-                # Simulate image generation with delay
-                await asyncio.sleep(2)
+                        # Check if this is a heartbeat message
+                        if message.get("type") == "ping":
+                            await manager.send_message(
+                                "image",
+                                conn_id,
+                                {"type": "pong", "timestamp": time.time()},
+                            )
+                            continue
 
-                await manager.send_message(
-                    "image",
-                    conn_id,
-                    {
-                        "type": "image_update",
-                        "data": {
-                            "id": str(uuid.uuid4()),
-                            "user_id": user_id,
-                            "status": "complete",
-                            "message": "Image generated successfully",
-                            "image_url": f"/static/images/view/mock_image_{uuid.uuid4()}.png",
-                            "timestamp": time.time(),
-                        },
-                    },
-                )
+                        # Process other messages
+                        await manager.send_message(
+                            "image",
+                            conn_id,
+                            {
+                                "type": "image_update",
+                                "data": {
+                                    "id": str(uuid.uuid4()),
+                                    "user_id": user_id,
+                                    "status": "processing",
+                                    "message": "Image generation in progress",
+                                    "timestamp": time.time(),
+                                },
+                            },
+                        )
+
+                        # Simulate image generation with delay
+                        await asyncio.sleep(2)
+
+                        await manager.send_message(
+                            "image",
+                            conn_id,
+                            {
+                                "type": "image_update",
+                                "data": {
+                                    "id": str(uuid.uuid4()),
+                                    "user_id": user_id,
+                                    "status": "complete",
+                                    "message": "Image generated successfully",
+                                    "image_url": f"/static/images/view/mock_image_{uuid.uuid4()}.png",
+                                    "timestamp": time.time(),
+                                },
+                            },
+                        )
+                    except json.JSONDecodeError:
+                        await manager.send_message(
+                            "image",
+                            conn_id,
+                            {
+                                "type": "error",
+                                "data": {"message": "Invalid message format"},
+                            },
+                        )
+
+                except asyncio.TimeoutError:
+                    # No message received, check if we should send a heartbeat
+                    current_time = time.time()
+                    if current_time - last_heartbeat >= heartbeat_interval:
+                        await manager.send_message(
+                            "image",
+                            conn_id,
+                            {"type": "heartbeat", "timestamp": current_time},
+                        )
+                        last_heartbeat = current_time
 
         except WebSocketDisconnect:
+            print(f"Image socket disconnected for user {user_id}")
             manager.disconnect("image", conn_id)
     except Exception as e:
         try:
@@ -264,6 +326,13 @@ async def status_socket(websocket: WebSocket, token: str = Query(...)):
         # Use user_id as the connection ID for the status socket
         conn_id = user_id
 
+        # Check if this user already has a connection
+        if conn_id in manager.active_connections["status"]:
+            # Log that we're rejecting a duplicate connection
+            print(f"Rejecting duplicate status socket connection for user {user_id}")
+            await websocket.close(code=1000, reason="Duplicate connection")
+            return
+
         # Connect to socket
         await manager.connect("status", conn_id, websocket)
 
@@ -278,9 +347,36 @@ async def status_socket(websocket: WebSocket, token: str = Query(...)):
         )
 
         try:
-            # Send periodic status updates
+            # Wait for client messages or send periodic updates
             counter = 0
             while True:
+                # Create a task for receiving messages (this will raise WebSocketDisconnect if client disconnects)
+                receive_task = asyncio.create_task(websocket.receive_text())
+                # Create a task for waiting 5 seconds
+                timer_task = asyncio.create_task(asyncio.sleep(5))
+
+                # Wait for either task to complete
+                done, pending = await asyncio.wait(
+                    [receive_task, timer_task], return_when=asyncio.FIRST_COMPLETED
+                )
+
+                # Cancel the pending task
+                for task in pending:
+                    task.cancel()
+
+                # If the receive task completed, process the message
+                if receive_task in done:
+                    try:
+                        data = receive_task.result()
+                        # Process any messages from the client if needed
+                        # For now, we're just acknowledging receipt
+                        print(f"Received message from status socket: {data}")
+                    except Exception as e:
+                        # This will catch WebSocketDisconnect and other errors
+                        print(f"Error receiving message from status socket: {str(e)}")
+                        raise
+
+                # Send the periodic update
                 await manager.send_message(
                     "status",
                     conn_id,
@@ -297,9 +393,9 @@ async def status_socket(websocket: WebSocket, token: str = Query(...)):
                 )
 
                 counter += 1
-                await asyncio.sleep(5)  # Update every 5 seconds
 
         except WebSocketDisconnect:
+            print(f"Status socket disconnected for user {user_id}")
             manager.disconnect("status", conn_id)
     except Exception as e:
         try:

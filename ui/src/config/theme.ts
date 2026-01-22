@@ -39,6 +39,9 @@ const commonOptions: ThemeOptions = {
     h6: {
       fontWeight: 'normal',
       fontSize: '1rem'
+    },
+    caption: {
+      fontStyle: 'italic'
     }
   }
 };
@@ -60,6 +63,15 @@ export const lightTheme = createTheme({
     },
     text: {
       primary: '#1b1b1b'
+    }
+  },
+  components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        blockquote: {
+          backgroundColor: '#f5f5f9 !important' // Default background color
+        }
+      }
     }
   }
 });
@@ -83,6 +95,15 @@ export const darkTheme = createTheme({
     },
     text: {
       primary: '#ffffff'
+    }
+  },
+  components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        blockquote: {
+          backgroundColor: '#303030 !important' // Dark background color
+        }
+      }
     }
   }
 });

@@ -1,0 +1,45 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: OOMRecoveryAttemptData
+description: "Single OOM recovery attempt configuration and result"
+properties:
+  attempt:
+    type: integer
+    minimum: 1
+    description: "Attempt number in the recovery sequence"
+  strategy:
+    type: string
+    enum: ["clear_memory", "reduce_batch", "move_to_cpu", "reduce_context"]
+    description: "Recovery strategy used in this attempt"
+  n_ctx:
+    type: integer
+    minimum: 1
+    description: "Context window size used in this attempt"
+  n_batch:
+    type: integer
+    minimum: 1
+    description: "Batch size used in this attempt"
+  n_ubatch:
+    type: integer
+    minimum: 1
+    description: "Micro-batch size used in this attempt"
+  n_gpu_layers:
+    type: integer
+    minimum: -1
+    description: "Number of GPU layers used in this attempt"
+  success:
+    type: boolean
+    description: "Whether this attempt was successful"
+  error_message:
+    type: string
+    description: "Error message if the attempt failed"
+required:
+  - attempt
+  - strategy
+  - n_ctx
+  - n_batch
+  - n_ubatch
+  - n_gpu_layers
+  - success
+  - error_message
+additionalProperties: false

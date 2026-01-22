@@ -1,0 +1,24 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RequiredCapability
+type: string
+enum:
+  - basic_math
+  - text_processing
+  - information_retrieval
+  - conversation_memory
+  - web_search
+  - summarization
+  - reasoning
+  - general_knowledge
+  - api_integration
+  - async_processing
+  - file_manipulation
+  - data_processing
+  - image_processing
+  - audio_processing
+  - database_access
+  - network_communication
+  - scheduling
+  - temporal_reasoning
+  - personalization
+description: Types of capabilities that can be required for tool operations

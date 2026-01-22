@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Box } from '@mui/material';
-import { useBackgroundContext } from '../context/BackgroundContext';
 import { ImageGenerateRequest } from '../types/ImageGenerationRequest';
 import { editImage, generateImage } from '../api/image';
 import { useAuth } from '../auth';
 import { getToken } from '../api';
 import ImageGallery from '../components/Image/ImageGallery';
 import ImageForm from '../components/Image/ImageForm';
+import { deleteImage, getUserImages } from '../api/image';
+import { ImageMetadata } from '@/types';
 
 const DEFAULT_SETTINGS = {
   width: 1024,
@@ -17,9 +18,25 @@ const DEFAULT_SETTINGS = {
 };
 
 const ImagePage: React.FC = () => {
-  const { images, deleteImage } = useBackgroundContext();
   const { user } = useAuth();
   const [accessToken, setAccessToken] = useState<string>('');
+  const [images, setImages] = useState<ImageMetadata[]>([]);
+
+  // Fetch user images on mount and when accessToken changes
+  useEffect(() => {
+    const fetchImages = async () => {
+      if (accessToken) {
+        try {
+          const fetchedImages = await getUserImages(accessToken);
+          setImages(fetchedImages);
+        } catch (error) {
+          console.error('Error fetching images:', error);
+        }
+      }
+    };
+
+    fetchImages();
+  }, [accessToken]);
 
   // Form state
   const [prompt, setPrompt] = useState<string>('');
@@ -29,7 +46,7 @@ const ImagePage: React.FC = () => {
   const [inferenceSteps, setInferenceSteps] = useState<number>(DEFAULT_SETTINGS.inference_steps);
   const [guidanceScale, setGuidanceScale] = useState<number>(DEFAULT_SETTINGS.guidance_scale);
   const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_SETTINGS.model);
-  
+
   // Image selection state
   const [selectedImage, setSelectedImage] = useState<number | null>(null);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -111,7 +128,7 @@ const ImagePage: React.FC = () => {
     if (!url) {
       return;
     }
-    
+
     const link = document.createElement('a');
     link.href = url;
     link.download = name ? `${name.toLowerCase()}.png` : 'image.png';
@@ -122,7 +139,7 @@ const ImagePage: React.FC = () => {
 
   const handleSelectImage = (id: number | null) => {
     setSelectedImage(id);
-    
+
     if (id !== null) {
       const image = images.find(img => img.id === id);
       if (image) {
@@ -130,6 +147,18 @@ const ImagePage: React.FC = () => {
         setWidth(image.width || DEFAULT_SETTINGS.width);
         setHeight(image.height || DEFAULT_SETTINGS.height);
       }
+    }
+  };
+
+  const handleDeleteImage = async (id: number) => {
+    try {
+      await deleteImage(accessToken, id);
+      setImages(prevImages => prevImages.filter(img => img.id !== id));
+      if (selectedImage === id) {
+        setSelectedImage(null);
+      }
+    } catch (error) {
+      console.error('Error deleting image:', error);
     }
   };
 
@@ -141,11 +170,11 @@ const ImagePage: React.FC = () => {
           images={images}
           selectedImage={selectedImage}
           onSelectImage={handleSelectImage}
-          onDeleteImage={deleteImage}
+          onDeleteImage={handleDeleteImage}
           onDownloadImage={handleDownload}
         />
       </Box>
-      
+
       {/* Right Panel - Image Form */}
       <Box sx={{ width: { xs: '100%', md: '60%', lg: '70%' } }}>
         <ImageForm

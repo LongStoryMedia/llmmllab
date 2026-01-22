@@ -9,40 +9,17 @@ properties:
   task_id:
     type: integer
     description: Id of the parent research task
-  question_id:
-    type: integer
-    description: Id of the research question this subtask addresses
+  question:
+    $ref: research_question.yaml
+    description: The research question this subtask addresses
+  result:
+    $ref: research_question_result.yaml
+    description: Synthesized result of the subtask
   status:
-    type: string
-    enum:
-      - PENDING
-      - PLANNING
-      - GATHERING
-      - PROCESSING
-      - SYNTHESIZING
-      - COMPLETED
-      - FAILED
-      - CANCELED
+    $ref: research_task_status.yaml
     description: Current status of the subtask
-  gathered_info:
-    type: array
-    items:
-      type: string
-    description: Information gathered for this subtask
-  information_sources:
-    type: array
-    items:
-      type: string
-    description: Sources of the gathered information
-  synthesized_answer:
-    type:
-      - string
-      - "null"
-    description: Final synthesized answer for this subtask
   error_message:
-    type:
-      - string
-      - "null"
+    type: string
     description: Error message if subtask failed
   created_at:
     type: string

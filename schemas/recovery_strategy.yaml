@@ -1,0 +1,16 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: RecoveryStrategy
+description: "Recovery strategy result with optimal parameters and strategy name"
+properties:
+  parameters:
+    $ref: "optimal_parameters.yaml"
+    description: "Optimal parameters for the strategy"
+  strategy_name:
+    type: string
+    enum: ["clear_memory", "reduce_batch", "move_to_cpu", "reduce_context"]
+    description: "Name of the recovery strategy applied"
+required:
+  - parameters
+  - strategy_name
+additionalProperties: false

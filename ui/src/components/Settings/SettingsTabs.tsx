@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Grid, Typography, useTheme, Tabs, Tab, Box, Paper, Alert, CircularProgress, Button } from '@mui/material';
 import { useConfig } from '../../hooks/useConfig';
-import ProfileSettings from './ProfileSettings';
 import ModelSettings from './ModelSettings';
 import SummarizationSettings from './SummarizationSettings';
 import MemorySettings from './MemorySettings';
@@ -9,6 +8,10 @@ import WebSearchSettings from './WebSearchSettings';
 import SecuritySettings from './SecuritySettings';
 import RefinementSettings from './RefinementSettings';
 import ImageGenerationSettings from './ImageGenerationSettings';
+import CircuitBreakerSettings from './CircuitBreakerSettings';
+import GpuSettings from './GpuSettings';
+import ParameterOptimizationSettings from './ParameterOptimizationSettings';
+import ApiKeySettings from './ApiKeySettings';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -43,18 +46,18 @@ function a11yProps(index: number) {
   };
 }
 
-const tabRoutes = ["profile", "models", "summarization", "retrieval", "websearch", "security", "refinement", "image-generation"];
+const tabRoutes = ["profile", "models", "summarization", "retrieval", "websearch", "security", "refinement", "image-generation", "gpu", "parameter-optimization", "circuit-breaker", "api-keys"];
 
-const SettingsTabs = ({onTabChange}: {onTabChange: (tab: string) => void}) => {
+const SettingsTabs = ({ onTabChange, currentTab }: { onTabChange: (tab: string) => void, currentTab: string }) => {
   const theme = useTheme();
-  const [tabValue, setTabValue] = useState(tabRoutes.indexOf("profile"));
+  const [tabValue, setTabValue] = useState(tabRoutes.indexOf(currentTab));
   const { isLoading, error, fetchConfig } = useConfig();
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
     onTabChange(tabRoutes[newValue]);
   };
-  
+
   return (
     <Grid container spacing={3} sx={{ padding: theme.spacing(2.5) }}>
       <Grid size={12}>
@@ -62,11 +65,11 @@ const SettingsTabs = ({onTabChange}: {onTabChange: (tab: string) => void}) => {
           Settings
         </Typography>
       </Grid>
-      
+
       {error && (
         <Grid size={12}>
-          <Alert 
-            severity="error" 
+          <Alert
+            severity="error"
             action={
               <Button color="inherit" size="small" onClick={fetchConfig}>
                 Retry
@@ -77,7 +80,7 @@ const SettingsTabs = ({onTabChange}: {onTabChange: (tab: string) => void}) => {
           </Alert>
         </Grid>
       )}
-      
+
       <Grid size={12}>
         {isLoading ? (
           <Paper sx={{ padding: 3, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -103,11 +106,22 @@ const SettingsTabs = ({onTabChange}: {onTabChange: (tab: string) => void}) => {
               <Tab label="Security" {...a11yProps(5)} />
               <Tab label="Refinement" {...a11yProps(6)} />
               <Tab label="Image Generation" {...a11yProps(7)} />
+              <Tab label="GPU Configuration" {...a11yProps(8)} />
+              <Tab label="Parameter Optimization" {...a11yProps(9)} />
+              <Tab label="Circuit Breaker" {...a11yProps(10)} />
+              <Tab label="API Keys" {...a11yProps(11)} />
             </Tabs>
-            
+
             <Box sx={{ p: 2 }}>
               <TabPanel value={tabValue} index={0}>
-                <ProfileSettings />
+                <Box sx={{ py: 2 }}>
+                  <Typography variant="h6" gutterBottom>
+                    User Profile
+                  </Typography>
+                  <Typography color="textSecondary">
+                    Profile settings are coming soon.
+                  </Typography>
+                </Box>
               </TabPanel>
               <TabPanel value={tabValue} index={1}>
                 <ModelSettings />
@@ -129,6 +143,18 @@ const SettingsTabs = ({onTabChange}: {onTabChange: (tab: string) => void}) => {
               </TabPanel>
               <TabPanel value={tabValue} index={7}>
                 <ImageGenerationSettings />
+              </TabPanel>
+              <TabPanel value={tabValue} index={8}>
+                <GpuSettings />
+              </TabPanel>
+              <TabPanel value={tabValue} index={9}>
+                <ParameterOptimizationSettings />
+              </TabPanel>
+              <TabPanel value={tabValue} index={10}>
+                <CircuitBreakerSettings />
+              </TabPanel>
+              <TabPanel value={tabValue} index={11}>
+                <ApiKeySettings />
               </TabPanel>
             </Box>
           </Paper>

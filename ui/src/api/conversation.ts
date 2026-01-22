@@ -1,22 +1,11 @@
 import { Conversation } from "../types/Conversation";
 import { getHeaders, req } from "./base";
 
-export const startConversation = async (accessToken: string, model: string) => {
-  const { conversation_id } = await req<{ conversation_id: number }>({
+export const startConversation = async (accessToken: string) => {
+  return req<Conversation>({
     method: 'POST',
     headers: getHeaders(accessToken),
-    body: JSON.stringify({
-      model,
-      title: ''
-    }),
     path: 'chat/conversations'
-  });
-
-  // Fetch the new conversation details
-  return await req<Conversation>({
-    method: 'GET',
-    headers: getHeaders(accessToken),
-    path: `chat/conversations/${conversation_id}`
   });
 }
 
@@ -50,20 +39,8 @@ export const removeConversation = async (accessToken: string, id: number) => {
   });
 }
 
-export const pause = async (accessToken: string, conversationId: number) => req({
-  method: 'POST',
-  path: `chat/conversations/${conversationId}/pause`,
-  headers: getHeaders(accessToken)
-})
-
-export const resume = async (accessToken: string, conversationId: number) => req({
-  method: 'POST',
-  path: `chat/conversations/${conversationId}/resume`,
-  headers: getHeaders(accessToken)
-})
-
-export const cancel = async (accessToken: string, conversationId: number) => req({
-  method: 'POST',
-  path: `chat/conversations/${conversationId}/cancel`,
+export const cancel = async (accessToken: string) => req({
+  method: 'GET',
+  path: `chat/cancel`,
   headers: getHeaders(accessToken)
 })

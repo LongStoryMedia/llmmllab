@@ -71,6 +71,14 @@ properties:
     type: string
     format: uuid
     description: Image generation profile ID
+  engineering_profile_id:
+    type: string
+    format: uuid
+    description: Engineering profile ID
+  reranking_profile_id:
+    type: string
+    format: uuid
+    description: Reranking profile ID
 required:
   - primary_profile_id
   - summarization_profile_id
@@ -89,3 +97,5 @@ required:
   - formatting_profile_id
   - image_generation_profile_id
   - image_generation_prompt_profile_id
+  - engineering_profile_id
+  - reranking_profile_id

@@ -1,0 +1,54 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: ModelConfigurationData
+description: "Configuration parameters and results for model initialization attempts"
+properties:
+  n_ctx:
+    type: integer
+    minimum: 1
+    description: "Context window size used"
+  n_batch:
+    type: integer
+    minimum: 1
+    description: "Batch size used"
+  n_ubatch:
+    type: integer
+    minimum: 1
+    description: "Micro-batch size used"
+  n_gpu_layers:
+    type: integer
+    minimum: -1
+    description: "Number of GPU layers used"
+  model_size_mb:
+    type: number
+    minimum: 0
+    description: "Model size in megabytes"
+  available_gpu_memory_mb:
+    type: number
+    minimum: 0
+    description: "Available GPU memory at initialization in MB"
+  total_gpu_memory_mb:
+    type: number
+    minimum: 0
+    description: "Total GPU memory in MB"
+  success:
+    type: boolean
+    description: "Whether initialization was successful"
+  gpu_memory_used_mb:
+    type: number
+    minimum: 0
+    description: "GPU memory used after initialization in MB"
+  initialization_time_ms:
+    type: number
+    minimum: 0
+    description: "Time taken for initialization in milliseconds"
+required:
+  - n_ctx
+  - n_batch
+  - n_ubatch
+  - n_gpu_layers
+  - model_size_mb
+  - available_gpu_memory_mb
+  - total_gpu_memory_mb
+  - success
+additionalProperties: false

@@ -5,4 +5,3 @@ export * from './conversation';
 export * from './config';
 export * from './model';
 export * from './usrmgr';
-export * from './version';

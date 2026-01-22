@@ -1,10 +1,10 @@
 from typing import List, Dict, Any, Optional
-import logging
 from ..base.benchmark_base import BenchmarkBase
 from ..base.result_types import BenchmarkResult
 from ..utils.inference import InferenceEngine
 from ..utils.deterministic_evaluators import CodeEvaluator
 from ..utils.prompt_templates import PromptTemplates
+from utils.logging import llmmllogger
 
 
 class HumanEvalBenchmark(BenchmarkBase):
@@ -16,7 +16,7 @@ class HumanEvalBenchmark(BenchmarkBase):
         )
         self.inference_engine = InferenceEngine()
         self.evaluator = CodeEvaluator()
-        self.logger = logging.getLogger("benchmark.humaneval")
+        self.logger = llmmllogger.bind(component="benchmark.humaneval")
 
     def get_sample_questions(self) -> List[Dict[str, Any]]:
         """Get sample HumanEval problems."""
@@ -76,7 +76,7 @@ class HumanEvalBenchmark(BenchmarkBase):
             },
         ]
 
-    def run(
+    async def run(
         self, model_id: str, num_samples: int = 50, dataset_path: Optional[str] = None
     ) -> BenchmarkResult:
         """Run HumanEval benchmark."""
@@ -97,36 +97,33 @@ class HumanEvalBenchmark(BenchmarkBase):
             # Use the code_template from PromptTemplates
             prompt = PromptTemplates.code_template(problem["prompt"])
 
-            try:
-                response = self.inference_engine.run_single_inference(
-                    model_id, prompt, max_tokens=400, temperature=0.1
-                )
-                model_code = response.get("response", "")
+            # No try/except - let errors propagate to show actual failures
+            response = await self.inference_engine.run_single_inference(
+                model_id, prompt, max_tokens=400, temperature=0.1
+            )
+            model_code = response["response"]  # No need for .get() with default
 
-                # Use the deterministic CodeEvaluator to check correctness
-                is_correct, confidence, eval_metadata = self.evaluator.evaluate(
-                    model_code, "", problem, 1.0
-                )
+            # Use the deterministic CodeEvaluator to check correctness
+            is_correct, confidence, eval_metadata = self.evaluator.evaluate(
+                model_code, "", problem, 1.0
+            )
 
-                if is_correct:
-                    correct_solutions += 1
+            if is_correct:
+                correct_solutions += 1
 
-                detailed_results.append(
-                    {
-                        "task_id": problem["task_id"],
-                        "is_correct": is_correct,
-                        "confidence": confidence,
-                        "generated_code": (
-                            model_code[:200] + "..."
-                            if len(model_code) > 200
-                            else model_code
-                        ),
-                        "evaluation_metadata": eval_metadata,
-                    }
-                )
-
-            except Exception as e:
-                self.logger.error(f"Error in HumanEval problem {i}: {str(e)}")
+            detailed_results.append(
+                {
+                    "task_id": problem["task_id"],
+                    "is_correct": is_correct,
+                    "confidence": confidence,
+                    "generated_code": (
+                        model_code[:200] + "..."
+                        if len(model_code) > 200
+                        else model_code
+                    ),
+                    "evaluation_metadata": eval_metadata,
+                }
+            )
 
         humaneval_score = (
             correct_solutions / len(extended_problems) if extended_problems else 0

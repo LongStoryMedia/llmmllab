@@ -1,0 +1,20 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: ToolAnalysisRequest
+description: "Request for analyzing if tools are needed for a user message"
+properties:
+  user_message:
+    type: string
+    description: "The user's message text to analyze"
+    minLength: 1
+    maxLength: 10000
+  conversation_id:
+    type: integer
+    description: "ID of the conversation context"
+    minimum: 1
+  analysis_depth:
+    $ref: "analysis_depth.yaml"
+    default: "detailed"
+    description: "Depth of analysis to perform"
+required: ["user_message", "conversation_id"]
+additionalProperties: false

@@ -1,33 +1,54 @@
 import { Message } from "../types/Message";
-import { ChatRequest } from "../types/ChatRequest";
+import { ChatResponse } from "../types/ChatResponse";
+import { MessageRoleValues } from "../types/MessageRole";
 import { gen, getHeaders, req } from "./base";
 
-export async function* chat(accessToken: string, message: ChatRequest, abortSignal?: AbortSignal): AsyncGenerator<string> {
-  console.log('Sending message to chat API:', message);
+/**
+ * Shared streaming wrapper for calling the server streaming endpoints.
+ * path should be a relative API path (e.g. 'chat/completions' or 'chat/conversations/{id}/replay')
+ */
+async function* streamEndpoint(accessToken: string, path: string, body: { message: Message, response_format?: Record<string, unknown>, timestamp?: string }, abortSignal?: AbortSignal): AsyncGenerator<ChatResponse> {
+  // Log the request for debugging
+  console.log('Streaming to endpoint:', path, body);
 
   try {
     const generator = gen({
-      body: JSON.stringify(message),
+      body: body ? JSON.stringify(body) : undefined,
       method: 'POST',
       headers: getHeaders(accessToken),
-      path: `chat/conversations/${message.conversation_id}/messages`,
+      path,
       signal: abortSignal
     });
 
     for await (const chunk of generator) {
-      if (chunk.message?.content) {
-        yield chunk.message.content[0].text ?? '';
+      const chatResponse = chunk as ChatResponse;
+
+      // Standardized observer logging for all streaming endpoints
+      if (chatResponse.message?.role === MessageRoleValues.OBSERVER) {
+        if (chatResponse.message?.content && Array.isArray(chatResponse.message.content) && chatResponse.message.content.length > 0) {
+          console.log('[STATUS]', chatResponse.message.content[0].text);
+        }
       }
 
-      if (chunk.done) {
+      yield chatResponse;
+
+      if (chatResponse.done && chatResponse.finish_reason !== 'tool_call') {
         break;
       }
     }
   } catch (error) {
-    console.error('Chat API error:', error);
+    console.error(`Streaming endpoint ${path} error:`, error);
     throw error;
   }
-};
+}
+
+export async function* chat(accessToken: string, body: { message: Message, response_format?: Record<string, unknown> }, abortSignal?: AbortSignal): AsyncGenerator<ChatResponse> {
+  yield* streamEndpoint(accessToken, `chat/completions`, body, abortSignal);
+}
+
+export async function* replay(accessToken: string, conversationId: number, body: { message: Message, timestamp: string, response_format?: Record<string, unknown> }, abortSignal?: AbortSignal): AsyncGenerator<ChatResponse> {
+  yield* streamEndpoint(accessToken, `chat/conversations/${conversationId}/replay`, body, abortSignal);
+}
 
 export const getMessages = async (accessToken: string, conversationId: number) =>
   req<Message[]>({
@@ -36,3 +57,9 @@ export const getMessages = async (accessToken: string, conversationId: number) =
     path: `chat/conversations/${conversationId}/messages`
   });
 
+export const deleteMessage = async (accessToken: string, conversationId: number, messageId: number) =>
+  req<{ status: string; message: string }>({
+    method: 'DELETE',
+    headers: getHeaders(accessToken),
+    path: `chat/conversations/${conversationId}/messages/${messageId}`
+  });

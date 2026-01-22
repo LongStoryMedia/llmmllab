@@ -1,0 +1,10 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+title: ResponseFormat
+description: Format options for engineering responses
+type: string
+enum:
+  - detailed_analysis
+  - code_solution
+  - step_by_step_guide
+  - best_practices
+  - troubleshooting

@@ -1,8 +1,6 @@
 """
 Internal router for internal API endpoints with restricted access.
 
-Note: This router is included in app.py with non-versioned path only.
-It is intentionally not versioned to maintain isolation of internal endpoints.
 """
 
 import os
@@ -11,6 +9,9 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import FileResponse
 from server.config import IMAGE_DIR, INTERNAL_ALLOWED_IPS, INTERNAL_API_KEY, logger
 import ipaddress
+from typing import Any
+
+# Import hardware manager for diagnostic endpoints (import lazily inside handler)
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 

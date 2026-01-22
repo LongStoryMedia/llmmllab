@@ -1,0 +1,46 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Document
+description: A document/file attachment with metadata and content
+type: object
+properties:
+  id:
+    type: integer
+    description: Unique identifier for the file attachment
+  message_id:
+    type: integer
+    description: ID of the message this attachment belongs to
+  user_id:
+    type: string
+    description: ID of the user who uploaded this attachment
+  filename:
+    type: string
+    description: Original filename of the attachment
+  content_type:
+    type: string
+    description: MIME type of the file
+  file_size:
+    type: integer
+    description: Size of the file in bytes
+  content:
+    type: string
+    description: File content (base64 encoded for binary files, plain text for text files)
+  text_content:
+    type: string
+    nullable: true
+    description: Extracted text content for searchability (null for images)
+  created_at:
+    type: string
+    format: date-time
+    description: Timestamp when the attachment was created
+  updated_at:
+    type: string
+    format: date-time
+    description: Timestamp when the attachment was last updated
+required:
+  - message_id
+  - user_id
+  - filename
+  - content_type
+  - file_size
+  - content
+  - created_at

@@ -1,0 +1,30 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: PipelineMetrics
+description: "Performance metrics for pipeline execution"
+properties:
+  total_tokens:
+    type: integer
+    minimum: 0
+    description: "Total tokens processed"
+  processing_time_seconds:
+    type: number
+    minimum: 0
+    description: "Total processing time in seconds"
+  memory_usage_mb:
+    type: number
+    minimum: 0
+    description: "Peak memory usage in MB"
+  tool_calls_made:
+    type: integer
+    minimum: 0
+    description: "Number of tool calls made"
+  cache_hits:
+    type: integer
+    minimum: 0
+    description: "Number of cache hits"
+  cache_misses:
+    type: integer
+    minimum: 0
+    description: "Number of cache misses"
+additionalProperties: false

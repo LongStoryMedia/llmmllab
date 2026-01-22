@@ -119,7 +119,7 @@ class MMLUBenchmark(BenchmarkBase):
             },
         ]
 
-    def run(
+    async def run(
         self,
         model_id: str,
         num_samples: int = 100,
@@ -140,8 +140,8 @@ class MMLUBenchmark(BenchmarkBase):
         detailed_results = []
         subject_scores = {}
 
-        def aq(q):
-            is_correct, result = self.answer_question(model_id, q)
+        async def aq(q):
+            is_correct, result = await self.answer_question(model_id, q)
             detailed_results.append(result)
             nonlocal total_answers
             nonlocal correct_answers
@@ -214,7 +214,7 @@ class MMLUBenchmark(BenchmarkBase):
                     # Process the selected questions
                     for i, q in enumerate(selected_questions):
                         print(f"MMLU Question {i+1}/{sample_size}")
-                        aq(q)
+                        await aq(q)
 
                 else:
                     self.logger.error("Dataset is empty or invalid")
@@ -269,7 +269,7 @@ class MMLUBenchmark(BenchmarkBase):
 
             for i, question in enumerate(questions):
                 print(f"MMLU Question {i+1}/{len(questions)}")
-                aq(question)
+                await aq(question)
 
         # Calculate subject-wise scores
         subject_accuracy = {}
@@ -301,9 +301,20 @@ class MMLUBenchmark(BenchmarkBase):
             metadata={"subject_accuracy": subject_accuracy},
         )
 
-    def answer_question(
-        self, model_id: str, question: Dict
-    ) -> Tuple[bool, Dict]:  # Format prompt following MMLU format
+    async def answer_question(self, model_id: str, question: Dict) -> Tuple[bool, Dict]:
+        """
+        Process a single MMLU question and get the model's answer.
+
+        Args:
+            model_id: The ID of the model to use
+            question: Dictionary containing question data
+
+        Returns:
+            Tuple of (is_correct, result_dict)
+
+        Raises:
+            Exception: Any exception during inference or evaluation is propagated
+        """
         # Use the multiple_choice_template from PromptTemplates
         prompt = PromptTemplates.multiple_choice_template(
             question=question["question"],
@@ -312,12 +323,17 @@ class MMLUBenchmark(BenchmarkBase):
         )
 
         self._print_question_debug(question)
-        response = self.inference_engine.run_single_inference(
+
+        # Run inference - will raise exception on failure
+        response = await self.inference_engine.run_single_inference(
             model_id=model_id, prompt=prompt
         )
-        full_response = response.get("response", "")
+
+        full_response = response["response"]  # No need to .get() with default
         print("\nMODEL RESPONSE:")
         print(f"{full_response}")
+
+        # Extract answer - will raise exception on failure
         extracted_answer, confidence = self.extractor.extract(full_response, question)
         print("\nEXTRACTION:")
         print(f"Extracted answer: {extracted_answer} (confidence: {confidence:.2f})")
@@ -335,10 +351,12 @@ class MMLUBenchmark(BenchmarkBase):
         elif not isinstance(correct_answer, str):
             correct_answer = str(correct_answer)
 
-        is_correct, eval_confidence, _ = self.evaluator.evaluate(
+        # Evaluate answer - will raise exception on failure
+        is_correct, eval_confidence, eval_metadata = self.evaluator.evaluate(
             extracted_answer, correct_answer, question, confidence
         )
         print(f"Correct? {'YES' if is_correct else 'NO'}")
+
         return is_correct, {
             "subject": question["subject"],
             "question": (
@@ -352,6 +370,7 @@ class MMLUBenchmark(BenchmarkBase):
             "eval_confidence": eval_confidence,
             "is_correct": is_correct,
             "response": full_response[:50],
+            "evaluation_metadata": eval_metadata,
         }
 
     def _print_question_debug(self, question: Dict) -> None:

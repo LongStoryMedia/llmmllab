@@ -1,293 +1,325 @@
-import { useCallback, useMemo, useRef } from 'react';
+// Simplified chat operations - separated concerns
+import { useCallback, useRef } from 'react';
 import { ChatState, ChatActions } from './useChatState';
 import { useAuth } from '../../auth';
-import { chat, getManyConversations, getMessages, removeConversation, startConversation, getModels, getToken, getUserConversations, getLllabUsers, pause, cancel, resume } from '../../api';
+import {
+  chat,
+  getToken,
+  cancel
+} from '../../api';
+import { replay } from '../../api/message';
+import { MessageContentTypeValues } from '../../types/MessageContentType';
 import { Message } from '../../types/Message';
-import { Conversation } from '../../types/Conversation';
-import { ChatRequest } from '../../types/ChatRequest';
+import { useStreamHandler } from './useStreamHandler';
+import { useConversationOperations } from './useConversationOperations';
+import { useMessageOperations } from './useMessageOperations';
+import { MessageRoleValues } from '@/types/MessageRole';
 
+/**
+ * Main chat operations hook - orchestrates streaming and state
+ */
 export const useChatOperations = (state: ChatState, actions: ChatActions) => {
   const auth = useAuth();
-  const abortController = useRef<AbortController | null>(null);
-  const currentUserId = useMemo(() => auth.user?.profile?.preferred_username ?? '', [auth.user]);
+  const abortController = useRef<AbortController | undefined>(undefined);
 
-  // Fetch models
-  const fetchModels = useCallback(async () => {
-    actions.setIsLoading(true);
-    actions.setError(null);
-    try {
-      const modelsData = await getModels(getToken(auth.user));
-      actions.setModels(modelsData);
-    } catch (err: unknown) {
-      actions.setError((err as Error).message);
-      console.error("Error fetching models:", err);
-    } finally {
-      actions.setIsLoading(false);
-    }
-  }, [actions, auth.user]);
+  // Delegate to specialized hooks
+  const streaming = useStreamHandler();
+  const conversationOps = useConversationOperations(state, actions);
+  const messageOps = useMessageOperations(state, actions);
 
-  // Fetch conversations
-  const fetchConversations = useCallback(async () => {
-    actions.setIsLoading(true);
-    actions.setError(null);
-
-    try {
-      if (auth.isAdmin) {
-        const allUsers = await getLllabUsers();
-        console.log("Fetched users:", allUsers);
-        for (const user of allUsers) {
-          const conversationsData = await getUserConversations(getToken(auth.user), user.id);
-          actions.setConversations(prev => ({
-            ...prev,
-            [user.username ?? user.id]: conversationsData as Conversation[]
-          }));
-        }
-      } else {
-        const currentUserConversationData = await getManyConversations(getToken(auth.user));
-        actions.setConversations(prev => ({
-          ...prev,
-          [currentUserId]: currentUserConversationData
-        }));
-      }
-    } catch (err: unknown) {
-      actions.setError((err as Error).message);
-      console.error("Error fetching conversations:", err);
-    } finally {
-      actions.setIsLoading(false);
-    }
-  }, [actions, auth.user, currentUserId, auth.isAdmin]);
-
-  // Fetch messages for a specific conversation
-  const fetchMessages = useCallback(async (conversationId: number) => {
-    actions.setIsLoading(true);
-    actions.setError(null);
-    // Clear the response state to avoid showing stale data
-    actions.setResponse('');
-
-    try {
-      const fetchedMessages = await getMessages(getToken(auth.user), conversationId) as Message[];
-      actions.setMessages(msgs => [...(msgs ?? []), ...(fetchedMessages ?? []).filter(m => !msgs.find(msg => msg.id === m.id))]);
-      // Find and set the current conversation
-      const conversation = Object.values(state.conversations).flat().find(c => c.id === conversationId);
-      if (conversation) {
-        actions.setCurrentConversation(conversation);
-      } else {
-        // If not in our list, fetch all conversations
-        const conversationsData = await getManyConversations(getToken(auth.user));
-        // Update the full conversations list
-        fetchConversations();
-
-        // Find and set the current conversation from the fetched data
-        const foundConversation = conversationsData.find(c => c.id === conversationId);
-        if (foundConversation) {
-          actions.setCurrentConversation(foundConversation);
-        }
-      }
-    } catch (err: unknown) {
-      actions.setError((err as Error).message);
-      console.error("Error fetching messages:", err);
-    } finally {
-      actions.setIsLoading(false);
-    }
-  }, [actions, auth.user, state.conversations, fetchConversations]);
-
-  // Start a new conversation
-  const startNewConversation = useCallback(async (model?: string) => {
-    actions.setIsLoading(true);
-    actions.setError(null);
-
-    const modelToUse = model || state.selectedModel;
-
-    try {
-      const newConversation = await startConversation(getToken(auth.user), modelToUse);
-
-      // Update local state
-      actions.setCurrentConversation(newConversation);
-      actions.setMessages([]);
-      actions.setResponse('');
-
-      // Add to conversations list
-      actions.addConversation(newConversation);
-
-      return newConversation.id ?? -1;
-    } catch (err: unknown) {
-      actions.setError((err as Error).message);
-      console.error("Error creating conversation:", err);
-      throw err;
-    } finally {
-      actions.setIsLoading(false);
-    }
-  }, [state.selectedModel, actions, auth.user]);
-
-  // Reset response
-  const resetResponse = useCallback(() => {
-    actions.setResponse('');
-  }, [actions]);
-
-  // Pause the current chat request
-  const pauseRequest = useCallback(async () => {
-    if (!state.isTyping || state.isPaused) {
-      return; // No active request to pause or already paused
-    }
-
-    try {
-      await pause(getToken(auth.user), state.currentConversation?.id ?? -1);
-    } catch (error) {
-      actions.setError((error as Error).message);
-      console.error("Error pausing request:", error);
-    }
-
-    // We keep the partial response in state.response
-  }, [actions, auth.user, state.isPaused, state.currentConversation?.id, state.isTyping]);
-
-  // Resume the paused chat request
-  const resumeRequest = useCallback(async () => {
-    if (!state.isPaused) {
-      return; // No paused request to resume
-    }
-
-    try {
-      await resume(getToken(auth.user), state.currentConversation?.id ?? -1);
-    } catch (error) {
-      actions.setError((error as Error).message);
-      console.error("Error pausing request:", error);
-    }
-
-    // We keep the partial response in state.response
-  }, [actions, auth.user, state.isPaused, state.currentConversation?.id]);
-
-  const cancelRequest = useCallback(async () => {
-    if (abortController.current) {
-      abortController.current.abort();
-      abortController.current = null;
-    }
-
-    try {
-      await cancel(getToken(auth.user), state.currentConversation?.id ?? -1);
-    } catch (error) {
-      actions.setError((error as Error).message);
-      console.error("Error cancelling request:", error);
-    }
-
-    // Reset typing state
-    actions.setIsTyping(false);
-    actions.setResponse('');
-  }, [actions, auth.user, state.currentConversation?.id]);
-
-  // Send a message in the current conversation
-  const sendMessage = useCallback(async (message: ChatRequest) => {
+  /**
+   * Send a message - simplified streaming logic
+   */
+  const sendMessage = useCallback(async (message: Message, responseFormat?: Record<string, unknown>) => {
     if (state.isTyping) {
-      console.warn("Already typing, please wait.");
       return;
     }
 
-    actions.setIsLoading(true);
-    actions.setError(null);
     actions.setIsTyping(true);
+    actions.setError(undefined);
+
+    const userMessage = { ...message, role: MessageRoleValues.USER };
 
     try {
-      // Make sure we have a conversation
+      // Ensure we have a conversation
       let conversationId = state.currentConversation?.id;
       if (!conversationId) {
-        conversationId = await startNewConversation();
+        conversationId = await conversationOps.startNewConversation();
       }
-      await fetchMessages(conversationId ?? -1);
-      actions.setResponse('');
 
-      // Update UI immediately with the user message
-      actions.addMessage({
-        ...message,
-        role: 'user'
-      });
+      // Add user message to UI
+      actions.addMessage(userMessage);
 
-      // Fallback to HTTP API if WebSocket method fails
+      // Reset streaming state
+      streaming.resetStreaming();
+      actions.setCurrentObserverMessages([]);
+
+      // Sync streaming sections to state
+      actions.setStreamingSections([]);
+      actions.setCurrentStreamingSection(undefined);
+
+      // Start streaming
       abortController.current = new AbortController();
-      for await (const chunk of chat(getToken(auth.user), message, abortController.current.signal)) {
-        // Use functional update to ensure we're always working with the latest state
-        actions.setResponse(r => r + chunk);
+
+      let finalMessage: Message | undefined;
+
+      for await (const chunk of chat(
+        getToken(auth.user),
+        { message: userMessage, response_format: responseFormat },
+        abortController.current.signal
+      )) {
+        // Process each chunk through streaming handler and GET THE UPDATED STATE
+        const updatedState = streaming.processChunk(chunk);
+
+        actions.setStreamingSections([...updatedState.sections]); // Use returned state
+        actions.setCurrentStreamingSection(updatedState.currentSection);
+
+        // Update observer messages if present
+        if (chunk.observer_messages?.length) {
+          actions.setCurrentObserverMessages(chunk.observer_messages);
+        }
+
+        // If this is the final complete message, use it directly
+        if (chunk.finish_reason === 'complete' && chunk.message) {
+          finalMessage = chunk.message;
+          break; // No need to process more chunks
+        }
+      }
+
+      // Use the complete final message if available
+      if (finalMessage) {
+        // First, immediately stop showing streaming sections to prevent duplication
+        streaming.resetStreaming();
+        actions.setStreamingSections([]);
+        actions.setCurrentStreamingSection(undefined);
+
+        // Replace streaming message with final message in one atomic operation
+        actions.setMessages(prev => {
+          const filtered = prev.filter(msg =>
+            // Keep user messages
+            msg.role === MessageRoleValues.USER ||
+            // Keep assistant messages that have IDs (already persisted)
+            (msg.role === MessageRoleValues.ASSISTANT && msg.id)
+          );
+          // Add the final message
+          return [...filtered, finalMessage];
+        });
+      } else {
+        // If no complete message received, just clean up streaming
+        streaming.resetStreaming();
+        actions.setStreamingSections([]);
+        actions.setCurrentStreamingSection(undefined);
+        actions.setMessages(prev => prev.filter(msg =>
+          // Keep user messages
+          msg.role === MessageRoleValues.USER ||
+          // Keep assistant messages that have IDs
+          (msg.role === MessageRoleValues.ASSISTANT && msg.id)
+        ));
+      }
+
+      // Stream complete - refresh messages from server
+      if (conversationId) {
+        await messageOps.fetchMessages(conversationId);
       }
 
     } catch (err: unknown) {
-      if ((err as Error).name === 'AbortError') {
-        console.log("Request was aborted");
-      } else {
+      if ((err as Error).name !== 'AbortError') {
         console.error("Error sending message:", err);
         actions.setError((err as Error).message);
       }
     } finally {
-      if (!state.isPaused) { // Only clean up if not paused
-        actions.setIsLoading(false);
+      if (!state.isPaused) {
         actions.setIsTyping(false);
+        streaming.resetStreaming();
+        actions.setCurrentObserverMessages([]);
+        actions.setStreamingSections([]);
+        actions.setCurrentStreamingSection(undefined);
       }
     }
   }, [
     state.isTyping,
     state.currentConversation,
     state.isPaused,
-    fetchMessages,
+    actions,
     auth.user,
-    startNewConversation,
-    actions
+    conversationOps,
+    streaming,
+    messageOps
   ]);
 
-  // Delete a conversation
-  const deleteConversation = useCallback(async (id: number) => {
-    if (state.isLoading) {
+  /**
+   * Replay a message by calling the streaming replay endpoint and updating streaming state
+   */
+  const replayMessage = useCallback(async (message: Message) => {
+    if (!state.currentConversation?.id || state.isLoading || !message.created_at) {
+      console.error('Cannot replay message - missing required data');
       return;
     }
 
+    const conversationId = state.currentConversation.id;
+
     actions.setIsLoading(true);
-    actions.setError(null);
+    actions.setError(undefined);
+
+    let finalMessage: Message | undefined;
 
     try {
-      await removeConversation(getToken(auth.user), id);
+      // Reuse shared abortController for cancellation
+      abortController.current = new AbortController();
+      for await (const chunk of replay(
+        getToken(auth.user),
+        conversationId,
+        { message, timestamp: message.created_at.toISOString() },
+        abortController.current.signal
+      )) {
+        const updatedState = streaming.processChunk(chunk);
+        actions.setStreamingSections(updatedState.sections);
+        actions.setCurrentStreamingSection(updatedState.currentSection);
 
-      // Update local state
-      actions.removeConversationFromList(id);
+        if (chunk.observer_messages?.length) {
+          actions.setCurrentObserverMessages(chunk.observer_messages);
+        }
 
-      // If this was the current conversation, clear it
-      if (state.currentConversation?.id === id) {
-        actions.setMessages([]);
-        actions.setResponse('');
+        // If this is the final complete message, use it directly
+        if (chunk.finish_reason === 'complete' && chunk.message) {
+          finalMessage = chunk.message;
+          break; // No need to process more chunks
+        }
+      }
+
+      // Use the complete final message if available
+      if (finalMessage) {
+        // First, immediately stop showing streaming sections to prevent duplication
+        streaming.resetStreaming();
+        actions.setStreamingSections([]);
+        actions.setCurrentStreamingSection(undefined);
+
+        // Replace streaming message with final message in one atomic operation
+        actions.setMessages(prev => {
+          const filtered = prev.filter(msg =>
+            // Keep user messages
+            msg.role === MessageRoleValues.USER ||
+            // Keep assistant messages that have IDs (already persisted)
+            (msg.role === MessageRoleValues.ASSISTANT && msg.id)
+          );
+          // Add the final message
+          return [...filtered, finalMessage] as Message[];
+        });
+      } else {
+        // If no complete message received, just clean up streaming
+        streaming.resetStreaming();
+        actions.setStreamingSections([]);
+        actions.setCurrentStreamingSection(undefined);
+        actions.setMessages(prev => prev.filter(msg =>
+          // Keep user messages
+          msg.role === MessageRoleValues.USER ||
+          // Keep assistant messages that have IDs
+          (msg.role === MessageRoleValues.ASSISTANT && msg.id)
+        ));
+      }
+
+
+      // Stream complete - refresh messages
+      if (conversationId) {
+        await messageOps.fetchMessages(conversationId);
       }
     } catch (err: unknown) {
-      actions.setError((err as Error).message);
-      console.error("Error deleting conversation:", err);
+      if ((err as Error).name !== 'AbortError') {
+        actions.setError((err as Error).message);
+        console.error('Error replaying message:', err);
+      }
     } finally {
+      if (!state.isPaused) {
+        actions.setIsTyping(false);
+        streaming.resetStreaming();
+        actions.setCurrentObserverMessages([]);
+        actions.setStreamingSections([]);
+        actions.setCurrentStreamingSection(undefined);
+      }
       actions.setIsLoading(false);
     }
-  }, [state.isLoading, state.currentConversation, actions, auth.user]);
+  }, [state.currentConversation, state.isLoading, state.isPaused, actions, auth.user, streaming, messageOps]);
 
-  // Select an existing conversation
-  const selectConversation = useCallback(async (id: number) => {
-    actions.setIsLoading(true);
-    actions.setError(null);
-    actions.setMessages([]);
+  const saveEditAndReplay = useCallback(async (messageId: number, newContent: string) => {
+    if (!state.currentConversation?.id || !newContent.trim()) {
+      console.error('Cannot save - missing conversation or empty content');
+      return;
+    }
+
+    const originalMessage = state.messages.find(m => m.id === messageId);
+    if (!originalMessage) {
+      console.error('Original message not found');
+      return;
+    }
+
+    const editedMessage: Message = {
+      ...originalMessage,
+      content: [{ type: MessageContentTypeValues.TEXT, text: newContent.trim() }]
+    };
+
+    // Clear editing state
+    actions.setEditingMessageId(undefined);
+    actions.setEditingMessageContent('');
+
+    await replayMessage(editedMessage);
+  }, [state.currentConversation, state.messages, actions, replayMessage]);
+
+  /**
+   * Cancel current request
+   */
+  const cancelRequest = useCallback(async () => {
+    console.log('🛑 Cancelling request...');
+
+    // First abort the stream
+    if (abortController.current) {
+      abortController.current.abort();
+      abortController.current = undefined;
+    }
+
+    // Reset streaming immediately for UI responsiveness
+    actions.setIsTyping(false);
+    streaming.resetStreaming();
+    actions.setStreamingSections([]);
+    actions.setCurrentStreamingSection(undefined);
 
     try {
-      await fetchMessages(id);
-    } catch (err: unknown) {
-      actions.setError((err as Error).message);
-      console.error("Error selecting conversation:", err);
-    } finally {
-      actions.setIsLoading(false);
+      // Call the server cancel endpoint
+      await cancel(getToken(auth.user));
+    } catch (error) {
+      // Don't throw error for cancel request
+      console.warn('Cancel request failed (stream already stopped):', error);
     }
-  }, [actions, fetchMessages]);
+  }, [actions, auth.user, streaming]);
 
   return {
-    fetchConversations,
-    fetchMessages,
-    startNewConversation,
+    // Message operations
     sendMessage,
-    deleteConversation,
-    selectConversation,
-    fetchModels,
-    response: state.response,
-    isTyping: state.isTyping,
-    resetResponse,
-    pauseRequest,
-    isPaused: state.isPaused,
+    deleteMessage: messageOps.deleteMessage,
+    replayMessage,
+    fetchMessages: messageOps.fetchMessages,
+    startEditMessage: messageOps.startEditMessage,
+    cancelEditMessage: messageOps.cancelEditMessage,
+    saveEditAndReplay,
+
+    // Conversation operations
+    fetchConversations: conversationOps.fetchConversations,
+    startNewConversation: conversationOps.startNewConversation,
+    deleteConversation: conversationOps.deleteConversation,
+
+    // Combined operation: select conversation AND fetch its messages
+    selectConversation: useCallback(async (id: number) => {
+      await conversationOps.selectConversation(id);
+      await messageOps.fetchMessages(id);
+    }, [conversationOps, messageOps]),
+
+    // Streaming control
     cancelRequest,
-    resumeRequest
+
+    // Streaming state
+    streamingSections: streaming.sections,
+    currentStreamingSection: streaming.currentSection,
+
+    // Model operations
+    fetchModels: conversationOps.fetchModels
   };
 };

@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 import logging
 
+from .base.benchmark_base import BenchmarkBase
+
 # Store benchmark classes and availability status
 benchmarks_available = {}
 benchmark_classes = {}
@@ -46,7 +48,7 @@ class AcademicBenchmarkSuite:
         self.data_dir.mkdir(exist_ok=True)
 
         # Initialize available benchmarks
-        self.benchmarks = {}
+        self.benchmarks: Dict[str, BenchmarkBase] = {}
 
         # Create instances of available benchmarks
         for key, is_available in benchmarks_available.items():
@@ -80,7 +82,7 @@ class AcademicBenchmarkSuite:
 
         self.logger.info("Benchmark data directories created")
 
-    def run_full_benchmark_suite(
+    async def run_full_benchmark_suite(
         self,
         model_ids: List[str],
         output_file: Optional[str] = None,
@@ -127,7 +129,7 @@ class AcademicBenchmarkSuite:
                             samples = 1
 
                         # Pass dataset_path to the benchmark run method
-                        result = self.benchmarks[benchmark_name].run(
+                        result = await self.benchmarks[benchmark_name].run(
                             model_id=model_id,
                             num_samples=samples,
                             dataset_path=dataset_path,
@@ -140,10 +142,10 @@ class AcademicBenchmarkSuite:
                             "metadata": result.metadata,
                         }
                         if output_file:
-                            self.save_results(result, output_file)
+                            self.save_results(result.detailed_results, output_file)
                         else:
                             self.save_results(
-                                result,
+                                result.detailed_results,
                                 f"benchmark_data/{str(model_id)}/{benchmark_name}/{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
                             )
 

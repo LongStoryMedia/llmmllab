@@ -1,0 +1,15 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: WorkflowType
+type: string
+enum:
+  - general
+  - research
+  - engineering
+  - creative
+  - image_generation
+  - image_refinement
+  - analysis
+  - planning
+  - focused
+description: |
+  Supported workflow types for composer orchestration.

@@ -42,6 +42,20 @@ regen_go() {
     done
 }
 
+tsgen() {
+    schema_file=$1
+    
+    # Run schema2code to regenerate the TypeScript file
+    schema2code "$schema_file" -l typescript -o "$UI_MODELS_DIR/${base_name}.ts" --package types
+    
+    # Check if the command was successful
+    if [ $? -eq 0 ]; then
+        echo "Successfully regenerated $schema_file in typescript" | tee -a "$LOG_FILE"
+    else
+        echo "Error regenerating $schema_file in typescript" | tee -a "$LOG_FILE"
+    fi
+}
+
 # Helper function for TypeScript
 regen_ts() {
     for ts_file in "$UI_MODELS_DIR"/*.ts; do
@@ -56,19 +70,25 @@ regen_ts() {
         if [ -f "$schema_file" ]; then
             echo "Processing $base_name: Found schema file $schema_file" | tee -a "$LOG_FILE"
             
-            # Run schema2code to regenerate the TypeScript file
-            schema2code "$schema_file" -l typescript -o "$UI_MODELS_DIR/${base_name}.ts" --package types
-            
-            # Check if the command was successful
-            if [ $? -eq 0 ]; then
-                echo "Successfully regenerated $base_name.ts" | tee -a "$LOG_FILE"
-            else
-                echo "Error regenerating $base_name.ts" | tee -a "$LOG_FILE"
-            fi
+            tsgen "$schema_file" &   
         else
             echo "Skipping $base_name (ts): No corresponding schema file found at $schema_file" | tee -a "$LOG_FILE"
         fi
     done
+}
+
+pygen() {
+    schema_file=$1
+    
+    # Run schema2code to regenerate the Python file
+    schema2code "$schema_file" -l python -o "$INFERENCE_MODELS_DIR/${base_name}.py"
+    
+    # Check if the command was successful
+    if [ $? -eq 0 ]; then
+        echo "Successfully regenerated $schema_file in python" | tee -a "$LOG_FILE"
+    else
+        echo "Error regenerating $schema_file in python" | tee -a "$LOG_FILE"
+    fi
 }
 
 # Helper function for Python
@@ -83,16 +103,9 @@ regen_py() {
         # Check if schema file exists
         if [ -f "$schema_file" ]; then
             echo "Processing $base_name: Found schema file $schema_file" | tee -a "$LOG_FILE"
-            
-            # Run schema2code to regenerate the Python file
-            schema2code "$schema_file" -l python -o "$INFERENCE_MODELS_DIR/${base_name}.py"
-            
-            # Check if the command was successful
-            if [ $? -eq 0 ]; then
-                echo "Successfully regenerated $base_name.py" | tee -a "$LOG_FILE"
-            else
-                echo "Error regenerating $base_name.py" | tee -a "$LOG_FILE"
-            fi
+
+            pygen "$schema_file" &
+
         else
             echo "Skipping $base_name (py): No corresponding schema file found" | tee -a "$LOG_FILE"
         fi
@@ -141,11 +154,12 @@ regen_proto() {
 }
 
 # Always regenerate proto first to ensure all code is in sync
-regen_proto
+# regen_proto
 
 # Then regenerate models for each language
-regen_go
 regen_ts
 regen_py
+
+wait
 
 echo "Completed model regeneration at $(date)" | tee -a "$LOG_FILE"

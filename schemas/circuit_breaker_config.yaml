@@ -1,0 +1,80 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CircuitBreakerConfig
+description: Configuration for circuit breaker and timeout protection
+type: object
+properties:
+  base_timeout:
+    type: number
+    minimum: 1.0
+    maximum: 600.0
+    description: Base timeout in seconds
+  deep_research_timeout:
+    type: number
+    minimum: 1.0
+    maximum: 1200.0
+    description: Extended timeout for deep research tasks
+  max_retries:
+    type: integer
+    minimum: 0
+    maximum: 10
+    description: Maximum number of retries before giving up
+  cooldown_period:
+    type: number
+    minimum: 0.0
+    maximum: 300.0
+    description: Time in seconds before allowing retry after failure
+  enable_perplexity_guard:
+    type: boolean
+    description: Enable or disable perplexity-based quality monitoring
+  enable_repetition_detection:
+    type: boolean
+    description: Enable or disable repetition detection entirely
+  perplexity_window:
+    type: integer
+    minimum: 10
+    maximum: 200
+    description: Number of tokens to consider when calculating perplexity
+  perplexity_threshold:
+    type: number
+    minimum: 1.0
+    maximum: 50.0
+    description: Perplexity threshold above which to trigger quality concerns
+  avg_logprob_floor:
+    type: number
+    minimum: -20.0
+    maximum: 0.0
+    description: Minimum average log probability threshold
+  repetition_ngram:
+    type: integer
+    minimum: 2
+    maximum: 20
+    description: N-gram size for repetition detection
+  repetition_threshold:
+    type: integer
+    minimum: 2
+    maximum: 20
+    description: Number of repetitions before triggering detection
+  min_tokens_for_eval:
+    type: integer
+    minimum: 5
+    maximum: 500
+    description: Minimum number of tokens before starting quality evaluation
+  perplexity_log_interval_tokens:
+    type: integer
+    minimum: 5
+    maximum: 100
+    description: Interval in tokens for logging perplexity metrics
+  log_repetition_events:
+    type: boolean
+    description: Whether to log repetition detection events
+  tool_gen_repetition_ngram:
+    type: integer
+    minimum: 2
+    maximum: 20
+    description: N-gram size for tool generation repetition detection
+  tool_gen_repetition_threshold:
+    type: integer
+    minimum: 2
+    maximum: 20
+    description: Number of repetitions before triggering tool generation detection
+additionalProperties: false

@@ -12,35 +12,44 @@ echo "---------------------------------------------------------------"
 
 # Function to setup a specific subproject
 setup_project() {
-  local project_name=$1
-  
-  echo "Setting up $project_name..."
-  cd "$SCRIPT_DIR/$project_name"
-  
-  # Create virtual environment if it doesn't exist
-  if [ ! -d "venv" ]; then
-    echo "Creating virtual environment for $project_name..."
-    python3.12 -m venv venv
-  else
-    echo "Virtual environment for $project_name already exists"
-  fi
-  
-  # Activate and install requirements
-  echo "Installing requirements for $project_name..."
-  source venv/bin/activate
-  pip install --upgrade pip
-  pip install -r requirements.txt
-  pip install -e .
-  deactivate
-  
-  echo "$project_name setup complete"
-  echo "---------------------------------------------------------------"
+    local project_name=$1
+    
+    echo "Setting up $project_name..."
+    cd "$SCRIPT_DIR/$project_name"
+    
+    # Create virtual environment if it doesn't exist
+    if [ ! -d "venv" ]; then
+        echo "Creating virtual environment for $project_name..."
+        python3.12 -m venv venv
+    else
+        echo "Virtual environment for $project_name already exists"
+    fi
+    
+    # Activate and install requirements
+    echo "Installing requirements for $project_name..."
+    source venv/bin/activate
+    pip install --upgrade pip
+    
+    # Install shared dependencies first
+    # if [ -d "/opt/wheels" ]; then
+    #     echo "Installing shared dependencies from wheels..."
+    #     pip install --no-index --find-links=/opt/wheels torch torchaudio torchvision llama-cpp-python
+    # fi
+    
+    # Install project-specific requirements
+    pip install -r requirements.txt
+    pip install -e .
+    deactivate
+    
+    echo "$project_name setup complete"
+    echo "---------------------------------------------------------------"
 }
 
 # Setup each project
 setup_project "evaluation"
 setup_project "server"
 setup_project "runner"
+setup_project "composer"
 
 # Return to original directory
 cd "$CURRENT_DIR"

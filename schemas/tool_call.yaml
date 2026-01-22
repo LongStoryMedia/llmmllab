@@ -1,0 +1,42 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: ToolCall
+description: "Result from executing a tool"
+properties:
+  message_id:
+    type: integer
+    description: "Foreign key reference to the associated message"
+  name:
+    type: string
+    description: "Name of the executed tool"
+  execution_id:
+    type: string
+    description: "Unique execution identifier"
+  success:
+    type: boolean
+    description: "Whether execution was successful"
+  args:
+    type: object
+    description: "Arguments passed to the tool"
+    additionalProperties: true
+  result_data:
+    type: object
+    description: "Result data from the tool"
+    additionalProperties: true
+  error_message:
+    type: string
+    description: "Error message if execution failed"
+  execution_time_ms:
+    type: integer
+    minimum: 0
+    description: "Execution time in milliseconds"
+  resource_usage:
+    $ref: "resource_usage.yaml"
+  created_at:
+    type: string
+    format: date-time
+    description: "Timestamp when the tool call record was created"
+required:
+  - name
+  - args
+additionalProperties: false

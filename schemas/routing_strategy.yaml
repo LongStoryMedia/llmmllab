@@ -1,0 +1,112 @@
+---
+$schema: "http://json-schema.org/draft-07/schema#"
+title: "RoutingStrategy"
+type: object
+description: "Strongly typed routing strategy result containing workflow selection and execution details"
+required:
+  - selected_workflows
+  - execution_strategy
+  - reason
+properties:
+  selected_workflows:
+    type: array
+    description: "List of workflow names selected for execution"
+    items:
+      type: string
+    minItems: 1
+    examples:
+      - ["chat"]
+      - ["research"]
+      - ["research", "creative"]
+      - ["multi_agent"]
+
+  execution_strategy:
+    type: string
+    description: "Strategy for executing the selected workflows"
+    enum:
+      - "single"
+      - "parallel"
+      - "series"
+      - "hybrid"
+    examples:
+      - "single"
+      - "series"
+
+  reason:
+    type: string
+    description: "Explanation for why this routing strategy was chosen"
+    enum:
+      - "command_based_routing"
+      - "explicit_routing_decision"
+      - "explicit_workflow_type"
+      - "complex_research_series"
+      - "multi_agent_intent"
+      - "creative_intent"
+      - "research_intent"
+      - "default_chat"
+      - "error_fallback"
+    examples:
+      - "research_intent"
+      - "command_based_routing"
+
+  confidence:
+    type: number
+    description: "Confidence score for the routing decision (0.0 to 1.0)"
+    minimum: 0.0
+    maximum: 1.0
+    default: 0.8
+    examples:
+      - 0.95
+      - 0.7
+
+  metadata:
+    type: object
+    description: "Additional metadata about the routing decision"
+    properties:
+      workflow_type:
+        $ref: workflow_type.yaml
+        description: "Identified primary workflow type from intent analysis"
+      complexity_level:
+        type: string
+        description: "Assessed complexity level"
+        enum: ["simple", "medium", "high"]
+      fallback_applied:
+        type: boolean
+        description: "Whether fallback routing was applied"
+        default: false
+      routing_path:
+        type: array
+        description: "Path of routing decisions taken"
+        items:
+          type: string
+    additionalProperties: true
+
+  target_node:
+    type: string
+    description: "Target node name for LangGraph conditional routing"
+    examples:
+      - "chat_subgraph"
+      - "research_subgraph"
+      - "coordinator"
+
+  alternatives:
+    type: array
+    description: "Alternative routing strategies that were considered"
+    items:
+      $ref: "#/definitions/AlternativeStrategy"
+
+definitions:
+  AlternativeStrategy:
+    type: object
+    description: "Alternative routing strategy that was considered"
+    properties:
+      workflows:
+        type: array
+        items:
+          type: string
+      strategy:
+        type: string
+      reason:
+        type: string
+      confidence:
+        type: number

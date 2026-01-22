@@ -1,190 +1,73 @@
 """
 Config router for handling user and system configuration.
 
-Note: This router is included in app.py with both non-versioned and versioned paths:
-- Non-versioned: /config/...
-- Versioned: /v1/config/...
 """
 
-from typing import Dict, Any, Optional
-from fastapi import APIRouter, HTTPException, Request, Depends
-from pydantic import BaseModel
-import time
-import uuid
-import json
-
-from server.auth import get_user_id, is_admin
+from fastapi import APIRouter, HTTPException, Request
+from server.middleware.auth import get_user_id
 from server.config import logger
 
-# Import the storage layer
-from server.db import storage
+# Import storage layer
+from db import storage
+
+# Import models - use the same imports as storage layer
+from models.user_config import UserConfig
+from models.default_configs import create_default_user_config
 
 router = APIRouter(prefix="/config", tags=["config"])
 
 
-class UserConfig(BaseModel):
-    id: str
-    user_id: str
-    theme: Optional[str] = "light"
-    language: Optional[str] = "en"
-    message_display_mode: Optional[str] = "compact"
-    notifications_enabled: Optional[bool] = True
-    created_at: Optional[float] = None
-    updated_at: Optional[float] = None
+def create_default_config(user_id: str) -> UserConfig:
+    """Create a default user configuration with sensible defaults for all settings"""
+    return create_default_user_config(user_id)
 
 
-class UserConfigRequest(BaseModel):
-    theme: Optional[str] = None
-    language: Optional[str] = None
-    message_display_mode: Optional[str] = None
-    notifications_enabled: Optional[bool] = None
-
-
-@router.get("/", response_model=UserConfig)
-async def get_user_config(request: Request):
+@router.get("/")
+async def get_user_config(request: Request) -> UserConfig:
     """Get the user's configuration"""
     user_id = get_user_id(request)
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
-
     if not storage.initialized:
-        logger.warning("Database not initialized, using mock user config")
-        # Fallback to mock if database is not initialized
-        return UserConfig(
-            id=str(uuid.uuid4()),
-            user_id=user_id,
-            theme="light",
-            language="en",
-            message_display_mode="compact",
-            notifications_enabled=True,
-            created_at=time.time(),
-            updated_at=time.time(),
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
+    if not storage.user_config:
+        raise HTTPException(
+            status_code=503, detail="User config storage not initialized"
         )
 
     try:
-        # Get from database
-        config_dict = await storage.user_config.get_user_config(user_id)
-
-        if not config_dict:
-            # User doesn't exist in database yet, create default config
-            default_config = {
-                "theme": "light",
-                "language": "en",
-                "message_display_mode": "compact",
-                "notifications_enabled": True,
-            }
-
-            await storage.user_config.update_user_config(user_id, default_config)
-
-            # Return default config with generated ID
-            return UserConfig(
-                id=str(uuid.uuid4()),
-                user_id=user_id,
-                **default_config,
-                created_at=time.time(),
-                updated_at=time.time(),
-            )
-
-        # Convert DB config format to our UserConfig format
-        config_data = {}
-        if "config" in config_dict and config_dict["config"]:
-            if isinstance(config_dict["config"], str):
-                config_data = json.loads(config_dict["config"])
-            else:
-                config_data = config_dict["config"]
-
-        # Create UserConfig from the data
-        return UserConfig(
-            id=config_dict.get("id", str(uuid.uuid4())),
-            user_id=user_id,
-            theme=config_data.get("theme", "light"),
-            language=config_data.get("language", "en"),
-            message_display_mode=config_data.get("message_display_mode", "compact"),
-            notifications_enabled=config_data.get("notifications_enabled", True),
-            created_at=config_dict.get("created_at", time.time()),
-            updated_at=config_dict.get("updated_at", time.time()),
-        )
-
+        # This will now automatically create the user with default config if they don't exist
+        config = await storage.user_config.get_user_config(user_id)
+        return config
     except Exception as e:
         logger.error(f"Error getting user config: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 
-@router.put("/", response_model=UserConfig)
-async def update_user_config(config_req: UserConfigRequest, request: Request):
+@router.put("/")
+async def update_config(config: UserConfig, request: Request) -> UserConfig:
     """Update the user's configuration"""
     user_id = get_user_id(request)
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
     if not storage.initialized:
-        logger.warning("Database not initialized, using mock user config update")
-        # Fallback to mock if database is not initialized
-        current_config = {
-            "id": str(uuid.uuid4()),
-            "user_id": user_id,
-            "theme": "light",
-            "language": "en",
-            "message_display_mode": "compact",
-            "notifications_enabled": True,
-            "created_at": time.time() - 3600,  # Created an hour ago
-            "updated_at": time.time(),
-        }
+        raise HTTPException(status_code=503, detail="Database not initialized")
 
-        # Update with requested changes (if provided)
-        update_data = config_req.dict(exclude_unset=True)
-        for key, value in update_data.items():
-            if value is not None:
-                current_config[key] = value
-
-        return UserConfig(**current_config)
-
-    try:
-        # First, get current config to use as base
-        current_config_dict = await storage.user_config.get_user_config(user_id)
-
-        # Extract config data from the database format
-        if not current_config_dict or not current_config_dict.get("config"):
-            # No existing config, start with default
-            config_data = {
-                "theme": "light",
-                "language": "en",
-                "message_display_mode": "compact",
-                "notifications_enabled": True,
-            }
-        else:
-            # Parse existing config
-            if isinstance(current_config_dict.get("config"), str):
-                config_data = json.loads(current_config_dict["config"])
-            else:
-                config_data = current_config_dict.get("config", {})
-
-        # Update with requested changes (if provided)
-        update_data = config_req.dict(exclude_unset=True)
-        for key, value in update_data.items():
-            if value is not None:
-                config_data[key] = value
-
-        # Update in database
-        await storage.user_config.update_user_config(user_id, config_data)
-
-        # Return updated config
-        return UserConfig(
-            id=(
-                current_config_dict.get("id", str(uuid.uuid4()))
-                if current_config_dict
-                else str(uuid.uuid4())
-            ),
-            user_id=user_id,
-            **config_data,
-            created_at=(
-                current_config_dict.get("created_at", time.time())
-                if current_config_dict
-                else time.time()
-            ),
-            updated_at=time.time(),
+    if not storage.user_config:
+        raise HTTPException(
+            status_code=503, detail="User config storage not initialized"
         )
 
+    if config.user_id != user_id:
+        raise HTTPException(
+            status_code=403, detail="Cannot modify config for other users"
+        )
+
+    try:
+        await storage.user_config.update_user_config(user_id, config)
+        return config
     except Exception as e:
         logger.error(f"Error updating user config: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

@@ -45,7 +45,7 @@ class Math500Benchmark(BenchmarkBase):
             },
         ]
 
-    def run(
+    async def run(
         self, model_id: str, num_samples: int = 50, dataset_path: Optional[str] = None
     ) -> BenchmarkResult:
         """Run MATH-500 benchmark."""
@@ -66,54 +66,51 @@ class Math500Benchmark(BenchmarkBase):
             # Use the math_template from PromptTemplates
             prompt = PromptTemplates.math_template(problem["problem"], show_work=True)
 
-            try:
-                print(f"\n{'-'*80}")
-                print(f"QUESTION: {problem['problem']}")
-                print(f"EXPECTED ANSWER: {problem['answer']}")
+            # No try/except - let errors propagate to show actual failures
+            print(f"\n{'-'*80}")
+            print(f"QUESTION: {problem['problem']}")
+            print(f"EXPECTED ANSWER: {problem['answer']}")
 
-                response = self.inference_engine.run_single_inference(
-                    model_id, prompt, max_tokens=300, temperature=0.1
-                )
-                model_response = response.get("response", "")
+            response = await self.inference_engine.run_single_inference(
+                model_id, prompt, max_tokens=300, temperature=0.1
+            )
+            model_response = response["response"]  # No need for .get() with default
 
-                self.logger.info(f"\nMODEL RESPONSE:")
-                self.logger.info(
-                    f"{model_response[:800]}{'...' if len(model_response) > 800 else ''}"
-                )
+            self.logger.info(f"\nMODEL RESPONSE:")
+            self.logger.info(
+                f"{model_response[:800]}{'...' if len(model_response) > 800 else ''}"
+            )
 
-                # Use the MathEvaluator's evaluate method instead
-                is_correct, confidence, eval_metadata = self.evaluator.evaluate(
-                    model_response, problem["answer"], problem, 1.0
-                )
+            # Use the MathEvaluator's evaluate method instead
+            is_correct, confidence, eval_metadata = self.evaluator.evaluate(
+                model_response, problem["answer"], problem, 1.0
+            )
 
-                self.logger.info(f"\nEVALUATION:")
-                self.logger.info(f"Expected answer: {problem['answer']}")
-                self.logger.info(
-                    f"Is correct: {'YES' if is_correct else 'NO'} (confidence: {confidence:.2f})"
-                )
+            self.logger.info(f"\nEVALUATION:")
+            self.logger.info(f"Expected answer: {problem['answer']}")
+            self.logger.info(
+                f"Is correct: {'YES' if is_correct else 'NO'} (confidence: {confidence:.2f})"
+            )
 
-                if is_correct:
-                    correct_answers += 1
+            if is_correct:
+                correct_answers += 1
 
-                detailed_results.append(
-                    {
-                        "problem_id": i,
-                        "type": problem["type"],
-                        "level": problem["level"],
-                        "expected_answer": problem["answer"],
-                        "is_correct": is_correct,
-                        "confidence": confidence,
-                        "evaluation_metadata": eval_metadata,
-                        "response": (
-                            model_response[:200] + "..."
-                            if len(model_response) > 200
-                            else model_response
-                        ),
-                    }
-                )
-
-            except Exception as e:
-                self.logger.error(f"Error in MATH problem {i}: {str(e)}")
+            detailed_results.append(
+                {
+                    "problem_id": i,
+                    "type": problem["type"],
+                    "level": problem["level"],
+                    "expected_answer": problem["answer"],
+                    "is_correct": is_correct,
+                    "confidence": confidence,
+                    "evaluation_metadata": eval_metadata,
+                    "response": (
+                        model_response[:200] + "..."
+                        if len(model_response) > 200
+                        else model_response
+                    ),
+                }
+            )
 
         math_score = (
             correct_answers / len(extended_problems) if extended_problems else 0

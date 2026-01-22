@@ -1,0 +1,20 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+title: TechnicalDomain
+description: Technical domains for specialized engineering responses
+type: string
+enum:
+  - software_development
+  - system_architecture
+  - data_engineering
+  - devops_infrastructure
+  - security_engineering
+  - machine_learning
+  - general_engineering
+  - mechanical_engineering
+  - electrical_engineering
+  - civil_engineering
+  - chemical_engineering
+  - aerospace_engineering
+  - industrial_engineering
+  - environmental_engineering
+  - biomedical_engineering

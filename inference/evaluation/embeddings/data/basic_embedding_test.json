@@ -1,0 +1,99 @@
+{
+    "name": "basic_embedding_test",
+    "description": "Basic test cases for embedding model evaluation",
+    "test_cases": [
+        {
+            "query": "What is machine learning?",
+            "documents": [
+                "Machine learning is a branch of artificial intelligence that focuses on building systems that learn from data.",
+                "Deep learning is a subset of machine learning that uses neural networks with multiple layers.",
+                "Natural language processing is a field of AI that helps computers understand human language.",
+                "Quantum computing uses quantum mechanics principles to perform computations."
+            ],
+            "expected_similarities": [
+                {
+                    "text": "Machine learning is a branch of artificial intelligence that focuses on building systems that learn from data.",
+                    "min": 0.7,
+                    "max": 0.8
+                },
+                {
+                    "text": "Deep learning is a subset of machine learning that uses neural networks with multiple layers.",
+                    "min": 0.5,
+                    "max": 0.6
+                },
+                {
+                    "text": "Natural language processing is a field of AI that helps computers understand human language.",
+                    "min": 0.3,
+                    "max": 0.4
+                },
+                {
+                    "text": "Quantum computing uses quantum mechanics principles to perform computations.",
+                    "min": 0.1,
+                    "max": 0.21
+                }
+            ]
+        },
+        {
+            "query": "How do neural networks work?",
+            "documents": [
+                "Neural networks consist of layers of interconnected nodes that process and transform data.",
+                "Deep learning uses multiple layers of neural networks to learn hierarchical representations.",
+                "Backpropagation is an algorithm used to train neural networks by calculating gradients.",
+                "Reinforcement learning is about training agents to make decisions through rewards and penalties."
+            ],
+            "expected_similarities": [
+                {
+                    "text": "Neural networks consist of layers of interconnected nodes that process and transform data.",
+                    "min": 0.5,
+                    "max": 0.6
+                },
+                {
+                    "text": "Deep learning uses multiple layers of neural networks to learn hierarchical representations.",
+                    "min": 0.5,
+                    "max": 0.6
+                },
+                {
+                    "text": "Backpropagation is an algorithm used to train neural networks by calculating gradients.",
+                    "min": 0.4,
+                    "max": 0.5
+                },
+                {
+                    "text": "Reinforcement learning is about training agents to make decisions through rewards and penalties.",
+                    "min": 0.3,
+                    "max": 0.4
+                }
+            ]
+        },
+        {
+            "query": "What are embeddings in machine learning?",
+            "documents": [
+                "Embeddings are vector representations of data that capture semantic meaning in a continuous space.",
+                "Word embeddings map words to vectors where similar words have similar vectors.",
+                "Sentence embeddings represent entire sentences or paragraphs as fixed-length vectors.",
+                "Image classification is a task of assigning labels to images based on their content."
+            ],
+            "expected_similarities": [
+                {
+                    "text": "Embeddings are vector representations of data that capture semantic meaning in a continuous space.",
+                    "min": 0.7,
+                    "max": 1.0
+                },
+                {
+                    "text": "Word embeddings map words to vectors where similar words have similar vectors.",
+                    "min": 0.6,
+                    "max": 0.9
+                },
+                {
+                    "text": "Sentence embeddings represent entire sentences or paragraphs as fixed-length vectors.",
+                    "min": 0.6,
+                    "max": 0.9
+                },
+                {
+                    "text": "Image classification is a task of assigning labels to images based on their content.",
+                    "min": 0.1,
+                    "max": 0.5
+                }
+            ]
+        }
+    ]
+}

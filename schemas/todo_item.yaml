@@ -1,0 +1,50 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: TodoItem
+description: "Represents a user todo list item with priority and status tracking"
+properties:
+  id:
+    type: integer
+    description: "Unique identifier for the todo item"
+  user_id:
+    type: string
+    description: "Identifier of the user who owns this todo item"
+  conversation_id:
+    type: integer
+    description: "Optional conversation ID this todo is associated with"
+  title:
+    type: string
+    description: "Brief title or summary of the todo item"
+  description:
+    type: string
+    description: "Detailed description of the todo task"
+  status:
+    type: string
+    enum:
+      - "not-started"
+      - "in-progress"
+      - "completed"
+      - "cancelled"
+    description: "Current status of the todo item"
+  priority:
+    type: string
+    enum:
+      - "low"
+      - "medium"
+      - "high"
+      - "urgent"
+    description: "Priority level of the todo item"
+  due_date:
+    type: string
+    format: date-time
+    description: "Optional due date for the todo item"
+  created_at:
+    type: string
+    format: date-time
+    description: "Timestamp when the todo item was created"
+  updated_at:
+    type: string
+    format: date-time
+    description: "Timestamp when the todo item was last updated"
+required: ["title", "status", "priority"]
+additionalProperties: false

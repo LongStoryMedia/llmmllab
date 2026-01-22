@@ -1,13 +1,14 @@
 # main.py
 import argparse
-import logging
+import asyncio
 import statistics
 from typing import List
 
 from evaluation.suite import AcademicBenchmarkSuite
+from utils.logging import llmmllogger
 
 
-def main():
+async def main():
     """Main function to run academic benchmarks."""
     parser = argparse.ArgumentParser(description="Academic LLM Benchmark Suite")
     parser.add_argument(
@@ -57,11 +58,7 @@ def main():
     args = parser.parse_args()
 
     # Set up logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-    logger = logging.getLogger(__name__)
+    logger = llmmllogger.bind(component="evaluation_main")
 
     print("Academic LLM Benchmark Suite")
     print(f"Models to benchmark: {args.models}")
@@ -73,7 +70,7 @@ def main():
         benchmark_suite = AcademicBenchmarkSuite(data_dir=args.data_dir)
 
         # Run benchmarks
-        all_results = benchmark_suite.run_full_benchmark_suite(
+        all_results = await benchmark_suite.run_full_benchmark_suite(
             model_ids=args.models,
             output_file=args.output,
             benchmarks_to_run=args.benchmarks,
@@ -97,7 +94,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
 
 # ===== Package Init Files =====
 

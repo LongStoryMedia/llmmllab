@@ -11,14 +11,6 @@ properties:
     items:
       $ref: message_content.yaml
     description: Content of the message
-  tool_calls:
-    type: array
-    items:
-      type: object
-    description: Optional tool calls associated with the message
-  thinking:
-    type: string
-    description: Optional thinking process of the model, if applicable
   id:
     type: integer
     description: Unique identifier for the message
@@ -28,11 +20,30 @@ properties:
     description: Timestamp of when the message was created
   conversation_id:
     type: integer
-    description: Id of the conversation this message belongs to
+    description: Unique identifier for the conversation
+  thoughts:
+    type: array
+    items:
+      $ref: thought.yaml
+    description: Array of thoughts or reasoning processes from the assistant
+  tool_calls:
+    type: array
+    items:
+      $ref: tool_call.yaml
+    description: Array of tool calls associated with the message
+  analyses:
+    type: array
+    items:
+      $ref: intent_analysis.yaml
+    description: Array of intent analyses associated with the message
+  documents:
+    type: array
+    items:
+      $ref: document.yaml
+    description: Array of documents attached to the message
+  structured_output:
+    type: object
+    description: Structured output data from the message
 required:
   - role
   - content
-  - conversation_id
-definitions:
-  Content:
-    $ref: message_content.yaml

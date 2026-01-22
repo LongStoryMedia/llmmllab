@@ -1,0 +1,62 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Tool
+description: Schema representing a LangChain BaseTool with its properties and configuration
+type: object
+properties:
+  name:
+    type: string
+    description: The unique name of the tool that clearly communicates its purpose
+    minLength: 1
+  description:
+    type: string
+    description: Used to tell the model how/when/why to use the tool. You can provide few-shot examples as a part of the description
+    minLength: 1
+  args_schema:
+    oneOf:
+      - type: "null"
+      - type: object
+        description: JSON schema dict defining the tool's input arguments
+      - type: string
+        description: Reference to a Pydantic BaseModel class name
+    description: Pydantic model class to validate and parse the tool's input arguments
+    default: null
+  return_direct:
+    type: boolean
+    description: Whether to return the tool's output directly. Setting this to True means that after the tool is called, the AgentExecutor will stop looping
+    default: false
+  tags:
+    type: array
+    items:
+      type: string
+    description: Optional list of tags associated with the tool. These tags will be associated with each call to this tool and passed as arguments to the handlers defined in callbacks
+    default: null
+  metadata:
+    type: object
+    additionalProperties: true
+    description: Optional metadata associated with the tool. This metadata will be associated with each call to this tool and passed as arguments to the handlers defined in callbacks
+    default: null
+  handle_tool_error:
+    oneOf:
+      - type: boolean
+      - type: string
+      - type: "null"
+    description: Handle the content of the ToolException thrown. Can be a boolean, string, or callable function
+    default: false
+  handle_validation_error:
+    oneOf:
+      - type: boolean
+      - type: string
+      - type: "null"
+    description: Handle the content of the ValidationError thrown. Can be a boolean, string, or callable function
+    default: false
+  response_format:
+    type: string
+    enum:
+      - "content"
+      - "content_and_artifact"
+    description: The tool response format. If 'content' then the output is interpreted as ToolMessage contents. If 'content_and_artifact' then output is expected to be a two-tuple of (content, artifact)
+    default: "content"
+required:
+  - name
+  - description
+additionalProperties: false

@@ -3,7 +3,7 @@ from numpy import negative
 from pydantic import BaseModel
 
 from .dev_stats import DevStats
-from models.model import Model
+from .model import Model
 
 
 class PromptRequest(BaseModel):
@@ -25,6 +25,7 @@ class PromptRequest(BaseModel):
 
 class ModelRequest(BaseModel):
     """Request model for adding a new model."""
+
     name: Optional[str] = None
     source: str
     description: Optional[str] = None
@@ -33,12 +34,14 @@ class ModelRequest(BaseModel):
 
 class ModelsListResponse(BaseModel):
     """Response model for listing models."""
+
     models: List[Model]
     active_model: str
 
 
 class LoraListResponse(BaseModel):
     """Response model for listing loras."""
+
     loras: List[Model]
     active_loras: List[str]
 
@@ -49,4 +52,5 @@ class LoraWeightRequest(BaseModel):
 
 class Malloc(BaseModel):
     """Response model for RAM usage."""
+
     devices: dict[str, DevStats]

@@ -30,9 +30,7 @@ dev = [
 ]
 
 [project.scripts]
-llmmllab-run = "run_model:main"
-llmmllab-download = "scripts.download:main"
-llmmllab-quantize = "scripts.download_and_quantize:main"
+# All scripts removed as part of dead code cleanup
 
 [tool.setuptools]
 packages = {find = {}}

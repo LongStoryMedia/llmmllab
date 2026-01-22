@@ -1,0 +1,8 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ComplexityEstimate
+type: string
+enum:
+  - low
+  - medium
+  - high
+description: General complexity estimation for tasks and operations

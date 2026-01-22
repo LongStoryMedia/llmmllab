@@ -2,7 +2,6 @@ import { ImageGenerateRequest } from '../types/ImageGenerationRequest';
 import { ImageGenerateResponse } from '../types/ImageGenerationResponse';
 import { ImageMetadata } from '../types/ImageMetadata';
 import { getHeaders, req } from './base';
-import { ChatWebSocketClient } from './websocket';
 
 /**
  * Generate an image using the Stable Diffusion API
@@ -10,13 +9,12 @@ import { ChatWebSocketClient } from './websocket';
  * @param request Image generation request parameters
  * @returns Promise that resolves with image data
  */
-export const generateImage = async (accessToken: string, request: ImageGenerateRequest, socket?: ChatWebSocketClient) =>
+export const generateImage = async (accessToken: string, request: ImageGenerateRequest) =>
   req<ImageGenerateResponse>({
     method: 'POST',
     headers: getHeaders(accessToken),
     path: 'images/generate',
-    body: JSON.stringify(request),
-    socket: socket
+    body: JSON.stringify(request)
   });
 
 /**
@@ -25,13 +23,12 @@ export const generateImage = async (accessToken: string, request: ImageGenerateR
  * @param request Image edit request parameters
  * @returns Promise that resolves with image data
  */
-export const editImage = async (accessToken: string, request: ImageGenerateRequest, socket?: ChatWebSocketClient) =>
+export const editImage = async (accessToken: string, request: ImageGenerateRequest) =>
   req<ImageGenerateResponse>({
     method: 'POST',
     headers: getHeaders(accessToken),
     path: `images/edit`,
-    body: JSON.stringify(request),
-    socket: socket
+    body: JSON.stringify(request)
   });
 
 /**

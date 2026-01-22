@@ -1,0 +1,38 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ApiKeyResponse
+description: Response when creating an API key (includes plaintext key once)
+type: object
+properties:
+  id:
+    type: string
+    description: Unique identifier (UUID)
+  user_id:
+    type: string
+    description: User ID that owns this key
+  key:
+    type: string
+    description: The actual API key (returned only on creation, never stored plaintext)
+  name:
+    type: string
+    description: Human-readable name for this key
+  created_at:
+    type: string
+    format: date-time
+    description: When the key was created
+  expires_at:
+    type: string
+    format: date-time
+    nullable: true
+    description: When the key expires (null = never)
+  scopes:
+    type: array
+    items:
+      type: string
+    description: API scopes this key has access to (e.g., 'chat', 'generate', 'embed')
+required:
+  - id
+  - user_id
+  - key
+  - name
+  - created_at
+  - scopes

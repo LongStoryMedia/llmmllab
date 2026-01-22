@@ -1,0 +1,70 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+title: PipelineExecutionContext
+description: "Context for tracking pipeline execution lifecycle"
+properties:
+  pipeline_id:
+    type: string
+    description: "Unique identifier for the pipeline execution"
+    maxLength: 100
+  task_name:
+    type: string
+    description: "Name of the task being executed"
+    maxLength: 100
+  user_id:
+    type: string
+    description: "ID of the user initiating the pipeline"
+    maxLength: 100
+  model_id:
+    type: string
+    description: "ID of the model being used"
+    maxLength: 100
+  profile_id:
+    type: string
+    description: "ID of the model profile being used"
+    maxLength: 100
+  task_type:
+    type: string
+    description: "Type of task being executed"
+    maxLength: 50
+  arguments:
+    type: object
+    description: "Arguments passed to the pipeline"
+    additionalProperties: true
+  start_time:
+    type: string
+    format: date-time
+    description: "When the pipeline execution started"
+  end_time:
+    type: string
+    format: date-time
+    description: "When the pipeline execution ended"
+  execution_state:
+    $ref: "execution_state.yaml"
+    description: "Current execution state"
+  result:
+    type: object
+    description: "Pipeline execution result"
+    additionalProperties: true
+  error_message:
+    type: string
+    description: "Error message if execution failed"
+    maxLength: 1000
+  timeout_seconds:
+    type: number
+    minimum: 0.1
+    description: "Timeout for pipeline execution in seconds"
+  resource_usage:
+    $ref: resource_usage.yaml
+    description: "Resource usage tracking"
+required:
+  - pipeline_id
+  - task_name
+  - user_id
+  - model_id
+  - profile_id
+  - task_type
+  - arguments
+  - start_time
+  - execution_state
+additionalProperties: false

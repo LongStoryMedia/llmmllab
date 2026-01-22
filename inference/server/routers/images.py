@@ -1,18 +1,14 @@
 """
 Image router for handling image generation, editing, and manipulation.
 
-Note: This router is included in app.py with both non-versioned and versioned paths:
-- Non-versioned: /images/...
-- Versioned: /v1/images/...
 """
 
-import base64
 import os
 import time
-from pydoc import text
 import uuid
+import base64
 from io import BytesIO
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 
 from fastapi import (
     APIRouter,
@@ -20,19 +16,15 @@ from fastapi import (
     BackgroundTasks,
     UploadFile,
     Request,
-    status,
 )
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from PIL import Image
 
-from server.config import IMAGE_DIR, IMAGE_RETENTION_HOURS, logger
-from models.requests import PromptRequest
-from server.services.image_generator import image_generator
-from server.auth import get_user_id, can_access, is_admin
+from server.config import IMAGE_DIR, logger
+from server.middleware.auth import get_user_id, can_access
 
 
-# Define models for image-related operations
 class ImageGenerationRequest(BaseModel):
     prompt: str = Field(..., description="Text prompt for image generation")
     negative_prompt: Optional[str] = Field(
@@ -103,7 +95,7 @@ async def check_image_status(request_id: str):
             return {
                 "status": "complete",
                 "image": img_data,
-                "download": f"/download/{request_id}.png",
+                "download": f"/images/download/{request_id}.png",
             }
         else:
             # Image is still processing
@@ -168,7 +160,7 @@ async def store_image(image: UploadFile, request: Request):
             f.write(await image.read())
         return {"status": "success", "file_path": file_path, "user_id": user_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/user/{target_user_id}", response_model=ImageListResponse)
@@ -207,7 +199,8 @@ async def get_user_images(request: Request, target_user_id: str):
             try:
                 with Image.open(path) as img:
                     width, height = img.size
-            except:
+            except Exception as e:
+                logger.debug(f"Failed to read image size for {path}: {e}")
                 width, height = 0, 0
 
             images.append(
@@ -228,12 +221,14 @@ async def get_user_images(request: Request, target_user_id: str):
         return ImageListResponse(images=images, count=len(images))
     except Exception as e:
         logger.error(f"Error fetching user images: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error fetching images: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching images: {str(e)}"
+        ) from e
 
 
 @router.post("/generate", response_model=ImageMetadata)
 async def generate_image(
-    request: ImageGenerationRequest, req: Request, background_tasks: BackgroundTasks
+    request: ImageGenerationRequest, req: Request, _background_tasks: BackgroundTasks
 ):
     """Generate an image based on the provided prompt."""
     user_id = get_user_id(req)
@@ -268,12 +263,12 @@ async def generate_image(
         logger.error(f"Error generating image: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Image generation failed: {str(e)}"
-        )
+        ) from e
 
 
 @router.post("/edit", response_model=ImageMetadata)
 async def edit_image(
-    request: ImageEditRequest, req: Request, background_tasks: BackgroundTasks
+    request: ImageEditRequest, req: Request, _background_tasks: BackgroundTasks
 ):
     """Edit an existing image based on the provided prompt and mask."""
     user_id = get_user_id(req)
@@ -306,7 +301,9 @@ async def edit_image(
         )
     except Exception as e:
         logger.error(f"Error editing image: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Image editing failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Image editing failed: {str(e)}"
+        ) from e
 
 
 @router.delete("/{image_id}")
@@ -343,7 +340,9 @@ async def delete_image(image_id: str, request: Request):
         raise
     except Exception as e:
         logger.error(f"Error deleting image: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete image: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete image: {str(e)}"
+        ) from e
 
 
 # Update existing endpoints to match the new router prefix

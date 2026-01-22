@@ -12,13 +12,13 @@ import config from '../config';
 import { getUserInfo, UserInfo } from '../api';
 Log.setLogger(console);
 export interface AuthContextType {
-    isAuthenticated: boolean;
-    evaluating: boolean;
-    userManager: UserManager;
-    user?: User;
-    isAdmin: boolean;
-    userInfo?: UserInfo;
-    logout: () => Promise<void>;
+  isAuthenticated: boolean;
+  evaluating: boolean;
+  userManager: UserManager;
+  user?: User;
+  isAdmin: boolean;
+  userInfo?: UserInfo;
+  logout: () => Promise<void>;
 }
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
@@ -61,7 +61,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUserInfo(userInfo[0]);
         setEvaluating(false);
         return true;
-      } 
+      }
       console.warn('User not authenticated');
       return false;
     };
@@ -75,7 +75,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           redirect();
         } else {
           try {
-            if (!(await checkAuthState(await userManager.signinSilent({silentRequestTimeoutInSeconds: 5})))) {
+            if (!(await checkAuthState(await userManager.signinSilent({ silentRequestTimeoutInSeconds: 5 })))) {
               sessionStorage.setItem('redirectPath', location.pathname);
               console.warn('Silent signin failed, redirecting to login');
               await userManager.signinRedirect(config.auth.oidc);

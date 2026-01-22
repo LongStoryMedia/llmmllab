@@ -1,4 +1,3 @@
-import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, Union
 
@@ -12,6 +11,7 @@ from datasets import (
     IterableDataset,
 )
 from .result_types import BenchmarkResult
+from utils.logging import llmmllogger
 
 
 class BenchmarkBase(ABC):
@@ -20,11 +20,11 @@ class BenchmarkBase(ABC):
     def __init__(self, name: str, description: str):
         self.name = name
         self.description = description
-        self.logger = logging.getLogger(f"benchmark.{name}")
+        self.logger = llmmllogger.bind(component=f"benchmark.{name}")
         self.huggingface_dataset = None  # Will be loaded when needed
 
     @abstractmethod
-    def run(
+    async def run(
         self, model_id: str, num_samples: int = 50, dataset_path: Optional[str] = None
     ) -> BenchmarkResult:
         """
