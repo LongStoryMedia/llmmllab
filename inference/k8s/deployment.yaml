@@ -44,7 +44,7 @@ spec:
             type: DirectoryOrCreate
       containers:
         - name: ollama
-          image: 192.168.0.71:31500/inference:main
+          image: 192.168.0.71:31500/inference:more-ide-stuff
           imagePullPolicy: Always
           securityContext:
             # Required for GPU hardware-level operations (pynvml device resets)

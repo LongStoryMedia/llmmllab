@@ -25,6 +25,10 @@ from models import (
     ModelProfileType,
     UserConfig,
     NodeMetadata,
+    MessageRole,
+    Message,
+    MessageContent,
+    MessageContentType,
 )
 from runner import pipeline_factory
 
@@ -36,6 +40,7 @@ from utils.logging import llmmllogger
 from composer.agents.chat import ChatAgent
 from composer.agents.engineering_agent import EngineeringAgent
 from composer.agents.embed import EmbeddingAgent
+from composer.graph.workflows.base import GraphBuilder
 from composer.graph.nodes.agent import AgentNode
 from composer.graph.nodes.memory import (
     MemorySearchNode,
@@ -80,7 +85,7 @@ def should_generate_title(state: WorkflowState) -> str:
     return "skip_title"
 
 
-class GraphBuilder:
+class DialogGraphBuilder(GraphBuilder):
     """
     Clean, focused GraphBuilder using dependency injection and composition.
 
@@ -369,3 +374,63 @@ class GraphBuilder:
             )
             # Try to create fallback chat workflow
             raise
+
+    async def create_initial_state(
+        self,
+        user_id: str,
+        conversation_id: int,
+    ) -> WorkflowState:
+        """Create initial workflow state from messages."""
+
+        # Get user configuration from shared data layer
+        from db import storage  # pylint: disable=import-outside-toplevel
+
+        user_config = await storage.get_service(storage.user_config).get_user_config(
+            user_id
+        )
+
+        messages = await storage.get_service(storage.message).get_conversation_history(
+            conversation_id
+        )
+
+        conversation = await storage.get_service(storage.conversation).get_conversation(
+            conversation_id
+        )
+
+        summaries = await storage.get_service(
+            storage.summary
+        ).get_summaries_for_conversation(conversation_id)
+
+        # WorkflowState expects Message objects, not BaseMessage objects
+        # So we use the messages directly without LangChain conversion
+
+        current_user_message = next(
+            (msg for msg in reversed(messages) if msg.role == MessageRole.USER),
+            Message(
+                content=[
+                    MessageContent(type=MessageContentType.TEXT, text="", url=None)
+                ],
+                role=MessageRole.USER,
+            ),
+        )
+
+        # Create the state with centralized user configuration and todo context
+        state = WorkflowState(
+            title=(
+                conversation.title
+                if (
+                    conversation
+                    and not conversation.title.startswith("New conversation")
+                )
+                else None
+            ),
+            messages=messages,  # Use Message objects directly
+            summaries=summaries,
+            current_user_message=current_user_message,  # Use Message object directly
+            user_id=user_id,
+            user_config=user_config,
+            conversation_id=conversation_id,
+            things_to_remember=[current_user_message],
+        )
+
+        return state

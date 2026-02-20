@@ -34,7 +34,7 @@ class ToolRegistryManager:
         self.logger = llmmllogger.logger.bind(component="ToolRegistryManager")
 
     async def get_user_registry(
-        self, user_id: str, engineering_agent: EngineeringAgent
+        self, user_id: str, engineering_agent: Optional[EngineeringAgent] = None
     ) -> "ToolRegistry":
         """Get or create a user-specific ToolRegistry instance."""
         async with self._lock:
@@ -83,7 +83,7 @@ class ToolRegistry:
 
     logger: FilteringBoundLogger
 
-    def __init__(self, engineering_agent: EngineeringAgent, user_id: str):
+    def __init__(self, engineering_agent: Optional[EngineeringAgent], user_id: str):
         # Static tool classes for instantiation
         self.static_tools: Dict[str, type[BaseTool]] = {}
         # Dynamic tool instances for reuse (tool_id -> Tool)
@@ -359,6 +359,8 @@ class ToolRegistry:
                 self.logger.info("Dynamic tool generation not needed based on query")
                 return []
 
+            assert self.engineering_agent
+
             self.logger.info("Generating new dynamic tools based on user query")
 
             # Get existing static tools to provide context
@@ -428,6 +430,9 @@ class ToolRegistry:
         """
         # Check user configuration first
         if not user_config.tool.enable_tool_generation:
+            return False
+
+        if not self.engineering_agent:
             return False
 
         # Simple keyword-based heuristic to trigger tool generation

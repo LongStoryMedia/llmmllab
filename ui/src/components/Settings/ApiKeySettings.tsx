@@ -39,7 +39,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../auth';
 import * as apiKeyService from '../../api/apiKey';
-import { ApiKey, ApiKeyResponse, CreateApiKeyRequest } from '../../types/ApiKey';
+import { ApiKey, ApiKeyResponse, ApiKeyRequest } from '../../types';
 
 const AVAILABLE_SCOPES = ['chat', 'generate', 'embed'];
 
@@ -149,7 +149,7 @@ const ApiKeySettings: React.FC = () => {
         try {
             setCreateDialog((prev) => ({ ...prev, isLoading: true }));
 
-            const request: CreateApiKeyRequest = {
+            const request: ApiKeyRequest = {
                 name: createDialog.name,
                 scopes: createDialog.selectedScopes,
                 expires_in_days: createDialog.expiryDays ? parseInt(createDialog.expiryDays) : undefined,
@@ -326,7 +326,7 @@ const ApiKeySettings: React.FC = () => {
                                     </TableCell>
                                     <TableCell>
                                         <Typography variant="body2">
-                                            {formatDate(key.created_at)}
+                                            {formatDate(key.created_at.toDateString())}
                                         </Typography>
                                     </TableCell>
                                     <TableCell>
@@ -334,10 +334,10 @@ const ApiKeySettings: React.FC = () => {
                                             <Typography
                                                 variant="body2"
                                                 sx={{
-                                                    color: isKeyExpired(key.expires_at) ? 'error.main' : 'inherit',
+                                                    color: isKeyExpired(key.expires_at.toDateString()) ? 'error.main' : 'inherit',
                                                 }}
                                             >
-                                                {formatDate(key.expires_at)}
+                                                {formatDate(key.expires_at.toDateString())}
                                             </Typography>
                                         ) : (
                                             <Typography variant="body2" color="textSecondary">
@@ -348,7 +348,7 @@ const ApiKeySettings: React.FC = () => {
                                     <TableCell>
                                         {key.is_revoked ? (
                                             <Chip label="Revoked" size="small" color="error" variant="outlined" />
-                                        ) : isKeyExpired(key.expires_at) ? (
+                                        ) : isKeyExpired(key.expires_at?.toDateString()) ? (
                                             <Chip label="Expired" size="small" color="warning" variant="outlined" />
                                         ) : (
                                             <Chip label="Active" size="small" color="success" variant="outlined" />
@@ -434,14 +434,14 @@ const ApiKeySettings: React.FC = () => {
                                     <strong>Name:</strong> {createDialog.createdKey.name}
                                 </Typography>
                                 <Typography variant="body2">
-                                    <strong>Created:</strong> {formatDate(createDialog.createdKey.created_at)}
+                                    <strong>Created:</strong> {formatDate(createDialog.createdKey.created_at.toDateString())}
                                 </Typography>
                                 <Typography variant="body2">
                                     <strong>Scopes:</strong> {createDialog.createdKey.scopes.join(', ')}
                                 </Typography>
                                 {createDialog.createdKey.expires_at && (
                                     <Typography variant="body2">
-                                        <strong>Expires:</strong> {formatDate(createDialog.createdKey.expires_at)}
+                                        <strong>Expires:</strong> {formatDate(createDialog.createdKey.expires_at.toDateString())}
                                     </Typography>
                                 )}
                             </Box>

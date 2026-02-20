@@ -22,8 +22,8 @@ from models import (
     MessageContentType,
 )
 
+from composer.graph.workflows.base import GraphBuilder
 from composer.graph.state import WorkflowState
-from composer.graph.builder import GraphBuilder
 from composer.graph.cache import WorkflowCache
 from composer.graph.executor import WorkflowExecutor
 from utils.logging import llmmllogger
@@ -43,9 +43,9 @@ class ComposerService:
     - Multi-agent orchestration
     """
 
-    def __init__(self):
+    def __init__(self, builder: GraphBuilder):
         self.logger = llmmllogger.bind(component="ComposerService")
-        self.graph_builder: Optional["GraphBuilder"] = None
+        self.graph_builder = builder
         # Workflow cache is now created per-user during workflow composition
         self.workflow_caches: Dict[str, WorkflowCache] = {}
         # Generic workflow executor for streaming
@@ -95,19 +95,17 @@ class ComposerService:
                     return cached_workflow
 
             # 3. Build master workflow
-            graph_builder = self.graph_builder = GraphBuilder(
-                storage,
-                user_config,
-            )
-            assert graph_builder is not None, "GraphBuilder should be initialized"
+            assert self.graph_builder is not None, "GraphBuilder should be initialized"
 
             if user_cache:
                 workflow = await user_cache.get_or_create(
                     cache_key,
-                    lambda: graph_builder.build_workflow(user_id, response_format),
+                    lambda: self.graph_builder.build_workflow(user_id, response_format),
                 )
             else:
-                workflow = await graph_builder.build_workflow(user_id, response_format)
+                workflow = await self.graph_builder.build_workflow(
+                    user_id, response_format
+                )
 
             self.logger.info(
                 "Master workflow composed successfully", extra={"user_id": user_id}
@@ -122,66 +120,6 @@ class ComposerService:
                 exc_info=True,
             )
             raise
-
-    async def create_initial_state(
-        self,
-        user_id: str,
-        conversation_id: int,
-    ) -> WorkflowState:
-        """Create initial workflow state from messages."""
-
-        # Get user configuration from shared data layer
-        from db import storage  # pylint: disable=import-outside-toplevel
-
-        user_config = await storage.get_service(storage.user_config).get_user_config(
-            user_id
-        )
-
-        messages = await storage.get_service(storage.message).get_conversation_history(
-            conversation_id
-        )
-
-        conversation = await storage.get_service(storage.conversation).get_conversation(
-            conversation_id
-        )
-
-        summaries = await storage.get_service(
-            storage.summary
-        ).get_summaries_for_conversation(conversation_id)
-
-        # WorkflowState expects Message objects, not BaseMessage objects
-        # So we use the messages directly without LangChain conversion
-
-        current_user_message = next(
-            (msg for msg in reversed(messages) if msg.role == MessageRole.USER),
-            Message(
-                content=[
-                    MessageContent(type=MessageContentType.TEXT, text="", url=None)
-                ],
-                role=MessageRole.USER,
-            ),
-        )
-
-        # Create the state with centralized user configuration and todo context
-        state = WorkflowState(
-            title=(
-                conversation.title
-                if (
-                    conversation
-                    and not conversation.title.startswith("New conversation")
-                )
-                else None
-            ),
-            messages=messages,  # Use Message objects directly
-            summaries=summaries,
-            current_user_message=current_user_message,  # Use Message object directly
-            user_id=user_id,
-            user_config=user_config,
-            conversation_id=conversation_id,
-            things_to_remember=[current_user_message],
-        )
-
-        return state
 
     async def shutdown(self):
         """Clean up resources on service shutdown."""

@@ -1,4 +1,4 @@
-import { ApiKey, ApiKeyResponse, CreateApiKeyRequest } from '../types';
+import { ApiKey, ApiKeyResponse, ApiKeyRequest } from '../types';
 import { getHeaders, req } from './base';
 
 /**
@@ -6,7 +6,7 @@ import { getHeaders, req } from './base';
  */
 export async function createApiKey(
   token: string,
-  data: CreateApiKeyRequest
+  data: ApiKeyRequest
 ): Promise<ApiKeyResponse> {
   return req<ApiKeyResponse>({
     method: 'POST',

@@ -1,0 +1,20 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ApiKeyRequest
+description: Request to create an API key for IDE and external service integration
+type: object
+properties:
+  name:
+    type: string
+    description: Human-readable name for this key
+  expires_in_days:
+    type: integer
+    nullable: true
+    description: Number of days until the key expires (null = never)
+  scopes:
+    type: array
+    items:
+      type: string
+    description: API scopes this key has access to (e.g., 'chat', 'generate', 'embed')
+required:
+  - name
+  - scopes

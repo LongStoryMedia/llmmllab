@@ -36,11 +36,16 @@ async def composer_chat_completion(
     response_format: Optional[Type[BaseModel]] = None,
 ) -> AsyncIterator[str]:
     """Handle chat completions by delegating to composer interface."""
+    # Get Dialog Graph Builder
+    builder = await composer.get_graph_builder(composer.WorkFlowType.DIALOG, user_id)
+
     # Compose workflow for user
-    workflow = await composer.compose_workflow(user_id, response_format)
+    workflow = await composer.compose_workflow(user_id, builder, response_format)
 
     # Create initial state (conversation_id is already validated)
-    initial_state = await composer.create_initial_state(user_id, conversation_id)
+    initial_state = await composer.create_initial_state(
+        user_id, conversation_id, builder
+    )
 
     logger.info(f"Starting workflow execution for request {request_id}")
 
@@ -50,6 +55,13 @@ async def composer_chat_completion(
             flush=True,
             end="",
         )  # Debug print
+        if event.finish_reason == "complete" and event.message:
+            message_id = await storage.get_service(storage.message).add_message(
+                event.message
+            )  # Store final message in DB
+            logger.info(
+                f"Workflow execution complete for request {request_id}, final message stored with ID {message_id}"
+            )
         yield f"{event.model_dump_json()}"
 
 

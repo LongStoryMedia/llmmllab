@@ -53,7 +53,9 @@ class WorkflowExecutor:
     """
 
     def __init__(
-        self, logger: Optional[Any] = None, default_context: str = "workflow_executor"
+        self,
+        logger: Optional[Any] = None,
+        default_context: str = "workflow_executor",
     ):
         """
         Initialize the workflow executor.
@@ -66,7 +68,9 @@ class WorkflowExecutor:
         self.default_context = default_context
 
     def create_thread_config(
-        self, thread_id: str, additional_config: Optional[Dict[str, Any]] = None
+        self,
+        thread_id: str,
+        additional_config: Optional[Dict[str, Any]] = None,
     ) -> RunnableConfig:
         """
         Create a thread configuration for workflow checkpointing.
@@ -470,21 +474,13 @@ class WorkflowExecutor:
             conversation_id=conversation_id,
             structured_output=structured_content,
         )
-        message_id = await storage.get_service(storage.message).add_message(
-            final_message
-        )
-        final_message.id = message_id
-        final_message.created_at = datetime.now(timezone.utc)
-
-        final_response = ChatResponse(
+        yield ChatResponse(
             message=final_message,
             done=True,
             finish_reason="complete",
             total_duration=(datetime.now(timezone.utc) - start_time).total_seconds()
             * 1000.0,
         )
-        self.logger.debug(f"Final response: {serialize_event_data(final_response)}")
-        yield final_response
 
     def _parse_content_with_reasoning(
         self, content: str | List[str | Dict[str, Any]]

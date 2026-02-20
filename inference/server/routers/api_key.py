@@ -3,6 +3,7 @@ API Key Management Router
 Provides endpoints for creating, listing, revoking, and deleting API keys.
 """
 
+from re import A
 from typing import List, Optional
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Request, status, Depends, Path
@@ -10,45 +11,34 @@ from pydantic import BaseModel, Field
 
 from server.middleware.auth import get_user_id
 from db import storage
-from models import ApiKey, ApiKeyResponse
+from models import ApiKey, ApiKeyResponse, ApiKeyRequest
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="api_key_router")
 router = APIRouter(prefix="/api-keys", tags=["api-keys"])
 
 
-class CreateApiKeyRequest(BaseModel):
-    """Request to create a new API key"""
-    name: str = Field(..., description="Human-readable name for the key")
-    scopes: List[str] = Field(
-        default=["chat", "generate", "embed"],
-        description="List of scopes this key has access to"
-    )
-    expires_in_days: Optional[int] = Field(
-        None,
-        description="Number of days until the key expires (None = never)"
-    )
-
-
 class RevokeApiKeyRequest(BaseModel):
     """Request to revoke an API key"""
+
     key_id: str = Field(..., description="ID of the key to revoke")
 
 
 class DeleteApiKeyRequest(BaseModel):
     """Request to delete an API key"""
+
     key_id: str = Field(..., description="ID of the key to delete")
 
 
 @router.post("/create", response_model=ApiKeyResponse)
 async def create_api_key(
     request: Request,
-    body: CreateApiKeyRequest,
+    body: ApiKeyRequest,
 ) -> ApiKeyResponse:
     """
     Create a new API key for the authenticated user.
     Returns the API key only once - store it securely.
-    
+
     **Scopes:**
     - `chat`: Chat completion endpoints
     - `generate`: Text generation endpoints
@@ -57,13 +47,12 @@ async def create_api_key(
     user_id = get_user_id(request)
     if not user_id:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required"
         )
 
     try:
         api_key_storage = storage.get_service(storage.api_key)
-        
+
         # Create the API key
         plaintext_key, api_key_obj = await api_key_storage.create_api_key(
             user_id=user_id,
@@ -90,7 +79,7 @@ async def create_api_key(
         logger.error(f"Error creating API key for user {user_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create API key"
+            detail="Failed to create API key",
         ) from e
 
 
@@ -103,8 +92,7 @@ async def list_api_keys(request: Request) -> List[ApiKey]:
     user_id = get_user_id(request)
     if not user_id:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required"
         )
 
     try:
@@ -118,7 +106,7 @@ async def list_api_keys(request: Request) -> List[ApiKey]:
         logger.error(f"Error listing API keys for user {user_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to list API keys"
+            detail="Failed to list API keys",
         ) from e
 
 
@@ -130,27 +118,26 @@ async def revoke_api_key(request: Request, body: RevokeApiKeyRequest):
     user_id = get_user_id(request)
     if not user_id:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required"
         )
 
     try:
         api_key_storage = storage.get_service(storage.api_key)
-        
+
         # Revoke the key (will verify ownership)
         success = await api_key_storage.revoke_api_key(body.key_id, user_id)
 
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="API key not found or already revoked"
+                detail="API key not found or already revoked",
             )
 
         logger.info(f"Revoked API key {body.key_id} for user {user_id}")
 
         return {
             "status": "success",
-            "message": f"API key {body.key_id} has been revoked"
+            "message": f"API key {body.key_id} has been revoked",
         }
 
     except HTTPException:
@@ -159,7 +146,7 @@ async def revoke_api_key(request: Request, body: RevokeApiKeyRequest):
         logger.error(f"Error revoking API key {body.key_id} for user {user_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to revoke API key"
+            detail="Failed to revoke API key",
         ) from e
 
 
@@ -171,27 +158,25 @@ async def delete_api_key(request: Request, body: DeleteApiKeyRequest):
     user_id = get_user_id(request)
     if not user_id:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required"
         )
 
     try:
         api_key_storage = storage.get_service(storage.api_key)
-        
+
         # Delete the key (will verify ownership)
         success = await api_key_storage.delete_api_key(body.key_id, user_id)
 
         if not success:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="API key not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="API key not found"
             )
 
         logger.info(f"Deleted API key {body.key_id} for user {user_id}")
 
         return {
             "status": "success",
-            "message": f"API key {body.key_id} has been deleted"
+            "message": f"API key {body.key_id} has been deleted",
         }
 
     except HTTPException:
@@ -200,7 +185,7 @@ async def delete_api_key(request: Request, body: DeleteApiKeyRequest):
         logger.error(f"Error deleting API key {body.key_id} for user {user_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete API key"
+            detail="Failed to delete API key",
         ) from e
 
 
@@ -215,8 +200,7 @@ async def get_api_key_info(
     user_id = get_user_id(request)
     if not user_id:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required"
         )
 
     try:
@@ -229,8 +213,7 @@ async def get_api_key_info(
                 return key
 
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="API key not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="API key not found"
         )
 
     except HTTPException:
@@ -239,5 +222,5 @@ async def get_api_key_info(
         logger.error(f"Error retrieving API key info for user {user_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve API key info"
+            detail="Failed to retrieve API key info",
         ) from e

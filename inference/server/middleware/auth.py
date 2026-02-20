@@ -274,7 +274,7 @@ class ApiKeyValidator:
         try:
             api_key_storage = await self._get_api_key_storage()
             assert api_key_storage is not None, "API key storage service not available"
-            
+
             api_key_obj = await api_key_storage.validate_api_key(api_key)
 
             if not api_key_obj:
@@ -375,7 +375,9 @@ class AuthMiddleware:
                 request.state.auth[ContextKey.IS_ADMIN] = result.is_admin
                 request.state.auth[ContextKey.REQUEST_ID] = request_id
 
-                self.logger.debug(f"JWT authentication successful for user {result.user_id}")
+                self.logger.debug(
+                    f"JWT authentication successful for user {result.user_id}"
+                )
                 return result
 
             except HTTPException:
@@ -412,7 +414,9 @@ class AuthMiddleware:
                 request.state.auth[ContextKey.IS_ADMIN] = result.is_admin
                 request.state.auth[ContextKey.REQUEST_ID] = request_id
 
-                self.logger.debug(f"API key authentication successful for user {result.user_id}")
+                self.logger.debug(
+                    f"API key authentication successful for user {result.user_id}"
+                )
                 return result
 
             except HTTPException:

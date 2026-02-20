@@ -25,7 +25,10 @@ from pydantic import BaseModel
 from models import ChatResponse
 from utils.logging import llmmllogger
 from .core.service import CompiledStateGraph, ComposerService
+from .core.errors import ComposerError
 from .graph.executor import stream_workflow
+from .graph.workflows.base import GraphBuilder
+from .graph.workflows.factory import WorkFlowType, get_builder
 
 
 class ComposerServiceManager:
@@ -39,11 +42,11 @@ class ComposerServiceManager:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    async def initialize(self) -> None:
+    async def initialize(self, builder: GraphBuilder) -> None:
         """Initialize the composer service. Should be called once at startup."""
         if self._service is None:
             llmmllogger.logger.info("Initializing composer service")
-            self._service = ComposerService()
+            self._service = ComposerService(builder)
             llmmllogger.logger.info("Composer service initialized")
 
     async def shutdown(self) -> None:
@@ -61,10 +64,16 @@ class ComposerServiceManager:
             )
         return self._service
 
-    async def get_or_init_service(self) -> ComposerService:
+    async def get_or_init_service(
+        self, builder: Optional[GraphBuilder] = None
+    ) -> ComposerService:
         """Get or initialize the composer service instance."""
         if self._service is None:
-            await self.initialize()
+            if builder is None:
+                raise ComposerError(
+                    "WorkflowBuilder is required for composer service initialization."
+                )
+            await self.initialize(builder)
         assert self._service is not None
         return self._service
 
@@ -77,13 +86,14 @@ async def shutdown_composer() -> None:
     await _manager.shutdown()
 
 
-async def get_or_init_composer_service() -> ComposerService:
+async def get_or_init_composer_service(builder: GraphBuilder) -> ComposerService:
     """Get or initialize the composer service instance."""
-    return await _manager.get_or_init_service()
+    return await _manager.get_or_init_service(builder)
 
 
 async def compose_workflow(
     user_id: str,
+    builder: GraphBuilder,
     response_format: Optional[Type[BaseModel]] = None,
 ) -> CompiledStateGraph:
     """
@@ -103,7 +113,7 @@ async def compose_workflow(
         Configuration is retrieved from shared data layer using user_id.
         No configuration objects should be passed as arguments (architectural rule).
     """
-    svc = await _manager.get_or_init_service()
+    svc = await _manager.get_or_init_service(builder)
     return await svc.compose_workflow(user_id, response_format)
 
 
@@ -114,15 +124,21 @@ async def clear_workflow_cache(user_id: str) -> None:
     Args:
         user_id: User ID whose workflow cache should be cleared
     """
-    svc = await _manager.get_or_init_service()
-    cache = svc.workflow_caches.get(user_id, None)
-    if cache:
-        await cache.close()
+    try:
+        svc = await _manager.get_or_init_service()
+        cache = svc.workflow_caches.get(user_id, None)
+        if cache:
+            await cache.close()
+    except ComposerError as e:
+        llmmllogger.logger.error(
+            f"Error clearing workflow cache for user {user_id}: {e}"
+        )
 
 
 async def create_initial_state(
     user_id: str,
     conversation_id: int,
+    builder: GraphBuilder,
 ):
     """Create initial workflow state from user messages and configuration.
 
@@ -139,8 +155,7 @@ async def create_initial_state(
         User configuration is retrieved from shared data layer using user_id.
         No configuration objects should be passed as arguments (architectural rule).
     """
-    service = await _manager.get_or_init_service()
-    return await service.create_initial_state(user_id, conversation_id)
+    return await builder.create_initial_state(user_id, conversation_id)
 
 
 async def execute_workflow(
@@ -160,6 +175,11 @@ async def execute_workflow(
     """
     async for event in stream_workflow(initial_state, workflow):
         yield event
+
+
+async def get_graph_builder(workflow_type: WorkFlowType, user_id: str) -> GraphBuilder:
+    """Get the workflow builder instance. Should be implemented by external service."""
+    return await get_builder(workflow_type, user_id)
 
 
 # Convenience exports for direct usage
