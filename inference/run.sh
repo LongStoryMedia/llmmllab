@@ -52,6 +52,22 @@ log "INFO" "-----------------------------------------------------------" "${GREE
 SERVICE_STATUS_FILE="/tmp/service_status"
 echo "# Service status file - $(date)" > $SERVICE_STATUS_FILE
 
+run_ollama() {
+    log "INFO" "Starting Ollama server (port 11434)..." "${BLUE}"
+    # Start Ollama bound to 0.0.0.0 so it's accessible from outside the pod
+    OLLAMA_HOST=0.0.0.0:11434 ollama serve 2>&1 | tee /var/log/ollama.log &
+    OLLAMA_PID=$!
+    if [ $? -eq 0 ]; then
+        log "INFO" "Ollama server started on 0.0.0.0:11434 with PID $OLLAMA_PID" "${GREEN}"
+        echo "ollama:running:$OLLAMA_PID" >> $SERVICE_STATUS_FILE
+        # Wait for Ollama to become available
+        wait_for_service "Ollama" "localhost" "11434" 20 3
+    else
+        log "ERROR" "Failed to start Ollama server" "${RED}"
+        echo "ollama:failed:0" >> $SERVICE_STATUS_FILE
+    fi
+}
+
 run_server() {
     log "INFO" "Starting REST API server..." "${BLUE}"
     # This check can be improved to see if the port is already in use
@@ -94,6 +110,9 @@ else
     ls -la /app/server
     echo "rest_api:missing:0" >> $SERVICE_STATUS_FILE
 fi
+
+# Start Ollama before other services
+run_ollama
 
 # Start local API server if local_api_server.py exists
 if [ -f /app/server/local_api_server.py ]; then
@@ -145,6 +164,9 @@ monitor_services() {
                     if [ "$pid" -eq "$SERVER_PID" ]; then
                         log "INFO" "Restarting $service..." "${BLUE}"
                         run_server
+                    elif [ "$pid" -eq "$OLLAMA_PID" ]; then
+                        log "INFO" "Restarting $service..." "${BLUE}"
+                        run_ollama
                     fi
                 else
                     log "INFO" "$service (PID $pid) is running" "${GREEN}"
