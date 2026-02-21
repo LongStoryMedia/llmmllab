@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-venv \
     git \
     wget \
+    curl \
     build-essential \
     cmake \
     g++ \
@@ -17,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev \
     pkg-config \
     ccache \
+    zstd \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean \
     && ln -sf /usr/bin/python3 /usr/bin/python
@@ -40,6 +42,9 @@ RUN cmake -B build \
     -DCMAKE_CUDA_ARCHITECTURES="75;86" \
     -DCMAKE_BUILD_TYPE=Release && \
     cmake --build build --config Release -j6
+
+# Install ollama binary
+RUN curl -fsSL https://ollama.com/install.sh | sh
 
 # Runtime stage - minimal CUDA runtime
 FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
@@ -97,8 +102,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && ln -sf /usr/bin/python3 /usr/bin/python
 
+
 # Copy only the compiled llama.cpp from builder (no wheels needed)
 COPY --from=builder /llama.cpp /llama.cpp
+
+# Copy ollama binary from builder
+COPY --from=builder /usr/local/bin/ollama /usr/local/bin/ollama
 
 # Set working directory
 WORKDIR /app
@@ -129,6 +138,7 @@ RUN . ${SHARED_VENV}/bin/activate && \
 RUN chmod +x /app/startup.sh /app/run_with_env.sh /app/run.sh /app/setup_cuda_runtime.sh && \
     mkdir -p /tmp/cuda_cache
 
+
 # Final cleanup - comprehensive cleanup to minimize image size
 RUN find ${SHARED_VENV} -name "*.pyc" -delete && \
     find ${SHARED_VENV} -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true && \
@@ -143,7 +153,7 @@ RUN find ${SHARED_VENV} -name "*.pyc" -delete && \
     echo 'echo "Use: v <environment> <command>"' >> /root/.bashrc
 
 # Expose ports  
-EXPOSE 8000 11434
+EXPOSE 8000 11434 11435
 
 # Default command - use startup.sh which runs both services
 CMD ["/app/startup.sh"]

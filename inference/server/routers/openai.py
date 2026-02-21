@@ -258,7 +258,7 @@ async def create_chat_completion(body: OpenAIChatCompletionRequest, request: Req
     """
     Create a chat completion.
     OpenAI-compatible endpoint for /v1/chat/completions
-    Note: This endpoint is also available on the local API server (port 11434) without auth.
+    Note: This endpoint is also available on the local API server (port 11435) without auth.
     """
     user_id = "local-network-user"
     logger.info(f"Chat completion request (local API server)")

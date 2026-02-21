@@ -1,7 +1,8 @@
 """
 Lightweight FastAPI server for local-only endpoints (Ollama, OpenAI-compatible).
-Runs on port 11434 (not exposed externally in Kubernetes).
+Runs on port 11435 for IDE integration.
 
+Port 11434 is reserved for the ollama binary.
 This provides IDE integration endpoints without authentication.
 """
 
@@ -19,7 +20,7 @@ logger = llmmllogger.bind(component="local_api_server")
 @asynccontextmanager
 async def lifespan(fastapi_app: FastAPI):
     """Startup and shutdown logic for the local API server."""
-    logger.info("Local API server (port 11434) starting up...")
+    logger.info("Local API server (port 11435) starting up...")
     # Initialize DB storage like main app so routers can use storage services
     try:
         from db import storage  # pylint: disable=import-outside-toplevel
@@ -99,7 +100,7 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
 
-    port = int(os.environ.get("LOCAL_API_PORT", 11434))
+    port = int(os.environ.get("LOCAL_API_PORT", 11435))
     logger.info(f"Starting local API server on port {port}")
 
     uvicorn.run(

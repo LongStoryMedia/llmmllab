@@ -71,15 +71,15 @@ run_server() {
 }
 
 run_local_api_server() {
-    log "INFO" "Starting local API server (port 11434)..." "${BLUE}"
-    # Local API server for Ollama and OpenAI endpoints (not exposed externally)
-    cd /app/server && v python -m uvicorn local_api_server:app --host 0.0.0.0 --port 11434 --reload --reload-dir /app --timeout-graceful-shutdown 0 2>&1 | tee /var/log/local_api_server.log &
+    log "INFO" "Starting local API server (port 11435)..." "${BLUE}"
+    # Local API server for Ollama and OpenAI endpoints (IDE integration)
+    cd /app/server && v python -m uvicorn local_api_server:app --host 0.0.0.0 --port 11435 --reload --reload-dir /app --timeout-graceful-shutdown 0 2>&1 | tee /var/log/local_api_server.log &
     LOCAL_API_PID=$!
     if [ $? -eq 0 ]; then
-        log "INFO" "Local API server started on port 11434 with PID $LOCAL_API_PID" "${GREEN}"
+        log "INFO" "Local API server started on port 11435 with PID $LOCAL_API_PID" "${GREEN}"
         echo "local_api:running:$LOCAL_API_PID" >> $SERVICE_STATUS_FILE
         # Wait for the local API server to become available (check /health endpoint)
-        wait_for_service "Local API" "localhost" "11434" 12 5
+        wait_for_service "Local API" "localhost" "11435" 12 5
     else
         log "ERROR" "Failed to start local API server" "${RED}"
         echo "local_api:failed:0" >> $SERVICE_STATUS_FILE

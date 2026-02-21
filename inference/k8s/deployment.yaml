@@ -54,8 +54,11 @@ spec:
                 - SYS_ADMIN # Required for CUDA device reset operations
                 - SYS_RAWIO # Required for direct hardware access
           ports:
-            - name: api
+            - name: ollama
               containerPort: 11434
+              protocol: TCP
+            - name: ide
+              containerPort: 11435
               protocol: TCP
             - name: sd
               containerPort: 8000

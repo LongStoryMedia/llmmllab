@@ -10,11 +10,15 @@ spec:
   selector:
     app: llmmll
   ports:
-    - name: api
+    - name: ollama
       port: 11434
       targetPort: 11434
       protocol: TCP
       # nodePort: 30134
+    - name: ide
+      port: 11435
+      targetPort: 11435
+      protocol: TCP
     - name: sd
       port: 8000
       targetPort: 8000
