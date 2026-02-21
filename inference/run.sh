@@ -60,11 +60,22 @@ run_ollama() {
     if [ $? -eq 0 ]; then
         log "INFO" "Ollama server started on 0.0.0.0:11434 with PID $OLLAMA_PID" "${GREEN}"
         echo "ollama:running:$OLLAMA_PID" >> $SERVICE_STATUS_FILE
-        # Wait for Ollama to become available
-        wait_for_service "Ollama" "localhost" "11434" 20 3
+        # Wait for Ollama to become available by checking /api/tags endpoint
+        log "INFO" "Waiting for Ollama to become available at http://localhost:11434/api/tags..." "${BLUE}"
+        for (( i=1; i<=20; i++ )); do
+            if curl --fail --silent --show-error --output /dev/null "http://localhost:11434/api/tags"; then
+                log "INFO" "Ollama is available" "${GREEN}"
+                return 0
+            fi
+            log "INFO" "Attempt $i/20: Ollama not available yet, waiting 2s..." "${YELLOW}"
+            sleep 2
+        done
+        log "ERROR" "Timed out waiting for Ollama to become available" "${RED}"
+        return 1
     else
         log "ERROR" "Failed to start Ollama server" "${RED}"
         echo "ollama:failed:0" >> $SERVICE_STATUS_FILE
+        return 1
     fi
 }
 
