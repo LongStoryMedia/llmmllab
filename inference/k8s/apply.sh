@@ -51,6 +51,17 @@ kubectl create secret generic internal-api-key \
 --from-file=api_key="$(dirname "$0")/.secrets/internal-api-key" \
 --dry-run=client -o yaml | kubectl apply -f - --wait=true
 
+# Create secret for HuggingFace token
+if [ -f "$(dirname "$0")/.secrets/hf-token" ]; then
+    HF_TOKEN=$(cat "$(dirname "$0")/.secrets/hf-token")
+    kubectl create secret generic hf-token \
+    -n llmmll \
+    --from-literal=token="$HF_TOKEN" \
+    --dry-run=client -o yaml | kubectl apply -f - --wait=true
+else
+    echo "WARNING: .secrets/hf-token not found — HF_TOKEN secret will not be created"
+fi
+
 echo "Applying PVC..."
 kubectl apply -f "$(dirname "$0")/pvc.yaml" -n llmmll --wait=true
 
