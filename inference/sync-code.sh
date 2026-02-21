@@ -39,7 +39,7 @@ if [ "$SHOW_HELP" = "1" ]; then
     echo "  (no args)          Full sync: pull benchmark data + debug output, propagate deletions, then push code"
     echo "  -p, --pull-output  Pull only benchmark + debug output (no code push)"
     echo "  -w, --watch        Watch for local changes and sync continuously"
-    echo "  -r, --restart      Restart the ollama deployment after sync"
+    echo "  -r, --restart      Restart the llmmll deployment after sync"
     echo "  -P, --prune        Prune remote directories deleted locally (force delete, even if non-empty)"
     echo "  -R, --reset-debug-out  Force remote debug/out to be fully cleared before pull"
     echo "  -h, --help             Show this help message"
@@ -324,7 +324,7 @@ fi
 
 # Optionally restart the deployment
 if [ "$RESTART" = "1" ]; then
-    echo "Restarting ollama deployment..."
-    kubectl rollout restart deployment ollama -n ollama
+    echo "Restarting llmmll deployment..."
+    kubectl rollout restart deployment llmmll -n llmmll
     echo "Deployment restarted. It may take a moment to become available."
 fi

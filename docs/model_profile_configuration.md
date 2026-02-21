@@ -175,10 +175,10 @@ await storage.user_config.update_user_config(user_id, user_config)
 
 ```bash
 # Test with specific model
-kubectl exec -it -n ollama $POD_NAME -- /app/v.sh composer python -m debug.test_composer_real_e2e
+kubectl exec -it -n llmmll $POD_NAME -- /app/v.sh composer python -m debug.test_composer_real_e2e
 
 # Test model profile functionality
-kubectl exec -it -n ollama $POD_NAME -- /app/v.sh server python -m debug.test_model_profiles
+kubectl exec -it -n llmmll $POD_NAME -- /app/v.sh server python -m debug.test_model_profiles
 ```
 
 ### Test Configuration
@@ -229,10 +229,10 @@ available_models = [
 
 ```bash
 # Check available models
-kubectl exec -n ollama $POD_NAME -- /app/v.sh server python -c "from models.default_model_profiles import DEFAULT_PROFILES; print(list(DEFAULT_PROFILES.keys()))"
+kubectl exec -n llmmll $POD_NAME -- /app/v.sh server python -c "from models.default_model_profiles import DEFAULT_PROFILES; print(list(DEFAULT_PROFILES.keys()))"
 
 # Validate model configuration
-kubectl exec -n ollama $POD_NAME -- /app/v.sh server python -c "from db import storage; import asyncio; print(asyncio.run(storage.model_profile.list_model_profiles_by_user('test_user')))"
+kubectl exec -n llmmll $POD_NAME -- /app/v.sh server python -c "from db import storage; import asyncio; print(asyncio.run(storage.model_profile.list_model_profiles_by_user('test_user')))"
 ```
 
 ## Implementation Details

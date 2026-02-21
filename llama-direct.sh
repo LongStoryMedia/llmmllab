@@ -38,7 +38,7 @@ read -r -d '' PAYLOAD <<'EOF'
 }
 EOF
 
-kubectl exec -it -n ollama $(kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}') -- curl -X POST http://localhost:8001/v1/chat/completions \
+kubectl exec -it -n llmmll $(kubectl get pods -n llmmll -o jsonpath='{.items[0].metadata.name}') -- curl -X POST http://localhost:8001/v1/chat/completions \
     -H "Content-Type: application/json" \
     -H "X-Stainless-Helper-Method: chat.completions.stream" \
     -H "idempotency-key: stainless-python-retry-a95635b9-d591-44f0-8958-97a54303cec3" \

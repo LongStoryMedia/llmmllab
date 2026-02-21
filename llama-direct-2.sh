@@ -1,6 +1,6 @@
 #!/bin/bash
 
-kubectl exec -it -n ollama $(kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}') -- curl -X POST http://localhost:8002/v1/chat/completions \
+kubectl exec -it -n llmmll $(kubectl get pods -n llmmll -o jsonpath='{.items[0].metadata.name}') -- curl -X POST http://localhost:8002/v1/chat/completions \
     -H "Content-Type: application/json" \
     -H "idempotency-key: stainless-python-retry-ac658160-04d6-4a69-ac0b-5cfcb6880708" \
     -d '{

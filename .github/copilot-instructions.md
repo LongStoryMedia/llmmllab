@@ -30,17 +30,17 @@ Focus: Execute precisely against current architecture. No speculation.
 
 ## Execution & Environment
 - **CRITICAL**: Debug files (`debug/`) MUST be run in Kubernetes pod, never locally
-- Pod execution: `kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.<test_name>`
+- Pod execution: `kubectl exec -it -n llmmll <POD_NAME> -- /app/v.sh python -m debug.<test_name>`
 - Local env (non-debug only): `source inference/.venv/bin/activate`
 - Always run modules with `python -m <module>` (avoid direct file paths) for import correctness.
 - Sync code: `inference/sync-code.sh` (retry once if fails).
 
 ## Testing & Validation
-- **CRITICAL**: All debug files must run in pod: `kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.<test_name>`
+- **CRITICAL**: All debug files must run in pod: `kubectl exec -it -n llmmll <POD_NAME> -- /app/v.sh python -m debug.<test_name>`
 - Unit: `cd inference && pytest test/` for pure logic changes (local OK).
-- Full E2E: `kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.e2e` (composer + runner + db).
-- Tools agent focus: `kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.tools_agent`.
-- Memory E2E: `kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.memory_e2e`.
+- Full E2E: `kubectl exec -it -n llmmll <POD_NAME> -- /app/v.sh python -m debug.e2e` (composer + runner + db).
+- Tools agent focus: `kubectl exec -it -n llmmll <POD_NAME> -- /app/v.sh python -m debug.tools_agent`.
+- Memory E2E: `kubectl exec -it -n llmmll <POD_NAME> -- /app/v.sh python -m debug.memory_e2e`.
 - A change is incomplete if: lint/import errors, hardcoded paths, failing pod, or architectural pattern violations.
 
 ## UI Conventions
@@ -69,16 +69,16 @@ Focus: Execute precisely against current architecture. No speculation.
 ## Quick Command Examples
 ```bash
 # Pod name lookup
-kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}'
+kubectl get pods -n llmmll -o jsonpath='{.items[0].metadata.name}'
 
 # Validate config load
-kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -c "from composer.config import config; print('CONFIG_OK')"
+kubectl exec -it -n llmmll <POD_NAME> -- /app/v.sh python -c "from composer.config import config; print('CONFIG_OK')"
 
 # Run summarization middleware test (example)
-kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.test_composer_real_e2e
+kubectl exec -it -n llmmll <POD_NAME> -- /app/v.sh python -m debug.test_composer_real_e2e
 
 # Run memory E2E test
-kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh python -m debug.memory_e2e
+kubectl exec -it -n llmmll <POD_NAME> -- /app/v.sh python -m debug.memory_e2e
 ```
 
 ## When Adding Middleware or Subgraphs

@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ollama
-  namespace: ollama
+  name: llmmll
+  namespace: llmmll
   labels:
-    app: ollama
+    app: llmmll
 spec:
   selector:
     matchLabels:
-      app: ollama
+      app: llmmll
   template:
     metadata:
       labels:
-        app: ollama
+        app: llmmll
     spec:
       runtimeClassName: nvidia
       nodeSelector:
@@ -20,10 +20,10 @@ spec:
       volumes:
         - name: ollama-models-volume
           persistentVolumeClaim:
-            claimName: ollama-models
+            claimName: llmmll-models
         - name: init-script
           configMap:
-            name: ollama-init-script
+            name: llmmll-init-script
             defaultMode: 0755
         # - name: sd-models-volume
         #   persistentVolumeClaim:
@@ -43,7 +43,7 @@ spec:
             path: /models
             type: DirectoryOrCreate
       containers:
-        - name: ollama
+        - name: llmmll
           image: 192.168.0.71:31500/inference:more-ide-stuff
           imagePullPolicy: Always
           securityContext:
@@ -54,7 +54,7 @@ spec:
                 - SYS_ADMIN # Required for CUDA device reset operations
                 - SYS_RAWIO # Required for direct hardware access
           ports:
-            - name: ollama
+            - name: api
               containerPort: 11434
               protocol: TCP
             - name: sd

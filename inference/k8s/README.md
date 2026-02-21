@@ -104,30 +104,30 @@ The script will:
 Once deployed, the service will be available at:
 
 - Web API: `https://inference.longstorymedia.com`
-- gRPC: `inference-service.ollama.svc.cluster.local:50051` (internal to the cluster)
+- gRPC: `inference-service.llmmll.svc.cluster.local:50051` (internal to the cluster)
 
 ## Monitoring and Troubleshooting
 
 To check the logs:
 
 ```bash
-kubectl logs -f -n ollama -l app=inference-service
+kubectl logs -f -n llmmll -l app=inference-service
 ```
 
 To shell into the pod:
 
 ```bash
-kubectl exec -it -n ollama $(kubectl get pod -n ollama -l app=inference-service -o jsonpath='{.items[0].metadata.name}') -- /bin/bash
+kubectl exec -it -n llmmll $(kubectl get pod -n llmmll -l app=inference-service -o jsonpath='{.items[0].metadata.name}') -- /bin/bash
 ```
 
 To check the status of the deployment:
 
 ```bash
-kubectl get deployment -n ollama inference-service
+kubectl get deployment -n llmmll inference-service
 ```
 
 To describe the pod for troubleshooting:
 
 ```bash
-kubectl describe pod -n ollama -l app=inference-service
+kubectl describe pod -n llmmll -l app=inference-service
 ```

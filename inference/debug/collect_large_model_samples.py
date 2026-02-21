@@ -67,7 +67,7 @@ class LargeModelSampleCollector:
 
     def __init__(self, k8s_pod_name: str = "ollama-5567bf7859-rwj6c"):
         self.pod_name = k8s_pod_name
-        self.namespace = "ollama"
+        self.namespace = "llmmll"
         self.results: List[LargeModelMemoryResult] = []
 
     def _get_memory_estimate_from_container(

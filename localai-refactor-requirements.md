@@ -122,7 +122,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: localai
-  namespace: ollama
+  namespace: llmmll
 spec:
   replicas: 1
   selector:
@@ -162,7 +162,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: localai-service
-  namespace: ollama
+  namespace: llmmll
 spec:
   selector:
     app: localai

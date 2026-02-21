@@ -11,7 +11,7 @@ inference:
 	ssh root@lsnode-3.local "cd /data/code-base && docker build -t 192.168.0.71:31500/inference:$(BRANCH_NAME) . --push"
 	chmod +x ./inference/k8s/apply.sh
 	DOCKER_TAG=$(BRANCH_NAME) ./inference/k8s/apply.sh
-	kubectl rollout restart deployment ollama -n ollama
+	kubectl rollout restart deployment llmmll -n llmmll
 
 ui:
 	@echo "Deploying UI service..."
@@ -36,7 +36,7 @@ start-ui:
 inference-dev:
 	@echo "Starting inference service in development mode..."
 	chmod +x ./inference/sync-code.sh
-	kubectl logs -f -n ollama deployment/ollama & ./inference/sync-code.sh -w
+	kubectl logs -f -n llmmll deployment/llmmll & ./inference/sync-code.sh -w
 
 gen:
 	@echo "generating models..."
@@ -58,7 +58,7 @@ validate:
 	@echo "Validation complete!"
 
 e2e-%:
-	kubectl exec -it -n ollama $$(kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}') -- /app/v.sh server python -m debug.test_real_end_to_end_pipeline $*
+	kubectl exec -it -n llmmll $$(kubectl get pods -n llmmll -o jsonpath='{.items[0].metadata.name}') -- /app/v.sh server python -m debug.test_real_end_to_end_pipeline $*
 
 clear-debug:
 	rm ./inference/debug/out/*.txt 

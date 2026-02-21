@@ -194,5 +194,5 @@ The BaseAgent includes comprehensive unit tests covering:
 Run tests with:
 
 ```bash
-kubectl exec -it -n ollama <pod-name> -- /app/v.sh python -m pytest test/test_base_agent.py -v
+kubectl exec -it -n llmmll <pod-name> -- /app/v.sh python -m pytest test/test_base_agent.py -v
 ```

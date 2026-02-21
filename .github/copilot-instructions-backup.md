@@ -72,10 +72,10 @@ PYTHONPATH=/app
 
 ```bash
 # Kubernetes pod commands (production/staging)
-POD_NAME=$(k get pods -n ollama -o jsonpath='{.items[0].metadata.name}')
-k exec -it -n ollama $POD_NAME -- /app/v.sh server python -m uvicorn app:app --port 8000
-k exec -it -n ollama $POD_NAME -- /app/v.sh composer python -m uvicorn app:app --port 8001
-k exec -it -n ollama $POD_NAME -- /app/v.sh runner python -c "import torch; print(torch.cuda.is_available())"
+POD_NAME=$(k get pods -n llmmll -o jsonpath='{.items[0].metadata.name}')
+k exec -it -n llmmll $POD_NAME -- /app/v.sh server python -m uvicorn app:app --port 8000
+k exec -it -n llmmll $POD_NAME -- /app/v.sh composer python -m uvicorn app:app --port 8001
+k exec -it -n llmmll $POD_NAME -- /app/v.sh runner python -c "import torch; print(torch.cuda.is_available())"
 ```
 
 inference does not generally run locally due to hardware needs. use `inference/sync-code.sh` to sync code to remote cluster.
@@ -119,13 +119,13 @@ schema2code schemas/[name].yaml -l typescript -o ui/src/types/[name].ts
 **Database Testing:**
 ```bash
 # Test database initialization
-k exec -it -n ollama $POD_NAME -- /app/v.sh server python -c "from db.init_db import initialize_database; import asyncio; asyncio.run(initialize_database(pool))"
+k exec -it -n llmmll $POD_NAME -- /app/v.sh server python -c "from db.init_db import initialize_database; import asyncio; asyncio.run(initialize_database(pool))"
 
 # Test storage service
-k exec -it -n ollama $POD_NAME -- /app/v.sh server python -c "from db import storage; print('✅ Storage initialized' if storage.initialized else '❌ Not initialized')"
+k exec -it -n llmmll $POD_NAME -- /app/v.sh server python -c "from db import storage; print('✅ Storage initialized' if storage.initialized else '❌ Not initialized')"
 
 # Validate SQL queries load correctly
-k exec -it -n ollama $POD_NAME -- /app/v.sh server python -c "from db.queries import get_query; print(get_query('[entity].[operation]'))"
+k exec -it -n llmmll $POD_NAME -- /app/v.sh server python -c "from db.queries import get_query; print(get_query('[entity].[operation]'))"
 ```
 
 ## Critical Patterns
@@ -432,10 +432,10 @@ and main docs: https://docs.scrapy.org/en/latest/
 **Configuration Not Loading:**
 ```bash
 # Debug configuration loading in pod
-k exec -it -n ollama $POD_NAME -- /app/v.sh composer python -c "from composer.config import config; print('Host:', config.service.host, 'Port:', config.service.port)"
+k exec -it -n llmmll $POD_NAME -- /app/v.sh composer python -c "from composer.config import config; print('Host:', config.service.host, 'Port:', config.service.port)"
 
 # Check environment variable parsing
-k exec -it -n ollama $POD_NAME -- env | grep COMPOSER | head -10
+k exec -it -n llmmll $POD_NAME -- env | grep COMPOSER | head -10
 ```
 
 **Schema Validation Errors:**
@@ -447,7 +447,7 @@ k exec -it -n ollama $POD_NAME -- env | grep COMPOSER | head -10
 **User Config Override Issues:**
 ```bash
 # Test user preference resolution
-k exec -it -n ollama $POD_NAME -- /app/v.sh composer python -c "
+k exec -it -n llmmll $POD_NAME -- /app/v.sh composer python -c "
 from composer.config import config
 from models.workflow_config import WorkflowConfig
 user_config = WorkflowConfig(enable_streaming=False)
@@ -468,13 +468,13 @@ print('User override working:', not resolved.enable_streaming)
 **Validation Commands:**
 ```bash
 # Full environment validation
-k exec -it -n ollama $POD_NAME -- /app/v.sh composer python debug/test_k8s_env_vars.py
+k exec -it -n llmmll $POD_NAME -- /app/v.sh composer python debug/test_k8s_env_vars.py
 
 # Quick config check
-k exec -it -n ollama $POD_NAME -- /app/v.sh composer python -c "from composer.config import config; print('✅ Config loaded')"
+k exec -it -n llmmll $POD_NAME -- /app/v.sh composer python -c "from composer.config import config; print('✅ Config loaded')"
 
 # Environment variable debugging
-k exec -it -n ollama $POD_NAME -- env | grep -E "(COMPOSER|DB_|REDIS_)" | sort
+k exec -it -n llmmll $POD_NAME -- env | grep -E "(COMPOSER|DB_|REDIS_)" | sort
 ```
 
 **Documentation Standards:**
@@ -545,13 +545,13 @@ TEST DATABASE INITIALIZATION AND STORAGE SERVICES AFTER CHANGES.
 
 NESTED COMMANDS SUCH AS
 ```bash
-POD_NAME=$(kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}') && kubectl exec -it -n ollama $POD_NAME -- /app/v.sh server python test_real_end_to_end_pipeline.py qwen3-30b-a3b-q4-k-m
+POD_NAME=$(kubectl get pods -n llmmll -o jsonpath='{.items[0].metadata.name}') && kubectl exec -it -n llmmll $POD_NAME -- /app/v.sh server python test_real_end_to_end_pipeline.py qwen3-30b-a3b-q4-k-m
 ```
 ARE TOO COMPLEX FOR AUTO-APPROVAL. USE SOMETHING LIKE:
 ```bash
-kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}'
+kubectl get pods -n llmmll -o jsonpath='{.items[0].metadata.name}'
 # remember the pod name printed
-kubectl exec -it -n ollama <POD_NAME> -- /app/v.sh server python -m debug.test_real_end_to_end_pipeline qwen3-30b-a3b-q4-k-m
+kubectl exec -it -n llmmll <POD_NAME> -- /app/v.sh server python -m debug.test_real_end_to_end_pipeline qwen3-30b-a3b-q4-k-m
 ```
 
 DO NOT ADD DOCUMENTATION FOR FIXES, CHANGES, CLEANUPS, OR TRANSFORMATIONS. ONLY DOCUMENT FULLY IMPLEMENTED FEATURES, AND ALWAYS IN THE `docs/` FOLDER. ALWAYS LINK TO THE DOCS FROM THE README IF IT'S IMPORTANT.

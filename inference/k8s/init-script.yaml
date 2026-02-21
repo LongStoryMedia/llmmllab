@@ -1,8 +1,8 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: ollama-init-script
-  namespace: ollama
+  name: llmmll-init-script
+  namespace: llmmll
 data:
   init.sh: |
     #!/bin/sh

@@ -129,7 +129,7 @@ Use the validation script to ensure all environment variables are properly confi
 
 ```bash
 # In Kubernetes pod
-k exec -it -n ollama $POD_NAME -- /app/v.sh composer python debug/test_k8s_env_vars.py
+k exec -it -n llmmll $POD_NAME -- /app/v.sh composer python debug/test_k8s_env_vars.py
 
 # Local testing with environment file
 source .env && python inference/debug/test_k8s_env_vars.py
@@ -145,13 +145,13 @@ source .env && python inference/debug/test_k8s_env_vars.py
    ```
 3. **Validate deployment**:
    ```bash
-   kubectl get pods -n ollama
-   kubectl logs -n ollama -l app=ollama --tail=100
+   kubectl get pods -n llmmll
+   kubectl logs -n llmmll -l app=llmmll --tail=100
    ```
 4. **Test composer service**:
    ```bash
-   POD_NAME=$(kubectl get pods -n ollama -o jsonpath='{.items[0].metadata.name}')
-   kubectl exec -it -n ollama $POD_NAME -- /app/v.sh composer python debug/test_k8s_env_vars.py
+   POD_NAME=$(kubectl get pods -n llmmll -o jsonpath='{.items[0].metadata.name}')
+   kubectl exec -it -n llmmll $POD_NAME -- /app/v.sh composer python debug/test_k8s_env_vars.py
    ```
 
 ## Environment Variable Best Practices
@@ -188,7 +188,7 @@ source .env && python inference/debug/test_k8s_env_vars.py
 
 ### Monitoring
 
-- Check service logs: `kubectl logs -n ollama -l app=ollama -c ollama --tail=100`
+- Check service logs: `kubectl logs -n llmmll -l app=llmmll -c llmmll --tail=100`
 - Health check endpoint: `http://composer:8001/health`
 - Config endpoint: `http://composer:8001/config`
 
@@ -196,8 +196,8 @@ source .env && python inference/debug/test_k8s_env_vars.py
 
 ```bash
 # Check all composer environment variables in pod
-kubectl exec -it -n ollama $POD_NAME -- env | grep COMPOSER
+kubectl exec -it -n llmmll $POD_NAME -- env | grep COMPOSER
 
 # Test configuration loading
-kubectl exec -it -n ollama $POD_NAME -- /app/v.sh composer python -c "from composer.config import config; print(config.service.host, config.service.port)"
+kubectl exec -it -n llmmll $POD_NAME -- /app/v.sh composer python -c "from composer.config import config; print(config.service.host, config.service.port)"
 ```
